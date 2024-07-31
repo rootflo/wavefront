@@ -4,7 +4,6 @@ from langchain_openai import OpenAIEmbeddings
 import os
 from langchain import hub
 from langchain_openai import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from dotenv import load_dotenv
 load_dotenv()
 

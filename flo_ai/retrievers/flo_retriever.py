@@ -26,6 +26,7 @@ class FloRagBuilder():
 
     def with_prompt(self, prompt: ChatPromptTemplate):
         self.default_prompt = prompt
+        return self
 
     def with_multi_query(self, prompt = None):
         builder = FloMultiQueryRetriverBuilder(session=self.session,
