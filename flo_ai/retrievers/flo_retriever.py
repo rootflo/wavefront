@@ -37,7 +37,7 @@ class FloRagBuilder():
     
     def with_compression(self, pipeline: FloCompressionPipeline):
         pipeline_compressor = DocumentCompressorPipeline(
-            transformers=pipeline
+            transformers=pipeline.get()
         )
         compression_retriever = ContextualCompressionRetriever(
             base_compressor=pipeline_compressor, base_retriever=self.retriever

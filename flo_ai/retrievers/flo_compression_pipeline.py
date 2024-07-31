@@ -17,7 +17,7 @@ class FloCompressionPipeline():
         redundant_filter = EmbeddingsRedundantFilter(embeddings=self.__embeddings)
         self.__pipeline.append(redundant_filter)
 
-    def add_embedding_relevant_filter(self, threshold: float = 0.76):
+    def add_embedding_relevant_filter(self, threshold: float = 0.50):
          relevant_filter = EmbeddingsFilter(embeddings=self.__embeddings, similarity_threshold=threshold)
          self.__pipeline.append(relevant_filter)
 
