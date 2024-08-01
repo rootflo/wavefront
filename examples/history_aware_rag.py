@@ -35,6 +35,6 @@ import logging
 logging.basicConfig()
 logging.getLogger("langchain.retrievers.multi_query").setLevel(logging.INFO)
 
-rag = rag_builder.with_multi_query().build()
-print(rag.invoke({ "question": "Tell me about corporate loans" }))
+rag = rag_builder.with_multi_query().build_rag()
+print(rag.runnable.invoke({ "question": "Tell me about corporate loans" }))
 

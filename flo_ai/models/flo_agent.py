@@ -1,6 +1,6 @@
 from langchain_core.tools import BaseTool
 from langchain.agents import AgentExecutor
-from langchain.agents import create_openai_tools_agent
+from langchain.agents import create_tool_calling_agent
 from langchain_core.runnables import Runnable
 from langchain_core.language_models import BaseLanguageModel
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -48,7 +48,7 @@ class FloAgentBuilder:
 
 
     def build(self) -> AgentExecutor:
-        agent = create_openai_tools_agent(self.llm, self.tools, self.prompt)
+        agent = create_tool_calling_agent(self.llm, self.tools, self.prompt)
         executor = AgentExecutor(agent=agent, 
                              tools=self.tools, 
                              verbose=self.verbose, 
