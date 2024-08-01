@@ -67,7 +67,7 @@ session = FloSession(llm).register_tool(
 )
 
 # Build the final flow and run it
-flo: Flo = Flo.build_with_yaml(session, yaml=yaml_data)
+flo: Flo = Flo.build(session, yaml=yaml_data)
 
 # call invoke or stream
 for s in flo.stream(input_prompt)
@@ -148,7 +148,7 @@ team:
           - name: HousingLoanTool
 """
 
-flo: Flo = Flo.build_with_yaml(session, yaml=agent_yaml)
+flo: Flo = Flo.build(session, yaml=agent_yaml)
 for s in flo.stream(input_prompt):
      if "__end__" not in s:
         print(s)

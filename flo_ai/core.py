@@ -23,7 +23,7 @@ class Flo:
         return self.runnable.invoke(query, config)
     
     @staticmethod
-    def build_with_yaml(session: FloSession, yaml: str):
+    def build(session: FloSession, yaml: str):
         return Flo(session, to_supervised_team(yaml))
 
     def draw(self, xray=True):

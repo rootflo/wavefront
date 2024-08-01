@@ -35,7 +35,7 @@ session = FloSession(llm).register_tool(
     name="TavilySearchResults", 
     tool=TavilySearchResults()
 )
-flo: Flo = Flo.build_with_yaml(session, yaml=yaml_data)
+flo: Flo = Flo.build(session, yaml=yaml_data)
 for s in flo.stream(input_prompt):
      if "__end__" not in s:
         print(s)

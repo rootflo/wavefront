@@ -46,4 +46,4 @@ llm = ChatOpenAI(temperature=0, model_name='gpt-4o')
 session = FloSession(llm).register_tool(
     name="TavilySearchResults", tool=TavilySearchResults()
 )
-flo: Flo = Flo.build_with_yaml(session, llm, yaml=yaml_data)
+flo: Flo = Flo.build(session, llm, yaml=yaml_data)

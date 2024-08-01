@@ -31,7 +31,7 @@ session = FloSession(llm).register_tool(
     name="TavilySearchResults", 
     tool=TavilySearchResults()
 )
-flo: Flo = Flo.build_with_yaml(llm, yaml=yaml_data)
+flo: Flo = Flo.build(llm, yaml=yaml_data)
 image_data = flo.draw_to_file("examples/images/agent-planned-graph.png")
 
 config = {"recursion_limit": 50}
