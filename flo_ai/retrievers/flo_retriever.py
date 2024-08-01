@@ -1,5 +1,5 @@
 from langchain_core.vectorstores import VectorStoreRetriever
-from langchain_core.runnables import RunnableParallel
+from langchain_core.runnables import RunnableParallel, Runnable
 from flo_ai.state.flo_session import FloSession
 from langchain.schema.output_parser import StrOutputParser
 from langchain.schema.runnable import RunnablePassthrough
@@ -8,6 +8,9 @@ from flo_ai.retrievers.flo_multi_query import FloMultiQueryRetriverBuilder
 from langchain.retrievers import ContextualCompressionRetriever
 from langchain.retrievers.document_compressors import DocumentCompressorPipeline
 from flo_ai.retrievers.flo_compression_pipeline import FloCompressionPipeline
+from langchain.tools.retriever import create_retriever_tool
+from flo_ai.tools.flo_rag_tool import create_flo_rag_tool
+from langchain_core.tools import Tool
 
 class FloRagBuilder():
     def __init__(self, session: FloSession, retriever: VectorStoreRetriever) -> None:
@@ -23,6 +26,7 @@ class FloRagBuilder():
                 ("human", "{question}"),
             ]
         )
+        self.history_aware_retriever = self.__create_history_aware_retriever()
 
     def with_prompt(self, prompt: ChatPromptTemplate):
         self.default_prompt = prompt
@@ -60,7 +64,7 @@ class FloRagBuilder():
             ]
         )
         self.history_aware_retriever = contextualize_q_prompt | self.session.llm | StrOutputParser()
-        return self
+        return self.history_aware_retriever
 
     def __get_retriever(self):
         def __precontext_retriver(input_prompt: dict):
@@ -77,7 +81,6 @@ class FloRagBuilder():
         return x["chat_history"] if "chat_history" in x else []
     
     def __build_history_aware_rag(self):
-        self.history_aware_retriever = self.__create_history_aware_retriever()
         rag_chain = (
             RunnablePassthrough.assign(
                 context=(lambda x: x["context"]),
@@ -95,5 +98,12 @@ class FloRagBuilder():
         ).assign(answer=rag_chain)
         return rag_chain_with_source
 
-    def build(self):
+    def build_rag(self):
         return self.__build_history_aware_rag()
+    
+    def build_retriever_tool(self, name, description):
+        return create_retriever_tool(self.retriever, name, description)
+    
+    def build_rag_tool(self, name, description) -> Tool:
+        rag = self.__build_history_aware_rag()
+        return create_flo_rag_tool(rag, name, description)
