@@ -52,5 +52,5 @@ compression_pipeline.add_embedding_reduntant_filter()
 compression_pipeline.add_embedding_relevant_filter()
 
 rag = rag_builder.with_prompt(custom_prompt).with_multi_query().with_compression(compression_pipeline).build_rag()
-print(rag.runnable.invoke({ "question": "What are the documents applying for housing loan" }))
+print(rag.invoke({ "question": "What are the documents applying for housing loan" }))
 

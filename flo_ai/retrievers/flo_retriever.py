@@ -9,6 +9,8 @@ from langchain.retrievers import ContextualCompressionRetriever
 from langchain.retrievers.document_compressors import DocumentCompressorPipeline
 from flo_ai.retrievers.flo_compression_pipeline import FloCompressionPipeline
 from langchain.tools.retriever import create_retriever_tool
+from flo_ai.tools.flo_rag_tool import create_flo_rag_tool
+from langchain_core.tools import Tool
 
 class FloRagBuilder():
     def __init__(self, session: FloSession, retriever: VectorStoreRetriever) -> None:
@@ -101,3 +103,7 @@ class FloRagBuilder():
     
     def build_retriever_tool(self, name, description):
         return create_retriever_tool(self.retriever, name, description)
+    
+    def build_rag_tool(self, name, description) -> Tool:
+        rag = self.__build_history_aware_rag()
+        return create_flo_rag_tool(rag, name, description)
