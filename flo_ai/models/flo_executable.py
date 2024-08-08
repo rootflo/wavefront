@@ -14,9 +14,9 @@ class ExecutableFlo(FloMember):
             ]
         }, config)
     
-    def invoke(self, work):
+    def invoke(self, work, config = None):
         return self.graph.invoke({
              "messages": [
                 HumanMessage(content=work)
             ]
-        })
+        }, config)

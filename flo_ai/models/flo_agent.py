@@ -52,6 +52,6 @@ class FloAgentBuilder:
         executor = AgentExecutor(agent=agent, 
                              tools=self.tools, 
                              verbose=self.verbose, 
-                             return_intermediate_steps=True, 
-                             handle_parsing_errors=True)
+                             return_intermediate_steps=self.return_intermediate_steps, 
+                             handle_parsing_errors=self.handle_parsing_errors)
         return FloAgent(agent, executor, self.name)
