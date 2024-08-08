@@ -45,11 +45,13 @@ team:
         kind: supervisor
     agents:
       - name: Researcher
-        prompt: Do a research on the internet and find articles of relevent to the topic asked by the user, always try to find the latest information on the same
+        role: Researcher
+        job: Do a research on the internet and find articles of relevent to the topic asked by the user, always try to find the latest information on the same
         tools:
         - name: TavilySearchResults
       - name: Blogger
-        prompt: From the documents provider by the researcher write a blog of 300 words with can be readily published, make in engaging and add reference links to original blogs
+        role: Writer
+        job: From the documents provider by the researcher write a blog of 300 words with can be readily published, make in engaging and add reference links to original blogs
         tools:
         - name: TavilySearchResults
 """
@@ -135,15 +137,18 @@ team:
         kind: supervisor
     agents:
       - name: EmailSender
-        prompt: You are capable of sending the reply email but constructing a apt response
+        role: Email Sender
+        job: You are capable of sending the reply email but constructing a apt response
         tools:
           - name: SendEmailTool
       - name: TransactionFetcher
-        prompt: You are capable of fetching any kind of transactions from the database given transaction reference id
+        role: Transaction Fetcher
+        job: You are capable of fetching any kind of transactions from the database given transaction reference id
         tools:
           - name: FetchTransactionTool
       - name: HousingLoanTeamLead
-        prompt: Fetch the housing loan information from the db and answer the question
+        role: Housing Loan Specialist
+        job: Fetch the housing loan information from the db and answer the question
         tools:
           - name: HousingLoanTool
 """

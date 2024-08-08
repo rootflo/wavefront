@@ -17,11 +17,13 @@ team:
         kind: supervisor
     agents:
       - name: Researcher
-        prompt: Generate a list of topics related to the user questions and accululate articles about them
+        role: Blog Researcher
+        job: Generate a list of topics related to the user questions and accululate articles about them
         tools:
           - name: TavilySearchResults
       - name: Blogger
-        prompt: From the documents provider by the researcher write a blog of 300 words with can be readily published, make in engaging and add reference links to original blogs
+        role: Blog Writer
+        job: From the documents provider by the researcher write a blog of 300 words with can be readily published, make in engaging and add reference links to original blogs
         tools:
           - name: TavilySearchResults
 """
