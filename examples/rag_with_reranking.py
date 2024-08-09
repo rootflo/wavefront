@@ -27,7 +27,7 @@ store = MongoDBAtlasVectorSearch(
 )
 
 
-llm = ChatOpenAI(temperature=0, model_name='gpt-4o')
+llm = ChatOpenAI(temperature=0, model_name='gpt-4o-mini')
 session = FloSession(llm)
 rag_builder = FloRagBuilder(session, store.as_retriever())
 

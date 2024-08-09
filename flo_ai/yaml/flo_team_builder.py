@@ -31,8 +31,9 @@ class ToolConfig(BaseModel):
 
 class AgentConfig(BaseModel):
     name: str
+    role: Optional[str] = None
     kind: Optional[str] = None
-    prompt: str
+    job: str
     tools: List[ToolConfig] = []
 
 class RouterConfig(BaseModel):

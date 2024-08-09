@@ -17,11 +17,11 @@ team:
     name: BloggingTeam
     agents:
       - name: Reasercher
-        prompt: Do a research on the internet and find articles of relevent to the topic asked by the user
+        job: Do a research on the internet and find articles of relevent to the topic asked by the user
         tools:
           - name: TavilySearchResults
       - name: BlogWriter
-        prompt: Able to write a blog using information provided
+        job: Able to write a blog using information provided
         tools:
           - name: TavilySearchResults
 """

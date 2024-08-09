@@ -20,11 +20,11 @@ team:
             name: supervisor
           agents:
             - name: Reasercher
-              prompt: Do a research on the internet and find articles of relevent to the topic asked by the user, always try to find the latest information on the same
+              job: Do a research on the internet and find articles of relevent to the topic asked by the user, always try to find the latest information on the same
               tools:
               - name: TavilySearchResults
             - name: Blogger
-              prompt: From the documents provider by the researcher write a blog of 300 words with can be readily published, make in engaging and add reference links to original blogs
+              job: From the documents provider by the researcher write a blog of 300 words with can be readily published, make in engaging and add reference links to original blogs
               tools:
                 - name: TavilySearchResults
         - name: Writing Team
@@ -32,7 +32,7 @@ team:
             name: supervisor
           agents: 
             - name: Figure
-              prompt: Do somethinh
+              job: Do somethinh
               tools:
                 - name: TavilySearchResults
 """

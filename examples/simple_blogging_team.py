@@ -16,27 +16,30 @@ team:
         name: BloggerTeamLead
         kind: supervisor
     agents:
-      - name: Reasercher
-        prompt: Do a research on the internet and find articles of relevent to the topic asked by the user, always try to find the latest information on the same
+      - name: Researcher
+        role: Blog Researcher
+        job: Generate a list of topics related to the user questions and accululate articles about them
         tools:
           - name: TavilySearchResults
       - name: Blogger
-        prompt: From the documents provider by the researcher write a blog of 300 words with can be readily published, make in engaging and add reference links to original blogs
+        role: Blog Writer
+        job: From the documents provider by the researcher write a blog of 300 words with can be readily published, make in engaging and add reference links to original blogs
         tools:
           - name: TavilySearchResults
 """
 
 input_prompt = """
-Question: Write me an interesting blog about latest advancements in agentic AI
+Question: Write me an interesting blog about latest advancements in agentic AI by reasearching the internet
 """
 
-llm = ChatOpenAI(temperature=0, model_name='gpt-4o')
+llm = ChatOpenAI(temperature=0, model_name='gpt-4o-mini')
 session = FloSession(llm).register_tool(
     name="TavilySearchResults", 
     tool=TavilySearchResults()
+).register_tool(
+    name="DummyTool", 
+    tool=TavilySearchResults(description="Tool is a dummy tool, dont use this")
 )
 flo: Flo = Flo.build(session, yaml=yaml_data)
-for s in flo.stream(input_prompt):
-     if "__end__" not in s:
-        print(s)
-        print("----")
+data = flo.invoke(input_prompt)
+print((data['messages'][-1]).content)

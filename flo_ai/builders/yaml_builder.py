@@ -62,7 +62,7 @@ def create_agent(session: FloSession, agent: AgentConfig, tool_map) -> FloAgent:
     flo_agent: FloAgent = FloAgentBuilder(
         session,
         agent.name, 
-        agent.prompt,
+        agent.job,
         tools
     ).build()
     return flo_agent
