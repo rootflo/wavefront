@@ -24,9 +24,9 @@ from openai import AzureOpenAI
 @ray.remote(num_cpus=0)
 def chat_completion_request(model: str, messages, pidx, tools=None, tool_choice=None, max_retries=2):
     client = AzureOpenAI(
-        api_key="dd909a54da904509adb2ed8d2ddcfb97",  
+        api_key="<api key>",  
         api_version="2024-02-15-preview",
-        azure_endpoint="https://rootflo-useast.openai.azure.com",
+        azure_endpoint="endpoint",
         azure_deployment="gpt-4"
         )
     retry_count = 0
@@ -50,11 +50,6 @@ class DatasetGenerator:
     def __init__(self, client: OpenAI):
         self.client = client
         ray.init("auto")
-
-    # @retry(wait=wait_random_exponential(multiplier=1, max=40), stop=stop_after_attempt(3))
-    # @retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(6))
-    
-            
 
     def generate_from_texts(
         self,
@@ -126,6 +121,6 @@ class DatasetGenerator:
 
         with open("final_checkpoint_{}.pkl".format(time.time()), 'wb') as f:
             pickle.dump(dataset.items, f)
-            
+
         return dataset
         
