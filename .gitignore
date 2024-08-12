@@ -5,3 +5,8 @@ xamples
 .env
 dist
 .venv
+dataset
+.deepeval
+.deepeval-cache.json
+bin
+.DS_Store
