@@ -10,3 +10,4 @@ dataset
 .deepeval-cache.json
 bin
 .DS_Store
+*.sql
