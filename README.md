@@ -1,11 +1,30 @@
 
 # Table of contents
 
-1. [Flo: Composable AI Agents ?](#flo-composable-ai-agents)
-2. [Getting Started](#getting-started)
-3. [Building your first agent](#building-your-first-agent)
-4. [Building a RAG with flo](#building-a-rag-with-flo)
-5. [Understanding Flo Deeper](#understanding-flo-deeper)
+1. [Installation](#installation)
+2. [Flo: Composable AI Agents ?](#flo-composable-ai-agents)
+3. [Getting Started](#getting-started)
+4. [Building your first agent](#building-your-first-agent)
+5. [Building a RAG with flo](#building-a-rag-with-flo)
+6. [Understanding Flo Deeper](#understanding-flo-deeper)
+
+# Installation
+
+Using pip:
+
+```cmd
+pip install flo-ai
+```
+Using poetry:
+
+```cmd
+poetry add flo-ai
+```
+Importing:
+
+```cmd
+from flo_ai import Flo, FloSession
+```
 
 # Flo: Composable AI Agents
 
@@ -40,6 +59,10 @@ Second way it to use yaml. You can write an yaml to define your agentic workflow
 To create a small team of researcher + blogger for writing blogs
 
 ```python
+from flo_ai import Flo
+from flo_ai import FloSession
+from langchain_openai import ChatOpenAI
+
 # This yaml defines a team of 2 agents + 1 supervisor
 yaml_data = """
 apiVersion: flo/alpha-v1
@@ -208,6 +231,18 @@ Lets breakdown the structure of the yaml.
 |agent.job | This is the job that is expected to be done by the agent. |
 |agent.role | This will assign a persona to the agent. This field is optional
 |agent.tools | List of tools available to the agent.
+
+### FloSession
+
+This is the current session in which flo is running. The session helps keep track of current execution and handles loops etc. We plan to add more control variables into sessions. Right now, the LLM to be used & tools available are configured within the session
+
+```python
+# you can keep registering more and more tools
+session = FloSession(llm).register_tool(
+    name="TavilySearchResults", 
+    tool=TavilySearchResults()
+)
+```
 
 ### Agent
 The smallest component we have is an agent. It consist of the job to be done, a role, and its tools
