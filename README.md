@@ -325,10 +325,11 @@ This is the composability has flo unlocks, you can keep doing broader or deeper.
 
 FloAI is open-source and we welcome contributions. If you're looking to contribute, please:
 
-Fork the repository.
-Create a new branch for your feature.
-Add your feature or improvement.
-Send a pull request.
+1. Fork the repository.
+2. Create a new branch for your feature.
+3. Add your feature or improvement.
+4. Send a pull request.
+
 We appreciate your input!
 
 ## Installing Dependencies
