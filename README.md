@@ -28,31 +28,31 @@ from flo_ai import Flo, FloSession
 
 # Flo: Composable AI Agents
 
-Flo gives you a composable framework for creating agentic AI architectures. What we intent to do here is to create an easy framework for GenAI app developers to compose apps using pre-implemented architectural components, at the same time providing the flexibilty to create their own components.
+Flo gives you a composable framework for creating agentic AI architectures. What we intend to do here is to create an easy framework for GenAI app developers to compose apps using pre-implemented architectural components while providing the flexibility to create their components.
 
-### Composibility
+### Composability
 
-Composility is the ability to use smaller components to build bigger applications, which themselves are composable. In a composible architecture, you will be given smaller building blocks which you can use to build you bigger component, or the final application. It is very similar to how legos work, you are given the smaller lego blocks which when put together creates a whole building.
+Composability is the ability to use smaller components to build more composable applications. In a composible architecture, you will be given smaller building blocks which you can use to build you bigger component, or the final application. It is very similar to how legos work, you are given the smaller Lego blocks which when put together create a whole building.
 
 ### Building blocks
 
-In flo, we tried to put togther a system where we have small micro components like vector store, or simple LLM prompts, and then higher components/architectures made of these micro components like RAGs, Agentic Teams etc.
+In flo, we tried to put together a system where we have small micro components like vector store, or simple LLM prompts, and then higher components/architectures made of these micro components like RAGs, Agentic Teams etc.
 
 ### Flo vs langraph or crew-ai
 
-Flo is built with langraph working under the stood. So everything that works in langraph still works here, including all tools and architectures. The following makes flo a little more easier solution:
+Flo is built with langraph working under the hood. So everything that works in langraph still works here, including all tools and architectures. The following makes flo a better solution:
 
-1. Langraph needs good understanding of underlying graph and states, its a raw tool and asks developers to implement the required components. While flo is more usecase friendly and components can be easily created by using the flo classes, which has lot of internal abstraction for ease of use.
+1. Langraph needs a good understanding of the underlying graphs and states, its a raw tool and asks developers to implement the required components. While flo is more use-case friendly and components can be easily created by using the flo classes, which have lot of internal abstraction for ease of use.
 
-2. In every AI component that has gone in production their are lot of nuances that needs to be implemented to get production quality output, flo inherently implements these architecutures and gives them out of the box, you can enable and disable as you wish. This not only reduces the complexity but also improves the time to iterate solutions.
+2. In every AI component that has gone into production there are a lot of nuances that need to be implemented to get production-quality output, flo inherently implements these architectures and gives them out of the box, you can enable and disable as you wish. This not only reduces the complexity but also improves the time to iterate solutions.
 
-3. Every component in flo is combosable meaning you can easily put them together and flo takes care of routing between the components where as in langraph the developer has to tie these up. Flo plans to support custom routers in the future
+3. Every component in flo is combosable meaning you can easily put them together and flo takes care of routing between the components whereas in langraph the developer has to tie these up. Flo plans to support custom routers in the future
 
 # Getting Started
 
 Flo supports two ways to set up and run the components, first is through code. This is much more flexible. This can help you write your own tools and add them to the flo.
 
-Second way it to use yaml. You can write an yaml to define your agentic workflow and it compiles into a application. See examples below.
+Second way is to use yaml. You can write an yaml to define your agentic workflow and it compiles into an application. See examples below.
 
 ## Building your first agent
 
@@ -76,7 +76,7 @@ team:
     agents:
       - name: Researcher
         role: Researcher
-        job: Do a research on the internet and find articles of relevent to the topic asked by the user, always try to find the latest information on the same
+        job: Do research on the internet and find articles of relevent to the topic asked by the user, always try to find the latest information on the same
         tools:
         - name: TavilySearchResults
       - name: Blogger
@@ -92,7 +92,7 @@ Question: Write me an interesting blog about latest advancements in agentic AI
 
 llm = ChatOpenAI(temperature=0, model_name='gpt-4o')
 
-# Register all the tools within the session and use everywhere in the yaml
+# Register all the tools within the session and use them everywhere in the yaml
 session = FloSession(llm).register_tool(
     name="TavilySearchResults", 
     tool=TavilySearchResults()
