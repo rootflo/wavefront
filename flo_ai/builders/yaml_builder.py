@@ -1,12 +1,12 @@
 from flo_ai.models.flo_team import FloTeamBuilder
 from flo_ai.models.flo_agent import FloAgentBuilder, FloAgent
-from flo_ai.models.flo_supervisor import FloSupervisorBuilder
 from flo_ai.yaml.flo_team_builder import (FloRoutedTeamConfig, TeamConfig,
                                         AgentConfig, FloAgentConfig)
 from flo_ai.models.flo_executable import ExecutableFlo
 from flo_ai.models.flo_planner import FloPlannerBuilder
 from flo_ai.state.flo_session import FloSession
-from typing import Union, List
+from flo_ai.router.flo_router import FloRouterBuilder
+from typing import Union
 
 def build_supervised_team(
         session: FloSession,
@@ -30,11 +30,11 @@ def parse_and_build_subteams(
         for agent in team.agents:
             flo_agent: FloAgent = create_agent(session, agent, tool_map)
             agents.append(flo_agent)
-        router = create_router(session, team, agents)
+        router = FloRouterBuilder(session, team, agents).build()
         flo_team = FloTeamBuilder(
             session=session,
             name=team.name,
-            supervisor=router
+            router=router
         ).build()
         if team.planner is not None:
             return FloPlannerBuilder(session, team.planner.name, flo_team).build()
@@ -43,19 +43,13 @@ def parse_and_build_subteams(
         for subteam in team.subteams:
             flo_subteam = parse_and_build_subteams(session, subteam, tool_map)
             flo_teams.append(flo_subteam)
-        router = create_router(session, team, agents)
+        router = FloRouterBuilder(session, team, agents).build()
         flo_team = FloTeamBuilder(
             session=session,
             name=team.name,
-            supervisor=router
+            router=router
         ).build()
     return flo_team
-
-def create_router(session: FloSession, team_config: TeamConfig, agents: List[FloAgent]):
-    if (team_config.router.kind == "supervisor"):
-            return FloSupervisorBuilder(session, team_config.router.name, agents).build()
-    else:
-        raise Exception("Unknown router type")
         
 def create_agent(session: FloSession, agent: AgentConfig, tool_map) -> FloAgent:
     tools = [tool_map[tool.name] for tool in agent.tools]

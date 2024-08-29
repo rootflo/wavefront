@@ -8,3 +8,6 @@ def random_str(length: int = 5):
 
 def randomize_name(name: str):
     return "{}-{}".format(name, random_str(5))
+
+def agent_name_from_randomized_name(name: str):
+    return name.split("-")[0]
