@@ -43,7 +43,7 @@ def parse_and_build_subteams(
         for subteam in team.subteams:
             flo_subteam = parse_and_build_subteams(session, subteam, tool_map)
             flo_teams.append(flo_subteam)
-        router = FloRouterBuilder(session, team, agents).build()
+        router = FloRouterBuilder(session, team, flo_teams).build()
         flo_team = FloTeamBuilder(
             session=session,
             name=team.name,
