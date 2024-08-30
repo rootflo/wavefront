@@ -297,10 +297,12 @@ team:
     name: BloggingTeam
     supervisor:
         name: supervisor
+        kind: supervisor
     subteams:
         - name: BloggingTeam
           supervisor:
             name: supervisor
+            kind: supervisor
           agents:
             - name: Reasercher
               job: Do a research on the internet and find articles of relevent to the topic asked by the user, always try to find the latest information on the same
@@ -313,6 +315,7 @@ team:
         - name: Writing Team
           supervisor:
             name: supervisor
+            kind: supervisor
           agents: 
             - name: Figure
               job: Do somethinh
