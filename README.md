@@ -130,7 +130,7 @@ agent:
 
 ## Building a RAG with flo
 
-We are also made building RAG composable. This RAG system can then be plugged into agentic flows and create a agentic RAG, or be used independently.
+We are also made building RAG composable. This RAG system can then be plugged into agentic flows and create an agentic RAG, or be used independently.
 
 ```python
 llm = ChatOpenAI(temperature=0, model_name='gpt-4o')
@@ -225,7 +225,7 @@ Lets breakdown the structure of the yaml.
 |------|-------------|
 |kind  | The type of agentic flo. You have two options here, `FloRoutedTeam` or `FloAgent`|
 |name  | This is the name of the agentic flo
-|team/agent | The next key can be a `team` or a `agent` depending on whether you plan to create a team or an single agent|
+|team/agent | The next key can be a `team` or an `agent` depending on whether you plan to create a team or an single agent|
 |team.router | Router this a component which manages the task in a team. The router takes care of properly routing the task, or sub-dividing the task depending on the current state. Currently we only support `supervisor` as router, more types are under construction|
 |(team/agent).name  | This is the name of the team or agent
 |agent.job | This is the job that is expected to be done by the agent. |
