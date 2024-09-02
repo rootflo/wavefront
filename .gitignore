@@ -11,3 +11,4 @@ dataset
 bin
 .DS_Store
 *.sql
+*.png

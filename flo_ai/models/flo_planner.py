@@ -5,7 +5,7 @@ from flo_ai.state.flo_state import TeamFloAgentStateWithPlan
 from langchain_core.pydantic_v1 import BaseModel, Field
 from typing import Union
 from langgraph.graph.graph import CompiledGraph
-from flo_ai.models.flo_team import FloTeam
+from flo_ai.models.flo_routed_team import FloRoutedTeam
 from langgraph.graph import StateGraph
 from flo_ai.state.flo_session import FloSession
 from flo_ai.helpers.utils import randomize_name
@@ -51,7 +51,7 @@ class FloPlannerBuilder:
     def __init__(self, 
                  session: FloSession,
                  name: str,
-                 team: FloTeam,
+                 team: FloRoutedTeam,
                  planner_prompt: Union[ChatPromptTemplate, None] = None,
                  replanner_prompt: Union[ChatPromptTemplate, None] = None,
                  llm: Union[BaseLanguageModel, None] = None) -> None:

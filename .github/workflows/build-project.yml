@@ -1,0 +1,33 @@
+name: CI Build Flo-AI
+
+on:
+  pull_request:
+    branches:
+      - develop
+  workflow_dispatch:  # Allows manual triggering from the GitHub Actions UI
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install Poetry
+      run: |
+        curl -sSL https://install.python-poetry.org | python3
+
+    - name: Poetry lock
+      run: poetry lock
+
+    - name: Install dependencies
+      run: poetry install
+
+    - name: Run build
+      run: poetry build
