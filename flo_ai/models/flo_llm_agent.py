@@ -11,6 +11,7 @@ from typing import Union, Optional
 from langchain_core.output_parsers import StrOutputParser
 
 class FloLLMAgent(ExecutableFlo):
+
     def __init__(self, 
                  executor: Runnable, 
                  name: str) -> None:

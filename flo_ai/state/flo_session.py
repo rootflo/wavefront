@@ -1,12 +1,10 @@
 from langchain_core.language_models import BaseLanguageModel
 from langchain_core.tools import BaseTool
-from langchain_core.runnables import Runnable
 
 class FloSession:
     def __init__(self, llm: BaseLanguageModel, loop_size: int = 2, max_loop: int = 3) -> None:
         self.llm = llm
         self.tools = dict()
-        self.executables = dict()
         self.counter = dict()
         self.navigation: list[str] = list()
         self.pattern_series = dict()
@@ -15,10 +13,6 @@ class FloSession:
 
     def register_tool(self, name: str, tool: BaseTool):
         self.tools[name] = tool
-        return self
-    
-    def register_executable(self, name: str, tool: Runnable):
-        self.executables[name] = dict()
         return self
 
     def append(self, node: str) -> int:

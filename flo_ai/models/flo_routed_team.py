@@ -7,4 +7,4 @@ class FloRoutedTeam(ExecutableFlo):
         super().__init__(name, graph)
 
     def draw(self, xray=True):
-        return self.graph.get_graph(xray=xray).draw_mermaid_png()
+        return self.runnable.get_graph(xray=xray).draw_mermaid_png()

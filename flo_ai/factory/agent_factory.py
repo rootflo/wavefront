@@ -2,14 +2,14 @@ from flo_ai.state.flo_session import FloSession
 from flo_ai.yaml.flo_team_builder import (AgentConfig)
 from flo_ai.models.flo_agent import FloAgent
 from flo_ai.models.flo_llm_agent import FloLLMAgent
+from flo_ai.models.flo_executable import ExecutableFlo
 from enum import Enum
 
 class AgentKinds(Enum):
-    executable = "executable"
-
     agentic = "agentic"
     llm = "llm"
-    
+    tool = "tool"
+    function = "function"
 
 class AgentFactory():
 
@@ -23,8 +23,8 @@ class AgentFactory():
             match(agent_kind):
                 case AgentKinds.llm:
                     return AgentFactory.__create_llm_agent(session, agent)
-                case AgentKinds.executable:
-                    raise ValueError("un-supported")
+                case AgentKinds.tool:
+                    return AgentFactory.__create_runnable_agent(session, agent)
         return AgentFactory.__create_agentic_agent(session, agent, tool_map)
 
     @staticmethod
@@ -43,3 +43,8 @@ class AgentFactory():
         builder = FloLLMAgent.Builder(session, agent.name, agent.job, agent.role)
         llm_agent: FloLLMAgent = builder.build()
         return llm_agent
+    
+    @staticmethod
+    def __create_runnable_agent(session: FloSession, agent: AgentConfig) -> FloLLMAgent:
+        runnable = session.tools[agent.tools[0].name]
+        return ExecutableFlo(agent.name, runnable, "agent")

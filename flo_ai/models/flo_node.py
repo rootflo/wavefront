@@ -4,7 +4,6 @@ from flo_ai.models.flo_routed_team import FloRoutedTeam
 from langchain.agents import AgentExecutor
 from flo_ai.state.flo_state import TeamFloAgentState
 from langchain_core.messages import HumanMessage
-from langchain_core.runnables import Runnable
 
 class FloNode():
 
@@ -19,14 +18,8 @@ class FloNode():
         @staticmethod
         def teamflo_agent_node(state: TeamFloAgentState, agent: AgentExecutor, name: str):
             result = agent.invoke(state)
-            return {"messages": [HumanMessage(content=result["output"], name=name)]}
-        
-        @staticmethod
-        def teamflo_tool_node(state: TeamFloAgentState, tool: Runnable, name):
-            # TODO see if you want to send the entire data or not
-            result = tool.invoke(state["messages"][-1])
-            return {"messages": [HumanMessage(content=result, name=name)]}
-        
+            return { "messages": [HumanMessage(content=result["output"], name=name)] }
+
         @staticmethod
         def get_last_message(state: TeamFloAgentState) -> str:
             return state["messages"][-1].content
@@ -52,7 +45,3 @@ class FloNode():
                 FloNode.Builder.get_last_message | functools.partial(FloNode.Builder.teamflo_team_node, members=flo_team.graph.nodes)
                 | flo_team.graph | FloNode.Builder.join_graph
             ), flo_team.name)
-        
-        # TODO add type to tool
-        def build_from_tool(self, tool: Runnable, name: str):
-            return FloNode(functools.partial(FloNode.Builder.teamflo_tool_node, tool=tool, name=name))

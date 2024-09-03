@@ -10,7 +10,7 @@ from flo_ai.state.flo_session import FloSession
 from typing import Union, Optional
 
 class FloAgent(ExecutableFlo):
-    def __init__(self, 
+    def __init__(self,
                  agent: Runnable, 
                  executor: AgentExecutor, 
                  name: str) -> None:
