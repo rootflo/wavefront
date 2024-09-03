@@ -164,7 +164,7 @@ print(rag.invoke({ "question": "What are the documents applying for housing loan
 
 ### Making the RAG into tool
 
-Making agentic RAG is easy in flo
+Making agentic RAG tool is easy in flo
 
 ```python
 rag_tool = rag_builder

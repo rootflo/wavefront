@@ -9,11 +9,17 @@ from langchain.retrievers import ContextualCompressionRetriever
 from langchain.retrievers.document_compressors import DocumentCompressorPipeline
 from flo_ai.retrievers.flo_compression_pipeline import FloCompressionPipeline
 from langchain.tools.retriever import create_retriever_tool
-from flo_ai.tools.flo_rag_tool import create_flo_rag_tool
+from functools import partial
+from langchain.pydantic_v1 import BaseModel, Field
 from langchain_core.tools import Tool
 
+class FloRagToolInput(BaseModel):
+    query: str = Field(description="query to look up in retriever")
+
 class FloRagBuilder():
-    def __init__(self, session: FloSession, retriever: VectorStoreRetriever) -> None:
+    def __init__(self, 
+                 session: FloSession, 
+                 retriever: VectorStoreRetriever) -> None:
         self.session = session
         self.retriever = retriever
         self.default_prompt = ChatPromptTemplate.from_messages(
@@ -109,6 +115,40 @@ class FloRagBuilder():
     def build_retriever_tool(self, name, description):
         return create_retriever_tool(self.retriever, name, description)
     
+    @staticmethod
+    def __get_rag_answer(query: str, runnable: Runnable):
+        result = runnable.invoke({ "question": query })
+        return result["answer"].content
+
+    @staticmethod
+    async def __aget_rag_answer(query: str, runnable: Runnable):
+        result = await runnable.ainvoke({ "question": query })
+        return result["answer"].content
+
+    @staticmethod
+    def __create_flo_rag_tool(
+        runnable_rag: Runnable,
+        name: str,
+        description: str
+    ) -> Tool:
+        func = partial(
+            FloRagBuilder.__get_rag_answer,
+            runnable=runnable_rag
+        )
+
+        afunc = partial(
+            FloRagBuilder.__aget_rag_answer,
+            runnable=runnable_rag
+        )
+        
+        return Tool(
+            name=name,
+            description=description,
+            func=func,
+            coroutine=afunc,
+            args_schema=FloRagToolInput,
+        )
+    
     def build_rag_tool(self, name, description) -> Tool:
         rag = self.__build_history_aware_rag()
-        return create_flo_rag_tool(rag, name, description)
+        return FloRagBuilder.__create_flo_rag_tool(rag, name, description)

@@ -2,41 +2,14 @@
 import functools
 from abc import ABC, abstractmethod
 from flo_ai.state.flo_session import FloSession
-from flo_ai.models.flo_member import FloMember
 from flo_ai.models.flo_team import FloTeam
 from flo_ai.yaml.flo_team_builder import RouterConfig
 from flo_ai.models.flo_routed_team import FloRoutedTeam
 from flo_ai.models.flo_agent import FloAgent
 from flo_ai.state.flo_state import TeamFloAgentState
-from langchain.agents import AgentExecutor
-from langchain_core.messages import HumanMessage
+from flo_ai.models.flo_node import FloNode
 from flo_ai.constants.prompt_constants import FLO_FINISH
 from langgraph.graph import END
-
-def teamflo_agent_node(state: TeamFloAgentState, agent: AgentExecutor, name: str):
-    result = agent.invoke(state)
-    return {"messages": [HumanMessage(content=result["output"], name=name)]}
-
-class FloAgentNode:
-    def __init__(self, 
-                 agent_node: functools.partial, 
-                 name: str) -> None:
-        self.name = name
-        self.agent_node = agent_node
-
-class FloTeamChain():
-    def __init__(self, name: str, chain) -> None:
-        self.chain = chain
-        self.name = name
-
-# this makes it so that the states of each graph don't get intermixed
-def enter_chain(message: str, members: list[str]):
-    results = {
-        "messages": [HumanMessage(content=message)],
-        "team_members": ", ".join(members),
-    }
-    return results
-        
 
 class FloRouter(ABC):
 
@@ -67,16 +40,9 @@ class FloRouter(ABC):
     def build_team_graph():
         pass
 
-      
-    def get_last_message(self, state: TeamFloAgentState, second = None) -> str:
-        return state["messages"][-1].content
-
-    def join_graph(self, response: dict):
-        return {"messages": [response["messages"][-1]]}
-
     def build_node(self, flo_agent: FloAgent):
-        agent_func = functools.partial(teamflo_agent_node, agent=flo_agent.executor, name=flo_agent.name)
-        return FloAgentNode(agent_func, flo_agent.name)
+        node_builder = FloNode.Builder()
+        return node_builder.build_from_agent(flo_agent)
     
     def router_fn(self, state: TeamFloAgentState):
         next = state["next"]
@@ -88,11 +54,8 @@ class FloRouter(ABC):
         return conditional_map[next]
     
         
-    def build_chain_for_teams(self, flo_team: FloRoutedTeam):
-        # TODO lets see if we can convert to members
-        return FloTeamChain(flo_team.name, (
-            functools.partial(enter_chain, members=flo_team.graph.nodes)
-            | flo_team.graph
-        ))
+    def build_node_for_teams(self, flo_team: FloRoutedTeam):
+        node_builder = FloNode.Builder()
+        return node_builder.build_from_team(flo_team)
 
     

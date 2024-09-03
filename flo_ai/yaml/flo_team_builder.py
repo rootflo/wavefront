@@ -33,7 +33,7 @@ class AgentConfig(BaseModel):
     name: str
     role: Optional[str] = None
     kind: Optional[str] = None
-    job: str
+    job: Optional[str] = None
     tools: List[ToolConfig] = []
 
 class RouterConfig(BaseModel):
@@ -48,6 +48,7 @@ class PlannerConfig(BaseModel):
 
 class TeamConfig(BaseModel):
     name: str
+    kind: Optional[str] = None
     agents: Optional[List[AgentConfig]] = None
     subteams: Optional[List['TeamConfig']] = None
     router: Optional[RouterConfig] = None
@@ -61,7 +62,7 @@ class FloRoutedTeamConfig(BaseModel):
 
 class FloAgentConfig(BaseModel):
     apiVersion: str
-    kind: str
+    kind: Optional[str] = None
     name: str
     agent: AgentConfig
 

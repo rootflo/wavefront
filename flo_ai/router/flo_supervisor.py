@@ -1,8 +1,8 @@
 from langchain_core.output_parsers.openai_functions import JsonOutputFunctionsParser
-from langchain.chains import LLMChain
 from langchain_core.language_models import BaseLanguageModel
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from typing import Union
+from langchain_core.runnables import Runnable
 from flo_ai.state.flo_session import FloSession
 from flo_ai.constants.prompt_constants import FLO_FINISH
 from flo_ai.helpers.utils import randomize_name
@@ -35,7 +35,7 @@ class FloSupervisor(FloRouter):
     
     def __init__(self,
                  session: FloSession,
-                 executor: LLMChain, 
+                 executor: Runnable, 
                  flo_team: FloTeam,
                  name: str) -> None:
         super().__init__(
@@ -49,7 +49,7 @@ class FloSupervisor(FloRouter):
         flo_agent_nodes = [self.build_node(flo_agent) for flo_agent in self.members]
         workflow = StateGraph(TeamFloAgentState)
         for flo_agent_node in flo_agent_nodes:
-            workflow.add_node(flo_agent_node.name, flo_agent_node.agent_node)
+            workflow.add_node(flo_agent_node.name, flo_agent_node.func)
         workflow.add_node(self.router_name, self.executor)
         for member in self.member_names:
             workflow.add_edge(member, self.router_name)
@@ -59,12 +59,12 @@ class FloSupervisor(FloRouter):
         return FloRoutedTeam(self.flo_team.name, workflow_graph)
 
     def build_team_graph(self):
-        flo_team_entry_chains = [self.build_chain_for_teams(flo_agent) for flo_agent in self.members]
+        flo_team_entry_chains = [self.build_node_for_teams(flo_agent) for flo_agent in self.members]
         # Define the graph.
         super_graph = StateGraph(TeamFloAgentState)
         # First add the nodes, which will do the work
         for flo_team_chain in flo_team_entry_chains:
-            super_graph.add_node(flo_team_chain.name, self.get_last_message | flo_team_chain.chain | self.join_graph)
+            super_graph.add_node(flo_team_chain.name, flo_team_chain.func)
         super_graph.add_node(self.router_name, self.executor)
 
         for member in self.member_names:

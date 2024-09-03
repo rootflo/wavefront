@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from flo_ai import FloSession
-from flo_ai.retrievers.flo_retriever import FloRagBuilder
+from flo_ai.tools.flo_rag_retriver_tool import FloRagRetriverTool
 
 db_url = os.getenv("MONGO_DB_URL")
 
@@ -28,13 +28,16 @@ store = MongoDBAtlasVectorSearch(
 
 llm = ChatOpenAI(temperature=0, model_name='gpt-4o')
 session = FloSession(llm)
-rag_builder = FloRagBuilder(session, store.as_retriever())
 
 import logging
 
 logging.basicConfig()
 logging.getLogger("langchain.retrievers.multi_query").setLevel(logging.INFO)
 
-rag_tool = rag_builder.with_multi_query().build_rag_tool(name="RAGTool", description="RAG to answer question by looking at db")
-print(rag_tool.invoke({"query": "What is the interest rate on housing loans"}))
+builder = FloRagRetriverTool.Builder(session, store.as_retriever())
+builder.enable_multi_query()
+tool = builder.build(name="RAGTool", description="RAG to answer question by looking at db")
+
+# rag_tool = rag_builder.with_multi_query().build_rag_tool(name="RAGTool", description="RAG to answer question by looking at db")
+print(tool.invoke({"query": "What is the interest rate on housing loans"}))
 

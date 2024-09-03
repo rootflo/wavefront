@@ -48,13 +48,9 @@ class FloRagBuilder:
         question = messages[0].content
         docs = last_message.content
 
-        # Chain
         rag_chain = self.prompt | self.llm
-
-        # Run
         response = rag_chain.invoke({"context": docs, "question": question})
-
-        return {"messages": [response] }
+        return { "messages": [response] }
     
     def build(self) -> FloRag:
         retrieve = ToolNode(self.tools)

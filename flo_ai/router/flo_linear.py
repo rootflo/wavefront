@@ -19,8 +19,7 @@ class FloLinear(FloRouter):
         
         for flo_agent_node in flo_agent_nodes:
             agent_name = agent_name_from_randomized_name(flo_agent_node.name)
-            workflow.add_node(agent_name, flo_agent_node.agent_node)
-
+            workflow.add_node(agent_name, flo_agent_node.func)
         if self.config.edges is None:
             start_node_name = agent_name_from_randomized_name(flo_agent_nodes[0].name)
             end_node_name = agent_name_from_randomized_name(flo_agent_nodes[-1].name)
@@ -42,13 +41,13 @@ class FloLinear(FloRouter):
         return FloRoutedTeam(self.flo_team.name, workflow_graph)
 
     def build_team_graph(self):
-        flo_team_entry_chains = [self.build_chain_for_teams(flo_agent) for flo_agent in self.members]
+        flo_team_entry_chains = [self.build_node_for_teams(flo_agent) for flo_agent in self.members]
         # Define the graph.
         super_graph = StateGraph(TeamFloAgentState)
         # First add the nodes, which will do the work
         for flo_team_chain in flo_team_entry_chains:
             agent_name = agent_name_from_randomized_name(flo_team_chain.name)
-            super_graph.add_node(agent_name, self.get_last_message | flo_team_chain.chain | self.join_graph)
+            super_graph.add_node(agent_name, flo_team_chain.func)
 
         if self.config.edges is None:
             start_node_name = agent_name_from_randomized_name(flo_team_entry_chains[0].name)
