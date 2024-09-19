@@ -1,6 +1,5 @@
 from flo_ai.core import Flo
 from langchain_openai import ChatOpenAI
-from xamples.enviroment import load_env
 
 from flo_ai import FloSession
 from langchain_community.tools.tavily_search.tool import TavilySearchResults

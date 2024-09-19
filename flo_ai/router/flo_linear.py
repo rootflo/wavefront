@@ -67,4 +67,14 @@ class FloLinear(FloRouter):
 
         super_graph = super_graph.compile()
         return FloRoutedTeam(self.flo_team.name, super_graph)
+    
+    class Builder():
+
+        def __init__(self, session: FloSession, flo_team: FloTeam, config: RouterConfig) -> None:
+            self.config = config
+            self.session = session
+            self.team = flo_team
+
+        def build(self):
+            return FloLinear(self.session, self.team, self.config)
 

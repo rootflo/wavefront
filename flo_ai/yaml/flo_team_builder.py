@@ -39,6 +39,7 @@ class AgentConfig(BaseModel):
 class RouterConfig(BaseModel):
     name: str
     kind: str
+    job: Optional[str] = None
     start_node: Optional[str] = None
     end_node: Optional[str] = None
     edges: Optional[List[List[str]]] = None

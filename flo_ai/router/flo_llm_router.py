@@ -12,16 +12,6 @@ from flo_ai.models.flo_routed_team import FloRoutedTeam
 from langgraph.graph import StateGraph
 from flo_ai.state.flo_state import TeamFloAgentState
 
-
-# TODO, maybe add description about what team members can do
-supervisor_system_message = (
-    "You are a supervisor tasked with managing a conversation between the"
-    " following {member_type}: {members}. Given the following user request,"
-    " respond with the worker to act next. Each worker will perform a"
-    " task and respond with their results and status. When the users question is answered or the assigned task is finished,"
-    " respond with FINISH. "
-)
-
 class StateUpdateComponent:
     def __init__(self, name: str, session: FloSession) -> None:
         self.name = name
@@ -31,7 +21,7 @@ class StateUpdateComponent:
         self.inner_session.append(self.name)
         return input
 
-class FloSupervisor(FloRouter):
+class FloLLMRouter(FloRouter):
     
     def __init__(self,
                  session: FloSession,
@@ -81,9 +71,9 @@ class FloSupervisor(FloRouter):
                     session: FloSession,
                     name: str,
                     flo_team: FloTeam,
-                    supervisor_prompt: Union[ChatPromptTemplate, None] = None,
+                    router_prompt: ChatPromptTemplate = None,
                     llm: Union[BaseLanguageModel, None] = None) -> None:
-            # TODO add validation for reporteess
+    
             self.name = randomize_name(name)
             self.session = session
             self.llm = llm if llm is not None else session.llm
@@ -92,17 +82,25 @@ class FloSupervisor(FloRouter):
             self.members = [agent.name for agent in flo_team.members]
             self.options = self.members + [FLO_FINISH]
             member_type = "workers" if flo_team.members[0].type == "agent" else "team members"
-            self.supervisor_prompt = ChatPromptTemplate.from_messages(
+
+            router_base_system_message = (
+                "You are a supervisor tasked with managing a conversation between the"
+                " following {member_type}: {members}. Given the following rules,"
+                " respond with the worker to act next "
+            )
+
+            self.llm_router_prompt = ChatPromptTemplate.from_messages(
                 [
-                    ("system", supervisor_system_message),
+                    ("system", router_base_system_message),
                     MessagesPlaceholder(variable_name="messages"),
+                    ("system", "Rules: {router_prompt}"),
                     (
                         "system",
                         "Given the conversation above, who should act next?"
-                        " Or should we FINISH if the task is already answered, Select one of: {options}",
+                        " Or should we FINISH if the task is already answered ? Select one of: {options}",
                     ),
                 ]
-            ).partial(options=str(self.options), members=", ".join(self.members), member_type=member_type) if supervisor_prompt is None else  supervisor_prompt
+            ).partial(options=str(self.options), members=", ".join(self.members), member_type=member_type, router_prompt=router_prompt)
         
         def build(self):
             function_def = {
@@ -124,13 +122,13 @@ class FloSupervisor(FloRouter):
             }
                 
             chain = (
-                self.supervisor_prompt
+                self.llm_router_prompt
                 | self.llm.bind_functions(functions=[function_def], function_call="route")
                 | JsonOutputFunctionsParser()
                 | StateUpdateComponent(self.name, self.session)
             )
 
-            return FloSupervisor(executor = chain, 
+            return FloLLMRouter(executor = chain, 
                                 flo_team=self.flo_team, 
                                 name=self.name, 
                                 session=self.session)
