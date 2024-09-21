@@ -1,8 +1,19 @@
+import uuid
 from langchain_core.language_models import BaseLanguageModel
 from langchain_core.tools import BaseTool
+from flo_ai.common.flo_logger import session_logger, FloLogger, FloLogConfig
+from flo_ai.common.flo_langchain_logger import FloLangchainLogger
+from typing import Optional
 
 class FloSession:
-    def __init__(self, llm: BaseLanguageModel, loop_size: int = 2, max_loop: int = 3) -> None:
+
+    def __init__(self, 
+                 llm: BaseLanguageModel, 
+                 loop_size: int = 2, 
+                 max_loop: int = 3, 
+                 log_level: Optional[str] = "INFO",
+                 custom_langchainlog_handler: Optional[FloLangchainLogger] = None) -> None:
+        self.session_id = str(uuid.uuid4())
         self.llm = llm
         self.tools = dict()
         self.counter = dict()
@@ -10,12 +21,23 @@ class FloSession:
         self.pattern_series = dict()
         self.loop_size: int = loop_size
         self.max_loop: int = max_loop
+        
+        self.init_logger(log_level)
+        self.logger = session_logger
+        self.logger.info(f"New FloSession created with ID: {self.session_id}")
+        self.langchain_logger = custom_langchainlog_handler or FloLangchainLogger(self.session_id, log_level=log_level, logger_name=f"FloLangChainLogger-{self.session_id}")
+        self.langchain_logger.set_session_id(self.session_id)
+
+    def init_logger(self, log_level: str):
+        FloLogger.set_log_level("SESSION", log_level)
 
     def register_tool(self, name: str, tool: BaseTool):
         self.tools[name] = tool
+        self.logger.info(f"Tool '{name}' registered for session {self.session_id}")
         return self
 
     def append(self, node: str) -> int:
+        self.logger.debug(f"Appending node: {node}")
         self.counter[node] = self.counter.get(node, 0) + 1
         if node in self.navigation:
             last_known_index = len(self.navigation) - 1 - self.navigation[::-1].index(node)
@@ -29,6 +51,7 @@ class FloSession:
         self.navigation.append(node)
 
     def is_looping(self, node) -> bool:
+        self.logger.debug(f"Checking if node {node} is looping")
         patterns = self.pattern_series[node] if node in self.pattern_series else []
         if len(patterns) < self.max_loop:
             return False
