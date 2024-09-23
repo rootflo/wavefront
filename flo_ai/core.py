@@ -1,4 +1,4 @@
-from flo_ai.yaml.flo_team_builder import to_supervised_team
+from flo_ai.yaml.config import to_supervised_team
 from flo_ai.builders.yaml_builder import build_supervised_team, FloRoutedTeamConfig
 from typing import Any, Iterator, Union
 from flo_ai.state.flo_session import FloSession
@@ -11,9 +11,10 @@ class Flo:
                  session: FloSession,
                  config: FloRoutedTeamConfig,
                  log_level: str = "INFO") -> None:
-        self.config = config
         self.session = session
-        self.runnable: ExecutableFlo = build_supervised_team(session, config)
+        self.config = config
+        session.config = config
+        self.runnable: ExecutableFlo = build_supervised_team(session)
 
         set_global_log_level(log_level)
         self.logger = common_logger
@@ -37,7 +38,8 @@ class Flo:
         return Flo(session, to_supervised_team(yaml), log_level)
 
     def draw(self, xray=True):
-        return self.runnable.draw(xray)
+        from IPython.display import Image, display
+        return display(Image(self.runnable.draw(xray)))
     
     def draw_to_file(self, filename: str, xray=True):
         from PIL import Image as PILImage

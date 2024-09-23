@@ -1,8 +1,11 @@
 import uuid
+from typing import Union
 from langchain_core.language_models import BaseLanguageModel
 from langchain_core.tools import BaseTool
-from flo_ai.common.flo_logger import session_logger, FloLogger, FloLogConfig
+from flo_ai.common.flo_logger import session_logger, FloLogger
 from flo_ai.common.flo_langchain_logger import FloLangchainLogger
+from flo_ai.yaml.config import FloRoutedTeamConfig, FloAgentConfig
+
 from typing import Optional
 
 class FloSession:
@@ -24,9 +27,9 @@ class FloSession:
         
         self.init_logger(log_level)
         self.logger = session_logger
+        self.config: Union[FloRoutedTeamConfig, FloAgentConfig] = None
         self.logger.info(f"New FloSession created with ID: {self.session_id}")
         self.langchain_logger = custom_langchainlog_handler or FloLangchainLogger(self.session_id, log_level=log_level, logger_name=f"FloLangChainLogger-{self.session_id}")
-        self.langchain_logger.set_session_id(self.session_id)
 
     def init_logger(self, log_level: str):
         FloLogger.set_log_level("SESSION", log_level)

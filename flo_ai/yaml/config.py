@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List
+from typing import List, Union
 import yaml
 import re
 from typing import Optional
@@ -29,20 +29,36 @@ class ToolConfig(BaseModel):
     properties: Optional[List[KeyValueArgs]] = None
     filters: Optional[List[FilterArgs]] = None
 
+class PromptStrategy(BaseModel):
+    kind: str
+    agent_name: str
+    retries: int
+    next: str | None = None
+
+class MemberKey(BaseModel):
+    name: str
+
 class AgentConfig(BaseModel):
     name: str
     role: Optional[str] = None
     kind: Optional[str] = None
     job: Optional[str] = None
     tools: List[ToolConfig] = []
+    to: Optional[List[MemberKey]] = None
+    retry: Optional[int] = 1
+
+class EdgeConfig(BaseModel):
+    edge: List[str]
+    type: Optional[str] = None
+    rule: Optional[str] = None
 
 class RouterConfig(BaseModel):
     name: str
     kind: str
     job: Optional[str] = None
     start_node: Optional[str] = None
-    end_node: Optional[str] = None
-    edges: Optional[List[List[str]]] = None
+    end_node: Union[Optional[str], List[str]] = None
+    edges: Optional[List[EdgeConfig]] = None
 
 class PlannerConfig(BaseModel):
     name: str

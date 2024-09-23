@@ -1,0 +1,2 @@
+INTERNAL_NODE_REFLECTION_MANAGER = "f/ReflectionManager"
+INTERNAL_NODE_DELEGATION_MANAGER = "f/DelegationManager"

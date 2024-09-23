@@ -8,9 +8,7 @@ from flo_ai.constants.prompt_constants import FLO_FINISH
 from flo_ai.helpers.utils import randomize_name
 from flo_ai.router.flo_llm_router import FloLLMRouter, StateUpdateComponent
 from flo_ai.models.flo_team import FloTeam
-from flo_ai.models.flo_routed_team import FloRoutedTeam
-from langgraph.graph import StateGraph
-from flo_ai.state.flo_state import TeamFloAgentState
+from flo_ai.yaml.config import TeamConfig
 
 # TODO, maybe add description about what team members can do
 supervisor_system_message = (
@@ -38,11 +36,11 @@ class FloSupervisor(FloLLMRouter):
     class Builder:
         def __init__(self,
                     session: FloSession,
-                    name: str,
+                    team_config: TeamConfig,
                     flo_team: FloTeam,
                     llm: Union[BaseLanguageModel, None] = None) -> None:
             # TODO add validation for reporteess
-            self.name = randomize_name(name)
+            self.name = randomize_name(team_config.router.name)
             self.session = session
             self.llm = llm if llm is not None else session.llm
             self.flo_team = flo_team

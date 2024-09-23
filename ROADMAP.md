@@ -9,7 +9,7 @@ Core features improve the library itself to cater wider range of functionalities
 | Name | Description | Status | Release version |
 |------|-------------|--------|-----------------|
 |Linear Router|A router that lets you build agents or teams that execute linearly or sequentially. The current router supervisor works in a hierarchical way where all the children report to one parent| In progress | 0.0.3|
-|Reflexion| Reflection lets you build a component that can make the AI retrospectively look at the current output and retry or work again on the task at hand| Yet to start| 0.0.3|
+|Reflection| Reflection lets you build a component that can make the AI retrospectively look at the current output and retry or work again on the task at hand| Yet to start| 0.0.3|
 |Output formatter| Ability to templatize output format using pydantic| Yet to start| 0.0.4|
 |LLM Extensibilty| Ability to different LLMs across different agents and teams| Yet to start| 0.0.4|
 |Auto-Query RAG| Ability to make metadata query within the agentic, which can automatically add metadata while rag query runs, like timestamp or other data|Yet to start|TBD|

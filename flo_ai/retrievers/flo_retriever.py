@@ -3,7 +3,7 @@ from langchain_core.runnables import RunnableParallel, Runnable
 from flo_ai.state.flo_session import FloSession
 from langchain.schema.output_parser import StrOutputParser
 from langchain.schema.runnable import RunnablePassthrough
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder, BasePromptTemplate
 from flo_ai.retrievers.flo_multi_query import FloMultiQueryRetriverBuilder
 from langchain.retrievers import ContextualCompressionRetriever
 from langchain.retrievers.document_compressors import DocumentCompressorPipeline
@@ -12,9 +12,45 @@ from langchain.tools.retriever import create_retriever_tool
 from functools import partial
 from langchain.pydantic_v1 import BaseModel, Field
 from langchain_core.tools import Tool
+from typing import Optional
+from langchain_core.callbacks import Callbacks
+from langchain_core.prompts import (
+    BasePromptTemplate,
+    PromptTemplate,
+    aformat_document,
+    format_document,
+)
+from typing import List
+
+class FloRagBaseMessage(BaseModel):
+    content: str
 
 class FloRagToolInput(BaseModel):
-    query: str = Field(description="query to look up in retriever")
+    messages: List[FloRagBaseMessage] = Field(description="query to look up in the vector store")
+
+def _get_relevant_documents(
+    messages: List[FloRagBaseMessage],
+    retriever: VectorStoreRetriever,
+    document_prompt: BasePromptTemplate,
+    document_separator: str,
+    callbacks: Callbacks = None,
+) -> str:
+    docs = retriever.invoke(messages[-1].content, config={"callbacks": callbacks})
+    return document_separator.join(
+        format_document(doc, document_prompt) for doc in docs
+    )
+
+async def _aget_relevant_documents(
+    messages: List[str],
+    retriever: VectorStoreRetriever,
+    document_prompt: BasePromptTemplate,
+    document_separator: str,
+    callbacks: Callbacks = None
+) -> str:
+    docs = await retriever.ainvoke(messages[-1].content, config={"callbacks": callbacks})
+    return document_separator.join(
+        [await aformat_document(doc, document_prompt) for doc in docs]
+    )
 
 class FloRagBuilder():
     def __init__(self, 
@@ -113,20 +149,54 @@ class FloRagBuilder():
         return self.__build_history_aware_rag()
     
     def build_retriever_tool(self, name, description):
-        return create_retriever_tool(self.retriever, name, description)
+        return self.__create_retriever_tool(self.retriever, name, description)
     
     @staticmethod
-    def __get_rag_answer(query: str, runnable: Runnable):
-        result = runnable.invoke({ "question": query })
+    def __get_rag_answer(messages: List[FloRagBaseMessage], runnable: Runnable):
+        question = messages[-1].content
+        chat_history = messages[:-1]
+        result = runnable.invoke({ "question": question, "chat_history": chat_history })
         return result["answer"].content
 
     @staticmethod
-    async def __aget_rag_answer(query: str, runnable: Runnable):
-        result = await runnable.ainvoke({ "question": query })
+    async def __aget_rag_answer(messages: List[FloRagBaseMessage], runnable: Runnable):
+        question = messages[-1].content
+        chat_history = messages[:-1]
+        result = await runnable.ainvoke({ "question": question, "chat_history": chat_history })
         return result["answer"].content
+    
+    def __create_retriever_tool(
+        self,
+        retriever: VectorStoreRetriever,
+        name: str,
+        description: str,
+        *,
+        document_prompt: Optional[BasePromptTemplate] = None,
+        document_separator: str = "\n",
+    ) -> Tool:
+        document_prompt = document_prompt or PromptTemplate.from_template("{page_content}")
+        func = partial(
+            _get_relevant_documents,
+            retriever=retriever,
+            document_prompt=document_prompt,
+            document_separator=document_separator,
+        )
+        afunc = partial(
+            _aget_relevant_documents,
+            retriever=retriever,
+            document_prompt=document_prompt,
+            document_separator=document_separator,
+        )
+        return Tool(
+            name=name,
+            description=description,
+            func=func,
+            coroutine=afunc,
+            args_schema=FloRagToolInput,
+        )
 
     @staticmethod
-    def __create_flo_rag_tool(
+    def __create_rag_tool(
         runnable_rag: Runnable,
         name: str,
         description: str
@@ -151,4 +221,4 @@ class FloRagBuilder():
     
     def build_rag_tool(self, name, description) -> Tool:
         rag = self.__build_history_aware_rag()
-        return FloRagBuilder.__create_flo_rag_tool(rag, name, description)
+        return FloRagBuilder.__create_rag_tool(rag, name, description)

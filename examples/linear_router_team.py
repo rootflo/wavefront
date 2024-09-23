@@ -42,14 +42,14 @@ team:
         name: data-processing-pipline
         kind: linear
     agents:
-          - name: Reasercher
-            job: Do a research on the internet and find articles of relevent to the topic asked by the user, always try to find the latest information on the same
-            tools:
-                - name: TavilySearchResults
-          - name: Blogger
-            job: From the documents provider by the researcher write a blog of 300 words with can be readily published, make in engaging and add reference links to original blogs
-            tools:
-                - name: TavilySearchResults
+        - name: Reasercher
+          job: Do a research on the internet and find articles of relevent to the topic asked by the user, always try to find the latest information on the same
+          tools:
+            - name: TavilySearchResults
+        - name: Blogger
+          job: From the documents provider by the researcher write a blog of 300 words with can be readily published, make in engaging and add reference links to original blogs
+          tools:
+            - name: TavilySearchResults
 """
 
 input_prompt = """

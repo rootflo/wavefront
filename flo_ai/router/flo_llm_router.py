@@ -11,6 +11,7 @@ from flo_ai.models.flo_team import FloTeam
 from flo_ai.models.flo_routed_team import FloRoutedTeam
 from langgraph.graph import StateGraph
 from flo_ai.state.flo_state import TeamFloAgentState
+from flo_ai.yaml.config import TeamConfig
 
 class StateUpdateComponent:
     def __init__(self, name: str, session: FloSession) -> None:
@@ -46,7 +47,7 @@ class FloLLMRouter(FloRouter):
         workflow.add_conditional_edges(self.router_name, self.router_fn)
         workflow.set_entry_point(self.router_name)
         workflow_graph = workflow.compile()
-        return FloRoutedTeam(self.flo_team.name, workflow_graph)
+        return FloRoutedTeam(self.flo_team.name, workflow_graph, self.flo_team.config)
 
     def build_team_graph(self):
         flo_team_entry_chains = [self.build_node_for_teams(flo_agent) for flo_agent in self.members]
@@ -64,17 +65,17 @@ class FloLLMRouter(FloRouter):
 
         super_graph.set_entry_point(self.router_name)
         super_graph = super_graph.compile()
-        return FloRoutedTeam(self.flo_team.name, super_graph)
+        return FloRoutedTeam(self.flo_team.name, super_graph, self.flo_team.config)
 
     class Builder:
         def __init__(self,
                     session: FloSession,
-                    name: str,
+                    team_config: TeamConfig,
                     flo_team: FloTeam,
                     router_prompt: ChatPromptTemplate = None,
                     llm: Union[BaseLanguageModel, None] = None) -> None:
     
-            self.name = randomize_name(name)
+            self.name = randomize_name(team_config.router.name)
             self.session = session
             self.llm = llm if llm is not None else session.llm
             self.flo_team = flo_team

@@ -8,29 +8,34 @@ from flo_ai.helpers.utils import randomize_name
 from flo_ai.models.flo_executable import ExecutableFlo
 from flo_ai.state.flo_session import FloSession
 from typing import Union, Optional
+from flo_ai.yaml.config import AgentConfig
+from flo_ai.models.flo_executable import ExecutableType
 
 class FloAgent(ExecutableFlo):
     def __init__(self,
                  agent: Runnable, 
                  executor: AgentExecutor, 
-                 name: str) -> None:
-        super().__init__(name, executor, "agent")
+                 config: AgentConfig) -> None:
+        super().__init__(config.name, executor, ExecutableType.agentic)
         self.agent: Runnable =  agent,
         self.executor: AgentExecutor = executor
+        self.config: AgentConfig = config
 
     class Builder:
         def __init__(self, 
                     session: FloSession,
-                    name: str, 
-                    prompt: Union[ChatPromptTemplate, str], 
+                    config: AgentConfig,
                     tools: list[BaseTool],
                     verbose: bool = True,
                     role: Optional[str] = None,
                     llm: Union[BaseLanguageModel, None] =  None,
                     return_intermediate_steps: bool = False,
                     handle_parsing_errors: bool = True) -> None:
-            self.name: str = randomize_name(name)
+            prompt: Union[ChatPromptTemplate, str] = config.job
+            
+            self.name: str = randomize_name(config.name)
             self.llm = llm if llm is not None else session.llm
+            self.config = config
             # TODO improve to add more context of what other agents are available
             system_prompts = [("system", "You are a {}".format(role)), ("system", prompt)] if role is not None else [("system", prompt)]
             system_prompts.append(MessagesPlaceholder(variable_name="messages"))
@@ -51,4 +56,4 @@ class FloAgent(ExecutableFlo):
                                 verbose=self.verbose, 
                                 return_intermediate_steps=self.return_intermediate_steps, 
                                 handle_parsing_errors=self.handle_parsing_errors)
-            return FloAgent(agent, executor, self.name)
+            return FloAgent(agent, executor, self.config)
