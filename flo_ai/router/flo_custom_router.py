@@ -5,7 +5,6 @@ from flo_ai.state.flo_state import TeamFloAgentState
 from flo_ai.models.flo_routed_team import FloRoutedTeam
 from flo_ai.models.flo_team import FloTeam
 from flo_ai.state.flo_session import FloSession
-from flo_ai.helpers.utils import agent_name_from_randomized_name, randomize_name
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers.openai_functions import JsonOutputFunctionsParser
 
@@ -13,7 +12,7 @@ class FloCustomRouter(FloRouter):
 
     def __init__(self, session: FloSession, config: TeamConfig, flo_team: FloTeam):
         self.llm = session.llm
-        super().__init__(session=session, name=randomize_name(config.name),
+        super().__init__(session=session, name=config.name,
                           flo_team=flo_team, executor=None, config=config)
         self.router_config = config.router
     
@@ -66,7 +65,7 @@ class FloCustomRouter(FloRouter):
         workflow = StateGraph(TeamFloAgentState)
         
         for flo_agent_node in flo_agent_nodes:
-            agent_name = agent_name_from_randomized_name(flo_agent_node.name)
+            agent_name = flo_agent_node.name
             workflow.add_node(agent_name, flo_agent_node.func)
 
         router_config = self.router_config
@@ -97,7 +96,7 @@ class FloCustomRouter(FloRouter):
         super_graph = StateGraph(TeamFloAgentState)
 
         for flo_team_chain in flo_team_entry_chains:
-            agent_name = agent_name_from_randomized_name(flo_team_chain.name)
+            agent_name = flo_team_chain.name
             super_graph.add_node(agent_name, flo_team_chain.func)
 
         router_config = self.router_config

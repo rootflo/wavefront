@@ -4,7 +4,6 @@ from langchain.agents import create_tool_calling_agent
 from langchain_core.runnables import Runnable
 from langchain_core.language_models import BaseLanguageModel
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from flo_ai.helpers.utils import randomize_name
 from flo_ai.models.flo_executable import ExecutableFlo
 from flo_ai.state.flo_session import FloSession
 from typing import Union, Optional
@@ -33,7 +32,7 @@ class FloAgent(ExecutableFlo):
                     handle_parsing_errors: bool = True) -> None:
             prompt: Union[ChatPromptTemplate, str] = config.job
             
-            self.name: str = randomize_name(config.name)
+            self.name: str = config.name
             self.llm = llm if llm is not None else session.llm
             self.config = config
             # TODO improve to add more context of what other agents are available

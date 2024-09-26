@@ -5,6 +5,7 @@ from langchain_core.tools import BaseTool
 from flo_ai.common.flo_logger import session_logger, FloLogger
 from flo_ai.common.flo_langchain_logger import FloLangchainLogger
 from flo_ai.yaml.config import FloRoutedTeamConfig, FloAgentConfig
+from flo_ai.helpers.utils import random_str
 
 from typing import Optional
 
@@ -16,7 +17,8 @@ class FloSession:
                  max_loop: int = 3, 
                  log_level: Optional[str] = "INFO",
                  custom_langchainlog_handler: Optional[FloLangchainLogger] = None) -> None:
-        self.session_id = str(uuid.uuid4())
+        
+        self.session_id = str(random_str(16))
         self.llm = llm
         self.tools = dict()
         self.counter = dict()

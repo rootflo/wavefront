@@ -127,6 +127,7 @@ class FloRouter(ABC):
         next = nextNode if isinstance(nextNode, str) else nextNode.name
         
         workflow.add_node(INTERNAL_NODE_REFLECTION_MANAGER, functools.partial(self.update_reflection_state, reflection_agent_name=reflection_agent_name))
+        
         workflow.add_edge(to_agent_name, INTERNAL_NODE_REFLECTION_MANAGER)
         workflow.add_conditional_edges(
             INTERNAL_NODE_REFLECTION_MANAGER, 

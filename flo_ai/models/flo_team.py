@@ -1,10 +1,9 @@
 from flo_ai.models.flo_member import FloMember
-from flo_ai.helpers.utils import randomize_name
 from flo_ai.yaml.config import TeamConfig
 
 class FloTeam():
     def __init__(self, team_config: TeamConfig, members: list[FloMember]) -> None:
-        self.name = randomize_name(team_config.name)
+        self.name = team_config.name
         self.config = team_config
         self.members = members
 

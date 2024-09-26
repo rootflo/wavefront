@@ -49,6 +49,6 @@ team:
           - name: printStateTool
 """
 
-flo = Flo.build(session, simple_tool_agent)
+flo = Flo.build(session, simple_tool_agent, log_level="ERROR")
 
 print(flo.invoke("Testing ...."))

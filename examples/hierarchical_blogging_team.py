@@ -27,7 +27,7 @@ team:
               job: From the documents provider by the researcher write a blog of 300 words with can be readily published, make in engaging and add reference links to original blogs
               tools:
                 - name: TavilySearchResults
-        - name: Writing Team
+        - name: WritingTeam
           supervisor:
             name: supervisor
           agents: 

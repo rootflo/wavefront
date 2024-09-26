@@ -5,7 +5,6 @@ from typing import Union
 from langchain_core.runnables import Runnable
 from flo_ai.state.flo_session import FloSession
 from flo_ai.constants.prompt_constants import FLO_FINISH
-from flo_ai.helpers.utils import randomize_name
 from flo_ai.router.flo_router import FloRouter
 from flo_ai.models.flo_team import FloTeam
 from flo_ai.models.flo_routed_team import FloRoutedTeam
@@ -75,7 +74,7 @@ class FloLLMRouter(FloRouter):
                     router_prompt: ChatPromptTemplate = None,
                     llm: Union[BaseLanguageModel, None] = None) -> None:
     
-            self.name = randomize_name(team_config.router.name)
+            self.name = team_config.router.name
             self.session = session
             self.llm = llm if llm is not None else session.llm
             self.flo_team = flo_team

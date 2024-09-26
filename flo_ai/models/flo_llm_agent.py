@@ -1,7 +1,6 @@
 from langchain_core.runnables import Runnable
 from langchain_core.language_models import BaseLanguageModel
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from flo_ai.helpers.utils import randomize_name
 from flo_ai.models.flo_executable import ExecutableFlo
 from flo_ai.state.flo_session import FloSession
 from typing import Union
@@ -25,7 +24,7 @@ class FloLLMAgent(ExecutableFlo):
                     llm: Union[BaseLanguageModel, None] =  None) -> None:
             prompt: Union[ChatPromptTemplate, str] = config.job
         
-            self.name: str = randomize_name(config.name)
+            self.name: str = config.name
             self.llm = llm if llm is not None else session.llm
             # TODO improve to add more context of what other agents are available
             system_prompts = [("system", "You are a {}".format(config.role)), ("system", prompt)] if config.role is not None else [("system", prompt)]

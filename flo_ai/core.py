@@ -34,6 +34,7 @@ class Flo:
     
     @staticmethod
     def build(session: FloSession, yaml: str, log_level: str = "INFO"):
+        set_global_log_level(log_level)
         builder_logger.info("Building Flo instance from YAML")
         return Flo(session, to_supervised_team(yaml), log_level)
 

@@ -9,7 +9,6 @@ from langgraph.prebuilt import tools_condition
 from flo_ai.models.flo_executable import ExecutableFlo
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain import hub
-from flo_ai.helpers.utils import randomize_name
 
 class FloRag(ExecutableFlo):
     def __init__(self, 
@@ -28,7 +27,7 @@ class FloRagBuilder:
                  tools: list[Tool], 
                  llm: BaseLanguageModel,
                  prompt: Optional[ChatPromptTemplate] = None) -> None:
-        self.name = randomize_name(name)
+        self.name = name
         self.llm = llm
         self.tools = tools
         self.prompt = hub.pull("rlm/rag-prompt") if prompt is None else prompt

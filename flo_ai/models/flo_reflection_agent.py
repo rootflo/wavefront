@@ -4,7 +4,6 @@ from flo_ai.yaml.config import AgentConfig
 from flo_ai.state.flo_session import FloSession
 from flo_ai.models.flo_executable import ExecutableFlo
 from langchain_core.language_models import BaseLanguageModel
-from flo_ai.helpers.utils import randomize_name
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from flo_ai.models.flo_executable import ExecutableType
 from langchain_core.output_parsers import StrOutputParser
@@ -23,7 +22,7 @@ class FloReflectionAgent(ExecutableFlo):
                     llm: Union[BaseLanguageModel, None] =  None) -> None:
             
             prompt_message: Union[ChatPromptTemplate, str] = config.job
-            self.name: str = randomize_name(config.name)
+            self.name: str = config.name
             self.llm = llm if llm is not None else session.llm
             self.config = config
 
