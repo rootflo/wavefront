@@ -40,7 +40,7 @@ In flo, we tried to put together a system where we have small micro components l
 
 ### Flo vs langraph or crew-ai
 
-Flo is built with langraph working under the hood. So everything that works in langraph still works here, including all tools and architectures. The following makes flo a better solution:
+Flo is built with langraph working under the hood. So everything that works in langraph or langchain still works here, including all tools and architectures. The following makes flo a better solution:
 
 1. Langraph needs a good understanding of the underlying graphs and states, its a raw tool and asks developers to implement the required components. While flo is more use-case friendly and components can be easily created by using the flo classes, which have lot of internal abstraction for ease of use.
 
@@ -50,7 +50,7 @@ Flo is built with langraph working under the hood. So everything that works in l
 
 # Getting Started
 
-Flo supports two ways to set up and run the components, first is through code. This is much more flexible. This can help you write your own tools and add them to the flo.
+Flo supports two ways to set up and run the components, first is through code. This is flexible and but still not a first class citizen, as we are actively working to make it better. This can help you write your own tools and add them to the flo.
 
 Second way is to use yaml. You can write an yaml to define your agentic workflow and it compiles into an application. See examples below.
 
@@ -170,9 +170,6 @@ Making agentic RAG tool is easy in flo
 rag_tool = rag_builder
   .with_multi_query()
   .build_rag_tool(name="RAGTool", description="RAG to answer question by looking at db")
-
-# Invoke as tool or make it part of structured agentic flo
-print(rag_tool.invoke({"query": "What is the interest rate on housing loans"}))
 ```
 
 ### Using RAG tool in Agentic flo
@@ -217,7 +214,7 @@ for s in flo.stream(input_prompt):
         print("----") 
 ```
 
-# Understanding Flo Deeper
+# Advanced Implementation
 
 Lets breakdown the structure of the yaml.
 
@@ -226,8 +223,8 @@ Lets breakdown the structure of the yaml.
 |kind  | The type of agentic flo. You have two options here, `FloRoutedTeam` or `FloAgent`|
 |name  | This is the name of the agentic flo
 |team/agent | The next key can be a `team` or an `agent` depending on whether you plan to create a team or an single agent|
-|team.router | Router this a component which manages the task in a team. The router takes care of properly routing the task, or sub-dividing the task depending on the current state. Currently we only support `supervisor` as router, more types are under construction|
-|(team/agent).name  | This is the name of the team or agent
+|team.router | Router this a component which manages the task in a team. The router takes care of properly routing the task, or sub-dividing the task depending on the current state. Currently we only support `supervisor`, `linear`, `llm` as routers, more types are under construction|
+|(team/agent).name  | This is the name of the team or agent. The name should be an alpanumeric without spaces
 |agent.job | This is the job that is expected to be done by the agent. |
 |agent.role | This will assign a persona to the agent. This field is optional
 |agent.tools | List of tools available to the agent.
@@ -244,7 +241,7 @@ session = FloSession(llm).register_tool(
 )
 ```
 
-### Agent
+### Agents
 The smallest component we have is an agent. It consist of the job to be done, a role, and its tools
 
 ```yaml
@@ -262,11 +259,35 @@ kind: FloAgent
 name: banking-assistant
 agent:
     name: HousingLoanTeamLead
+    kind: llm
     role: Housing Loan Specialist
     job: Fetch the housing loan information from the db and answer the question
     tools:
       - name: HousingLoanTool
 ```
+
+#### Agent Types:
+
+Flo AI now supports different types of agents which are intended for different purposes or use-case. You can choose these components to customize your workflow. You can specify the type of agents by specifiying `kind` param within agent block of the yaml (like the above once).
+
+| kind | functionality |
+|------|---------------|
+| agentic | This is the default kind, these are default agents with a tool associated with them. These kinds of agents always needs tool or it will throw na exception|
+| llm | These are agents without tools, they can work with current state of the execution, and do their job|
+| reflection | These agents have the ability to reflect on the current result and retry a previous step
+| delegation | These agents can delegate the current flow to a agent based on a prompt.
+
+Note: `reflection` and `delegation` are implemented with linear router only right now. The support will be extended to other routers in next release
+
+### Routers
+Routers are the piller stone to how the flo is executed. They decided how the agents are connected. You can configure a router type by changing `kind` in the router component of the yaml. Right now we support the following routers:
+
+| Router | Functionality |
+|--------|---------------|
+| supervisor | In this type of router all the agents are connected in a heirarchical fashion to the router and the router decides whom to call when.
+| linear | In the type of routing the agents are executed in linear fashion from one node to another based on the order. Linear routing also supports `delegators` and `reflection` agents for re-routing the flow
+| llm | In this type of routing the routing is based on the provided prompt| 
+
 ### Team
 
 A team is a group fo agents working towards a common goal. A team has to have a router to manage things, just like a manager your workplace. Right now we support `supervisor` as your router, but more types are on the way.
@@ -322,7 +343,7 @@ team:
               tools:
                 - name: TavilySearchResults
 ```
-This is the composability has flo unlocks, you can keep doing broader or deeper.
+This is the composability has flo unlocks, you can keep doing broader or deeper. We plan to make the yamls composable by building seperate testable agents that can be combined. 
 
 # Contributions
 
