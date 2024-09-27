@@ -1,3 +1,12 @@
+<p align="center">
+  <img src="./images/rootflo-logo.png" alt="Rootflo" width="228" />
+</p>
+
+<h1 align="center">Open Source Composable AI Agentic Workflow Builder</h1>
+
+<p align="center">
+Rootflo is an alternative to <b>Langgraph</b>, and  <b>CrewAI</b>. It lets you easily build composable agentic workflows from using simple components to any size, unlocking the full potential of LLMs.
+</p>
 
 # Table of contents
 
