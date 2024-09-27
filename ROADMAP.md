@@ -8,8 +8,7 @@ Core features improve the library itself to cater wider range of functionalities
 
 | Name | Description | Status | Release version |
 |------|-------------|--------|-----------------|
-|Linear Router|A router that lets you build agents or teams that execute linearly or sequentially. The current router supervisor works in a hierarchical way where all the children report to one parent| Done | 0.0.3|
-|Reflection| Reflection lets you build a component that can make the AI retrospectively look at the current output and retry or work again on the task at hand| Done| 0.0.3|
+| Full composability | Right now teams can only be combined with teams and agents with agents. We want to extend this to team + agent composibility | Yet to start | 0.0.4 | 
 |Output formatter| Ability to templatize output format using pydantic| Yet to start| 0.0.4|
 |LLM Extensibilty| Ability to different LLMs across different agents and teams| Yet to start| 0.0.4|
 |Auto-Query RAG| Ability to make metadata query within the agentic, which can automatically add metadata while rag query runs, like timestamp or other data|Yet to start|TBD|
@@ -21,9 +20,8 @@ These features improve logging and debugging abilities while building.
 
 | Name | Description | Status | Release version |
 |------|-------------|--------|-----------------|
-|Logging Framework|Better logging framework which can be extended to parent application (with log level control)| Done|0.0.3
 |Recursion control| Expose parameters like recursion control to limit recursions and policy in case of recursion etc | Yet to start | 0.0.5
-|Set up pytests| Create a framework for unit-testing flo-ai and its internal functionalities| Yet to start | TBD
+|Set up tests| Create a framework for unit-testing flo-ai and its internal functionalities| In progress | TBD
 
 ## Community
 
@@ -37,4 +35,13 @@ This is the section where the community can contribute to the roadmap. The items
 The roadmap items are estimates and might change based on rootflo priorities. We will keep this file updated if plans change. 
 
 The community is welcome to suggest changes to the roadmap, through a pull request, by adding features to the community contributions. 
+
+## Released
+
+| Name | Description | Status | Version|
+|------|-------------|--------|--------|
+|Linear Router|A router that lets you build agents or teams that execute linearly or sequentially. The current router supervisor works in a hierarchical way where all the children report to one parent|  ✅ | 0.0.3|
+|Reflection| Reflection lets you build a component that can make the AI retrospectively look at the current output and retry or work again on the task at hand|  ✅ | 0.0.3|
+|Logging Framework|Better logging framework which can be extended to parent application (with log level control)|  ✅|0.0.3|
+
 
