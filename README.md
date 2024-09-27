@@ -1,11 +1,21 @@
 <p align="center">
-  <img src="./images/rootflo-logo.png" alt="Rootflo" width="228" />
+  <img src="./images/rootflo-logo.png" alt="Rootflo" width="150" />
 </p>
 
 <h1 align="center">Open Source Composable AI Agentic Workflow Builder</h1>
 
 <p align="center">
 Rootflo is an alternative to <b>Langgraph</b>, and  <b>CrewAI</b>. It lets you easily build composable agentic workflows from using simple components to any size, unlocking the full potential of LLMs.
+</p>
+
+<p align="center">
+<a href="https://github.com/rootflo/flo-ai/stargazers"><img src="https://img.shields.io/github/stars/rootflo/flo-ai?style=for-the-badge" alt="GitHub stars"></a>
+<a href="https://github.com/rootflo/flo-ai/releases">
+  <img src="https://img.shields.io/github/v/release/rootflo/flo-ai?display_name=release&style=for-the-badge" alt="GitHub release (latest)">
+</a>
+  <a href="https://github.com/rootflo/flo-ai/graphs/commit-activity"><img alt="GitHub commit activity" src="https://img.shields.io/github/commit-activity/m/rootflo/flo-ai/develop?style=for-the-badge"></a>
+  <a href="https://github.com/rootflo/flo-ai/blob/develop/LICENSE"><img src="https://img.shields.io/github/license/rootflo/flo-ai?style=for-the-badge" alt="License"></a>
+  <br />
 </p>
 
 # Table of contents
