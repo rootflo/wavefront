@@ -1,0 +1,223 @@
+
+<!DOCTYPE html>
+<html lang="en-US">
+  <head>
+    <meta name="google-site-verification" content="53bFr8c4aQ4Umpc1T4tHJbtbKv3giVCEfEWvyVxE65c" />
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+<!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>flo-ai | 🔥🔥🔥 Simple way to create composable AI agents</title>
+<meta name="generator" content="Jekyll v3.10.0" />
+<meta property="og:title" content="flo-ai" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="🔥🔥🔥 Simple way to create composable AI agents" />
+<meta property="og:description" content="🔥🔥🔥 Simple way to create composable AI agents" />
+<link rel="canonical" href="https://rootflo.github.io/flo-ai/" />
+<meta property="og:url" content="https://rootflo.github.io/flo-ai/" />
+<meta property="og:site_name" content="flo-ai" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="flo-ai" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebSite","description":"🔥🔥🔥 Simple way to create composable AI agents","headline":"flo-ai","name":"flo-ai","url":"https://rootflo.github.io/flo-ai/"}</script>
+<!-- End Jekyll SEO tag -->
+
+    <link rel="stylesheet" href="/flo-ai/assets/css/style.css?v=826032176717d70098ac1c76ba74b4c8a6f9f498">
+    <!-- start custom head snippets, customize with your own _includes/head-custom.html file -->
+
+<!-- Setup Google Analytics -->
+
+
+
+<!-- You can set your favicon here -->
+<!-- link rel="shortcut icon" type="image/x-icon" href="/flo-ai/favicon.ico" -->
+
+<!-- end custom head snippets -->
+
+  </head>
+  <body>
+    <div class="container-lg px-3 my-5 markdown-body">
+      
+      <h1><a href="https://rootflo.github.io/flo-ai/">flo-ai</a></h1>
+      
+
+      <p align="center">
+  <img src="./images/rootflo-logo.png" alt="Rootflo" width="150" />
+</p>
+
+<h1 align="center">Composable AI Agentic Workflow</h1>
+
+<p align="center">
+Rootflo is an alternative to <b>Langgraph</b>, and  <b>CrewAI</b>. It lets you easily build composable agentic workflows from using simple components to any size, unlocking the full potential of LLMs.
+</p>
+
+<p align="center">
+  <a href="https://github.com/rootflo/flo-ai/stargazers"><img src="https://img.shields.io/github/stars/rootflo/flo-ai?style=for-the-badge" alt="GitHub stars" /></a>
+  <a href="https://github.com/rootflo/flo-ai/releases">
+    <img src="https://img.shields.io/github/v/release/rootflo/flo-ai?display_name=release&amp;style=for-the-badge" alt="GitHub release (latest)" />
+  </a>
+  <a href="https://github.com/rootflo/flo-ai/graphs/commit-activity"><img alt="GitHub commit activity" src="https://img.shields.io/github/commit-activity/m/rootflo/flo-ai/develop?style=for-the-badge" />
+  </a>
+  <a href="https://github.com/rootflo/flo-ai/blob/develop/LICENSE"><img src="https://img.shields.io/github/license/rootflo/flo-ai?style=for-the-badge" alt="License" />
+  </a>
+  <br />
+</p>
+
+<p align="center">
+    <br />
+    <a href="https://flo-ai.rootflo.ai" rel=""><strong>Checkout the docs »</strong></a>
+    <br />
+  <br />
+    <a href="https://rootflo.ai">Website</a>
+   •
+    <a href="https://github.com/rootflo/flo-ai/blob/develop/ROADMAP.md">Roadmap</a>
+  </p>
+
+<hr />
+
+<h1 id="flo-ai-">Flo AI 🌊</h1>
+
+<blockquote>
+  <p>Build production-ready AI agents and teams with minimal code</p>
+</blockquote>
+
+<p>Flo AI is a Python framework that makes building production-ready AI agents and teams as easy as writing YAML. Think “Kubernetes for AI Agents” - compose complex AI architectures using pre-built components while maintaining the flexibility to create your own.</p>
+
+<h2 id="-features">✨ Features</h2>
+
+<ul>
+  <li>🔌 <strong>Truly Composable</strong>: Build complex AI systems by combining smaller, reusable components</li>
+  <li>🏗️ <strong>Production-Ready</strong>: Built-in best practices and optimizations for production deployments</li>
+  <li>📝 <strong>YAML-First</strong>: Define your entire agent architecture in simple YAML</li>
+  <li>🔧 <strong>Flexible</strong>: Use pre-built components or create your own</li>
+  <li>🤝 <strong>Team-Oriented</strong>: Create and manage teams of AI agents working together</li>
+  <li>📚 <strong>RAG Support</strong>: Built-in support for Retrieval-Augmented Generation</li>
+  <li>🔄 <strong>Langchain Compatible</strong>: Works with all your favorite Langchain tools</li>
+</ul>
+
+<h2 id="-quick-start">🚀 Quick Start</h2>
+
+<h3 id="installation">Installation</h3>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>pip <span class="nb">install </span>flo-ai
+<span class="c"># or using poetry</span>
+poetry add flo-ai
+</code></pre></div></div>
+
+<h3 id="create-your-first-ai-team-in-30-seconds">Create Your First AI Team in 30 Seconds</h3>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">flo_ai</span> <span class="kn">import</span> <span class="n">Flo</span><span class="p">,</span> <span class="n">FloSession</span>
+<span class="kn">from</span> <span class="nn">langchain_openai</span> <span class="kn">import</span> <span class="n">ChatOpenAI</span>
+
+<span class="c1"># Define your team in YAML
+</span><span class="n">yaml_config</span> <span class="o">=</span> <span class="s">"""
+apiVersion: flo/alpha-v1
+kind: FloRoutedTeam
+name: research-team
+team:
+    name: ResearchTeam
+    router:
+        name: TeamLead
+        kind: supervisor
+    agents:
+      - name: Researcher
+        role: Research Specialist
+        job: Research latest information on given topics
+        tools:
+          - name: TavilySearchResults
+      - name: Writer
+        role: Content Creator
+        job: Create engaging content from research
+"""</span>
+
+<span class="c1"># Set up and run
+</span><span class="n">llm</span> <span class="o">=</span> <span class="n">ChatOpenAI</span><span class="p">(</span><span class="n">temperature</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<span class="n">session</span> <span class="o">=</span> <span class="n">FloSession</span><span class="p">(</span><span class="n">llm</span><span class="p">).</span><span class="n">register_tool</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">"TavilySearchResults"</span><span class="p">,</span> <span class="n">tool</span><span class="o">=</span><span class="n">TavilySearchResults</span><span class="p">())</span>
+<span class="n">flo</span> <span class="o">=</span> <span class="n">Flo</span><span class="p">.</span><span class="n">build</span><span class="p">(</span><span class="n">session</span><span class="p">,</span> <span class="n">yaml</span><span class="o">=</span><span class="n">yaml_config</span><span class="p">)</span>
+
+<span class="c1"># Start streaming results
+</span><span class="k">for</span> <span class="n">response</span> <span class="ow">in</span> <span class="n">flo</span><span class="p">.</span><span class="n">stream</span><span class="p">(</span><span class="s">"Write about recent AI developments"</span><span class="p">):</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">response</span><span class="p">)</span>
+</code></pre></div></div>
+
+<h2 id="-documentation">📖 Documentation</h2>
+
+<p>Visit our <a href="https://flo-ai.rootflo.ai">comprehensive documentation</a> for:</p>
+<ul>
+  <li>Detailed tutorials</li>
+  <li>Architecture deep-dives</li>
+  <li>API reference</li>
+  <li>Best practices</li>
+  <li>Advanced examples</li>
+</ul>
+
+<h2 id="-why-flo-ai">🌟 Why Flo AI?</h2>
+
+<h3 id="for-ai-engineers">For AI Engineers</h3>
+<ul>
+  <li><strong>Faster Development</strong>: Build complex AI systems in minutes, not days</li>
+  <li><strong>Production Focus</strong>: Built-in optimizations and best practices</li>
+  <li><strong>Flexibility</strong>: Use our components or build your own</li>
+</ul>
+
+<h3 id="for-teams">For Teams</h3>
+<ul>
+  <li><strong>Maintainable</strong>: YAML-first approach makes systems easy to understand and modify</li>
+  <li><strong>Scalable</strong>: From single agents to complex team hierarchies</li>
+  <li><strong>Testable</strong>: Each component can be tested independently</li>
+</ul>
+
+<h2 id="-use-cases">🎯 Use Cases</h2>
+
+<ul>
+  <li>🤖 Customer Service Automation</li>
+  <li>📊 Data Analysis Pipelines</li>
+  <li>📝 Content Generation</li>
+  <li>🔍 Research Automation</li>
+  <li>🎯 Task-Specific AI Teams</li>
+</ul>
+
+<h2 id="-contributing">🤝 Contributing</h2>
+
+<p>We love your input! Check out our <a href="/flo-ai/CONTRIBUTING.md">Contributing Guide</a> to get started. Ways to contribute:</p>
+
+<ul>
+  <li>🐛 Report bugs</li>
+  <li>💡 Propose new features</li>
+  <li>📝 Improve documentation</li>
+  <li>🔧 Submit PRs</li>
+</ul>
+
+<h2 id="-license">📜 License</h2>
+
+<p>Flo AI is <a href="/flo-ai/LICENSE">MIT Licensed</a>.</p>
+
+<h2 id="-acknowledgments">🙏 Acknowledgments</h2>
+
+<p>Built with ❤️ using:</p>
+<ul>
+  <li><a href="https://github.com/hwchase17/langchain">LangChain</a></li>
+  <li><a href="https://github.com/langchain-ai/langgraph">LangGraph</a></li>
+</ul>
+
+<hr />
+
+<div align="center">
+  <strong>Built with ❤️ by the Rootflo team</strong>
+  <br /><a href="https://github.com/rootflo/flo-ai/discussions">Community</a> •
+  <a href="https://flo-ai.rootflo.ai">Documentation</a>
+</div>
+
+
+      
+      <div class="footer border-top border-gray-light mt-5 pt-3 text-right text-gray">
+        This site is open source. <a href="https://github.com/rootflo/flo-ai/edit/develop/README.md">Improve this page</a>.
+      </div>
+      
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/anchor-js/4.1.0/anchor.min.js" integrity="sha256-lZaRhKri35AyJSypXXs4o6OPFTbTmUoltBbDCbdzegg=" crossorigin="anonymous"></script>
+    <script>anchors.add();</script>
+  </body>
+</html>
