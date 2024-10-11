@@ -147,8 +147,6 @@ Built with ❤️ using:
 
 <div align="center">
   <strong>Built with ❤️ by the Rootflo team</strong>
-  <br>
-  <a href="https://discord.gg/flo-ai">Discord</a> •
-  <a href="https://github.com/rootflo/flo-ai/discussions">Community</a> •
+  <br><a href="https://github.com/rootflo/flo-ai/discussions">Community</a> •
   <a href="https://flo-ai.rootflo.ai">Documentation</a>
 </div>
