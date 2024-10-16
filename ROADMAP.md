@@ -40,8 +40,10 @@ The community is welcome to suggest changes to the roadmap, through a pull reque
 
 | Name | Description | Status | Version|
 |------|-------------|--------|--------|
-|Linear Router|A router that lets you build agents or teams that execute linearly or sequentially. The current router supervisor works in a hierarchical way where all the children report to one parent|  ✅ | 0.0.3|
+|Linear Router|A router lets you build agents or teams that execute linearly or sequentially. The current router supervisor works in a hierarchical way where all the children report to one parent|  ✅ | 0.0.3|
 |Reflection| Reflection lets you build a component that can make the AI retrospectively look at the current output and retry or work again on the task at hand|  ✅ | 0.0.3|
+|Delegator| Delegator lets you build a component that can help delegate a flo to a particular agent, by some condition|  ✅ | 0.0.3|
 |Logging Framework|Better logging framework which can be extended to parent application (with log level control)|  ✅|0.0.3|
+
 
 
