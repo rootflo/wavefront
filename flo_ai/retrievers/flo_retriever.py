@@ -8,9 +8,8 @@ from flo_ai.retrievers.flo_multi_query import FloMultiQueryRetriverBuilder
 from langchain.retrievers import ContextualCompressionRetriever
 from langchain.retrievers.document_compressors import DocumentCompressorPipeline
 from flo_ai.retrievers.flo_compression_pipeline import FloCompressionPipeline
-from langchain.tools.retriever import create_retriever_tool
 from functools import partial
-from langchain.pydantic_v1 import BaseModel, Field
+from pydantic import BaseModel, Field
 from langchain_core.tools import Tool
 from typing import Optional
 from langchain_core.callbacks import Callbacks
