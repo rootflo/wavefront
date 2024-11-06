@@ -1,4 +1,3 @@
-from langchain_core.output_parsers.openai_functions import JsonOutputFunctionsParser
 from langchain_core.language_models import BaseLanguageModel
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from typing import Union
@@ -8,8 +7,9 @@ from flo_ai.constants.prompt_constants import FLO_FINISH
 from flo_ai.router.flo_llm_router import FloLLMRouter, StateUpdateComponent
 from flo_ai.models.flo_team import FloTeam
 from flo_ai.yaml.config import TeamConfig
+from langchain_core.output_parsers import JsonOutputParser
+from flo_ai.router.flo_llm_router import NextAgent
 
-# TODO, maybe add description about what team members can do
 supervisor_system_message = (
     "You are a supervisor tasked with managing a conversation between the"
     " following {member_type}: {members}. Given the following user request,"
@@ -46,6 +46,7 @@ class FloSupervisor(FloLLMRouter):
             self.members = [agent.name for agent in flo_team.members]
             self.options = self.members + [FLO_FINISH]
             member_type = "workers" if flo_team.members[0].type == "agent" else "team members"
+            self.parser = JsonOutputParser(pydantic_object=NextAgent)
             self.supervisor_prompt = ChatPromptTemplate.from_messages(
                 [
                     ("system", supervisor_system_message),
@@ -53,38 +54,24 @@ class FloSupervisor(FloLLMRouter):
                     (
                         "system",
                         "Given the conversation above, who should act next?"
-                        " Or should we FINISH if the task is already answered, Select one of: {options}",
+                        " Or should we FINISH if the task is already answered, Select one of: {options}  \n {format_instructions}",
                     ),
                 ]
-            ).partial(options=str(self.options), members=", ".join(self.members), member_type=member_type)
+            ).partial(
+                options=str(self.options), 
+                members=", ".join(self.members), 
+                member_type=member_type,
+                format_instructions=self.parser.get_format_instructions()
+            )
         
         def build(self):
-            function_def = {
-                "name": "route",
-                "description": "Select the next role.",
-                "parameters": {
-                    "title": "routeSchema",
-                    "type": "object",
-                    "properties": {
-                        "next": {
-                            "title": "Next",
-                            "anyOf": [
-                                {"enum": self.options},
-                            ],
-                        }
-                    },
-                    "required": ["next"],
-                }
-            }
-                
             chain = (
                 self.supervisor_prompt
-                | self.llm.bind_functions(functions=[function_def], function_call="route")
-                | JsonOutputFunctionsParser()
-                | StateUpdateComponent(self.name, self.session)
+                | self.llm
+                | self.parser
             )
 
-            return FloSupervisor(executor = chain, 
+            return FloSupervisor(executor=chain, 
                                 flo_team=self.flo_team, 
                                 name=self.name, 
                                 session=self.session)

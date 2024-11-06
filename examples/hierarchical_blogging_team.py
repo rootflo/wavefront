@@ -12,12 +12,14 @@ kind: FloRoutedTeam
 name: blogging-team
 team:
     name: BloggingTeam
-    supervisor:
-        name: supervisor
+    router:
+        name: parent-supervisor
+        kind: supervisor
     subteams:
-        - name: BloggingTeam
-          supervisor:
-            name: supervisor
+        - name: BlogResearchTeam
+          router:
+            name: bgsupervisor
+            kind: supervisor
           agents:
             - name: Reasercher
               job: Do a research on the internet and find articles of relevent to the topic asked by the user, always try to find the latest information on the same
@@ -27,9 +29,10 @@ team:
               job: From the documents provider by the researcher write a blog of 300 words with can be readily published, make in engaging and add reference links to original blogs
               tools:
                 - name: TavilySearchResults
-        - name: WritingTeam
-          supervisor:
-            name: supervisor
+        - name: BlogWritingTeam
+          router:
+            name: bwsupervisor
+            kind: supervisor
           agents: 
             - name: Figure
               job: Do somethinh
@@ -46,4 +49,4 @@ llm = ChatOpenAI(temperature=0, model_name='gpt-4o')
 session = FloSession(llm).register_tool(
     name="TavilySearchResults", tool=TavilySearchResults()
 )
-flo: Flo = Flo.build(session, llm, yaml=yaml_data)
+flo: Flo = Flo.build(session, yaml=yaml_data)

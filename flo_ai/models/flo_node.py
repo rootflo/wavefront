@@ -31,13 +31,22 @@ class FloNode():
             return FloNode((
                 FloNode.Builder.__get_last_message | team_chain | FloNode.Builder.__join_graph
             ), flo_team.name, flo_team.type, flo_team.config)
+        
+        def build_from_router(self, flo_router) -> 'FloNode':
+            router_func = functools.partial(FloNode.Builder.__teamflo_router_node, agent=flo_router.executor, name=flo_router.router_name, agent_config=flo_router.config)
+            return FloNode(router_func, flo_router.router_name, flo_router.type, flo_router.config)
 
         @staticmethod
         def __teamflo_agent_node(state: TeamFloAgentState, agent: AgentExecutor, name: str, agent_config: AgentConfig):
             result = agent.invoke(state)
-            # TODO see how to fix this
             output = result if isinstance(result, str) else result["output"]
             return { STATE_NAME_MESSAGES: [HumanMessage(content=output, name=name)] }
+        
+        @staticmethod
+        def __teamflo_router_node(state: TeamFloAgentState, agent: AgentExecutor, name: str, agent_config: AgentConfig):
+            result = agent.invoke(state)
+            nextNode = result if isinstance(result, str) else result["next"]
+            return { "next": nextNode }
 
         @staticmethod
         def __get_last_message(state: TeamFloAgentState) -> str:

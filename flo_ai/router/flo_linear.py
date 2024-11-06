@@ -14,7 +14,7 @@ class FloLinear(FloRouter):
                           flo_team=flo_team, executor=None, config=config)
         self.router_config = config.router
     
-    def build_agent_graph(self):
+    def build_graph(self):
         flo_agent_nodes = [self.build_node(member) for member in self.members]
         
         workflow = StateGraph(TeamFloAgentState)
@@ -31,7 +31,6 @@ class FloLinear(FloRouter):
                 parent_node = flo_agent_nodes[i]
                 child_node = flo_agent_nodes[i+1]
                 next_node = flo_agent_nodes[i+2] if (i+2) < len(flo_agent_nodes) else END
-
                 if (parent_node.kind == ExecutableType.reflection):
                     self.add_reflection_edge(workflow, parent_node, child_node)
                     continue
@@ -56,33 +55,6 @@ class FloLinear(FloRouter):
     
         return FloRoutedTeam(self.flo_team.name, workflow_graph, self.flo_team.config)
 
-    def build_team_graph(self):
-        flo_team_entry_chains = [self.build_node_for_teams(flo_agent) for flo_agent in self.members]
-        # Define the graph.
-        super_graph = StateGraph(TeamFloAgentState)
-        # First add the nodes, which will do the work
-        for flo_team_chain in flo_team_entry_chains:
-            agent_name = flo_team_chain.name
-            super_graph.add_node(agent_name, flo_team_chain.func)
-
-        if self.router_config.edges is None:
-            start_node_name = flo_team_entry_chains[0].name
-            end_node_name = flo_team_entry_chains[-1].name
-            super_graph.add_edge(START, start_node_name)
-            for i in range(len(flo_team_entry_chains) - 1):
-                agent1_name = flo_team_entry_chains[i].name
-                agent2_name = flo_team_entry_chains[i+1].name
-                super_graph.add_edge(agent1_name, agent2_name)
-            super_graph.add_edge(end_node_name, END)
-        else:
-            super_graph.add_edge(START, self.router_config.start_node)
-            for edge in self.router_config.edges:
-                super_graph.add_edge(edge[0], edge[1])
-            super_graph.add_edge(self.router_config.end_node, END)
-
-        super_graph = super_graph.compile()
-        return FloRoutedTeam(self.flo_team.name, super_graph, self.flo_team.config)
-    
     class Builder():
 
         def __init__(self, session: FloSession, config: TeamConfig, flo_team: FloTeam,) -> None:

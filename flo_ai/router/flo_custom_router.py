@@ -33,21 +33,21 @@ class FloCustomRouter(FloRouter):
 
 
             function_def = {
-            "name": "route",
-            "description": "Select the next role.",
-            "parameters": {
-                "title": "routeSchema",
-                "type": "object",
-                "properties": {
-                    "next": {
-                        "title": "Next",
-                        "anyOf": [
-                            {"enum": members},
-                        ],
-                    }
-                },
-                "required": ["next"],
-            }
+                "name": "route",
+                "description": "Select the next role.",
+                "parameters": {
+                    "title": "routeSchema",
+                    "type": "object",
+                    "properties": {
+                        "next": {
+                            "title": "Next",
+                            "anyOf": [
+                                {"enum": members},
+                            ],
+                        }
+                    },
+                    "required": ["next"],
+                }
             }
 
             chain = prompt | self.llm.bind_functions(functions=[function_def], function_call="route") | JsonOutputFunctionsParser()
@@ -60,7 +60,7 @@ class FloCustomRouter(FloRouter):
         
         return router_fn
     
-    def build_agent_graph(self):
+    def build_graph(self):
         flo_agent_nodes = [self.build_node(flo_agent) for flo_agent in self.members]
         workflow = StateGraph(TeamFloAgentState)
         
@@ -90,36 +90,6 @@ class FloCustomRouter(FloRouter):
 
         return FloRoutedTeam(self.flo_team.name, workflow_graph, self.flo_team.config)
 
-    def build_team_graph(self):
-        flo_team_entry_chains = [self.build_node_for_teams(flo_agent) for flo_agent in self.members]
-
-        super_graph = StateGraph(TeamFloAgentState)
-
-        for flo_team_chain in flo_team_entry_chains:
-            agent_name = flo_team_chain.name
-            super_graph.add_node(agent_name, flo_team_chain.func)
-
-        router_config = self.router_config
-        super_graph.add_edge(START, router_config.start_node)
-        for edge_config in router_config.edges:
-            edge = edge_config.edge
-            if len(edge) > 2:
-                teams = edge[1:]
-                router = self.build_router_fn(teams, edge_config.rule)
-                super_graph.add_conditional_edges(edge[0], router, {item: item for item in teams})
-            else:
-                super_graph.add_edge(edge[0], edge[1])
-
-        if isinstance(router_config.end_node, list):    
-            for node in router_config.end_node:
-                super_graph.add_edge(node, END)
-        else:
-            super_graph.add_edge(router_config.end_node, END)
-
-        workflow_graph = super_graph.compile()
-
-        return FloRoutedTeam(self.flo_team.name, workflow_graph, self.flo_team.config)
-    
     class Builder():
 
         def __init__(self, session: FloSession, config: TeamConfig, flo_team: FloTeam,) -> None:

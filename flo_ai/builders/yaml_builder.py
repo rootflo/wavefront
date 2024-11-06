@@ -22,7 +22,6 @@ def build_supervised_team(session: FloSession) -> ExecutableFlo:
     
 def validate_team(name_set: set, team_config: TeamConfig):
     validate_names(name_set, team_config.name)
-    [validate_names(name_set, agent.name) for agent in team_config.agents]
 
 def parse_and_build_subteams(session: FloSession, team_config: TeamConfig, name_set = set()) -> ExecutableFlo:
     flo_team = None
