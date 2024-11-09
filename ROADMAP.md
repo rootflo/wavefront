@@ -8,7 +8,8 @@ Core features improve the library itself to cater wider range of functionalities
 
 | Name | Description | Status | Release version |
 |------|-------------|--------|-----------------|
-| Full composability | Right now teams can only be combined with teams and agents with agents. We want to extend this to team + agent composibility | Yet to start | 0.0.4 | 
+| Full composability | Right now teams can only be combined with teams and agents with agents. We want to extend this to team + agent composibility | In progress | 0.0.4 | 
+| Error handling | Ability to handle errors autonomously | In Progress | 0.0.4|
 |Output formatter| Ability to templatize output format using pydantic| Yet to start| 0.0.4|
 |LLM Extensibilty| Ability to different LLMs across different agents and teams| Yet to start| 0.0.4|
 |Auto-Query RAG| Ability to make metadata query within the agentic, which can automatically add metadata while rag query runs, like timestamp or other data|Yet to start|TBD|

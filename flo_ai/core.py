@@ -1,8 +1,10 @@
+import asyncio
 from flo_ai.yaml.config import to_supervised_team
 from flo_ai.builders.yaml_builder import build_supervised_team, FloRoutedTeamConfig
 from typing import Any, Iterator, Union
 from flo_ai.state.flo_session import FloSession
 from flo_ai.models.flo_executable import ExecutableFlo
+from flo_ai.error.flo_exception import FloException
 from flo_ai.common.flo_logger import common_logger, builder_logger, set_global_log_level
 
 class Flo:
@@ -25,6 +27,10 @@ class Flo:
         self.logger.info(f"Streaming query for session {self.session.session_id}: {query}")
         return self.runnable.stream(query, config)
     
+    def async_stream(self, query, config = None) -> Iterator[Union[dict[str, Any], Any]]:
+        self.logger.info(f"Streaming query for session {self.session.session_id}: {query}")
+        return self.runnable.astream(query, config)
+    
     def invoke(self, query, config = None) -> Iterator[Union[dict[str, Any], Any]]:
         config = {
          'callbacks' : [self.session.langchain_logger]
@@ -32,6 +38,13 @@ class Flo:
         self.logger.info(f"Invoking query for session {self.session.session_id}: {query}")
         return self.runnable.invoke(query, config)
     
+    def async_invoke(self, query, config = None) -> Iterator[Union[dict[str, Any], Any]]:
+        config = {
+         'callbacks' : [self.session.langchain_logger]
+        }
+        self.logger.info(f"Invoking query for session {self.session.session_id}: {query}")
+        return self.runnable.ainvoke(query, config)
+
     @staticmethod
     def build(session: FloSession, yaml: str, log_level: str = "INFO"):
         set_global_log_level(log_level)

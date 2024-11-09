@@ -43,7 +43,8 @@ class AgentFactory():
         flo_agent: FloAgent = FloAgent.Builder(
             session,
             agent,
-            tools
+            tools,
+            on_error=session.on_agent_error
         ).build()
         return flo_agent
 

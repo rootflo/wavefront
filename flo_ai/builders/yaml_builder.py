@@ -4,7 +4,8 @@ from flo_ai.models.flo_executable import ExecutableFlo
 from flo_ai.state.flo_session import FloSession
 from flo_ai.router.flo_router_factory import FloRouterFactory
 from flo_ai.factory.agent_factory import AgentFactory
-from flo_ai.yaml.validators import raise_for_name_error, DuplicateStringError
+from flo_ai.error.flo_exception import FloException
+from flo_ai.yaml.validators import raise_for_name_error
 from flo_ai.common.flo_logger import builder_logger
 
 def build_supervised_team(session: FloSession) -> ExecutableFlo:
@@ -45,5 +46,5 @@ def validate_names(name_set: set, name):
     raise_for_name_error(name)
     if name in name_set:
         builder_logger.error(f"Duplicate name found: '{name}'")
-        raise DuplicateStringError(f"The name '{name}' is already in the set.")
+        raise FloException(f"The name '{name}' is already in the set.")
     name_set.add(name)

@@ -1,4 +1,4 @@
-from behave import given, when, then, step
+from behave import when, then
 from flo_ai.yaml.validators import raise_for_name_error
 
 @when('use the name, {flo_name}')

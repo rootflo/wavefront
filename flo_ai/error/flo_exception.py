@@ -1,0 +1,2 @@
+class FloException(Exception):
+    pass

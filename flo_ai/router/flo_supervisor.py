@@ -4,7 +4,7 @@ from typing import Union
 from langchain_core.runnables import Runnable
 from flo_ai.state.flo_session import FloSession
 from flo_ai.constants.prompt_constants import FLO_FINISH
-from flo_ai.router.flo_llm_router import FloLLMRouter, StateUpdateComponent
+from flo_ai.router.flo_llm_router import FloLLMRouter
 from flo_ai.models.flo_team import FloTeam
 from flo_ai.yaml.config import TeamConfig
 from langchain_core.output_parsers import JsonOutputParser

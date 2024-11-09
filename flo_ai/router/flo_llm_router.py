@@ -11,19 +11,10 @@ from langgraph.graph import StateGraph
 from flo_ai.state.flo_state import TeamFloAgentState
 from flo_ai.yaml.config import TeamConfig
 from langchain_core.output_parsers import JsonOutputParser
-from langchain_core.pydantic_v1 import BaseModel, Field
+from pydantic import BaseModel, Field
 
 class NextAgent(BaseModel):
     next: str = Field(description="Name of the next member to be called")
-
-class StateUpdateComponent:
-    def __init__(self, name: str, session: FloSession) -> None:
-        self.name = name
-        self.inner_session = session
-
-    def __call__(self, input):
-        self.inner_session.append(self.name)
-        return input
 
 class FloLLMRouter(FloRouter):
     

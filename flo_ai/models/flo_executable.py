@@ -39,8 +39,22 @@ class ExecutableFlo(FloMember):
             ]
         }, config)
     
+    def astream(self, work, config = None):
+        return self.runnable.astream({
+            STATE_NAME_MESSAGES: [
+                HumanMessage(content=work)
+            ]
+        }, config)
+    
     def invoke(self, work, config = None):
         return self.runnable.invoke({
+             STATE_NAME_MESSAGES: [
+                HumanMessage(content=work)
+            ], 
+        }, config)
+    
+    def ainvoke(self, work, config = None):
+        return self.runnable.ainvoke({
              STATE_NAME_MESSAGES: [
                 HumanMessage(content=work)
             ], 
