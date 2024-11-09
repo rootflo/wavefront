@@ -1,3 +1,4 @@
+from typing import Optional
 from flo_ai.state.flo_session import FloSession
 from flo_ai.yaml.config import (AgentConfig)
 from flo_ai.models.flo_agent import FloAgent
@@ -5,7 +6,8 @@ from flo_ai.models.flo_llm_agent import FloLLMAgent
 from flo_ai.models.flo_reflection_agent import FloReflectionAgent
 from flo_ai.models.flo_delegation_agent import FloDelegatorAgent
 from flo_ai.models.flo_tool_agent import FloToolAgent
-from flo_ai.models.flo_executable import ExecutableFlo, ExecutableType
+from flo_ai.error.flo_exception import FloException
+from flo_ai.constants.common_constants import DOCUMENTATION_AGENT_ANCHOR
 from enum import Enum
 
 class AgentKinds(Enum):
@@ -25,7 +27,8 @@ class AgentFactory():
         if kind is not None:
             agent_kind = getattr(AgentKinds, kind, None)
             if agent_kind is None:
-                raise ValueError(f"Agent kind cannot be {kind} !")
+                raise ValueError(f"""Unknown agent kind: `{kind}`. The supported types are llm, tool, reflection, delegator or agentic. 
+                            Check the documentation @ {DOCUMENTATION_AGENT_ANCHOR}""")
             match(agent_kind):
                 case AgentKinds.llm:
                     return AgentFactory.__create_llm_agent(session, agent)
@@ -36,21 +39,35 @@ class AgentFactory():
                 case AgentKinds.delegator:
                     return AgentFactory.__create_delegator_agent(session, agent)
         return AgentFactory.__create_agentic_agent(session, agent, tool_map)
+    
+    @staticmethod
+    def __resolve_model(session: FloSession, model_name: Optional[str] = None):
+        if model_name is None:
+            return session.llm
+        if model_name not in session.models:
+            raise FloException(
+                f"""Model not found: {model_name}.
+                The model you would like to use should be registered to the session using session.register_model api, 
+                and the same model name should be used here instead of `{model_name}`""")
+        return session.models[model_name]
 
     @staticmethod
     def __create_agentic_agent(session: FloSession, agent: AgentConfig, tool_map) -> FloAgent:
+        agent_model = AgentFactory.__resolve_model(session, agent.model)
         tools = [tool_map[tool.name] for tool in agent.tools]
         flo_agent: FloAgent = FloAgent.Builder(
             session,
             agent,
             tools,
+            llm=agent_model,
             on_error=session.on_agent_error
         ).build()
         return flo_agent
 
     @staticmethod
     def __create_llm_agent(session: FloSession, agent: AgentConfig) -> FloLLMAgent:
-        builder = FloLLMAgent.Builder(session, agent)
+        agent_model = AgentFactory.__resolve_model(session, agent.model)
+        builder = FloLLMAgent.Builder(session, agent, llm=agent_model)
         llm_agent: FloLLMAgent = builder.build()
         return llm_agent
     
@@ -61,8 +78,10 @@ class AgentFactory():
     
     @staticmethod
     def __create_reflection_agent(session: FloSession, agent: AgentConfig) -> FloReflectionAgent:
-        return FloReflectionAgent.Builder(session, agent).build()
+        agent_model = AgentFactory.__resolve_model(session, agent.model)
+        return FloReflectionAgent.Builder(session, agent, llm=agent_model).build()
     
     @staticmethod
     def __create_delegator_agent(session: FloSession, agent: AgentConfig) -> FloReflectionAgent:
-        return FloDelegatorAgent.Builder(session, agent).build()
+        agent_model = AgentFactory.__resolve_model(session, agent.model)
+        return FloDelegatorAgent.Builder(session, agent, llm=agent_model).build()

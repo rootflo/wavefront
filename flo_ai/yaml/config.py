@@ -46,6 +46,7 @@ class AgentConfig(BaseModel):
     tools: List[ToolConfig] = []
     to: Optional[List[MemberKey]] = None
     retry: Optional[int] = 1
+    model: Optional[str] = None
 
 class EdgeConfig(BaseModel):
     edge: List[str]
@@ -55,6 +56,7 @@ class EdgeConfig(BaseModel):
 class RouterConfig(BaseModel):
     name: str
     kind: str
+    model: Optional[str] = None
     job: Optional[str] = None
     start_node: Optional[str] = None
     end_node: Union[Optional[str], List[str]] = None

@@ -31,3 +31,6 @@ jobs:
 
     - name: Run build
       run: poetry build
+
+    - name: Run tests
+      run: poetry run pytest

@@ -22,6 +22,5 @@ class FloToolAgent(ExecutableFlo):
             self.runnable = tool_runnable
             self.config = config
 
-
         def build(self) -> Runnable:
             return FloToolAgent(self.runnable, self.config)

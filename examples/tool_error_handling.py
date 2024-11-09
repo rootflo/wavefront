@@ -1,7 +1,6 @@
 from flo_ai import Flo
 from flo_ai import FloSession
 from langchain_openai import ChatOpenAI
-from langchain.tools import BaseTool
 from pydantic import BaseModel, Field
 from typing import List
 from dotenv import load_dotenv
@@ -66,6 +65,7 @@ async def invoke_main():
     print(result)
 
 asyncio.run(invoke_main())
+
 
 # import asyncio
 

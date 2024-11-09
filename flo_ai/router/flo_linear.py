@@ -57,7 +57,7 @@ class FloLinear(FloRouter):
 
     class Builder():
 
-        def __init__(self, session: FloSession, config: TeamConfig, flo_team: FloTeam,) -> None:
+        def __init__(self, session: FloSession, config: TeamConfig, flo_team: FloTeam) -> None:
             self.config = config
             self.session = session
             self.team = flo_team

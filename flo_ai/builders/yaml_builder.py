@@ -46,5 +46,5 @@ def validate_names(name_set: set, name):
     raise_for_name_error(name)
     if name in name_set:
         builder_logger.error(f"Duplicate name found: '{name}'")
-        raise FloException(f"The name '{name}' is already in the set.")
+        raise FloException(f"The name '{name}' is duplicate in the config. Make sure all teams and agents have unique names")
     name_set.add(name)

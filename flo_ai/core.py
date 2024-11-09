@@ -5,6 +5,7 @@ from typing import Any, Iterator, Union
 from flo_ai.state.flo_session import FloSession
 from flo_ai.models.flo_executable import ExecutableFlo
 from flo_ai.error.flo_exception import FloException
+from flo_ai.constants.common_constants import DOCUMENTATION_WEBSITE
 from flo_ai.common.flo_logger import common_logger, builder_logger, set_global_log_level
 
 class Flo:
@@ -24,6 +25,7 @@ class Flo:
         self.logger.info(f"Flo instance created for session {session.session_id}")
 
     def stream(self, query, config = None) -> Iterator[Union[dict[str, Any], Any]]:
+        self.validate_invoke(self.session)
         self.logger.info(f"Streaming query for session {self.session.session_id}: {query}")
         return self.runnable.stream(query, config)
     
@@ -35,6 +37,7 @@ class Flo:
         config = {
          'callbacks' : [self.session.langchain_logger]
         }
+        self.validate_invoke(self.session)
         self.logger.info(f"Invoking query for session {self.session.session_id}: {query}")
         return self.runnable.invoke(query, config)
     
@@ -63,4 +66,8 @@ class Flo:
             image = PILImage.open(image_io)
             image.save(filename)
 
+    def validate_invoke(self, session: FloSession):
+        async_coroutines = filter(lambda x: (hasattr(x, "coroutine") and asyncio.iscoroutinefunction(x.coroutine)) ,session.tools.values())
+        if len(list(async_coroutines)) > 0:
+            raise FloException(f"""You seem to have atleast one async tool registered in this session. Please use flo.async_invoke or flo.async_stream. Checkout {DOCUMENTATION_WEBSITE}""")
         

@@ -1,3 +1,4 @@
+import warnings
 from typing import Union, Dict
 from langchain_core.language_models import BaseLanguageModel
 from langchain_core.tools import BaseTool
@@ -18,15 +19,18 @@ def _handle_agent_error(error) -> str:
 class FloSession:
 
     def __init__(self, 
-                 llm: BaseLanguageModel, 
+                 default_llm: BaseLanguageModel = None, 
                  loop_size: int = 2, 
                  max_loop: int = 3, 
+                 llm: BaseLanguageModel = None,
                  log_level: Optional[str] = "INFO",
                  custom_langchainlog_handler: Optional[FloLangchainLogger] = None,
                  on_agent_error=_handle_agent_error) -> None:
         
         self.session_id = str(random_str(16))
-        self.llm = llm
+        self.llm = self.resolve_llm(default_llm, llm)
+        self.tools = dict()
+        self.models: Dict[str, BaseLanguageModel] = dict()
         self.tools: Dict[str, BaseTool] = dict()
         self.counter = dict()
         self.navigation: list[str] = list()
@@ -41,12 +45,29 @@ class FloSession:
         self.logger.info(f"New FloSession created with ID: {self.session_id}")
         self.langchain_logger = custom_langchainlog_handler or FloLangchainLogger(self.session_id, log_level=log_level, logger_name=f"FloLangChainLogger-{self.session_id}")
 
+    def resolve_llm(self, default_llm: BaseLanguageModel = None, llm: BaseLanguageModel = None):
+        if default_llm is not None:
+            return default_llm
+        if llm:
+            warnings.warn(
+                "`llm` is deprecated and will be removed in a future version. "
+                "Please use `default_llm` instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            return llm
+
     def init_logger(self, log_level: str):
         FloLogger.set_log_level("SESSION", log_level)
 
     def register_tool(self, name: str, tool: BaseTool):
         self.tools[name] = tool
         self.logger.info(f"Tool '{name}' registered for session {self.session_id}")
+        return self
+    
+    def register_model(self, name: str, model: BaseLanguageModel):
+        self.models[name] = model
+        self.logger.info(f"Model '{name}' registered for session {self.session_id}")
         return self
 
     def append(self, node: str) -> int:
