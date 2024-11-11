@@ -1,54 +1,104 @@
-import os
 import logging
+from typing import Any
+from typing import Dict, Optional, Union
 from logging.handlers import RotatingFileHandler
 from dataclasses import dataclass
+
+DEFAULT_LOGGER_NAME = "FloAI"
+DEFAULT_LOG_LEVEL = "ERROR"
+
+LEVEL_MAP = {
+    'DEBUG': logging.DEBUG,
+    'INFO': logging.INFO,
+    'WARNING': logging.WARNING,
+    'ERROR': logging.ERROR,
+    'CRITICAL': logging.CRITICAL
+}
 
 @dataclass
 class FloLogConfig:
     name: str
-    level: str = "INFO"
+    level: Union[str, int] = DEFAULT_LOG_LEVEL
     file_path: str = None
     max_bytes: int = 1048576
 
+    def get_level(self) -> int:
+        """Convert string level to logging level integer if needed"""
+        if isinstance(self.level, str):
+            return LEVEL_MAP.get(self.level.upper(), logging.ERROR)
+        return self.level
+
 class FloLoggerUtil(logging.Logger):
+
     def __init__(self, config: FloLogConfig):
-        super().__init__(config.name, config.level)
-        self.setLevel(config.level)
+        level = config.get_level()
+        super().__init__(config.name, level)
+        self.setLevel(level)
+        for handler in self.handlers:
+            self.removeHandler(handler)
+        self.setConfig(config)
 
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-
+    def setConfig(self, config: FloLogConfig):
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(session)s - %(levelname)s - %(message)s')
+        
         console_handler = logging.StreamHandler()
         console_handler.setFormatter(formatter)
+        console_handler.setLevel(self.level)
         self.addHandler(console_handler)
 
         if config.file_path:
             file_handler = RotatingFileHandler(config.file_path, maxBytes=config.max_bytes)
             file_handler.setFormatter(formatter)
+            file_handler.setLevel(self.level)
             self.addHandler(file_handler)
 
-class FloLogger:
-    _loggers = {}
+    def setLevel(self, level: Union[str, int]) -> None:
+        if isinstance(level, str):
+            level = LEVEL_MAP.get(level.upper(), logging.ERROR)
+        super().setLevel(level)
+        for handler in self.handlers:
+            print("Setting levels in handler: " + str(level))
+            handler.setLevel(level)
 
-    @classmethod
-    def get_logger(cls, config: FloLogConfig) -> FloLoggerUtil:
-        if config.name not in cls._loggers:
-            level = config.level or os.environ.get(f"FLO_LOG_LEVEL_{config.name.upper()}", "INFO")
-            config.level = level
-            cls._loggers[config.name] = FloLoggerUtil(config)
-        return cls._loggers[config.name]
+    def _log(self, level: int, msg: str, session: Optional[str] = None, *args, **kwargs):
+        if not self.isEnabledFor(level):
+            return
+        if kwargs.get('extra') is None:
+            kwargs['extra'] = {}
+        kwargs['extra']['session'] = f"[{session.session_id}]" if session else "[-]"
+        super()._log(level, msg, args, **kwargs)
 
-    @classmethod
-    def set_log_level(cls, name: str, level: str):
-        if name in cls._loggers:
-            cls._loggers[name].setLevel(level)
+    def debug(self, msg: str, session: Optional[Any] = None, *args, **kwargs):
+        self._log(logging.DEBUG, msg, session, *args, **kwargs)
 
-def get_logger(config: FloLogConfig) -> FloLoggerUtil:
-    return FloLogger.get_logger(config)
+    def info(self, msg: str, session: Optional[Any] = None, *args, **kwargs):
+        self._log(logging.INFO, msg, session, *args, **kwargs)
 
-common_logger = get_logger(FloLogConfig("COMMON"))
-builder_logger = get_logger(FloLogConfig("BUILDER"))
-session_logger = get_logger(FloLogConfig("SESSION"))
+    def warning(self, msg: str, session: Optional[Any] = None, *args, **kwargs):
+        self._log(logging.WARNING, msg, session, *args, **kwargs)
 
-def set_global_log_level(level: str):
-    for name in ["COMMON", "BUILDER", "SESSION"]:
-        FloLogger.set_log_level(name, level)
+    def error(self, msg: str, session: Optional[Any] = None, *args, **kwargs):
+        self._log(logging.ERROR, msg, session, *args, **kwargs)
+
+    def critical(self, msg: str, session: Optional[Any] = None, *args, **kwargs):
+        self._log(logging.CRITICAL, msg, session, *args, **kwargs)
+
+logging_cache: Dict[str, FloLoggerUtil] = dict({
+    DEFAULT_LOGGER_NAME: FloLoggerUtil(FloLogConfig(DEFAULT_LOGGER_NAME, DEFAULT_LOG_LEVEL))
+})
+
+def get_logger(config: FloLogConfig = FloLogConfig(DEFAULT_LOGGER_NAME)) -> FloLoggerUtil:
+    if config.name not in logging_cache:
+        logging_cache[config.name] = FloLoggerUtil(config)
+    return logging_cache[config.name]
+
+def set_log_level_internal(level: Union[str, int]) -> None:
+    updated_logger = FloLoggerUtil(FloLogConfig(DEFAULT_LOGGER_NAME, level))
+    logging_cache[DEFAULT_LOGGER_NAME] = updated_logger
+
+def set_log_config_internal(config: FloLogConfig):
+    updated_logger = FloLoggerUtil(config)
+    logging_cache[DEFAULT_LOGGER_NAME] = updated_logger
+
+def set_logger_internal(logger: logging.Logger):
+    logging_cache[DEFAULT_LOGGER_NAME] = logger

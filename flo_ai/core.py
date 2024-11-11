@@ -1,4 +1,7 @@
 import asyncio
+import warnings
+import logging
+from typing import Optional
 from flo_ai.yaml.config import to_supervised_team
 from flo_ai.builders.yaml_builder import build_supervised_team, FloRoutedTeamConfig
 from typing import Any, Iterator, Union
@@ -6,31 +9,28 @@ from flo_ai.state.flo_session import FloSession
 from flo_ai.models.flo_executable import ExecutableFlo
 from flo_ai.error.flo_exception import FloException
 from flo_ai.constants.common_constants import DOCUMENTATION_WEBSITE
-from flo_ai.common.flo_logger import common_logger, builder_logger, set_global_log_level
+from flo_ai.common.flo_logger import get_logger, set_log_level_internal, set_log_config_internal, set_logger_internal, FloLogConfig
 
 class Flo:
 
     def __init__(self,
                  session: FloSession,
-                 config: FloRoutedTeamConfig,
-                 log_level: str = "INFO") -> None:
+                 config: FloRoutedTeamConfig) -> None:
         self.session = session
         self.config = config
         session.config = config
         self.runnable: ExecutableFlo = build_supervised_team(session)
-
-        set_global_log_level(log_level)
-        self.logger = common_logger
+        
         self.langchain_logger = session.langchain_logger
-        self.logger.info(f"Flo instance created for session {session.session_id}")
+        get_logger().info(f"Flo instance created ...", session)
 
     def stream(self, query, config = None) -> Iterator[Union[dict[str, Any], Any]]:
         self.validate_invoke(self.session)
-        self.logger.info(f"Streaming query for session {self.session.session_id}: {query}")
+        get_logger().info(f"streaming query requested: '{query}'", self.session)
         return self.runnable.stream(query, config)
     
     def async_stream(self, query, config = None) -> Iterator[Union[dict[str, Any], Any]]:
-        self.logger.info(f"Streaming query for session {self.session.session_id}: {query}")
+        get_logger().info(f"Streaming async query requested: '{query}'", self.session)
         return self.runnable.astream(query, config)
     
     def invoke(self, query, config = None) -> Iterator[Union[dict[str, Any], Any]]:
@@ -38,21 +38,40 @@ class Flo:
          'callbacks' : [self.session.langchain_logger]
         }
         self.validate_invoke(self.session)
-        self.logger.info(f"Invoking query for session {self.session.session_id}: {query}")
+        get_logger().info(f"Invoking query: '{query}'", self.session)
         return self.runnable.invoke(query, config)
     
     def async_invoke(self, query, config = None) -> Iterator[Union[dict[str, Any], Any]]:
         config = {
          'callbacks' : [self.session.langchain_logger]
         }
-        self.logger.info(f"Invoking query for session {self.session.session_id}: {query}")
+        get_logger().info(f"Invoking async query: '{query}'", self.session)
         return self.runnable.ainvoke(query, config)
 
     @staticmethod
-    def build(session: FloSession, yaml: str, log_level: str = "INFO"):
-        set_global_log_level(log_level)
-        builder_logger.info("Building Flo instance from YAML")
-        return Flo(session, to_supervised_team(yaml), log_level)
+    def build(session: FloSession, yaml: str, log_level: Optional[str] = None):
+        if log_level:
+            warnings.warn(
+                "`log_level` is deprecated and will be removed in a future version. "
+                "Please use `Flo.set_log_level()` instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            Flo.set_log_level(log_level)
+        get_logger().info("Building Flo instance from YAML ...", session)
+        return Flo(session, to_supervised_team(yaml))
+    
+    @staticmethod
+    def set_log_level(log_level: str):
+        set_log_level_internal(log_level)
+
+    @staticmethod
+    def set_log_config(logging_config: FloLogConfig):
+        set_log_config_internal(logging_config)
+
+    @staticmethod
+    def set_logger(logging_config: logging.Logger):
+        set_logger_internal(logging_config)
 
     def draw(self, xray=True):
         from IPython.display import Image, display
@@ -67,7 +86,6 @@ class Flo:
             image.save(filename)
 
     def validate_invoke(self, session: FloSession):
-        async_coroutines = filter(lambda x: (hasattr(x, "coroutine") and asyncio.iscoroutinefunction(x.coroutine)) ,session.tools.values())
+        async_coroutines = filter(lambda x: (hasattr(x, "coroutine") and asyncio.iscoroutinefunction(x.coroutine)), session.tools.values())
         if len(list(async_coroutines)) > 0:
             raise FloException(f"""You seem to have atleast one async tool registered in this session. Please use flo.async_invoke or flo.async_stream. Checkout {DOCUMENTATION_WEBSITE}""")
-        

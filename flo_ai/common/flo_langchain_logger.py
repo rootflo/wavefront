@@ -1,53 +1,49 @@
 from typing import Any, Dict, List, Union
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain.schema import AgentAction, AgentFinish, LLMResult
-from flo_ai.common.flo_logger import get_logger, FloLogConfig
-from typing import Optional
+from flo_ai.common.flo_logger import get_logger
 
 class FloLangchainLogger(BaseCallbackHandler):
 
     def __init__(self, 
-                 session_id: str,
-                 logger_name: Optional[str] = "FloLangChainLogger", 
-                 log_level: Optional[str] = "WARN"):
-        self.logger = get_logger(FloLogConfig(logger_name, log_level))
+                 session_id: str):
         self.session_id = session_id
 
     def on_llm_start(self, serialized: Dict[str, Any], prompts: List[str], **kwargs: Any) -> None:
-        self.logger.debug(f"Session ID: {self.session_id}: onLLMStart: {prompts}")
+        get_logger().debug(f"onLLMStart: {prompts}", self)
 
     def on_llm_new_token(self, token: str, **kwargs: Any) -> None:
-        self.logger.debug(f"Session ID: {self.session_id}: onNewToken: {token}")
+        get_logger().debug(f"onNewToken: {token}", self)
 
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
-        self.logger.debug(f"Session ID: {self.session_id}: onLLMEnd: {response.generations}")
+        get_logger().debug(f"onLLMEnd: {response.generations}", self)
 
     def on_llm_error(self, error: Union[Exception, KeyboardInterrupt], **kwargs: Any) -> None:
-        self.logger.error(f"Session ID: {self.session_id}: onLLMError: {error}")
+        get_logger().debug(f"onLLMEnd: {error}", self)
 
     def on_chain_start(self, serialized: Dict[str, Any], inputs: Dict[str, Any], **kwargs: Any) -> None:
-        self.logger.debug(f"Session ID: {self.session_id}: onChainStart: {inputs}")
+        get_logger().debug(f"onChainStart: {inputs}", self)
 
     def on_chain_end(self, outputs: Dict[str, Any], **kwargs: Any) -> None:
-        self.logger.debug(f"Session ID: {self.session_id}: onChainEnd: {outputs}")
+        get_logger().debug(f"onChainEnd: {outputs}", self)
 
     def on_chain_error(self, error: Union[Exception, KeyboardInterrupt], **kwargs: Any) -> None:
-        self.logger.error(f"Session ID: {self.session_id}: onChainError: {error}")
+        get_logger().debug(f"onChainError: {error}", self)
 
     def on_tool_start(self, serialized: Dict[str, Any], input_str: str, **kwargs: Any) -> None:
-        self.logger.debug(f"Session ID: {self.session_id}: onToolStart: {input_str}")
+        get_logger().debug(f"onToolStart: {input_str}", self)
 
     def on_tool_end(self, output: str, **kwargs: Any) -> None:
-        self.logger.debug(f"Session ID: {self.session_id}: onToolEnd: {output}")
+        get_logger().debug(f"onToolEnd: {output}", self)
 
     def on_tool_error(self, error: Union[Exception, KeyboardInterrupt], **kwargs: Any) -> None:
-        self.logger.error(f"Session ID: {self.session_id}: onToolError: {error}")
+        get_logger().debug(f"onToolError: {error}", self)
 
     def on_text(self, text: str, **kwargs: Any) -> None:
-        self.logger.debug(f"Session ID: {self.session_id}: onText: {text}")
+        get_logger().debug(f"onText: {text}", self)
 
     def on_agent_action(self, action: AgentAction, **kwargs: Any) -> Any:
-        self.logger.debug(f"Session ID: {self.session_id}: onAgentAction: {action.tool} - {action.tool_input}")
+        get_logger().debug(f"onAgentAction: {action.tool} - {action.tool_input}", self)
 
     def on_agent_finish(self, finish: AgentFinish, **kwargs: Any) -> None:
-        self.logger.debug(f"Session ID: {self.session_id}: onAgentFinish: {finish.return_values}")
+        get_logger().debug(f"onAgentFinish: {finish.return_values}", self)

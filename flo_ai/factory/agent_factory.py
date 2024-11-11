@@ -27,7 +27,7 @@ class AgentFactory():
         if kind is not None:
             agent_kind = getattr(AgentKinds, kind, None)
             if agent_kind is None:
-                raise ValueError(f"""Unknown agent kind: `{kind}`. The supported types are llm, tool, reflection, delegator or agentic. 
+                raise FloException(f"""Unknown agent kind: `{kind}`. The supported types are llm, tool, reflection, delegator or agentic. 
                             Check the documentation @ {DOCUMENTATION_AGENT_ANCHOR}""")
             match(agent_kind):
                 case AgentKinds.llm:

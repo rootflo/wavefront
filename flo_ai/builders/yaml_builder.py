@@ -6,7 +6,7 @@ from flo_ai.router.flo_router_factory import FloRouterFactory
 from flo_ai.factory.agent_factory import AgentFactory
 from flo_ai.error.flo_exception import FloException
 from flo_ai.yaml.validators import raise_for_name_error
-from flo_ai.common.flo_logger import builder_logger
+from flo_ai.common.flo_logger import get_logger
 
 def build_supervised_team(session: FloSession) -> ExecutableFlo:
     name_set = set()
@@ -17,16 +17,16 @@ def build_supervised_team(session: FloSession) -> ExecutableFlo:
         return team
     elif isinstance(flo_config, FloAgentConfig):
         agent_config: AgentConfig = flo_config.agent
-        validate_names(name_set, agent_config.name)
+        validate_names(name_set, agent_config.name, session)
         agent = AgentFactory.create(session, agent_config)
         return agent
     
-def validate_team(name_set: set, team_config: TeamConfig):
-    validate_names(name_set, team_config.name)
+def validate_team(name_set: set, team_config: TeamConfig, session: FloSession):
+    validate_names(name_set, team_config.name, session)
 
 def parse_and_build_subteams(session: FloSession, team_config: TeamConfig, name_set = set()) -> ExecutableFlo:
     flo_team = None
-    validate_team(name_set, team_config)
+    validate_team(name_set, team_config, session)
     if team_config.agents:
         members = [AgentFactory.create(session, agent) for agent in team_config.agents]
         flo_team = FloTeam.Builder(team_config, members=members).build()
@@ -42,9 +42,9 @@ def parse_and_build_subteams(session: FloSession, team_config: TeamConfig, name_
         flo_routed_team = router.build_routed_team()
     return flo_routed_team
 
-def validate_names(name_set: set, name):
+def validate_names(name_set: set, name, session: FloSession):
     raise_for_name_error(name)
     if name in name_set:
-        builder_logger.error(f"Duplicate name found: '{name}'")
+        get_logger().error(f"Duplicate name found: '{name}'", session)
         raise FloException(f"The name '{name}' is duplicate in the config. Make sure all teams and agents have unique names")
     name_set.add(name)

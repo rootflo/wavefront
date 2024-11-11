@@ -1,6 +1,4 @@
-import os
-from flo_ai.core import Flo
-from flo_ai import FloSession
+from flo_ai import FloSession, Flo
 from langchain_openai import ChatOpenAI
 from langchain_community.tools.tavily_search.tool import TavilySearchResults
 from dotenv import load_dotenv
@@ -40,6 +38,8 @@ session = FloSession(llm, log_level="INFO").register_tool(
     name="DummyTool", 
     tool=TavilySearchResults(description="Tool is a dummy tool, dont use this")
 )
-flo: Flo = Flo.build(session, yaml=yaml_data, log_level="INFO")
-data = flo.invoke(input_prompt)
-print((data['messages'][-1]).content)
+
+Flo.set_log_level("INFO")
+flo: Flo = Flo.build(session, yaml=yaml_data)
+# data = flo.invoke(input_prompt)
+# print((data['messages'][-1]).content)
