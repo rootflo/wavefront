@@ -10,72 +10,69 @@ from langchain_core.language_models import BaseLanguageModel
 
 
 class FloDelegatorAgent(ExecutableFlo):
-
-    def __init__(self, 
-                 executor: Runnable, 
-                 config: AgentConfig) -> None:
+    def __init__(self, executor: Runnable, config: AgentConfig) -> None:
         super().__init__(config.name, executor, ExecutableType.delegator)
         self.executor: Runnable = executor
         self.config: AgentConfig = config
 
-   
-    class Builder():
-        def __init__(self, 
-                     session: FloSession,
-                     agentConfig: AgentConfig,
-                     llm: Optional[BaseLanguageModel] = None) -> None:
+    class Builder:
+        def __init__(
+            self,
+            session: FloSession,
+            agentConfig: AgentConfig,
+            llm: Optional[BaseLanguageModel] = None,
+        ) -> None:
             self.config = agentConfig
             delegator_base_system_message = (
-                "You are a delegator tasked with routing a conversation between the"
-                " following {member_type}: {members}. Given the following rules,"
-                " respond with the worker to act next "
+                'You are a delegator tasked with routing a conversation between the'
+                ' following {member_type}: {members}. Given the following rules,'
+                ' respond with the worker to act next '
             )
             self.llm = session.llm if llm is None else llm
             self.options = [x.name for x in agentConfig.to]
             self.llm_router_prompt = ChatPromptTemplate.from_messages(
                 [
-                    ("system", delegator_base_system_message),
-                    MessagesPlaceholder(variable_name="messages"),
-                    ("system", "Rules: {delegator_rules}"),
+                    ('system', delegator_base_system_message),
+                    MessagesPlaceholder(variable_name='messages'),
+                    ('system', 'Rules: {delegator_rules}'),
                     (
-                        "system",
-                        "Given the conversation above, who should act next?"
-                        "Select one of: {options}",
+                        'system',
+                        'Given the conversation above, who should act next?'
+                        'Select one of: {options}',
                     ),
                 ]
             ).partial(
-                options=str(self.options), 
-                members=", ".join(self.options), 
-                member_type="agents", 
-                delegator_rules=agentConfig.job
+                options=str(self.options),
+                members=', '.join(self.options),
+                member_type='agents',
+                delegator_rules=agentConfig.job,
             )
 
         def build(self):
             function_def = {
-                "name": "route",
-                "description": "Select the next role.",
-                "parameters": {
-                    "title": "routeSchema",
-                    "type": "object",
-                    "properties": {
-                        "next": {
-                            "title": "Next",
-                            "anyOf": [
-                                {"enum": self.options},
+                'name': 'route',
+                'description': 'Select the next role.',
+                'parameters': {
+                    'title': 'routeSchema',
+                    'type': 'object',
+                    'properties': {
+                        'next': {
+                            'title': 'Next',
+                            'anyOf': [
+                                {'enum': self.options},
                             ],
                         }
                     },
-                    "required": ["next"],
-                }
+                    'required': ['next'],
+                },
             }
-                
+
             chain = (
                 self.llm_router_prompt
-                | self.llm.bind_functions(functions=[function_def], function_call="route")
+                | self.llm.bind_functions(
+                    functions=[function_def], function_call='route'
+                )
                 | JsonOutputFunctionsParser()
             )
 
-            return FloDelegatorAgent(executor = chain, 
-                                config=self.config)
-        
-        
+            return FloDelegatorAgent(executor=chain, config=self.config)

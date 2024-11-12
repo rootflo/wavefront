@@ -2,8 +2,8 @@ from flo_ai.models.flo_executable import ExecutableFlo
 from langgraph.graph.graph import CompiledGraph
 from flo_ai.yaml.config import TeamConfig
 
-class FloRoutedTeam(ExecutableFlo):
 
+class FloRoutedTeam(ExecutableFlo):
     def __init__(self, name: str, graph: CompiledGraph, config: TeamConfig) -> None:
         super().__init__(name, graph)
         self.config = config

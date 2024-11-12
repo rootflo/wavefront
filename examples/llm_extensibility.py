@@ -1,14 +1,15 @@
-import os
 from flo_ai import Flo
 from flo_ai import FloSession
 from pydantic import BaseModel, Field
-from langchain_openai import ChatOpenAI, AzureChatOpenAI
+from langchain_openai import ChatOpenAI
 from flo_ai.tools.flo_tool import flotool
 
 from dotenv import load_dotenv
+import warnings
+
 load_dotenv()
 
-import warnings
+
 warnings.simplefilter('default', DeprecationWarning)
 
 gpt35 = ChatOpenAI(temperature=0, model_name='gpt-3.5-turbo')
@@ -16,19 +17,28 @@ gpt_4o_mini = ChatOpenAI(temperature=0, model_name='gpt-4o-mini')
 gpt_4o = ChatOpenAI(temperature=0, model_name='gpt-4o')
 session = FloSession(gpt35)
 
-session.register_model("bronze", gpt35)
-session.register_model("silver", gpt_4o_mini)
-session.register_model("gold", gpt_4o)
+session.register_model('bronze', gpt35)
+session.register_model('silver', gpt_4o_mini)
+session.register_model('gold', gpt_4o)
+
 
 class SendEmailInput(BaseModel):
-    to: str = Field(description="Comma seperared list of users emails to which email needs to be sent")
-    message: str = Field(description="The email text to be sent")
+    to: str = Field(
+        description='Comma seperared list of users emails to which email needs to be sent'
+    )
+    message: str = Field(description='The email text to be sent')
 
-@flotool("email_triage", "useful for when you need to send an email to someone", argument_contract=SendEmailInput)
+
+@flotool(
+    'email_triage',
+    'useful for when you need to send an email to someone',
+    argument_contract=SendEmailInput,
+)
 def email_tool(to: str, message: str):
-    return f"Email sent successfully to: {to}"
+    return f'Email sent successfully to: {to}'
 
-session.register_tool("SendEmailTool", email_tool)
+
+session.register_tool('SendEmailTool', email_tool)
 
 agent_yaml = """
 apiVersion: flo/alpha-v1
@@ -70,10 +80,6 @@ Please invite these nice folks to my christmas party
 
 flo: Flo = Flo.build(session, yaml=agent_yaml)
 for s in flo.stream(input_prompt):
-     if "__end__" not in s:
+    if '__end__' not in s:
         print(s)
-        print("----")
-
-
-
-
+        print('----')

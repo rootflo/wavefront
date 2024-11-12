@@ -10,46 +10,54 @@ from typing import Union, Optional, Callable
 from flo_ai.yaml.config import AgentConfig
 from flo_ai.models.flo_executable import ExecutableType
 
+
 class FloAgent(ExecutableFlo):
-    def __init__(self,
-                 agent: Runnable, 
-                 executor: AgentExecutor, 
-                 config: AgentConfig) -> None:
+    def __init__(
+        self, agent: Runnable, executor: AgentExecutor, config: AgentConfig
+    ) -> None:
         super().__init__(config.name, executor, ExecutableType.agentic)
-        self.agent: Runnable =  agent,
+        self.agent: Runnable = (agent,)
         self.executor: AgentExecutor = executor
         self.config: AgentConfig = config
 
     class Builder:
-        def __init__(self, 
-                    session: FloSession,
-                    config: AgentConfig,
-                    tools: list[BaseTool],
-                    verbose: bool = True,
-                    role: Optional[str] = None,
-                    llm: Union[BaseLanguageModel, None] =  None,
-                    on_error: Union[str, Callable] = True) -> None:
-            
+        def __init__(
+            self,
+            session: FloSession,
+            config: AgentConfig,
+            tools: list[BaseTool],
+            verbose: bool = True,
+            role: Optional[str] = None,
+            llm: Union[BaseLanguageModel, None] = None,
+            on_error: Union[str, Callable] = True,
+        ) -> None:
             prompt: Union[ChatPromptTemplate, str] = config.job
             self.name: str = config.name
             self.llm = llm if llm is not None else session.llm
             self.config = config
-            system_prompts = [("system", "You are a {}".format(role)), ("system", prompt)] if role is not None else [("system", prompt)]
-            system_prompts.append(MessagesPlaceholder(variable_name="messages"))
-            system_prompts.append(MessagesPlaceholder(variable_name="agent_scratchpad"))
-            self.prompt: ChatPromptTemplate = ChatPromptTemplate.from_messages(
-                system_prompts
-            ) if isinstance(prompt, str) else prompt
+            system_prompts = (
+                [('system', 'You are a {}'.format(role)), ('system', prompt)]
+                if role is not None
+                else [('system', prompt)]
+            )
+            system_prompts.append(MessagesPlaceholder(variable_name='messages'))
+            system_prompts.append(MessagesPlaceholder(variable_name='agent_scratchpad'))
+            self.prompt: ChatPromptTemplate = (
+                ChatPromptTemplate.from_messages(system_prompts)
+                if isinstance(prompt, str)
+                else prompt
+            )
             self.tools: list[BaseTool] = tools
             self.verbose = verbose
             self.on_error = on_error
 
-
         def build(self) -> AgentExecutor:
             agent = create_tool_calling_agent(self.llm, self.tools, self.prompt)
-            executor = AgentExecutor(agent=agent, 
-                                tools=self.tools, 
-                                verbose=self.verbose, 
-                                return_intermediate_steps=True, 
-                                handle_parsing_errors=self.on_error)
+            executor = AgentExecutor(
+                agent=agent,
+                tools=self.tools,
+                verbose=self.verbose,
+                return_intermediate_steps=True,
+                handle_parsing_errors=self.on_error,
+            )
             return FloAgent(agent, executor, self.config)

@@ -8,58 +8,93 @@ from flo_ai.yaml.config import AgentConfig, TeamConfig
 from flo_ai.models.flo_executable import ExecutableType
 from typing import Union
 
-class FloNode():
 
-    def __init__(self, 
-                 func: functools.partial, 
-                 name: str,
-                 kind: ExecutableType,
-                 config: Union[AgentConfig | TeamConfig]) -> None:
+class FloNode:
+    def __init__(
+        self,
+        func: functools.partial,
+        name: str,
+        kind: ExecutableType,
+        config: Union[AgentConfig | TeamConfig],
+    ) -> None:
         self.name = name
         self.func = func
         self.kind: ExecutableType = kind
         self.config: Union[AgentConfig | TeamConfig] = config
 
-    class Builder():
-
+    class Builder:
         def build_from_agent(self, flo_agent: FloAgent) -> 'FloNode':
-            agent_func = functools.partial(FloNode.Builder.__teamflo_agent_node, agent=flo_agent.runnable, name=flo_agent.name, agent_config=flo_agent.config)
+            agent_func = functools.partial(
+                FloNode.Builder.__teamflo_agent_node,
+                agent=flo_agent.runnable,
+                name=flo_agent.name,
+                agent_config=flo_agent.config,
+            )
             return FloNode(agent_func, flo_agent.name, flo_agent.type, flo_agent.config)
-        
+
         def build_from_team(self, flo_team: FloRoutedTeam) -> 'FloNode':
-            team_chain = (functools.partial(FloNode.Builder.__teamflo_team_node, members=flo_team.runnable.nodes) | flo_team.runnable)
-            return FloNode((
-                FloNode.Builder.__get_last_message | team_chain | FloNode.Builder.__join_graph
-            ), flo_team.name, flo_team.type, flo_team.config)
-        
+            team_chain = (
+                functools.partial(
+                    FloNode.Builder.__teamflo_team_node, members=flo_team.runnable.nodes
+                )
+                | flo_team.runnable
+            )
+            return FloNode(
+                (
+                    FloNode.Builder.__get_last_message
+                    | team_chain
+                    | FloNode.Builder.__join_graph
+                ),
+                flo_team.name,
+                flo_team.type,
+                flo_team.config,
+            )
+
         def build_from_router(self, flo_router) -> 'FloNode':
-            router_func = functools.partial(FloNode.Builder.__teamflo_router_node, agent=flo_router.executor, name=flo_router.router_name, agent_config=flo_router.config)
-            return FloNode(router_func, flo_router.router_name, flo_router.type, flo_router.config)
+            router_func = functools.partial(
+                FloNode.Builder.__teamflo_router_node,
+                agent=flo_router.executor,
+                name=flo_router.router_name,
+                agent_config=flo_router.config,
+            )
+            return FloNode(
+                router_func, flo_router.router_name, flo_router.type, flo_router.config
+            )
 
         @staticmethod
-        def __teamflo_agent_node(state: TeamFloAgentState, agent: AgentExecutor, name: str, agent_config: AgentConfig):
+        def __teamflo_agent_node(
+            state: TeamFloAgentState,
+            agent: AgentExecutor,
+            name: str,
+            agent_config: AgentConfig,
+        ):
             result = agent.invoke(state)
-            output = result if isinstance(result, str) else result["output"]
-            return { STATE_NAME_MESSAGES: [HumanMessage(content=output, name=name)] }
-        
+            output = result if isinstance(result, str) else result['output']
+            return {STATE_NAME_MESSAGES: [HumanMessage(content=output, name=name)]}
+
         @staticmethod
-        def __teamflo_router_node(state: TeamFloAgentState, agent: AgentExecutor, name: str, agent_config: AgentConfig):
+        def __teamflo_router_node(
+            state: TeamFloAgentState,
+            agent: AgentExecutor,
+            name: str,
+            agent_config: AgentConfig,
+        ):
             result = agent.invoke(state)
-            nextNode = result if isinstance(result, str) else result["next"]
-            return { "next": nextNode }
+            nextNode = result if isinstance(result, str) else result['next']
+            return {'next': nextNode}
 
         @staticmethod
         def __get_last_message(state: TeamFloAgentState) -> str:
             return state[STATE_NAME_MESSAGES][-1].content
-        
+
         @staticmethod
         def __join_graph(response: dict):
-            return { STATE_NAME_MESSAGES: [ response[STATE_NAME_MESSAGES][-1] ] }
-        
+            return {STATE_NAME_MESSAGES: [response[STATE_NAME_MESSAGES][-1]]}
+
         @staticmethod
         def __teamflo_team_node(message: str, members: list[str]):
             results = {
                 STATE_NAME_MESSAGES: [HumanMessage(content=message)],
-                "team_members": ", ".join(members),
+                'team_members': ', '.join(members),
             }
             return results

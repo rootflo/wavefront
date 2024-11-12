@@ -1,9 +1,9 @@
-from flo_ai import Flo
 from flo_ai.core import Flo
 from langchain_openai import ChatOpenAI
 from flo_ai import FloSession
 from langchain_community.tools.tavily_search.tool import TavilySearchResults
 from dotenv import load_dotenv
+
 load_dotenv()
 
 yaml_data = """
@@ -47,6 +47,6 @@ Question: Write me an interesting blog about latest advancements in agentic AI
 
 llm = ChatOpenAI(temperature=0, model_name='gpt-4o')
 session = FloSession(llm).register_tool(
-    name="TavilySearchResults", tool=TavilySearchResults()
+    name='TavilySearchResults', tool=TavilySearchResults()
 )
 flo: Flo = Flo.build(session, yaml=yaml_data)

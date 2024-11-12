@@ -5,39 +5,39 @@ from pydantic import BaseModel, Field
 from typing import List
 from dotenv import load_dotenv
 from flo_ai.tools.flo_tool import flotool
+import asyncio
 
 load_dotenv()
 
 llm = ChatOpenAI(temperature=0, model_name='gpt-4o-mini')
 
-session = FloSession(
-    llm, 
-    log_level="ERROR"
-)
+session = FloSession(llm, log_level='ERROR')
+
 
 class AdditionToolInput(BaseModel):
-    numbers: List[int] = Field(..., description="List of numbers to add")
+    numbers: List[int] = Field(..., description='List of numbers to add')
 
-import asyncio
+
 # Use flotool to define the tool function
-@flotool(name="AdditionTool", description="Tool to add numbers")
+@flotool(name='AdditionTool', description='Tool to add numbers')
 async def addition_tool(numbers: List[int]) -> str:
     result = sum(numbers)
-    await asyncio.sleep(1) 
-    return f"The sum is {result}"
+    await asyncio.sleep(1)
+    return f'The sum is {result}'
 
-@flotool(name="MultiplicationTool", description="Tool to multiply numbers to get product of numbers")
+
+@flotool(
+    name='MultiplicationTool',
+    description='Tool to multiply numbers to get product of numbers',
+)
 def mul_tool(numbers: List[int]) -> str:
     result = sum(numbers)
-    # await asyncio.sleep(1) 
-    return f"The product is {result}"
+    # await asyncio.sleep(1)
+    return f'The product is {result}'
 
-session.register_tool(
-    name="Adder", 
-    tool=addition_tool
-).register_tool(
-    name="Multiplier", 
-    tool=mul_tool
+
+session.register_tool(name='Adder', tool=addition_tool).register_tool(
+    name='Multiplier', tool=mul_tool
 )
 
 simple_weather_checking_agent = """
@@ -54,15 +54,17 @@ agent:
       - name: Multiplier
 """
 
-from IPython.display import Image, display
-flo = Flo.build(session, simple_weather_checking_agent, log_level="ERROR")
 
-import asyncio
+flo = Flo.build(session, simple_weather_checking_agent, log_level='ERROR')
+
 
 # Assuming flo.ainvoke is your async method for invoking the tool or chain
 async def invoke_main():
-    result = await flo.async_invoke("Whats the sum of 1, 3, 4, 5 and 6, and their product")
+    result = await flo.async_invoke(
+        'Whats the sum of 1, 3, 4, 5 and 6, and their product'
+    )
     print(result)
+
 
 asyncio.run(invoke_main())
 
@@ -77,6 +79,3 @@ asyncio.run(invoke_main())
 #             print("----")
 
 # asyncio.run(stream_main())
-
-
-
