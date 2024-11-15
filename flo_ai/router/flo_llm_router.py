@@ -20,10 +20,19 @@ class NextAgent(BaseModel):
 
 class FloLLMRouter(FloRouter):
     def __init__(
-        self, session: FloSession, executor: Runnable, flo_team: FloTeam, name: str
+        self,
+        session: FloSession,
+        executor: Runnable,
+        flo_team: FloTeam,
+        name: str,
+        model_name: str,
     ) -> None:
         super().__init__(
-            session=session, name=name, flo_team=flo_team, executor=executor
+            session=session,
+            name=name,
+            flo_team=flo_team,
+            executor=executor,
+            model_name=model_name,
         )
 
     def build_graph(self):

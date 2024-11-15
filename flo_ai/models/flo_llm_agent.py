@@ -10,10 +10,13 @@ from flo_ai.models.flo_executable import ExecutableType
 
 
 class FloLLMAgent(ExecutableFlo):
-    def __init__(self, executor: Runnable, config: AgentConfig) -> None:
+    def __init__(
+        self, executor: Runnable, config: AgentConfig, model_name: str
+    ) -> None:
         super().__init__(config.name, executor, ExecutableType.llm)
         self.executor: Runnable = executor
         self.config: AgentConfig = config
+        self.model_name: str = model_name
 
     class Builder:
         def __init__(
@@ -21,7 +24,9 @@ class FloLLMAgent(ExecutableFlo):
             session: FloSession,
             config: AgentConfig,
             llm: Union[BaseLanguageModel, None] = None,
+            model_name: str = None,
         ) -> None:
+            self.model_name = model_name
             prompt: Union[ChatPromptTemplate, str] = config.job
 
             self.name: str = config.name
@@ -42,4 +47,4 @@ class FloLLMAgent(ExecutableFlo):
 
         def build(self) -> Runnable:
             executor = self.prompt | self.llm | StrOutputParser()
-            return FloLLMAgent(executor, self.config)
+            return FloLLMAgent(executor, self.config, self.model_name)

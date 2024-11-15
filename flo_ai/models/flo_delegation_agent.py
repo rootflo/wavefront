@@ -10,10 +10,13 @@ from langchain_core.language_models import BaseLanguageModel
 
 
 class FloDelegatorAgent(ExecutableFlo):
-    def __init__(self, executor: Runnable, config: AgentConfig) -> None:
+    def __init__(
+        self, executor: Runnable, config: AgentConfig, model_name: str
+    ) -> None:
         super().__init__(config.name, executor, ExecutableType.delegator)
         self.executor: Runnable = executor
         self.config: AgentConfig = config
+        self.model_name = model_name
 
     class Builder:
         def __init__(
@@ -21,6 +24,7 @@ class FloDelegatorAgent(ExecutableFlo):
             session: FloSession,
             agentConfig: AgentConfig,
             llm: Optional[BaseLanguageModel] = None,
+            model_name: str = None,
         ) -> None:
             self.config = agentConfig
             delegator_base_system_message = (
@@ -28,6 +32,7 @@ class FloDelegatorAgent(ExecutableFlo):
                 ' following {member_type}: {members}. Given the following rules,'
                 ' respond with the worker to act next '
             )
+            self.model_name = model_name
             self.llm = session.llm if llm is None else llm
             self.options = [x.name for x in agentConfig.to]
             self.llm_router_prompt = ChatPromptTemplate.from_messages(
@@ -75,4 +80,6 @@ class FloDelegatorAgent(ExecutableFlo):
                 | JsonOutputFunctionsParser()
             )
 
-            return FloDelegatorAgent(executor=chain, config=self.config)
+            return FloDelegatorAgent(
+                executor=chain, config=self.config, model_name=self.model_name
+            )

@@ -33,7 +33,7 @@ Question: Write me an interesting blog about latest advancements in agentic AI b
 
 llm = ChatOpenAI(temperature=0, model_name='gpt-4o-mini')
 session = (
-    FloSession(llm, log_level='INFO')
+    FloSession(llm)
     .register_tool(name='TavilySearchResults', tool=TavilySearchResults())
     .register_tool(
         name='DummyTool',
@@ -43,5 +43,5 @@ session = (
 
 Flo.set_log_level('INFO')
 flo: Flo = Flo.build(session, yaml=yaml_data)
-# data = flo.invoke(input_prompt)
+data = flo.invoke(input_prompt)
 # print((data['messages'][-1]).content)

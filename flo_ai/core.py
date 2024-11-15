@@ -16,6 +16,7 @@ from flo_ai.common.flo_logger import (
     set_logger_internal,
     FloLogConfig,
 )
+from langchain.tools import StructuredTool
 
 
 class Flo:
@@ -90,11 +91,14 @@ class Flo:
     def validate_invoke(self, session: FloSession):
         async_coroutines = filter(
             lambda x: (
-                hasattr(x, 'coroutine') and asyncio.iscoroutinefunction(x.coroutine)
+                isinstance(x, StructuredTool)
+                and hasattr(x, 'coroutine')
+                and asyncio.iscoroutinefunction(x.coroutine)
             ),
             session.tools.values(),
         )
-        if len(list(async_coroutines)) > 0:
+        async_tools = list(async_coroutines)
+        if len(async_tools) > 0:
             raise FloException(
                 f"""You seem to have atleast one async tool registered in this session. Please use flo.async_invoke or flo.async_stream. Checkout {DOCUMENTATION_WEBSITE}"""
             )

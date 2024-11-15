@@ -13,9 +13,14 @@ from flo_ai.models.flo_executable import ExecutableType
 
 class FloAgent(ExecutableFlo):
     def __init__(
-        self, agent: Runnable, executor: AgentExecutor, config: AgentConfig
+        self,
+        agent: Runnable,
+        executor: AgentExecutor,
+        config: AgentConfig,
+        model_nick_name: str,
     ) -> None:
         super().__init__(config.name, executor, ExecutableType.agentic)
+        self.model_name = model_nick_name
         self.agent: Runnable = (agent,)
         self.executor: AgentExecutor = executor
         self.config: AgentConfig = config
@@ -30,9 +35,11 @@ class FloAgent(ExecutableFlo):
             role: Optional[str] = None,
             llm: Union[BaseLanguageModel, None] = None,
             on_error: Union[str, Callable] = True,
+            model_name: Union[str, None] = 'default',
         ) -> None:
             prompt: Union[ChatPromptTemplate, str] = config.job
             self.name: str = config.name
+            self.model_name = model_name
             self.llm = llm if llm is not None else session.llm
             self.config = config
             system_prompts = (
@@ -60,4 +67,6 @@ class FloAgent(ExecutableFlo):
                 return_intermediate_steps=True,
                 handle_parsing_errors=self.on_error,
             )
-            return FloAgent(agent, executor, self.config)
+            return FloAgent(
+                agent, executor, self.config, model_nick_name=self.model_name
+            )

@@ -29,6 +29,7 @@ class FloRouter(ABC):
         flo_team: FloTeam,
         executor,
         config: TeamConfig = None,
+        model_name: Union[str, None] = 'default',
     ):
         self.router_name = name
         self.session: FloSession = session
@@ -38,6 +39,7 @@ class FloRouter(ABC):
         self.type: ExecutableType = ExecutableType.router
         self.executor = executor
         self.config = config
+        self.model_name = model_name
 
     def build_routed_team(self) -> FloRoutedTeam:
         return self.build_graph()
@@ -47,7 +49,7 @@ class FloRouter(ABC):
         pass
 
     def build_node(self, flo_member: FloMember) -> FloNode:
-        node_builder = FloNode.Builder()
+        node_builder = FloNode.Builder(self.session)
         if flo_member.type == ExecutableType.router:
             return node_builder.build_from_router(flo_member)
         if flo_member.type == ExecutableType.team:
@@ -56,7 +58,7 @@ class FloRouter(ABC):
             return FloNode(
                 flo_member.executor, flo_member.name, flo_member.type, flo_member.config
             )
-        node_builder = FloNode.Builder()
+        node_builder = FloNode.Builder(self.session)
         return node_builder.build_from_agent(flo_member)
 
     def router_fn(self, state: TeamFloAgentState):

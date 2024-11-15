@@ -10,9 +10,12 @@ from langchain_core.output_parsers import StrOutputParser
 
 
 class FloReflectionAgent(ExecutableFlo):
-    def __init__(self, executor: Runnable, config: AgentConfig) -> None:
+    def __init__(
+        self, executor: Runnable, config: AgentConfig, model_name: str
+    ) -> None:
         super().__init__(config.name, executor, ExecutableType.reflection)
         self.config = config
+        self.model_name = model_name
 
     class Builder:
         def __init__(
@@ -20,11 +23,13 @@ class FloReflectionAgent(ExecutableFlo):
             session: FloSession,
             config: AgentConfig,
             llm: Union[BaseLanguageModel, None] = None,
+            model_name: str = None,
         ) -> None:
             prompt_message: Union[ChatPromptTemplate, str] = config.job
             self.name: str = config.name
             self.llm = llm if llm is not None else session.llm
             self.config = config
+            self.model_name = model_name
 
             system_prompts = (
                 [
@@ -43,4 +48,4 @@ class FloReflectionAgent(ExecutableFlo):
 
         def build(self):
             executor = self.prompt | self.llm | StrOutputParser()
-            return FloReflectionAgent(executor, self.config)
+            return FloReflectionAgent(executor, self.config, self.model_name)

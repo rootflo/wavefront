@@ -60,21 +60,30 @@ class AgentFactory:
         agent_model = AgentFactory.__resolve_model(session, agent.model)
         tools = [tool_map[tool.name] for tool in agent.tools]
         flo_agent: FloAgent = FloAgent.Builder(
-            session, agent, tools, llm=agent_model, on_error=session.on_agent_error
+            session,
+            agent,
+            tools,
+            llm=agent_model,
+            on_error=session.on_agent_error,
+            model_name=agent.model,
         ).build()
         return flo_agent
 
     @staticmethod
     def __create_llm_agent(session: FloSession, agent: AgentConfig) -> FloLLMAgent:
         agent_model = AgentFactory.__resolve_model(session, agent.model)
-        builder = FloLLMAgent.Builder(session, agent, llm=agent_model)
+        builder = FloLLMAgent.Builder(
+            session, agent, llm=agent_model, model_name=agent.model
+        )
         llm_agent: FloLLMAgent = builder.build()
         return llm_agent
 
     @staticmethod
     def __create_runnable_agent(session: FloSession, agent: AgentConfig) -> FloLLMAgent:
         runnable = session.tools[agent.tools[0].name]
-        return FloToolAgent.Builder(session, agent, runnable).build()
+        return FloToolAgent.Builder(
+            session, agent, runnable, model_name=agent.model
+        ).build()
 
     @staticmethod
     def __create_reflection_agent(

@@ -6,6 +6,11 @@ from flo_ai.common.flo_logger import get_logger
 from flo_ai.common.flo_langchain_logger import FloLangchainLogger
 from flo_ai.yaml.config import FloRoutedTeamConfig, FloAgentConfig
 from flo_ai.helpers.utils import random_str
+from flo_ai.state.flo_callbacks import (
+    FloToolCallback,
+    FloAgentCallback,
+    FloRouterCallback,
+)
 
 from typing import Optional
 
@@ -13,7 +18,7 @@ from typing import Optional
 def _handle_agent_error(error) -> str:
     error_message = str(error)[:50]
     return f"""
-            Following error happened while agent execution, please retry with the fix for the same:
+            Following error happened while aogent execution, please retry with the fix for the same:
             {error_message}
         """
 
@@ -26,7 +31,6 @@ class FloSession:
         max_loop: int = 3,
         llm: BaseLanguageModel = None,
         log_level: Optional[str] = None,
-        callbacks: Optional[FloLangchainLogger] = None,
         on_agent_error=_handle_agent_error,
     ) -> None:
         if log_level:
@@ -48,10 +52,10 @@ class FloSession:
         self.loop_size: int = loop_size
         self.max_loop: int = max_loop
         self.on_agent_error = on_agent_error
-
+        self.langchain_logger = FloLangchainLogger(self.session_id)
+        self.callbacks: list = []
         self.config: Union[FloRoutedTeamConfig, FloAgentConfig] = None
         get_logger().info('New session created ...', self)
-        self.langchain_logger = FloLangchainLogger(self.session_id)
 
     def resolve_llm(
         self, default_llm: BaseLanguageModel = None, llm: BaseLanguageModel = None
@@ -75,6 +79,16 @@ class FloSession:
     def register_model(self, name: str, model: BaseLanguageModel):
         self.models[name] = model
         get_logger().info(f"Model '{name}' registered for session {self.session_id}")
+        return self
+
+    def register_callback(
+        self, callback: Union[FloRouterCallback, FloAgentCallback, FloToolCallback]
+    ):
+        self.callbacks.append(callback)
+        tool_callbacks = list(
+            filter(lambda x: isinstance(x, FloToolCallback), self.callbacks)
+        )
+        self.langchain_logger = FloLangchainLogger(self.session_id, tool_callbacks)
         return self
 
     def append(self, node: str) -> int:

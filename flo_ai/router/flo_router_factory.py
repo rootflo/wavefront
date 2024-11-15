@@ -21,13 +21,21 @@ class FloRouterFactory:
         )
         if router_kind == 'supervisor':
             return FloSupervisor.Builder(
-                session, team_config, flo_team, llm=router_model
+                session,
+                team_config,
+                flo_team,
+                llm=router_model,
+                model_nick_name=team_config.router.model,
             ).build()
         elif router_kind == 'linear':
             return FloLinear.Builder(session, team_config, flo_team).build()
         elif router_kind == 'llm':
             return FloLLMRouter.Builder(
-                session, team_config, flo_team, llm=router_model
+                session,
+                team_config,
+                flo_team,
+                llm=router_model,
+                model_nick_name=team_config.router.model,
             ).build()
         else:
             raise Exception(f"""Unknown router type: {router_kind}. 

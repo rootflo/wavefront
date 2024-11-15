@@ -21,10 +21,19 @@ supervisor_system_message = (
 
 class FloSupervisor(FloLLMRouter):
     def __init__(
-        self, session: FloSession, executor: Runnable, flo_team: FloTeam, name: str
+        self,
+        session: FloSession,
+        executor: Runnable,
+        flo_team: FloTeam,
+        name: str,
+        model_name: str = 'default',
     ) -> None:
         super().__init__(
-            session=session, name=name, flo_team=flo_team, executor=executor
+            session=session,
+            name=name,
+            flo_team=flo_team,
+            executor=executor,
+            model_name=model_name,
         )
 
     class Builder:
@@ -34,10 +43,12 @@ class FloSupervisor(FloLLMRouter):
             team_config: TeamConfig,
             flo_team: FloTeam,
             llm: Union[BaseLanguageModel, None] = None,
+            model_nick_name: str = 'default',
         ) -> None:
             self.name = team_config.router.name
             self.session = session
             self.llm = llm if llm is not None else session.llm
+            self.model_name = model_nick_name
             self.flo_team = flo_team
             self.agents = flo_team.members
             self.members = [agent.name for agent in flo_team.members]
@@ -71,4 +82,5 @@ class FloSupervisor(FloLLMRouter):
                 flo_team=self.flo_team,
                 name=self.name,
                 session=self.session,
+                model_name=self.model_name,
             )
