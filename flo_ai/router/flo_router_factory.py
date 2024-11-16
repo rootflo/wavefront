@@ -22,17 +22,17 @@ class FloRouterFactory:
         if router_kind == 'supervisor':
             return FloSupervisor.Builder(
                 session,
-                team_config,
+                team_config.name,
                 flo_team,
                 llm=router_model,
                 model_nick_name=team_config.router.model,
             ).build()
         elif router_kind == 'linear':
-            return FloLinear.Builder(session, team_config, flo_team).build()
+            return FloLinear.Builder(session, team_config.name, flo_team).build()
         elif router_kind == 'llm':
             return FloLLMRouter.Builder(
                 session,
-                team_config,
+                team_config.router.name,
                 flo_team,
                 llm=router_model,
                 model_nick_name=team_config.router.model,

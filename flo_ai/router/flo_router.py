@@ -6,7 +6,6 @@ from flo_ai.models.flo_node import FloNode
 from flo_ai.state.flo_session import FloSession
 from flo_ai.models.flo_team import FloTeam
 from flo_ai.models.flo_member import FloMember
-from flo_ai.yaml.config import TeamConfig
 from flo_ai.models.flo_routed_team import FloRoutedTeam
 from flo_ai.constants.prompt_constants import FLO_FINISH
 from flo_ai.models.flo_executable import ExecutableType
@@ -28,20 +27,18 @@ class FloRouter(ABC):
         name: str,
         flo_team: FloTeam,
         executor,
-        config: TeamConfig = None,
         model_name: Union[str, None] = 'default',
     ):
-        self.router_name = name
+        self.name = name
         self.session: FloSession = session
         self.flo_team: FloTeam = flo_team
         self.members = flo_team.members
         self.member_names = [x.name for x in flo_team.members]
         self.type: ExecutableType = ExecutableType.router
         self.executor = executor
-        self.config = config
         self.model_name = model_name
 
-    def build_routed_team(self) -> FloRoutedTeam:
+    def to_flo(self) -> FloRoutedTeam:
         return self.build_graph()
 
     @abstractmethod
@@ -55,10 +52,9 @@ class FloRouter(ABC):
         if flo_member.type == ExecutableType.team:
             return node_builder.build_from_team(flo_member)
         if flo_member.type == ExecutableType.delegator:
-            return FloNode(
-                flo_member.executor, flo_member.name, flo_member.type, flo_member.config
-            )
-        node_builder = FloNode.Builder(self.session)
+            return node_builder.build_from_delegator(flo_member)
+        if flo_member.type == ExecutableType.reflection:
+            return node_builder.build_from_reflection(flo_member)
         return node_builder.build_from_agent(flo_member)
 
     def router_fn(self, state: TeamFloAgentState):
@@ -84,10 +80,11 @@ class FloRouter(ABC):
         delegation_node: FloNode,
         nextNode: Union[FloNode | str],
     ):
-        to_agent_names = [x.name for x in delegation_node.config.to]
+        to_agent_names = delegation_node.delegate.to
         delegation_node_name = delegation_node.name
         next_node_name = nextNode if isinstance(nextNode, str) else nextNode.name
-        retry = delegation_node.config.retry or 1
+
+        retry = delegation_node.delegate.retry or 1
 
         conditional_map = {}
         for agent_name in to_agent_names:
@@ -134,8 +131,8 @@ class FloRouter(ABC):
         reflection_node: FloNode,
         nextNode: Union[FloNode | str],
     ):
-        to_agent_name = reflection_node.config.to[0].name
-        retry = reflection_node.config.retry or 1
+        to_agent_name = reflection_node.delegate.to[0]
+        retry = reflection_node.delegate.retry or 1
         reflection_agent_name = reflection_node.name
         next = nextNode if isinstance(nextNode, str) else nextNode.name
 

@@ -7,6 +7,7 @@ from flo_ai.models.flo_reflection_agent import FloReflectionAgent
 from flo_ai.models.flo_delegation_agent import FloDelegatorAgent
 from flo_ai.models.flo_tool_agent import FloToolAgent
 from flo_ai.error.flo_exception import FloException
+from flo_ai.models.delegate import Delegate
 from flo_ai.constants.common_constants import DOCUMENTATION_AGENT_ANCHOR
 from enum import Enum
 
@@ -61,8 +62,10 @@ class AgentFactory:
         tools = [tool_map[tool.name] for tool in agent.tools]
         flo_agent: FloAgent = FloAgent.Builder(
             session,
-            agent,
-            tools,
+            name=agent.name,
+            job=agent.job,
+            tools=tools,
+            role=agent.role,
             llm=agent_model,
             on_error=session.on_agent_error,
             model_name=agent.model,
@@ -73,7 +76,12 @@ class AgentFactory:
     def __create_llm_agent(session: FloSession, agent: AgentConfig) -> FloLLMAgent:
         agent_model = AgentFactory.__resolve_model(session, agent.model)
         builder = FloLLMAgent.Builder(
-            session, agent, llm=agent_model, model_name=agent.model
+            session,
+            name=agent.name,
+            job=agent.job,
+            role=agent.role,
+            llm=agent_model,
+            model_name=agent.model,
         )
         llm_agent: FloLLMAgent = builder.build()
         return llm_agent
@@ -82,7 +90,7 @@ class AgentFactory:
     def __create_runnable_agent(session: FloSession, agent: AgentConfig) -> FloLLMAgent:
         runnable = session.tools[agent.tools[0].name]
         return FloToolAgent.Builder(
-            session, agent, runnable, model_name=agent.model
+            session, agent.name, runnable, model_name=agent.model
         ).build()
 
     @staticmethod
@@ -90,11 +98,26 @@ class AgentFactory:
         session: FloSession, agent: AgentConfig
     ) -> FloReflectionAgent:
         agent_model = AgentFactory.__resolve_model(session, agent.model)
-        return FloReflectionAgent.Builder(session, agent, llm=agent_model).build()
+        return FloReflectionAgent.Builder(
+            session,
+            name=agent.name,
+            job=agent.job,
+            role=agent.role,
+            llm=agent_model,
+            to=Delegate([x.name for x in agent.to], agent.retry),
+            model_name=agent.model,
+        ).build()
 
     @staticmethod
     def __create_delegator_agent(
         session: FloSession, agent: AgentConfig
     ) -> FloReflectionAgent:
         agent_model = AgentFactory.__resolve_model(session, agent.model)
-        return FloDelegatorAgent.Builder(session, agent, llm=agent_model).build()
+        return FloDelegatorAgent.Builder(
+            session,
+            agent.name,
+            agent.job,
+            delegate=Delegate([x.name for x in agent.to], agent.retry),
+            llm=agent_model,
+            model_name=agent.model,
+        ).build()

@@ -1,12 +1,10 @@
 from flo_ai.models.flo_executable import ExecutableFlo
 from langgraph.graph.graph import CompiledGraph
-from flo_ai.yaml.config import TeamConfig
 
 
 class FloRoutedTeam(ExecutableFlo):
-    def __init__(self, name: str, graph: CompiledGraph, config: TeamConfig) -> None:
+    def __init__(self, name: str, graph: CompiledGraph) -> None:
         super().__init__(name, graph)
-        self.config = config
 
     # Overridden for xray use, doesnt work in base class
     def draw(self, xray=True):

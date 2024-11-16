@@ -9,7 +9,6 @@ from flo_ai.models.flo_team import FloTeam
 from flo_ai.models.flo_routed_team import FloRoutedTeam
 from langgraph.graph import StateGraph
 from flo_ai.state.flo_state import TeamFloAgentState
-from flo_ai.yaml.config import TeamConfig
 from langchain_core.output_parsers import JsonOutputParser
 from pydantic import BaseModel, Field
 
@@ -40,24 +39,25 @@ class FloLLMRouter(FloRouter):
         workflow = StateGraph(TeamFloAgentState)
         for flo_agent_node in flo_agent_nodes:
             workflow.add_node(flo_agent_node.name, flo_agent_node.func)
-        workflow.add_node(self.router_name, self.build_node(self).func)
+
+        workflow.add_node(self.name, self.build_node(self).func)
         for member in self.member_names:
-            workflow.add_edge(member, self.router_name)
-        workflow.add_conditional_edges(self.router_name, self.router_fn)
-        workflow.set_entry_point(self.router_name)
+            workflow.add_edge(member, self.name)
+        workflow.add_conditional_edges(self.name, self.router_fn)
+        workflow.set_entry_point(self.name)
         workflow_graph = workflow.compile()
-        return FloRoutedTeam(self.flo_team.name, workflow_graph, self.flo_team.config)
+        return FloRoutedTeam(self.flo_team.name, workflow_graph)
 
     class Builder:
         def __init__(
             self,
             session: FloSession,
-            team_config: TeamConfig,
+            name: str,
             flo_team: FloTeam,
             router_prompt: ChatPromptTemplate = None,
             llm: Union[BaseLanguageModel, None] = None,
         ) -> None:
-            self.name = team_config.router.name
+            self.name = name
             self.session = session
             self.llm = llm if llm is not None else session.llm
             self.flo_team = flo_team

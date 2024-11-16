@@ -6,7 +6,6 @@ from flo_ai.state.flo_session import FloSession
 from flo_ai.constants.prompt_constants import FLO_FINISH
 from flo_ai.router.flo_llm_router import FloLLMRouter
 from flo_ai.models.flo_team import FloTeam
-from flo_ai.yaml.config import TeamConfig
 from langchain_core.output_parsers import JsonOutputParser
 from flo_ai.router.flo_llm_router import NextAgent
 
@@ -40,12 +39,12 @@ class FloSupervisor(FloLLMRouter):
         def __init__(
             self,
             session: FloSession,
-            team_config: TeamConfig,
+            name: str,
             flo_team: FloTeam,
             llm: Union[BaseLanguageModel, None] = None,
             model_nick_name: str = 'default',
         ) -> None:
-            self.name = team_config.router.name
+            self.name = name
             self.session = session
             self.llm = llm if llm is not None else session.llm
             self.model_name = model_nick_name

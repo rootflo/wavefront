@@ -45,6 +45,5 @@ session = FloSession(llm).register_tool(
 )
 
 flo: Flo = Flo.build(session, yaml=yaml_data)
-flo.draw_to_file('event.png', xray=True)
 data = flo.invoke(input_prompt)
 print((data['messages'][-1]).content)
