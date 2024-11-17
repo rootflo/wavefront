@@ -6,6 +6,7 @@ Fork the repository.
 Create a new branch for your feature.
 Add your feature or improvement.
 Send a pull request.
+
 We appreciate your input!
 
 ## Installing Dependencies
@@ -13,4 +14,5 @@ We appreciate your input!
 ```cmd
 poetry lock
 poetry install
+pre-commit install
 ```

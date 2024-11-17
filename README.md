@@ -157,7 +157,7 @@ for response in flo.stream("Write about recent AI developments"):
 ```
 
 **Note:** You can make each of the above agents including the router to different models, giving flexibility to combine the power of different LLMs.
-To know more, check multi-model integration in detailed [documentation](https://flo-ai.rootflo.ai)
+To know more, check multi-model integration in detailed [documentation](https://flo-ai.rootflo.ai/advanced/model-switching)
 
 ### Lets Create a AI team using code
 
