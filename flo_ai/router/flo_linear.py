@@ -56,6 +56,10 @@ class FloLinear(FloRouter):
 
         return FloRoutedTeam(self.flo_team.name, workflow_graph)
 
+    @staticmethod
+    def create(session: FloSession, name: str, team: FloTeam):
+        return FloLinear.Builder(session=session, name=name, flo_team=team).build()
+
     class Builder:
         def __init__(self, session: FloSession, name: str, flo_team: FloTeam) -> None:
             self.name = name

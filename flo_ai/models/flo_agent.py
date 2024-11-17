@@ -23,6 +23,28 @@ class FloAgent(ExecutableFlo):
         self.agent: Runnable = (agent,)
         self.executor: AgentExecutor = executor
 
+    @staticmethod
+    def create(
+        session: FloSession,
+        name: str,
+        job: str,
+        tools: list[BaseTool],
+        role: Optional[str] = None,
+        on_error: Union[str, Callable] = True,
+        llm: Union[BaseLanguageModel, None] = None,
+    ):
+        model_name = 'default' if llm is None else llm.name
+        return FloAgent.Builder(
+            session=session,
+            name=name,
+            job=job,
+            tools=tools,
+            role=role,
+            on_error=on_error,
+            llm=llm,
+            model_name=model_name,
+        ).build()
+
     class Builder:
         def __init__(
             self,
@@ -31,7 +53,7 @@ class FloAgent(ExecutableFlo):
             job: str,
             tools: list[BaseTool],
             role: Optional[str] = None,
-            verbose: bool = True,
+            verbose: bool = False,
             llm: Union[BaseLanguageModel, None] = None,
             on_error: Union[str, Callable] = True,
             model_name: Union[str, None] = 'default',

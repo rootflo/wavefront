@@ -48,13 +48,29 @@ class FloLLMRouter(FloRouter):
         workflow_graph = workflow.compile()
         return FloRoutedTeam(self.flo_team.name, workflow_graph)
 
+    @staticmethod
+    def create(
+        session: FloSession,
+        name: str,
+        team: FloTeam,
+        router_prompt: str = None,
+        llm: Union[BaseLanguageModel, None] = None,
+    ):
+        return FloLLMRouter.Builder(
+            session=session,
+            name=name,
+            flo_team=team,
+            router_prompt=router_prompt,
+            llm=llm,
+        ).build()
+
     class Builder:
         def __init__(
             self,
             session: FloSession,
             name: str,
             flo_team: FloTeam,
-            router_prompt: ChatPromptTemplate = None,
+            router_prompt: str = None,
             llm: Union[BaseLanguageModel, None] = None,
         ) -> None:
             self.name = name

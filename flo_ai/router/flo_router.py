@@ -38,7 +38,7 @@ class FloRouter(ABC):
         self.executor = executor
         self.model_name = model_name
 
-    def to_flo(self) -> FloRoutedTeam:
+    def build_routed_team(self) -> FloRoutedTeam:
         return self.build_graph()
 
     @abstractmethod

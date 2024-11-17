@@ -2,9 +2,11 @@ import asyncio
 import warnings
 import logging
 from typing import Optional
+from langchain_core.runnables import Runnable
 from flo_ai.yaml.config import to_supervised_team
-from flo_ai.builders.yaml_builder import build_supervised_team, FloRoutedTeamConfig
+from flo_ai.builders.yaml_builder import build_supervised_team
 from typing import Any, Iterator, Union
+from flo_ai.router.flo_router import FloRouter
 from flo_ai.state.flo_session import FloSession
 from flo_ai.models.flo_executable import ExecutableFlo
 from flo_ai.error.flo_exception import FloException
@@ -20,11 +22,9 @@ from langchain.tools import StructuredTool
 
 
 class Flo:
-    def __init__(self, session: FloSession, config: FloRoutedTeamConfig) -> None:
+    def __init__(self, session: FloSession, executable: Runnable) -> None:
         self.session = session
-        self.config = config
-        session.config = config
-        self.runnable: ExecutableFlo = build_supervised_team(session)
+        self.runnable: ExecutableFlo = executable
 
         self.langchain_logger = session.langchain_logger
         get_logger().info('Flo instance created ...', session)
@@ -50,7 +50,12 @@ class Flo:
         return self.runnable.ainvoke(query, config)
 
     @staticmethod
-    def build(session: FloSession, yaml: str, log_level: Optional[str] = None):
+    def build(
+        session: FloSession,
+        yaml: Optional[str] = None,
+        routed_team: Optional[FloRouter] = None,
+        log_level: Optional[str] = None,
+    ):
         if log_level:
             warnings.warn(
                 '`log_level` is deprecated and will be removed in a future version. '
@@ -59,8 +64,19 @@ class Flo:
                 stacklevel=2,
             )
             Flo.set_log_level(log_level)
-        get_logger().info('Building Flo instance from YAML ...', session)
-        return Flo(session, to_supervised_team(yaml))
+        if yaml is not None:
+            get_logger().info('Building Flo instance from YAML ...', session)
+            executable: ExecutableFlo = build_supervised_team(
+                session, to_supervised_team(yaml)
+            )
+            return Flo(session, executable)
+        if routed_team is not None:
+            return Flo(session, routed_team.build_routed_team())
+        raise FloException("""Either yaml or routed_team should be not None""")
+
+    @staticmethod
+    def create(session: FloSession, routed_team: FloRouter):
+        return Flo(session, routed_team.build_routed_team())
 
     @staticmethod
     def set_log_level(log_level: str):

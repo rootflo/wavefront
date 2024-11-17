@@ -35,6 +35,22 @@ class FloSupervisor(FloLLMRouter):
             model_name=model_name,
         )
 
+    @staticmethod
+    def create(
+        session: FloSession,
+        name: str,
+        team: FloTeam,
+        llm: Union[BaseLanguageModel, None] = None,
+    ):
+        model_name = 'default' if llm is None else llm.name
+        return FloSupervisor.Builder(
+            session=session,
+            name=name,
+            flo_team=team,
+            llm=llm,
+            model_nick_name=model_name,
+        ).build()
+
     class Builder:
         def __init__(
             self,

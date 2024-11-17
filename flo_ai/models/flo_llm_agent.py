@@ -14,6 +14,24 @@ class FloLLMAgent(ExecutableFlo):
         self.executor: Runnable = executor
         self.model_name: str = model_name
 
+    @staticmethod
+    def create(
+        session: FloSession,
+        name: str,
+        job: str,
+        role: Optional[str] = None,
+        llm: Union[BaseLanguageModel, None] = None,
+    ):
+        model_name = 'default' if llm is None else llm.name
+        return FloLLMAgent.Builder(
+            session=session,
+            name=name,
+            job=job,
+            role=role,
+            llm=llm,
+            model_name=model_name,
+        ).build()
+
     class Builder:
         def __init__(
             self,

@@ -28,6 +28,24 @@ class FloDelegatorAgent(ExecutableFlo):
         self.executor = executor
         self.model_name = model_name
 
+    @staticmethod
+    def create(
+        session: FloSession,
+        name: str,
+        job: str,
+        to: Delegate,
+        llm: Optional[BaseLanguageModel] = None,
+    ):
+        model_name = 'default' if llm is None else llm.name
+        return FloDelegatorAgent.Builder(
+            session=session,
+            name=name,
+            job=job,
+            delegate=to,
+            llm=llm,
+            model_name=model_name,
+        ).build()
+
     class Builder:
         def __init__(
             self,

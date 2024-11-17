@@ -4,7 +4,6 @@ from langchain_core.language_models import BaseLanguageModel
 from langchain_core.tools import BaseTool
 from flo_ai.common.flo_logger import get_logger
 from flo_ai.common.flo_langchain_logger import FloLangchainLogger
-from flo_ai.yaml.config import FloRoutedTeamConfig, FloAgentConfig
 from flo_ai.helpers.utils import random_str
 from flo_ai.state.flo_callbacks import (
     FloToolCallback,
@@ -54,7 +53,6 @@ class FloSession:
         self.on_agent_error = on_agent_error
         self.langchain_logger = FloLangchainLogger(self.session_id)
         self.callbacks: list = []
-        self.config: Union[FloRoutedTeamConfig, FloAgentConfig] = None
         get_logger().info('New session created ...', self)
 
     def resolve_llm(

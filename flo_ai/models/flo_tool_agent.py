@@ -10,6 +10,20 @@ class FloToolAgent(ExecutableFlo):
         self.executor: Runnable = executor
         self.model_name: str = model_name
 
+    @staticmethod
+    def create(
+        session: FloSession,
+        name: str,
+        tool_runnable: Runnable,
+    ):
+        model_name = 'default'
+        return FloToolAgent.Builder(
+            session=session,
+            name=name,
+            tool_runnable=tool_runnable,
+            model_name=model_name,
+        ).build()
+
     class Builder:
         def __init__(
             self,

@@ -17,6 +17,26 @@ class FloReflectionAgent(ExecutableFlo):
         self.model_name = model_name
         self.delegate = delegate
 
+    @staticmethod
+    def create(
+        session: FloSession,
+        name: str,
+        job: str,
+        to: Delegate,
+        role: Optional[str] = None,
+        llm: Optional[BaseLanguageModel] = None,
+    ):
+        model_name = 'default' if llm is None else llm.name
+        return FloReflectionAgent.Builder(
+            session=session,
+            name=name,
+            job=job,
+            to=to,
+            role=role,
+            llm=llm,
+            model_name=model_name,
+        ).build()
+
     class Builder:
         def __init__(
             self,

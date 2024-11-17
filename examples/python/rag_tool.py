@@ -21,7 +21,7 @@ llm = ChatOpenAI(temperature=0, model_name='gpt-4o-mini')
 session = FloSession(llm, log_level='ERROR')
 
 # load the document and split it into chunks
-loader = TextLoader('./examples/rag_document.txt')
+loader = TextLoader('./examples/data/rag_document.txt')
 documents = loader.load()
 
 # split it into chunks
