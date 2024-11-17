@@ -14,13 +14,13 @@ class FloToolAgent(ExecutableFlo):
     def create(
         session: FloSession,
         name: str,
-        tool_runnable: Runnable,
+        tool: Runnable,
     ):
         model_name = 'default'
         return FloToolAgent.Builder(
             session=session,
             name=name,
-            tool_runnable=tool_runnable,
+            tool_runnable=tool,
             model_name=model_name,
         ).build()
 
@@ -37,4 +37,4 @@ class FloToolAgent(ExecutableFlo):
             self.model_name = model_name
 
         def build(self) -> Runnable:
-            return FloToolAgent(self.runnable, self, self.model_name)
+            return FloToolAgent(self.name, self.runnable, self.model_name)

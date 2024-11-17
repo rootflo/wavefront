@@ -18,6 +18,7 @@ from flo_ai.common.flo_logger import (
     set_logger_internal,
     FloLogConfig,
 )
+from flo_ai.models.flo_agent import FloAgent
 from langchain.tools import StructuredTool
 
 
@@ -75,8 +76,13 @@ class Flo:
         raise FloException("""Either yaml or routed_team should be not None""")
 
     @staticmethod
-    def create(session: FloSession, routed_team: FloRouter):
-        return Flo(session, routed_team.build_routed_team())
+    def create(session: FloSession, routed_team: Union[FloRouter, FloAgent]):
+        runnable = (
+            routed_team.build_routed_team()
+            if isinstance(routed_team, FloRouter)
+            else routed_team
+        )
+        return Flo(session, runnable)
 
     @staticmethod
     def set_log_level(log_level: str):

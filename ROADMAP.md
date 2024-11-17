@@ -8,11 +8,11 @@ Core features improve the library itself to cater wider range of functionalities
 
 | Name | Description | Status | Release version |
 |------|-------------|--------|-----------------|
-| Full composability | Right now teams can only be combined with teams and agents with agents. We want to extend this to team + agent composibility | Develop👨‍💻| 0.0.4 | 
-| Error handling | Ability to handle errors autonomously | Develop👨‍💻 | 0.0.4|
-|LLM Extensibilty| Ability to different LLMs across different agents and teams| Develop👨‍💻 | 0.0.4|
-|Async Tools| Ability create tools easily within asyncio | Develop👨‍💻 | 0.0.4|
-|Observer| Observer framework for raising agent decision events and other important events | Yet to start | 0.0.4|
+| Full composability | Right now teams can only be combined with teams and agents with agents. We want to extend this to team + agent composibility | ✅ | 0.0.4 | 
+| Error handling | Ability to handle errors autonomously | ✅  | 0.0.4|
+|LLM Extensibilty| Ability to different LLMs across different agents and teams| ✅  | 0.0.4|
+|Async Tools| Ability create tools easily within asyncio | ✅  | 0.0.4|
+|Observer| Observer framework for raising agent decision events and other important events | ✅  | 0.0.4|
 |Output formatter| Ability to templatize output format using pydantic| Yet to start| 0.0.4|
 |Auto-Query RAG| Ability to make metadata query within the agentic, which can automatically add metadata while rag query runs, like timestamp or other data|Yet to start|TBD|
 |Parellel Router| A router to execute tasks or agents in parallel if the tasks are independent | Yet to start | TBD
@@ -24,7 +24,7 @@ These features improve logging and debugging abilities while building.
 | Name | Description | Status | Release version |
 |------|-------------|--------|-----------------|
 |Recursion control| Expose parameters like recursion control to limit recursions and policy in case of recursion etc | Yet to start | 0.0.5
-|Set up tests| Create a framework for unit-testing flo-ai and its internal functionalities| Develop👨‍💻 | 0.0.4
+|Set up tests| Create a framework for unit-testing flo-ai and its internal functionalities| ✅  | 0.0.4
 
 ## Community
 

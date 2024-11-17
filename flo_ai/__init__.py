@@ -1,4 +1,5 @@
 from flo_ai.core import Flo as Flo
+from flo_ai.tools.flo_tool import flotool as flotool
 from flo_ai.models.flo_team import FloTeam as FloTeam
 from flo_ai.models.flo_agent import FloAgent as FloAgent
 from flo_ai.router.flo_linear import FloLinear as FloLinear
