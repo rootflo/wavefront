@@ -24,7 +24,7 @@ class FloLLMRouter(FloRouter):
         executor: Runnable,
         flo_team: FloTeam,
         name: str,
-        model_name: str,
+        model_name: str = 'default',
     ) -> None:
         super().__init__(
             session=session,
@@ -56,12 +56,14 @@ class FloLLMRouter(FloRouter):
         router_prompt: str = None,
         llm: Union[BaseLanguageModel, None] = None,
     ):
+        model_name = 'default' if llm is None else llm.name
         return FloLLMRouter.Builder(
             session=session,
             name=name,
             flo_team=team,
             router_prompt=router_prompt,
             llm=llm,
+            model_nick_name=model_name,
         ).build()
 
     class Builder:
@@ -72,6 +74,7 @@ class FloLLMRouter(FloRouter):
             flo_team: FloTeam,
             router_prompt: str = None,
             llm: Union[BaseLanguageModel, None] = None,
+            model_nick_name: str = 'default',
         ) -> None:
             self.name = name
             self.session = session
@@ -79,6 +82,7 @@ class FloLLMRouter(FloRouter):
             self.flo_team = flo_team
             self.agents = flo_team.members
             self.members = [agent.name for agent in flo_team.members]
+            self.model_name = model_nick_name
             self.options = self.members + [FLO_FINISH]
             member_type = (
                 'workers' if flo_team.members[0].type == 'agent' else 'team members'
@@ -118,4 +122,5 @@ class FloLLMRouter(FloRouter):
                 flo_team=self.flo_team,
                 name=self.name,
                 session=self.session,
+                model_name=self.model_name,
             )
