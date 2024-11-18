@@ -4,7 +4,7 @@ from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 from typing import List
 from dotenv import load_dotenv
-from flo_ai import flotool
+from flo_ai.tools import flotool
 import asyncio
 
 load_dotenv()

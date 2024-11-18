@@ -203,7 +203,7 @@ Along with that FloAI has a decorator `@flotool` which makes any function into a
 Creating a simple tool using `@flotool`:
 
 ```python
-from flo_ai import flotool
+from flo_ai.tools import flotool
 from pydantic import BaseModel, Field
 
 # define argument schema

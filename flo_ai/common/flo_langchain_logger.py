@@ -2,7 +2,7 @@ from typing import Any, Dict, List, Union
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain.schema import AgentAction, AgentFinish, LLMResult
 from flo_ai.common.flo_logger import get_logger
-from flo_ai.state.flo_callbacks import FloToolCallback
+from flo_ai.callbacks.flo_callbacks import FloToolCallback
 
 
 class FloLangchainLogger(BaseCallbackHandler):
