@@ -9,7 +9,7 @@ Core features improve the library itself to cater wider range of functionalities
 | Name | Description | Status | Release version |
 |------|-------------|--------|-----------------|
 |Output formatter| Ability to templatize output format using pydantic| Yet to start| 0.0.5 |
-|Resume work| Functionality that lets agents resume from where they stopped| 0.0.5 |
+|Resume work| Functionality that lets agents resume from where they stopped|Yet to start|0.0.5 |
 |To Yaml| Explore the ability to convert code build agents into Yaml| Yet to start| 0.0.5 |
 |Web server| First step towards creating a publishable service to which agents can be saved and re-used| Yet to start| 0.0.5 |
 |Web app| A webapp where agents can be accessed like chat bot/slack| TBD |
