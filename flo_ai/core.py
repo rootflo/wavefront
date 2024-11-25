@@ -54,6 +54,7 @@ class Flo:
     def build(
         session: FloSession,
         yaml: Optional[str] = None,
+        yaml_path: Optional[str] = None,
         routed_team: Optional[FloRouter] = None,
         log_level: Optional[str] = None,
     ):
@@ -65,6 +66,19 @@ class Flo:
                 stacklevel=2,
             )
             Flo.set_log_level(log_level)
+        if yaml_path:
+            if yaml is not None:
+                raise FloException(
+                    'Cannot specify both `yaml` and `yaml_path`. Use only one.'
+                )
+            try:
+                with open(yaml_path) as file:
+                    yaml = file.read()
+            except FileNotFoundError:
+                raise FloException(f'YAML file at path {yaml_path} not found.')
+            except Exception:
+                raise FloException(f'Error reading YAML file at path {yaml_path}.')
+
         if yaml is not None:
             get_logger().info('Building Flo instance from YAML ...', session)
             executable: ExecutableFlo = build_supervised_team(
