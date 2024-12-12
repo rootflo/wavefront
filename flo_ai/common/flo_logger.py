@@ -66,7 +66,7 @@ class FloLoggerUtil(logging.Logger):
             handler.setLevel(level)
 
     def _log(
-        self, level: int, msg: str, session: Optional[str] = None, *args, **kwargs
+        self, level: int, msg: str, session: Optional[Any] = None, *args, **kwargs
     ):
         if not self.isEnabledFor(level):
             return

@@ -10,7 +10,9 @@ from flo_ai.callbacks.flo_callbacks import (
     FloAgentCallback,
     FloRouterCallback,
 )
-
+from flo_ai.state.flo_data_collector import FloDataCollector
+from flo_ai.state.flo_kv_collector import FloKVCollector
+from flo_ai.parsers.flo_parser import FloParser
 from typing import Optional
 
 
@@ -45,6 +47,9 @@ class FloSession:
         self.tools = dict()
         self.models: Dict[str, BaseLanguageModel] = dict()
         self.tools: Dict[str, BaseTool] = dict()
+        # TODO maybe create a default if not provided
+        self.data_collectors: Dict[str, FloDataCollector] = dict()
+        self.parsers: Dict[str, FloParser] = dict()
         self.counter = dict()
         self.navigation: list[str] = list()
         self.pattern_series = dict()
@@ -77,6 +82,20 @@ class FloSession:
     def register_model(self, name: str, model: BaseLanguageModel):
         self.models[name] = model
         get_logger().info(f"Model '{name}' registered for session {self.session_id}")
+        return self
+
+    def register_parser(self, name: str, parser: FloParser):
+        self.parsers[name] = parser
+        get_logger().info(f"Parser '{name}' registered for session {self.session_id}")
+        return self
+
+    def register_data_collector(
+        self, name: str = '__default', collector: FloDataCollector = FloKVCollector()
+    ):
+        self.data_collectors[name] = collector
+        get_logger().info(
+            f"Data Collection '{name}' registered for session {self.session_id}"
+        )
         return self
 
     def register_callback(

@@ -5,7 +5,7 @@ from flo_ai.models.flo_routed_team import FloRoutedTeam
 from flo_ai.models.delegate import Delegate
 from langchain.agents import AgentExecutor
 from flo_ai.state.flo_state import TeamFloAgentState, STATE_NAME_MESSAGES
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from flo_ai.models.flo_executable import ExecutableType
 from flo_ai.state.flo_session import FloSession
 from typing import Optional, Type, List
@@ -14,6 +14,8 @@ from flo_ai.callbacks.flo_callbacks import (
     FloRouterCallback,
     FloCallback,
 )
+from flo_ai.common.flo_logger import get_logger
+from flo_ai.state.flo_data_collector import FloDataCollector
 
 
 class FloNode:
@@ -29,6 +31,9 @@ class FloNode:
         self.kind: ExecutableType = kind
         self.delegate = delegate
 
+    def invoke(self, query, config):
+        return self.func({STATE_NAME_MESSAGES: [HumanMessage(content=query)]})
+
     class Builder:
         def __init__(self, session: FloSession) -> None:
             self.session = session
@@ -40,6 +45,7 @@ class FloNode:
                 name=flo_agent.name,
                 session=self.session,
                 model_name=flo_agent.model_name,
+                data_collector=flo_agent.data_collector,
             )
             return FloNode(agent_func, flo_agent.name, flo_agent.type)
 
@@ -104,6 +110,7 @@ class FloNode:
             name: str,
             session: FloSession,
             model_name: str,
+            data_collector: Optional[FloDataCollector] = None,
         ):
             agent_cbs: List[FloAgentCallback] = FloNode.Builder.__filter_callbacks(
                 session, FloAgentCallback
@@ -122,6 +129,11 @@ class FloNode:
             try:
                 result = agent.invoke(state)
                 output = result if isinstance(result, str) else result['output']
+                if data_collector is not None:
+                    get_logger().info(
+                        'appending output to data collector', session=session
+                    )
+                    data_collector.append(output)
             except Exception as e:
                 [
                     callback.on_agent_error(name, model_name, e, **{})
@@ -140,7 +152,7 @@ class FloNode:
                 callback.on_agent_start(name, model_name, output, **{})
                 for callback in flo_cbs
             ]
-            return {STATE_NAME_MESSAGES: [HumanMessage(content=output, name=name)]}
+            return {STATE_NAME_MESSAGES: [AIMessage(content=output, name=name)]}
 
         @staticmethod
         def __filter_callbacks(session: FloSession, type: Type):

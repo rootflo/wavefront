@@ -1,6 +1,7 @@
+import json
 from typing import Optional
 from flo_ai.state.flo_session import FloSession
-from flo_ai.yaml.config import AgentConfig
+from flo_ai.yaml.config import AgentConfig, Parser
 from flo_ai.models.flo_agent import FloAgent
 from flo_ai.models.flo_llm_agent import FloLLMAgent
 from flo_ai.models.flo_reflection_agent import FloReflectionAgent
@@ -10,6 +11,7 @@ from flo_ai.error.flo_exception import FloException
 from flo_ai.models.delegate import Delegate
 from flo_ai.constants.common_constants import DOCUMENTATION_AGENT_ANCHOR
 from enum import Enum
+from flo_ai.parsers.flo_json_parser import FloJsonParser
 
 
 class AgentKinds(Enum):
@@ -59,7 +61,18 @@ class AgentFactory:
         session: FloSession, agent: AgentConfig, tool_map
     ) -> FloAgent:
         agent_model = AgentFactory.__resolve_model(session, agent.model)
+        dc = (
+            session.data_collectors[agent.data_collector]
+            if agent.data_collector is not None
+            else None
+        )
         tools = [tool_map[tool.name] for tool in agent.tools]
+        if isinstance(agent.parser, Parser):
+            parser = FloJsonParser.create(
+                json_dict=json.loads(agent.parser.model_dump_json())
+            )
+        else:
+            parser = session.parsers[agent.parser] if agent.parser is not None else None
         flo_agent: FloAgent = FloAgent.Builder(
             session,
             name=agent.name,
@@ -69,12 +82,25 @@ class AgentFactory:
             llm=agent_model,
             on_error=session.on_agent_error,
             model_name=agent.model,
+            parser=parser,
+            data_collector=dc,
         ).build()
         return flo_agent
 
     @staticmethod
     def __create_llm_agent(session: FloSession, agent: AgentConfig) -> FloLLMAgent:
         agent_model = AgentFactory.__resolve_model(session, agent.model)
+        dc = (
+            session.data_collectors[agent.data_collector]
+            if agent.data_collector is not None
+            else None
+        )
+        if isinstance(agent.parser, Parser):
+            parser = FloJsonParser.create(
+                json_dict=json.loads(agent.parser.model_dump_json())
+            )
+        else:
+            parser = session.parsers[agent.parser] if agent.parser is not None else None
         builder = FloLLMAgent.Builder(
             session,
             name=agent.name,
@@ -82,6 +108,8 @@ class AgentFactory:
             role=agent.role,
             llm=agent_model,
             model_name=agent.model,
+            parser=parser,
+            data_collector=dc,
         )
         llm_agent: FloLLMAgent = builder.build()
         return llm_agent

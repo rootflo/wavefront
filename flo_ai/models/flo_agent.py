@@ -4,10 +4,11 @@ from langchain.agents import create_tool_calling_agent
 from langchain_core.runnables import Runnable
 from langchain_core.language_models import BaseLanguageModel
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from flo_ai.models.flo_executable import ExecutableFlo
+from flo_ai.models.flo_executable import ExecutableFlo, ExecutableType
 from flo_ai.state.flo_session import FloSession
 from typing import Union, Optional, Callable
-from flo_ai.models.flo_executable import ExecutableType
+from flo_ai.state.flo_data_collector import FloDataCollector
+from flo_ai.parsers.flo_parser import FloParser
 
 
 class FloAgent(ExecutableFlo):
@@ -17,11 +18,13 @@ class FloAgent(ExecutableFlo):
         agent: Runnable,
         executor: AgentExecutor,
         model_name: str,
+        data_collector: Optional[FloDataCollector] = None,
     ) -> None:
         super().__init__(name, executor, ExecutableType.agentic)
         self.model_name = model_name
         self.agent: Runnable = (agent,)
         self.executor: AgentExecutor = executor
+        self.data_collector = data_collector
 
     @staticmethod
     def create(
@@ -32,6 +35,8 @@ class FloAgent(ExecutableFlo):
         role: Optional[str] = None,
         on_error: Union[str, Callable] = True,
         llm: Union[BaseLanguageModel, None] = None,
+        parser: Optional[FloParser] = None,
+        data_collector: Optional[FloDataCollector] = None,
     ):
         model_name = 'default' if llm is None else llm.name
         return FloAgent.Builder(
@@ -43,6 +48,8 @@ class FloAgent(ExecutableFlo):
             on_error=on_error,
             llm=llm,
             model_name=model_name,
+            parser=parser,
+            data_collector=data_collector,
         ).build()
 
     class Builder:
@@ -57,6 +64,8 @@ class FloAgent(ExecutableFlo):
             llm: Union[BaseLanguageModel, None] = None,
             on_error: Union[str, Callable] = True,
             model_name: Union[str, None] = 'default',
+            parser: Optional[FloParser] = None,
+            data_collector: Optional[FloDataCollector] = None,
         ) -> None:
             prompt: Union[ChatPromptTemplate, str] = job
             self.name: str = name
@@ -67,6 +76,8 @@ class FloAgent(ExecutableFlo):
                 if role is not None
                 else [('system', prompt)]
             )
+            if parser is not None:
+                system_prompts.append('\n{format_instructions}')
             system_prompts.append(MessagesPlaceholder(variable_name='messages'))
             system_prompts.append(MessagesPlaceholder(variable_name='agent_scratchpad'))
             self.prompt: ChatPromptTemplate = (
@@ -74,9 +85,14 @@ class FloAgent(ExecutableFlo):
                 if isinstance(prompt, str)
                 else prompt
             )
+            if parser is not None:
+                self.prompt = self.prompt.partial(
+                    format_instructions=parser.get_format_instructions()
+                )
             self.tools: list[BaseTool] = tools
             self.verbose = verbose
             self.on_error = on_error
+            self.data_collector = data_collector
 
         def build(self) -> AgentExecutor:
             agent = create_tool_calling_agent(self.llm, self.tools, self.prompt)
@@ -87,4 +103,10 @@ class FloAgent(ExecutableFlo):
                 return_intermediate_steps=True,
                 handle_parsing_errors=self.on_error,
             )
-            return FloAgent(self.name, agent, executor, model_name=self.model_name)
+            return FloAgent(
+                self.name,
+                agent,
+                executor,
+                model_name=self.model_name,
+                data_collector=self.data_collector,
+            )

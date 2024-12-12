@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Union
+from typing import List, Union, Dict, Any
 import yaml
 import re
 from typing import Optional
@@ -41,6 +41,11 @@ class MemberKey(BaseModel):
     name: str
 
 
+class Parser(BaseModel):
+    name: str
+    fields: Optional[List[Dict[str, Any]]] = None
+
+
 class AgentConfig(BaseModel):
     name: str
     role: Optional[str] = None
@@ -50,6 +55,8 @@ class AgentConfig(BaseModel):
     to: Optional[List[MemberKey]] = None
     retry: Optional[int] = 1
     model: Optional[str] = None
+    parser: Union[Parser, str] = None
+    data_collector: Optional[str] = None
 
 
 class EdgeConfig(BaseModel):
