@@ -8,6 +8,7 @@ from flo_ai.builders.yaml_builder import build_supervised_team
 from typing import Any, Iterator, Union
 from flo_ai.router.flo_router import FloRouter
 from flo_ai.state.flo_session import FloSession
+from flo_ai.models.flo_llm_agent import FloLLMAgent
 from flo_ai.models.flo_executable import ExecutableFlo
 from flo_ai.error.flo_exception import FloException
 from flo_ai.constants.common_constants import DOCUMENTATION_WEBSITE
@@ -95,7 +96,8 @@ class Flo:
             executable: ExecutableFlo = build_supervised_team(
                 session, to_supervised_team(yaml)
             )
-            if isinstance(executable, FloAgent):
+            # TODO fix this for all agents later
+            if isinstance(executable, FloAgent) or isinstance(executable, FloLLMAgent):
                 executable = FloNode.Builder(session).build_from_agent(executable)
             return Flo(session, executable)
         if routed_team is not None:
