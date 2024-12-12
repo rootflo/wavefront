@@ -347,7 +347,11 @@ Built with ❤️ using:
         <p><b>Build an Agentic RAG using FloAI in minutes</b><br />FloAI has just made implementing agentic RAG simple and easy to manage</p>
     </a>
 </div>
-
+    <a href="https://medium.com/rootflo/mastering-ai-interaction-logging-and-data-collection-with-floai-a490818bb2f1" target="_blank" style="text-decoration: none;">
+        <img src="./images/blog-image.png" width="150" style="border-radius: 10px;" />
+        <p><b>Mastering AI Interaction Logging and Data Collection with FloAI</b><br />Learn how to leverage FloAI's powerful logging system for debugging, training data generation, and system optimization</p>
+    </a>
+    </a>
 ---
 
 <div align="center">
