@@ -13,3 +13,4 @@ bin
 *.sql
 *.log
 *.yaml
+examples/local/*
