@@ -43,6 +43,13 @@ agent:
             - type: str
               description: The first name of the person
               name: last_name
+            - name: location 
+              type: object
+              description: The details about birth location
+              fields: 
+                - name: state
+                  type: str
+                  description: The Indian State in whihc the person was born
     data_collector: kv
 """
 
