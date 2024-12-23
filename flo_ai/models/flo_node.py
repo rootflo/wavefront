@@ -25,14 +25,21 @@ class FloNode:
         name: str,
         kind: ExecutableType,
         delegate: Optional[Delegate] = None,
+        async_func: functools.partial = None,
     ) -> None:
         self.name = name
         self.func = func
         self.kind: ExecutableType = kind
         self.delegate = delegate
+        self.async_func = async_func
 
     def invoke(self, query, config):
         return self.func({STATE_NAME_MESSAGES: [HumanMessage(content=query)]})
+
+    async def ainvoke(self, query, config):
+        return await self.async_func(
+            {STATE_NAME_MESSAGES: [HumanMessage(content=query)]}
+        )
 
     class Builder:
         def __init__(self, session: FloSession) -> None:
@@ -47,7 +54,17 @@ class FloNode:
                 model_name=flo_agent.model_name,
                 data_collector=flo_agent.data_collector,
             )
-            return FloNode(agent_func, flo_agent.name, flo_agent.type)
+            agent_func_async = functools.partial(
+                FloNode.Builder.__async_teamflo_agent_node,
+                agent=flo_agent.runnable,
+                name=flo_agent.name,
+                session=self.session,
+                model_name=flo_agent.model_name,
+                data_collector=flo_agent.data_collector,
+            )
+            return FloNode(
+                agent_func, flo_agent.name, flo_agent.type, async_func=agent_func_async
+            )
 
         def build_from_reflection(self, flo_agent: FloReflectionAgent) -> 'FloNode':
             agent_func = functools.partial(
@@ -128,6 +145,57 @@ class FloNode:
             ]
             try:
                 result = agent.invoke(state)
+                output = result if isinstance(result, str) else result['output']
+                if data_collector is not None:
+                    get_logger().info(
+                        'appending output to data collector', session=session
+                    )
+                    data_collector.append(output)
+            except Exception as e:
+                [
+                    callback.on_agent_error(name, model_name, e, **{})
+                    for callback in agent_cbs
+                ]
+                [
+                    callback.on_agent_error(name, model_name, e, **{})
+                    for callback in flo_cbs
+                ]
+                raise e
+            [
+                callback.on_agent_end(name, model_name, output, **{})
+                for callback in agent_cbs
+            ]
+            [
+                callback.on_agent_start(name, model_name, output, **{})
+                for callback in flo_cbs
+            ]
+            return {STATE_NAME_MESSAGES: [AIMessage(content=output, name=name)]}
+
+        @staticmethod
+        async def __async_teamflo_agent_node(
+            state: TeamFloAgentState,
+            agent: AgentExecutor,
+            name: str,
+            session: FloSession,
+            model_name: str,
+            data_collector: Optional[FloDataCollector] = None,
+        ):
+            agent_cbs: List[FloAgentCallback] = FloNode.Builder.__filter_callbacks(
+                session, FloAgentCallback
+            )
+            flo_cbs: List[FloCallback] = FloNode.Builder.__filter_callbacks(
+                session, FloCallback
+            )
+            [
+                callback.on_agent_start(name, model_name, state['messages'], **{})
+                for callback in agent_cbs
+            ]
+            [
+                callback.on_agent_start(name, model_name, state['messages'], **{})
+                for callback in flo_cbs
+            ]
+            try:
+                result = await agent.ainvoke(state)
                 output = result if isinstance(result, str) else result['output']
                 if data_collector is not None:
                     get_logger().info(
