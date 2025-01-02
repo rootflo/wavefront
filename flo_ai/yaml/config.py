@@ -34,7 +34,7 @@ class PromptStrategy(BaseModel):
     kind: str
     agent_name: str
     retries: int
-    next: str | None = None
+    next: Union[str, None] = None
 
 
 class MemberKey(BaseModel):

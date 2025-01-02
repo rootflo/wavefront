@@ -78,7 +78,7 @@ class FloRouter(ABC):
         workflow: StateGraph,
         parent: FloNode,
         delegation_node: FloNode,
-        nextNode: Union[FloNode | str],
+        nextNode: Union[FloNode, str],
     ):
         to_agent_names = delegation_node.delegate.to
         delegation_node_name = delegation_node.name
@@ -129,7 +129,7 @@ class FloRouter(ABC):
         self,
         workflow: StateGraph,
         reflection_node: FloNode,
-        nextNode: Union[FloNode | str],
+        nextNode: Union[FloNode, str],
     ):
         to_agent_name = reflection_node.delegate.to[0]
         retry = reflection_node.delegate.retry or 1

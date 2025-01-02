@@ -1,16 +1,15 @@
 [tool.poetry]
 name = "flo-ai"
-version = "0.0.5-dev5"
+version = "0.0.5-dev7"
 description = "A easy way to create structured AI agents"
 authors = ["vizsatiz <vishnu@rootfor.xyz>"]
 license = "MIT"
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = ">=3.10,<4.0"
+python = ">=3.9,<4.0"
 langchain = "0.3.3"
 langgraph = "0.2.38"
-ipython = "8.24.0"
 httpx = "0.27.0"
 pillow = "^10.3.0"
 pydantic = "^2.9.2"
@@ -19,7 +18,7 @@ langchain-community = "0.3.2"
 
 [tool.poetry.group.dev.dependencies]
 langchain-mongodb = "^0.2.0"
-langchain-chroma = "^0.1.4"
+# langchain-chroma = "^0.1.4"
 langchainhub = "^0.1.17"
 pypdf = "^4.2.0"
 ipykernel = "^6.29.5"

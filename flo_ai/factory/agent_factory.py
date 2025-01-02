@@ -33,15 +33,15 @@ class AgentFactory:
             if agent_kind is None:
                 raise FloException(f"""Unknown agent kind: `{kind}`. The supported types are llm, tool, reflection, delegator or agentic. 
                             Check the documentation @ {DOCUMENTATION_AGENT_ANCHOR}""")
-            match agent_kind:
-                case AgentKinds.llm:
-                    return AgentFactory.__create_llm_agent(session, agent)
-                case AgentKinds.tool:
-                    return AgentFactory.__create_runnable_agent(session, agent)
-                case AgentKinds.reflection:
-                    return AgentFactory.__create_reflection_agent(session, agent)
-                case AgentKinds.delegator:
-                    return AgentFactory.__create_delegator_agent(session, agent)
+            if agent_kind == AgentKinds.llm:
+                return AgentFactory.__create_llm_agent(session, agent)
+            elif agent_kind == AgentKinds.tool:
+                return AgentFactory.__create_runnable_agent(session, agent)
+            elif agent_kind == AgentKinds.reflection:
+                return AgentFactory.__create_reflection_agent(session, agent)
+            elif agent_kind == AgentKinds.delegator:
+                return AgentFactory.__create_delegator_agent(session, agent)
+
         return AgentFactory.__create_agentic_agent(session, agent, tool_map)
 
     @staticmethod

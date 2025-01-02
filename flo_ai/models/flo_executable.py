@@ -16,14 +16,7 @@ class ExecutableType(Enum):
 
     @staticmethod
     def isAgent(type: 'ExecutableType'):
-        match type:
-            case ExecutableType.agentic:
-                return True
-            case ExecutableType.llm:
-                return True
-            case ExecutableType.tool:
-                return True
-        return False
+        return type in [ExecutableType.agentic, ExecutableType.llm, ExecutableType.tool]
 
 
 class ExecutableFlo(FloMember):
