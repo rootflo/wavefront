@@ -341,7 +341,7 @@ result = flo.invoke('Mahatma Gandhi')
 
 ```
 
-### Output Collector
+## Output Data Collector
 
 Output collector is an infrastructure that helps you collect outputs across multiple agents into single data structure. The most useful collector is a JSON output collector which when combined with output parser gives combined JSON outputs.
 
