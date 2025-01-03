@@ -3,7 +3,7 @@ from flo_ai import FloSession, Flo
 from langchain_community.tools.tavily_search.tool import TavilySearchResults
 from dotenv import load_dotenv
 from langchain_openai import AzureChatOpenAI
-from flo_ai.state.flo_kv_collector import FloKVCollector
+from flo_ai.state import FloJsonOutputCollector
 
 load_dotenv()
 llm = AzureChatOpenAI(
@@ -19,9 +19,9 @@ session = FloSession(llm).register_tool(
     name='InternetSearchTool', tool=TavilySearchResults()
 )
 
-dc = FloKVCollector()
+dc = FloJsonOutputCollector()
 
-session.register_data_collector('kv', dc)
+session.register_output_collector('kv', dc)
 
 simple_reseacher = """
 apiVersion: flo/alpha-v1

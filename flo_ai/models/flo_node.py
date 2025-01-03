@@ -15,7 +15,7 @@ from flo_ai.callbacks.flo_callbacks import (
     FloCallback,
 )
 from flo_ai.common.flo_logger import get_logger
-from flo_ai.state.flo_data_collector import FloDataCollector
+from flo_ai.state.flo_output_collector import FloOutputCollector
 
 
 class FloNode:
@@ -26,12 +26,14 @@ class FloNode:
         kind: ExecutableType,
         delegate: Optional[Delegate] = None,
         async_func: functools.partial = None,
+        agent_executable=None,
     ) -> None:
         self.name = name
         self.func = func
         self.kind: ExecutableType = kind
         self.delegate = delegate
         self.async_func = async_func
+        self.agent_executable = agent_executable
 
     def invoke(self, query, config):
         return self.func({STATE_NAME_MESSAGES: [HumanMessage(content=query)]})
@@ -39,6 +41,13 @@ class FloNode:
     async def ainvoke(self, query, config):
         return await self.async_func(
             {STATE_NAME_MESSAGES: [HumanMessage(content=query)]}
+        )
+
+    def draw(self, xray=True):
+        return (
+            self.agent_executable.get_graph().draw_mermaid_png()
+            if self.agent_executable is not None
+            else None
         )
 
     class Builder:
@@ -63,7 +72,11 @@ class FloNode:
                 data_collector=flo_agent.data_collector,
             )
             return FloNode(
-                agent_func, flo_agent.name, flo_agent.type, async_func=agent_func_async
+                agent_func,
+                flo_agent.name,
+                flo_agent.type,
+                async_func=agent_func_async,
+                agent_executable=flo_agent.runnable,
             )
 
         def build_from_reflection(self, flo_agent: FloReflectionAgent) -> 'FloNode':
@@ -75,7 +88,11 @@ class FloNode:
                 model_name=flo_agent.model_name,
             )
             return FloNode(
-                agent_func, flo_agent.name, flo_agent.type, delegate=flo_agent.delegate
+                agent_func,
+                flo_agent.name,
+                flo_agent.type,
+                delegate=flo_agent.delegate,
+                agent_executable=flo_agent.runnable,
             )
 
         def build_from_team(self, flo_team: FloRoutedTeam) -> 'FloNode':
@@ -93,6 +110,7 @@ class FloNode:
                 ),
                 flo_team.name,
                 flo_team.type,
+                agent_executable=flo_team.runnable,
             )
 
         def build_from_router(self, flo_router) -> 'FloNode':
@@ -103,7 +121,12 @@ class FloNode:
                 session=self.session,
                 model_name=flo_router.model_name,
             )
-            return FloNode(router_func, flo_router.name, flo_router.type)
+            return FloNode(
+                router_func,
+                flo_router.name,
+                flo_router.type,
+                agent_executable=flo_router.executor,
+            )
 
         def build_from_delegator(self, flo_router) -> 'FloNode':
             router_func = functools.partial(
@@ -118,6 +141,7 @@ class FloNode:
                 flo_router.name,
                 flo_router.type,
                 delegate=flo_router.delegate,
+                agent_executable=flo_router.executor,
             )
 
         @staticmethod
@@ -127,7 +151,7 @@ class FloNode:
             name: str,
             session: FloSession,
             model_name: str,
-            data_collector: Optional[FloDataCollector] = None,
+            data_collector: Optional[FloOutputCollector] = None,
         ):
             agent_cbs: List[FloAgentCallback] = FloNode.Builder.__filter_callbacks(
                 session, FloAgentCallback
@@ -178,7 +202,7 @@ class FloNode:
             name: str,
             session: FloSession,
             model_name: str,
-            data_collector: Optional[FloDataCollector] = None,
+            data_collector: Optional[FloOutputCollector] = None,
         ):
             agent_cbs: List[FloAgentCallback] = FloNode.Builder.__filter_callbacks(
                 session, FloAgentCallback

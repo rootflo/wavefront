@@ -1,9 +1,9 @@
 import json
 from typing import Dict, List, Any
-from flo_ai.state.flo_data_collector import FloDataCollector
+from flo_ai.state.flo_output_collector import FloOutputCollector
 
 
-class FloKVCollector(FloDataCollector):
+class FloJsonOutputCollector(FloOutputCollector):
     def __init__(self):
         super().__init__()
         self.data: List[Dict[str, Any]] = []

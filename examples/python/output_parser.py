@@ -3,8 +3,8 @@ from flo_ai import FloAgent, FloSession, Flo
 from langchain_community.tools.tavily_search.tool import TavilySearchResults
 from dotenv import load_dotenv
 from langchain_openai import AzureChatOpenAI
-from flo_ai.parsers.flo_json_parser import FloJsonParser
-from flo_ai.state.flo_kv_collector import FloKVCollector
+from flo_ai.parsers import FloJsonParser
+from flo_ai.state import FloJsonOutputCollector
 
 load_dotenv()
 llm = AzureChatOpenAI(
@@ -46,7 +46,7 @@ format = {
     ],
 }
 
-dc = FloKVCollector()
+dc = FloJsonOutputCollector()
 
 researcher = FloAgent.create(
     session,

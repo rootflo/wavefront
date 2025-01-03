@@ -7,7 +7,7 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from flo_ai.models.flo_executable import ExecutableFlo, ExecutableType
 from flo_ai.state.flo_session import FloSession
 from typing import Union, Optional, Callable
-from flo_ai.state.flo_data_collector import FloDataCollector
+from flo_ai.state.flo_output_collector import FloOutputCollector
 from flo_ai.parsers.flo_parser import FloParser
 
 
@@ -18,7 +18,7 @@ class FloAgent(ExecutableFlo):
         agent: Runnable,
         executor: AgentExecutor,
         model_name: str,
-        data_collector: Optional[FloDataCollector] = None,
+        data_collector: Optional[FloOutputCollector] = None,
     ) -> None:
         super().__init__(name, executor, ExecutableType.agentic)
         self.model_name = model_name
@@ -36,7 +36,7 @@ class FloAgent(ExecutableFlo):
         on_error: Union[str, Callable] = True,
         llm: Union[BaseLanguageModel, None] = None,
         parser: Optional[FloParser] = None,
-        data_collector: Optional[FloDataCollector] = None,
+        data_collector: Optional[FloOutputCollector] = None,
     ):
         model_name = 'default' if llm is None else llm.name
         return FloAgent.Builder(
@@ -65,7 +65,7 @@ class FloAgent(ExecutableFlo):
             on_error: Union[str, Callable] = True,
             model_name: Union[str, None] = 'default',
             parser: Optional[FloParser] = None,
-            data_collector: Optional[FloDataCollector] = None,
+            data_collector: Optional[FloOutputCollector] = None,
         ) -> None:
             prompt: Union[ChatPromptTemplate, str] = job
             self.name: str = name

@@ -127,7 +127,8 @@ class Flo:
     def draw(self, xray=True):
         from IPython.display import Image, display
 
-        return display(Image(self.runnable.draw(xray)))
+        image = self.runnable.draw(xray)
+        return display(Image(self.runnable.draw(xray))) if image is not None else None
 
     def draw_to_file(self, filename: str, xray=True):
         from PIL import Image as PILImage

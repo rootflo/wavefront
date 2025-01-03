@@ -14,8 +14,8 @@ session = FloSession(llm, log_level='ERROR')
 
 
 class PrintStateTool(BaseTool):
-    name = 'printStateTool'
-    description = 'Just print the state'
+    name: str = 'printStateTool'
+    description: str = 'Just print the state'
 
     def _run(self, **kwargs) -> str:
         return 'Print tool call success'

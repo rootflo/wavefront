@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
 
-class FloDataCollector(ABC):
+class FloOutputCollector(ABC):
     @abstractmethod
     def append():
         pass

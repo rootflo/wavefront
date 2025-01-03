@@ -10,8 +10,8 @@ from flo_ai.callbacks.flo_callbacks import (
     FloAgentCallback,
     FloRouterCallback,
 )
-from flo_ai.state.flo_data_collector import FloDataCollector
-from flo_ai.state.flo_kv_collector import FloKVCollector
+from flo_ai.state.flo_output_collector import FloOutputCollector
+from flo_ai.state.flo_json_output_collector import FloJsonOutputCollector
 from flo_ai.parsers.flo_parser import FloParser
 from typing import Optional
 
@@ -48,7 +48,7 @@ class FloSession:
         self.models: Dict[str, BaseLanguageModel] = dict()
         self.tools: Dict[str, BaseTool] = dict()
         # TODO maybe create a default if not provided
-        self.data_collectors: Dict[str, FloDataCollector] = dict()
+        self.data_collectors: Dict[str, FloOutputCollector] = dict()
         self.parsers: Dict[str, FloParser] = dict()
         self.counter = dict()
         self.navigation: list[str] = list()
@@ -89,8 +89,10 @@ class FloSession:
         get_logger().info(f"Parser '{name}' registered for session {self.session_id}")
         return self
 
-    def register_data_collector(
-        self, name: str = '__default', collector: FloDataCollector = FloKVCollector()
+    def register_output_collector(
+        self,
+        name: str = '__default',
+        collector: FloOutputCollector = FloJsonOutputCollector(),
     ):
         self.data_collectors[name] = collector
         get_logger().info(

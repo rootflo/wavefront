@@ -7,7 +7,7 @@ from typing import Union, Optional
 from langchain_core.output_parsers import StrOutputParser
 from flo_ai.models.flo_executable import ExecutableType
 from flo_ai.parsers.flo_parser import FloParser
-from flo_ai.state.flo_data_collector import FloDataCollector
+from flo_ai.state.flo_output_collector import FloOutputCollector
 
 
 class FloLLMAgent(ExecutableFlo):
@@ -16,7 +16,7 @@ class FloLLMAgent(ExecutableFlo):
         name: str,
         executor: Runnable,
         model_name: str,
-        data_collector: Optional[FloDataCollector] = None,
+        data_collector: Optional[FloOutputCollector] = None,
     ) -> None:
         super().__init__(name, executor, ExecutableType.llm)
         self.executor: Runnable = executor
@@ -31,7 +31,7 @@ class FloLLMAgent(ExecutableFlo):
         role: Optional[str] = None,
         llm: Union[BaseLanguageModel, None] = None,
         parser: Optional[FloParser] = None,
-        data_collector: Optional[FloDataCollector] = None,
+        data_collector: Optional[FloOutputCollector] = None,
     ):
         model_name = 'default' if llm is None else llm.name
         return FloLLMAgent.Builder(
@@ -55,7 +55,7 @@ class FloLLMAgent(ExecutableFlo):
             llm: Union[BaseLanguageModel, None] = None,
             model_name: str = None,
             parser: Optional[FloParser] = None,
-            data_collector: Optional[FloDataCollector] = None,
+            data_collector: Optional[FloOutputCollector] = None,
         ) -> None:
             self.model_name = model_name
             prompt: Union[ChatPromptTemplate, str] = job
