@@ -341,6 +341,59 @@ result = flo.invoke('Mahatma Gandhi')
 
 ```
 
+### Output Collector
+
+Output collector is an infrastructure that helps you collect outputs across multiple agents into single data structure. The most useful collector is a JSON output collector which when combined with output parser gives combined JSON outputs.
+
+Usage:
+```python
+from flo_ai.state import FloJsonOutputCollector
+
+dc = FloJsonOutputCollector()
+
+# register your collector to the session
+session = FloSession(llm).register_tool(
+    name='InternetSearchTool', tool=TavilySearchResults()
+)
+
+simple_reseacher = """
+apiVersion: flo/alpha-v1
+kind: FloAgent
+name: weather-assistant
+agent:
+    name: WeatherAssistant
+    kind: agentic
+    job: >
+      Given the person name, guess the first and last name
+    tools:
+      - name: InternetSearchTool
+    parser:
+        name: NameFormatter
+        fields:
+            - type: str
+              description: The first name of the person
+              name: first_name
+            - type: str
+              description: The first name of the person
+              name: last_name
+            - name: location 
+              type: object
+              description: The details about birth location
+              fields: 
+                - name: state
+                  type: str
+                  description: The Indian State in whihc the person was born
+    data_collector: kv
+"""
+
+flo: Flo = Flo.build(session, simple_reseacher)
+result = flo.invoke('Gandhi')
+
+# This will output the output as JSON. The idea is that you can use the same collector across multiple agents and teams to still get a combined JSON output.
+print(dc.fetch())
+
+```
+
 ## 📊 Tool Logging and Data Collection
 
 FloAI provides built-in capabilities for logging tool calls and collecting data through the `FloExecutionLogger` and `DataCollector` classes, facilitating the creation of valuable training data.
