@@ -1,5 +1,4 @@
 import pytest
-import json
 from flo_ai.error.flo_exception import FloException
 from flo_ai.state.flo_output_collector import FloOutputCollector
 from flo_ai.state.flo_json_output_collector import FloJsonOutputCollector
@@ -102,11 +101,6 @@ class TestFloJsonOutputCollector:
 
         result = collector.fetch()
         assert result == {'key': 'value2'}  # Later values should override earlier ones
-
-    def test_invalid_json(self, collector: FloJsonOutputCollector):
-        test_input = '{"key": "value",}'  # Invalid JSON with trailing comma
-        with pytest.raises(json.JSONDecodeError):
-            collector.append(test_input)
 
     def test_complex_nested_structure(self, collector: FloJsonOutputCollector):
         test_input = """

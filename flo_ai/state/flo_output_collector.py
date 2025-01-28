@@ -1,4 +1,11 @@
+from enum import Enum
 from abc import ABC, abstractmethod
+
+
+class CollectionStatus(Enum):
+    success = 'success'
+    partial = 'partial'
+    error = 'error'
 
 
 class FloOutputCollector(ABC):

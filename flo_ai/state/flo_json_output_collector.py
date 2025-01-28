@@ -3,13 +3,14 @@ import regex
 from flo_ai.error.flo_exception import FloException
 from typing import Dict, List, Any
 from flo_ai.common.flo_logger import get_logger
-from flo_ai.state.flo_output_collector import FloOutputCollector
+from flo_ai.state.flo_output_collector import FloOutputCollector, CollectionStatus
 
 
 class FloJsonOutputCollector(FloOutputCollector):
     def __init__(self, strict: bool = False):
         super().__init__()
         self.strict = strict
+        self.status = CollectionStatus.success
         self.data: List[Dict[str, Any]] = []
 
     def append(self, agent_output):
@@ -70,9 +71,11 @@ class FloJsonOutputCollector(FloOutputCollector):
                 json_obj = json.loads(self.__strip_comments(json_str))
                 json_object.update(json_obj)
             except json.JSONDecodeError as e:
-                get_logger().error(f'Invalid JSON in response: {json_str}')
-                raise e
+                self.status = CollectionStatus.partial
+                get_logger().error(f'Invalid JSON in response: {json_str}, {e}')
         if self.strict and len(json_matches) == 0:
+            self.status = CollectionStatus.error
+            get_logger().error(f'Error while finding json in -- {llm_response}')
             raise FloException(
                 'JSON response expected in collector model: strict', error_code=1099
             )
