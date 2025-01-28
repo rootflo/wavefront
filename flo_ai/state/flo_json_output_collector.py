@@ -15,13 +15,59 @@ class FloJsonOutputCollector(FloOutputCollector):
     def append(self, agent_output):
         self.data.append(self.__extract_jsons(agent_output))
 
+    def __strip_comments(self, json_str: str) -> str:
+        cleaned = []
+        length = len(json_str)
+        i = 0
+
+        while i < length:
+            char = json_str[i]
+
+            if char not in '"/*':
+                cleaned.append(char)
+                i += 1
+                continue
+
+            if char == '"':
+                cleaned.append(char)
+                i += 1
+
+                while i < length:
+                    char = json_str[i]
+                    cleaned.append(char)
+                    i += 1
+                    if char == '"' and json_str[i - 2] != '\\':
+                        break
+                continue
+
+            if char == '/' and i + 1 < length:
+                next_char = json_str[i + 1]
+
+                if next_char == '/':
+                    i += 2
+                    while i < length and json_str[i] != '\n':
+                        i += 1
+                    continue
+                elif next_char == '*':
+                    i += 2
+                    while i + 1 < length:
+                        if json_str[i] == '*' and json_str[i + 1] == '/':
+                            i += 2
+                            break
+                        i += 1
+                    continue
+
+            cleaned.append(char)
+            i += 1
+        return ''.join(cleaned)
+
     def __extract_jsons(self, llm_response):
         json_pattern = r'\{(?:[^{}]|(?R))*\}'
         json_matches = regex.findall(json_pattern, llm_response)
         json_object = {}
         for json_str in json_matches:
             try:
-                json_obj = json.loads(json_str)
+                json_obj = json.loads(self.__strip_comments(json_str))
                 json_object.update(json_obj)
             except json.JSONDecodeError as e:
                 get_logger().error(f'Invalid JSON in response: {json_str}')
