@@ -36,14 +36,19 @@ class FloNode:
         self.agent_executable = agent_executable
 
     def invoke(self, query, config):
-        return self.func({STATE_NAME_MESSAGES: [HumanMessage(content=query)]})
+        return self.func(
+            {STATE_NAME_MESSAGES: [HumanMessage(content=query)]}, config=config
+        )
 
     async def ainvoke(self, query, config):
         return await self.async_func(
-            {STATE_NAME_MESSAGES: [HumanMessage(content=query)]}
+            {STATE_NAME_MESSAGES: [HumanMessage(content=query)]}, config=config
         )
 
-    def draw(self, xray=True):
+    def draw(
+        self,
+        xray=True,
+    ):
         return (
             self.agent_executable.get_graph().draw_mermaid_png()
             if self.agent_executable is not None
@@ -151,6 +156,7 @@ class FloNode:
             name: str,
             session: FloSession,
             model_name: str,
+            config=None,
             data_collector: Optional[FloOutputCollector] = None,
         ):
             agent_cbs: List[FloAgentCallback] = FloNode.Builder.__filter_callbacks(
@@ -168,7 +174,7 @@ class FloNode:
                 for callback in flo_cbs
             ]
             try:
-                result = agent.invoke(state)
+                result = agent.invoke(state, config=config)
                 output = result if isinstance(result, str) else result['output']
                 if data_collector is not None:
                     get_logger().info(
@@ -202,6 +208,7 @@ class FloNode:
             name: str,
             session: FloSession,
             model_name: str,
+            config: dict = None,
             data_collector: Optional[FloOutputCollector] = None,
         ):
             agent_cbs: List[FloAgentCallback] = FloNode.Builder.__filter_callbacks(
@@ -219,7 +226,7 @@ class FloNode:
                 for callback in flo_cbs
             ]
             try:
-                result = await agent.ainvoke(state)
+                result = await agent.ainvoke(state, config=config)
                 output = result if isinstance(result, str) else result['output']
                 if data_collector is not None:
                     get_logger().info(
@@ -258,6 +265,7 @@ class FloNode:
             name: str,
             session: FloSession,
             model_name: str,
+            config: dict = None,
         ):
             agent_cbs: List[FloRouterCallback] = FloNode.Builder.__filter_callbacks(
                 session, FloRouterCallback
@@ -274,7 +282,7 @@ class FloNode:
                 for callback in flo_cbs
             ]
             try:
-                result = agent.invoke(state)
+                result = agent.invoke(state, config=config)
                 nextNode = result if isinstance(result, str) else result['next']
             except Exception as e:
                 [

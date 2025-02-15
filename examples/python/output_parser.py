@@ -1,24 +1,25 @@
-import os
-from flo_ai import FloAgent, FloSession, Flo
+from flo_ai import FloLLMAgent, FloSession, Flo
 from langchain_community.tools.tavily_search.tool import TavilySearchResults
 from dotenv import load_dotenv
-from langchain_openai import AzureChatOpenAI
+from langchain_openai import ChatOpenAI
 from flo_ai.parsers import FloJsonParser
 from flo_ai.state import FloJsonOutputCollector
+from flo_ai.callbacks import FloExecutionLogger
+from flo_ai.storage.data_collector import JSONLFileCollector
 
 load_dotenv()
-llm = AzureChatOpenAI(
-    azure_endpoint=os.getenv('AZURE_GPT4_ENDPOINT'),
-    model_name='gpt-4o',
-    temperature=0.2,
-    max_tokens=4096,
-    api_version='2024-08-01-preview',
-    api_key=os.getenv('AZURE_OPEN_AI_API_KEY'),
-)
+llm = ChatOpenAI(temperature=0, model_name='gpt-4o-mini')
 
 session = FloSession(llm).register_tool(
     name='TavilySearchResults', tool=TavilySearchResults()
 )
+
+
+file_collector = JSONLFileCollector('.logs')
+
+local_tracker = FloExecutionLogger(file_collector)
+
+session.register_callback(local_tracker)
 
 format = {
     'name': 'NameFormat',
@@ -48,12 +49,11 @@ format = {
 
 dc = FloJsonOutputCollector()
 
-researcher = FloAgent.create(
+researcher = FloLLMAgent.create(
     session,
-    name='Researcher',
-    role='Internet Researcher',
+    name='Formatter',
+    role='Output formatter',
     job='What is the first name, last name  and middle name of the the person user asks about',
-    tools=[TavilySearchResults()],
     parser=FloJsonParser.create(json_dict=format),
     data_collector=dc,
 )

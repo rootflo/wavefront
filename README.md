@@ -405,8 +405,8 @@ You can customize `DataCollector` implementation according to your database. A s
 from flo_ai.callbacks import FloExecutionLogger
 from flo_ai.storage.data_collector import JSONLFileCollector
 
-# Initialize the file collector with a path for the JSONL log file
-file_collector = JSONLFileCollector("./path/to/my_llm_logs.jsonl")
+# Initialize the file collector with a path for the JSONL log file to be stored
+file_collector = JSONLFileCollector("'.logs'")
 
 # Create a tool logger with the collector
 local_tracker = FloExecutionLogger(file_collector)
@@ -439,6 +439,17 @@ The structured logs provide valuable training data that can be used to:
 - **Train new models** to replicate successful tool usage patterns
 - **Create supervised datasets** for tool selection and chain optimization
 
+We have created a script to convert your logs to training data:
+
+```python
+python generate_training_data.py --logger-path PATH --tool-path PATH [--output PATH]
+```
+
+Arguments:
+- *logger-path*: Path to the logger file containing tool and chain entries, eg: .logs/logs/log.jsonl
+- *tool-path*: Path to the tool descriptions file eg: eg: .logs/tools/tools.jsonl
+- *output*: path to save the output eg: training-data.jsonl
+ 
 
 ## 📖 Documentation
 

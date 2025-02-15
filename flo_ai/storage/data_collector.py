@@ -6,7 +6,11 @@ import json
 
 class DataCollector(ABC):
     @abstractmethod
-    def store_entry(self, entry: Dict[str, Any]) -> None:
+    def store_log(self, entry: Dict[str, Any]) -> None:
+        pass
+
+    @abstractmethod
+    def store_tool_log(self, entry: Dict[str, Any]) -> None:
         pass
 
     @abstractmethod
@@ -15,12 +19,20 @@ class DataCollector(ABC):
 
 
 class JSONLFileCollector(DataCollector):
-    def __init__(self, file_path: str):
-        self.file_path = Path(file_path)
-        self.file_path.parent.mkdir(parents=True, exist_ok=True)
+    def __init__(self, folder_path: str):
+        self.log_file_path = Path(f'{folder_path}/logs/logs.jsonl')
+        self.tool_file_path = Path(f'{folder_path}/tools/tools.jsonl')
 
-    def store_entry(self, entry: Dict[str, Any]) -> None:
-        with open(self.file_path, 'a') as f:
+        self.log_file_path.parent.mkdir(parents=True, exist_ok=True)
+        self.tool_file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def store_log(self, entry: Dict[str, Any]) -> None:
+        with open(self.log_file_path, 'a') as f:
+            json.dump(entry, f)
+            f.write('\n')
+
+    def store_tool_log(self, entry: Dict[str, Any]) -> None:
+        with open(self.tool_file_path, 'a') as f:
             json.dump(entry, f)
             f.write('\n')
 

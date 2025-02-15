@@ -22,6 +22,7 @@ from flo_ai.common.flo_logger import (
 from flo_ai.models.flo_node import FloNode
 from flo_ai.models.flo_agent import FloAgent
 from langchain.tools import StructuredTool
+from flo_ai.callbacks.flo_execution_logger import ToolLogger
 
 
 class Flo:
@@ -42,23 +43,17 @@ class Flo:
         return self.runnable.astream(query, config)
 
     def invoke(self, query, config=None) -> Iterator[Union[dict[str, Any], Any]]:
-        config = config or {}
-        config['callbacks'] = (
-            config.get('callbacks', [])
-            + [self.session.langchain_logger]
-            + self.session.callbacks
-        )
+        config = self.session.prepare_config(config)
+
+        for callback in self.session.callbacks:
+            if isinstance(callback, ToolLogger):
+                callback.log_all_tools(self.session.tools)
+
         self.validate_invoke(self.session)
         get_logger().info(f"Invoking query: '{query}'", self.session)
         return self.runnable.invoke(query, config)
 
     def async_invoke(self, query, config=None) -> Iterator[Union[dict[str, Any], Any]]:
-        config = config or {}
-        config['callbacks'] = (
-            config.get('callbacks', [])
-            + [self.session.langchain_logger]
-            + self.session.callbacks
-        )
         get_logger().info(f"Invoking async query: '{query}'", self.session)
         return self.runnable.ainvoke(query, config)
 

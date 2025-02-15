@@ -13,5 +13,6 @@ bin
 *.sql
 *.log
 *.yaml
-scratch_pad.py
 examples/local/*
+.logs
+scratch_pad.py

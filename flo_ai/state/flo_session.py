@@ -108,10 +108,15 @@ class FloSession:
             filter(lambda x: isinstance(x, FloToolCallback), self.callbacks)
         )
         self.langchain_logger = FloLangchainLogger(self.session_id, tool_callbacks)
-
-        if self.llm is not None:
-            self.llm = self.llm.bind(callbacks=[callback])
+        self.callbacks.append(self.langchain_logger)
         return self
+
+    def prepare_config(self, config=None):
+        get_logger().info(f'Binding all callbacks ... {len(self.callbacks)}')
+        config = {} if config is None else config
+        existing_cbs = config['callbacks'] if 'callbacks' in config else []
+        config['callbacks'] = self.callbacks + existing_cbs
+        return config
 
     def append(self, node: str) -> int:
         get_logger().debug(f'Appending node: {node}')
