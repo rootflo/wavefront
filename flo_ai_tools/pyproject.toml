@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "flo_ai_tools"
+version = "0.0.1"
+description = "Some good tool implementations for flo-ai"
+authors = ["rootflo <*@rootflo.ai>"]
+license = "MIT"
+readme = "README.md"
+packages = [
+    { include = "flo_ai_tools" }
+]
+
+[tool.poetry.dependencies]
+python = ">=3.9,<4.0"
+redshift-connector = "^2.1.5"
+
+[tool.poetry.group.dev.dependencies]
+boto3 = "1.36.1"
+botocore = "1.36.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

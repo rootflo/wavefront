@@ -1,7 +1,7 @@
+from enum import Enum
 from flo_ai.models.flo_member import FloMember
 from langchain_core.runnables import Runnable
-from langchain_core.messages import HumanMessage
-from enum import Enum
+from langchain_core.messages import HumanMessage, BaseMessage
 from flo_ai.state.flo_state import STATE_NAME_MESSAGES
 
 
@@ -36,15 +36,15 @@ class ExecutableFlo(FloMember):
             {STATE_NAME_MESSAGES: [HumanMessage(content=work)]}, config
         )
 
-    def invoke(self, work, config=None):
+    def invoke(self, work, config=None, chat_history: list[BaseMessage] = []):
         return self.runnable.invoke(
             {
-                STATE_NAME_MESSAGES: [HumanMessage(content=work)],
+                STATE_NAME_MESSAGES: ([HumanMessage(content=work)]),
             },
             config,
         )
 
-    def ainvoke(self, work, config=None):
+    def ainvoke(self, work, config=None, chat_history: list[BaseMessage] = []):
         return self.runnable.ainvoke(
             {
                 STATE_NAME_MESSAGES: [HumanMessage(content=work)],

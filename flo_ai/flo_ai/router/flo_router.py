@@ -84,31 +84,36 @@ class FloRouter(ABC):
         delegation_node_name = delegation_node.name
         next_node_name = nextNode if isinstance(nextNode, str) else nextNode.name
 
-        retry = delegation_node.delegate.retry or 1
+        retry = delegation_node.delegate.retry or 0
 
         conditional_map = {}
         for agent_name in to_agent_names:
             conditional_map[agent_name] = agent_name
         conditional_map[next_node_name] = next_node_name
 
-        workflow.add_node(
-            INTERNAL_NODE_DELEGATION_MANAGER,
-            functools.partial(
-                self.update_reflection_state, reflection_agent_name=delegation_node_name
-            ),
-        )
-
-        workflow.add_edge(parent.name, INTERNAL_NODE_DELEGATION_MANAGER)
-        workflow.add_conditional_edges(
-            INTERNAL_NODE_DELEGATION_MANAGER,
-            self.__get_refelection_routing_fn(
-                retry, delegation_node_name, next_node_name
-            ),
-            {
-                delegation_node_name: delegation_node_name,
-                next_node_name: next_node_name,
-            },
-        )
+        parent_name = parent if isinstance(parent, str) else parent.name
+        if retry == 0:
+            # no need to track loops when the retry is zero
+            workflow.add_node(
+                INTERNAL_NODE_DELEGATION_MANAGER,
+                functools.partial(
+                    self.update_reflection_state,
+                    reflection_agent_name=delegation_node_name,
+                ),
+            )
+            workflow.add_edge(parent_name, INTERNAL_NODE_DELEGATION_MANAGER)
+            workflow.add_conditional_edges(
+                INTERNAL_NODE_DELEGATION_MANAGER,
+                self.__get_refelection_routing_fn(
+                    retry, delegation_node_name, next_node_name
+                ),
+                {
+                    delegation_node_name: delegation_node_name,
+                    next_node_name: next_node_name,
+                },
+            )
+        else:
+            workflow.add_edge(parent_name, delegation_node_name)
 
         workflow.add_conditional_edges(
             delegation_node_name,

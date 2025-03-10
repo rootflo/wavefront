@@ -1,13 +1,16 @@
 [tool.poetry]
-name = "flo-ai"
-version = "0.0.5"
+name = "flo_ai"
+version = "0.0.6-dev1"
 description = "A easy way to create structured AI agents"
-authors = ["vizsatiz <vishnu@rootfor.xyz>"]
+authors = ["rootflo <*@rootflo.ai>"]
 license = "MIT"
 readme = "README.md"
+packages = [
+    { include = "flo_ai" }
+]
 
 [tool.poetry.dependencies]
-python = ">=3.9,<4.0"
+python = ">=3.10,<4.0"
 langchain = "0.3.3"
 langgraph = "0.2.38"
 httpx = "0.27.0"
@@ -18,7 +21,8 @@ langchain-community = "0.3.2"
 
 [tool.poetry.group.dev.dependencies]
 langchain-mongodb = "^0.2.0"
-# langchain-chroma = "^0.1.4"
+boto3 = "1.36.1"
+botocore = "1.36.1"
 langchainhub = "^0.1.17"
 pypdf = "^4.2.0"
 ipykernel = "^6.29.5"
@@ -31,6 +35,9 @@ wikipedia = "^1.4.0"
 pytest = "^8.3.3"
 pytest-asyncio = "^0.24.0"
 pre-commit = "^4.0.1"
+langchain-aws = "^0.2.13"
+flo-ai-tools = { path = "../flo_ai_tools", develop = true }
+streamlit = "^1.42.2"
 
 [build-system]
 requires = ["poetry-core"]

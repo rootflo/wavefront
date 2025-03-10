@@ -9,8 +9,10 @@ from pydantic import BaseModel, Field
 from langchain_core.output_parsers import JsonOutputParser
 
 
+# TODO probably use messages to relay information
 class NextAgent(BaseModel):
     next: str = Field(description='Name of the next member to be called')
+    message: str = Field(description='Input to the next agent')
 
 
 class FloDelegatorAgent(ExecutableFlo):
@@ -62,7 +64,7 @@ class FloDelegatorAgent(ExecutableFlo):
             delegator_base_system_message = (
                 'You are a delegator tasked with routing a conversation between the'
                 ' following {member_type}: {members}. Given the following rules,'
-                ' respond with the worker to act next '
+                ' respond with the worker to act next. The output should be in strict JSON format. No non-JSON character should be in the output '
             )
             self.model_name = model_name
             self.llm = session.llm if llm is None else llm
@@ -70,14 +72,16 @@ class FloDelegatorAgent(ExecutableFlo):
             self.parser = JsonOutputParser(pydantic_object=NextAgent)
             self.llm_router_prompt = ChatPromptTemplate.from_messages(
                 [
-                    ('system', delegator_base_system_message),
-                    MessagesPlaceholder(variable_name='messages'),
-                    ('system', 'Rules: {delegator_rules}'),
                     (
                         'system',
-                        'Given the conversation above, who should act next?'
-                        'Select one of: {options} \n {format_instructions}',
+                        delegator_base_system_message
+                        + '\n'
+                        + 'Rules: {delegator_rules}'
+                        + '\n'
+                        + 'Given the conversation above, who should act next?'
+                        + 'Select one of: {options} \n {format_instructions}',
                     ),
+                    MessagesPlaceholder(variable_name='messages'),
                 ]
             ).partial(
                 options=str(self.options),

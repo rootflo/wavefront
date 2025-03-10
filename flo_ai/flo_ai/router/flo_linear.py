@@ -32,7 +32,13 @@ class FloLinear(FloRouter):
 
         start_node = flo_agent_nodes[0]
         end_node = flo_agent_nodes[-1]
-        workflow.add_edge(START, start_node.name)
+        if start_node.kind == ExecutableType.delegator:
+            next_node = (
+                flo_agent_nodes[0 + 2] if (0 + 2) < len(flo_agent_nodes) else END
+            )
+            self.add_delegation_edge(workflow, START, start_node, next_node)
+        else:
+            workflow.add_edge(START, start_node.name)
         for i in range(len(flo_agent_nodes) - 1):
             parent_node = flo_agent_nodes[i]
             child_node = flo_agent_nodes[i + 1]

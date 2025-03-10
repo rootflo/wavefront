@@ -19,6 +19,7 @@ from flo_ai.common.flo_logger import (
     set_logger_internal,
     FloLogConfig,
 )
+from langchain_core.messages import BaseMessage
 from flo_ai.models.flo_node import FloNode
 from flo_ai.models.flo_agent import FloAgent
 from langchain.tools import StructuredTool
@@ -42,7 +43,9 @@ class Flo:
         get_logger().info(f"Streaming async query requested: '{query}'", self.session)
         return self.runnable.astream(query, config)
 
-    def invoke(self, query, config=None) -> Iterator[Union[dict[str, Any], Any]]:
+    def invoke(
+        self, query, config=None, chat_history: list[BaseMessage] = []
+    ) -> Iterator[Union[dict[str, Any], Any]]:
         config = self.session.prepare_config(config)
 
         for callback in self.session.callbacks:
@@ -51,11 +54,13 @@ class Flo:
 
         self.validate_invoke(self.session)
         get_logger().info(f"Invoking query: '{query}'", self.session)
-        return self.runnable.invoke(query, config)
+        return self.runnable.invoke(query, config, chat_history)
 
-    def async_invoke(self, query, config=None) -> Iterator[Union[dict[str, Any], Any]]:
+    def async_invoke(
+        self, query, config=None, chat_history: list[BaseMessage] = []
+    ) -> Iterator[Union[dict[str, Any], Any]]:
         get_logger().info(f"Invoking async query: '{query}'", self.session)
-        return self.runnable.ainvoke(query, config)
+        return self.runnable.ainvoke(query, config, chat_history)
 
     @staticmethod
     def build(

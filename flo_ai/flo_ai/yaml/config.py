@@ -30,13 +30,6 @@ class ToolConfig(BaseModel):
     filters: Optional[List[FilterArgs]] = None
 
 
-class PromptStrategy(BaseModel):
-    kind: str
-    agent_name: str
-    retries: int
-    next: Union[str, None] = None
-
-
 class MemberKey(BaseModel):
     name: str
 
