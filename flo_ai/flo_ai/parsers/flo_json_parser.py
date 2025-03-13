@@ -96,6 +96,9 @@ class FloJsonParser(FloParser):
         literals = [literal_value['value'] for literal_value in literal_values]
         return Literal[tuple(literals)]
 
+    def get_format(self) -> BaseModel:
+        return self.__create_contract_from_json()
+
     def __create_contract_from_json(self) -> BaseModel:
         pydantic_fields = {}
         for field in self.contract.fields:

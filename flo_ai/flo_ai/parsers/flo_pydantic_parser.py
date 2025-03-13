@@ -13,6 +13,9 @@ class FloPydanticParser(FloParser):
             pydantic_object=self.model
         ).get_format_instructions()
 
+    def get_format(self):
+        return self.model
+
     def create(output_model: BaseModel):
         return FloPydanticParser.Builder(output_model).build()
 
