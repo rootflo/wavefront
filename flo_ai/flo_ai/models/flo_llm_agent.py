@@ -1,16 +1,16 @@
 from langchain_core.runnables import Runnable
 from langchain_core.language_models import BaseLanguageModel
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from flo_ai.models.flo_executable import ExecutableFlo
 from flo_ai.state.flo_session import FloSession
 from typing import Union, Optional
 from langchain_core.output_parsers import StrOutputParser
 from flo_ai.models.flo_executable import ExecutableType
 from flo_ai.parsers.flo_parser import FloParser
 from flo_ai.state.flo_output_collector import FloOutputCollector
+from flo_ai.models.flo_base_agent import FloBaseAgent
 
 
-class FloLLMAgent(ExecutableFlo):
+class FloLLMAgent(FloBaseAgent):
     def __init__(
         self,
         name: str,
@@ -18,10 +18,13 @@ class FloLLMAgent(ExecutableFlo):
         model_name: str,
         data_collector: Optional[FloOutputCollector] = None,
     ) -> None:
-        super().__init__(name, executor, ExecutableType.llm)
-        self.executor: Runnable = executor
-        self.model_name: str = model_name
-        self.data_collector = data_collector
+        super().__init__(
+            name,
+            executor,
+            ExecutableType.llm,
+            model_name,
+            data_collector=data_collector,
+        )
 
     @staticmethod
     def create(

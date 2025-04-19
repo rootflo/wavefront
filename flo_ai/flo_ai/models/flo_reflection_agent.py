@@ -1,20 +1,19 @@
 from typing import Union, Optional
 from langchain_core.runnables import Runnable
 from flo_ai.state.flo_session import FloSession
-from flo_ai.models.flo_executable import ExecutableFlo
 from langchain_core.language_models import BaseLanguageModel
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from flo_ai.models.flo_executable import ExecutableType
 from langchain_core.output_parsers import StrOutputParser
 from flo_ai.models.delegate import Delegate
+from flo_ai.models.flo_base_agent import FloBaseAgent
 
 
-class FloReflectionAgent(ExecutableFlo):
+class FloReflectionAgent(FloBaseAgent):
     def __init__(
         self, name: str, executor: Runnable, model_name: str, delegate: Delegate
     ) -> None:
-        super().__init__(name, executor, ExecutableType.reflection)
-        self.model_name = model_name
+        super().__init__(name, executor, ExecutableType.reflection, model_name)
         self.delegate = delegate
 
     @staticmethod

@@ -1,12 +1,13 @@
 from typing import Optional
 from langchain_core.runnables import Runnable
 from flo_ai.state.flo_session import FloSession
-from flo_ai.models.flo_executable import ExecutableFlo, ExecutableType
+from flo_ai.models.flo_executable import ExecutableType
 from flo_ai.models.delegate import Delegate
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.language_models import BaseLanguageModel
 from pydantic import BaseModel, Field
 from langchain_core.output_parsers import JsonOutputParser
+from flo_ai.models.flo_base_agent import FloBaseAgent
 
 
 # TODO probably use messages to relay information
@@ -15,7 +16,7 @@ class NextAgent(BaseModel):
     message: str = Field(description='Input to the next agent')
 
 
-class FloDelegatorAgent(ExecutableFlo):
+class FloDelegatorAgent(FloBaseAgent):
     def __init__(
         self,
         session: FloSession,
@@ -24,11 +25,9 @@ class FloDelegatorAgent(ExecutableFlo):
         name: str,
         model_name: str,
     ) -> None:
-        super().__init__(name, executor, ExecutableType.delegator)
+        super().__init__(name, executor, ExecutableType.delegator, model_name)
         self.session = session
         self.delegate = delegate
-        self.executor = executor
-        self.model_name = model_name
 
     @staticmethod
     def create(

@@ -6,6 +6,7 @@ from flo_ai.router.flo_linear import FloLinear
 from flo_ai.yaml.config import TeamConfig
 from flo_ai.models.flo_team import FloTeam
 from flo_ai.router.flo_router import FloRouter
+from flo_ai.router.flo_agent_router import FloAgentRouter
 from flo_ai.error.flo_exception import FloException
 from flo_ai.constants.common_constants import DOCUMENTATION_ROUTER_ANCHOR
 
@@ -13,13 +14,15 @@ from flo_ai.constants.common_constants import DOCUMENTATION_ROUTER_ANCHOR
 class FloRouterFactory:
     @staticmethod
     def create(
-        session: FloSession, team_config: TeamConfig, flo_team: FloTeam
+        session: FloSession,
+        router_kind: str,
+        team_config: TeamConfig,
+        flo_team: FloTeam,
     ) -> FloRouter:
-        router_kind = team_config.router.kind
-        router_model = FloRouterFactory.__resolve_model(
-            session, team_config.router.model
-        )
         if router_kind == 'supervisor':
+            router_model = FloRouterFactory.__resolve_model(
+                session, team_config.router.model
+            )
             return FloSupervisor.Builder(
                 session,
                 team_config.name,
@@ -30,12 +33,21 @@ class FloRouterFactory:
         elif router_kind == 'linear':
             return FloLinear.Builder(session, team_config.name, flo_team).build()
         elif router_kind == 'llm':
+            router_model = FloRouterFactory.__resolve_model(
+                session, team_config.router.model
+            )
             return FloLLMRouter.Builder(
                 session,
                 team_config.router.name,
                 flo_team,
                 llm=router_model,
                 model_nick_name=team_config.router.model,
+            ).build()
+        elif router_kind == 'agent':
+            return FloAgentRouter.Builder(
+                session,
+                team_config.name,
+                flo_agent=flo_team,
             ).build()
         else:
             raise Exception(f"""Unknown router type: {router_kind}. 

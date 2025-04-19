@@ -4,14 +4,15 @@ from langchain.agents import create_tool_calling_agent
 from langchain_core.runnables import Runnable
 from langchain_core.language_models import BaseLanguageModel
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from flo_ai.models.flo_executable import ExecutableFlo, ExecutableType
+from flo_ai.models.flo_executable import ExecutableType
 from flo_ai.state.flo_session import FloSession
 from typing import Union, Optional, Callable
 from flo_ai.state.flo_output_collector import FloOutputCollector
 from flo_ai.parsers.flo_parser import FloParser
+from flo_ai.models.flo_base_agent import FloBaseAgent
 
 
-class FloAgent(ExecutableFlo):
+class FloAgent(FloBaseAgent):
     def __init__(
         self,
         name: str,
@@ -20,11 +21,15 @@ class FloAgent(ExecutableFlo):
         model_name: str,
         data_collector: Optional[FloOutputCollector] = None,
     ) -> None:
-        super().__init__(name, executor, ExecutableType.agentic)
-        self.model_name = model_name
-        self.agent: Runnable = (agent,)
+        super().__init__(
+            name,
+            executor,
+            ExecutableType.agentic,
+            model_name,
+            data_collector=data_collector,
+        )
+        self.agent: Runnable = agent
         self.executor: AgentExecutor = executor
-        self.data_collector = data_collector
 
     @staticmethod
     def create(

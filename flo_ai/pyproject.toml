@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "flo_ai"
-version = "0.0.6-dev1"
+version = "0.0.6-rc2"
 description = "A easy way to create structured AI agents"
 authors = ["rootflo <*@rootflo.ai>"]
 license = "MIT"
@@ -11,7 +11,7 @@ packages = [
 
 [tool.poetry.dependencies]
 python = ">=3.10,<4.0"
-langchain = "0.3.3"
+langchain = ">=0.3.3,<4.0"
 langgraph = "0.2.38"
 httpx = "0.27.0"
 pillow = "^10.3.0"

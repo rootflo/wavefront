@@ -517,7 +517,7 @@ Built with ❤️ using:
         <p><b>Build an Agentic AI customer support bot using FloAI</b><br />We built an open-source agentic AI workflow builder named FloAI and used it to create an agentic customer support agent.</p>
     </a>
     <a href="https://medium.com/rootflo/build-an-agentic-rag-using-floai-in-minutes-0be260304c98" target="_blank" style="text-decoration: none;">
-        <img src="./examples/images/agentic-rag.png" width="150" style="border-radius: 10px;" />
+        <img src="./flo_ai/examples/images/agentic-rag.png" width="150" style="border-radius: 10px;" />
         <p><b>Build an Agentic RAG using FloAI in minutes</b><br />FloAI has just made implementing agentic RAG simple and easy to manage</p>
     </a>
 </div>
