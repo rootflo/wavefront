@@ -8,9 +8,8 @@ Core features improve the library itself to cater wider range of functionalities
 
 | Name | Description | Status | Release version |
 |------|-------------|--------|-----------------|
-|Output formatter| Ability to templatize output format using pydantic| Yet to start| 0.0.5 |
-|Resume work| Functionality that lets agents resume from where they stopped|Yet to start|0.0.5 |
-|To Yaml| Explore the ability to convert code build agents into Yaml| Yet to start| 0.0.5 |
+|Resume work| Functionality that lets agents resume from where they stopped|Yet to start|0.0.7 |
+|To Yaml| Explore the ability to convert code build agents into Yaml| Yet to start| TBD |
 |Web server| First step towards creating a publishable service to which agents can be saved and re-used| Yet to start| 0.0.5 |
 |Web app| A webapp where agents can be accessed like chat bot/slack| TBD |
 |Model routing| Explore the possibility to use a model router within the agents, instead of specifying every agent models | TBD |
@@ -22,8 +21,8 @@ These features improve logging and debugging abilities while building.
 
 | Name | Description | Status | Release version |
 |------|-------------|--------|-----------------|
-|Recursion control| Expose parameters like recursion control to limit recursions and policy in case of recursion etc | Yet to start | 0.0.5
-| Token count | Expose the total tokens used by an agent execution directly through session| Yet to start | 0.0.5
+|Recursion control| Expose parameters like recursion control to limit recursions and policy in case of recursion etc | Yet to start | TBD
+| Token count | Expose the total tokens used by an agent execution directly through session| Yet to start | TBD
 
 ## Community
 
@@ -52,6 +51,7 @@ The community is welcome to suggest changes to the roadmap, through a pull reque
 |Reflection| Reflection lets you build a component that can make the AI retrospectively look at the current output and retry or work again on the task at hand|  ✅ | 0.0.3|
 |Delegator| Delegator lets you build a component that can help delegate a flo to a particular agent, by some condition|  ✅ | 0.0.3|
 |Logging Framework|Better logging framework which can be extended to parent application (with log level control)|  ✅|0.0.3|
+|Output formatter| Ability to templatize output format using pydantic| ✅| 0.0.5 |
 
 
 

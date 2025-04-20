@@ -59,7 +59,7 @@ researcher = FloLLMAgent.create(
 )
 
 
-Flo.set_log_level('DEBUG')
+Flo.set_log_level('INFO')
 flo: Flo = Flo.create(session, researcher)
 result = flo.invoke('Mahatma Gandhi')
 

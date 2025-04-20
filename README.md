@@ -508,6 +508,10 @@ Built with ❤️ using:
 <h2>📚 Latest Blog Posts</h2>
 
 <div style="display: flex; gap: 10px;">
+    <a href="https://medium.com/rootflo/building-an-ai-analytics-team-using-flo-ai-in-minutes-40b36bc46850" target="_blank" style="text-decoration: none;">
+            <img src="./images/analyst-image.png" width="150" style="border-radius: 10px;" />
+            <p><b> Building an AI Analytics Team using Flo-AI in minutes</b><br />Lets build an AI Analyst with FloAI and Amazon Bedrock in Minutes</p>
+    </a>
     <a href="https://medium.com/rootflo/flo-simple-way-to-create-composable-ai-agents-6946c2922a94" target="_blank" style="text-decoration: none;">
         <img src="./images/blog-image.png" width="150" style="border-radius: 10px;" />
         <p><b>Flo: 🔥🔥🔥 Simple way to create composable AI agents</b><br />Unlock the Power of Customizable AI Workflows with FloAI’s Intuitive and Flexible Agentic Framework</p>
