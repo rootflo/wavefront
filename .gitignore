@@ -16,3 +16,4 @@ bin
 examples/local/*
 .logs
 scratch_pad.py
+.*

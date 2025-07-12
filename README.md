@@ -7,7 +7,7 @@
 <img src="https://github.blog/wp-content/uploads/2020/09/github-stars-logo_Color.png" alt="drawing" width="25"/> **Please, star the project on github (see top-right corner) if you appreciate our contribution to the community!**<img src="https://github.blog/wp-content/uploads/2020/09/github-stars-logo_Color.png" alt="drawing" width="25"/>
 
 <p align="center">
-Rootflo is an alternative to <b>Langgraph</b>, and  <b>CrewAI</b>. It lets you easily build composable agentic workflows from using simple components to any size, unlocking the full potential of LLMs.
+Flo AI is a Python framework for building structured AI agents with support for multiple LLM providers, tool integration, and YAML-based configuration. Create production-ready AI agents with minimal code and maximum flexibility.
 </p>
 
 <p align="center">
@@ -38,7 +38,7 @@ Rootflo is an alternative to <b>Langgraph</b>, and  <b>CrewAI</b>. It lets you e
 
 # Flo AI 🌊
 
-> Build production-ready AI agents and teams with minimal code
+> Build production-ready AI agents with structured outputs, tool integration, and multi-LLM support
 
 Flo AI is a Python framework that makes building production-ready AI agents and teams as easy as writing YAML. Think "Kubernetes for AI Agents" - compose complex AI architectures using pre-built components while maintaining the flexibility to create your own.
 
@@ -49,17 +49,9 @@ Flo AI is a Python framework that makes building production-ready AI agents and 
 - 📝 **YAML-First**: Define your entire agent architecture in simple YAML
 - 🔧 **Flexible**: Use pre-built components or create your own
 - 🤝 **Team-Oriented**: Create and manage teams of AI agents working together
-- 📚 **RAG Support**: Built-in support for Retrieval-Augmented Generation
 - 🔄 **Langchain Compatible**: Works with all your favorite Langchain tools
 
 ## 🚀 Quick Start
-
-FloAI follows an agent team architecture, where agents are the basic building blocks, and teams can have multiple agents and teams themselves can be part of bigger teams.
-
-Building a working agent or team involves 3 steps:
-1. Create a session using `FloSession`, and register your tools and models
-2. Define you agent/team/team of teams using yaml or code
-3. Build and run using `Flo`
 
 ### Installation
 
@@ -69,422 +61,448 @@ pip install flo-ai
 poetry add flo-ai
 ```
 
-### Create Your First AI Agent in 30 secs
+### Create Your First AI Agent in 30 seconds
 
 ```python
-from flo_ai import Flo, FloSession
-from langchain_openai import ChatOpenAI
-from langchain_community.tools.tavily_search.tool import TavilySearchResults
+import asyncio
+from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.llm.openai_llm import OpenAI
 
-# init your LLM
-llm = ChatOpenAI(temperature=0)
+async def main():
+    # Create a simple conversational agent
+    agent = (
+        AgentBuilder()
+        .with_name('Math Tutor')
+        .with_prompt('You are a helpful math tutor.')
+        .with_llm(OpenAI(model='gpt-4o-mini'))
+        .build()
+    )
 
-# create a session and register your tools
-session = FloSession(llm).register_tool(name="TavilySearchResults", tool=TavilySearchResults())
+    response = await agent.run('What is the formula for the area of a circle?')
+    print(f'Response: {response}')
 
-# define your agent yaml
-simple_weather_checking_agent = """
-apiVersion: flo/alpha-v1
-kind: FloAgent
-name: weather-assistant
-agent:
-    name: WeatherAssistant
-    job: >
-      Given the city name you are capable of answering the latest whether this time of the year by searching the internet
-    tools:
-      - name: InternetSearchTool
-"""
-flo = Flo.build(session, yaml=simple_weather_checking_agent)
-
-# Start streaming results
-for response in flo.stream("Write about recent AI developments"):
-    print(response)
+asyncio.run(main())
 ```
 
-## Lets create the same agent using code
+### Create a Tool-Using Agent
 
 ```python
-from flo_ai import FloAgent
+import asyncio
+from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.tool.base_tool import Tool
+from flo_ai.models.base_agent import ReasoningPattern
+from flo_ai.llm.anthropic_llm import Anthropic
 
-session = FloSession(llm)
+async def calculate(operation: str, x: float, y: float) -> float:
+    if operation == 'add':
+        return x + y
+    elif operation == 'multiply':
+        return x * y
+    raise ValueError(f'Unknown operation: {operation}')
 
-weather_agent = FloAgent.create(
-    session=session,
-    name="WeatherAssistant",
-    job="Given the city name you are capable of answering the latest whether this time of the year by searching the internet",
-    tools=[TavilySearchResults()]
-)
-
-agent_flo: Flo = Flo.create(session, weather_agent)
-result = agent_flo.invoke("Whats the whether in New Delhi, India ?")
-```
-
-### Create Your First AI Team in 30 Seconds
-
-```python
-from flo_ai import Flo, FloSession
-from langchain_openai import ChatOpenAI
-from langchain_community.tools.tavily_search.tool import TavilySearchResults
-
-
-# Define your team in YAML
-yaml_config = """
-apiVersion: flo/alpha-v1
-kind: FloRoutedTeam
-name: research-team
-team:
-    name: ResearchTeam
-    router:
-        name: TeamLead
-        kind: supervisor
-    agents:
-      - name: Researcher
-        role: Research Specialist
-        job: Research latest information on given topics
-        tools:
-          - name: TavilySearchResults
-      - name: Writer
-        role: Content Creator
-        job: Create engaging content from research
-"""
-
-# Set up and run
-llm = ChatOpenAI(temperature=0)
-session = FloSession(llm).register_tool(name="TavilySearchResults", tool=TavilySearchResults())
-flo = Flo.build(session, yaml=yaml_config)
-
-# Start streaming results
-for response in flo.stream("Write about recent AI developments"):
-    print(response)
-```
-
-**Note:** You can make each of the above agents including the router to use different models, giving flexibility to combine the power of different LLMs.
-To know more, check multi-model integration in detailed [documentation](https://flo-ai.rootflo.ai/advanced/model-switching)
-
-### Lets Create a AI team using code
-
-```python
-from flo_ai import FloSupervisor, FloAgent, FloSession, FloTeam, FloLinear
-from langchain_openai import ChatOpenAI
-from langchain_community.tools.tavily_search.tool import TavilySearchResults
-
-llm = ChatOpenAI(temperature=0, model_name='gpt-4o')
-session = FloSession(llm).register_tool(
-    name="TavilySearchResults",
-    tool=TavilySearchResults()
-)
-
-researcher = FloAgent.create(
-    session,
-    name="Researcher", 
-    role="Internet Researcher", # optional
-    job="Do a research on the internet and find articles of relevent to the topic asked by the user", 
-    tools=[TavilySearchResults()]
-)
-
-blogger = FloAgent.create(
-    session, 
-    name="BlogWriter", 
-    role="Thought Leader", # optional
-    job="Able to write a blog using information provided", 
-    tools=[TavilySearchResults()]
-)
-
-marketing_team = FloTeam.create(session, "Marketing", [researcher, blogger])
-head_of_marketing = FloSupervisor.create(session, "Head-of-Marketing", marketing_team)
-marketing_flo = Flo.create(session, routed_team=head_of_marketing)
-
-```
-
-## Tools
-
-FloAI supports all the tools built and available in `langchain_community` package. To know more these tools, go [here](https://python.langchain.com/docs/integrations/tools/).
-
-Along with that FloAI has a decorator `@flotool` which makes any function into a tool. 
-
-Creating a simple tool using `@flotool`:
-
-```python
-from flo_ai.tools import flotool
-from pydantic import BaseModel, Field
-
-# define argument schema
-class AdditionToolInput(BaseModel):
-    numbers: List[int] = Field(..., description='List of numbers to add')
-
-@flotool(name='AdditionTool', description='Tool to add numbers')
-async def addition_tool(numbers: List[int]) -> str:
-    result = sum(numbers)
-    await asyncio.sleep(1)
-    return f'The sum is {result}'
-
-# async tools can also be defined
-# when using async tool, while running the flo use async invoke
-@flotool(
-    name='MultiplicationTool',
-    description='Tool to multiply numbers to get product of numbers',
-)
-async def mul_tool(numbers: List[int]) -> str:
-    result = sum(numbers)
-    await asyncio.sleep(1)
-    return f'The product is {result}'
-
-# register your tool or use directly in code impl
-session.register_tool(name='Adder', tool=addition_tool)
-```
-
-**Note:** `@flotool` comes with inherent error handling capabilities to retry if an exception is thrown. Use `unsafe=True` to disable error handling
-
-## Output Parsing and formatting
-
-FloAI now supports output parsing using JSON or YAML formatter. You can now defined your output formatter using `pydantic` and use the same in code or directly make it part of the Agent Definition Yaml (ADY)
-
-### Using Agent Defintion YAML
-
-We have added parser key to your agent schema, which gives you the output. The following is the schema of the parser
-
-```yaml
-name: SchemaName
-fields:
-  - name: field_name
-    type: data_type
-    description: field_description
-    values: <optional(for literals, all possible values that can be taken)>
-      - value: <the value>
-        description: value_description
-```
-
-### Supported Field Types
-
-#### Primitive Types
-
-- str: String values
-- int: Integer values
-- bool: Boolean values
-- float: Floating-point values
-
-##### Complex Types
-
-- array: Lists of items
-- object: Nested objects
-- literal: Enumerated values
-
-
-Here an example of a simple summarization agent yaml that produces output a structured manner.
-
-```yaml
-apiVersion: flo/alpha-v1
-kind: FloAgent
-name: SummarizationFlo
-agent:
-  name: SummaryAgent
-  kind: llm
-  role: Book summarizer agent
-  job: >
-    You are an given a paragraph from a book
-    and your job is to understand the information in it and extract summary
-  parser:
-    name: BookSummary
-    fields:
-      - name: long_summary
-        type: str
-        description: A comprehensive summary of the book, with all the major topics discussed
-      - name: short_summary
-        type: str
-        description: A short summary of the book in less than 20 words
-```
-
-As you can see here, the `parser` key makes sure that output of this agent will be the given key value format.
-
-### Using parser with code
-
-You can define parser as json in code and use it easily, here is an example:
-
-```python
-format = {
-    'name': 'NameFormat',
-    'fields': [
-        {
-            'type': 'str',
-            'description': 'The first name of the person',
-            'name': 'first_name',
+# Define a calculator tool
+calculator_tool = Tool(
+    name='calculate',
+    description='Perform basic calculations',
+    function=calculate,
+    parameters={
+        'operation': {
+            'type': 'string',
+            'description': 'The operation to perform (add or multiply)',
         },
-        {
-            'type': 'str',
-            'description': 'The middle name of the person',
-            'name': 'middle_name',
-        },
-        {
-            'type': 'literal',
-            'description': 'The last name of the person, the value can be either of Vishnu or Satis',
-            'name': 'last_name',
-            'values': [
-                {'value': 'Vishnu', 'description': 'If the first_name starts with K'},
-                {'value': 'Satis', 'description': 'If the first_name starts with M'},
-            ],
-            'default_value_prompt': 'If none of the above value is suited, please use value other than the above in snake-case',
-        },
-    ],
+        'x': {'type': 'number', 'description': 'First number'},
+        'y': {'type': 'number', 'description': 'Second number'},
+    },
+)
+
+# Create a tool-using agent with Claude
+agent = (
+    AgentBuilder()
+    .with_name('Calculator Assistant')
+    .with_prompt('You are a math assistant that can perform calculations.')
+    .with_llm(Anthropic(model='claude-3-5-sonnet-20240620'))
+    .with_tools([calculator_tool])
+    .with_reasoning(ReasoningPattern.REACT)
+    .with_retries(2)
+    .build()
+)
+
+response = await agent.run('Calculate 5 plus 3')
+print(f'Response: {response}')
+```
+
+### Create an Agent with Structured Output
+
+```python
+import asyncio
+from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.llm.openai_llm import OpenAI
+
+# Define output schema for structured responses
+math_schema = {
+    'type': 'object',
+    'properties': {
+        'solution': {'type': 'string', 'description': 'The step-by-step solution'},
+        'answer': {'type': 'string', 'description': 'The final answer'},
+    },
+    'required': ['solution', 'answer'],
 }
 
-researcher = FloAgent.create(
-    session,
-    name='Researcher',
-    role='Internet Researcher',
-    job='What is the first name, last name  and middle name of the the person user asks about',
-    tools=[TavilySearchResults()],
-    parser=FloJsonParser.create(json_dict=format)
+# Create an agent with structured output
+agent = (
+    AgentBuilder()
+    .with_name('Structured Math Solver')
+    .with_prompt('You are a math problem solver that provides structured solutions.')
+    .with_llm(OpenAI(model='gpt-4o'))
+    .with_output_schema(math_schema)
+    .build()
 )
 
-
-Flo.set_log_level('DEBUG')
-flo: Flo = Flo.create(session, researcher)
-result = flo.invoke('Mahatma Gandhi')
-
+response = await agent.run('Solve: 2x + 5 = 15')
+print(f'Structured Response: {response}')
 ```
 
-## Output Data Collector
+## 📝 YAML Configuration
 
-Output collector is an infrastructure that helps you collect outputs across multiple agents into single data structure. The most useful collector is a JSON output collector which when combined with output parser gives combined JSON outputs.
+Define your agents using YAML for easy configuration and deployment:
 
-Usage:
-```python
-from flo_ai.state import FloJsonOutputCollector
-
-dc = FloJsonOutputCollector()
-
-# register your collector to the session
-session = FloSession(llm).register_tool(
-    name='InternetSearchTool', tool=TavilySearchResults()
-)
-
-simple_reseacher = """
+```yaml
 apiVersion: flo/alpha-v1
 kind: FloAgent
-name: weather-assistant
+metadata:
+  name: email-summary-flo
+  version: 1.0.0
+  description: "Agent for analyzing email threads"
 agent:
-    name: WeatherAssistant
-    kind: agentic
-    job: >
-      Given the person name, guess the first and last name
-    tools:
-      - name: InternetSearchTool
-    parser:
-        name: NameFormatter
-        fields:
-            - type: str
-              description: The first name of the person
-              name: first_name
-            - type: str
-              description: The first name of the person
-              name: last_name
-            - name: location 
-              type: object
-              description: The details about birth location
-              fields: 
-                - name: state
-                  type: str
-                  description: The Indian State in whihc the person was born
-    data_collector: kv
-"""
-
-flo: Flo = Flo.build(session, simple_reseacher)
-result = flo.invoke('Gandhi')
-
-# This will output the output as JSON. The idea is that you can use the same collector across multiple agents and teams to still get a combined JSON output.
-print(dc.fetch())
-
+  name: EmailSummaryAgent
+  kind: llm
+  role: Email communication expert
+  model:
+    provider: openai
+    name: gpt-4o-mini
+  settings:
+    temperature: 0
+    max_retries: 3
+    reasoning_pattern: DIRECT
+  job: >
+    You are given an email thread between a customer and a support agent.
+    Your job is to analyze the behavior, sentiment, and communication style.
+  parser:
+    name: EmailSummary
+    fields:
+      - name: sender_type
+        type: literal
+        description: "Who sent the latest email"
+        values:
+          - value: customer
+            description: "Latest email was sent by customer"
+          - value: agent
+            description: "Latest email was sent by support agent"
+      - name: summary
+        type: str
+        description: "A comprehensive summary of the email"
+      - name: resolution_status
+        type: literal
+        description: "Issue resolution status"
+        values:
+          - value: resolved
+            description: "Issue appears resolved"
+          - value: unresolved
+            description: "Issue requires attention"
 ```
-
-## 📊 Tool Logging and Data Collection
-
-FloAI provides built-in capabilities for logging tool calls and collecting data through the `FloExecutionLogger` and `DataCollector` classes, facilitating the creation of valuable training data.
-You can customize `DataCollector` implementation according to your database. A sample implementation where logs are stored locally as JSON files is implemented in `JSONLFileCollector`.
-
-### Quick Setup
 
 ```python
-from flo_ai.callbacks import FloExecutionLogger
-from flo_ai.storage.data_collector import JSONLFileCollector
+from flo_ai.builder.agent_builder import AgentBuilder
 
-# Initialize the file collector with a path for the JSONL log file to be stored
-file_collector = JSONLFileCollector("'.logs'")
+# Create agent from YAML
+builder = AgentBuilder.from_yaml(yaml_str=yaml_config)
+agent = builder.build()
 
-# Create a tool logger with the collector
-local_tracker = FloExecutionLogger(file_collector)
-
-# Register the logger with your session
-session.register_callback(local_tracker)
+# Use the agent
+result = await agent.run(email_thread)
 ```
 
-### Features
+## 🛠️ Tools
 
-- 📝 Logs all tool calls, chain executions, and agent actions
-- 🕒 Includes timestamps for start and end of operations
-- 🔍 Tracks inputs, outputs, and errors
-- 💾 Stores data in JSONL format for easy analysis
-- 📚 Facilitates the creation of training data from logged interactions
-
-### Log Data Structure
-
-The logger captures detailed information including:
-- Tool name and inputs
-- Execution timestamps
-- Operation status (completed/error)
-- Chain and agent activities
-- Parent-child relationship between operations
-
-### Training Data Generation
-
-The structured logs provide valuable training data that can be used to:
-- **Fine-tune LLMs** on your specific use cases
-- **Train new models** to replicate successful tool usage patterns
-- **Create supervised datasets** for tool selection and chain optimization
-
-We have created a script to convert your logs to training data:
+Create custom tools easily with async support:
 
 ```python
-python generate_training_data.py --logger-path PATH --tool-path PATH [--output PATH]
+from flo_ai.tool.base_tool import Tool
+
+async def weather_lookup(city: str) -> str:
+    # Your weather API call here
+    return f"Weather in {city}: Sunny, 25°C"
+
+weather_tool = Tool(
+    name='weather_lookup',
+    description='Get current weather for a city',
+    function=weather_lookup,
+    parameters={
+        'city': {
+            'type': 'string',
+            'description': 'City name to get weather for'
+        }
+    }
+)
+
+# Add to your agent
+agent = (
+    AgentBuilder()
+    .with_name('Weather Assistant')
+    .with_llm(OpenAI(model='gpt-4o-mini'))
+    .with_tools([weather_tool])
+    .build()
+)
 ```
 
-Arguments:
-- *logger-path*: Path to the logger file containing tool and chain entries, eg: .logs/logs/log.jsonl
-- *tool-path*: Path to the tool descriptions file eg: eg: .logs/tools/tools.jsonl
-- *output*: path to save the output eg: training-data.jsonl
- 
+### 🎯 @flo_tool Decorator
+
+The `@flo_tool` decorator automatically converts any Python function into a `Tool` object with minimal boilerplate:
+
+```python
+from flo_ai.tool import flo_tool
+
+@flo_tool(
+    description="Perform mathematical calculations",
+    parameter_descriptions={
+        "operation": "The operation to perform (add, subtract, multiply, divide)",
+        "x": "First number",
+        "y": "Second number"
+    }
+)
+async def calculate(operation: str, x: float, y: float) -> float:
+    """Calculate mathematical operations between two numbers."""
+    operations = {
+        'add': lambda: x + y,
+        'subtract': lambda: x - y,
+        'multiply': lambda: x * y,
+        'divide': lambda: x / y if y != 0 else 'Cannot divide by zero',
+    }
+    if operation not in operations:
+        raise ValueError(f'Unknown operation: {operation}')
+    return operations[operation]()
+
+# Function can be called normally
+result = await calculate("add", 5, 3)  # Returns 8
+
+# Tool object is automatically available
+agent = (
+    AgentBuilder()
+    .with_name('Calculator Agent')
+    .with_llm(OpenAI(model='gpt-4o-mini'))
+    .with_tools([calculate.tool])  # Access the tool via .tool attribute
+    .build()
+)
+```
+
+**Key Benefits:**
+- ✅ **Automatic parameter extraction** from type hints
+- ✅ **Flexible descriptions** via docstrings or custom descriptions
+- ✅ **Type conversion** from Python types to JSON schema
+- ✅ **Dual functionality** - functions work normally AND as tools
+- ✅ **Async support** for both sync and async functions
+
+**Simple Usage:**
+```python
+@flo_tool()
+async def convert_units(value: float, from_unit: str, to_unit: str) -> str:
+    """Convert between different units (km/miles, kg/lbs, celsius/fahrenheit)."""
+    # Implementation here
+    return f"{value} {from_unit} = {result} {to_unit}"
+
+# Tool is automatically available as convert_units.tool
+```
+
+**With Custom Metadata:**
+```python
+@flo_tool(
+    name="weather_checker",
+    description="Get current weather information for a city",
+    parameter_descriptions={
+        "city": "The city to get weather for",
+        "country": "The country (optional)",
+    }
+)
+async def get_weather(city: str, country: str = None) -> str:
+    """Get weather information for a specific city."""
+    return f"Weather in {city}: sunny"
+```
+
+> 📖 **For detailed documentation on the `@flo_tool` decorator, see [README_flo_tool.md](flo_ai/README_flo_tool.md)**
+
+## 🧠 Reasoning Patterns
+
+Flo AI supports multiple reasoning patterns:
+
+- **DIRECT**: Simple question-answer without step-by-step reasoning
+- **COT (Chain of Thought)**: Step-by-step reasoning before providing the answer
+- **REACT**: Reasoning and action cycles for tool-using agents
+
+```python
+from flo_ai.models.base_agent import ReasoningPattern
+
+agent = (
+    AgentBuilder()
+    .with_name('Reasoning Agent')
+    .with_llm(OpenAI(model='gpt-4o'))
+    .with_reasoning(ReasoningPattern.COT)  # or REACT, DIRECT
+    .build()
+)
+```
+
+## 🔧 LLM Providers
+
+### OpenAI
+```python
+from flo_ai.llm.openai_llm import OpenAI
+
+llm = OpenAI(
+    model='gpt-4o',
+    temperature=0.7,
+    api_key='your-api-key'  # or set OPENAI_API_KEY env var
+)
+```
+
+### Anthropic Claude
+```python
+from flo_ai.llm.anthropic_llm import Anthropic
+
+llm = Anthropic(
+    model='claude-3-5-sonnet-20240620',
+    temperature=0.7,
+    api_key='your-api-key'  # or set ANTHROPIC_API_KEY env var
+)
+```
+
+### Ollama (Local)
+```python
+from flo_ai.llm.ollama_llm import Ollama
+
+llm = Ollama(
+    model='llama2',
+    base_url='http://localhost:11434'
+)
+```
+
+## 📊 Output Formatting
+
+Use Pydantic models or JSON schemas for structured outputs:
+
+```python
+from pydantic import BaseModel, Field
+
+class MathSolution(BaseModel):
+    solution: str = Field(description="Step-by-step solution")
+    answer: str = Field(description="Final answer")
+    confidence: float = Field(description="Confidence level (0-1)")
+
+agent = (
+    AgentBuilder()
+    .with_name('Math Solver')
+    .with_llm(OpenAI(model='gpt-4o'))
+    .with_output_schema(MathSolution)
+    .build()
+)
+```
+
+## 🔄 Error Handling
+
+Built-in retry mechanisms and error recovery:
+
+```python
+agent = (
+    AgentBuilder()
+    .with_name('Robust Agent')
+    .with_llm(OpenAI(model='gpt-4o'))
+    .with_retries(3)  # Retry up to 3 times on failure
+    .build()
+)
+```
+
+## 📚 Examples
+
+Check out the `examples/` directory for comprehensive examples:
+
+- `agent_builder_usage.py` - Basic agent creation patterns
+- `yaml_agent_example.py` - YAML-based agent configuration
+- `output_formatter.py` - Structured output examples
+- `multi_tool_example.py` - Multi-tool agent examples
+- `cot_agent_example.py` - Chain of Thought reasoning
+- `usage.py` and `usage_claude.py` - Provider-specific examples
+
+## 🚀 Advanced Features
+
+### Custom Tool Creation
+```python
+from flo_ai.tool.base_tool import Tool
+
+async def custom_function(param1: str, param2: int) -> dict:
+    # Your async logic here
+    return {"result": f"Processed {param1} with {param2}"}
+
+custom_tool = Tool(
+    name='custom_function',
+    description='A custom async tool',
+    function=custom_function,
+    parameters={
+        'param1': {'type': 'string', 'description': 'First parameter'},
+        'param2': {'type': 'integer', 'description': 'Second parameter'}
+    }
+)
+```
+
+### YAML Parser Integration
+```python
+from flo_ai.formatter.yaml_format_parser import FloYamlParser
+
+# Create parser from YAML definition
+parser = FloYamlParser.create(yaml_dict=yaml_config)
+output_schema = parser.get_format()
+
+agent = (
+    AgentBuilder()
+    .with_name('YAML Configured Agent')
+    .with_llm(OpenAI(model='gpt-4o'))
+    .with_output_schema(output_schema)
+    .build()
+)
+```
 
 ## 📖 Documentation
 
 Visit our [comprehensive documentation](https://flo-ai.rootflo.ai) for:
 - Detailed tutorials
-- Architecture deep-dives
 - API reference
-  - Logging
-  - Error handling
-  - Observers
-  - Dynamic model switching
 - Best practices
 - Advanced examples
+- Architecture deep-dives
+
+**Additional Resources:**
+- [@flo_tool Decorator Guide](flo_ai/README_flo_tool.md) - Complete guide to the `@flo_tool` decorator
+- [Examples Directory](examples/) - Ready-to-run code examples
+- [Contributing Guide](CONTRIBUTING.md) - How to contribute to Flo AI
 
 ## 🌟 Why Flo AI?
 
-### For AI Engineers
-- **Faster Development**: Build complex AI systems in minutes, not days
-- **Production Focus**: Built-in optimizations and best practices
-- **Flexibility**: Use our components or build your own
+### For Developers
+- **Simple Setup**: Get started in minutes with minimal configuration
+- **Flexible**: Use YAML or code-based configuration
+- **Production Ready**: Built-in error handling and retry mechanisms
+- **Multi-LLM**: Switch between providers easily
 
 ### For Teams
-- **Maintainable**: YAML-first approach makes systems easy to understand and modify
-- **Scalable**: From single agents to complex team hierarchies
+- **Maintainable**: YAML-first approach makes configurations versionable
 - **Testable**: Each component can be tested independently
+- **Scalable**: From simple agents to complex multi-tool systems
 
 ## 🎯 Use Cases
 
 - 🤖 Customer Service Automation
-- 📊 Data Analysis Pipelines
-- 📝 Content Generation
-- 🔍 Research Automation
-- 🎯 Task-Specific AI Teams
+- 📊 Data Analysis and Processing
+- 📝 Content Generation and Summarization
+- 🔍 Research and Information Retrieval
+- 🎯 Task-Specific AI Assistants
+- 📧 Email Analysis and Classification
 
 ## 🤝 Contributing
 
@@ -503,33 +521,10 @@ Flo AI is [MIT Licensed](LICENSE).
 
 Built with ❤️ using:
 - [LangChain](https://github.com/hwchase17/langchain)
-- [LangGraph](https://github.com/langchain-ai/langgraph)
+- [Pydantic](https://github.com/pydantic/pydantic)
+- [OpenAI](https://openai.com/)
+- [Anthropic](https://www.anthropic.com/)
 
-<h2>📚 Latest Blog Posts</h2>
-
-<div style="display: flex; gap: 10px;">
-    <a href="https://medium.com/rootflo/building-an-ai-analytics-team-using-flo-ai-in-minutes-40b36bc46850" target="_blank" style="text-decoration: none;">
-            <img src="./images/analyst-image.png" width="150" style="border-radius: 10px;" />
-            <p><b> Building an AI Analytics Team using Flo-AI in minutes</b><br />Lets build an AI Analyst with FloAI and Amazon Bedrock in Minutes</p>
-    </a>
-    <a href="https://medium.com/rootflo/flo-simple-way-to-create-composable-ai-agents-6946c2922a94" target="_blank" style="text-decoration: none;">
-        <img src="./images/blog-image.png" width="150" style="border-radius: 10px;" />
-        <p><b>Flo: 🔥🔥🔥 Simple way to create composable AI agents</b><br />Unlock the Power of Customizable AI Workflows with FloAI’s Intuitive and Flexible Agentic Framework</p>
-    </a>
-    <a href="https://medium.com/rootflo/build-an-agentic-ai-customer-support-bot-using-floai-533660fb9c9b" target="_blank" style="text-decoration: none;">
-        <img src="./images/customer-support.png" width="150" style="border-radius: 10px;" />
-        <p><b>Build an Agentic AI customer support bot using FloAI</b><br />We built an open-source agentic AI workflow builder named FloAI and used it to create an agentic customer support agent.</p>
-    </a>
-    <a href="https://medium.com/rootflo/build-an-agentic-rag-using-floai-in-minutes-0be260304c98" target="_blank" style="text-decoration: none;">
-        <img src="./flo_ai/examples/images/agentic-rag.png" width="150" style="border-radius: 10px;" />
-        <p><b>Build an Agentic RAG using FloAI in minutes</b><br />FloAI has just made implementing agentic RAG simple and easy to manage</p>
-    </a>
-</div>
-    <a href="https://medium.com/rootflo/mastering-ai-interaction-logging-and-data-collection-with-floai-a490818bb2f1" target="_blank" style="text-decoration: none;">
-        <img src="./images/blog-image.png" width="150" style="border-radius: 10px;" />
-        <p><b>Mastering AI Interaction Logging and Data Collection with FloAI</b><br />Learn how to leverage FloAI's powerful logging system for debugging, training data generation, and system optimization</p>
-    </a>
-    </a>
 ---
 
 <div align="center">
