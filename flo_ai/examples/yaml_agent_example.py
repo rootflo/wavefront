@@ -3,7 +3,6 @@ from flo_ai.builder.agent_builder import AgentBuilder
 # Example YAML configuration
 yaml_config = """
 apiVersion: flo/alpha-v1
-kind: FloAgent
 metadata:
   name: email-summary-flo
   version: 1.0.0

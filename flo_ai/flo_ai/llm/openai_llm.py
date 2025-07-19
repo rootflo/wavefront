@@ -1,6 +1,6 @@
 from typing import Dict, Any, List
 from openai import AsyncOpenAI
-from .base_llm import BaseLLM
+from .base_llm import BaseLLM, ImageMessage
 from flo_ai.tool.base_tool import Tool
 
 
@@ -88,3 +88,7 @@ class OpenAI(BaseLLM):
     def format_tools_for_llm(self, tools: List['Tool']) -> List[Dict[str, Any]]:
         """Format tools for OpenAI's API"""
         return [self.format_tool_for_llm(tool) for tool in tools]
+
+    def format_image_in_message(self, image: ImageMessage) -> str:
+        """Format a image in the message"""
+        raise NotImplementedError('Not implemented image for LLM OpenAI')

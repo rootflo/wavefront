@@ -11,24 +11,23 @@ packages = [
 
 [tool.poetry.dependencies]
 python = ">=3.10,<4.0"
-langchain = ">=0.3.3,<4.0"
-langgraph = "0.2.38"
 httpx = ">=0.27.0"
 pillow = "^10.3.0"
 pydantic = "^2.9.2"
-langchain-community = "0.3.2"
 openai = "^1.77.0"
+google-genai = "^1.25.0"
+# TODO: make into optional dependency
+matplotlib = "^3.7.0"
+networkx = "^3.0"
+anthropic = "^0.57.1"
+aiohttp = "^3.12.14"
 
 
 [tool.poetry.group.dev.dependencies]
-langchain-mongodb = "^0.2.0"
 boto3 = "1.36.1"
 botocore = "1.36.1"
-langchainhub = "^0.1.17"
 pypdf = "^4.2.0"
 ipykernel = "^6.29.5"
-langchain-openai = "^0.2.2"
-langchain-anthropic = "^0.2.3"
 db-sqlite3 = "^0.0.1"
 peewee = "^3.17.6"
 python-dotenv = "^1.0.1"
@@ -36,7 +35,6 @@ wikipedia = "^1.4.0"
 pytest = "^8.3.3"
 pytest-asyncio = "^0.24.0"
 pre-commit = "^4.0.1"
-langchain-aws = "^0.2.13"
 flo-ai-tools = { path = "../flo_ai_tools", develop = true }
 streamlit = "^1.42.2"
 

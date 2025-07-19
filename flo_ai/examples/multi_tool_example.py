@@ -2,10 +2,8 @@ import asyncio
 from flo_ai.builder.agent_builder import AgentBuilder
 from flo_ai.tool.base_tool import Tool
 from flo_ai.models.base_agent import ReasoningPattern
-from flo_ai.llm.openai_llm import OpenAI
 
-from flo_ai.llm.anthropic_llm import Anthropic
-from flo_ai.llm.base_llm import BaseLLM
+from flo_ai.llm import Anthropic, Gemini, OpenAI, BaseLLM
 
 
 async def create_tools():
@@ -137,9 +135,13 @@ async def main():
     openai_llm = OpenAI(model='gpt-4-turbo-preview', temperature=0.7)
     await test_multi_tool_agent(openai_llm, 'OpenAI Multi-Tool Agent')
 
-    # # Test with Claude
+    # Test with Claude
     claude_llm = Anthropic(model='claude-3-5-sonnet-20240620', temperature=0.7)
     await test_multi_tool_agent(claude_llm, 'Claude Multi-Tool Agent')
+
+    # Test with Gemini
+    gemini_llm = Gemini(model='gemini-2.5-flash', temperature=0.7)
+    await test_multi_tool_agent(gemini_llm, 'Gemini Multi-Tool Agent')
 
 
 if __name__ == '__main__':

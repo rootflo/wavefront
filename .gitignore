@@ -17,3 +17,7 @@ examples/local/*
 .logs
 scratch_pad.py
 .*
+*.png
+*.html
+usecases/
+compare_gemini_outputs_v1.py

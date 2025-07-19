@@ -2,9 +2,7 @@
   <img src="./images/rootflo-logo.png" alt="Rootflo" width="150" />
 </p>
 
-<h1 align="center">Composable AI Agentic Workflow</h1>
-
-<img src="https://github.blog/wp-content/uploads/2020/09/github-stars-logo_Color.png" alt="drawing" width="25"/> **Please, star the project on github (see top-right corner) if you appreciate our contribution to the community!**<img src="https://github.blog/wp-content/uploads/2020/09/github-stars-logo_Color.png" alt="drawing" width="25"/>
+<h1 align="center">Composable Agentic AI Workflow</h1>
 
 <p align="center">
 Flo AI is a Python framework for building structured AI agents with support for multiple LLM providers, tool integration, and YAML-based configuration. Create production-ready AI agents with minimal code and maximum flexibility.
@@ -51,6 +49,44 @@ Flo AI is a Python framework that makes building production-ready AI agents and 
 - 🤝 **Team-Oriented**: Create and manage teams of AI agents working together
 - 🔄 **Langchain Compatible**: Works with all your favorite Langchain tools
 
+## 📖 Table of Contents
+
+- [🚀 Quick Start](#-quick-start)
+  - [Installation](#installation)
+  - [Create Your First AI Agent in 30 seconds](#create-your-first-ai-agent-in-30-seconds)
+  - [Create a Tool-Using Agent](#create-a-tool-using-agent)
+  - [Create an Agent with Structured Output](#create-an-agent-with-structured-output)
+- [📝 YAML Configuration](#-yaml-configuration)
+- [🛠️ Tools](#️-tools)
+  - [🎯 @flo_tool Decorator](#-flo_tool-decorator)
+- [🧠 Reasoning Patterns](#-reasoning-patterns)
+- [🔧 LLM Providers](#-llm-providers)
+  - [OpenAI](#openai)
+  - [Anthropic Claude](#anthropic-claude)
+  - [Google Gemini](#google-gemini)
+  - [Ollama (Local)](#ollama-local)
+- [📊 Output Formatting](#-output-formatting)
+- [🔄 Error Handling](#-error-handling)
+- [📚 Examples](#-examples)
+- [🚀 Advanced Features](#-advanced-features)
+  - [Custom Tool Creation](#custom-tool-creation)
+  - [YAML Parser Integration](#yaml-parser-integration)
+- [🔄 Agent Orchestration with Arium](#-agent-orchestration-with-arium)
+  - [🌟 Key Features](#-key-features)
+  - [Quick Start: Simple Agent Chain](#quick-start-simple-agent-chain)
+  - [Advanced: Conditional Routing](#advanced-conditional-routing)
+  - [Agent + Tool Workflows](#agent--tool-workflows)
+  - [Workflow Visualization](#workflow-visualization)
+  - [Memory and Context Sharing](#memory-and-context-sharing)
+  - [📊 Use Cases for Arium](#-use-cases-for-arium)
+  - [Builder Pattern Benefits](#builder-pattern-benefits)
+- [📖 Documentation](#-documentation)
+- [🌟 Why Flo AI?](#-why-flo-ai)
+- [🎯 Use Cases](#-use-cases)
+- [🤝 Contributing](#-contributing)
+- [📜 License](#-license)
+- [🙏 Acknowledgments](#-acknowledgments)
+
 ## 🚀 Quick Start
 
 ### Installation
@@ -65,12 +101,14 @@ poetry add flo-ai
 
 ```python
 import asyncio
+from typing import Any
 from flo_ai.builder.agent_builder import AgentBuilder
-from flo_ai.llm.openai_llm import OpenAI
+from flo_ai.llm import OpenAI
+from flo_ai.models.agent import Agent
 
-async def main():
+async def main() -> None:
     # Create a simple conversational agent
-    agent = (
+    agent: Agent = (
         AgentBuilder()
         .with_name('Math Tutor')
         .with_prompt('You are a helpful math tutor.')
@@ -78,7 +116,7 @@ async def main():
         .build()
     )
 
-    response = await agent.run('What is the formula for the area of a circle?')
+    response: Any = await agent.run('What is the formula for the area of a circle?')
     print(f'Response: {response}')
 
 asyncio.run(main())
@@ -88,10 +126,12 @@ asyncio.run(main())
 
 ```python
 import asyncio
+from typing import Any, Dict, List, Union
 from flo_ai.builder.agent_builder import AgentBuilder
 from flo_ai.tool.base_tool import Tool
 from flo_ai.models.base_agent import ReasoningPattern
-from flo_ai.llm.anthropic_llm import Anthropic
+from flo_ai.models.agent import Agent
+from flo_ai.llm import Anthropic
 
 async def calculate(operation: str, x: float, y: float) -> float:
     if operation == 'add':
@@ -101,7 +141,7 @@ async def calculate(operation: str, x: float, y: float) -> float:
     raise ValueError(f'Unknown operation: {operation}')
 
 # Define a calculator tool
-calculator_tool = Tool(
+calculator_tool: Tool = Tool(
     name='calculate',
     description='Perform basic calculations',
     function=calculate,
@@ -116,7 +156,7 @@ calculator_tool = Tool(
 )
 
 # Create a tool-using agent with Claude
-agent = (
+agent: Agent = (
     AgentBuilder()
     .with_name('Calculator Assistant')
     .with_prompt('You are a math assistant that can perform calculations.')
@@ -127,7 +167,7 @@ agent = (
     .build()
 )
 
-response = await agent.run('Calculate 5 plus 3')
+response: Any = await agent.run('Calculate 5 plus 3')
 print(f'Response: {response}')
 ```
 
@@ -135,11 +175,13 @@ print(f'Response: {response}')
 
 ```python
 import asyncio
+from typing import Any, Dict
 from flo_ai.builder.agent_builder import AgentBuilder
-from flo_ai.llm.openai_llm import OpenAI
+from flo_ai.llm import OpenAI
+from flo_ai.models.agent import Agent
 
 # Define output schema for structured responses
-math_schema = {
+math_schema: Dict[str, Any] = {
     'type': 'object',
     'properties': {
         'solution': {'type': 'string', 'description': 'The step-by-step solution'},
@@ -149,7 +191,7 @@ math_schema = {
 }
 
 # Create an agent with structured output
-agent = (
+agent: Agent = (
     AgentBuilder()
     .with_name('Structured Math Solver')
     .with_prompt('You are a math problem solver that provides structured solutions.')
@@ -158,7 +200,7 @@ agent = (
     .build()
 )
 
-response = await agent.run('Solve: 2x + 5 = 15')
+response: Any = await agent.run('Solve: 2x + 5 = 15')
 print(f'Structured Response: {response}')
 ```
 
@@ -212,14 +254,19 @@ agent:
 ```
 
 ```python
+from typing import Any, List
 from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.models.agent import Agent
 
 # Create agent from YAML
-builder = AgentBuilder.from_yaml(yaml_str=yaml_config)
-agent = builder.build()
+yaml_config: str = """..."""  # Your YAML configuration string
+email_thread: List[str] = ["Email thread content..."]
+
+builder: AgentBuilder = AgentBuilder.from_yaml(yaml_str=yaml_config)
+agent: Agent = builder.build()
 
 # Use the agent
-result = await agent.run(email_thread)
+result: Any = await agent.run(email_thread)
 ```
 
 ## 🛠️ Tools
@@ -227,13 +274,17 @@ result = await agent.run(email_thread)
 Create custom tools easily with async support:
 
 ```python
+from typing import List
 from flo_ai.tool.base_tool import Tool
+from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.llm import OpenAI
+from flo_ai.models.agent import Agent
 
 async def weather_lookup(city: str) -> str:
     # Your weather API call here
     return f"Weather in {city}: Sunny, 25°C"
 
-weather_tool = Tool(
+weather_tool: Tool = Tool(
     name='weather_lookup',
     description='Get current weather for a city',
     function=weather_lookup,
@@ -246,7 +297,7 @@ weather_tool = Tool(
 )
 
 # Add to your agent
-agent = (
+agent: Agent = (
     AgentBuilder()
     .with_name('Weather Assistant')
     .with_llm(OpenAI(model='gpt-4o-mini'))
@@ -260,7 +311,11 @@ agent = (
 The `@flo_tool` decorator automatically converts any Python function into a `Tool` object with minimal boilerplate:
 
 ```python
+from typing import Any, Dict, Union
 from flo_ai.tool import flo_tool
+from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.llm import OpenAI
+from flo_ai.models.agent import Agent
 
 @flo_tool(
     description="Perform mathematical calculations",
@@ -270,9 +325,9 @@ from flo_ai.tool import flo_tool
         "y": "Second number"
     }
 )
-async def calculate(operation: str, x: float, y: float) -> float:
+async def calculate(operation: str, x: float, y: float) -> Union[float, str]:
     """Calculate mathematical operations between two numbers."""
-    operations = {
+    operations: Dict[str, callable] = {
         'add': lambda: x + y,
         'subtract': lambda: x - y,
         'multiply': lambda: x * y,
@@ -283,10 +338,10 @@ async def calculate(operation: str, x: float, y: float) -> float:
     return operations[operation]()
 
 # Function can be called normally
-result = await calculate("add", 5, 3)  # Returns 8
+result: Union[float, str] = await calculate("add", 5, 3)  # Returns 8
 
 # Tool object is automatically available
-agent = (
+agent: Agent = (
     AgentBuilder()
     .with_name('Calculator Agent')
     .with_llm(OpenAI(model='gpt-4o-mini'))
@@ -304,10 +359,13 @@ agent = (
 
 **Simple Usage:**
 ```python
+from flo_ai.tool import flo_tool
+
 @flo_tool()
 async def convert_units(value: float, from_unit: str, to_unit: str) -> str:
     """Convert between different units (km/miles, kg/lbs, celsius/fahrenheit)."""
     # Implementation here
+    result: float = 0.0  # Your conversion logic here
     return f"{value} {from_unit} = {result} {to_unit}"
 
 # Tool is automatically available as convert_units.tool
@@ -315,6 +373,9 @@ async def convert_units(value: float, from_unit: str, to_unit: str) -> str:
 
 **With Custom Metadata:**
 ```python
+from typing import Optional
+from flo_ai.tool import flo_tool
+
 @flo_tool(
     name="weather_checker",
     description="Get current weather information for a city",
@@ -323,7 +384,7 @@ async def convert_units(value: float, from_unit: str, to_unit: str) -> str:
         "country": "The country (optional)",
     }
 )
-async def get_weather(city: str, country: str = None) -> str:
+async def get_weather(city: str, country: Optional[str] = None) -> str:
     """Get weather information for a specific city."""
     return f"Weather in {city}: sunny"
 ```
@@ -340,8 +401,11 @@ Flo AI supports multiple reasoning patterns:
 
 ```python
 from flo_ai.models.base_agent import ReasoningPattern
+from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.llm import OpenAI
+from flo_ai.models.agent import Agent
 
-agent = (
+agent: Agent = (
     AgentBuilder()
     .with_name('Reasoning Agent')
     .with_llm(OpenAI(model='gpt-4o'))
@@ -354,9 +418,9 @@ agent = (
 
 ### OpenAI
 ```python
-from flo_ai.llm.openai_llm import OpenAI
+from flo_ai.llm import OpenAI
 
-llm = OpenAI(
+llm: OpenAI = OpenAI(
     model='gpt-4o',
     temperature=0.7,
     api_key='your-api-key'  # or set OPENAI_API_KEY env var
@@ -365,20 +429,31 @@ llm = OpenAI(
 
 ### Anthropic Claude
 ```python
-from flo_ai.llm.anthropic_llm import Anthropic
+from flo_ai.llm import Anthropic
 
-llm = Anthropic(
+llm: Anthropic = Anthropic(
     model='claude-3-5-sonnet-20240620',
     temperature=0.7,
     api_key='your-api-key'  # or set ANTHROPIC_API_KEY env var
 )
 ```
 
+### Google Gemini
+```python
+from flo_ai.llm import Gemini
+
+llm: Gemini = Gemini(
+    model='gemini-2.5-flash',  # or gemini-2.5-pro
+    temperature=0.7,
+    api_key='your-api-key'  # or set GOOGLE_API_KEY env var
+)
+```
+
 ### Ollama (Local)
 ```python
-from flo_ai.llm.ollama_llm import Ollama
+from flo_ai.llm import Ollama
 
-llm = Ollama(
+llm: Ollama = Ollama(
     model='llama2',
     base_url='http://localhost:11434'
 )
@@ -390,13 +465,16 @@ Use Pydantic models or JSON schemas for structured outputs:
 
 ```python
 from pydantic import BaseModel, Field
+from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.llm import OpenAI
+from flo_ai.models.agent import Agent
 
 class MathSolution(BaseModel):
     solution: str = Field(description="Step-by-step solution")
     answer: str = Field(description="Final answer")
     confidence: float = Field(description="Confidence level (0-1)")
 
-agent = (
+agent: Agent = (
     AgentBuilder()
     .with_name('Math Solver')
     .with_llm(OpenAI(model='gpt-4o'))
@@ -410,7 +488,11 @@ agent = (
 Built-in retry mechanisms and error recovery:
 
 ```python
-agent = (
+from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.llm import OpenAI
+from flo_ai.models.agent import Agent
+
+agent: Agent = (
     AgentBuilder()
     .with_name('Robust Agent')
     .with_llm(OpenAI(model='gpt-4o'))
@@ -434,13 +516,14 @@ Check out the `examples/` directory for comprehensive examples:
 
 ### Custom Tool Creation
 ```python
+from typing import Dict, Any
 from flo_ai.tool.base_tool import Tool
 
-async def custom_function(param1: str, param2: int) -> dict:
+async def custom_function(param1: str, param2: int) -> Dict[str, str]:
     # Your async logic here
     return {"result": f"Processed {param1} with {param2}"}
 
-custom_tool = Tool(
+custom_tool: Tool = Tool(
     name='custom_function',
     description='A custom async tool',
     function=custom_function,
@@ -453,13 +536,18 @@ custom_tool = Tool(
 
 ### YAML Parser Integration
 ```python
+from typing import Dict, Any
 from flo_ai.formatter.yaml_format_parser import FloYamlParser
+from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.llm import OpenAI
+from flo_ai.models.agent import Agent
 
 # Create parser from YAML definition
-parser = FloYamlParser.create(yaml_dict=yaml_config)
-output_schema = parser.get_format()
+yaml_config: Dict[str, Any] = {}  # Your YAML configuration dict
+parser: FloYamlParser = FloYamlParser.create(yaml_dict=yaml_config)
+output_schema: Any = parser.get_format()
 
-agent = (
+agent: Agent = (
     AgentBuilder()
     .with_name('YAML Configured Agent')
     .with_llm(OpenAI(model='gpt-4o'))
@@ -467,6 +555,312 @@ agent = (
     .build()
 )
 ```
+
+## 🔄 Agent Orchestration with Arium
+
+Arium is Flo AI's powerful workflow orchestration engine that allows you to create complex multi-agent workflows with ease. Think of it as a conductor for your AI agents, coordinating their interactions and data flow.
+
+### 🌟 Key Features
+
+- **🔗 Multi-Agent Workflows**: Orchestrate multiple agents working together
+- **🎯 Flexible Routing**: Route between agents based on context and conditions
+- **🧠 Shared Memory**: Agents share conversation history and context
+- **📊 Visual Workflows**: Generate flow diagrams of your agent interactions
+- **⚡ Builder Pattern**: Fluent API for easy workflow construction
+- **🔄 Reusable Workflows**: Build once, run multiple times with different inputs
+
+### Quick Start: Simple Agent Chain
+
+```python
+import asyncio
+from typing import Any, List
+from flo_ai.arium import AriumBuilder
+from flo_ai.models.agent import Agent
+from flo_ai.llm.openai_llm import OpenAI
+
+async def simple_chain() -> List[Any]:
+    llm: OpenAI = OpenAI(model='gpt-4o-mini')
+    
+    # Create agents
+    analyst: Agent = Agent(
+        name='content_analyst',
+        system_prompt='Analyze the input and extract key insights.',
+        llm=llm
+    )
+    
+    summarizer: Agent = Agent(
+        name='summarizer', 
+        system_prompt='Create a concise summary based on the analysis.',
+        llm=llm
+    )
+    
+    # Build and run workflow
+    result: List[Any] = await (
+        AriumBuilder()
+        .add_agents([analyst, summarizer])
+        .start_with(analyst)
+        .connect(analyst, summarizer)  # analyst → summarizer
+        .end_with(summarizer)
+        .build_and_run(["Analyze this complex business report..."])
+    )
+    
+    return result
+
+asyncio.run(simple_chain())
+```
+
+### Advanced: Conditional Routing
+
+```python
+import asyncio
+from typing import Any, List
+from flo_ai.arium import AriumBuilder
+from flo_ai.models.agent import Agent
+from flo_ai.llm.openai_llm import OpenAI
+from flo_ai.arium.memory import BaseMemory
+
+async def conditional_workflow() -> List[Any]:
+    llm: OpenAI = OpenAI(model='gpt-4o-mini')
+    
+    # Create specialized agents
+    classifier: Agent = Agent(
+        name='classifier',
+        system_prompt='Classify the input as either "technical" or "business".',
+        llm=llm
+    )
+    
+    tech_specialist: Agent = Agent(
+        name='tech_specialist',
+        system_prompt='Provide technical analysis and solutions.',
+        llm=llm
+    )
+    
+    business_specialist: Agent = Agent(
+        name='business_specialist', 
+        system_prompt='Provide business analysis and recommendations.',
+        llm=llm
+    )
+    
+    final_agent: Agent = Agent(
+        name='final_reviewer',
+        system_prompt='Provide final review and conclusions.',
+        llm=llm
+    )
+    
+    # Define routing logic
+    def route_by_type(memory: BaseMemory) -> str:
+        """Route based on classification result"""
+        messages: List[Any] = memory.get()
+        last_message: str = str(messages[-1]) if messages else ""
+        
+        if "technical" in last_message.lower():
+            return "tech_specialist"
+        else:
+            return "business_specialist"
+    
+    # Build workflow with conditional routing
+    result: List[Any] = await (
+        AriumBuilder()
+        .add_agents([classifier, tech_specialist, business_specialist, final_agent])
+        .start_with(classifier)
+        .add_edge(classifier, [tech_specialist, business_specialist], route_by_type)
+        .connect(tech_specialist, final_agent)
+        .connect(business_specialist, final_agent)
+        .end_with(final_agent)
+        .build_and_run(["How can we optimize our database performance?"])
+    )
+    
+    return result
+```
+
+### Agent + Tool Workflows
+
+```python
+import asyncio
+from typing import Any, List
+from flo_ai.tool import flo_tool
+from flo_ai.arium import AriumBuilder
+from flo_ai.models.agent import Agent
+from flo_ai.llm.openai_llm import OpenAI
+
+@flo_tool(description="Search for relevant information")
+async def search_tool(query: str) -> str:
+    # Your search implementation
+    return f"Search results for: {query}"
+
+@flo_tool(description="Perform calculations")
+async def calculator(expression: str) -> float:
+    # Your calculation implementation
+    return eval(expression)  # Note: Use safely in production
+
+async def agent_tool_workflow() -> List[Any]:
+    llm: OpenAI = OpenAI(model='gpt-4o-mini')
+    
+    research_agent: Agent = Agent(
+        name='researcher',
+        system_prompt='Research topics and gather information.',
+        llm=llm
+    )
+    
+    analyst_agent: Agent = Agent(
+        name='analyst',
+        system_prompt='Analyze data and provide insights.',
+        llm=llm
+    )
+    
+    # Mix agents and tools in workflow
+    result: List[Any] = await (
+        AriumBuilder()
+        .add_agent(research_agent)
+        .add_tools([search_tool.tool, calculator.tool])
+        .add_agent(analyst_agent)
+        .start_with(research_agent)
+        .connect(research_agent, search_tool.tool)
+        .connect(search_tool.tool, calculator.tool)
+        .connect(calculator.tool, analyst_agent)
+        .end_with(analyst_agent)
+        .build_and_run(["Research market trends for Q4 2024"])
+    )
+    
+    return result
+```
+
+### Workflow Visualization
+
+```python
+from typing import Any, List, Callable, Optional
+from flo_ai.arium import AriumBuilder
+from flo_ai.arium.arium import Arium
+from flo_ai.models.agent import Agent
+from flo_ai.tool.base_tool import Tool
+
+# Assume these are defined elsewhere
+agent1: Agent = ...  # Your agent definitions
+agent2: Agent = ...
+agent3: Agent = ...
+tool1: Tool = ...    # Your tool definitions
+tool2: Tool = ...
+router_function: Callable = ...  # Your router function
+
+# Build workflow and generate visual diagram
+arium: Arium = (
+    AriumBuilder()
+    .add_agents([agent1, agent2, agent3])
+    .add_tools([tool1, tool2])
+    .start_with(agent1)
+    .connect(agent1, tool1)
+    .add_edge(tool1, [agent2, agent3], router_function)
+    .end_with(agent2)
+    .end_with(agent3)
+    .visualize("my_workflow.png", "Customer Service Workflow")  # Generates PNG
+    .build()
+)
+
+# Run the workflow
+result: List[Any] = await arium.run(["Customer complaint about billing"])
+```
+
+### Memory and Context Sharing
+
+All agents in an Arium workflow share the same memory, enabling them to build on each other's work:
+
+```python
+from typing import Any, List
+from flo_ai.arium import AriumBuilder
+from flo_ai.arium.memory import MessageMemory
+from flo_ai.arium.arium import Arium
+from flo_ai.models.agent import Agent
+
+# Assume these agents are defined elsewhere
+agent1: Agent = ...
+agent2: Agent = ...
+agent3: Agent = ...
+
+# Custom memory for persistent context
+custom_memory: MessageMemory = MessageMemory()
+
+result: List[Any] = await (
+    AriumBuilder()
+    .with_memory(custom_memory)  # Shared across all agents
+    .add_agents([agent1, agent2, agent3])
+    .start_with(agent1)
+    .connect(agent1, agent2)
+    .connect(agent2, agent3)
+    .end_with(agent3)
+    .build_and_run(["Initial context and instructions"])
+)
+
+# Build the arium for reuse
+arium: Arium = (
+    AriumBuilder()
+    .with_memory(custom_memory)
+    .add_agents([agent1, agent2, agent3])
+    .start_with(agent1)
+    .connect(agent1, agent2)
+    .connect(agent2, agent3)
+    .end_with(agent3)
+    .build()
+)
+
+# Memory persists and can be reused
+result2: List[Any] = await arium.run(["Follow-up question based on previous context"])
+```
+
+### 📊 Use Cases for Arium
+
+- **📝 Content Pipeline**: Research → Writing → Editing → Publishing
+- **🔍 Analysis Workflows**: Data Collection → Processing → Analysis → Reporting
+- **🎯 Decision Trees**: Classification → Specialized Processing → Final Decision
+- **🤝 Customer Service**: Intent Detection → Specialist Routing → Resolution
+- **🧪 Research Workflows**: Question Generation → Investigation → Synthesis → Validation
+- **📋 Document Processing**: Extraction → Validation → Transformation → Storage
+
+### Builder Pattern Benefits
+
+The AriumBuilder provides a fluent, intuitive API:
+
+```python
+from typing import Any, List
+from flo_ai.arium import AriumBuilder
+from flo_ai.arium.arium import Arium
+from flo_ai.models.agent import Agent
+from flo_ai.tool.base_tool import Tool
+
+# Assume these are defined elsewhere
+agent1: Agent = ...
+agent2: Agent = ...
+tool1: Tool = ...
+inputs: List[str] = ["Your input messages"]
+
+# All builder methods return self for chaining
+workflow: Arium = (
+    AriumBuilder()
+    .add_agent(agent1)           # Add components
+    .add_tool(tool1)
+    .start_with(agent1)          # Define flow
+    .connect(agent1, tool1)
+    .end_with(tool1)
+    .build()                     # Create Arium instance
+)
+
+# Or build and run in one step
+result: List[Any] = await (
+    AriumBuilder()
+    .add_agents([agent1, agent2])
+    .start_with(agent1)
+    .connect(agent1, agent2)
+    .end_with(agent2)
+    .build_and_run(inputs)       # Build + run together
+)
+```
+
+**Validation Built-in**: The builder automatically validates your workflow:
+- ✅ Ensures at least one agent/tool
+- ✅ Requires start and end nodes
+- ✅ Validates routing functions
+- ✅ Checks for unreachable nodes
+
+> 📖 **For detailed Arium documentation and advanced patterns, see [flo_ai/flo_ai/arium/README.md](flo_ai/flo_ai/arium/README.md)**
 
 ## 📖 Documentation
 

@@ -2,9 +2,7 @@ from typing import List, Optional, Dict, Any, Union, Type
 import yaml
 from flo_ai.models.agent import Agent
 from flo_ai.models.base_agent import ReasoningPattern
-from flo_ai.llm.base_llm import BaseLLM
-from flo_ai.llm.openai_llm import OpenAI
-from flo_ai.llm.anthropic_llm import Anthropic
+from flo_ai.llm import BaseLLM, OpenAI, Anthropic, Gemini, OllamaLLM
 from flo_ai.tool.base_tool import Tool
 from flo_ai.formatter.yaml_format_parser import FloYamlParser
 from pydantic import BaseModel
@@ -133,6 +131,10 @@ class AgentBuilder:
                 builder.with_llm(OpenAI(model=model_name))
             elif provider == 'claude':
                 builder.with_llm(Anthropic(model=model_name))
+            elif provider == 'gemini':
+                builder.with_llm(Gemini(model=model_name))
+            elif provider == 'ollama':
+                builder.with_llm(OllamaLLM(model=model_name))
             else:
                 raise ValueError(f'Unsupported model provider: {provider}')
 

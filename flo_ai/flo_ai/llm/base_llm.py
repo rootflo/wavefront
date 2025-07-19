@@ -1,6 +1,15 @@
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
 from flo_ai.tool.base_tool import Tool
+from dataclasses import dataclass
+
+
+@dataclass
+class ImageMessage:
+    image_url: Optional[str] = None
+    image_file_path: Optional[str] = None
+    image_base64: Optional[str] = None
+    mime_type: Optional[str] = None
 
 
 class BaseLLM(ABC):
@@ -49,4 +58,9 @@ class BaseLLM(ABC):
     @abstractmethod
     def format_tools_for_llm(self, tools: List['Tool']) -> List[Dict[str, Any]]:
         """Format a list of tools for the specific LLM's API"""
+        pass
+
+    @abstractmethod
+    def format_image_in_message(self, image: ImageMessage) -> str:
+        """Format a image in the message"""
         pass
