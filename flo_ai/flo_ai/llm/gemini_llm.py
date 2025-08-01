@@ -12,6 +12,7 @@ class Gemini(BaseLLM):
         model: str = 'gemini-2.5-flash',
         temperature: float = 0.7,
         api_key: Optional[str] = None,
+        base_url: str = None,
         **kwargs,
     ):
         super().__init__(model, api_key, temperature, **kwargs)
@@ -151,6 +152,11 @@ class Gemini(BaseLLM):
                 image_bytes = image_file.read()
             return genai.types.Part.from_bytes(
                 data=image_bytes,
+                mime_type=image.mime_type,
+            )
+        elif image.image_bytes:
+            return genai.types.Part.from_bytes(
+                data=image.image_bytes,
                 mime_type=image.mime_type,
             )
         raise NotImplementedError(

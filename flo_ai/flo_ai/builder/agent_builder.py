@@ -94,7 +94,10 @@ class AgentBuilder:
 
     @classmethod
     def from_yaml(
-        cls, yaml_str: str, tools: Optional[List[Tool]] = None
+        cls,
+        yaml_str: str,
+        tools: Optional[List[Tool]] = None,
+        base_llm: Optional[BaseLLM] = None,
     ) -> 'AgentBuilder':
         """Create an agent builder from a YAML configuration string
 
@@ -119,7 +122,8 @@ class AgentBuilder:
         builder.with_role(agent_config.get('role'))
 
         # Configure LLM based on model settings
-        if 'model' in agent_config:
+        if 'model' in agent_config and base_llm is None:
+            base_url = agent_config.get('base_url', None)
             model_config = agent_config['model']
             provider = model_config.get('provider', 'openai').lower()
             model_name = model_config.get('name')
@@ -128,15 +132,21 @@ class AgentBuilder:
                 raise ValueError('Model name must be specified in YAML configuration')
 
             if provider == 'openai':
-                builder.with_llm(OpenAI(model=model_name))
-            elif provider == 'claude':
-                builder.with_llm(Anthropic(model=model_name))
+                builder.with_llm(OpenAI(model=model_name, base_url=base_url))
+            elif provider == 'anthropic':
+                builder.with_llm(Anthropic(model=model_name, base_url=base_url))
             elif provider == 'gemini':
-                builder.with_llm(Gemini(model=model_name))
+                builder.with_llm(Gemini(model=model_name, base_url=base_url))
             elif provider == 'ollama':
-                builder.with_llm(OllamaLLM(model=model_name))
+                builder.with_llm(OllamaLLM(model=model_name, base_url=base_url))
             else:
                 raise ValueError(f'Unsupported model provider: {provider}')
+        else:
+            if base_llm is None:
+                raise ValueError(
+                    'Model must be specified in YAML configuration or base_llm must be provided'
+                )
+            builder.with_llm(base_llm)
 
         # Set tools if provided
         if tools:

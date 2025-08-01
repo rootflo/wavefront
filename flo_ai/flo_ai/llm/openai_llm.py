@@ -10,12 +10,13 @@ class OpenAI(BaseLLM):
         model='gpt-40-mini',
         api_key: str = None,
         temperature: float = 0.7,
+        base_url: str = None,
         **kwargs,
     ):
         super().__init__(
             model=model, api_key=api_key, temperature=temperature, **kwargs
         )
-        self.client = AsyncOpenAI(api_key=api_key, **kwargs)
+        self.client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         self.model = model
         self.kwargs = kwargs
 

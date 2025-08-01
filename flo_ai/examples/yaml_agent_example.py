@@ -2,19 +2,16 @@ from flo_ai.builder.agent_builder import AgentBuilder
 
 # Example YAML configuration
 yaml_config = """
-apiVersion: flo/alpha-v1
 metadata:
-  name: email-summary-flo
   version: 1.0.0
   description: "Agent for analyzing email threads between customers and support"
   tags: ["email", "analysis", "support"]
 agent:
   name: EmailSummaryAgent
-  kind: llm
   role: Email communication expert
   model:
-    provider: openai  # or claude
-    name: gpt-4o-mini  # or claude-3-5-sonnet-20240620
+    provider: anthropic  # or claude
+    name: claude-3-5-sonnet-20240620
   settings:
     temperature: 0
     max_retries: 3

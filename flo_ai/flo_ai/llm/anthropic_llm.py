@@ -11,10 +11,11 @@ class Anthropic(BaseLLM):
         model: str = 'claude-3-5-sonnet-20240620',
         temperature: float = 0.7,
         api_key: Optional[str] = None,
+        base_url: str = None,
         **kwargs,
     ):
         super().__init__(model, api_key, temperature, **kwargs)
-        self.client = AsyncAnthropic(api_key=self.api_key)
+        self.client = AsyncAnthropic(api_key=self.api_key, base_url=base_url)
 
     async def generate(
         self,

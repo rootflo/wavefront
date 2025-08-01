@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "flo_ai"
-version = "0.0.7-rc1"
+version = "1.0.0-dev3"
 description = "A easy way to create structured AI agents"
 authors = ["rootflo <*@rootflo.ai>"]
 license = "MIT"
@@ -11,21 +11,22 @@ packages = [
 
 [tool.poetry.dependencies]
 python = ">=3.10,<4.0"
-httpx = ">=0.27.0"
+httpx = ">=0.28.1"
 pillow = "^10.3.0"
 pydantic = "^2.9.2"
 openai = "^1.77.0"
 google-genai = "^1.25.0"
-# TODO: make into optional dependency
-matplotlib = "^3.7.0"
-networkx = "^3.0"
+matplotlib = { version = "^3.7.0", optional = true }
+networkx = { version = "^3.0", optional = true }
 anthropic = "^0.57.1"
 aiohttp = "^3.12.14"
 
+[tool.poetry.extras]
+vizualize = ["matplotlib", "networkx"]
 
 [tool.poetry.group.dev.dependencies]
-boto3 = "1.36.1"
-botocore = "1.36.1"
+boto3 = "^1.36.1"
+botocore = "^1.36.1"
 pypdf = "^4.2.0"
 ipykernel = "^6.29.5"
 db-sqlite3 = "^0.0.1"
@@ -35,7 +36,6 @@ wikipedia = "^1.4.0"
 pytest = "^8.3.3"
 pytest-asyncio = "^0.24.0"
 pre-commit = "^4.0.1"
-flo-ai-tools = { path = "../flo_ai_tools", develop = true }
 streamlit = "^1.42.2"
 
 [build-system]

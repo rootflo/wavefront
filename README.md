@@ -210,15 +210,12 @@ print(f'Structured Response: {response}')
 Define your agents using YAML for easy configuration and deployment:
 
 ```yaml
-apiVersion: flo/alpha-v1
-kind: FloAgent
 metadata:
   name: email-summary-flo
   version: 1.0.0
   description: "Agent for analyzing email threads"
 agent:
   name: EmailSummaryAgent
-  kind: llm
   role: Email communication expert
   model:
     provider: openai
