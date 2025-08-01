@@ -29,6 +29,7 @@ class BaseAgent(ABC):
         self.agent_type = agent_type
         self.llm = llm
         self.max_retries = max_retries
+        self.resolved_variables = False
         self.conversation_history: List[Dict[str, str]] = []
 
     @abstractmethod

@@ -1,4 +1,4 @@
-from typing import List, Optional, Callable, Union
+from typing import List, Optional, Callable, Union, Dict, Any
 from flo_ai.arium.arium import Arium
 from flo_ai.arium.memory import MessageMemory, BaseMemory
 from flo_ai.models.agent import Agent
@@ -128,10 +128,14 @@ class AriumBuilder:
         self._arium = arium
         return arium
 
-    async def build_and_run(self, inputs: List[Union[str, ImageMessage]]) -> List[dict]:
-        """Build the Arium and run it with the given inputs."""
+    async def build_and_run(
+        self,
+        inputs: List[Union[str, ImageMessage]],
+        variables: Optional[Dict[str, Any]] = None,
+    ) -> List[dict]:
+        """Build the Arium and run it with the given inputs and optional runtime variables."""
         arium = self.build()
-        return await arium.run(inputs)
+        return await arium.run(inputs, variables=variables)
 
     def visualize(
         self, output_path: str = 'arium_graph.png', title: str = 'Arium Workflow'

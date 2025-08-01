@@ -57,6 +57,7 @@ Flo AI is a Python framework that makes building production-ready AI agents and 
   - [Create a Tool-Using Agent](#create-a-tool-using-agent)
   - [Create an Agent with Structured Output](#create-an-agent-with-structured-output)
 - [📝 YAML Configuration](#-yaml-configuration)
+- [🔧 Variables System](#-variables-system)
 - [🛠️ Tools](#️-tools)
   - [🎯 @flo_tool Decorator](#-flo_tool-decorator)
 - [🧠 Reasoning Patterns](#-reasoning-patterns)
@@ -268,6 +269,261 @@ agent: Agent = builder.build()
 # Use the agent
 result: Any = await agent.run(email_thread)
 ```
+
+## 🔧 Variables System
+
+Flo AI supports dynamic variable resolution in agent prompts and inputs using `<variable_name>` syntax. Variables are automatically discovered, validated at runtime, and can be shared across multi-agent workflows.
+
+### ✨ Key Features
+
+- **🔍 Automatic Discovery**: Variables are extracted from system prompts and inputs at runtime
+- **✅ Runtime Validation**: Missing variables are reported with detailed error messages  
+- **🤝 Multi-Agent Support**: Variables can be shared across agent workflows
+- **🛡️ JSON-Safe Syntax**: `<variable>` format avoids conflicts with JSON content
+
+### Basic Usage
+
+```python
+import asyncio
+from typing import Any, Dict
+from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.llm import OpenAI
+from flo_ai.models.agent import Agent
+
+async def main() -> None:
+    # Create agent with variables in system prompt
+    agent: Agent = (
+        AgentBuilder()
+        .with_name('Data Analyst')
+        .with_prompt('Analyze <dataset_path> and focus on <key_metric>. Generate insights for <target_audience>.')
+        .with_llm(OpenAI(model='gpt-4o-mini'))
+        .build()
+    )
+    
+    # Define variables at runtime
+    variables: Dict[str, str] = {
+        'dataset_path': '/data/sales_q4_2024.csv',
+        'key_metric': 'revenue growth',
+        'target_audience': 'executive team'
+    }
+    
+    # Run agent with variable resolution
+    result: Any = await agent.run(
+        'Please provide a comprehensive analysis with actionable recommendations.',
+        variables=variables
+    )
+    
+    print(f'Analysis: {result}')
+
+asyncio.run(main())
+```
+
+### Variables in User Input
+
+Variables can also be used in the user input messages:
+
+```python
+import asyncio
+from typing import Any, Dict
+from flo_ai.models.agent import Agent
+from flo_ai.llm import OpenAI
+
+async def input_variables_example() -> None:
+    agent: Agent = Agent(
+        name='content_creator',
+        system_prompt='You are a content creator specializing in <content_type>.',
+        llm=OpenAI(model='gpt-4o-mini')
+    )
+    
+    variables: Dict[str, str] = {
+        'content_type': 'technical blog posts',
+        'topic': 'machine learning fundamentals',
+        'word_count': '1500',
+        'target_level': 'intermediate'
+    }
+    
+    # Variables in both system prompt and user input
+    result: Any = await agent.run(
+        'Create a <word_count>-word article about <topic> for <target_level> readers.',
+        variables=variables
+    )
+    
+    print(f'Content: {result}')
+
+asyncio.run(input_variables_example())
+```
+
+### Multi-Agent Variable Sharing
+
+Variables can be shared and passed between agents in workflows:
+
+```python
+import asyncio
+from typing import Any, Dict, List
+from flo_ai.arium import AriumBuilder
+from flo_ai.models.agent import Agent
+from flo_ai.llm import OpenAI
+
+async def multi_agent_variables() -> List[Any]:
+    llm: OpenAI = OpenAI(model='gpt-4o-mini')
+    
+    # Agent 1: Research phase
+    researcher: Agent = Agent(
+        name='researcher',
+        system_prompt='Research <research_topic> and focus on <research_depth> analysis.',
+        llm=llm
+    )
+    
+    # Agent 2: Writing phase  
+    writer: Agent = Agent(
+        name='writer',
+        system_prompt='Write a <document_type> based on the research for <target_audience>.',
+        llm=llm
+    )
+    
+    # Agent 3: Review phase
+    reviewer: Agent = Agent(
+        name='reviewer',
+        system_prompt='Review the <document_type> for <review_criteria> and provide feedback.',
+        llm=llm
+    )
+    
+    # Shared variables across all agents
+    shared_variables: Dict[str, str] = {
+        'research_topic': 'sustainable energy solutions',
+        'research_depth': 'comprehensive',
+        'document_type': 'white paper',
+        'target_audience': 'policy makers',
+        'review_criteria': 'accuracy and policy relevance'
+    }
+    
+    # Run multi-agent workflow with shared variables
+    result: List[Any] = await (
+        AriumBuilder()
+        .add_agents([researcher, writer, reviewer])
+        .start_with(researcher)
+        .connect(researcher, writer)
+        .connect(writer, reviewer)
+        .end_with(reviewer)
+        .build_and_run(
+            ['Begin comprehensive research and document creation process'],
+            variables=shared_variables
+        )
+    )
+    
+    return result
+
+asyncio.run(multi_agent_variables())
+```
+
+### YAML Configuration with Variables
+
+Variables work seamlessly with YAML-based agent configuration:
+
+```yaml
+apiVersion: flo/alpha-v1
+kind: FloAgent
+metadata:
+  name: personalized-assistant
+  version: 1.0.0
+  description: "Personalized assistant with variable support"
+agent:
+  name: PersonalizedAssistant
+  kind: llm
+  role: <user_role> assistant specialized in <domain_expertise>
+  model:
+    provider: openai
+    name: gpt-4o-mini
+  settings:
+    temperature: 0.3
+    max_retries: 2
+    reasoning_pattern: DIRECT
+  job: >
+    You are a <user_role> focused on <primary_objective>.
+    Your expertise includes <domain_expertise> and you should
+    tailor responses for <experience_level> users.
+    Always consider <priority_constraints> in your recommendations.
+```
+
+```python
+import asyncio
+from typing import Any, Dict
+from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.models.agent import Agent
+
+async def yaml_with_variables() -> None:
+    yaml_config: str = """..."""  # Your YAML configuration
+    
+    # Variables for YAML agent
+    variables: Dict[str, str] = {
+        'user_role': 'data scientist',
+        'domain_expertise': 'machine learning and statistical analysis', 
+        'primary_objective': 'deriving actionable insights from data',
+        'experience_level': 'senior',
+        'priority_constraints': 'computational efficiency and model interpretability'
+    }
+    
+    # Create agent from YAML with variables
+    builder: AgentBuilder = AgentBuilder.from_yaml(yaml_str=yaml_config)
+    agent: Agent = builder.build()
+    
+    result: Any = await agent.run(
+        'Help me design an ML pipeline for <use_case> with <data_constraints>',
+        variables={
+            **variables,
+            'use_case': 'customer churn prediction',
+            'data_constraints': 'limited labeled data'
+        }
+    )
+    
+    print(f'ML Pipeline Advice: {result}')
+
+asyncio.run(yaml_with_variables())
+```
+
+### Error Handling and Validation
+
+The variables system provides comprehensive error reporting for missing or invalid variables:
+
+```python
+import asyncio
+from typing import Any, Dict
+from flo_ai.models.agent import Agent
+from flo_ai.llm import OpenAI
+
+async def variable_validation_example() -> None:
+    agent: Agent = Agent(
+        name='validator_example',
+        system_prompt='Process <required_param> and <another_param> for analysis.',
+        llm=OpenAI(model='gpt-4o-mini')
+    )
+    
+    # Incomplete variables (missing 'another_param')
+    incomplete_variables: Dict[str, str] = {
+        'required_param': 'dataset.csv'
+        # 'another_param' is missing
+    }
+    
+    try:
+        result: Any = await agent.run(
+            'Analyze the data in <data_source>',
+            variables=incomplete_variables  # Missing 'another_param' and 'data_source'
+        )
+    except ValueError as e:
+        print(f'Variable validation error: {e}')
+        # Error will list all missing variables with their locations
+
+asyncio.run(variable_validation_example())
+```
+
+### Best Practices
+
+1. **Descriptive Variable Names**: Use clear, descriptive names like `<target_audience>` instead of `<ta>`
+2. **Consistent Naming**: Use consistent variable names across related agents and workflows
+3. **Validation**: Always test your variable resolution before production deployment
+4. **Documentation**: Document expected variables in your agent configurations
+
+The variables system makes Flo AI agents highly reusable and configurable, enabling you to create flexible AI workflows that adapt to different contexts and requirements.
 
 ## 🛠️ Tools
 
