@@ -5,7 +5,7 @@ with open('README.md', 'r') as fh:
 
 setuptools.setup(
     name='flo-ai',
-    version='1.0.0-dev3',
+    version='1.0.0-dev4',
     author='Rootflo',
     description='Create composable AI agents',
     long_description=long_description,
