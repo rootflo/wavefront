@@ -106,7 +106,7 @@ class Agent(BaseAgent):
         """Run as a conversational agent when no tools are provided"""
         variables = variables or {}
 
-        while retry_count < self.max_retries:
+        while retry_count <= self.max_retries:
             try:
                 # Resolve variables in system prompt
                 system_content = (
@@ -150,7 +150,7 @@ class Agent(BaseAgent):
 
                 should_retry, analysis = await self.handle_error(e, context)
 
-                if should_retry and retry_count < self.max_retries:
+                if should_retry and retry_count <= self.max_retries:
                     self.add_to_history(
                         'system', f'Error occurred. Analysis: {analysis}'
                     )
@@ -167,7 +167,7 @@ class Agent(BaseAgent):
         """Run as a tool-using agent when tools are provided"""
         variables = variables or {}
 
-        while retry_count < self.max_retries:
+        while retry_count <= self.max_retries:
             try:
                 # Resolve variables in system prompt based on reasoning pattern
                 if self.reasoning_pattern == ReasoningPattern.REACT:
@@ -248,7 +248,7 @@ class Agent(BaseAgent):
                             'attempt': retry_count,
                         }
                         should_retry, analysis = await self.handle_error(e, context)
-                        if should_retry and retry_count < self.max_retries:
+                        if should_retry and retry_count <= self.max_retries:
                             self.add_to_history(
                                 'system', f'Tool execution error: {analysis}'
                             )
@@ -284,7 +284,7 @@ class Agent(BaseAgent):
                 }
 
                 should_retry, analysis = await self.handle_error(e, context)
-                if should_retry and retry_count < self.max_retries:
+                if should_retry and retry_count <= self.max_retries:
                     self.add_to_history(
                         'system', f'Error occurred. Analysis: {analysis}'
                     )

@@ -1,0 +1,58 @@
+from typing import Any
+from .openai_llm import OpenAI
+
+
+class OpenAIVLLM(OpenAI):
+    def __init__(
+        self,
+        base_url: str,
+        model: str,
+        api_key: str = None,
+        temperature: float = 0.7,
+        **kwargs,
+    ):
+        super().__init__(
+            model=model,
+            api_key=api_key,
+            temperature=temperature,
+            base_url=base_url,
+            **kwargs,
+        )
+
+    # overriden
+    async def generate(
+        self, messages: list[dict], output_schema: dict = None, **kwargs
+    ) -> Any:
+        # Convert output_schema to OpenAI format if provided
+        if output_schema:
+            kwargs['extra_body'] = {'guided_json': output_schema.get('schema')}
+
+            # Add JSON format instruction to the system prompt
+            if messages and messages[0]['role'] == 'system':
+                messages[0]['content'] = (
+                    messages[0]['content']
+                    + '\n\nPlease provide your response in JSON format according to the specified schema.'
+                )
+            else:
+                messages.insert(
+                    0,
+                    {
+                        'role': 'system',
+                        'content': 'Please provide your response in JSON format according to the specified schema.',
+                    },
+                )
+
+        # Prepare OpenAI API parameters
+        vllm_openai_kwargs = {
+            'model': self.model,
+            'messages': messages,
+            **kwargs,
+            **self.kwargs,
+        }
+
+        # Make the API call
+        response = await self.client.chat.completions.create(**vllm_openai_kwargs)
+        message = response.choices[0].message
+
+        # Return the full message object instead of just the content
+        return message
