@@ -8,7 +8,7 @@ from .models import Agent, AgentError, BaseAgent, AgentType, ReasoningPattern
 from .builder.agent_builder import AgentBuilder
 
 # LLM package - Language model integrations
-from .llm import BaseLLM, Anthropic, OpenAI, OllamaLLM, Gemini, ImageMessage
+from .llm import BaseLLM, Anthropic, OpenAI, OllamaLLM, Gemini, OpenAIVLLM, ImageMessage
 
 # Tool package - Tool framework components
 from .tool import Tool, ToolExecutionError, flo_tool, create_tool_from_function
@@ -43,6 +43,7 @@ __all__ = [
     'OpenAI',
     'OllamaLLM',
     'Gemini',
+    'OpenAIVLLM',
     # LLM DataClass
     'ImageMessage',
     # Tools
