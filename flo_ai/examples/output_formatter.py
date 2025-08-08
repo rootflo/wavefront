@@ -96,7 +96,7 @@ async def main():
             {'role': 'user', 'content': 'Solve 8x + 7 = -23'},
         ],
         output_schema={
-            'name': 'math_reasoning',
+            'title': 'math_reasoning',
             'schema': {
                 'type': 'object',
                 'properties': {
@@ -136,15 +136,18 @@ async def agent_example():
 
     # Define output schema
     math_schema = {
-        'type': 'object',
-        'properties': {
-            'solution': {
-                'type': 'string',
-                'description': 'The step-by-step solution to the math problem',
+        'title': 'math_tutor',
+        'schema': {
+            'type': 'object',
+            'properties': {
+                'solution': {
+                    'type': 'string',
+                    'description': 'The step-by-step solution to the math problem',
+                },
+                'answer': {'type': 'string', 'description': 'The final answer'},
             },
-            'answer': {'type': 'string', 'description': 'The final answer'},
+            'required': ['solution', 'answer'],
         },
-        'required': ['solution', 'answer'],
     }
 
     # Create OpenAI agent

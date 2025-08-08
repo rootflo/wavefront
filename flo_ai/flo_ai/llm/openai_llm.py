@@ -28,11 +28,11 @@ class OpenAI(BaseLLM):
             kwargs['response_format'] = {'type': 'json_object'}
             kwargs['functions'] = [
                 {
-                    'name': output_schema.get('name', 'default'),
+                    'name': output_schema.get('title', 'default'),
                     'parameters': output_schema.get('schema', output_schema),
                 }
             ]
-            kwargs['function_call'] = {'name': output_schema.get('name', 'default')}
+            kwargs['function_call'] = {'name': output_schema.get('title', 'default')}
 
             # Add JSON format instruction to the system prompt
             if messages and messages[0]['role'] == 'system':

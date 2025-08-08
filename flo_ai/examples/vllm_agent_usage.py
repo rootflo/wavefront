@@ -10,6 +10,8 @@ load_dotenv()
 
 vllm_base_url = os.getenv('VLLM_BASE_URL')
 
+vllm_model = 'microsoft/phi-4'
+
 
 async def example_simple_vllm_agent():
     # Create a simple conversational agent with vLLM
@@ -19,7 +21,7 @@ async def example_simple_vllm_agent():
         .with_prompt('You are a helpful math tutor.')
         .with_llm(
             OpenAIVLLM(
-                model='microsoft/phi-4',
+                model=vllm_model,
                 base_url=vllm_base_url,
                 temperature=0.7,
                 api_key='',
@@ -68,7 +70,7 @@ async def example_vllm_tool_agent():
         )
         .with_llm(
             OpenAIVLLM(
-                model='microsoft/phi-4',
+                model=vllm_model,
                 base_url=vllm_base_url,
                 temperature=0.7,
                 api_key='',
@@ -89,7 +91,7 @@ async def example_vllm_tool_agent():
 async def example_vllm_structured_output():
     # Define output schema for structured responses with name field
     math_schema = {
-        'name': 'math_solution',
+        'title': 'math_solution',
         'schema': {
             'type': 'object',
             'properties': {
@@ -122,7 +124,7 @@ async def example_vllm_structured_output():
         )
         .with_llm(
             OpenAIVLLM(
-                model='microsoft/phi-4',
+                model=vllm_model,
                 base_url=vllm_base_url,
                 temperature=0.3,
                 api_key='',
@@ -165,7 +167,7 @@ async def example_vllm_tool_agent_structured_output():
 
     # Define structured output schema for calculation results
     calculation_report_schema = {
-        'name': 'calculation_report',
+        'title': 'calculation_report',
         'schema': {
             'type': 'object',
             'properties': {
@@ -217,7 +219,7 @@ async def example_vllm_tool_agent_structured_output():
         )
         .with_llm(
             OpenAIVLLM(
-                model='microsoft/phi-4',
+                model=vllm_model,
                 base_url=vllm_base_url,
                 temperature=0.3,
                 api_key='',

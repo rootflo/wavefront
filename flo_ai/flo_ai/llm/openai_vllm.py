@@ -25,7 +25,13 @@ class OpenAIVLLM(OpenAI):
     ) -> Any:
         # Convert output_schema to OpenAI format if provided
         if output_schema:
-            kwargs['extra_body'] = {'guided_json': output_schema.get('schema')}
+            kwargs['response_format'] = {
+                'type': 'json_schema',
+                'json_schema': {
+                    'name': output_schema.get('title', 'default'),
+                    'schema': output_schema.get('schema', output_schema),
+                },
+            }
 
             # Add JSON format instruction to the system prompt
             if messages and messages[0]['role'] == 'system':
