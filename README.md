@@ -65,6 +65,7 @@ Flo AI is a Python framework that makes building production-ready AI agents and 
   - [OpenAI](#openai)
   - [Anthropic Claude](#anthropic-claude)
   - [Google Gemini](#google-gemini)
+  - [Google VertexAI](#google-vertexai)
   - [Ollama (Local)](#ollama-local)
 - [📊 Output Formatting](#-output-formatting)
 - [🔄 Error Handling](#-error-handling)
@@ -702,6 +703,23 @@ llm: Gemini = Gemini(
 )
 ```
 
+### Google VertexAI
+```python
+from flo_ai.llm import VertexAI
+
+llm: VertexAI = VertexAI(
+    model='gemini-2.5-flash',  # or gemini-2.5-pro
+    temperature=0.7,
+    project='your-gcp-project-id',  # or set GOOGLE_CLOUD_PROJECT env var
+    location='us-central1'  # or set GOOGLE_CLOUD_LOCATION env var
+)
+```
+
+**Prerequisites for VertexAI:**
+- Set up Google Cloud project with Vertex AI API enabled
+- Configure authentication: `gcloud auth application-default login`
+- Set environment variables: `GOOGLE_CLOUD_PROJECT` and `GOOGLE_CLOUD_LOCATION`
+
 ### Ollama (Local)
 ```python
 from flo_ai.llm import Ollama
@@ -764,6 +782,8 @@ Check out the `examples/` directory for comprehensive examples:
 - `multi_tool_example.py` - Multi-tool agent examples
 - `cot_agent_example.py` - Chain of Thought reasoning
 - `usage.py` and `usage_claude.py` - Provider-specific examples
+- `vertexai_agent_example.py` - Google VertexAI integration examples
+- `ollama_agent_example.py` - Local Ollama model examples
 
 ## 🚀 Advanced Features
 

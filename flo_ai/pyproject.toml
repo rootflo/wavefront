@@ -20,6 +20,7 @@ matplotlib = { version = "^3.7.0", optional = true }
 networkx = { version = "^3.0", optional = true }
 anthropic = "^0.57.1"
 aiohttp = "^3.12.14"
+google-cloud-aiplatform = "^1.109.0"
 
 [tool.poetry.extras]
 vizualize = ["matplotlib", "networkx"]

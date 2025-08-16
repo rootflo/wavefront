@@ -2,7 +2,7 @@ from typing import List, Optional, Dict, Any, Union, Type
 import yaml
 from flo_ai.models.agent import Agent
 from flo_ai.models.base_agent import ReasoningPattern
-from flo_ai.llm import BaseLLM, OpenAI, Anthropic, Gemini, OllamaLLM
+from flo_ai.llm import BaseLLM, OpenAI, Anthropic, Gemini, OllamaLLM, VertexAI
 from flo_ai.tool.base_tool import Tool
 from flo_ai.formatter.yaml_format_parser import FloYamlParser
 from pydantic import BaseModel
@@ -124,7 +124,7 @@ class AgentBuilder:
         # Configure LLM based on model settings
         if 'model' in agent_config and base_llm is None:
             base_url = agent_config.get('base_url', None)
-            model_config = agent_config['model']
+            model_config: dict = agent_config['model']
             provider = model_config.get('provider', 'openai').lower()
             model_name = model_config.get('name')
 
@@ -139,6 +139,17 @@ class AgentBuilder:
                 builder.with_llm(Gemini(model=model_name, base_url=base_url))
             elif provider == 'ollama':
                 builder.with_llm(OllamaLLM(model=model_name, base_url=base_url))
+            elif provider == 'vertexai':
+                project = model_config.get('project')
+                location = model_config.get('location', 'asia-south1')
+                builder.with_llm(
+                    VertexAI(
+                        model=model_name,
+                        project=project,
+                        location=location,
+                        base_url=base_url,
+                    )
+                )
             else:
                 raise ValueError(f'Unsupported model provider: {provider}')
         else:
