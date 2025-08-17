@@ -12,6 +12,7 @@ from flo_ai.utils.variable_extractor import (
     validate_multi_agent_variables,
     resolve_variables,
 )
+import asyncio
 
 
 class Arium(BaseArium):
@@ -53,8 +54,42 @@ class Arium(BaseArium):
         current_node = self.nodes[self.start_node_name]
         current_edge = self.edges[self.start_node_name]
 
+        # Loop prevention: track execution steps and node visits
+        max_iterations = 20  # Reasonable limit to prevent infinite loops
+        iteration_count = 0
+        node_visit_count = {}  # Track how many times each node is visited
+        execution_path = []  # Track the path for debugging
+
         logger.info(f'Executing graph from {current_node.name}')
-        while current_node.name != self.end_node_name:
+        while current_node.name not in self.end_node_names:
+            # Check for iteration limit
+            iteration_count += 1
+            if iteration_count > max_iterations:
+                logger.error(
+                    f"Maximum iterations ({max_iterations}) exceeded. Execution path: {' -> '.join(execution_path)}"
+                )
+                raise RuntimeError(
+                    f'Workflow exceeded maximum iterations ({max_iterations}). Possible infinite loop detected.'
+                )
+
+            # Track node visits
+            node_visit_count[current_node.name] = (
+                node_visit_count.get(current_node.name, 0) + 1
+            )
+            execution_path.append(current_node.name)
+
+            # Check for excessive node visits (same node visited too many times)
+            if node_visit_count[current_node.name] > 3:
+                logger.error(
+                    f"Node '{current_node.name}' visited {node_visit_count[current_node.name]} times. Execution path: {' -> '.join(execution_path)}"
+                )
+                raise RuntimeError(
+                    f"Node '{current_node.name}' visited too many times ({node_visit_count[current_node.name]}). Possible infinite loop detected."
+                )
+
+            logger.info(
+                f'Executing node: {current_node.name} (iteration {iteration_count})'
+            )
             # execute current node
             result = await self._execute_node(current_node)
 
@@ -62,7 +97,28 @@ class Arium(BaseArium):
             self._add_to_memory(result)
 
             # find next node post current node
-            next_node_name = current_edge.router_fn(memory=self.memory)
+            # Prepare execution context for router functions
+            execution_context = {
+                'node_visit_count': node_visit_count,
+                'execution_path': execution_path,
+                'iteration_count': iteration_count,
+                'current_node': current_node.name,
+            }
+
+            # Handle both sync and async router functions
+            # Try to call with execution context, fallback to memory only
+            try:
+                router_result = current_edge.router_fn(
+                    memory=self.memory, execution_context=execution_context
+                )
+            except TypeError:
+                # Router function doesn't accept execution_context parameter
+                router_result = current_edge.router_fn(memory=self.memory)
+
+            if asyncio.iscoroutine(router_result):
+                next_node_name = await router_result
+            else:
+                next_node_name = router_result
 
             # find next edge
             # TODO: next_node_name might not be in self.edges if it's the end node. Handle this case

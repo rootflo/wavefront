@@ -11,7 +11,7 @@ from pathlib import Path
 class BaseArium:
     def __init__(self):
         self.start_node_name = '__start__'
-        self.end_node_name = '__end__'
+        self.end_node_names: set = set()  # Support multiple end nodes
         self.nodes: Dict[str, Agent | Tool | StartNode | EndNode] = dict()
         self.edges: Dict[str, Edge] = dict()
 
@@ -28,13 +28,21 @@ class BaseArium:
         )
 
     def add_end_to(self, node: Agent | Tool | StartNode | EndNode):
+        # Create a unique end node name for this specific node
+        end_node_name = f'__end__{node.name}__'
         end_node = EndNode()
-        if end_node.name in self.nodes:
-            raise ValueError(f'End node {end_node.name} already exists')
-        self.nodes[end_node.name] = end_node
+        end_node.name = end_node_name
+
+        # Add this end node name to our set of possible end nodes
+        self.end_node_names.add(end_node_name)
+
+        # Only add the end node if it doesn't exist yet
+        if end_node_name not in self.nodes:
+            self.nodes[end_node_name] = end_node
+
         self.edges[node.name] = Edge(
-            router_fn=partial(default_router, to_node=end_node.name),
-            to_nodes=[end_node.name],
+            router_fn=partial(default_router, to_node=end_node_name),
+            to_nodes=[end_node_name],
         )
 
     def _check_router_return_type(self, router: Callable) -> Optional[List]:

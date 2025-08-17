@@ -24,6 +24,7 @@ result = await (AriumBuilder()
 - **Default Memory**: Uses `MessageMemory` by default if none provided
 - **Easy Connections**: Simple `connect()` method for linear workflows
 - **Flexible Routing**: Full support for custom router functions
+- **🧠 LLM-Powered Routing**: Intelligent routing using Large Language Models
 - **Visualization**: Built-in graph visualization support
 - **Reusable Workflows**: Build once, run multiple times
 
@@ -166,6 +167,43 @@ The builder includes comprehensive validation:
 - Validates router function signatures
 - Checks for orphaned nodes
 
+## 🧠 LLM-Powered Routing
+
+Arium now supports intelligent routing using Large Language Models! Instead of writing complex routing logic, let an LLM analyze the conversation and decide which agent should handle the next step.
+
+### Quick Example
+
+```python
+from flo_ai.arium import create_llm_router
+
+# Create an intelligent router
+smart_router = create_llm_router(
+    "smart",
+    routing_options={
+        "researcher": "Gather information and conduct research",
+        "analyst": "Analyze data and provide insights",
+        "writer": "Create summaries and reports"
+    }
+)
+
+# Use in your workflow
+result = await (AriumBuilder()
+                .add_agents([researcher, analyst, writer])
+                .start_with(researcher)
+                .add_edge(researcher, [analyst, writer], smart_router)
+                .end_with(writer)
+                .build_and_run(["Research AI trends and create a report"]))
+```
+
+### Router Types
+
+- **SmartRouter**: General-purpose intelligent routing
+- **TaskClassifierRouter**: Classify tasks and route to specialists
+- **ConversationAnalysisRouter**: Analyze conversation flow for routing
+
+**📖 For detailed LLM routing documentation, see [README_LLM_Router.md](README_LLM_Router.md)**
+
 ## Examples
 
-See `examples.py` for complete working examples of different workflow patterns. 
+See `examples.py` for complete working examples of different workflow patterns.
+See `examples/llm_router_example.py` for comprehensive LLM routing examples. 
