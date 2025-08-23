@@ -103,16 +103,38 @@ class BaseArium:
             if literal_values is None:
                 raise ValueError('Router return type is not a Literal')
 
-            invalid_literals = [val for val in literal_values if val not in to_nodes]
+            # Check if router supports self-reference
+            supports_self_ref = getattr(router, 'supports_self_reference', False)
+
+            # For self-referencing routers, we need to include the from_node in valid targets
+            valid_targets = to_nodes.copy()
+            if supports_self_ref:
+                valid_targets.append(from_node)
+
+            invalid_literals = [
+                val for val in literal_values if val not in valid_targets
+            ]
             if invalid_literals:
                 raise ValueError(
-                    f'Router return type includes literal values {invalid_literals} that are not in to_nodes {to_nodes}'
+                    f'Router return type includes literal values {invalid_literals} that are not in valid targets {valid_targets}'
                 )
 
-            if set(literal_values) != set(to_nodes):
-                raise ValueError(
-                    f'Router return type values {literal_values} do not match to_nodes {to_nodes}'
-                )
+            # For self-referencing routers, allow router options to include from_node
+            if supports_self_ref:
+                # Router can return any of: to_nodes + from_node, but must include all to_nodes
+                missing_targets = [
+                    node for node in to_nodes if node not in literal_values
+                ]
+                if missing_targets:
+                    raise ValueError(
+                        f'Self-referencing router must include all to_nodes {to_nodes}, missing: {missing_targets}'
+                    )
+            else:
+                # Non-self-referencing routers must match exactly
+                if set(literal_values) != set(to_nodes):
+                    raise ValueError(
+                        f'Router return type values {literal_values} do not match to_nodes {to_nodes}'
+                    )
 
         self.edges[from_node] = Edge(
             router_fn=router

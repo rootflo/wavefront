@@ -87,6 +87,8 @@ Flo AI is a Python framework that makes building production-ready AI agents and 
   - [Builder Pattern Benefits](#builder-pattern-benefits)
   - [📄 YAML-Based Arium Workflows](#-yaml-based-arium-workflows)
     - [🧠 LLM-Powered Routers in YAML (NEW!)](#-llm-powered-routers-in-yaml-new)
+    - [🔄 ReflectionRouter: Structured Reflection Workflows (NEW!)](#-reflectionrouter-structured-reflection-workflows-new)
+    - [🔄 PlanExecuteRouter: Cursor-Style Plan-and-Execute Workflows (NEW!)](#-planexecuterouter-cursor-style-plan-and-execute-workflows-new)
 - [📖 Documentation](#-documentation)
 - [🌟 Why Flo AI?](#-why-flo-ai)
 - [🎯 Use Cases](#-use-cases)
@@ -1429,6 +1431,8 @@ arium:
 1. **Smart Router** (`type: smart`): General-purpose routing based on content analysis
 2. **Task Classifier** (`type: task_classifier`): Routes based on keywords and examples  
 3. **Conversation Analysis** (`type: conversation_analysis`): Context-aware routing
+4. **Reflection Router** (`type: reflection`): Structured A→B→A→C patterns for reflection workflows
+5. **PlanExecute Router** (`type: plan_execute`): Cursor-style plan-and-execute workflows with step tracking
 
 **✨ Key Benefits:**
 - 🚫 **No Code Required**: Define routing logic purely in YAML
@@ -1449,6 +1453,560 @@ async def run_intelligent_workflow():
     # The LLM will automatically route to technical_writer! ✨
     return result
 ```
+
+##### 🔄 ReflectionRouter: Structured Reflection Workflows (NEW!)
+
+The **ReflectionRouter** is designed specifically for reflection-based workflows that follow A→B→A→C patterns, commonly used for main→critic→main→final agent sequences. This pattern is perfect for iterative improvement workflows where a critic agent provides feedback before final processing.
+
+**📋 Key Features:**
+- 🎯 **Pattern Tracking**: Automatically tracks progress through defined reflection sequences
+- 🔄 **Self-Reference Support**: Allows routing back to the same agent (A→B→A patterns)
+- 📊 **Visual Progress**: Shows current position with ○ pending, ✓ completed indicators
+- 🛡️ **Loop Prevention**: Built-in safety mechanisms to prevent infinite loops
+- 🎛️ **Flexible Patterns**: Supports both 2-agent (A→B→A) and 3-agent (A→B→A→C) flows
+
+**🎯 Supported Patterns:**
+
+1. **A → B → A** (2 agents): Main → Critic → Main → End
+2. **A → B → A → C** (3 agents): Main → Critic → Main → Final
+
+```yaml
+# Simple A → B → A reflection pattern
+metadata:
+  name: "content-reflection-workflow"
+  version: "1.0.0"
+  description: "Content creation with critic feedback loop"
+
+arium:
+  agents:
+    - name: "writer"
+      role: "Content Writer"
+      job: "Create and improve content based on feedback from critics."
+      model:
+        provider: "openai"
+        name: "gpt-4o-mini"
+      settings:
+        temperature: 0.7
+        
+    - name: "critic"
+      role: "Content Critic"
+      job: "Review content and provide constructive feedback for improvement."
+      model:
+        provider: "openai"
+        name: "gpt-4o-mini"
+      settings:
+        temperature: 0.3
+
+  # ✨ ReflectionRouter definition
+  routers:
+    - name: "reflection_router"
+      type: "reflection"  # Specialized for reflection patterns
+      flow_pattern: [writer, critic, writer]  # A → B → A pattern
+      model:
+        provider: "openai"
+        name: "gpt-4o-mini"
+      settings:
+        temperature: 0.2
+        allow_early_exit: false  # Strict adherence to pattern
+
+  workflow:
+    start: "writer"
+    edges:
+      - from: "writer"
+        to: [critic, writer]  # Can go to critic or self-reference
+        router: "reflection_router"
+      - from: "critic"
+        to: [writer]  # Always returns to writer
+        router: "reflection_router"
+    end: [writer]  # Writer produces final output
+```
+
+```yaml
+# Advanced A → B → A → C reflection pattern
+metadata:
+  name: "advanced-reflection-workflow"
+  version: "1.0.0"
+  description: "Full reflection cycle with dedicated final agent"
+
+arium:
+  agents:
+    - name: "researcher"
+      role: "Research Agent"
+      job: "Conduct research and gather information on topics."
+      model:
+        provider: "openai"
+        name: "gpt-4o-mini"
+        
+    - name: "reviewer"
+      role: "Research Reviewer"
+      job: "Review research quality and suggest improvements."
+      model:
+        provider: "anthropic"
+        name: "claude-3-5-sonnet-20240620"
+        
+    - name: "synthesizer"
+      role: "Information Synthesizer"
+      job: "Create final synthesis and conclusions from research."
+      model:
+        provider: "openai"
+        name: "gpt-4o"
+
+  routers:
+    - name: "research_reflection_router"
+      type: "reflection"
+      flow_pattern: [researcher, reviewer, researcher, synthesizer]  # A → B → A → C
+      settings:
+        allow_early_exit: true  # Allow smart early completion
+
+  workflow:
+    start: "researcher"
+    edges:
+      - from: "researcher"
+        to: [reviewer, researcher, synthesizer]  # All possible destinations
+        router: "research_reflection_router"
+      - from: "reviewer"
+        to: [researcher, reviewer, synthesizer]
+        router: "research_reflection_router"
+      - from: "synthesizer"
+        to: [end]
+    end: [synthesizer]
+```
+
+**🔧 ReflectionRouter Configuration Options:**
+
+```yaml
+routers:
+  - name: "my_reflection_router"
+    type: "reflection"
+    flow_pattern: [main_agent, critic, main_agent, final_agent]  # Define your pattern
+    model:                                    # Optional: LLM for routing decisions
+      provider: "openai"
+      name: "gpt-4o-mini"
+    settings:                                 # Optional settings
+      temperature: 0.2                       # Router temperature (lower = more deterministic)
+      allow_early_exit: false                # Allow early completion if LLM determines pattern is done
+      fallback_strategy: "first"             # first, last, random - fallback when LLM fails
+```
+
+**🏗️ Programmatic Usage:**
+
+```python
+import asyncio
+from flo_ai.arium import AriumBuilder
+from flo_ai.models.agent import Agent
+from flo_ai.llm import OpenAI
+from flo_ai.arium.llm_router import create_main_critic_reflection_router
+
+async def reflection_workflow_example():
+    llm = OpenAI(model='gpt-4o-mini', api_key='your-api-key')
+    
+    # Create agents
+    main_agent = Agent(
+        name='main_agent',
+        system_prompt='Create solutions and improve them based on feedback.',
+        llm=llm
+    )
+    
+    critic = Agent(
+        name='critic', 
+        system_prompt='Provide constructive feedback for improvement.',
+        llm=llm
+    )
+    
+    final_agent = Agent(
+        name='final_agent',
+        system_prompt='Polish and finalize the work.',
+        llm=llm
+    )
+    
+    # Create reflection router - A → B → A → C pattern
+    reflection_router = create_main_critic_reflection_router(
+        main_agent='main_agent',
+        critic_agent='critic',
+        final_agent='final_agent',
+        allow_early_exit=False,  # Strict pattern adherence
+        llm=llm
+    )
+    
+    # Build workflow
+    result = await (
+        AriumBuilder()
+        .add_agents([main_agent, critic, final_agent])
+        .start_with(main_agent)
+        .add_edge(main_agent, [critic, final_agent], reflection_router)
+        .add_edge(critic, [main_agent, final_agent], reflection_router)
+        .end_with(final_agent)
+        .build_and_run(["Create a comprehensive project proposal"])
+    )
+    
+    return result
+
+# Alternative: Direct factory usage
+from flo_ai.arium.llm_router import create_llm_router
+
+reflection_router = create_llm_router(
+    'reflection',
+    flow_pattern=['writer', 'editor', 'writer'],  # A → B → A
+    allow_early_exit=False,
+    llm=llm
+)
+```
+
+**💡 ReflectionRouter Intelligence:**
+
+The ReflectionRouter automatically:
+- **Tracks Progress**: Knows which step in the pattern should execute next
+- **Prevents Loops**: Uses execution context to avoid infinite cycles  
+- **Provides Guidance**: Shows LLM the suggested next step and current progress
+- **Handles Self-Reference**: Properly validates flows that return to the same agent
+- **Visual Feedback**: Displays pattern progress: `○ writer → ✓ critic → ○ writer`
+
+**🎯 Perfect Use Cases:**
+- 📝 **Content Creation**: Writer → Editor → Writer → Publisher
+- 🔬 **Research Workflows**: Researcher → Reviewer → Researcher → Synthesizer  
+- 💼 **Business Analysis**: Analyst → Critic → Analyst → Decision Maker
+- 🎨 **Creative Processes**: Creator → Critic → Creator → Finalizer
+- 🧪 **Iterative Refinement**: Any process requiring feedback and improvement cycles
+
+**⚡ Quick Start Example:**
+
+```python
+# Minimal A → B → A pattern
+yaml_config = """
+arium:
+  agents:
+    - name: main_agent
+      job: "Main work agent"
+      model: {provider: openai, name: gpt-4o-mini}
+    - name: critic
+      job: "Feedback agent" 
+      model: {provider: openai, name: gpt-4o-mini}
+
+  routers:
+    - name: reflection_router
+      type: reflection
+      flow_pattern: [main_agent, critic, main_agent]
+
+  workflow:
+    start: main_agent
+    edges:
+      - from: main_agent
+        to: [critic, main_agent]
+        router: reflection_router
+      - from: critic
+        to: [main_agent]
+        router: reflection_router
+    end: [main_agent]
+"""
+
+result = await AriumBuilder().from_yaml(yaml_str=yaml_config).build_and_run(["Your task"])
+```
+
+The ReflectionRouter makes implementing sophisticated feedback loops and iterative improvement workflows incredibly simple, whether you need a 2-agent or 3-agent pattern! 🚀
+
+##### 🔄 PlanExecuteRouter: Cursor-Style Plan-and-Execute Workflows (NEW!)
+
+The **PlanExecuteRouter** implements sophisticated plan-and-execute patterns similar to how Cursor works. It automatically breaks down complex tasks into detailed execution plans and coordinates step-by-step execution with intelligent progress tracking.
+
+**📋 Key Features:**
+- 🎯 **Automatic Task Breakdown**: Creates detailed execution plans from high-level tasks
+- 📊 **Step Tracking**: Real-time progress monitoring with visual indicators (○ ⏳ ✅ ❌)
+- 🔄 **Phase Coordination**: Intelligent routing between planning, execution, and review phases
+- 🛡️ **Dependency Management**: Handles step dependencies and execution order automatically
+- 💾 **Plan Persistence**: Uses PlanAwareMemory for stateful plan storage and updates
+- 🔧 **Error Recovery**: Built-in retry logic for failed steps
+
+**🎯 Perfect for Cursor-Style Workflows:**
+- 💻 **Software Development**: Requirements → Design → Implementation → Testing → Review
+- 📝 **Content Creation**: Planning → Writing → Editing → Review → Publishing
+- 🔬 **Research Projects**: Plan → Investigate → Analyze → Synthesize → Report
+- 📊 **Business Processes**: Any multi-step workflow with dependencies
+
+**📄 YAML Configuration:**
+
+```yaml
+# Complete Plan-Execute Workflow
+metadata:
+  name: "development-plan-execute"
+  version: "1.0.0"
+  description: "Cursor-style development workflow"
+
+arium:
+  agents:
+    - name: planner
+      role: Project Planner
+      job: >
+        Break down complex development tasks into detailed, sequential execution plans.
+        Create clear steps with dependencies and agent assignments.
+      model:
+        provider: openai
+        name: gpt-4o-mini
+      settings:
+        temperature: 0.3
+        
+    - name: developer
+      role: Software Developer
+      job: >
+        Implement features step by step according to execution plans.
+        Provide detailed implementation and update step status.
+      model:
+        provider: openai
+        name: gpt-4o-mini
+      settings:
+        temperature: 0.5
+        
+    - name: tester
+      role: QA Engineer
+      job: >
+        Test implementations thoroughly and validate functionality.
+        Create comprehensive test scenarios and report results.
+      model:
+        provider: openai
+        name: gpt-4o-mini
+      settings:
+        temperature: 0.2
+        
+    - name: reviewer
+      role: Senior Reviewer
+      job: >
+        Provide final quality assessment and approval.
+        Review completed work for best practices and requirements.
+      model:
+        provider: openai
+        name: gpt-4o-mini
+
+  # PlanExecuteRouter configuration
+  routers:
+    - name: dev_plan_router
+      type: plan_execute                          # Router type for plan-execute workflows
+      agents:                                     # Available agents and their capabilities
+        planner: "Creates detailed execution plans by breaking down tasks"
+        developer: "Implements features and code according to plan specifications"
+        tester: "Tests implementations and validates functionality"
+        reviewer: "Reviews and approves completed work"
+      model:                                      # Optional: LLM for routing decisions
+        provider: openai
+        name: gpt-4o-mini
+      settings:                                   # Optional configuration
+        temperature: 0.2                         # Router decision temperature
+        planner_agent: planner                   # Agent responsible for creating plans
+        executor_agent: developer                # Default agent for executing steps
+        reviewer_agent: reviewer                 # Optional agent for final review
+        max_retries: 3                          # Maximum retries for failed steps
+
+  workflow:
+    start: planner
+    edges:
+      # All agents can route to all others based on plan state
+      - from: planner
+        to: [developer, tester, reviewer, planner]
+        router: dev_plan_router
+      - from: developer
+        to: [developer, tester, reviewer, planner]
+        router: dev_plan_router
+      - from: tester
+        to: [developer, tester, reviewer, planner]
+        router: dev_plan_router
+      - from: reviewer
+        to: [end]
+    end: [reviewer]
+```
+
+**🏗️ Programmatic Usage:**
+
+```python
+import asyncio
+from flo_ai.arium import AriumBuilder
+from flo_ai.arium.memory import PlanAwareMemory
+from flo_ai.models.agent import Agent
+from flo_ai.llm import OpenAI
+from flo_ai.arium.llm_router import create_plan_execute_router
+
+async def cursor_style_workflow():
+    llm = OpenAI(model='gpt-4o-mini', api_key='your-api-key')
+    
+    # Create specialized agents
+    planner = Agent(
+        name='planner',
+        system_prompt='Create detailed execution plans by breaking down tasks into sequential steps.',
+        llm=llm
+    )
+    
+    developer = Agent(
+        name='developer', 
+        system_prompt='Implement features step by step according to execution plans.',
+        llm=llm
+    )
+    
+    tester = Agent(
+        name='tester',
+        system_prompt='Test implementations and validate functionality thoroughly.',
+        llm=llm
+    )
+    
+    reviewer = Agent(
+        name='reviewer',
+        system_prompt='Review completed work and provide final approval.',
+        llm=llm
+    )
+    
+    # Create plan-execute router
+    plan_router = create_plan_execute_router(
+        planner_agent='planner',
+        executor_agent='developer',
+        reviewer_agent='reviewer',
+        additional_agents={'tester': 'Tests implementations and validates quality'},
+        llm=llm
+    )
+    
+    # Use PlanAwareMemory for plan state persistence
+    memory = PlanAwareMemory()
+    
+    # Build and run workflow
+    result = await (
+        AriumBuilder()
+        .with_memory(memory)
+        .add_agents([planner, developer, tester, reviewer])
+        .start_with(planner)
+        .add_edge(planner, [developer, tester, reviewer, planner], plan_router)
+        .add_edge(developer, [developer, tester, reviewer, planner], plan_router)
+        .add_edge(tester, [developer, tester, reviewer, planner], plan_router)
+        .add_edge(reviewer, [developer, tester, reviewer, planner], plan_router)
+        .end_with(reviewer)
+        .build_and_run(["Create a REST API for user authentication with JWT tokens"])
+    )
+    
+    return result
+
+# Alternative: Factory function
+from flo_ai.arium.llm_router import create_plan_execute_router
+
+plan_router = create_plan_execute_router(
+    planner_agent='planner',
+    executor_agent='developer', 
+    reviewer_agent='reviewer',
+    llm=llm
+)
+```
+
+**💡 How PlanExecuteRouter Works:**
+
+The router intelligently coordinates workflow phases:
+
+1. **Planning Phase**: 
+   - Detects when no execution plan exists
+   - Routes to planner agent to create detailed plan
+   - Plan stored as ExecutionPlan object in PlanAwareMemory
+
+2. **Execution Phase**:
+   - Analyzes plan state and step dependencies
+   - Routes to appropriate agents for next ready steps
+   - Updates step status (pending → in-progress → completed)
+   - Handles parallel execution of independent steps
+
+3. **Review Phase**:
+   - Detects when all steps are completed
+   - Routes to reviewer agent for final validation
+   - Manages error recovery for failed steps
+
+**📊 Plan Progress Visualization:**
+
+```
+📋 EXECUTION PLAN: User Authentication API
+📊 CURRENT PROGRESS:
+✅ design_schema: Design user database schema → developer
+✅ implement_registration: Create registration endpoint → developer  
+⏳ implement_login: Add login with JWT → developer (depends: design_schema, implement_registration)
+○ add_middleware: Authentication middleware → developer (depends: implement_login)
+○ write_tests: Comprehensive testing → tester (depends: add_middleware)
+○ final_review: Security and code review → reviewer (depends: write_tests)
+
+🎯 NEXT ACTION: Execute step 'implement_login'
+🎯 SUGGESTED AGENT: developer
+```
+
+**🔧 Advanced Configuration Options:**
+
+```yaml
+routers:
+  - name: advanced_plan_router
+    type: plan_execute
+    agents:
+      planner: "Creates execution plans"
+      frontend_dev: "Frontend implementation"  
+      backend_dev: "Backend implementation"
+      devops: "Deployment and infrastructure"
+      qa_tester: "Quality assurance testing"
+      security_reviewer: "Security review"
+      product_owner: "Product validation"
+    model:
+      provider: openai
+      name: gpt-4o
+    settings:
+      temperature: 0.1                          # Lower for more deterministic routing
+      planner_agent: planner                    # Plan creation agent
+      executor_agent: backend_dev               # Default execution agent
+      reviewer_agent: product_owner             # Final review agent
+      max_retries: 5                           # Retry attempts for failed steps
+      allow_parallel_execution: true           # Enable parallel step execution
+      plan_validation: strict                  # Validate plan completeness
+```
+
+**⚡ Quick Start Example:**
+
+```python
+# Minimal plan-execute workflow
+yaml_config = """
+arium:
+  agents:
+    - name: planner
+      job: "Create execution plans"
+      model: {provider: openai, name: gpt-4o-mini}
+    - name: executor
+      job: "Execute plan steps"
+      model: {provider: openai, name: gpt-4o-mini}
+    - name: reviewer
+      job: "Review final results"
+      model: {provider: openai, name: gpt-4o-mini}
+
+  routers:
+    - name: simple_plan_router
+      type: plan_execute
+      agents:
+        planner: "Creates plans"
+        executor: "Executes steps"
+        reviewer: "Reviews results"
+      settings:
+        planner_agent: planner
+        executor_agent: executor
+        reviewer_agent: reviewer
+
+  workflow:
+    start: planner
+    edges:
+      - from: planner
+        to: [executor, reviewer, planner]
+        router: simple_plan_router
+      - from: executor
+        to: [executor, reviewer, planner]
+        router: simple_plan_router
+      - from: reviewer
+        to: [end]
+    end: [reviewer]
+"""
+
+result = await AriumBuilder().from_yaml(yaml_str=yaml_config).build_and_run(["Your complex task"])
+```
+
+**🎯 Use Cases and Examples:**
+
+- 📱 **App Development**: "Build a todo app with React and Node.js"
+- 🛒 **E-commerce**: "Create a shopping cart system with payment processing"
+- 📊 **Data Pipeline**: "Build ETL pipeline for customer analytics"
+- 🔐 **Security**: "Implement OAuth2 authentication system"
+- 📈 **Analytics**: "Create real-time dashboard with user metrics"
+
+The PlanExecuteRouter brings Cursor-style intelligent task automation to Flo AI, making it incredibly easy to build sophisticated multi-step workflows that adapt and execute complex tasks automatically! 🚀
 
 #### YAML Workflow with Variables
 

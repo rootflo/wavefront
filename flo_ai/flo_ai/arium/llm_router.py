@@ -6,9 +6,9 @@ to make dynamic routing decisions based on conversation context and history.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Optional, Callable, Any, Union, get_args
+from typing import Dict, Optional, Callable, Any, Union, get_args, List
 from functools import wraps
-from flo_ai.arium.memory import BaseMemory
+from flo_ai.arium.memory import BaseMemory, ExecutionPlan, StepStatus
 from flo_ai.llm.base_llm import BaseLLM
 from flo_ai.llm import OpenAI
 from flo_ai.utils.logger import logger
@@ -40,6 +40,9 @@ class BaseLLMRouter(ABC):
         self.temperature = temperature
         self.max_retries = max_retries
         self.fallback_strategy = fallback_strategy
+        self.supports_self_reference = (
+            False  # Most routers don't support self-reference by default
+        )
 
     @abstractmethod
     def get_routing_options(self) -> Dict[str, str]:
@@ -324,6 +327,381 @@ Category:"""
         return prompt
 
 
+class ReflectionRouter(BaseLLMRouter):
+    """
+    A router designed for reflection patterns like A -> B -> A -> C.
+    Commonly used for main -> critic -> main -> final workflows where B is a reflection/critique step.
+    Uses execution context to determine flow state and make intelligent routing decisions.
+    """
+
+    def __init__(
+        self,
+        flow_pattern: List[str],
+        llm: Optional[BaseLLM] = None,
+        allow_early_exit: bool = False,
+        **kwargs,
+    ):
+        """
+        Initialize the reflection router.
+
+        Args:
+            flow_pattern: List of node names defining the reflection pattern (e.g., ["main", "critic", "main", "final"])
+            llm: LLM instance for routing decisions
+            allow_early_exit: Whether to allow LLM to exit pattern early if appropriate
+            **kwargs: Additional arguments for BaseLLMRouter
+        """
+        super().__init__(llm=llm, **kwargs)
+        self.flow_pattern = flow_pattern
+        self.allow_early_exit = allow_early_exit
+        self.supports_self_reference = (
+            True  # ReflectionRouter can return to the same node
+        )
+
+    def get_routing_options(self) -> Dict[str, str]:
+        """Get available routing options based on flow pattern"""
+        unique_nodes = list(
+            dict.fromkeys(self.flow_pattern)
+        )  # Preserve order, remove duplicates
+
+        # Generate descriptions based on reflection pattern
+        options = {}
+        for node in unique_nodes:
+            # Count occurrences and positions in pattern
+            positions = [i for i, x in enumerate(self.flow_pattern) if x == node]
+            if len(positions) > 1:
+                options[node] = (
+                    f"Step {positions} in the reflection pattern: {' -> '.join(self.flow_pattern)}"
+                )
+            else:
+                options[node] = (
+                    f"Step {positions[0] + 1} in the reflection pattern: {' -> '.join(self.flow_pattern)}"
+                )
+
+        return options
+
+    def _get_next_step_in_pattern(self, execution_context: dict) -> Optional[str]:
+        """Determine the next step in the reflection pattern based on execution context"""
+        if not execution_context:
+            return self.flow_pattern[0] if self.flow_pattern else None
+
+        visit_counts = execution_context.get('node_visit_count', {})
+        current_node = execution_context.get('current_node', '')
+
+        # Find the current position in the pattern
+        try:
+            # Find where we are in the reflection pattern
+            current_step = -1
+            for i, node in enumerate(self.flow_pattern):
+                node_visits = visit_counts.get(node, 0)
+
+                # For nodes that appear multiple times, we need to track which occurrence
+                if node == current_node:
+                    # Count how many times this node should have been visited at this step
+                    expected_visits = len(
+                        [x for x in self.flow_pattern[: i + 1] if x == node]
+                    )
+                    if node_visits >= expected_visits:
+                        current_step = i
+
+            # Determine next step
+            next_step_index = current_step + 1
+            if next_step_index < len(self.flow_pattern):
+                return self.flow_pattern[next_step_index]
+            else:
+                # Pattern completed
+                return None
+
+        except Exception:
+            # Fallback to first step
+            return self.flow_pattern[0] if self.flow_pattern else None
+
+    def get_routing_prompt(
+        self,
+        memory: BaseMemory,
+        options: Dict[str, str],
+        execution_context: dict = None,
+    ) -> str:
+        conversation = memory.get()
+
+        # Format conversation history
+        if isinstance(conversation, list):
+            conversation_text = '\n'.join(
+                [str(msg) for msg in conversation[-3:]]
+            )  # Last 3 messages for flow context
+        else:
+            conversation_text = str(conversation)
+
+        # Determine suggested next step based on reflection pattern
+        suggested_next = self._get_next_step_in_pattern(execution_context)
+
+        # Format options
+        options_text = '\n'.join(
+            [f'- {name}: {desc}' for name, desc in options.items()]
+        )
+
+        # Add execution context info
+        context_info = ''
+        if execution_context:
+            visit_counts = execution_context.get('node_visit_count', {})
+            current_node = execution_context.get('current_node', 'unknown')
+            iteration = execution_context.get('iteration_count', 0)
+
+            # Show reflection pattern progress
+            pattern_progress = []
+            for i, node in enumerate(self.flow_pattern):
+                visits = visit_counts.get(node, 0)
+                expected_visits = len(
+                    [x for x in self.flow_pattern[: i + 1] if x == node]
+                )
+                status = '✓' if visits >= expected_visits else '○'
+                pattern_progress.append(f'{status} {node}')
+
+            context_info = f"""
+📋 REFLECTION PATTERN: {' → '.join(self.flow_pattern)}
+📍 CURRENT PROGRESS: {' → '.join(pattern_progress)}
+🎯 SUGGESTED NEXT: {suggested_next or 'Pattern Complete'}
+💡 CURRENT NODE: {current_node} (iteration {iteration})
+"""
+
+        # Create prompt based on whether early exit is allowed
+        if self.allow_early_exit:
+            prompt = f"""You are a reflection coordinator managing this workflow pattern: {' → '.join(self.flow_pattern)}
+
+{context_info}
+Available options:
+{options_text}
+
+Recent conversation:
+{conversation_text}
+
+Instructions:
+1. Follow the reflection pattern: {' → '.join(self.flow_pattern)}
+2. The suggested next step is: {suggested_next or 'Pattern Complete'}
+3. You may exit early if the reflection cycle is complete
+4. Consider conversation context and reflection progress
+5. Respond with ONLY the agent name (no explanations)
+
+Next agent:"""
+        else:
+            prompt = f"""You are a reflection coordinator managing this strict reflection pattern: {' → '.join(self.flow_pattern)}
+
+{context_info}
+Available options:
+{options_text}
+
+Recent conversation:
+{conversation_text}
+
+Instructions:
+1. STRICTLY follow the reflection pattern: {' → '.join(self.flow_pattern)}
+2. The next step should be: {suggested_next or 'Pattern Complete'}
+3. Do not deviate from the pattern unless absolutely necessary
+4. Respond with ONLY the agent name (no explanations)
+
+Next agent:"""
+
+        return prompt
+
+
+class PlanExecuteRouter(BaseLLMRouter):
+    """
+    A router that implements plan-and-execute patterns like Cursor.
+    Creates execution plans and routes through steps sequentially.
+    """
+
+    def __init__(
+        self,
+        agents: Dict[str, str],  # agent_name -> description mapping
+        planner_agent: str = 'planner',
+        executor_agent: str = 'executor',
+        reviewer_agent: Optional[str] = None,
+        llm: Optional[BaseLLM] = None,
+        max_retries: int = 3,
+        **kwargs,
+    ):
+        """
+        Initialize the plan-execute router.
+
+        Args:
+            agents: Dict mapping agent names to their descriptions/capabilities
+            planner_agent: Name of the agent responsible for creating plans
+            executor_agent: Name of the agent responsible for executing steps
+            reviewer_agent: Optional name of the agent responsible for reviewing results
+            llm: LLM instance for routing decisions
+            max_retries: Maximum retries for step execution
+            **kwargs: Additional arguments for BaseLLMRouter
+        """
+        super().__init__(llm=llm, **kwargs)
+        self.agents = agents
+        self.planner_agent = planner_agent
+        self.executor_agent = executor_agent
+        self.reviewer_agent = reviewer_agent
+        self.max_retries = max_retries
+        self.supports_self_reference = (
+            True  # Can route to same agent for iterative execution
+        )
+
+    def get_routing_options(self) -> Dict[str, str]:
+        """Get available routing options based on configured agents"""
+        return self.agents
+
+    def get_routing_prompt(
+        self,
+        memory: BaseMemory,
+        options: Dict[str, str],
+        execution_context: dict = None,
+    ) -> str:
+        conversation = memory.get()
+
+        # Format conversation history
+        if isinstance(conversation, list):
+            conversation_text = '\n'.join(
+                [str(msg) for msg in conversation[-3:]]
+            )  # Last 3 messages for context
+        else:
+            conversation_text = str(conversation)
+
+        # Check if we have a plan in memory
+        current_plan = (
+            memory.get_current_plan() if hasattr(memory, 'get_current_plan') else None
+        )
+
+        if current_plan is None:
+            # No plan exists - route to planner
+            return self._create_planning_prompt(conversation_text, options)
+        else:
+            # Plan exists - determine next action based on plan state
+            return self._create_execution_prompt(
+                current_plan, conversation_text, options, execution_context
+            )
+
+    def _create_planning_prompt(
+        self, conversation_text: str, options: Dict[str, str]
+    ) -> str:
+        """Create prompt for initial planning phase"""
+        options_text = '\n'.join(
+            [f'- {name}: {desc}' for name, desc in options.items()]
+        )
+
+        prompt = f"""You are coordinating a plan-and-execute workflow. No execution plan exists yet.
+
+Available agents:
+{options_text}
+
+Recent conversation:
+{conversation_text}
+
+TASK: Create an execution plan by routing to the {self.planner_agent}.
+
+Instructions:
+1. Route to "{self.planner_agent}" to create a detailed execution plan
+2. The planner will break down the task into sequential steps
+3. Each step will specify which agent should execute it
+4. Respond with ONLY the agent name: {self.planner_agent}
+
+Next agent:"""
+
+        return prompt
+
+    def _create_execution_prompt(
+        self,
+        plan: ExecutionPlan,
+        conversation_text: str,
+        options: Dict[str, str],
+        execution_context: dict = None,
+    ) -> str:
+        """Create prompt for execution phase based on current plan state"""
+
+        # Get next steps that are ready to execute
+        next_steps = plan.get_next_steps()
+
+        # Format plan progress
+        progress_lines = []
+        for step in plan.steps:
+            status_icon = {
+                StepStatus.PENDING: '○',
+                StepStatus.IN_PROGRESS: '⏳',
+                StepStatus.COMPLETED: '✅',
+                StepStatus.FAILED: '❌',
+                StepStatus.SKIPPED: '⏭️',
+            }.get(step.status, '○')
+            progress_lines.append(
+                f'{status_icon} {step.id}: {step.description} (→ {step.agent})'
+            )
+
+        progress_text = '\n'.join(progress_lines)
+
+        # Determine what to do next
+        if plan.is_completed():
+            # All steps completed
+            if self.reviewer_agent and self.reviewer_agent in options:
+                action = f'Route to {self.reviewer_agent} for final review'
+                suggested_agent = self.reviewer_agent
+            else:
+                action = 'Plan completed - route to any agent for final output'
+                suggested_agent = next(iter(options.keys()))  # First available agent
+        elif plan.has_failed_steps():
+            # Some steps failed - need recovery
+            failed_steps = [
+                step for step in plan.steps if step.status == StepStatus.FAILED
+            ]
+            failed_step = failed_steps[0]  # Focus on first failed step
+            action = f"Handle failed step '{failed_step.id}' - route to {failed_step.agent} for retry"
+            suggested_agent = failed_step.agent
+        elif next_steps:
+            # There are steps ready to execute
+            next_step = next_steps[0]  # Execute first ready step
+            action = f"Execute step '{next_step.id}' - route to {next_step.agent}"
+            suggested_agent = next_step.agent
+        else:
+            # Waiting for dependencies
+            action = f'Waiting for dependencies - route to {self.executor_agent} for status check'
+            suggested_agent = self.executor_agent
+
+        options_text = '\n'.join(
+            [f'- {name}: {desc}' for name, desc in options.items()]
+        )
+
+        # Add execution context info
+        context_info = ''
+        if execution_context:
+            current_node = execution_context.get('current_node', 'unknown')
+            iteration = execution_context.get('iteration_count', 0)
+
+            context_info = f"""
+💡 EXECUTION CONTEXT:
+Current node: {current_node} (iteration {iteration})
+"""
+
+        prompt = f"""You are coordinating plan execution in a plan-and-execute workflow.
+
+📋 EXECUTION PLAN: {plan.title}
+{plan.description}
+
+📊 CURRENT PROGRESS:
+{progress_text}
+
+🎯 NEXT ACTION: {action}
+🎯 SUGGESTED AGENT: {suggested_agent}
+{context_info}
+Available agents:
+{options_text}
+
+Recent conversation:
+{conversation_text}
+
+Instructions:
+1. Follow the execution plan step by step
+2. Route to the suggested agent: {suggested_agent}
+3. Each agent will execute their assigned step
+4. Continue until all steps are completed
+5. Respond with ONLY the agent name (no explanations)
+
+Next agent:"""
+
+        return prompt
+
+
 class ConversationAnalysisRouter(BaseLLMRouter):
     """
     A router that analyzes conversation flow and context to make routing decisions.
@@ -424,7 +802,7 @@ def create_llm_router(router_type: str, **config) -> Callable[[BaseMemory], str]
     Factory function to create LLM-powered routers with different configurations.
 
     Args:
-        router_type: Type of router ("smart", "task_classifier", "conversation_analysis")
+        router_type: Type of router ("smart", "task_classifier", "conversation_analysis", "reflection", "plan_execute")
         **config: Configuration specific to the router type
 
     Returns:
@@ -457,6 +835,26 @@ def create_llm_router(router_type: str, **config) -> Callable[[BaseMemory], str]
                 }
             }
         )
+
+        # Reflection router for A -> B -> A -> C patterns
+        router = create_llm_router(
+            "reflection",
+            flow_pattern=["main_agent", "critic", "main_agent", "final_agent"],
+            allow_early_exit=False
+        )
+
+        # Plan-Execute router for Cursor-style workflows
+        router = create_llm_router(
+            "plan_execute",
+            agents={
+                "planner": "Creates detailed execution plans",
+                "developer": "Implements code and features",
+                "tester": "Tests implementations",
+                "reviewer": "Reviews final results"
+            },
+            planner_agent="planner",
+            executor_agent="developer"
+        )
     """
 
     if router_type == 'smart':
@@ -480,6 +878,18 @@ def create_llm_router(router_type: str, **config) -> Callable[[BaseMemory], str]
             )
 
         router_instance = ConversationAnalysisRouter(**config)
+
+    elif router_type == 'reflection':
+        if 'flow_pattern' not in config:
+            raise ValueError("ReflectionRouter requires 'flow_pattern' parameter")
+
+        router_instance = ReflectionRouter(**config)
+
+    elif router_type == 'plan_execute':
+        if 'agents' not in config:
+            raise ValueError("PlanExecuteRouter requires 'agents' parameter")
+
+        router_instance = PlanExecuteRouter(**config)
 
     else:
         raise ValueError(f'Unknown router type: {router_type}')
@@ -505,6 +915,11 @@ def create_llm_router(router_type: str, **config) -> Callable[[BaseMemory], str]
 
     # Add proper type annotations for validation
     router_function.__annotations__ = {'memory': BaseMemory, 'return': literal_type}
+
+    # Transfer router instance attributes to the function for validation
+    router_function.supports_self_reference = getattr(
+        router_instance, 'supports_self_reference', False
+    )
 
     return router_function
 
@@ -656,5 +1071,95 @@ def create_research_analysis_router(
                 ],
             },
         },
+        llm=llm,
+    )
+
+
+def create_main_critic_reflection_router(
+    main_agent: str = 'main_agent',
+    critic_agent: str = 'critic',
+    final_agent: str = 'final_agent',
+    allow_early_exit: bool = False,
+    llm: Optional[BaseLLM] = None,
+) -> Callable[[BaseMemory], str]:
+    """
+    Create a router for the A -> B -> A -> C reflection pattern (main -> critic -> main -> final).
+
+    Args:
+        main_agent: Name of the main agent (appears twice in pattern)
+        critic_agent: Name of the critic agent for reflection
+        final_agent: Name of the final agent
+        allow_early_exit: Whether to allow LLM to exit reflection early if appropriate
+        llm: LLM instance for routing decisions
+
+    Returns:
+        Router function for main/critic/final reflection workflows
+    """
+    return create_llm_router(
+        'reflection',
+        flow_pattern=[main_agent, critic_agent, main_agent, final_agent],
+        allow_early_exit=allow_early_exit,
+        llm=llm,
+    )
+
+
+def create_plan_execute_router(
+    planner_agent: str = 'planner',
+    executor_agent: str = 'executor',
+    reviewer_agent: Optional[str] = None,
+    additional_agents: Optional[Dict[str, str]] = None,
+    llm: Optional[BaseLLM] = None,
+) -> Callable[[BaseMemory], str]:
+    """
+    Create a router for plan-and-execute workflows like Cursor.
+
+    Args:
+        planner_agent: Name of the agent responsible for creating plans
+        executor_agent: Name of the agent responsible for executing steps
+        reviewer_agent: Optional name of the agent responsible for reviewing results
+        additional_agents: Additional agents that can be used in execution steps
+        llm: LLM instance for routing decisions
+
+    Returns:
+        Router function for plan-execute workflows
+    """
+    agents = {
+        planner_agent: 'Creates detailed execution plans by breaking down tasks into sequential steps',
+        executor_agent: 'Executes individual steps from the execution plan',
+    }
+
+    if reviewer_agent:
+        agents[reviewer_agent] = 'Reviews and validates completed work'
+
+    if additional_agents:
+        agents.update(additional_agents)
+
+    return create_llm_router(
+        'plan_execute',
+        agents=agents,
+        planner_agent=planner_agent,
+        executor_agent=executor_agent,
+        reviewer_agent=reviewer_agent,
+        llm=llm,
+    )
+
+
+# Backward compatibility alias
+def create_main_critic_flow_router(
+    main_agent: str = 'main_agent',
+    critic_agent: str = 'critic',
+    final_agent: str = 'final_agent',
+    allow_early_exit: bool = False,
+    llm: Optional[BaseLLM] = None,
+) -> Callable[[BaseMemory], str]:
+    """
+    DEPRECATED: Use create_main_critic_reflection_router instead.
+    Create a router for the A -> B -> A -> C reflection pattern (main -> critic -> main -> final).
+    """
+    return create_main_critic_reflection_router(
+        main_agent=main_agent,
+        critic_agent=critic_agent,
+        final_agent=final_agent,
+        allow_early_exit=allow_early_exit,
         llm=llm,
     )
