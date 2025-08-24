@@ -1,0 +1,157 @@
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+/* React Flow Customizations */
+.react-flow__node {
+  font-family: inherit;
+}
+
+.react-flow__edge {
+  stroke-width: 2px;
+}
+
+.react-flow__edge.selected {
+  stroke: #3b82f6;
+  stroke-width: 3px;
+}
+
+.react-flow__edge-path {
+  stroke-width: inherit;
+}
+
+.react-flow__connection-line {
+  stroke: #3b82f6;
+  stroke-width: 3px;
+  stroke-dasharray: 5, 5;
+  animation: dash 1s linear infinite;
+}
+
+@keyframes dash {
+  to {
+    stroke-dashoffset: -10;
+  }
+}
+
+/* Edge arrows */
+.react-flow__edge .react-flow__edge-path {
+  stroke-width: inherit;
+}
+
+.react-flow__edge-path {
+  stroke-linecap: round;
+}
+
+.react-flow__handle {
+  width: 12px;
+  height: 12px;
+  border: 2px solid white;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.react-flow__handle:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
+}
+
+.react-flow__handle-connecting {
+  background: #3b82f6;
+  transform: scale(1.3);
+  box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.3);
+}
+
+.react-flow__handle-valid {
+  background: #10b981;
+  transform: scale(1.2);
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.3);
+}
+
+/* Custom Edge Label Styles */
+.edge-label {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+.edge-label.selected {
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+
+/* Focus styles for better accessibility */
+.react-flow__node:focus,
+.react-flow__node:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* Animation for node hover */
+.react-flow__node {
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.react-flow__node:hover {
+  transform: scale(1.02);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+/* Utility Classes */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* YAML Preview Drawer Styles */
+.yaml-drawer {
+  transition: width 0.3s ease-in-out;
+}
+
+.yaml-drawer-content {
+  transition: opacity 0.3s ease-in-out;
+}
+
+/* Floating YAML Widget */
+.yaml-widget {
+  transition: all 0.2s ease-in-out;
+  animation: float 3s ease-in-out infinite;
+}
+
+.yaml-widget:hover {
+  transform: translateY(-50%) scale(1.05);
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(-50%) translateX(0); }
+  50% { transform: translateY(-50%) translateX(-2px); }
+}
+
+/* Custom Scrollbar for YAML content */
+.yaml-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.yaml-content::-webkit-scrollbar-track {
+  background: #374151;
+}
+
+.yaml-content::-webkit-scrollbar-thumb {
+  background: #6b7280;
+  border-radius: 4px;
+}
+
+.yaml-content::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}

@@ -42,6 +42,51 @@ Flo AI is a Python framework for building structured AI agents with support for 
 
 Flo AI is a Python framework that makes building production-ready AI agents and teams as easy as writing YAML. Think "Kubernetes for AI Agents" - compose complex AI architectures using pre-built components while maintaining the flexibility to create your own.
 
+## 🎨 Flo AI Studio - Visual Workflow Designer
+
+**Create AI workflows visually with our powerful React-based studio!**
+
+<p align="center">
+  <img src="./images/flo-studio-preview.png" alt="Flo AI Studio - Visual Workflow Designer" width="800" />
+</p>
+
+Flo AI Studio is a modern, intuitive visual editor that allows you to design complex multi-agent workflows through a drag-and-drop interface. Build sophisticated AI systems without writing code, then export them as production-ready YAML configurations.
+
+### 🚀 Studio Features
+
+- **🎯 Visual Design**: Drag-and-drop interface for creating agent workflows
+- **🤖 Agent Management**: Configure AI agents with different roles, models, and tools
+- **🔀 Smart Routing**: Visual router configuration for intelligent workflow decisions
+- **📤 YAML Export**: Export workflows as Flo AI-compatible YAML configurations
+- **📥 YAML Import**: Import existing workflows for further editing
+- **✅ Workflow Validation**: Real-time validation and error checking
+- **🔧 Tool Integration**: Connect agents to external tools and APIs
+- **📋 Template System**: Quick start with pre-built agent and router templates
+
+### 🏃‍♂️ Quick Start with Studio
+
+1. **Start the Studio**:
+   ```bash
+   cd studio
+   pnpm install
+   pnpm dev
+   ```
+
+2. **Design Your Workflow**:
+   - Add agents, routers, and tools to the canvas
+   - Configure their properties and connections
+   - Test with the built-in validation
+
+3. **Export & Run**:
+   ```bash
+   # Export YAML from the studio, then run with Flo AI
+   python -c "
+   from flo_ai.arium import AriumBuilder
+   builder = AriumBuilder.from_yaml(yaml_file='your_workflow.yaml')
+   result = await builder.build_and_run(['Your input here'])
+   "
+   ```
+
 ## ✨ Features
 
 - 🔌 **Truly Composable**: Build complex AI systems by combining smaller, reusable components

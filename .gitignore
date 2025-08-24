@@ -21,3 +21,4 @@ scratch_pad.py
 *.html
 usecases/
 compare_gemini_outputs_v1.py
+node_modules/
