@@ -17,8 +17,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Play, Square, Flag } from 'lucide-react';
 import { useDesignerStore } from '@/store/designerStore';
 import { Agent } from '@/types/agent';
+import { cn } from '@/lib/utils';
 
 const AgentEditor: React.FC = () => {
   const {
@@ -28,6 +30,10 @@ const AgentEditor: React.FC = () => {
     updateAgent,
     addAgent,
     config,
+    startNodeId,
+    endNodeIds,
+    setStartNode,
+    toggleEndNode,
   } = useDesignerStore();
 
   const [formData, setFormData] = useState({
@@ -117,6 +123,22 @@ const AgentEditor: React.FC = () => {
         ? prev.tools.filter(t => t !== toolName)
         : [...prev.tools, toolName]
     }));
+  };
+
+  const currentNodeId = selectedNode?.id;
+  const isCurrentStart = currentNodeId === startNodeId;
+  const isCurrentEnd = currentNodeId ? endNodeIds.includes(currentNodeId) : false;
+
+  const handleSetStart = () => {
+    if (currentNodeId && !isNewAgent) {
+      setStartNode(currentNodeId);
+    }
+  };
+
+  const handleToggleEnd = () => {
+    if (currentNodeId && !isNewAgent) {
+      toggleEndNode(currentNodeId);
+    }
   };
 
   return (
@@ -263,6 +285,61 @@ const AgentEditor: React.FC = () => {
               ))}
             </div>
           </div>
+
+          {/* Workflow Start/End Controls */}
+          {!isNewAgent && (
+            <div className="border-t pt-4">
+              <Label className="text-base font-medium">Workflow Configuration</Label>
+              <div className="grid grid-cols-2 gap-4 mt-3">
+                <div>
+                  <Label className="text-sm text-gray-600">Start Node</Label>
+                  <Button
+                    type="button"
+                    variant={isCurrentStart ? "default" : "outline"}
+                    onClick={handleSetStart}
+                    disabled={isCurrentStart}
+                    className={cn(
+                      "w-full mt-1 justify-start",
+                      isCurrentStart && "bg-green-600 hover:bg-green-700"
+                    )}
+                  >
+                    <Play className="w-4 h-4 mr-2" />
+                    {isCurrentStart ? "This is Start Node" : "Set as Start Node"}
+                  </Button>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Only one start node allowed per workflow
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-sm text-gray-600">End Node</Label>
+                  <Button
+                    type="button"
+                    variant={isCurrentEnd ? "default" : "outline"}
+                    onClick={handleToggleEnd}
+                    className={cn(
+                      "w-full mt-1 justify-start",
+                      isCurrentEnd && "bg-red-600 hover:bg-red-700"
+                    )}
+                  >
+                    {isCurrentEnd ? (
+                      <>
+                        <Square className="w-4 h-4 mr-2" />
+                        Remove from End Nodes
+                      </>
+                    ) : (
+                      <>
+                        <Flag className="w-4 h-4 mr-2" />
+                        Add to End Nodes
+                      </>
+                    )}
+                  </Button>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Multiple end nodes allowed
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={closeAgentEditor}>

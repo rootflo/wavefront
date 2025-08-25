@@ -6,8 +6,16 @@ import { useDesignerStore } from '@/store/designerStore';
 import { cn } from '@/lib/utils';
 
 const AgentNode: React.FC<NodeProps<AgentNodeData>> = ({ data, selected, id }) => {
-  const { openAgentEditor, deleteNode } = useDesignerStore();
-  const { agent, isStart, isEnd } = data;
+  const { 
+    openAgentEditor, 
+    deleteNode, 
+    startNodeId, 
+    endNodeIds
+  } = useDesignerStore();
+  const { agent } = data;
+  
+  const isStart = startNodeId === id;
+  const isEnd = endNodeIds.includes(id);
 
   const handleEdit = () => {
     openAgentEditor({
@@ -48,8 +56,18 @@ const AgentNode: React.FC<NodeProps<AgentNodeData>> = ({ data, selected, id }) =
           </h3>
         </div>
         <div className="flex items-center gap-1">
-          {isStart && <Play className="w-4 h-4 text-green-600" />}
-          {isEnd && <Square className="w-4 h-4 text-red-600" />}
+          {isStart && (
+            <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full flex items-center gap-1">
+              <Play className="w-3 h-3" />
+              Start
+            </span>
+          )}
+          {isEnd && (
+            <span className="px-2 py-1 bg-red-100 text-red-800 text-xs font-medium rounded-full flex items-center gap-1">
+              <Square className="w-3 h-3" />
+              End
+            </span>
+          )}
         </div>
       </div>
 

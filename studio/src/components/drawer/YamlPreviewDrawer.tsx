@@ -9,7 +9,7 @@ const YamlPreviewDrawer: React.FC = () => {
   const [yamlContent, setYamlContent] = useState('');
   const [copied, setCopied] = useState(false);
   
-  const { nodes, edges, workflowName, workflowDescription, workflowVersion } = useDesignerStore();
+  const { nodes, edges, workflowName, workflowDescription, workflowVersion, startNodeId, endNodeIds } = useDesignerStore();
 
   // Update YAML content when workflow changes
   useEffect(() => {
@@ -21,6 +21,8 @@ const YamlPreviewDrawer: React.FC = () => {
           workflowName,
           workflowDescription,
           workflowVersion,
+          startNodeId,
+          endNodeIds,
         });
         setYamlContent(yaml);
       } catch (error) {
@@ -29,7 +31,7 @@ const YamlPreviewDrawer: React.FC = () => {
     } else {
       setYamlContent('# Create agents and connect them to see YAML preview\n# Drag agents from the sidebar to get started');
     }
-  }, [nodes, edges, workflowName, workflowDescription, workflowVersion]);
+  }, [nodes, edges, workflowName, workflowDescription, workflowVersion, startNodeId, endNodeIds]);
 
   const handleExport = () => {
     if (nodes.length > 0) {
@@ -39,6 +41,8 @@ const YamlPreviewDrawer: React.FC = () => {
         workflowName,
         workflowDescription,
         workflowVersion,
+        startNodeId,
+        endNodeIds,
       });
       downloadYAML(yaml, `${workflowName.replace(/\s+/g, '-').toLowerCase()}.yaml`);
     }

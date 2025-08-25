@@ -190,7 +190,6 @@ class Agent(BaseAgent):
 
                 while tool_call_count < max_tool_calls:
                     formatted_tools = self.llm.format_tools_for_llm(self.tools)
-                    print(messages)
                     response = await self.llm.generate(
                         messages,
                         functions=formatted_tools,

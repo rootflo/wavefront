@@ -1,15 +1,12 @@
 import React from 'react';
 import {
   BaseEdge,
-  EdgeLabelRenderer,
   EdgeProps,
   getBezierPath,
 } from 'reactflow';
-
-
 import { CustomEdgeData } from '@/types/reactflow';
 
-const CustomEdge: React.FC<EdgeProps<CustomEdgeData>> = ({
+const CurvedEdge: React.FC<EdgeProps<CustomEdgeData>> = ({
   id,
   sourceX,
   sourceY,
@@ -27,12 +24,13 @@ const CustomEdge: React.FC<EdgeProps<CustomEdgeData>> = ({
     targetX,
     targetY,
     targetPosition,
+    curvature: 0.25,
   });
 
   // Generate unique marker ID for this edge
-  const markerId = `arrow-${id}`;
+  const markerId = `arrow-curved-${id}`;
 
-
+  const edgeColor = selected ? '#3b82f6' : '#94a3b8';
 
   return (
     <>
@@ -50,7 +48,7 @@ const CustomEdge: React.FC<EdgeProps<CustomEdgeData>> = ({
         >
           <path
             d="M0,0 L0,20 L20,10 z"
-            fill={selected ? '#3b82f6' : '#64748b'}
+            fill={edgeColor}
           />
         </marker>
       </defs>
@@ -59,32 +57,16 @@ const CustomEdge: React.FC<EdgeProps<CustomEdgeData>> = ({
         id={id}
         path={edgePath}
         style={{
-          stroke: selected ? '#3b82f6' : '#64748b',
-          strokeWidth: selected ? 3 : 2,
+          stroke: edgeColor,
+          strokeWidth: selected ? 2.5 : 1.5,
           markerEnd: `url(#${markerId})`,
+          strokeDasharray: '5,5',
+          opacity: 0.8,
         }}
       />
-      {data?.router && (
-        <EdgeLabelRenderer>
-          <div
-            style={{
-              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-              position: 'absolute',
-              fontSize: 10,
-              pointerEvents: 'none',
-            }}
-            className="edge-label"
-          >
-            <div className="bg-white border rounded-md shadow-sm px-2 py-1">
-              <span className="text-xs text-blue-600 font-medium">
-                {data.router}
-              </span>
-            </div>
-          </div>
-        </EdgeLabelRenderer>
-      )}
+
     </>
   );
 };
 
-export default CustomEdge;
+export default CurvedEdge;

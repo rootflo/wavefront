@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Node, Edge, addEdge, Connection, applyNodeChanges, applyEdgeChanges, NodeChange, EdgeChange } from 'reactflow';
+import { addEdge, Connection, applyNodeChanges, applyEdgeChanges, NodeChange, EdgeChange } from 'reactflow';
 import { Agent, Tool, Router, DesignerConfig } from '@/types/agent';
 import { CustomNode, CustomEdge, AgentNodeData, ToolNodeData, RouterNodeData } from '@/types/reactflow';
 
@@ -23,6 +23,10 @@ interface DesignerState {
   workflowName: string;
   workflowDescription: string;
   workflowVersion: string;
+  
+  // Start/End node management
+  startNodeId?: string;
+  endNodeIds: string[];
   
   // Actions
   setConfig: (config: DesignerConfig) => void;
@@ -58,6 +62,12 @@ interface DesignerState {
   
   // Workflow metadata actions
   setWorkflowMetadata: (metadata: { name: string; description: string; version: string }) => void;
+  
+  // Start/End node actions
+  setStartNode: (nodeId: string) => void;
+  addEndNode: (nodeId: string) => void;
+  removeEndNode: (nodeId: string) => void;
+  toggleEndNode: (nodeId: string) => void;
   
   // Utility actions
   clearWorkflow: () => void;
@@ -131,7 +141,7 @@ const defaultConfig: DesignerConfig = {
   ],
 };
 
-export const useDesignerStore = create<DesignerState>((set, get) => ({
+export const useDesignerStore = create<DesignerState>((set) => ({
   // Initial state
   config: defaultConfig,
   nodes: [],
@@ -145,6 +155,8 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   workflowName: 'New Workflow',
   workflowDescription: '',
   workflowVersion: '1.0.0',
+  startNodeId: undefined,
+  endNodeIds: [],
 
   // Configuration actions
   setConfig: (config) => set({ config }),
@@ -316,6 +328,34 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     });
   },
 
+  // Start/End node actions
+  setStartNode: (nodeId) => {
+    set({ startNodeId: nodeId });
+  },
+
+  addEndNode: (nodeId) => {
+    set((state) => ({
+      endNodeIds: [...state.endNodeIds.filter(id => id !== nodeId), nodeId],
+    }));
+  },
+
+  removeEndNode: (nodeId) => {
+    set((state) => ({
+      endNodeIds: state.endNodeIds.filter(id => id !== nodeId),
+    }));
+  },
+
+  toggleEndNode: (nodeId) => {
+    set((state) => {
+      const isCurrentlyEnd = state.endNodeIds.includes(nodeId);
+      return {
+        endNodeIds: isCurrentlyEnd
+          ? state.endNodeIds.filter(id => id !== nodeId)
+          : [...state.endNodeIds, nodeId],
+      };
+    });
+  },
+
   // Utility actions
   clearWorkflow: () => {
     set({
@@ -326,6 +366,8 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       workflowName: 'New Workflow',
       workflowDescription: '',
       workflowVersion: '1.0.0',
+      startNodeId: undefined,
+      endNodeIds: [],
     });
   },
 

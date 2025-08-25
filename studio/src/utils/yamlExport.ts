@@ -8,6 +8,8 @@ export interface ExportData {
   workflowName: string;
   workflowDescription: string;
   workflowVersion: string;
+  startNodeId?: string;
+  endNodeIds: string[];
 }
 
 // Utility function to convert names to snake_case
@@ -22,7 +24,7 @@ function toSnakeCase(str: string): string {
 }
 
 export function generateAriumYAML(data: ExportData): string {
-  const { nodes, edges, workflowName, workflowDescription, workflowVersion } = data;
+  const { nodes, edges, workflowName, workflowDescription, workflowVersion, startNodeId, endNodeIds } = data;
 
   // Create mapping from node IDs to snake_case names
   const nodeIdToName = new Map<string, string>();
@@ -59,38 +61,50 @@ export function generateAriumYAML(data: ExportData): string {
     }
   });
 
-  // Determine start and end nodes
-  const nodeConnections = new Map<string, { incoming: string[], outgoing: string[] }>();
+  // Determine start and end nodes (use user-defined or auto-detect)
+  let finalStartNodeId = startNodeId;
+  let finalEndNodeIds = [...endNodeIds];
   
-  // Initialize connections map
-  nodes.forEach((node) => {
-    nodeConnections.set(node.id, { incoming: [], outgoing: [] });
-  });
-
-  // Build connections
-  edges.forEach((edge) => {
-    const sourceConnections = nodeConnections.get(edge.source);
-    const targetConnections = nodeConnections.get(edge.target);
+  // If no user-defined start/end nodes, auto-detect from connections
+  if (!finalStartNodeId || finalEndNodeIds.length === 0) {
+    const nodeConnections = new Map<string, { incoming: string[], outgoing: string[] }>();
     
-    if (sourceConnections) {
-      sourceConnections.outgoing.push(edge.target);
-    }
-    if (targetConnections) {
-      targetConnections.incoming.push(edge.source);
-    }
-  });
+    // Initialize connections map
+    nodes.forEach((node) => {
+      nodeConnections.set(node.id, { incoming: [], outgoing: [] });
+    });
 
-  // Find start nodes (nodes with no incoming connections)
-  const startNodes = nodes.filter((node) => {
-    const connections = nodeConnections.get(node.id);
-    return connections && connections.incoming.length === 0;
-  });
+    // Build connections
+    edges.forEach((edge) => {
+      const sourceConnections = nodeConnections.get(edge.source);
+      const targetConnections = nodeConnections.get(edge.target);
+      
+      if (sourceConnections) {
+        sourceConnections.outgoing.push(edge.target);
+      }
+      if (targetConnections) {
+        targetConnections.incoming.push(edge.source);
+      }
+    });
 
-  // Find end nodes (nodes with no outgoing connections)
-  const endNodes = nodes.filter((node) => {
-    const connections = nodeConnections.get(node.id);
-    return connections && connections.outgoing.length === 0;
-  });
+    // Auto-detect start node if not set
+    if (!finalStartNodeId) {
+      const startNodes = nodes.filter((node) => {
+        const connections = nodeConnections.get(node.id);
+        return connections && connections.incoming.length === 0 && node.type !== 'router';
+      });
+      finalStartNodeId = startNodes[0]?.id;
+    }
+
+    // Auto-detect end nodes if none set
+    if (finalEndNodeIds.length === 0) {
+      const endNodes = nodes.filter((node) => {
+        const connections = nodeConnections.get(node.id);
+        return connections && connections.outgoing.length === 0 && node.type !== 'router';
+      });
+      finalEndNodeIds = endNodes.map(node => node.id);
+    }
+  }
 
   // Build workflow edges using snake_case names
   const workflowEdges: Array<{
@@ -113,50 +127,70 @@ export function generateAriumYAML(data: ExportData): string {
     const sourceName = nodeIdToName.get(sourceId);
     if (!sourceName) return; // Skip if source node not found
     
-    const targets = sourceEdges.map((edge) => edge.target);
-    const targetNames = targets
-      .map(targetId => nodeIdToName.get(targetId))
-      .filter(name => name !== undefined) as string[];
+    const sourceNode = nodes.find(n => n.id === sourceId);
     
-    // Check if any target is a router node
-    const routerTarget = targets.find(targetId => {
-      const targetNode = nodes.find(n => n.id === targetId);
-      return targetNode?.type === 'router';
-    });
-
-    if (routerTarget) {
-      // If connecting to a router, find what the router connects to
-      const routerName = nodeIdToName.get(routerTarget);
-      const routerEdges = edgesBySource.get(routerTarget) || [];
-      const routerTargetNames = routerEdges
-        .map(edge => nodeIdToName.get(edge.target))
-        .filter(name => name !== undefined) as string[];
+    // Handle agent nodes that connect to routers
+    if (sourceNode?.type === 'agent') {
+      // Check if this agent connects to a router
+      const routerTargets = sourceEdges
+        .map(edge => edge.target)
+        .map(targetId => nodes.find(n => n.id === targetId))
+        .filter(node => node?.type === 'router');
       
-      if (routerTargetNames.length > 0) {
-        workflowEdges.push({
-          from: sourceName,
-          to: routerTargetNames, // Use router's targets as destinations
-          router: routerName,    // Specify router for decision making
+      if (routerTargets.length > 0) {
+        // This agent connects through a router
+        const routerNode = routerTargets[0];
+        const routerName = nodeIdToName.get(routerNode!.id);
+        
+        // Find what the router connects to
+        const routerEdges = edgesBySource.get(routerNode!.id) || [];
+        const routerTargetNames = routerEdges
+          .map(edge => nodeIdToName.get(edge.target))
+          .filter(name => name !== undefined) as string[];
+        
+        // Create workflow edge with router
+        if (routerTargetNames.length > 0) {
+          workflowEdges.push({
+            from: sourceName,
+            to: routerTargetNames,
+            router: routerName,
+          });
+        }
+      } else {
+        // Direct agent-to-agent connections
+        const targets = sourceEdges.map((edge) => edge.target);
+        const targetNames = targets
+          .map(targetId => nodeIdToName.get(targetId))
+          .filter(name => name !== undefined) as string[];
+        
+        // Skip router nodes as targets
+        const agentTargetNames = targetNames.filter(name => {
+          const targetNode = nodes.find(n => nodeIdToName.get(n.id) === name);
+          return targetNode?.type !== 'router';
         });
-      }
-    } else {
-      // Direct connection without router
-      if (targetNames.length > 0) {
-        workflowEdges.push({
-          from: sourceName,
-          to: targetNames,
-        });
+        
+        if (agentTargetNames.length > 0) {
+          const workflowEdge: any = {
+            from: sourceName,
+            to: agentTargetNames,
+          };
+          
+          // Check if edges have router data
+          const routerNames = sourceEdges
+            .map(edge => edge.data?.router)
+            .filter(router => router !== undefined);
+          
+          if (routerNames.length > 0) {
+            workflowEdge.router = routerNames[0];
+          }
+          
+          workflowEdges.push(workflowEdge);
+        }
       }
     }
   });
 
-  // Remove router-only edges (edges that start from routers)
-  const filteredWorkflowEdges = workflowEdges.filter(edge => {
-    const isRouterSource = nodes.some(node => 
-      nodeIdToName.get(node.id) === edge.from && node.type === 'router'
-    );
-    return !isRouterSource;
-  });
+  // Note: workflowEdges already filters out router-only edges in the main logic above
 
   // Convert agents to YAML format
   const yamlAgents = agents.map((agent) => {
@@ -277,9 +311,9 @@ export function generateAriumYAML(data: ExportData): string {
       tools: tools.length > 0 ? tools.map(name => ({ name })) : undefined,
       routers: yamlRouters.length > 0 ? yamlRouters : undefined,
       workflow: {
-        start: startNodes.length > 0 ? (nodeIdToName.get(startNodes[0].id) || startNodes[0].id) : (agents[0]?.name || ''),
-        edges: filteredWorkflowEdges.filter(edge => edge.to.length > 0),
-        end: endNodes.map((node) => nodeIdToName.get(node.id) || node.id),
+        start: finalStartNodeId ? (nodeIdToName.get(finalStartNodeId) || finalStartNodeId) : (agents[0]?.name || ''),
+        edges: workflowEdges.filter(edge => edge.to.length > 0),
+        end: finalEndNodeIds.map((nodeId) => nodeIdToName.get(nodeId) || nodeId).filter(name => name),
       },
     },
   };

@@ -5,18 +5,18 @@ import { validateWorkflow, ValidationResult, ValidationIssue, getValidationSumma
 import { cn } from '@/lib/utils';
 
 const ValidationPanel: React.FC = () => {
-  const { nodes, edges, setSelectedNode, setSelectedEdge } = useDesignerStore();
+  const { nodes, edges, setSelectedNode, setSelectedEdge, startNodeId, endNodeIds } = useDesignerStore();
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['errors']));
 
   useEffect(() => {
     if (nodes.length > 0 || edges.length > 0) {
-      const result = validateWorkflow(nodes, edges);
+      const result = validateWorkflow(nodes, edges, startNodeId, endNodeIds);
       setValidationResult(result);
     } else {
       setValidationResult(null);
     }
-  }, [nodes, edges]);
+  }, [nodes, edges, startNodeId, endNodeIds]);
 
   const toggleSection = (section: string) => {
     const newExpanded = new Set(expandedSections);
