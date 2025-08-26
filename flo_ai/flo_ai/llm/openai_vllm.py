@@ -52,6 +52,7 @@ class OpenAIVLLM(OpenAI):
         vllm_openai_kwargs = {
             'model': self.model,
             'messages': messages,
+            'temperature': self.temperature,
             **kwargs,
             **self.kwargs,
         }
