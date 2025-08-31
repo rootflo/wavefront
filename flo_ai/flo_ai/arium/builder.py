@@ -341,7 +341,7 @@ class AriumBuilder:
 
             # Method 4: External file reference
             elif 'yaml_file' in agent_config:
-                agent_builder = AgentBuilder.from_yaml(
+                agent_builder: AgentBuilder = AgentBuilder.from_yaml(
                     yaml_file=agent_config['yaml_file'], base_llm=base_llm
                 )
                 agent = agent_builder.build()
@@ -648,10 +648,8 @@ class AriumBuilder:
                         f'Available: {list(available_tools.keys())}'
                     )
 
-        # Extract output schema if present
-        output_schema = agent_config.get('output_schema')
-
         # Handle parser configuration if present
+        output_schema = None
         if 'parser' in agent_config:
             from flo_ai.formatter.yaml_format_parser import FloYamlParser
 
@@ -660,16 +658,17 @@ class AriumBuilder:
             parser = FloYamlParser.create(yaml_dict=parser_config)
             output_schema = parser.get_format()
 
-        # Create and return the agent
-        agent = Agent(
-            name=name,
-            system_prompt=job,
-            llm=llm,
-            tools=agent_tools,
-            max_retries=max_retries,
-            reasoning_pattern=reasoning_pattern,
-            output_schema=output_schema,
-            role=role,
+        agent = (
+            AgentBuilder()
+            .with_name(name)
+            .with_prompt(job)
+            .with_llm(llm)
+            .with_tools(agent_tools)
+            .with_retries(max_retries)
+            .with_reasoning(reasoning_pattern)
+            .with_output_schema(output_schema)
+            .with_role(role)
+            .build()
         )
 
         return agent

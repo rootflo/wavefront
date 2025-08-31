@@ -17,5 +17,10 @@ class VertexAI(Gemini):
     ):
         # Initialize only the BaseLLM part to avoid Gemini's client creation
         BaseLLM.__init__(self, model, api_key, temperature, **kwargs)
+
+        # Store project and location attributes
+        self.project = project
+        self.location = location
+
         # Create VertexAI-specific client
         self.client = genai.Client(project=project, location=location, vertexai=True)

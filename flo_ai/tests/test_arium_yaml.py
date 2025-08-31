@@ -793,6 +793,11 @@ class TestAriumYamlBuilder:
                 mock_llm = Mock()
                 mock_openai.return_value = mock_llm
 
+                # Mock for direct agent configuration
+                mock_direct_agent = Mock(spec=Agent)
+                mock_direct_agent.name = 'direct_agent'
+                mock_direct_agent.role = 'Direct Agent'
+
                 # Mock for inline YAML config
                 mock_yaml_agent = Mock(spec=Agent)
                 mock_yaml_agent.name = 'yaml_agent'
@@ -801,6 +806,24 @@ class TestAriumYamlBuilder:
                 mock_file_agent = Mock(spec=Agent)
                 mock_file_agent.name = 'file_agent'
 
+                # Mock the AgentBuilder instance for direct configuration
+                mock_direct_builder = Mock()
+                mock_direct_builder.with_name.return_value = mock_direct_builder
+                mock_direct_builder.with_prompt.return_value = mock_direct_builder
+                mock_direct_builder.with_llm.return_value = mock_direct_builder
+                mock_direct_builder.with_tools.return_value = mock_direct_builder
+                mock_direct_builder.with_retries.return_value = mock_direct_builder
+                mock_direct_builder.with_reasoning.return_value = mock_direct_builder
+                mock_direct_builder.with_output_schema.return_value = (
+                    mock_direct_builder
+                )
+                mock_direct_builder.with_role.return_value = mock_direct_builder
+                mock_direct_builder.build.return_value = mock_direct_agent
+
+                # Mock the AgentBuilder class to return our mocked builder
+                mock_agent_builder.return_value = mock_direct_builder
+
+                # Mock for inline YAML and file config
                 mock_builder_instance = Mock()
                 mock_builder_instance.build.side_effect = [
                     mock_yaml_agent,
@@ -1015,10 +1038,33 @@ class TestAriumYamlBuilder:
                 mock_llm = Mock()
                 mock_openai.return_value = mock_llm
 
+                # Mock for direct agent configuration
+                mock_direct_agent = Mock(spec=Agent)
+                mock_direct_agent.name = 'direct_agent'
+                mock_direct_agent.role = 'Direct Agent'
+
                 # Mock for inline YAML config
                 mock_yaml_agent = Mock(spec=Agent)
                 mock_yaml_agent.name = 'yaml_agent'
 
+                # Mock the AgentBuilder instance for direct configuration
+                mock_direct_builder = Mock()
+                mock_direct_builder.with_name.return_value = mock_direct_builder
+                mock_direct_builder.with_prompt.return_value = mock_direct_builder
+                mock_direct_builder.with_llm.return_value = mock_direct_builder
+                mock_direct_builder.with_tools.return_value = mock_direct_builder
+                mock_direct_builder.with_retries.return_value = mock_direct_builder
+                mock_direct_builder.with_reasoning.return_value = mock_direct_builder
+                mock_direct_builder.with_output_schema.return_value = (
+                    mock_direct_builder
+                )
+                mock_direct_builder.with_role.return_value = mock_direct_builder
+                mock_direct_builder.build.return_value = mock_direct_agent
+
+                # Mock the AgentBuilder class to return our mocked builder
+                mock_agent_builder.return_value = mock_direct_builder
+
+                # Mock for inline YAML config
                 mock_builder_instance = Mock()
                 mock_builder_instance.build.return_value = mock_yaml_agent
                 mock_agent_builder.from_yaml.return_value = mock_builder_instance

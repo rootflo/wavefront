@@ -7,7 +7,7 @@ from flo_ai.tool.base_tool import Tool
 class OpenAI(BaseLLM):
     def __init__(
         self,
-        model='gpt-40-mini',
+        model='gpt-4o-mini',
         api_key: str = None,
         temperature: float = 0.7,
         base_url: str = None,
@@ -53,6 +53,7 @@ class OpenAI(BaseLLM):
         openai_kwargs = {
             'model': self.model,
             'messages': messages,
+            'temperature': self.temperature,
             **kwargs,
             **self.kwargs,
         }
