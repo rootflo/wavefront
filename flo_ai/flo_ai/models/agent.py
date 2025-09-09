@@ -210,7 +210,10 @@ class Agent(BaseAgent):
                     # Execute the tool
                     try:
                         function_name = function_call['name']
-                        function_args = json.loads(function_call['arguments'])
+                        if isinstance(function_call['arguments'], str):
+                            function_args = json.loads(function_call['arguments'])
+                        else:
+                            function_args = function_call['arguments']
 
                         tool = self.tools_dict[function_name]
                         function_response = await tool.execute(**function_args)

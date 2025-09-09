@@ -106,6 +106,11 @@ class Gemini(BaseLLM):
                     name: {
                         'type': info.get('type', 'string'),
                         'description': info.get('description', ''),
+                        **(
+                            {'items': info['items']}
+                            if info.get('type') == 'array' and 'items' in info
+                            else {}
+                        ),
                     }
                     for name, info in tool.parameters.items()
                 },

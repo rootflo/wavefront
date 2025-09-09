@@ -80,7 +80,15 @@ class OpenAI(BaseLLM):
             'parameters': {
                 'type': 'object',
                 'properties': {
-                    name: {'type': info['type'], 'description': info['description']}
+                    name: {
+                        'type': info['type'],
+                        'description': info['description'],
+                        **(
+                            {'items': info['items']}
+                            if info.get('type') == 'array' and 'items' in info
+                            else {}
+                        ),
+                    }
                     for name, info in tool.parameters.items()
                 },
                 'required': list(tool.parameters.keys()),
