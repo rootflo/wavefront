@@ -1,10 +1,11 @@
 from flo_ai.arium.base import BaseArium
 from flo_ai.arium.memory import MessageMemory, BaseMemory
 from flo_ai.llm.base_llm import ImageMessage
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable
 from flo_ai.models.agent import Agent
 from flo_ai.tool.base_tool import Tool
 from flo_ai.arium.models import StartNode, EndNode
+from flo_ai.arium.events import AriumEventType, AriumEvent
 from flo_ai.utils.logger import logger
 from flo_ai.utils.variable_extractor import (
     extract_variables_from_inputs,
@@ -13,6 +14,7 @@ from flo_ai.utils.variable_extractor import (
     resolve_variables,
 )
 import asyncio
+import time
 
 
 class Arium(BaseArium):
@@ -29,7 +31,21 @@ class Arium(BaseArium):
         self,
         inputs: List[str | ImageMessage],
         variables: Optional[Dict[str, Any]] = None,
+        event_callback: Optional[Callable[[AriumEvent], None]] = None,
+        events_filter: Optional[List[AriumEventType]] = None,
     ):
+        """
+        Execute the Arium workflow with optional event monitoring.
+
+        Args:
+            inputs: Input messages for the workflow
+            variables: Variable substitutions for templated prompts
+            event_callback: Function to call for each event (if None, no events are emitted)
+            events_filter: List of event types to listen for (defaults to all)
+
+        Returns:
+            List of workflow execution results
+        """
         if not self.is_compiled:
             raise ValueError('Arium is not compiled')
 
@@ -39,16 +55,69 @@ class Arium(BaseArium):
         if not self.nodes:
             raise ValueError('Arium has no nodes')
 
-        # Extract and validate variables from inputs and all agents
-        self._extract_and_validate_variables(inputs, variables)
+        # Set default event filters to all event types if not specified
+        if events_filter is None:
+            events_filter = list(AriumEventType)
 
-        # Resolve variables in inputs and agent prompts
-        resolved_inputs = self._resolve_inputs(inputs, variables)
-        self._resolve_agent_prompts(variables)
+        # Emit workflow started event
+        self._emit_event(AriumEventType.WORKFLOW_STARTED, event_callback, events_filter)
 
-        return await self._execute_graph(resolved_inputs)
+        try:
+            # Extract and validate variables from inputs and all agents
+            self._extract_and_validate_variables(inputs, variables)
 
-    async def _execute_graph(self, inputs: List[str | ImageMessage]):
+            # Resolve variables in inputs and agent prompts
+            resolved_inputs = self._resolve_inputs(inputs, variables)
+            self._resolve_agent_prompts(variables)
+
+            # Execute the workflow with event support
+            result = await self._execute_graph(
+                resolved_inputs, event_callback, events_filter
+            )
+
+            # Emit workflow completed event
+            self._emit_event(
+                AriumEventType.WORKFLOW_COMPLETED, event_callback, events_filter
+            )
+
+            return result
+
+        except Exception as e:
+            # Emit workflow failed event
+            self._emit_event(
+                AriumEventType.WORKFLOW_FAILED,
+                event_callback,
+                events_filter,
+                error=str(e),
+            )
+            raise
+
+    def _emit_event(
+        self,
+        event_type: AriumEventType,
+        callback: Optional[Callable[[AriumEvent], None]],
+        events_filter: Optional[List[AriumEventType]],
+        **kwargs,
+    ) -> None:
+        """
+        Emit an event if callback is provided and event type is in filtered list.
+
+        Args:
+            event_type: The type of event to emit
+            callback: Function to call with the event (if None, no event is emitted)
+            events_filter: List of event types to listen for
+            **kwargs: Additional event data (node_name, error, etc.)
+        """
+        if callback and event_type in events_filter:
+            event = AriumEvent(event_type=event_type, timestamp=time.time(), **kwargs)
+            callback(event)
+
+    async def _execute_graph(
+        self,
+        inputs: List[str | ImageMessage],
+        event_callback: Optional[Callable[[AriumEvent], None]] = None,
+        events_filter: Optional[List[AriumEventType]] = None,
+    ):
         [self.memory.add(msg) for msg in inputs]
 
         current_node = self.nodes[self.start_node_name]
@@ -91,7 +160,9 @@ class Arium(BaseArium):
                 f'Executing node: {current_node.name} (iteration {iteration_count})'
             )
             # execute current node
-            result = await self._execute_node(current_node)
+            result = await self._execute_node(
+                current_node, event_callback, events_filter
+            )
 
             # update results to memory
             self._add_to_memory(result)
@@ -119,6 +190,23 @@ class Arium(BaseArium):
                 next_node_name = await router_result
             else:
                 next_node_name = router_result
+
+            # Emit router decision event
+            self._emit_event(
+                AriumEventType.ROUTER_DECISION,
+                event_callback,
+                events_filter,
+                node_name=current_node.name,
+                router_choice=next_node_name,
+            )
+
+            # Emit edge traversed event
+            self._emit_event(
+                AriumEventType.EDGE_TRAVERSED,
+                event_callback,
+                events_filter,
+                node_name=current_node.name,
+            )
 
             # find next edge
             # TODO: next_node_name might not be in self.edges if it's the end node. Handle this case
@@ -203,16 +291,92 @@ class Arium(BaseArium):
                 node.system_prompt = resolve_variables(node.system_prompt, variables)
                 node.resolved_variables = True
 
-    async def _execute_node(self, node: Agent | Tool | StartNode | EndNode):
+    async def _execute_node(
+        self,
+        node: Agent | Tool | StartNode | EndNode,
+        event_callback: Optional[Callable[[AriumEvent], None]] = None,
+        events_filter: Optional[List[AriumEventType]] = None,
+    ):
+        """
+        Execute a single node with optional event emission.
+
+        Args:
+            node: The node to execute
+            event_callback: Function to call for events (if None, no events are emitted)
+            events_filter: List of event types to listen for
+
+        Returns:
+            The result of node execution
+        """
+        # Determine node type for events
         if isinstance(node, Agent):
-            # Variables are already resolved, pass empty dict to avoid re-processing
-            return await node.run(self.memory.get(), variables={})
+            node_type = 'agent'
         elif isinstance(node, Tool):
-            return await node.execute(self.memory.get())
+            node_type = 'tool'
         elif isinstance(node, StartNode):
-            return None
+            node_type = 'start'
         elif isinstance(node, EndNode):
-            return None
+            node_type = 'end'
+        else:
+            node_type = 'unknown'
+
+        # Emit node started event
+        self._emit_event(
+            AriumEventType.NODE_STARTED,
+            event_callback,
+            events_filter,
+            node_name=node.name,
+            node_type=node_type,
+        )
+
+        start_time = time.time()
+
+        try:
+            # Execute the node based on its type
+            if isinstance(node, Agent):
+                # Variables are already resolved, pass empty dict to avoid re-processing
+                result = await node.run(self.memory.get(), variables={})
+            elif isinstance(node, Tool):
+                result = await node.execute()
+            elif isinstance(node, StartNode):
+                result = None
+            elif isinstance(node, EndNode):
+                result = None
+            else:
+                result = None
+
+            # Calculate execution time
+            execution_time = time.time() - start_time
+
+            # Emit node completed event
+            self._emit_event(
+                AriumEventType.NODE_COMPLETED,
+                event_callback,
+                events_filter,
+                node_name=node.name,
+                node_type=node_type,
+                execution_time=execution_time,
+            )
+
+            return result
+
+        except Exception as e:
+            # Calculate execution time even on failure
+            execution_time = time.time() - start_time
+
+            # Emit node failed event
+            self._emit_event(
+                AriumEventType.NODE_FAILED,
+                event_callback,
+                events_filter,
+                node_name=node.name,
+                node_type=node_type,
+                execution_time=execution_time,
+                error=str(e),
+            )
+
+            # Re-raise the exception
+            raise
 
     def _add_to_memory(self, result: str):
         # TODO result will be None for start and end nodes

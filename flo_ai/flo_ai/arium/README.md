@@ -25,8 +25,153 @@ result = await (AriumBuilder()
 - **Easy Connections**: Simple `connect()` method for linear workflows
 - **Flexible Routing**: Full support for custom router functions
 - **🧠 LLM-Powered Routing**: Intelligent routing using Large Language Models
+- **📊 Event Monitoring**: Real-time workflow execution monitoring with customizable callbacks
 - **Visualization**: Built-in graph visualization support
 - **Reusable Workflows**: Build once, run multiple times
+
+## 📊 Event Monitoring
+
+Arium provides comprehensive event monitoring capabilities that allow you to track workflow execution in real-time. This is invaluable for debugging, performance monitoring, and understanding how your workflows behave.
+
+### Key Features
+
+- **Real-time Events**: Monitor workflow lifecycle, node execution, and routing decisions
+- **Custom Callbacks**: Write your own event handlers for logging, metrics, or debugging
+- **Event Filtering**: Choose which types of events to monitor
+- **Zero Configuration**: Works out of the box with sensible defaults
+- **Performance Tracking**: Automatic execution time measurement for nodes
+
+### Available Event Types
+
+| Event Type | Description |
+|------------|-------------|
+| `WORKFLOW_STARTED` | Fired when workflow execution begins |
+| `WORKFLOW_COMPLETED` | Fired when workflow completes successfully |
+| `WORKFLOW_FAILED` | Fired when workflow fails with an error |
+| `NODE_STARTED` | Fired when a node (agent/tool) begins execution |
+| `NODE_COMPLETED` | Fired when a node completes successfully |
+| `NODE_FAILED` | Fired when a node fails with an error |
+| `ROUTER_DECISION` | Fired when a router chooses the next node |
+| `EDGE_TRAVERSED` | Fired when moving from one node to another |
+
+### Basic Usage
+
+```python
+from flo_ai.arium import AriumBuilder, AriumEventType, default_event_callback
+
+# Enable event monitoring with default callback (logs to console)
+arium = (AriumBuilder()
+         .add_agent(my_agent)
+         .add_tool(my_tool)
+         .start_with(my_agent)
+         .connect(my_agent, my_tool)
+         .end_with(my_tool)
+         .build())
+
+result = await arium.run(
+    inputs=["Process this"],
+    event_callback=default_event_callback
+)
+```
+
+### Custom Event Callbacks
+
+```python
+def my_event_handler(event):
+    """Custom event handler for specialized logging"""
+    print(f"🔔 {event.event_type.value}: {event.node_name}")
+    if event.execution_time:
+        print(f"   ⏱️ Took {event.execution_time:.2f}s")
+    if event.error:
+        print(f"   ❌ Error: {event.error}")
+
+# Use your custom callback
+arium = (AriumBuilder()
+         .add_agent(my_agent)
+         .start_with(my_agent)
+         .end_with(my_agent)
+         .build())
+
+result = await arium.run(
+    inputs=["Hello world"],
+    event_callback=my_event_handler
+)
+```
+
+### Event Filtering
+
+Monitor only specific types of events by providing an `events_filter`:
+
+```python
+from flo_ai.arium import AriumEventType, default_event_callback
+
+# Only monitor workflow lifecycle and node completions
+important_events = [
+    AriumEventType.WORKFLOW_STARTED,
+    AriumEventType.NODE_COMPLETED,
+    AriumEventType.WORKFLOW_COMPLETED,
+    AriumEventType.WORKFLOW_FAILED
+]
+
+arium = (AriumBuilder()
+         .add_agent(my_agent)
+         .start_with(my_agent)
+         .end_with(my_agent)
+         .build())
+
+result = await arium.run(
+    inputs=["Process this"],
+    event_callback=default_event_callback,
+    events_filter=important_events
+)
+```
+
+### Silent Execution
+
+By default, workflows run silently. You can use either approach:
+
+```python
+# Option 1: Use build_and_run() for convenience (no events)
+result = await (AriumBuilder()
+                .add_agent(my_agent)
+                .start_with(my_agent)
+                .end_with(my_agent)
+                .build_and_run(["Silent execution"]))
+
+# Option 2: Use build() then run() (no events)
+arium = (AriumBuilder()
+         .add_agent(my_agent)
+         .start_with(my_agent)
+         .end_with(my_agent)
+         .build())
+
+result = await arium.run(["Silent execution"])
+```
+
+### Event Monitoring vs Build-and-Run
+
+**Important**: Event monitoring is only available through the `Arium.run()` method. The AriumBuilder's `build_and_run()` convenience method does not support event parameters.
+
+- **For event monitoring**: Use `.build()` then `arium.run(inputs, event_callback=...)`
+- **For simple execution**: Use `.build_and_run(inputs)` for convenience
+- **For reusable workflows**: Use `.build()` once, then call `arium.run()` multiple times
+
+### Event Data Structure
+
+Each event is an `AriumEvent` object with the following properties:
+
+```python
+@dataclass
+class AriumEvent:
+    event_type: AriumEventType          # Type of event
+    timestamp: float                    # Unix timestamp
+    node_name: Optional[str] = None     # Name of involved node
+    node_type: Optional[str] = None     # Type: 'agent', 'tool', 'start', 'end'
+    execution_time: Optional[float] = None  # Node execution time in seconds
+    error: Optional[str] = None         # Error message if applicable
+    router_choice: Optional[str] = None # Node chosen by router
+    metadata: Optional[dict] = None     # Additional event data
+```
 
 ## API Reference
 
@@ -44,7 +189,7 @@ result = await (AriumBuilder()
 | `connect(from_node, to_node)` | Simple connection between nodes |
 | `add_edge(from_node, to_nodes, router)` | Add edge with optional router |
 | `build()` | Build the Arium instance |
-| `build_and_run(inputs)` | Build and run in one step |
+| `build_and_run(inputs, variables=None)` | Build and run in one step (no event monitoring support) |
 | `visualize(output_path, title)` | Generate workflow visualization |
 | `reset()` | Reset builder to start fresh |
 
@@ -98,8 +243,8 @@ arium = (AriumBuilder()
          .end_with(my_agent)
          .build())
 
-# Run multiple times
-result1 = await arium.run(["Input 1"])
+# Run multiple times (with optional event monitoring)
+result1 = await arium.run(["Input 1"], event_callback=default_event_callback)
 result2 = await arium.run(["Input 2"])
 ```
 
