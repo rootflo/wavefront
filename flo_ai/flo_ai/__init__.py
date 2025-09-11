@@ -23,6 +23,7 @@ from .arium import (
     StartNode,
     EndNode,
     Edge,
+    AriumBuilder,
 )
 
 # Utils package - Utility functions
@@ -54,7 +55,6 @@ __all__ = [
     # Arium
     'Arium',
     'BaseArium',
-    'AriumBuilder',
     'create_arium',
     'MessageMemory',
     'BaseMemory',
