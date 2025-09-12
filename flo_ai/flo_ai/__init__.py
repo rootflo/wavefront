@@ -24,6 +24,9 @@ from .arium import (
     EndNode,
     Edge,
     AriumBuilder,
+    AriumEvent,
+    AriumEventType,
+    default_event_callback,
 )
 
 # Utils package - Utility functions
@@ -64,6 +67,10 @@ __all__ = [
     # Builder
     'AgentBuilder',
     'AriumBuilder',
+    # Arium Event system
+    'AriumEventType',
+    'AriumEvent',
+    'default_event_callback',
 ]
 
 __version__ = '1.0.0'
