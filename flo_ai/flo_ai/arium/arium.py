@@ -1,6 +1,7 @@
 from flo_ai.arium.base import BaseArium
 from flo_ai.arium.memory import MessageMemory, BaseMemory
 from flo_ai.llm.base_llm import ImageMessage
+from flo_ai.models.document import DocumentMessage
 from typing import List, Dict, Any, Optional, Callable
 from flo_ai.models.agent import Agent
 from flo_ai.tool.base_tool import Tool
@@ -29,7 +30,7 @@ class Arium(BaseArium):
 
     async def run(
         self,
-        inputs: List[str | ImageMessage],
+        inputs: List[str | ImageMessage | DocumentMessage],
         variables: Optional[Dict[str, Any]] = None,
         event_callback: Optional[Callable[[AriumEvent], None]] = None,
         events_filter: Optional[List[AriumEventType]] = None,
@@ -114,7 +115,7 @@ class Arium(BaseArium):
 
     async def _execute_graph(
         self,
-        inputs: List[str | ImageMessage],
+        inputs: List[str | ImageMessage | DocumentMessage],
         event_callback: Optional[Callable[[AriumEvent], None]] = None,
         events_filter: Optional[List[AriumEventType]] = None,
     ):
@@ -221,7 +222,9 @@ class Arium(BaseArium):
         return self.memory.get()
 
     def _extract_and_validate_variables(
-        self, inputs: List[str | ImageMessage], variables: Dict[str, Any]
+        self,
+        inputs: List[str | ImageMessage | DocumentMessage],
+        variables: Dict[str, Any],
     ) -> None:
         """Extract variables from inputs and agents, then validate them.
 
@@ -258,8 +261,10 @@ class Arium(BaseArium):
             validate_multi_agent_variables(agents_variables, variables)
 
     def _resolve_inputs(
-        self, inputs: List[str | ImageMessage], variables: Dict[str, Any]
-    ) -> List[str | ImageMessage]:
+        self,
+        inputs: List[str | ImageMessage | DocumentMessage],
+        variables: Dict[str, Any],
+    ) -> List[str | ImageMessage | DocumentMessage]:
         """Resolve variables in input messages.
 
         Args:
@@ -276,7 +281,7 @@ class Arium(BaseArium):
                 resolved_input = resolve_variables(input_item, variables)
                 resolved_inputs.append(resolved_input)
             else:
-                # ImageMessage objects don't need variable resolution
+                # ImageMessage and DocumentMessage objects don't need variable resolution
                 resolved_inputs.append(input_item)
         return resolved_inputs
 

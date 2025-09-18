@@ -1,7 +1,10 @@
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
 from flo_ai.tool.base_tool import Tool
+from flo_ai.utils.document_processor import get_default_processor
+from flo_ai.utils.logger import logger
 from dataclasses import dataclass
+from flo_ai.models.document import DocumentMessage
 
 
 @dataclass
@@ -65,3 +68,25 @@ class BaseLLM(ABC):
     def format_image_in_message(self, image: ImageMessage) -> str:
         """Format a image in the message"""
         pass
+
+    async def format_document_in_message(self, document: 'DocumentMessage') -> str:
+        """Format a document in the message by extracting text content"""
+
+        try:
+            # Process document to extract text
+            result = await get_default_processor().process_document(document)
+
+            # Format the extracted content for the LLM
+            extracted_text = result.get('extracted_text', '')
+            doc_type = result.get('document_type', 'unknown')
+
+            logger.info(
+                f'Successfully formatted {doc_type} document for {self.__class__.__name__} LLM'
+            )
+            return extracted_text
+
+        except Exception as e:
+            logger.error(
+                f'Error formatting document for {self.__class__.__name__}: {e}'
+            )
+            raise Exception(f'Failed to format document: {str(e)}')

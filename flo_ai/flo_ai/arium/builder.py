@@ -4,6 +4,7 @@ from flo_ai.arium.memory import MessageMemory, BaseMemory
 from flo_ai.models.agent import Agent
 from flo_ai.tool.base_tool import Tool
 from flo_ai.llm.base_llm import ImageMessage
+from flo_ai.models.document import DocumentMessage
 import yaml
 from flo_ai.builder.agent_builder import AgentBuilder
 from flo_ai.llm import BaseLLM
@@ -134,7 +135,7 @@ class AriumBuilder:
 
     async def build_and_run(
         self,
-        inputs: List[Union[str, ImageMessage]],
+        inputs: List[Union[str, ImageMessage, DocumentMessage]],
         variables: Optional[Dict[str, Any]] = None,
     ) -> List[dict]:
         """Build the Arium and run it with the given inputs and optional runtime variables."""

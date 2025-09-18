@@ -2,6 +2,7 @@ import json
 from typing import Dict, Any, List, Optional
 from flo_ai.models.base_agent import BaseAgent, AgentType, ReasoningPattern
 from flo_ai.llm.base_llm import BaseLLM, ImageMessage
+from flo_ai.models.document import DocumentMessage
 from flo_ai.tool.base_tool import Tool, ToolExecutionError
 from flo_ai.models.agent_error import AgentError
 from flo_ai.utils.logger import logger
@@ -48,7 +49,7 @@ class Agent(BaseAgent):
 
     async def run(
         self,
-        inputs: List[str | ImageMessage] | str,
+        inputs: List[str | ImageMessage | DocumentMessage] | str,
         variables: Optional[Dict[str, Any]] = None,
     ) -> str:
         variables = variables or {}
@@ -75,6 +76,9 @@ class Agent(BaseAgent):
             for input in inputs:
                 if isinstance(input, ImageMessage):
                     self.add_to_history('user', self.llm.format_image_in_message(input))
+                elif isinstance(input, DocumentMessage):
+                    formatted_doc = await self.llm.format_document_in_message(input)
+                    self.add_to_history('user', formatted_doc)
                 else:
                     # Resolve variables in text input
                     resolved_input = resolve_variables(input, variables)
@@ -88,6 +92,9 @@ class Agent(BaseAgent):
             for input in inputs:
                 if isinstance(input, ImageMessage):
                     self.add_to_history('user', self.llm.format_image_in_message(input))
+                elif isinstance(input, DocumentMessage):
+                    formatted_doc = await self.llm.format_document_in_message(input)
+                    self.add_to_history('user', formatted_doc)
                 else:
                     self.add_to_history('user', input)
 

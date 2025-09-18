@@ -3,7 +3,15 @@ flo_ai - A flexible agent framework for LLM-powered applications
 """
 
 # Models package - Agent framework components
-from .models import Agent, AgentError, BaseAgent, AgentType, ReasoningPattern
+from .models import (
+    Agent,
+    AgentError,
+    BaseAgent,
+    AgentType,
+    ReasoningPattern,
+    DocumentType,
+    DocumentMessage,
+)
 
 from .builder.agent_builder import AgentBuilder
 
@@ -50,6 +58,8 @@ __all__ = [
     'OpenAIVLLM',
     # LLM DataClass
     'ImageMessage',
+    'DocumentType',
+    'DocumentMessage',
     # Tools
     'Tool',
     'ToolExecutionError',
