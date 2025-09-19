@@ -106,6 +106,7 @@ Flo AI Studio is a modern, intuitive visual editor that allows you to design com
   - [Create an Agent with Structured Output](#create-an-agent-with-structured-output)
 - [📝 YAML Configuration](#-yaml-configuration)
 - [🔧 Variables System](#-variables-system)
+- [📄 Document Processing](#-document-processing)
 - [🛠️ Tools](#️-tools)
   - [🎯 @flo_tool Decorator](#-flo_tool-decorator)
 - [🧠 Reasoning Patterns](#-reasoning-patterns)
@@ -573,6 +574,271 @@ asyncio.run(variable_validation_example())
 
 The variables system makes Flo AI agents highly reusable and configurable, enabling you to create flexible AI workflows that adapt to different contexts and requirements.
 
+## 📄 Document Processing
+
+Flo AI provides powerful document processing capabilities that allow agents to analyze and work with various document formats. The framework supports PDF and TXT documents with an extensible architecture for easy addition of new formats.
+
+### ✨ Key Features
+
+- **📄 Multi-Format Support**: Process PDF and TXT documents seamlessly
+- **🔄 Multiple Input Methods**: File paths, bytes data, or base64 encoded content
+- **🧠 LLM Integration**: Direct document input to AI agents for analysis
+- **⚡ Async Processing**: Efficient document handling with async/await support
+- **🔧 Extensible Architecture**: Easy to add support for new document types
+- **📊 Rich Metadata**: Extract page counts, processing methods, and document statistics
+
+### Basic Document Processing
+
+```python
+import asyncio
+from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.llm import OpenAI
+from flo_ai.models.document import DocumentMessage, DocumentType
+
+async def basic_document_analysis():
+    # Create document message from file path
+    document = DocumentMessage(
+        document_type=DocumentType.PDF,
+        document_file_path='path/to/your/document.pdf'
+    )
+    
+    # Create document analysis agent
+    agent = (
+        AgentBuilder()
+        .with_name('Document Analyzer')
+        .with_prompt('Analyze the provided document and extract key insights, themes, and important information.')
+        .with_llm(OpenAI(model='gpt-4o-mini'))
+        .build()
+    )
+    
+    # Process document with agent
+    result = await agent.run([document])
+    print(f'Analysis: {result}')
+
+asyncio.run(basic_document_analysis())
+```
+
+### Multiple Input Methods
+
+Flo AI supports three ways to provide document content:
+
+#### 1. File Path (Recommended)
+```python
+document = DocumentMessage(
+    document_type=DocumentType.PDF,
+    document_file_path='/path/to/document.pdf'
+)
+```
+
+#### 2. Bytes Data
+```python
+# Read file as bytes
+with open('document.pdf', 'rb') as f:
+    pdf_bytes = f.read()
+
+document = DocumentMessage(
+    document_type=DocumentType.PDF,
+    document_bytes=pdf_bytes,
+    mime_type='application/pdf'
+)
+```
+
+#### 3. Base64 Encoded
+```python
+import base64
+
+# Encode file to base64
+with open('document.pdf', 'rb') as f:
+    pdf_base64 = base64.b64encode(f.read()).decode('utf-8')
+
+document = DocumentMessage(
+    document_type=DocumentType.PDF,
+    document_base64=pdf_base64,
+    mime_type='application/pdf'
+)
+```
+
+### Document Processing in Workflows
+
+Documents can be seamlessly integrated into Arium workflows:
+
+```python
+import asyncio
+from flo_ai.arium import AriumBuilder
+from flo_ai.models.document import DocumentMessage, DocumentType
+
+async def document_workflow():
+    # Create document message
+    document = DocumentMessage(
+        document_type=DocumentType.PDF,
+        document_file_path='business_report.pdf'
+    )
+    
+    # Define workflow YAML
+    workflow_yaml = """
+    metadata:
+      name: document-analysis-workflow
+      version: 1.0.0
+      description: "Multi-agent document analysis pipeline"
+
+    arium:
+      agents:
+        - name: intake_agent
+          role: "Document Intake Specialist"
+          job: "Process and assess document content for analysis."
+          model:
+            provider: openai
+            name: gpt-4o-mini
+
+        - name: content_analyzer
+          role: "Content Analyst"
+          job: "Analyze document content for themes, insights, and key information."
+          model:
+            provider: openai
+            name: gpt-4o-mini
+
+        - name: summary_generator
+          role: "Summary Writer"
+          job: "Create comprehensive summaries of analyzed content."
+          model:
+            provider: openai
+            name: gpt-4o-mini
+
+      workflow:
+        start: intake_agent
+        edges:
+          - from: intake_agent
+            to: [content_analyzer]
+          - from: content_analyzer
+            to: [summary_generator]
+        end: [summary_generator]
+    """
+    
+    # Run workflow with document
+    result = await (
+        AriumBuilder()
+        .from_yaml(yaml_str=workflow_yaml)
+        .build_and_run([document, 'Analyze this business report and provide insights'])
+    )
+    
+    return result
+
+asyncio.run(document_workflow())
+```
+
+### Advanced Document Processing
+
+#### Custom Document Metadata
+```python
+document = DocumentMessage(
+    document_type=DocumentType.PDF,
+    document_file_path='report.pdf',
+    metadata={
+        'source': 'quarterly_reports',
+        'department': 'finance',
+        'priority': 'high',
+        'tags': ['financial', 'q4-2024']
+    }
+)
+```
+
+#### Processing Different Document Types
+```python
+# PDF Document
+pdf_doc = DocumentMessage(
+    document_type=DocumentType.PDF,
+    document_file_path='presentation.pdf'
+)
+
+# Text Document
+txt_doc = DocumentMessage(
+    document_type=DocumentType.TXT,
+    document_file_path='notes.txt'
+)
+
+# Process both with the same agent
+agent = AgentBuilder().with_name('Multi-Format Analyzer').build()
+
+pdf_result = await agent.run([pdf_doc])
+txt_result = await agent.run([txt_doc])
+```
+
+### Document Processing Tools
+
+Create custom tools for document operations:
+
+```python
+from flo_ai.tool import flo_tool
+from flo_ai.models.document import DocumentMessage, DocumentType
+
+@flo_tool(description="Extract key information from documents")
+async def extract_document_info(document_path: str, doc_type: str) -> str:
+    """Extract key information from a document."""
+    document_type = DocumentType.PDF if doc_type.lower() == 'pdf' else DocumentType.TXT
+    
+    document = DocumentMessage(
+        document_type=document_type,
+        document_file_path=document_path
+    )
+    
+    # Use document processing agent
+    agent = AgentBuilder().with_name('Info Extractor').build()
+    result = await agent.run([document])
+    
+    return result
+
+# Use in agent
+agent = (
+    AgentBuilder()
+    .with_name('Document Processor')
+    .with_tools([extract_document_info.tool])
+    .build()
+)
+```
+
+### Error Handling
+
+```python
+from flo_ai.utils.document_processor import DocumentProcessingError
+
+try:
+    document = DocumentMessage(
+        document_type=DocumentType.PDF,
+        document_file_path='nonexistent.pdf'
+    )
+    result = await agent.run([document])
+except DocumentProcessingError as e:
+    print(f'Document processing failed: {e}')
+except FileNotFoundError:
+    print('Document file not found')
+```
+
+### Supported Document Types
+
+| Type | Extension | Description | Processing Method |
+|------|-----------|-------------|-------------------|
+| PDF | `.pdf` | Portable Document Format | PyMuPDF4LLM (LLM-optimized) |
+| TXT | `.txt` | Plain text files | UTF-8 with encoding detection |
+
+### Best Practices
+
+1. **File Validation**: Always check if files exist before processing
+2. **Memory Management**: Use file paths for large documents to avoid memory issues
+3. **Error Handling**: Implement proper error handling for document processing failures
+4. **Metadata**: Add relevant metadata to help agents understand document context
+5. **Format Selection**: Choose the most appropriate input method for your use case
+
+### Use Cases
+
+- 📊 **Document Analysis**: Extract insights from reports, papers, and documents
+- 📝 **Content Summarization**: Create summaries of long documents
+- 🔍 **Information Extraction**: Pull specific data from structured documents
+- 📋 **Document Classification**: Categorize documents based on content
+- 🤖 **Multi-Agent Workflows**: Process documents through specialized agent pipelines
+- 📈 **Business Intelligence**: Analyze business documents for insights and trends
+
+The document processing system makes Flo AI incredibly powerful for real-world applications that need to work with various document formats, enabling sophisticated AI workflows that can understand and process complex document content.
+
 ## 🛠️ Tools
 
 Create custom tools easily with async support:
@@ -834,6 +1100,7 @@ Check out the `examples/` directory for comprehensive examples:
 - `usage.py` and `usage_claude.py` - Provider-specific examples
 - `vertexai_agent_example.py` - Google VertexAI integration examples
 - `ollama_agent_example.py` - Local Ollama model examples
+- `document_processing_example.py` - Document processing with PDF and TXT files
 
 ## 🚀 Advanced Features
 
