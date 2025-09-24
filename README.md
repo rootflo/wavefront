@@ -959,7 +959,7 @@ async def get_weather(city: str, country: Optional[str] = None) -> str:
     return f"Weather in {city}: sunny"
 ```
 
-> 📖 **For detailed documentation on the `@flo_tool` decorator, see [README_flo_tool.md](flo_ai/README_flo_tool.md)**
+> 📖 **For detailed documentation on the `@flo_tool` decorator, see [README_flo_tool.md](TOOLS.md)**
 
 ## 🧠 Reasoning Patterns
 
