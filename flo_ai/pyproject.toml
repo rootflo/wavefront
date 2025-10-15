@@ -23,7 +23,7 @@ aiohttp = "^3.12.14"
 google-cloud-aiplatform = "^1.109.0"
 pypdf = "^4.2.0"
 pymupdf4llm = "^0.0.17"
-chardet = "^5.2.0"
+chardet = ">=3.dev0,<4.dev0"
 
 [tool.poetry.extras]
 vizualize = ["matplotlib", "networkx"]
