@@ -223,7 +223,10 @@ class Agent(BaseAgent):
                             function_args = function_call['arguments']
 
                         tool = self.tools_dict[function_name]
-                        function_response = await tool.execute(**function_args)
+                        # function_response = await tool.execute(**function_args)
+                        function_response = await tool.run(
+                            inputs=[], variables=None, **function_args
+                        )
                         tool_call_count += 1
 
                         # Add function call to history

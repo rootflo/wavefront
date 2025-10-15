@@ -1,4 +1,4 @@
-from typing import Dict, Any, Callable
+from typing import Dict, Any, Callable, List, Optional
 from flo_ai.models.agent_error import AgentError
 from flo_ai.utils.logger import logger
 
@@ -40,3 +40,10 @@ class Tool:
             raise ToolExecutionError(
                 f'Error executing tool {self.name}: {str(e)}', original_error=e
             )
+
+    async def run(
+        self, inputs: List[Any], variables: Optional[Dict[str, Any]] = None, **kwargs
+    ) -> Any:
+        # Ignore inputs and variables
+        # Just pass kwargs to execute()
+        return await self.execute(**kwargs)

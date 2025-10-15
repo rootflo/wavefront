@@ -7,6 +7,7 @@ from flo_ai.models.agent import Agent
 from flo_ai.tool.base_tool import Tool
 from flo_ai.arium.models import StartNode, EndNode
 from flo_ai.arium.events import AriumEventType, AriumEvent
+from flo_ai.arium.nodes import AriumNode, ForEachNode
 from flo_ai.utils.logger import logger
 from flo_ai.utils.variable_extractor import (
     extract_variables_from_inputs,
@@ -73,13 +74,15 @@ class Arium(BaseArium):
 
             # Execute the workflow with event support
             result = await self._execute_graph(
-                resolved_inputs, event_callback, events_filter
+                resolved_inputs, event_callback, events_filter, variables
             )
 
             # Emit workflow completed event
             self._emit_event(
                 AriumEventType.WORKFLOW_COMPLETED, event_callback, events_filter
             )
+
+            self.memory = MessageMemory()  # cleanup the graph (if used as AriumNode multiple times in graph, then the same instance is used for now hence we need to cleanup memory)
 
             return result
 
@@ -118,6 +121,7 @@ class Arium(BaseArium):
         inputs: List[str | ImageMessage | DocumentMessage],
         event_callback: Optional[Callable[[AriumEvent], None]] = None,
         events_filter: Optional[List[AriumEventType]] = None,
+        variables: Optional[Dict[str, Any]] = None,
     ):
         [self.memory.add(msg) for msg in inputs]
 
@@ -162,11 +166,16 @@ class Arium(BaseArium):
             )
             # execute current node
             result = await self._execute_node(
-                current_node, event_callback, events_filter
+                current_node, event_callback, events_filter, variables
             )
 
-            # update results to memory
-            self._add_to_memory(result)
+            if isinstance(result, List):  # for each node will give results array
+                for item in result:
+                    # update each item in result to memory
+                    self._add_to_memory(item)
+            else:
+                # update results to memory
+                self._add_to_memory(result)
 
             # find next node post current node
             # Prepare execution context for router functions
@@ -301,6 +310,7 @@ class Arium(BaseArium):
         node: Agent | Tool | StartNode | EndNode,
         event_callback: Optional[Callable[[AriumEvent], None]] = None,
         events_filter: Optional[List[AriumEventType]] = None,
+        variables: Optional[Dict[str, Any]] = None,
     ):
         """
         Execute a single node with optional event emission.
@@ -318,6 +328,10 @@ class Arium(BaseArium):
             node_type = 'agent'
         elif isinstance(node, Tool):
             node_type = 'tool'
+        elif isinstance(node, ForEachNode):
+            node_type = 'foreach'
+        elif isinstance(node, AriumNode):
+            node_type = 'arium'
         elif isinstance(node, StartNode):
             node_type = 'start'
         elif isinstance(node, EndNode):
@@ -342,7 +356,16 @@ class Arium(BaseArium):
                 # Variables are already resolved, pass empty dict to avoid re-processing
                 result = await node.run(self.memory.get(), variables={})
             elif isinstance(node, Tool):
-                result = await node.execute()
+                # result = await node.execute() # as Tool is also an ExecutableNode now
+                result = await node.run(inputs=[], variables=None)
+            elif isinstance(node, ForEachNode):
+                result = await node.run(
+                    inputs=self.memory.get(),
+                    variables=variables,
+                )
+            elif isinstance(node, AriumNode):
+                # AriumNode execution
+                result = await node.run(inputs=self.memory.get(), variables=variables)
             elif isinstance(node, StartNode):
                 result = None
             elif isinstance(node, EndNode):

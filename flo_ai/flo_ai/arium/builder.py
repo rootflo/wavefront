@@ -1,6 +1,8 @@
 from typing import List, Optional, Callable, Union, Dict, Any
 from flo_ai.arium.arium import Arium
 from flo_ai.arium.memory import MessageMemory, BaseMemory
+from flo_ai.arium.protocols import ExecutableNode
+from flo_ai.arium.nodes import AriumNode, ForEachNode
 from flo_ai.models.agent import Agent
 from flo_ai.tool.base_tool import Tool
 from flo_ai.llm.base_llm import ImageMessage
@@ -30,10 +32,17 @@ class AriumBuilder:
         self._memory: Optional[BaseMemory] = None
         self._agents: List[Agent] = []
         self._tools: List[Tool] = []
-        self._start_node: Optional[Union[Agent, Tool]] = None
-        self._end_nodes: List[Union[Agent, Tool]] = []
+        self._ariums: List[
+            AriumNode
+        ] = []  # only those ariums which are part of main workflow
+        self._foreach_nodes: List[ForEachNode] = []
+        self._start_node: Optional[ExecutableNode] = None
+        self._end_nodes: List[ExecutableNode] = []
         self._edges: List[tuple] = []  # (from_node, to_nodes, router)
         self._arium: Optional[Arium] = None
+        self._all_ariums: List[
+            AriumNode
+        ] = []  # all the ariums either of main workflow or when used as a node in foreachnode or any sub workflow
 
     def with_memory(self, memory: BaseMemory) -> 'AriumBuilder':
         """Set the memory for the Arium."""
@@ -60,12 +69,76 @@ class AriumBuilder:
         self._tools.extend(tools)
         return self
 
-    def start_with(self, node: Union[Agent, Tool]) -> 'AriumBuilder':
+    def add_arium(
+        self, arium: Arium, name: Optional[str] = None, inherit_variables: bool = True
+    ) -> 'AriumBuilder':
+        """
+        Add an Arium workflow as a node.
+
+        Args:
+            arium: The Arium to add as a node
+            name: Name for this node (defaults to arium's name or auto-generated)
+            inherit_variables: Whether to inherit parent variables
+
+        Returns:
+            AriumBuilder: Self for method chaining
+        """
+        # Generate name if not provided
+        node_name = name or getattr(arium, 'name', f'arium_node_{len(self._ariums)}')
+
+        arium_node = AriumNode(
+            name=node_name, arium=arium, inherit_variables=inherit_variables
+        )
+        self._ariums.append(arium_node)
+        self._all_ariums.append(arium_node)
+        return self
+
+    def add_foreach(
+        self, name: str, execute_node: Union[ExecutableNode, str]
+    ) -> 'AriumBuilder':
+        """
+        Add a ForEach node for batch processing.
+
+        The ForEach node will iterate over all items in memory when executed.
+        Execution is sequential only for now (future - parallel would also be supported).
+
+        Args:
+            name: Name for the ForEach node
+            execute_node: Node to execute on each item (node object or name string)
+
+        Returns:
+            AriumBuilder: Self for method chaining
+        """
+        # Resolve node reference if string name provided
+        if isinstance(execute_node, str):
+            # Search across all node types
+            all_nodes = self._agents + self._tools + self._ariums + self._foreach_nodes
+            resolved_node = next((n for n in all_nodes if n.name == execute_node), None)
+            if not resolved_node:
+                raise ValueError(f"Node '{execute_node}' not found")
+            execute_node = resolved_node
+
+        foreach = ForEachNode(name=name, execute_node=execute_node)
+
+        self._foreach_nodes.append(foreach)
+        if isinstance(execute_node, AriumNode):
+            if execute_node not in self._all_ariums:
+                self._all_ariums.append(execute_node)
+        return self
+
+    def start_with(self, node: ExecutableNode | str) -> 'AriumBuilder':
         """Set the starting node for the Arium."""
+        if isinstance(node, str):
+            # Search across all node types
+            all_nodes = self._agents + self._tools + self._ariums + self._foreach_nodes
+            resolved_node = next((n for n in all_nodes if n.name == node), None)
+            if not resolved_node:
+                raise ValueError(f"Node '{node}' not found")
+            node = resolved_node
         self._start_node = node
         return self
 
-    def end_with(self, node: Union[Agent, Tool]) -> 'AriumBuilder':
+    def end_with(self, node: ExecutableNode) -> 'AriumBuilder':
         """Add an ending node to the Arium."""
         if node not in self._end_nodes:
             self._end_nodes.append(node)
@@ -73,8 +146,8 @@ class AriumBuilder:
 
     def add_edge(
         self,
-        from_node: Union[Agent, Tool],
-        to_nodes: List[Union[Agent, Tool]],
+        from_node: ExecutableNode,
+        to_nodes: List[ExecutableNode],
         router: Optional[Callable] = None,
     ) -> 'AriumBuilder':
         """Add an edge between nodes with an optional router function."""
@@ -83,10 +156,29 @@ class AriumBuilder:
 
     def connect(
         self,
-        from_node: Union[Agent, Tool],
-        to_node: Union[Agent, Tool],
+        from_node: ExecutableNode | str,
+        to_node: ExecutableNode | str,
     ) -> 'AriumBuilder':
         """Simple connection between two nodes without a router."""
+
+        if isinstance(from_node, str):
+            # Search across all node types
+            all_nodes = self._agents + self._tools + self._ariums + self._foreach_nodes
+            resolved_from_node = next(
+                (n for n in all_nodes if n.name == from_node), None
+            )
+            if not resolved_from_node:
+                raise ValueError(f"Node '{from_node}' not found")
+            from_node = resolved_from_node
+
+        if isinstance(to_node, str):
+            # Search across all node types
+            all_nodes = self._agents + self._tools + self._ariums + self._foreach_nodes
+            resolved_to_node = next((n for n in all_nodes if n.name == to_node), None)
+            if not resolved_to_node:
+                raise ValueError(f"Node '{to_node}' not found")
+            to_node = resolved_to_node
+
         return self.add_edge(from_node, [to_node])
 
     def build(self) -> Arium:
@@ -102,6 +194,8 @@ class AriumBuilder:
         all_nodes = []
         all_nodes.extend(self._agents)
         all_nodes.extend(self._tools)
+        all_nodes.extend(self._ariums)
+        all_nodes.extend(self._foreach_nodes)
 
         if not all_nodes:
             raise ValueError('No agents or tools added to the Arium')
@@ -126,6 +220,11 @@ class AriumBuilder:
 
         for end_node in self._end_nodes:
             arium.add_end_to(end_node)
+
+        # Compile all Arium Nodes before compiling parent
+        for arium_node in self._all_ariums:
+            if not arium_node.arium.is_compiled:
+                arium_node.arium.compile()
 
         # Compile the Arium
         arium.compile()
@@ -157,6 +256,8 @@ class AriumBuilder:
         self._memory = None
         self._agents = []
         self._tools = []
+        self._ariums = []
+        self._foreach_nodes = []
         self._start_node = None
         self._end_nodes = []
         self._edges = []
@@ -263,8 +364,41 @@ class AriumBuilder:
                     executor_agent: developer
                     reviewer_agent: reviewer
 
+              # AriumNode definitions (nested Arium workflows)
+              arium_nodes:
+                # Method 1: Inline nested Arium definition
+                - name: document_processor
+                  inherit_variables: true  # optional, default: true
+                  agents:
+                    - name: classifier
+                      job: "Classify documents"
+                      model:
+                        provider: openai
+                        name: gpt-4o-mini
+                    - name: specialist
+                      job: "Process classified documents"
+                      model:
+                        provider: openai
+                        name: gpt-4o-mini
+                  workflow:
+                    start: classifier
+                    edges:
+                      - from: classifier
+                        to: [specialist]
+                    end: [specialist]
+
+                # Method 2: External YAML file reference
+                - name: complex_processor
+                  yaml_file: "workflows/document_classifier.yaml"
+                  inherit_variables: false
+
+              # ForEachNode definitions
+              foreach_nodes:
+                - name: batch_processor
+                  execute_node: document_processor  # Can reference any node type
+
               workflow:
-                start: content_analyst
+                start: batch_processor  # Can reference any node type including foreach/arium nodes
                 edges:
                   - from: content_analyst
                     to: [validator, summarizer]
@@ -480,19 +614,138 @@ class AriumBuilder:
             all_routers.update(routers)
         all_routers.update(yaml_routers)
 
+        # Process AriumNodes (nested Arium workflows)
+        arium_nodes_config = arium_config.get('ariums', [])
+        arium_nodes_dict = {}
+
+        for arium_node_config in arium_nodes_config:
+            node_name = arium_node_config['name']
+            inherit_vars = arium_node_config.get('inherit_variables', True)
+
+            # Method 1: External YAML file reference
+            if 'yaml_file' in arium_node_config:
+                yaml_file_path = arium_node_config['yaml_file']
+
+                nested_builder = cls.from_yaml(
+                    yaml_file=yaml_file_path,
+                    memory=None,
+                    agents=None,
+                    tools=tools,  # Nested can use parent's tools
+                    routers=None,
+                    base_llm=base_llm,
+                )
+                nested_arium = nested_builder.build()
+
+            # Method 2: Inline definition
+            else:
+                # Build sub-config from inline definition
+                sub_config = {
+                    'arium': {
+                        'agents': arium_node_config.get('agents', []),
+                        'tools': arium_node_config.get('tools', []),
+                        'routers': arium_node_config.get('routers', []),
+                        'ariums': arium_node_config.get(
+                            'ariums', []
+                        ),  # Support nesting!
+                        'iterators': arium_node_config.get('iterators', []),
+                        'workflow': arium_node_config['workflow'],
+                    }
+                }
+
+                nested_builder = cls.from_yaml(
+                    yaml_str=yaml.dump(sub_config),
+                    memory=None,
+                    agents=None,
+                    tools=tools,
+                    routers=None,
+                    base_llm=base_llm,
+                )
+                nested_arium = nested_builder.build()
+
+            # Wrap in AriumNode
+            arium_node = AriumNode(
+                name=node_name, arium=nested_arium, inherit_variables=inherit_vars
+            )
+
+            arium_nodes_dict[node_name] = arium_node
+            builder._all_ariums.append(arium_node)
+            # Don't add to builder yet - will add during workflow processing if actually used
+
+        # Process ForEachNodes (store configs, resolve later)
+        foreach_nodes_config = arium_config.get('iterators', [])
+        foreach_nodes_dict = {}
+
+        for foreach_config in foreach_nodes_config:
+            foreach_name = foreach_config['name']
+            execute_node_name = foreach_config['execute_node']
+
+            foreach_nodes_dict[foreach_name] = {
+                'name': foreach_name,
+                'execute_node_name': execute_node_name,
+            }
+
+        # Resolve ForEachNode references now that all nodes exist
+        for foreach_name, foreach_config in foreach_nodes_dict.items():
+            execute_node_name = foreach_config['execute_node_name']
+
+            # Find execute_node from ALL node types
+            execute_node = (
+                agents_dict.get(execute_node_name)
+                or tools_dict.get(execute_node_name)
+                or arium_nodes_dict.get(execute_node_name)
+                or foreach_nodes_dict.get(execute_node_name)
+            )
+
+            if not execute_node:
+                all_nodes = (
+                    list(agents_dict.keys())
+                    + list(tools_dict.keys())
+                    + list(arium_nodes_dict.keys())
+                    + list(foreach_nodes_dict.keys())
+                )
+                raise ValueError(
+                    f"ForEachNode '{foreach_name}': execute_node '{execute_node_name}' not found. "
+                    f'Available nodes: {all_nodes}'
+                )
+
+            # Create ForEachNode
+            foreach_node = ForEachNode(name=foreach_name, execute_node=execute_node)
+
+            foreach_nodes_dict[foreach_name] = foreach_node
+            builder._foreach_nodes.append(foreach_node)
+
         # Process workflow
         workflow_config = arium_config.get('workflow', {})
+
+        # Helper function to find node from all sources
+        def _find_node(node_name: str):
+            return (
+                agents_dict.get(node_name)
+                or tools_dict.get(node_name)
+                or arium_nodes_dict.get(node_name)
+                or foreach_nodes_dict.get(node_name)
+            )
 
         # Set start node
         start_node_name = workflow_config.get('start')
         if not start_node_name:
             raise ValueError('Workflow must specify a start node')
 
-        start_node = agents_dict.get(start_node_name) or tools_dict.get(start_node_name)
+        start_node = _find_node(start_node_name)
         if not start_node:
-            raise ValueError(
-                f'Start node {start_node_name} not found in agents or tools'
+            all_available = (
+                list(agents_dict.keys())
+                + list(tools_dict.keys())
+                + list(arium_nodes_dict.keys())
+                + list(foreach_nodes_dict.keys())
             )
+            raise ValueError(
+                f'Start node {start_node_name} not found. Available nodes: {all_available}'
+            )
+
+        # Add AriumNode to builder if it's used in main workflow
+        if isinstance(start_node, AriumNode):
+            builder._ariums.append(start_node)
 
         builder.start_with(start_node)
 
@@ -505,11 +758,13 @@ class AriumBuilder:
             router_name = edge_config.get('router')
 
             # Find from node
-            from_node = agents_dict.get(from_node_name) or tools_dict.get(
-                from_node_name
-            )
+            from_node = _find_node(from_node_name)
             if not from_node:
                 raise ValueError(f'From node {from_node_name} not found')
+
+            # Add AriumNode to builder if it's used in main workflow and not already added
+            if isinstance(from_node, AriumNode) and from_node not in builder._ariums:
+                builder._ariums.append(from_node)
 
             # Find to nodes (handle special 'end' case)
             to_nodes = []
@@ -518,9 +773,14 @@ class AriumBuilder:
                     # 'end' will be handled in end nodes processing
                     continue
 
-                to_node = agents_dict.get(to_node_name) or tools_dict.get(to_node_name)
+                to_node = _find_node(to_node_name)
                 if not to_node:
                     raise ValueError(f'To node {to_node_name} not found')
+
+                # Add AriumNode to builder if it's used in main workflow and not already added
+                if isinstance(to_node, AriumNode) and to_node not in builder._ariums:
+                    builder._ariums.append(to_node)
+
                 to_nodes.append(to_node)
 
             # Find router function
@@ -544,9 +804,14 @@ class AriumBuilder:
             raise ValueError('Workflow must specify end nodes')
 
         for end_node_name in end_nodes_names:
-            end_node = agents_dict.get(end_node_name) or tools_dict.get(end_node_name)
+            end_node = _find_node(end_node_name)
             if not end_node:
                 raise ValueError(f'End node {end_node_name} not found')
+
+            # Add AriumNode to builder if it's used in main workflow and not already added
+            if isinstance(end_node, AriumNode) and end_node not in builder._ariums:
+                builder._ariums.append(end_node)
+
             builder.end_with(end_node)
 
         return builder

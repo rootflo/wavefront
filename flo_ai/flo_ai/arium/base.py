@@ -1,5 +1,7 @@
 import inspect
 from functools import partial
+from flo_ai.arium.nodes import AriumNode, ForEachNode
+from flo_ai.arium.protocols import ExecutableNode
 from flo_ai.models.agent import Agent
 from flo_ai.tool.base_tool import Tool
 from flo_ai.utils.logger import logger
@@ -12,13 +14,13 @@ class BaseArium:
     def __init__(self):
         self.start_node_name = '__start__'
         self.end_node_names: set = set()  # Support multiple end nodes
-        self.nodes: Dict[str, Agent | Tool | StartNode | EndNode] = dict()
+        self.nodes: Dict[str, ExecutableNode | StartNode | EndNode] = dict()
         self.edges: Dict[str, Edge] = dict()
 
-    def add_nodes(self, agents: List[Agent | Tool | StartNode | EndNode]):
+    def add_nodes(self, agents: List[ExecutableNode | StartNode | EndNode]):
         self.nodes.update({agent.name: agent for agent in agents})
 
-    def start_at(self, node: Agent | Tool | StartNode | EndNode):
+    def start_at(self, node: ExecutableNode):
         start_node = StartNode()
         if start_node.name in self.nodes:
             raise ValueError(f'Start node {start_node.name} already exists')
@@ -27,7 +29,7 @@ class BaseArium:
             router_fn=partial(default_router, to_node=node.name), to_nodes=[node.name]
         )
 
-    def add_end_to(self, node: Agent | Tool | StartNode | EndNode):
+    def add_end_to(self, node: ExecutableNode):
         # Create a unique end node name for this specific node
         end_node_name = f'__end__{node.name}__'
         end_node = EndNode()
@@ -378,5 +380,9 @@ class BaseArium:
             return 'agent'
         elif isinstance(node, Tool):
             return 'tool'
+        elif isinstance(node, ForEachNode):
+            return 'foreach'
+        elif isinstance(node, AriumNode):
+            return 'arium'
         else:
             return 'unknown'
