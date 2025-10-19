@@ -37,6 +37,7 @@ class Tool:
             logger.info(f'Tool {self.name} returned: {tool_result}')
             return tool_result
         except Exception as e:
+            logger.error(f'Error executing tool {self.name}: {str(e)}', exc_info=True)
             raise ToolExecutionError(
                 f'Error executing tool {self.name}: {str(e)}', original_error=e
             )

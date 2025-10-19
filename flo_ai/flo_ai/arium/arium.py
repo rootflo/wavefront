@@ -404,7 +404,7 @@ class Arium(BaseArium):
             )
 
             # Re-raise the exception
-            raise
+            raise e
 
     def _add_to_memory(self, result: str):
         # TODO result will be None for start and end nodes

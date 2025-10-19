@@ -108,7 +108,7 @@ async def test_direct_reasoning():
     llm = OpenAI(model='gpt-3.5-turbo', temperature=0.7)
     agent = ToolAgent(
         name='CalculatorAssistant',
-        system_prompt='You are a helpful calculator assistant. Use the calculator tool directly without explanation.',
+        system_prompt='You are a helpful calculator assistant. Use the calculator tool if needed and answer the question asked.',
         llm=llm,
         tools=[calculator_tool],
         reasoning_pattern=ReasoningPattern.DIRECT,

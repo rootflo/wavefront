@@ -23,12 +23,14 @@ class BaseAgent(ABC):
         agent_type: AgentType,
         llm: BaseLLM,
         max_retries: int = 3,
+        max_tool_calls: int = 5,
     ):
         self.name = name
         self.system_prompt = system_prompt
         self.agent_type = agent_type
         self.llm = llm
         self.max_retries = max_retries
+        self.max_tool_calls = max_tool_calls
         self.resolved_variables = False
         self.conversation_history: List[Dict[str, str]] = []
 

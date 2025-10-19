@@ -132,7 +132,7 @@ async def test_multi_tool_agent(llm: BaseLLM, agent_name: str):
 
 async def main():
     # Test with OpenAI
-    openai_llm = OpenAI(model='gpt-4-turbo-preview', temperature=0.7)
+    openai_llm = OpenAI(model='gpt-4o-mini', temperature=0.7)
     await test_multi_tool_agent(openai_llm, 'OpenAI Multi-Tool Agent')
 
     # Test with Claude
