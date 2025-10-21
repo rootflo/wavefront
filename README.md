@@ -116,7 +116,7 @@ Flo AI Studio is a modern, intuitive visual editor that allows you to design com
   - [Google Gemini](#google-gemini)
   - [Google VertexAI](#google-vertexai)
   - [Ollama (Local)](#ollama-local)
-  - [🔄 Streaming Support in LLM](#streaming-support)
+  - [Streaming Support in LLM](#streaming-support)
 - [📊 Output Formatting](#-output-formatting)
 - [🔄 Error Handling](#-error-handling)
 - [📚 Examples](#-examples)
