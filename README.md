@@ -116,6 +116,7 @@ Flo AI Studio is a modern, intuitive visual editor that allows you to design com
   - [Google Gemini](#google-gemini)
   - [Google VertexAI](#google-vertexai)
   - [Ollama (Local)](#ollama-local)
+  - [🔄 Streaming Support in LLM](#streaming-support)
 - [📊 Output Formatting](#-output-formatting)
 - [🔄 Error Handling](#-error-handling)
 - [📚 Examples](#-examples)
@@ -1046,6 +1047,29 @@ llm: Ollama = Ollama(
 )
 ```
 
+### Streaming Support in LLM
+Streaming helps the llm to generate the output (response) piece-by-piece, or token-by-token,
+as it is being computed, instead of waiting until the entire response is complete before sending it to the user
+
+Steaming Support has been added to all the llm providers. Example of streaming function with Gemini is shown below:
+```python
+from flo_ai.llm import Gemini
+
+llm: Gemini = Gemini(
+    model='gemini-2.5-flash',  # or gemini-2.5-pro
+    temperature=0.7,
+    api_key='your-api-key'  # or set GOOGLE_API_KEY env var
+)
+messages=[{"role": "user", "content": "Stream a short sentence."}]
+chunks: List[str] = []
+    async for chunk in llm.stream(messages=messages):
+        text = chunk.get('content', '')
+        if text:
+            chunks.append(text)
+        if len(''.join(chunks)) >= max_chars:
+            break
+    return ''.join(chunks)
+```
 ## 📊 Output Formatting
 
 Use Pydantic models or JSON schemas for structured outputs:
