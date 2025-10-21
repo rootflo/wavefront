@@ -1,4 +1,4 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, AsyncIterator, Optional
 from openai import AsyncOpenAI
 from .base_llm import BaseLLM, ImageMessage
 from flo_ai.tool.base_tool import Tool
@@ -64,6 +64,38 @@ class OpenAI(BaseLLM):
 
         # Return the full message object instead of just the content
         return message
+
+    async def stream(
+        self,
+        messages: List[Dict[str, Any]],
+        functions: Optional[List[Dict[str, Any]]] = None,
+        **kwargs: Any,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """Stream partial responses from OpenAI Chat Completions API."""
+        # Prepare OpenAI API parameters
+        openai_kwargs = {
+            'model': self.model,
+            'messages': messages,
+            'temperature': self.temperature,
+            'stream': True,
+            **kwargs,
+            **self.kwargs,
+        }
+
+        if functions:
+            openai_kwargs['functions'] = functions
+
+        # Stream the API call and yield content deltas
+        response = await self.client.chat.completions.create(**openai_kwargs)
+        async for chunk in response:
+            choices = getattr(chunk, 'choices', []) or []
+            for choice in choices:
+                delta = getattr(choice, 'delta', None)
+                if delta is None:
+                    continue
+                content = getattr(delta, 'content', None)
+                if content:
+                    yield {'content': content}
 
     def get_message_content(self, response: Dict[str, Any]) -> str:
         # Handle both string responses and message objects

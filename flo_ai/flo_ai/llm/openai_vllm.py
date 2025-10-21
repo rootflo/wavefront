@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, AsyncIterator, Dict, List, Optional
 from .openai_llm import OpenAI
 
 
@@ -18,6 +18,7 @@ class OpenAIVLLM(OpenAI):
             base_url=base_url,
             **kwargs,
         )
+
         # Store base_url attribute
         self.base_url = base_url
 
@@ -65,3 +66,32 @@ class OpenAIVLLM(OpenAI):
 
         # Return the full message object instead of just the content
         return message
+
+    async def stream(
+        self,
+        messages: List[Dict[str, Any]],
+        functions: Optional[List[Dict[str, Any]]] = None,
+        **kwargs: Any,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """Stream partial responses from vLLM-hosted OpenAI-compatible endpoint."""
+        vllm_openai_kwargs = {
+            'model': self.model,
+            'messages': messages,
+            'temperature': self.temperature,
+            'stream': True,
+            **kwargs,
+            **self.kwargs,
+        }
+
+        if functions:
+            vllm_openai_kwargs['functions'] = functions
+        response = await self.client.chat.completions.create(**vllm_openai_kwargs)
+        async for chunk in response:
+            choices = getattr(chunk, 'choices', []) or []
+            for choice in choices:
+                delta = getattr(choice, 'delta', None)
+                if delta is None:
+                    continue
+                content = getattr(delta, 'content', None)
+                if content:
+                    yield {'content': content}

@@ -29,6 +29,12 @@ class MockLLM(BaseLLM):
         self.call_count += 1
         return {'response': self.response_text}
 
+    async def stream(self, messages, functions=None):
+        async def generator():
+            yield {'response': self.response_text}
+
+        return generator()
+
     def get_message_content(self, response):
         return response.get('response', 'researcher')
 

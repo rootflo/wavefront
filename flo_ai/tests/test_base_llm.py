@@ -33,6 +33,12 @@ class MockLLM(BaseLLM):
             }
         return None
 
+    async def stream(self, messages, functions=None):
+        async def generator():
+            yield {'response': self.response_text}
+
+        return generator()
+
     def get_message_content(self, response):
         if isinstance(response, dict):
             return response.get('content', '')

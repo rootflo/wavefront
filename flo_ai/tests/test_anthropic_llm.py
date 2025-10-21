@@ -405,3 +405,111 @@ class TestAnthropic:
         # Test without base URL
         llm = Anthropic()
         assert not hasattr(llm, 'base_url')
+
+    @pytest.mark.asyncio
+    async def test_anthropic_stream_basic(self):
+        """Test basic stream method without functions."""
+        llm = Anthropic(model='claude-3-5-sonnet-20240620')
+
+        # Mock streaming events
+        mock_delta1 = Mock()
+        mock_delta1.type = 'text_delta'
+        mock_delta1.text = 'Hello'
+
+        mock_delta2 = Mock()
+        mock_delta2.type = 'text_delta'
+        mock_delta2.text = ', world!'
+
+        mock_event1 = Mock()
+        mock_event1.type = 'content_block_delta'
+        mock_event1.delta = mock_delta1
+
+        mock_event2 = Mock()
+        mock_event2.type = 'content_block_delta'
+        mock_event2.delta = mock_delta2
+
+        # Create a proper async iterator
+        async def async_iter():
+            yield mock_event1
+            yield mock_event2
+
+        # Mock the streaming context manager
+        mock_stream = AsyncMock()
+        mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.__aiter__ = Mock(return_value=async_iter())
+
+        llm.client = Mock()
+        llm.client.messages.stream = Mock(return_value=mock_stream)
+
+        messages = [{'role': 'user', 'content': 'Hello'}]
+
+        # Collect streaming results
+        results = []
+        async for chunk in llm.stream(messages):
+            results.append(chunk)
+
+        # Verify the API call
+        llm.client.messages.stream.assert_called_once()
+        call_args = llm.client.messages.stream.call_args[1]
+
+        assert call_args['model'] == 'claude-3-5-sonnet-20240620'
+        assert call_args['messages'] == messages
+        assert call_args['temperature'] == 0.7
+        assert call_args['max_tokens'] == 1024
+
+        # Verify the streaming results
+        assert len(results) == 2
+        assert results[0] == {'content': 'Hello'}
+        assert results[1] == {'content': ', world!'}
+
+    @pytest.mark.asyncio
+    async def test_anthropic_stream_with_functions(self):
+        """Test stream method with functions (tools)."""
+        llm = Anthropic(model='claude-3-5-sonnet-20240620')
+
+        functions = [
+            {
+                'type': 'custom',
+                'name': 'test_function',
+                'description': 'A test function',
+                'input_schema': {'type': 'object'},
+            }
+        ]
+
+        # Mock streaming events
+        mock_delta = Mock()
+        mock_delta.type = 'text_delta'
+        mock_delta.text = 'I will use the function'
+
+        mock_event = Mock()
+        mock_event.type = 'content_block_delta'
+        mock_event.delta = mock_delta
+
+        # Create a proper async iterator
+        async def async_iter():
+            yield mock_event
+
+        # Mock the streaming context manager
+        mock_stream = AsyncMock()
+        mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.__aiter__ = Mock(return_value=async_iter())
+
+        llm.client = Mock()
+        llm.client.messages.stream = Mock(return_value=mock_stream)
+
+        messages = [{'role': 'user', 'content': 'Use the function'}]
+
+        # Collect streaming results
+        results = []
+        async for chunk in llm.stream(messages, functions=functions):
+            results.append(chunk)
+
+        # Verify functions were passed correctly
+        call_args = llm.client.messages.stream.call_args[1]
+        assert call_args['tools'] == functions
+
+        # Verify the streaming results
+        assert len(results) == 1
+        assert results[0] == {'content': 'I will use the function'}

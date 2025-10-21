@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, AsyncIterator
 from flo_ai.tool.base_tool import Tool
 from flo_ai.utils.document_processor import get_default_processor
 from flo_ai.utils.logger import logger
@@ -32,6 +32,15 @@ class BaseLLM(ABC):
         functions: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """Generate a response from the LLM"""
+        pass
+
+    @abstractmethod
+    async def stream(
+        self,
+        messages: List[Dict[str, str]],
+        functions: Optional[List[Dict[str, Any]]] = None,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """Stream partial responses from the LLM as they are generated"""
         pass
 
     async def get_function_call(

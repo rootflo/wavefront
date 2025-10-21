@@ -323,3 +323,120 @@ class TestOpenAI:
         # Test without base URL
         llm = OpenAI()
         assert not hasattr(llm, 'base_url')
+
+    @pytest.mark.asyncio
+    async def test_openai_stream_basic(self):
+        """Test basic stream method without functions."""
+        llm = OpenAI(model='gpt-4o-mini')
+
+        # Mock streaming chunks
+        mock_delta1 = Mock()
+        mock_delta1.content = 'Hello'
+
+        mock_delta2 = Mock()
+        mock_delta2.content = ', world!'
+
+        mock_choice1 = Mock()
+        mock_choice1.delta = mock_delta1
+
+        mock_choice2 = Mock()
+        mock_choice2.delta = mock_delta2
+
+        mock_chunk1 = Mock()
+        mock_chunk1.choices = [mock_choice1]
+
+        mock_chunk2 = Mock()
+        mock_chunk2.choices = [mock_choice2]
+
+        # Create a proper async iterator
+        async def async_iter():
+            yield mock_chunk1
+            yield mock_chunk2
+
+        # Mock the client response
+        llm.client = Mock()
+        llm.client.chat.completions.create = AsyncMock(return_value=async_iter())
+
+        messages = [{'role': 'user', 'content': 'Hello'}]
+
+        # Collect streaming results
+        results = []
+        async for chunk in llm.stream(messages):
+            results.append(chunk)
+
+        # Verify the API call
+        llm.client.chat.completions.create.assert_called_once()
+        call_args = llm.client.chat.completions.create.call_args
+
+        assert call_args[1]['model'] == 'gpt-4o-mini'
+        assert call_args[1]['messages'] == messages
+        assert call_args[1]['temperature'] == 0.7
+        assert call_args[1]['stream'] is True
+
+        # Verify the streaming results
+        assert len(results) == 2
+        assert results[0] == {'content': 'Hello'}
+        assert results[1] == {'content': ', world!'}
+
+    @pytest.mark.asyncio
+    async def test_openai_stream_with_functions(self):
+        """Test stream method with functions."""
+        llm = OpenAI(model='gpt-4o-mini')
+
+        functions = [
+            {
+                'name': 'test_function',
+                'description': 'A test function',
+                'parameters': {'type': 'object'},
+            }
+        ]
+
+        # Mock streaming chunks
+        mock_delta = Mock()
+        mock_delta.content = 'I will use the function'
+
+        mock_choice = Mock()
+        mock_choice.delta = mock_delta
+
+        mock_chunk = Mock()
+        mock_chunk.choices = [mock_choice]
+
+        # Create a proper async iterator
+        async def async_iter():
+            yield mock_chunk
+
+        # Mock the client response
+        llm.client = Mock()
+        llm.client.chat.completions.create = AsyncMock(return_value=async_iter())
+
+        messages = [{'role': 'user', 'content': 'Use the function'}]
+
+        # Collect streaming results
+        results = []
+        async for chunk in llm.stream(messages, functions=functions):
+            results.append(chunk)
+
+        # Verify functions were passed correctly
+        call_args = llm.client.chat.completions.create.call_args
+        assert call_args[1]['functions'] == functions
+
+        # Verify the streaming results
+        assert len(results) == 1
+        assert results[0] == {'content': 'I will use the function'}
+
+    @pytest.mark.asyncio
+    async def test_openai_stream_error_handling(self):
+        """Test error handling in stream method."""
+        llm = OpenAI(model='gpt-4o-mini')
+
+        # Mock client to raise an exception
+        llm.client = Mock()
+        llm.client.chat.completions.create = AsyncMock(
+            side_effect=Exception('Streaming API Error')
+        )
+
+        messages = [{'role': 'user', 'content': 'Hello'}]
+
+        with pytest.raises(Exception, match='Streaming API Error'):
+            async for chunk in llm.stream(messages):
+                pass

@@ -1,4 +1,4 @@
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, AsyncIterator
 from google import genai
 from google.genai import types
 from .base_llm import BaseLLM, ImageMessage
@@ -88,6 +88,48 @@ class Gemini(BaseLLM):
 
         except Exception as e:
             raise Exception(f'Error in Gemini API call: {str(e)}')
+
+    async def stream(
+        self,
+        messages: List[Dict[str, str]],
+        functions: Optional[List[Dict[str, Any]]] = None,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """Stream partial responses from Gemini as they are generated"""
+        # Convert messages to Gemini format
+        contents = []
+        system_prompt = ''
+
+        for msg in messages:
+            role = msg['role']
+            message_content = msg['content']
+
+            if role == 'system':
+                system_prompt += f'{message_content}\n'
+            else:
+                contents.append(message_content)
+
+        # Prepare generation config
+        generation_config = types.GenerateContentConfig(
+            temperature=self.temperature,
+            system_instruction=system_prompt,
+            **self.kwargs,
+        )
+
+        # Add tools if functions are provided
+        if functions:
+            tools = types.Tool(function_declarations=functions)
+            generation_config.tools = [tools]
+
+        # Stream the API call
+        stream = self.client.models.generate_content_stream(
+            model=self.model,
+            contents=contents,
+            config=generation_config,
+        )
+
+        for chunk in stream:
+            if hasattr(chunk, 'text') and chunk.text:
+                yield {'content': chunk.text}
 
     def get_message_content(self, response: Any) -> str:
         """Extract message content from response"""
