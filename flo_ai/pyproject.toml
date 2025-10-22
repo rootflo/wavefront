@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "flo_ai"
-version = "1.0.7-rc2"
+version = "1.0.7-rc5"
 description = "A easy way to create structured AI agents"
 authors = ["rootflo <*@rootflo.ai>"]
 license = "MIT"
@@ -24,6 +24,10 @@ google-cloud-aiplatform = "^1.109.0"
 pypdf = "^4.2.0"
 pymupdf4llm = "^0.0.17"
 chardet = ">=3.dev0,<4.dev0"
+opentelemetry-api = "^1.28.2"
+opentelemetry-sdk = "^1.28.2"
+opentelemetry-exporter-otlp = "^1.28.2"
+opentelemetry-instrumentation = "^0.49b2"
 
 [tool.poetry.extras]
 vizualize = ["matplotlib", "networkx"]

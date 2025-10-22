@@ -15,6 +15,9 @@ from flo_ai.utils.variable_extractor import (
     validate_multi_agent_variables,
     resolve_variables,
 )
+from flo_ai.telemetry.instrumentation import workflow_metrics
+from flo_ai.telemetry import get_tracer
+from opentelemetry.trace import Status, StatusCode
 import asyncio
 import time
 
@@ -64,37 +67,110 @@ class Arium(BaseArium):
         # Emit workflow started event
         self._emit_event(AriumEventType.WORKFLOW_STARTED, event_callback, events_filter)
 
-        try:
-            # Extract and validate variables from inputs and all agents
-            self._extract_and_validate_variables(inputs, variables)
+        # Get workflow name for telemetry
+        workflow_name = getattr(self, 'name', 'unnamed_workflow')
 
-            # Resolve variables in inputs and agent prompts
-            resolved_inputs = self._resolve_inputs(inputs, variables)
-            self._resolve_agent_prompts(variables)
+        # Start telemetry tracing
+        tracer = get_tracer()
+        workflow_start_time = time.time()
 
-            # Execute the workflow with event support
-            result = await self._execute_graph(
-                resolved_inputs, event_callback, events_filter, variables
-            )
+        if tracer:
+            with tracer.start_as_current_span(
+                f'workflow.{workflow_name}',
+                attributes={
+                    'workflow.name': workflow_name,
+                    'workflow.node_count': len(self.nodes),
+                },
+            ) as workflow_span:
+                try:
+                    # Extract and validate variables from inputs and all agents
+                    self._extract_and_validate_variables(inputs, variables)
 
-            # Emit workflow completed event
-            self._emit_event(
-                AriumEventType.WORKFLOW_COMPLETED, event_callback, events_filter
-            )
+                    # Resolve variables in inputs and agent prompts
+                    resolved_inputs = self._resolve_inputs(inputs, variables)
+                    self._resolve_agent_prompts(variables)
 
-            self.memory = MessageMemory()  # cleanup the graph (if used as AriumNode multiple times in graph, then the same instance is used for now hence we need to cleanup memory)
+                    # Execute the workflow with event support
+                    result = await self._execute_graph(
+                        resolved_inputs, event_callback, events_filter, variables
+                    )
 
-            return result
+                    # Record successful workflow execution
+                    workflow_duration_ms = (time.time() - workflow_start_time) * 1000
+                    workflow_metrics.record_workflow(workflow_name, 'success')
+                    workflow_metrics.record_workflow_latency(
+                        workflow_duration_ms, workflow_name
+                    )
 
-        except Exception as e:
-            # Emit workflow failed event
-            self._emit_event(
-                AriumEventType.WORKFLOW_FAILED,
-                event_callback,
-                events_filter,
-                error=str(e),
-            )
-            raise
+                    workflow_span.set_status(Status(StatusCode.OK))
+                    workflow_span.set_attribute(
+                        'workflow.result.length', len(str(result))
+                    )
+
+                    # Emit workflow completed event
+                    self._emit_event(
+                        AriumEventType.WORKFLOW_COMPLETED, event_callback, events_filter
+                    )
+
+                    self.memory = MessageMemory()  # cleanup the graph
+
+                    return result
+
+                except Exception as e:
+                    # Record failed workflow execution
+                    workflow_duration_ms = (time.time() - workflow_start_time) * 1000
+                    error_type = type(e).__name__
+
+                    workflow_metrics.record_workflow(workflow_name, 'error')
+                    workflow_metrics.record_error(workflow_name, error_type)
+                    workflow_metrics.record_workflow_latency(
+                        workflow_duration_ms, workflow_name
+                    )
+
+                    workflow_span.set_status(Status(StatusCode.ERROR, str(e)))
+                    workflow_span.set_attribute('error.type', error_type)
+
+                    # Emit workflow failed event
+                    self._emit_event(
+                        AriumEventType.WORKFLOW_FAILED,
+                        event_callback,
+                        events_filter,
+                        error=str(e),
+                    )
+                    raise
+        else:
+            # No telemetry, execute without tracing
+            try:
+                # Extract and validate variables from inputs and all agents
+                self._extract_and_validate_variables(inputs, variables)
+
+                # Resolve variables in inputs and agent prompts
+                resolved_inputs = self._resolve_inputs(inputs, variables)
+                self._resolve_agent_prompts(variables)
+
+                # Execute the workflow with event support
+                result = await self._execute_graph(
+                    resolved_inputs, event_callback, events_filter, variables
+                )
+
+                # Emit workflow completed event
+                self._emit_event(
+                    AriumEventType.WORKFLOW_COMPLETED, event_callback, events_filter
+                )
+
+                self.memory = MessageMemory()  # cleanup the graph
+
+                return result
+
+            except Exception as e:
+                # Emit workflow failed event
+                self._emit_event(
+                    AriumEventType.WORKFLOW_FAILED,
+                    event_callback,
+                    events_filter,
+                    error=str(e),
+                )
+                raise
 
     def _emit_event(
         self,
@@ -349,62 +425,158 @@ class Arium(BaseArium):
         )
 
         start_time = time.time()
+        workflow_name = getattr(self, 'name', 'unnamed_workflow')
 
-        try:
-            # Execute the node based on its type
-            if isinstance(node, Agent):
-                # Variables are already resolved, pass empty dict to avoid re-processing
-                result = await node.run(self.memory.get(), variables={})
-            elif isinstance(node, Tool):
-                # result = await node.execute() # as Tool is also an ExecutableNode now
-                result = await node.run(inputs=[], variables=None)
-            elif isinstance(node, ForEachNode):
-                result = await node.run(
-                    inputs=self.memory.get(),
-                    variables=variables,
+        # Start node telemetry tracing
+        tracer = get_tracer()
+
+        if tracer and node_type not in ['start', 'end']:
+            with tracer.start_as_current_span(
+                f'workflow.node.{node.name}',
+                attributes={
+                    'workflow.name': workflow_name,
+                    'node.name': node.name,
+                    'node.type': node_type,
+                },
+            ) as node_span:
+                try:
+                    # Execute the node based on its type
+                    if isinstance(node, Agent):
+                        # Variables are already resolved, pass empty dict to avoid re-processing
+                        result = await node.run(self.memory.get(), variables={})
+                    elif isinstance(node, Tool):
+                        result = await node.run(inputs=[], variables=None)
+                    elif isinstance(node, ForEachNode):
+                        result = await node.run(
+                            inputs=self.memory.get(),
+                            variables=variables,
+                        )
+                    elif isinstance(node, AriumNode):
+                        # AriumNode execution
+                        result = await node.run(
+                            inputs=self.memory.get(), variables=variables
+                        )
+                    elif isinstance(node, StartNode):
+                        result = None
+                    elif isinstance(node, EndNode):
+                        result = None
+                    else:
+                        result = None
+
+                    # Calculate execution time
+                    execution_time = time.time() - start_time
+                    execution_time_ms = execution_time * 1000
+
+                    # Record node metrics
+                    workflow_metrics.record_node(
+                        workflow_name, node.name, node_type, 'success'
+                    )
+                    workflow_metrics.record_node_latency(
+                        execution_time_ms, workflow_name, node.name, node_type
+                    )
+
+                    node_span.set_status(Status(StatusCode.OK))
+                    node_span.set_attribute('node.execution_time_ms', execution_time_ms)
+
+                    # Emit node completed event
+                    self._emit_event(
+                        AriumEventType.NODE_COMPLETED,
+                        event_callback,
+                        events_filter,
+                        node_name=node.name,
+                        node_type=node_type,
+                        execution_time=execution_time,
+                    )
+
+                    return result
+
+                except Exception as e:
+                    # Calculate execution time even on failure
+                    execution_time = time.time() - start_time
+                    execution_time_ms = execution_time * 1000
+                    error_type = type(e).__name__
+
+                    # Record node failure
+                    workflow_metrics.record_node(
+                        workflow_name, node.name, node_type, 'error'
+                    )
+                    workflow_metrics.record_node_latency(
+                        execution_time_ms, workflow_name, node.name, node_type
+                    )
+
+                    node_span.set_status(Status(StatusCode.ERROR, str(e)))
+                    node_span.set_attribute('error.type', error_type)
+                    node_span.set_attribute('node.execution_time_ms', execution_time_ms)
+
+                    # Emit node failed event
+                    self._emit_event(
+                        AriumEventType.NODE_FAILED,
+                        event_callback,
+                        events_filter,
+                        node_name=node.name,
+                        node_type=node_type,
+                        execution_time=execution_time,
+                        error=str(e),
+                    )
+
+                    # Re-raise the exception
+                    raise e
+        else:
+            # No telemetry or start/end node, execute without tracing
+            try:
+                # Execute the node based on its type
+                if isinstance(node, Agent):
+                    result = await node.run(self.memory.get(), variables={})
+                elif isinstance(node, Tool):
+                    result = await node.run(inputs=[], variables=None)
+                elif isinstance(node, ForEachNode):
+                    result = await node.run(
+                        inputs=self.memory.get(),
+                        variables=variables,
+                    )
+                elif isinstance(node, AriumNode):
+                    result = await node.run(
+                        inputs=self.memory.get(), variables=variables
+                    )
+                elif isinstance(node, StartNode):
+                    result = None
+                elif isinstance(node, EndNode):
+                    result = None
+                else:
+                    result = None
+
+                # Calculate execution time
+                execution_time = time.time() - start_time
+
+                # Emit node completed event
+                self._emit_event(
+                    AriumEventType.NODE_COMPLETED,
+                    event_callback,
+                    events_filter,
+                    node_name=node.name,
+                    node_type=node_type,
+                    execution_time=execution_time,
                 )
-            elif isinstance(node, AriumNode):
-                # AriumNode execution
-                result = await node.run(inputs=self.memory.get(), variables=variables)
-            elif isinstance(node, StartNode):
-                result = None
-            elif isinstance(node, EndNode):
-                result = None
-            else:
-                result = None
 
-            # Calculate execution time
-            execution_time = time.time() - start_time
+                return result
 
-            # Emit node completed event
-            self._emit_event(
-                AriumEventType.NODE_COMPLETED,
-                event_callback,
-                events_filter,
-                node_name=node.name,
-                node_type=node_type,
-                execution_time=execution_time,
-            )
+            except Exception as e:
+                # Calculate execution time even on failure
+                execution_time = time.time() - start_time
 
-            return result
+                # Emit node failed event
+                self._emit_event(
+                    AriumEventType.NODE_FAILED,
+                    event_callback,
+                    events_filter,
+                    node_name=node.name,
+                    node_type=node_type,
+                    execution_time=execution_time,
+                    error=str(e),
+                )
 
-        except Exception as e:
-            # Calculate execution time even on failure
-            execution_time = time.time() - start_time
-
-            # Emit node failed event
-            self._emit_event(
-                AriumEventType.NODE_FAILED,
-                event_callback,
-                events_filter,
-                node_name=node.name,
-                node_type=node_type,
-                execution_time=execution_time,
-                error=str(e),
-            )
-
-            # Re-raise the exception
-            raise e
+                # Re-raise the exception
+                raise e
 
     def _add_to_memory(self, result: str):
         # TODO result will be None for start and end nodes

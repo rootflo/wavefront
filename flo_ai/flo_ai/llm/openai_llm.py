@@ -2,6 +2,14 @@ from typing import Dict, Any, List, AsyncIterator, Optional
 from openai import AsyncOpenAI
 from .base_llm import BaseLLM, ImageMessage
 from flo_ai.tool.base_tool import Tool
+from flo_ai.telemetry.instrumentation import (
+    trace_llm_call,
+    trace_llm_stream,
+    llm_metrics,
+    add_span_attributes,
+)
+from flo_ai.telemetry import get_tracer
+from opentelemetry import trace
 
 
 class OpenAI(BaseLLM):
@@ -20,6 +28,7 @@ class OpenAI(BaseLLM):
         self.model = model
         self.kwargs = kwargs
 
+    @trace_llm_call(provider='openai')
     async def generate(
         self, messages: list[dict], output_schema: dict = None, **kwargs
     ) -> Any:
@@ -62,9 +71,34 @@ class OpenAI(BaseLLM):
         response = await self.client.chat.completions.create(**openai_kwargs)
         message = response.choices[0].message
 
+        # Record token usage if available
+        if hasattr(response, 'usage') and response.usage:
+            usage = response.usage
+            llm_metrics.record_tokens(
+                total_tokens=usage.total_tokens,
+                prompt_tokens=usage.prompt_tokens,
+                completion_tokens=usage.completion_tokens,
+                model=self.model,
+                provider='openai',
+            )
+
+            # Add token info to current span
+            tracer = get_tracer()
+            if tracer:
+                current_span = trace.get_current_span()
+                add_span_attributes(
+                    current_span,
+                    {
+                        'llm.tokens.prompt': usage.prompt_tokens,
+                        'llm.tokens.completion': usage.completion_tokens,
+                        'llm.tokens.total': usage.total_tokens,
+                    },
+                )
+
         # Return the full message object instead of just the content
         return message
 
+    @trace_llm_stream(provider='openai')
     async def stream(
         self,
         messages: List[Dict[str, Any]],

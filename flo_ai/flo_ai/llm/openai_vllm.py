@@ -1,5 +1,6 @@
 from typing import Any, AsyncIterator, Dict, List, Optional
 from .openai_llm import OpenAI
+from flo_ai.telemetry.instrumentation import trace_llm_stream
 
 
 class OpenAIVLLM(OpenAI):
@@ -67,6 +68,7 @@ class OpenAIVLLM(OpenAI):
         # Return the full message object instead of just the content
         return message
 
+    @trace_llm_stream(provider='openai_vllm')
     async def stream(
         self,
         messages: List[Dict[str, Any]],

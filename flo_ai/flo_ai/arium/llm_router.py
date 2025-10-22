@@ -186,11 +186,11 @@ class SmartRouter(BaseLLMRouter):
     ) -> str:
         conversation = memory.get()
 
-        # Format conversation history
+        # Format conversation history with smart truncation
         if isinstance(conversation, list):
-            conversation_text = '\n'.join(
-                [str(msg) for msg in conversation[-5:]]
-            )  # Last 5 messages
+            # Start with last message and add more if we have space
+            messages = conversation[-5:]  # Last 5 messages
+            conversation_text = self._truncate_conversation_for_tokens(messages)
         else:
             conversation_text = str(conversation)
 
@@ -243,6 +243,34 @@ Instructions:
 Agent to route to:"""
 
         return prompt
+
+    def _truncate_conversation_for_tokens(
+        self, messages: List[Any], max_tokens: int = 128000
+    ) -> str:
+        """
+        Intelligently truncate conversation to fit within token limits.
+        Prioritizes recent messages while ensuring we don't exceed token limits.
+        """
+        if not messages:
+            return ''
+
+        # Start with the most recent message
+        truncated_messages = [messages[-1]]
+        current_text = str(messages[-1])
+
+        # Add older messages if we have space
+        for msg in reversed(messages[:-1]):
+            msg_text = str(msg)
+            # Rough token estimation (4 chars per token is a common approximation)
+            estimated_tokens = len(current_text + '\n' + msg_text) // 4
+
+            if estimated_tokens <= max_tokens:
+                truncated_messages.insert(0, msg)
+                current_text = '\n'.join([str(m) for m in truncated_messages])
+            else:
+                break
+
+        return '\n'.join([str(msg) for msg in truncated_messages])
 
 
 class TaskClassifierRouter(BaseLLMRouter):

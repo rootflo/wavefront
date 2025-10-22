@@ -1,6 +1,7 @@
 from flo_ai.arium.protocols import ExecutableNode
 from typing import List, Any, Dict, Optional, TYPE_CHECKING
 from flo_ai.utils.logger import logger
+from flo_ai.arium.memory import MessageMemory
 
 if TYPE_CHECKING:  # need to have an optional import else will get circular dependency error as arium also has AriumNode reference
     from flo_ai.arium.arium import Arium
@@ -93,3 +94,49 @@ class ForEachNode:
         logger.info(f"ForEach '{self.name}': Completed processing {len(results)} items")
 
         return results
+
+    async def _execute_item_with_isolated_memory(
+        self,
+        item: Any,
+        index: int,
+        variables: Optional[Dict[str, Any]] = None,
+    ) -> Any:
+        """
+        Execute the node on a single item with isolated memory.
+        This prevents memory accumulation across iterations.
+        """
+        logger.info(
+            f"ForEach '{self.name}': Processing item {index + 1} with isolated memory"
+        )
+
+        # Create execution variables with item context
+        item_variables = (variables or {}).copy()
+
+        # If the execute_node is an AriumNode, we can create a new memory instance
+        if hasattr(self.execute_node, 'arium') and hasattr(
+            self.execute_node.arium, 'memory'
+        ):
+            # Create a new memory instance for this iteration
+            original_memory = self.execute_node.arium.memory
+            self.execute_node.arium.memory = MessageMemory()
+
+            try:
+                # Execute the node with isolated memory
+                result = await self.execute_node.run(
+                    inputs=[item],
+                    variables=item_variables,
+                )
+            finally:
+                # Restore original memory
+                self.execute_node.arium.memory = original_memory
+        else:
+            # For non-Arium nodes, execute normally
+            result = await self.execute_node.run(
+                inputs=[item],
+                variables=item_variables,
+            )
+
+        # Return last item if result is a list, otherwise return as-is
+        if isinstance(result, list) and result:
+            return result[-1]
+        return result

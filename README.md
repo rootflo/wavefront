@@ -96,6 +96,46 @@ Flo AI Studio is a modern, intuitive visual editor that allows you to design com
 - 🔧 **Flexible**: Use pre-built components or create your own
 - 🤝 **Team-Oriented**: Create and manage teams of AI agents working together
 - 🔄 **Langchain Compatible**: Works with all your favorite Langchain tools
+- 📊 **OpenTelemetry Integration**: Built-in observability with automatic instrumentation for LLM calls, agent execution, and workflows
+
+## 📊 OpenTelemetry Integration
+
+Flo AI includes comprehensive OpenTelemetry integration for production observability. Monitor your AI applications with automatic instrumentation for:
+
+- 🔍 **LLM Calls**: Track token usage, latency, and errors across all providers
+- 🤖 **Agent Execution**: Monitor performance, tool calls, and retry attempts  
+- 🔄 **Workflows**: Track Arium workflow execution and node traversals
+- 📊 **Metrics**: Export performance data to Jaeger, Prometheus, Grafana, or cloud providers
+
+### Quick Telemetry Setup
+
+```python
+from flo_ai import configure_telemetry, shutdown_telemetry
+
+# Configure at startup
+configure_telemetry(
+    service_name="my_ai_app",
+    service_version="1.0.0",
+    console_export=True  # For debugging
+)
+
+# Your application code here...
+
+# Shutdown to flush data
+shutdown_telemetry()
+```
+
+### Production Monitoring
+
+```python
+# Export to OTLP collector (Jaeger, Prometheus, etc.)
+configure_telemetry(
+    service_name="my_ai_app",
+    otlp_endpoint="http://localhost:4317"
+)
+```
+
+**📖 [Complete Telemetry Guide →](flo_ai/flo_ai/telemetry/README.md)**
 
 ## 📖 Table of Contents
 
@@ -104,6 +144,7 @@ Flo AI Studio is a modern, intuitive visual editor that allows you to design com
   - [Create Your First AI Agent in 30 seconds](#create-your-first-ai-agent-in-30-seconds)
   - [Create a Tool-Using Agent](#create-a-tool-using-agent)
   - [Create an Agent with Structured Output](#create-an-agent-with-structured-output)
+- [📊 OpenTelemetry Integration](#-opentelemetry-integration)
 - [📝 YAML Configuration](#-yaml-configuration)
 - [🔧 Variables System](#-variables-system)
 - [📄 Document Processing](#-document-processing)

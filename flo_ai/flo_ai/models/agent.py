@@ -12,6 +12,11 @@ from flo_ai.utils.variable_extractor import (
     validate_multi_agent_variables,
     resolve_variables,
 )
+from flo_ai.telemetry.instrumentation import (
+    trace_agent_execution,
+    agent_metrics,
+)
+from flo_ai.telemetry import get_tracer
 
 
 class Agent(BaseAgent):
@@ -49,6 +54,7 @@ class Agent(BaseAgent):
         self.output_schema = output_schema
         self.role = role
 
+    @trace_agent_execution()
     async def run(
         self,
         inputs: List[str | ImageMessage | DocumentMessage] | str,
@@ -131,14 +137,14 @@ class Agent(BaseAgent):
                     }
                 ] + self.conversation_history
 
-                logger.debug('Sending messages to LLM:', messages)
+                logger.debug(f'Sending messages to LLM: {messages}')
                 response = await self.llm.generate(
                     messages, output_schema=self.output_schema
                 )
-                logger.debug('Raw LLM Response:', response)
+                logger.debug(f'Raw LLM Response: {response}')
 
                 assistant_message = self.llm.get_message_content(response)
-                logger.debug('Extracted message:', assistant_message)
+                logger.debug(f'Extracted message: {assistant_message}')
 
                 if assistant_message:
                     self.add_to_history('assistant', assistant_message)
@@ -219,8 +225,13 @@ class Agent(BaseAgent):
                                 return assistant_message
                             else:
                                 # This is intermediate reasoning, add to context and continue
+                                msg_preview = (
+                                    assistant_message[:100]
+                                    if len(assistant_message) > 100
+                                    else assistant_message
+                                )
                                 logger.debug(
-                                    f'Detected intermediate reasoning (not final answer): {assistant_message[:100]}...'
+                                    f'Detected intermediate reasoning (not final answer): {msg_preview}...'
                                 )
                                 self.add_to_history('assistant', assistant_message)
                                 messages.append(
@@ -248,10 +259,33 @@ class Agent(BaseAgent):
                             function_args = function_call['arguments']
 
                         tool = self.tools_dict[function_name]
-                        # function_response = await tool.execute(**function_args)
-                        function_response = await tool.run(
-                            inputs=[], variables=None, **function_args
+
+                        # Track tool execution with telemetry
+                        tracer = get_tracer()
+
+                        if tracer:
+                            with tracer.start_as_current_span(
+                                f'agent.tool.{function_name}',
+                                attributes={
+                                    'tool.name': function_name,
+                                    'agent.name': self.name,
+                                },
+                            ) as tool_span:
+                                function_response = await tool.run(
+                                    inputs=[], variables=None, **function_args
+                                )
+                                tool_span.set_attribute(
+                                    'tool.result.length', len(str(function_response))
+                                )
+                        else:
+                            function_response = await tool.run(
+                                inputs=[], variables=None, **function_args
+                            )
+
+                        agent_metrics.record_tool_call(
+                            self.name, function_name, 'success'
                         )
+
                         tool_call_count += 1
 
                         # Add function call to history
@@ -279,6 +313,11 @@ class Agent(BaseAgent):
                         )
 
                     except (json.JSONDecodeError, KeyError, ToolExecutionError) as e:
+                        # Record tool call failure
+                        agent_metrics.record_tool_call(
+                            self.name, function_name, 'error'
+                        )
+
                         retry_count += 1
                         context = {
                             'function_call': function_call,
@@ -286,6 +325,11 @@ class Agent(BaseAgent):
                         }
                         should_retry, analysis = await self.handle_error(e, context)
                         if should_retry and retry_count <= self.max_retries:
+                            # Record retry
+                            agent_metrics.record_retry(
+                                self.name, 'tool_execution_error'
+                            )
+
                             self.add_to_history(
                                 'system', f'Tool execution error: {analysis}'
                             )
@@ -322,6 +366,9 @@ class Agent(BaseAgent):
 
                 should_retry, analysis = await self.handle_error(e, context)
                 if should_retry and retry_count <= self.max_retries:
+                    # Record retry
+                    agent_metrics.record_retry(self.name, 'execution_error')
+
                     self.add_to_history(
                         'system', f'Error occurred. Analysis: {analysis}'
                     )
@@ -485,8 +532,13 @@ Respond with EXACTLY one word: "FINAL" or "INTERMEDIATE"
             analysis = self.llm.get_message_content(analysis_response).strip().upper()
 
             is_final = 'FINAL' in analysis
+            msg_preview = (
+                message_stripped[:80]
+                if len(message_stripped) > 80
+                else message_stripped
+            )
             logger.debug(
-                f'LLM classifier: "{analysis}" -> is_final={is_final} (message preview: "{message_stripped[:80]}...")'
+                f'LLM classifier: "{analysis}" -> is_final={is_final} (message preview: "{msg_preview}...")'
             )
             return is_final
 

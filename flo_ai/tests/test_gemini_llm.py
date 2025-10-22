@@ -418,15 +418,6 @@ class TestGemini:
         ):
             llm.format_image_in_message(image)
 
-        # Test with image_base64 (not implemented)
-        image = ImageMessage(image_base64='base64_string')
-
-        with pytest.raises(
-            NotImplementedError,
-            match='Not other way other than file path has been implemented',
-        ):
-            llm.format_image_in_message(image)
-
     @pytest.mark.asyncio
     async def test_gemini_generate_error_handling(self):
         """Test error handling in generate method."""

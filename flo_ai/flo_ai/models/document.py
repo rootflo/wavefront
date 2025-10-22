@@ -12,8 +12,8 @@ from typing import Dict, Any, Optional
 class DocumentType(Enum):
     """Enumeration of supported document types."""
 
-    PDF = 'pdf'
-    TXT = 'txt'
+    PDF = 'application/pdf'
+    TXT = 'text/plain'
 
 
 @dataclass

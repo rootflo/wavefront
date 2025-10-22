@@ -86,7 +86,12 @@ class TestAnthropic:
         mock_content.text = 'Hello, world!'
         mock_content.type = 'text'
 
+        mock_usage = Mock()
+        mock_usage.input_tokens = 5
+        mock_usage.output_tokens = 4
+
         mock_response = Mock()
+        mock_response.usage = mock_usage
         mock_response.content = [mock_content]
 
         llm.client = Mock()
@@ -116,7 +121,12 @@ class TestAnthropic:
         mock_content.text = "I'm a helpful assistant"
         mock_content.type = 'text'
 
+        mock_usage = Mock()
+        mock_usage.input_tokens = 5
+        mock_usage.output_tokens = 4
+
         mock_response = Mock()
+        mock_response.usage = mock_usage
         mock_response.content = [mock_content]
 
         llm.client = Mock()
@@ -153,7 +163,12 @@ class TestAnthropic:
         mock_content.text = '{"message": "test", "count": 42}'
         mock_content.type = 'text'
 
+        mock_usage = Mock()
+        mock_usage.input_tokens = 5
+        mock_usage.output_tokens = 4
+
         mock_response = Mock()
+        mock_response.usage = mock_usage
         mock_response.content = [mock_content]
 
         llm.client = Mock()
@@ -188,7 +203,12 @@ class TestAnthropic:
         mock_content.text = "I'll use the function"
         mock_content.type = 'text'
 
+        mock_usage = Mock()
+        mock_usage.input_tokens = 5
+        mock_usage.output_tokens = 4
+
         mock_response = Mock()
+        mock_response.usage = mock_usage
         mock_response.content = [mock_content]
 
         llm.client = Mock()
@@ -216,7 +236,12 @@ class TestAnthropic:
         mock_text_content.text = 'I used the tool'
         mock_text_content.type = 'text'
 
+        mock_usage = Mock()
+        mock_usage.input_tokens = 5
+        mock_usage.output_tokens = 4
+
         mock_response = Mock()
+        mock_response.usage = mock_usage
         mock_response.content = [mock_text_content, mock_tool_content]
 
         llm.client = Mock()
@@ -240,7 +265,12 @@ class TestAnthropic:
         mock_content.text = 'Response with max tokens'
         mock_content.type = 'text'
 
+        mock_usage = Mock()
+        mock_usage.input_tokens = 5
+        mock_usage.output_tokens = 4
+
         mock_response = Mock()
+        mock_response.usage = mock_usage
         mock_response.content = [mock_content]
 
         llm.client = Mock()
@@ -263,7 +293,12 @@ class TestAnthropic:
         mock_content.text = 'Response with kwargs'
         mock_content.type = 'text'
 
+        mock_usage = Mock()
+        mock_usage.input_tokens = 5
+        mock_usage.output_tokens = 4
+
         mock_response = Mock()
+        mock_response.usage = mock_usage
         mock_response.content = [mock_content]
 
         llm.client = Mock()
