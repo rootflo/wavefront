@@ -3,6 +3,7 @@ from typing import Dict, Any, List, Optional
 from flo_ai.models.base_agent import BaseAgent, AgentType, ReasoningPattern
 from flo_ai.llm.base_llm import BaseLLM, ImageMessage
 from flo_ai.models.document import DocumentMessage
+from flo_ai.models.chat_message import ChatMessage
 from flo_ai.tool.base_tool import Tool, ToolExecutionError
 from flo_ai.models.agent_error import AgentError
 from flo_ai.utils.logger import logger
@@ -57,7 +58,7 @@ class Agent(BaseAgent):
     @trace_agent_execution()
     async def run(
         self,
-        inputs: List[str | ImageMessage | DocumentMessage] | str,
+        inputs: List[str | ImageMessage | DocumentMessage | ChatMessage] | str,
         variables: Optional[Dict[str, Any]] = None,
     ) -> str:
         variables = variables or {}
@@ -87,6 +88,9 @@ class Agent(BaseAgent):
                 elif isinstance(input, DocumentMessage):
                     formatted_doc = await self.llm.format_document_in_message(input)
                     self.add_to_history('user', formatted_doc)
+                elif isinstance(input, ChatMessage):
+                    resolved_content = resolve_variables(input.content, variables)
+                    self.add_to_history(input.role, resolved_content)
                 else:
                     # Resolve variables in text input
                     resolved_input = resolve_variables(input, variables)
@@ -103,6 +107,8 @@ class Agent(BaseAgent):
                 elif isinstance(input, DocumentMessage):
                     formatted_doc = await self.llm.format_document_in_message(input)
                     self.add_to_history('user', formatted_doc)
+                elif isinstance(input, ChatMessage):
+                    self.add_to_history(input.role, input.content)
                 else:
                     self.add_to_history('user', input)
 
@@ -129,7 +135,6 @@ class Agent(BaseAgent):
                     if self.reasoning_pattern == ReasoningPattern.COT
                     else resolve_variables(self.system_prompt, variables)
                 )
-
                 messages = [
                     {
                         'role': 'system',
