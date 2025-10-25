@@ -23,6 +23,7 @@ class AgentBuilder:
         self._reasoning_pattern = ReasoningPattern.DIRECT
         self._output_schema: Optional[Dict[str, Any]] = None
         self._role: Optional[str] = None
+        self._act_as: Optional[str] = None
 
     def with_name(self, name: str) -> 'AgentBuilder':
         """Set the agent's name"""
@@ -153,6 +154,11 @@ class AgentBuilder:
         self._role = role
         return self
 
+    def with_actas(self, act_as: str) -> 'AgentBuilder':
+        """Set the agent's role"""
+        self._act_as = act_as
+        return self
+
     def build(self) -> Agent:
         """Build and return the configured agent"""
         if not self._llm:
@@ -167,6 +173,7 @@ class AgentBuilder:
             reasoning_pattern=self._reasoning_pattern,
             output_schema=self._output_schema,
             role=self._role,
+            act_as=self._act_as,
         )
 
     @classmethod
@@ -201,6 +208,7 @@ class AgentBuilder:
         builder.with_name(agent_config.get('name', 'AI Assistant'))
         builder.with_prompt(agent_config.get('job', 'You are a helpful AI assistant.'))
         builder.with_role(agent_config.get('role'))
+        builder.with_actas(agent_config.get('act_as'))
 
         # Configure LLM based on model settings
         if 'model' in agent_config and base_llm is None:

@@ -11,6 +11,7 @@ from .models import (
     ReasoningPattern,
     DocumentType,
     DocumentMessage,
+    MessageType,
 )
 
 from .builder.agent_builder import AgentBuilder
@@ -56,6 +57,7 @@ __all__ = [
     'BaseAgent',
     'AgentType',
     'ReasoningPattern',
+    'MessageType',
     # Utils
     'FloUtils',
     # LLM
