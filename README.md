@@ -45,7 +45,6 @@ Flo AI is a Python framework that makes building production-ready AI agents and 
 - 🧠 **LLM-Powered Routing**: Intelligent routing decisions made by LLMs, no code required
 - 🔧 **Flexible**: Use pre-built components or create your own
 - 🤝 **Team-Oriented**: Create and manage teams of AI agents working together
-- 🔄 **Langchain Compatible**: Works with all your favorite Langchain tools
 - 📊 **OpenTelemetry Integration**: Built-in observability with automatic instrumentation
 
 ## 📖 Table of Contents
@@ -586,14 +585,6 @@ We love your input! Check out our [Contributing Guide](CONTRIBUTING.md) to get s
 ## 📜 License
 
 Flo AI is [MIT Licensed](LICENSE).
-
-## 🙏 Acknowledgments
-
-Built with ❤️ using:
-- [LangChain](https://github.com/hwchase17/langchain)
-- [Pydantic](https://github.com/pydantic/pydantic)
-- [OpenAI](https://openai.com/)
-- [Anthropic](https://www.anthropic.com/)
 
 ---
 
