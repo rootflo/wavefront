@@ -15,8 +15,6 @@ from flo_ai.llm.openai_llm import OpenAI
 from flo_ai.llm.base_llm import ImageMessage
 from flo_ai.tool.base_tool import Tool
 
-os.environ['OPENAI_API_KEY'] = 'test-key-123'
-
 
 class TestOpenAI:
     """Test class for OpenAI LLM implementation."""
@@ -24,9 +22,9 @@ class TestOpenAI:
     def test_openai_initialization(self):
         """Test OpenAI LLM initialization with different parameters."""
         # Test with minimal parameters
-        llm = OpenAI()
+        llm = OpenAI(api_key='test-key-123')
         assert llm.model == 'gpt-4o-mini'
-        assert llm.api_key is None
+        assert llm.api_key == 'test-key-123'
         assert llm.temperature == 0.7
         assert llm.kwargs == {}
 
@@ -40,25 +38,25 @@ class TestOpenAI:
         assert llm.kwargs == {'max_tokens': 1000}
 
         # Test with base_url
-        llm = OpenAI(base_url='https://custom.openai.com')
+        llm = OpenAI(base_url='https://custom.openai.com', api_key='test-key-123')
         assert llm.client.base_url == 'https://custom.openai.com'
 
     def test_openai_temperature_handling(self):
         """Test temperature parameter handling."""
         # Test default temperature
-        llm = OpenAI()
+        llm = OpenAI(api_key='test-key-123')
         assert llm.temperature == 0.7
 
         # Test custom temperature
-        llm = OpenAI(temperature=0.0)
+        llm = OpenAI(temperature=0.0, api_key='test-key-123')
         assert llm.temperature == 0.0
 
         # Test high temperature
-        llm = OpenAI(temperature=1.0)
+        llm = OpenAI(temperature=1.0, api_key='test-key-123')
         assert llm.temperature == 1.0
 
         # Test temperature in kwargs
-        llm = OpenAI(temperature=0.3, custom_temp=0.8)
+        llm = OpenAI(temperature=0.3, custom_temp=0.8, api_key='test-key-123')
         assert llm.temperature == 0.3
         assert llm.kwargs['custom_temp'] == 0.8
 
@@ -78,7 +76,7 @@ class TestOpenAI:
     @pytest.mark.asyncio
     async def test_openai_generate_basic(self):
         """Test basic generate method without output schema."""
-        llm = OpenAI(model='gpt-4o-mini')
+        llm = OpenAI(model='gpt-4o-mini', api_key='test-key-123')
 
         # Mock the client response
         mock_response = Mock()
@@ -106,7 +104,7 @@ class TestOpenAI:
     @pytest.mark.asyncio
     async def test_openai_generate_with_output_schema(self):
         """Test generate method with output schema."""
-        llm = OpenAI(model='gpt-4o-mini')
+        llm = OpenAI(model='gpt-4o-mini', api_key='test-key-123')
 
         output_schema = {
             'title': 'test_response',
@@ -148,7 +146,7 @@ class TestOpenAI:
     @pytest.mark.asyncio
     async def test_openai_generate_with_existing_system_message(self):
         """Test generate method with existing system message and output schema."""
-        llm = OpenAI(model='gpt-4o-mini')
+        llm = OpenAI(model='gpt-4o-mini', api_key='test-key-123')
 
         output_schema = {'title': 'test', 'schema': {'type': 'object'}}
 
@@ -177,7 +175,9 @@ class TestOpenAI:
     @pytest.mark.asyncio
     async def test_openai_generate_with_kwargs(self):
         """Test generate method with additional kwargs."""
-        llm = OpenAI(model='gpt-4o-mini', max_tokens=1000, top_p=0.9)
+        llm = OpenAI(
+            model='gpt-4o-mini', max_tokens=1000, top_p=0.9, api_key='test-key-123'
+        )
 
         # Mock the client response
         mock_response = Mock()
@@ -199,7 +199,7 @@ class TestOpenAI:
 
     def test_openai_get_message_content(self):
         """Test get_message_content method."""
-        llm = OpenAI()
+        llm = OpenAI(api_key='test-key-123')
 
         # Test with string response
         result = llm.get_message_content('Hello, world!')
@@ -219,7 +219,7 @@ class TestOpenAI:
 
     def test_openai_format_tool_for_llm(self):
         """Test format_tool_for_llm method."""
-        llm = OpenAI()
+        llm = OpenAI(api_key='test-key-123')
 
         # Create a mock tool
         tool = Tool(
@@ -243,7 +243,7 @@ class TestOpenAI:
 
     def test_openai_format_tools_for_llm(self):
         """Test format_tools_for_llm method."""
-        llm = OpenAI()
+        llm = OpenAI(api_key='test-key-123')
 
         # Create mock tools
         tool1 = Tool(
@@ -268,7 +268,7 @@ class TestOpenAI:
 
     def test_openai_format_image_in_message(self):
         """Test format_image_in_message method."""
-        llm = OpenAI()
+        llm = OpenAI(api_key='test-key-123')
 
         # This method is not implemented yet
         image = ImageMessage(image_url='https://example.com/image.jpg')
@@ -279,7 +279,7 @@ class TestOpenAI:
     @pytest.mark.asyncio
     async def test_openai_generate_error_handling(self):
         """Test error handling in generate method."""
-        llm = OpenAI(model='gpt-4o-mini')
+        llm = OpenAI(model='gpt-4o-mini', api_key='test-key-123')
 
         # Mock client to raise an exception
         llm.client = Mock()
@@ -297,7 +297,7 @@ class TestOpenAI:
         test_models = ['gpt-4', 'gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo']
 
         for model in test_models:
-            llm = OpenAI(model=model)
+            llm = OpenAI(model=model, api_key='test-key-123')
             assert llm.model == model
 
     def test_openai_api_key_handling(self):
@@ -306,10 +306,6 @@ class TestOpenAI:
         llm = OpenAI(api_key='secret-key-123')
         assert llm.api_key == 'secret-key-123'
 
-        # Test without API key
-        llm = OpenAI()
-        assert llm.api_key is None
-
         # Test with empty string API key
         llm = OpenAI(api_key='')
         assert llm.api_key == ''
@@ -317,17 +313,17 @@ class TestOpenAI:
     def test_openai_base_url_handling(self):
         """Test base URL handling."""
         # Test with base URL
-        llm = OpenAI(base_url='https://custom.openai.com')
+        llm = OpenAI(base_url='https://custom.openai.com', api_key='test-key-123')
         assert llm.client.base_url == 'https://custom.openai.com'
 
         # Test without base URL
-        llm = OpenAI()
+        llm = OpenAI(api_key='test-key-123')
         assert not hasattr(llm, 'base_url')
 
     @pytest.mark.asyncio
     async def test_openai_stream_basic(self):
         """Test basic stream method without functions."""
-        llm = OpenAI(model='gpt-4o-mini')
+        llm = OpenAI(model='gpt-4o-mini', api_key='test-key-123')
 
         # Mock streaming chunks
         mock_delta1 = Mock()
@@ -381,7 +377,7 @@ class TestOpenAI:
     @pytest.mark.asyncio
     async def test_openai_stream_with_functions(self):
         """Test stream method with functions."""
-        llm = OpenAI(model='gpt-4o-mini')
+        llm = OpenAI(model='gpt-4o-mini', api_key='test-key-123')
 
         functions = [
             {
@@ -427,7 +423,7 @@ class TestOpenAI:
     @pytest.mark.asyncio
     async def test_openai_stream_error_handling(self):
         """Test error handling in stream method."""
-        llm = OpenAI(model='gpt-4o-mini')
+        llm = OpenAI(model='gpt-4o-mini', api_key='test-key-123')
 
         # Mock client to raise an exception
         llm.client = Mock()

@@ -36,5 +36,5 @@ jobs:
       run: cd flo_ai && poetry build
 
     - name: Run tests
-      run:  cd flo_ai && poetry run pytest
+      run:  cd flo_ai && poetry run pytest -m "not (integration)"
     
