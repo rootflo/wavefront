@@ -1,0 +1,439 @@
+---
+title: 'LLM Providers'
+description: 'Supported language model providers and configuration'
+icon: 'brain'
+---
+
+## Supported Providers
+
+Flo AI supports multiple LLM providers with consistent interfaces, allowing you to easily switch between different models and providers.
+
+## OpenAI
+
+### Basic Configuration
+
+```python
+from flo_ai.llm import OpenAI
+
+# Basic OpenAI configuration
+llm = OpenAI(
+    model='gpt-4o',
+    temperature=0.7,
+    max_tokens=1000
+)
+
+# With additional parameters
+llm = OpenAI(
+    model='gpt-4o-mini',
+    temperature=0.3,
+    max_tokens=500,
+    timeout=30,
+    api_key='your-api-key'  # Optional, can use environment variable
+)
+```
+
+### Available Models
+
+```python
+# GPT-4 models
+gpt4 = OpenAI(model='gpt-4o')
+gpt4_mini = OpenAI(model='gpt-4o-mini')
+
+# GPT-3.5 models
+gpt35 = OpenAI(model='gpt-3.5-turbo')
+gpt35_16k = OpenAI(model='gpt-3.5-turbo-16k')
+```
+
+### Streaming Support
+
+```python
+# Enable streaming for real-time responses
+streaming_llm = OpenAI(
+    model='gpt-4o',
+    stream=True
+)
+
+# Use with agent
+agent = (
+    AgentBuilder()
+    .with_name('Streaming Agent')
+    .with_prompt('You are a helpful assistant.')
+    .with_llm(streaming_llm)
+    .build()
+)
+```
+
+## Anthropic Claude
+
+### Basic Configuration
+
+```python
+from flo_ai.llm import Anthropic
+
+# Basic Claude configuration
+claude = Anthropic(
+    model='claude-3-5-sonnet-20240620',
+    temperature=0.7,
+    max_tokens=1000
+)
+
+# With additional parameters
+claude = Anthropic(
+    model='claude-3-5-haiku-20241022',
+    temperature=0.3,
+    max_tokens=500,
+    timeout=30
+)
+```
+
+### Available Models
+
+```python
+# Claude 3.5 models
+claude_sonnet = Anthropic(model='claude-3-5-sonnet-20240620')
+claude_haiku = Anthropic(model='claude-3-5-haiku-20241022')
+
+# Claude 3 models
+claude_3_sonnet = Anthropic(model='claude-3-sonnet-20240229')
+claude_3_haiku = Anthropic(model='claude-3-haiku-20240307')
+```
+
+## Google Gemini
+
+### Basic Configuration
+
+```python
+from flo_ai.llm import Gemini
+
+# Basic Gemini configuration
+gemini = Gemini(
+    model='gemini-2.5-flash',
+    temperature=0.7,
+    max_tokens=1000
+)
+
+# With additional parameters
+gemini = Gemini(
+    model='gemini-2.5-pro',
+    temperature=0.3,
+    max_tokens=500,
+    timeout=30
+)
+```
+
+### Available Models
+
+```python
+# Gemini 2.5 models
+gemini_flash = Gemini(model='gemini-2.5-flash')
+gemini_pro = Gemini(model='gemini-2.5-pro')
+
+# Gemini 1.5 models
+gemini_15_flash = Gemini(model='gemini-1.5-flash')
+gemini_15_pro = Gemini(model='gemini-1.5-pro')
+```
+
+## Google Vertex AI
+
+### Configuration
+
+```python
+from flo_ai.llm import VertexAI
+
+# Vertex AI configuration
+vertex_llm = VertexAI(
+    model='gemini-2.5-flash',
+    project='your-project-id',
+    location='us-central1',
+    temperature=0.7
+)
+
+# With service account
+vertex_llm = VertexAI(
+    model='gemini-2.5-pro',
+    project='your-project-id',
+    credentials_path='path/to/service-account.json',
+    location='us-central1'
+)
+```
+
+## Ollama (Local)
+
+### Configuration
+
+```python
+from flo_ai.llm import OllamaLLM
+
+# Local Ollama configuration
+ollama = OllamaLLM(
+    model='llama2',
+    base_url='http://localhost:11434',
+    temperature=0.7
+)
+
+# With custom parameters
+ollama = OllamaLLM(
+    model='codellama',
+    base_url='http://localhost:11434',
+    temperature=0.3,
+    timeout=60
+)
+```
+
+### Popular Local Models
+
+```python
+# Code generation
+codellama = OllamaLLM(model='codellama')
+
+# General purpose
+llama2 = OllamaLLM(model='llama2')
+llama3 = OllamaLLM(model='llama3')
+
+# Specialized models
+mistral = OllamaLLM(model='mistral')
+phi = OllamaLLM(model='phi')
+```
+
+## Provider Comparison
+
+| Provider | Best For | Cost | Speed | Quality |
+|----------|----------|------|-------|---------|
+| GPT-4o | Complex reasoning | High | Medium | Excellent |
+| GPT-4o-mini | Balanced tasks | Medium | Fast | Good |
+| Claude-3.5-Sonnet | Creative writing | High | Medium | Excellent |
+| Claude-3.5-Haiku | Simple tasks | Low | Fast | Good |
+| Gemini-2.5-Pro | Multimodal tasks | Medium | Medium | Good |
+| Gemini-2.5-Flash | Fast responses | Low | Very Fast | Good |
+| Ollama | Privacy/Offline | Free | Variable | Variable |
+
+## Model Selection Guide
+
+### For Different Use Cases
+
+```python
+# Code generation and analysis
+code_llm = OpenAI(model='gpt-4o', temperature=0.1)
+
+# Creative writing
+creative_llm = Anthropic(model='claude-3-5-sonnet-20240620', temperature=0.8)
+
+# Data analysis
+analysis_llm = OpenAI(model='gpt-4o', temperature=0.2)
+
+# Customer support
+support_llm = OpenAI(model='gpt-4o-mini', temperature=0.3)
+
+# Fast responses
+fast_llm = Gemini(model='gemini-2.5-flash', temperature=0.3)
+```
+
+### Performance Optimization
+
+```python
+# For high-volume, simple tasks
+efficient_llm = OpenAI(
+    model='gpt-4o-mini',
+    temperature=0.1,
+    max_tokens=200
+)
+
+# For complex reasoning
+powerful_llm = OpenAI(
+    model='gpt-4o',
+    temperature=0.2,
+    max_tokens=2000
+)
+```
+
+## Environment Configuration
+
+### API Keys
+
+```bash
+# OpenAI
+export OPENAI_API_KEY="your-openai-key"
+
+# Anthropic
+export ANTHROPIC_API_KEY="your-anthropic-key"
+
+# Google
+export GOOGLE_API_KEY="your-google-key"
+
+# Vertex AI
+export GOOGLE_APPLICATION_CREDENTIALS="path/to/service-account.json"
+export GOOGLE_CLOUD_PROJECT="your-project-id"
+```
+
+### Python Configuration
+
+```python
+import os
+from flo_ai.llm import OpenAI
+
+# Configure with environment variables
+llm = OpenAI(
+    model='gpt-4o',
+    api_key=os.getenv('OPENAI_API_KEY')
+)
+
+# Or use default environment variable names
+llm = OpenAI(model='gpt-4o')  # Automatically uses OPENAI_API_KEY
+```
+
+## Advanced Configuration
+
+### Custom Headers
+
+```python
+# Add custom headers for API requests
+llm = OpenAI(
+    model='gpt-4o',
+    headers={
+        'X-Custom-Header': 'value',
+        'User-Agent': 'MyApp/1.0'
+    }
+)
+```
+
+### Retry Configuration
+
+```python
+# Configure retry behavior
+llm = OpenAI(
+    model='gpt-4o',
+    max_retries=3,
+    retry_delay=1.0,
+    timeout=30
+)
+```
+
+### Rate Limiting
+
+```python
+# Configure rate limiting
+llm = OpenAI(
+    model='gpt-4o',
+    requests_per_minute=60,
+    tokens_per_minute=150000
+)
+```
+
+## Model Switching
+
+### Dynamic Model Selection
+
+```python
+def get_llm_for_task(task_type: str):
+    if task_type == 'creative':
+        return Anthropic(model='claude-3-5-sonnet-20240620')
+    elif task_type == 'analytical':
+        return OpenAI(model='gpt-4o')
+    elif task_type == 'fast':
+        return Gemini(model='gemini-2.5-flash')
+    else:
+        return OpenAI(model='gpt-4o-mini')
+
+# Use in agent
+task_type = 'creative'
+llm = get_llm_for_task(task_type)
+agent = AgentBuilder().with_llm(llm).build()
+```
+
+### A/B Testing
+
+```python
+# Test different models
+models = [
+    OpenAI(model='gpt-4o'),
+    Anthropic(model='claude-3-5-sonnet-20240620'),
+    Gemini(model='gemini-2.5-pro')
+]
+
+for i, llm in enumerate(models):
+    agent = AgentBuilder().with_llm(llm).build()
+    response = await agent.run('Test prompt')
+    print(f"Model {i+1}: {response}")
+```
+
+## Troubleshooting
+
+### Common Issues
+
+<AccordionGroup>
+  <Accordion title="API Key Errors">
+    
+    Ensure your API keys are correctly set:
+    
+    ```bash
+    echo $OPENAI_API_KEY
+    echo $ANTHROPIC_API_KEY
+    echo $GOOGLE_API_KEY
+    ```
+    
+  </Accordion>
+
+  <Accordion title="Rate Limiting">
+    
+    If you hit rate limits, implement backoff:
+    
+    ```python
+    import time
+    import random
+    
+    async def with_backoff(func, max_retries=3):
+        for attempt in range(max_retries):
+            try:
+                return await func()
+            except RateLimitError:
+                wait_time = (2 ** attempt) + random.uniform(0, 1)
+                time.sleep(wait_time)
+        raise Exception("Max retries exceeded")
+    ```
+    
+  </Accordion>
+
+  <Accordion title="Model Not Found">
+    
+    Check that the model name is correct and available in your region:
+    
+    ```python
+    # List available models
+    from flo_ai.llm import OpenAI
+    
+    # This will raise an error if model is not available
+    try:
+        llm = OpenAI(model='gpt-4o')
+        print("Model is available")
+    except Exception as e:
+        print(f"Model error: {e}")
+    ```
+    
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+### Model Selection
+
+1. **Start with GPT-4o-mini** for most tasks
+2. **Use GPT-4o** for complex reasoning
+3. **Try Claude** for creative tasks
+4. **Use Gemini** for multimodal or fast responses
+5. **Use Ollama** for privacy-sensitive applications
+
+### Cost Optimization
+
+1. **Use appropriate models** for task complexity
+2. **Implement caching** for repeated queries
+3. **Set reasonable limits** on max_tokens
+4. **Monitor usage** and costs
+5. **Use streaming** for long responses
+
+### Performance Tips
+
+1. **Batch requests** when possible
+2. **Use connection pooling** for high-volume applications
+3. **Implement retry logic** with exponential backoff
+4. **Cache responses** for identical inputs
+5. **Monitor latency** and optimize accordingly

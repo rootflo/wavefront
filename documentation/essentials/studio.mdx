@@ -1,0 +1,233 @@
+---
+title: 'Flo AI Studio'
+description: 'Visual workflow designer for creating AI agent workflows'
+icon: 'palette'
+---
+
+## What is Flo AI Studio?
+
+Flo AI Studio is a modern, intuitive visual editor that allows you to design complex multi-agent workflows through a drag-and-drop interface. Build sophisticated AI systems without writing code, then export them as production-ready YAML configurations.
+
+## Getting Started
+
+### Installation
+
+```bash
+cd studio
+pnpm install
+```
+
+### Starting the Studio
+
+```bash
+pnpm dev
+```
+
+The studio will be available at `http://localhost:5173`.
+
+## Studio Features
+
+### Visual Design Interface
+
+- **🎯 Drag-and-Drop**: Create workflows by dragging agents, routers, and tools onto the canvas
+- **🔗 Visual Connections**: Connect components with visual edges
+- **📋 Property Panels**: Configure components through intuitive property panels
+- **🎨 Real-time Preview**: See your workflow structure as you build it
+
+### Agent Management
+
+Configure AI agents with different roles, models, and tools:
+
+- **Agent Roles**: Define what each agent does in your workflow
+- **Model Selection**: Choose from OpenAI, Anthropic, Google, and more
+- **Tool Integration**: Connect agents to external tools and APIs
+- **Prompt Engineering**: Design effective prompts with the built-in editor
+
+### Smart Routing
+
+Configure intelligent routing for your workflows:
+
+- **Conditional Routing**: Route based on content type, sentiment, or custom logic
+- **LLM-Powered Routing**: Use AI to make routing decisions
+- **Reflection Patterns**: Implement A→B→A feedback loops
+- **Plan-Execute Workflows**: Create Cursor-style development workflows
+
+## Workflow Design
+
+### Creating a New Workflow
+
+1. **Start with a Template**: Choose from pre-built workflow templates
+2. **Add Agents**: Drag agents onto the canvas and configure their properties
+3. **Connect Components**: Create connections between agents and routers
+4. **Configure Routing**: Set up intelligent routing logic
+5. **Test and Validate**: Use the built-in testing tools
+
+### Workflow Templates
+
+The studio comes with several pre-built templates:
+
+- **Content Analysis Pipeline**: Analyze and summarize content
+- **Customer Support Workflow**: Route and handle customer inquiries
+- **Code Review Process**: Automated code review and feedback
+- **Research Assistant**: Multi-step research and analysis
+
+### Custom Workflows
+
+Create your own workflows from scratch:
+
+1. **Define the Goal**: What should your workflow accomplish?
+2. **Identify Agents**: What specialized agents do you need?
+3. **Design Routing**: How should requests be routed between agents?
+4. **Add Tools**: What external tools should agents have access to?
+5. **Test and Iterate**: Refine your workflow based on testing
+
+## YAML Export/Import
+
+### Exporting Workflows
+
+Once you've designed your workflow in the studio:
+
+1. Click the "Export" button
+2. Choose YAML format
+3. Download the configuration file
+4. Use in your Flo AI application
+
+```python
+from flo_ai.arium import AriumBuilder
+
+# Load and run exported workflow
+result = await (
+    AriumBuilder()
+    .from_yaml(yaml_file='exported_workflow.yaml')
+    .build_and_run(["Your input here"])
+)
+```
+
+### Importing Workflows
+
+Import existing YAML workflows for editing:
+
+1. Click the "Import" button
+2. Select your YAML file
+3. The workflow will be loaded into the studio
+4. Make modifications and re-export
+
+## Advanced Features
+
+### Workflow Validation
+
+The studio includes real-time validation:
+
+- **Connection Validation**: Ensures all components are properly connected
+- **Configuration Validation**: Checks that all required fields are filled
+- **Logic Validation**: Validates routing logic and conditions
+- **Error Highlighting**: Shows errors and warnings in real-time
+
+### Testing Tools
+
+Test your workflows before deployment:
+
+- **Input Testing**: Test with sample inputs
+- **Step-by-Step Execution**: See how your workflow processes data
+- **Performance Metrics**: Monitor execution time and resource usage
+- **Debug Mode**: Step through workflow execution
+
+### Collaboration Features
+
+- **Version Control**: Track changes to your workflows
+- **Sharing**: Share workflows with team members
+- **Comments**: Add comments and notes to workflow components
+- **Templates**: Save and share workflow templates
+
+## Best Practices
+
+### Workflow Design
+
+1. **Start Simple**: Begin with basic linear workflows
+2. **Add Complexity Gradually**: Introduce routing and parallel processing
+3. **Test Frequently**: Validate your workflow at each step
+4. **Document Changes**: Keep track of modifications and improvements
+
+### Performance Optimization
+
+1. **Choose Appropriate Models**: Select models based on task complexity
+2. **Optimize Routing**: Use efficient routing logic
+3. **Minimize Redundancy**: Avoid unnecessary agent calls
+4. **Monitor Resources**: Track memory and compute usage
+
+### Team Collaboration
+
+1. **Use Version Control**: Track changes to workflows
+2. **Share Templates**: Create reusable workflow templates
+3. **Document Decisions**: Explain why certain design choices were made
+4. **Regular Reviews**: Review and update workflows regularly
+
+## Integration
+
+### Flo AI Integration
+
+Export workflows directly to your Flo AI application:
+
+```python
+# Load studio-exported workflow
+from flo_ai.arium import AriumBuilder
+
+workflow = AriumBuilder.from_yaml('studio_workflow.yaml')
+result = await workflow.build_and_run(["Input data"])
+```
+
+### API Integration
+
+Connect to external APIs and services:
+
+- **REST APIs**: Connect to web services
+- **Database Connections**: Query databases for data
+- **File Processing**: Handle file uploads and processing
+- **Webhook Integration**: Receive and process webhooks
+
+## Troubleshooting
+
+### Common Issues
+
+<AccordionGroup>
+  <Accordion title="Studio not loading">
+    
+    Try clearing the cache and reinstalling dependencies:
+    
+    ```bash
+    cd studio
+    rm -rf node_modules
+    pnpm install
+    pnpm dev
+    ```
+    
+  </Accordion>
+
+  <Accordion title="Export not working">
+    
+    Ensure all required fields are filled and connections are valid. Check the validation panel for errors.
+    
+  </Accordion>
+
+  <Accordion title="Import errors">
+    
+    Verify that your YAML file is valid and follows the correct format. Check the console for specific error messages.
+    
+  </Accordion>
+</AccordionGroup>
+
+### Getting Help
+
+- **Documentation**: Check the Flo AI documentation for detailed guides
+- **Community**: Join our community discussions for support
+- **Examples**: Look at example workflows in the studio
+- **GitHub**: Report issues on our GitHub repository
+
+## Next Steps
+
+Once you've mastered the studio:
+
+1. **Explore Advanced Features**: Learn about custom routing and complex workflows
+2. **Deploy to Production**: Use your workflows in production applications
+3. **Share with Team**: Collaborate with team members on workflow design
+4. **Contribute**: Help improve the studio by contributing to the project

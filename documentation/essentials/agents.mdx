@@ -1,0 +1,301 @@
+---
+title: 'Agents'
+description: 'Learn how to create and configure AI agents with Flo AI'
+icon: 'robot'
+---
+
+## Creating Agents
+
+Agents are the core building blocks of Flo AI. They represent AI-powered entities that can process inputs, use tools, and generate responses.
+
+### Basic Agent Creation
+
+Create a simple conversational agent:
+
+```python
+from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.llm import OpenAI
+
+agent = (
+    AgentBuilder()
+    .with_name('Customer Support')
+    .with_prompt('You are a helpful customer support agent.')
+    .with_llm(OpenAI(model='gpt-4o-mini'))
+    .build()
+)
+
+response = await agent.run('How can I reset my password?')
+```
+
+### Agent Configuration
+
+Configure agents with various options:
+
+```python
+agent = (
+    AgentBuilder()
+    .with_name('Data Analyst')
+    .with_prompt('You are an expert data analyst.')
+    .with_llm(OpenAI(model='gpt-4o', temperature=0.3))
+    .with_retries(3)  # Retry on failure
+    .with_max_tokens(1000)
+    .build()
+)
+```
+
+## Agent Types
+
+### Conversational Agents
+
+Basic agents for chat and Q&A:
+
+```python
+conversational_agent = (
+    AgentBuilder()
+    .with_name('Chat Assistant')
+    .with_prompt('You are a friendly conversational assistant.')
+    .with_llm(OpenAI(model='gpt-4o-mini'))
+    .build()
+)
+```
+
+### Tool-Using Agents
+
+Agents that can use external tools:
+
+```python
+from flo_ai.tool import flo_tool
+
+@flo_tool(description="Get weather information")
+async def get_weather(city: str) -> str:
+    return f"Weather in {city}: sunny, 25°C"
+
+tool_agent = (
+    AgentBuilder()
+    .with_name('Weather Assistant')
+    .with_prompt('You help users get weather information.')
+    .with_llm(OpenAI(model='gpt-4o-mini'))
+    .with_tools([get_weather.tool])
+    .build()
+)
+```
+
+### Structured Output Agents
+
+Agents that return structured data:
+
+```python
+from pydantic import BaseModel, Field
+
+class AnalysisResult(BaseModel):
+    summary: str = Field(description="Executive summary")
+    key_findings: list = Field(description="List of key findings")
+    recommendations: list = Field(description="Actionable recommendations")
+
+structured_agent = (
+    AgentBuilder()
+    .with_name('Business Analyst')
+    .with_prompt('Analyze business data and provide insights.')
+    .with_llm(OpenAI(model='gpt-4o'))
+    .with_output_schema(AnalysisResult)
+    .build()
+)
+```
+
+## Agent Capabilities
+
+### Variable Resolution
+
+Use dynamic variables in agent prompts:
+
+```python
+agent = (
+    AgentBuilder()
+    .with_name('Personalized Assistant')
+    .with_prompt('Hello <user_name>! You are <user_role> at <company>.')
+    .with_llm(OpenAI(model='gpt-4o-mini'))
+    .build()
+)
+
+# Use variables at runtime
+variables = {
+    'user_name': 'John',
+    'user_role': 'Data Scientist',
+    'company': 'TechCorp'
+}
+
+response = await agent.run(
+    'What should I focus on today?',
+    variables=variables
+)
+```
+
+### Document Processing
+
+Process PDF and text documents:
+
+```python
+from flo_ai.models.document import DocumentMessage, DocumentType
+
+# Create document message
+document = DocumentMessage(
+    document_type=DocumentType.PDF,
+    document_file_path='report.pdf'
+)
+
+# Process with agent
+response = await agent.run([document])
+```
+
+### Error Handling
+
+Built-in retry mechanisms and error recovery:
+
+```python
+robust_agent = (
+    AgentBuilder()
+    .with_name('Reliable Agent')
+    .with_prompt('You are a reliable assistant.')
+    .with_llm(OpenAI(model='gpt-4o'))
+    .with_retries(3)  # Retry up to 3 times
+    .with_timeout(30)  # 30 second timeout
+    .build()
+)
+```
+
+## Best Practices
+
+### Prompt Engineering
+
+- **Be specific**: Clearly define the agent's role and capabilities
+- **Use examples**: Provide examples of expected inputs and outputs
+- **Set boundaries**: Define what the agent should and shouldn't do
+
+```python
+well_prompted_agent = (
+    AgentBuilder()
+    .with_name('Code Reviewer')
+    .with_prompt('''
+    You are an expert code reviewer. Your role is to:
+    1. Review code for bugs, security issues, and best practices
+    2. Suggest improvements and optimizations
+    3. Provide constructive feedback
+    
+    Always be specific about issues and provide actionable suggestions.
+    Focus on code quality, performance, and maintainability.
+    ''')
+    .with_llm(OpenAI(model='gpt-4o'))
+    .build()
+)
+```
+
+### Model Selection
+
+Choose the right model for your use case:
+
+- **GPT-4o**: Best for complex reasoning and analysis
+- **GPT-4o-mini**: Good balance of performance and cost
+- **Claude-3.5-Sonnet**: Excellent for creative tasks
+- **Gemini**: Good for multilingual applications
+
+### Performance Optimization
+
+```python
+# Use streaming for long responses
+streaming_agent = (
+    AgentBuilder()
+    .with_name('Content Generator')
+    .with_prompt('Generate detailed content.')
+    .with_llm(OpenAI(model='gpt-4o', stream=True))
+    .build()
+)
+
+# Use caching for repeated queries
+cached_agent = (
+    AgentBuilder()
+    .with_name('Cached Agent')
+    .with_prompt('You provide consistent responses.')
+    .with_llm(OpenAI(model='gpt-4o-mini'))
+    .with_cache(ttl=3600)  # Cache for 1 hour
+    .build()
+)
+```
+
+## Agent Lifecycle
+
+### Initialization
+
+```python
+# Create agent
+agent = AgentBuilder().with_name('My Agent').build()
+
+# Initialize with configuration
+await agent.initialize()
+```
+
+### Execution
+
+```python
+# Simple execution
+response = await agent.run('Hello!')
+
+# With context
+response = await agent.run('Hello!', context={'user_id': '123'})
+
+# With variables
+response = await agent.run('Hello!', variables={'name': 'John'})
+```
+
+### Cleanup
+
+```python
+# Clean up resources
+await agent.cleanup()
+```
+
+## Advanced Features
+
+### Custom Memory
+
+```python
+from flo_ai.arium.memory import BaseMemory
+
+class CustomMemory(BaseMemory):
+    def __init__(self):
+        self.messages = []
+    
+    def add(self, message):
+        self.messages.append(message)
+    
+    def get(self):
+        return self.messages
+
+agent = (
+    AgentBuilder()
+    .with_name('Memory Agent')
+    .with_prompt('You remember previous conversations.')
+    .with_llm(OpenAI(model='gpt-4o'))
+    .with_memory(CustomMemory())
+    .build()
+)
+```
+
+### Custom Event Handlers
+
+```python
+async def on_agent_start(agent, input_data):
+    print(f"Agent {agent.name} started processing")
+
+async def on_agent_complete(agent, result):
+    print(f"Agent {agent.name} completed with result: {result}")
+
+agent = (
+    AgentBuilder()
+    .with_name('Event Agent')
+    .with_prompt('You are an event-driven agent.')
+    .with_llm(OpenAI(model='gpt-4o'))
+    .with_event_handler('start', on_agent_start)
+    .with_event_handler('complete', on_agent_complete)
+    .build()
+)
+```

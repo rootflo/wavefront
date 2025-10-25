@@ -1,0 +1,134 @@
+---
+title: "Quickstart"
+description: "Get started with Flo AI in minutes - from installation to your first agent"
+---
+
+## Get started with Flo AI in three steps
+
+Build your first AI agent and understand the core concepts of Flo AI.
+
+### Step 1: Installation
+
+<AccordionGroup>
+  <Accordion icon="download" title="Install Flo AI">
+    Install Flo AI using pip or poetry:
+    
+    ```bash
+    pip install flo-ai
+    # or using poetry
+    poetry add flo-ai
+    ```
+    
+    <Tip>Flo AI requires Python 3.10 or higher.</Tip>
+  </Accordion>
+  <Accordion icon="key" title="Set up API keys">
+    Configure your LLM provider API keys:
+    
+    ```bash
+    # For OpenAI
+    export OPENAI_API_KEY="your-openai-key"
+    
+    # For Anthropic
+    export ANTHROPIC_API_KEY="your-anthropic-key"
+    
+    # For Google Gemini
+    export GOOGLE_API_KEY="your-google-key"
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Step 2: Your First Agent
+
+<Accordion icon="robot" title="Create a simple agent">
+  Create your first conversational agent:
+
+```python
+import asyncio
+from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.llm import OpenAI
+
+async def main():
+    # Create a simple conversational agent
+    agent = (
+        AgentBuilder()
+        .with_name('Math Tutor')
+        .with_prompt('You are a helpful math tutor.')
+        .with_llm(OpenAI(model='gpt-4o-mini'))
+        .build()
+    )
+
+    response = await agent.run('What is the formula for the area of a circle?')
+    print(f'Response: {response}')
+
+asyncio.run(main())
+```
+
+<Warning>Make sure you have set your OpenAI API key before running this example.</Warning>
+</Accordion>
+
+### Step 3: Add Tools and Structure
+
+<Accordion icon="wrench" title="Create a tool-using agent">
+  Build an agent that can use tools:
+
+```python
+import asyncio
+from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.tool import flo_tool
+from flo_ai.llm import Anthropic
+
+@flo_tool(description="Perform mathematical calculations")
+async def calculate(operation: str, x: float, y: float) -> float:
+    """Calculate mathematical operations between two numbers."""
+    operations = {
+        'add': lambda: x + y,
+        'subtract': lambda: x - y,
+        'multiply': lambda: x * y,
+        'divide': lambda: x / y if y != 0 else 0,
+    }
+    return operations.get(operation, lambda: 0)()
+
+async def main():
+    agent = (
+        AgentBuilder()
+        .with_name('Calculator Assistant')
+        .with_prompt('You are a math assistant that can perform calculations.')
+        .with_llm(Anthropic(model='claude-3-5-sonnet-20240620'))
+        .with_tools([calculate.tool])
+        .build()
+    )
+
+    response = await agent.run('Calculate 5 plus 3')
+    print(f'Response: {response}')
+
+asyncio.run(main())
+```
+</Accordion>
+
+## Next Steps
+
+Now that you have your first agent running, explore these key features:
+
+<CardGroup cols={2}>
+
+<Card title="Multi-Agent Workflows" icon="sitemap" href="/essentials/arium">
+  Learn how to create complex multi-agent workflows with Arium.
+</Card>
+
+<Card title="YAML Configuration" icon="file-code" href="/essentials/yaml-workflows">
+  Define entire agent architectures in YAML for easy management.
+</Card>
+
+<Card title="Visual Studio" icon="palette" href="/essentials/studio">
+  Design AI workflows visually with our React-based studio.
+</Card>
+
+<Card title="Production Deployment" icon="rocket" href="/essentials/production">
+  Learn about production-ready features and best practices.
+</Card>
+
+</CardGroup>
+
+<Note>
+  **Need help?** Check out our [examples](https://github.com/rootflo/flo-ai/tree/main/flo_ai/examples) or join our [community](https://github.com/rootflo/flo-ai/discussions).
+</Note>

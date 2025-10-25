@@ -1,0 +1,182 @@
+---
+title: 'Code Examples'
+description: 'Flo AI code examples and syntax highlighting'
+icon: 'code'
+---
+
+## Basic Agent Creation
+
+Here's how to create a simple conversational agent with Flo AI:
+
+```python Simple Agent
+import asyncio
+from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.llm import OpenAI
+
+async def main():
+    agent = (
+        AgentBuilder()
+        .with_name('Math Tutor')
+        .with_prompt('You are a helpful math tutor.')
+        .with_llm(OpenAI(model='gpt-4o-mini'))
+        .build()
+    )
+
+    response = await agent.run('What is the formula for the area of a circle?')
+    print(f'Response: {response}')
+
+asyncio.run(main())
+```
+
+## Tool Integration
+
+Create agents that can use custom tools:
+
+```python Tool-Using Agent
+import asyncio
+from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.tool import flo_tool
+from flo_ai.llm import Anthropic
+
+@flo_tool(description="Perform mathematical calculations")
+async def calculate(operation: str, x: float, y: float) -> float:
+    """Calculate mathematical operations between two numbers."""
+    operations = {
+        'add': lambda: x + y,
+        'subtract': lambda: x - y,
+        'multiply': lambda: x * y,
+        'divide': lambda: x / y if y != 0 else 0,
+    }
+    return operations.get(operation, lambda: 0)()
+
+async def main():
+    agent = (
+        AgentBuilder()
+        .with_name('Calculator Assistant')
+        .with_prompt('You are a math assistant that can perform calculations.')
+        .with_llm(Anthropic(model='claude-3-5-sonnet-20240620'))
+        .with_tools([calculate.tool])
+        .build()
+    )
+
+    response = await agent.run('Calculate 5 plus 3')
+    print(f'Response: {response}')
+
+asyncio.run(main())
+```
+
+## Structured Outputs
+
+Use Pydantic models for structured agent responses:
+
+```python Structured Output
+import asyncio
+from pydantic import BaseModel, Field
+from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.llm import OpenAI
+
+class MathSolution(BaseModel):
+    solution: str = Field(description="Step-by-step solution")
+    answer: str = Field(description="Final answer")
+    confidence: float = Field(description="Confidence level (0-1)")
+
+async def main():
+    agent = (
+        AgentBuilder()
+        .with_name('Math Solver')
+        .with_llm(OpenAI(model='gpt-4o'))
+        .with_output_schema(MathSolution)
+        .build()
+    )
+
+    response = await agent.run('Solve: 2x + 5 = 15')
+    print(f'Structured Response: {response}')
+
+asyncio.run(main())
+```
+
+## Multi-Agent Workflows
+
+Create complex workflows with multiple agents:
+
+```python Multi-Agent Workflow
+import asyncio
+from flo_ai.arium import AriumBuilder
+from flo_ai.models.agent import Agent
+from flo_ai.llm import OpenAI
+
+async def content_analysis_workflow():
+    llm = OpenAI(model='gpt-4o-mini')
+    
+    # Create specialized agents
+    analyst = Agent(
+        name='content_analyst',
+        system_prompt='Analyze the input and extract key insights.',
+        llm=llm
+    )
+    
+    summarizer = Agent(
+        name='summarizer', 
+        system_prompt='Create a concise summary based on the analysis.',
+        llm=llm
+    )
+    
+    # Build and run workflow
+    result = await (
+        AriumBuilder()
+        .add_agents([analyst, summarizer])
+        .start_with(analyst)
+        .connect(analyst, summarizer)
+        .end_with(summarizer)
+        .build_and_run(["Analyze this complex business report..."])
+    )
+    
+    return result
+
+asyncio.run(content_analysis_workflow())
+```
+
+## YAML Configuration
+
+Define entire workflows in YAML:
+
+```yaml workflow.yaml
+metadata:
+  name: "content-analysis-workflow"
+  version: "1.0.0"
+  description: "Multi-agent content analysis pipeline"
+
+arium:
+  agents:
+    - name: "analyzer"
+      role: "Content Analyst"
+      job: "Analyze the input content and extract key insights."
+      model:
+        provider: "openai"
+        name: "gpt-4o-mini"
+    
+    - name: "summarizer"
+      role: "Content Summarizer"
+      job: "Create a concise summary based on the analysis."
+      model:
+        provider: "anthropic"
+        name: "claude-3-5-sonnet-20240620"
+
+  workflow:
+    start: "analyzer"
+    edges:
+      - from: "analyzer"
+        to: ["summarizer"]
+    end: ["summarizer"]
+```
+
+```python Run YAML Workflow
+from flo_ai.arium import AriumBuilder
+
+# Run YAML workflow
+result = await (
+    AriumBuilder()
+    .from_yaml(yaml_file='workflow.yaml')
+    .build_and_run(["Analyze this quarterly business report..."])
+)
+```

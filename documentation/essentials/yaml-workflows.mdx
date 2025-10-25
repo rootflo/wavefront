@@ -1,0 +1,562 @@
+---
+title: 'YAML Workflows'
+description: 'Define complex multi-agent workflows using YAML configuration'
+icon: 'file-code'
+---
+
+## YAML Workflow Configuration
+
+Flo AI supports defining entire multi-agent workflows in YAML, making it easy to version control, share, and manage complex AI systems.
+
+## Basic Workflow Structure
+
+```yaml basic-workflow.yaml
+metadata:
+  name: "content-analysis-workflow"
+  version: "1.0.0"
+  description: "Multi-agent content analysis pipeline"
+
+arium:
+  agents:
+    - name: "analyzer"
+      role: "Content Analyst"
+      job: "Analyze the input content and extract key insights."
+      model:
+        provider: "openai"
+        name: "gpt-4o-mini"
+        temperature: 0.3
+    
+    - name: "summarizer"
+      role: "Content Summarizer"
+      job: "Create a concise summary based on the analysis."
+      model:
+        provider: "anthropic"
+        name: "claude-3-5-sonnet-20240620"
+        temperature: 0.2
+
+  workflow:
+    start: "analyzer"
+    edges:
+      - from: "analyzer"
+        to: ["summarizer"]
+    end: ["summarizer"]
+```
+
+## Advanced Workflow Patterns
+
+### Conditional Routing
+
+```yaml conditional-workflow.yaml
+metadata:
+  name: "support-routing-workflow"
+  version: "1.0.0"
+
+arium:
+  agents:
+    - name: "classifier"
+      role: "Request Classifier"
+      job: "Classify incoming requests by type and urgency."
+      model:
+        provider: "openai"
+        name: "gpt-4o-mini"
+    
+    - name: "technical_support"
+      role: "Technical Support"
+      job: "Handle technical issues and troubleshooting."
+      model:
+        provider: "openai"
+        name: "gpt-4o"
+    
+    - name: "billing_support"
+      role: "Billing Support"
+      job: "Handle billing and account questions."
+      model:
+        provider: "anthropic"
+        name: "claude-3-5-sonnet-20240620"
+    
+    - name: "general_support"
+      role: "General Support"
+      job: "Handle general inquiries and questions."
+      model:
+        provider: "openai"
+        name: "gpt-4o-mini"
+
+  routers:
+    - name: "support_router"
+      type: "conditional"
+      routing_logic: |
+        def route_request(memory):
+            last_message = str(memory.get()[-1]) if memory.get() else ""
+            if "technical" in last_message.lower():
+                return "technical_support"
+            elif "billing" in last_message.lower():
+                return "billing_support"
+            else:
+                return "general_support"
+
+  workflow:
+    start: "classifier"
+    edges:
+      - from: "classifier"
+        to: ["technical_support", "billing_support", "general_support"]
+        router: "support_router"
+    end: ["technical_support", "billing_support", "general_support"]
+```
+
+### LLM-Powered Routing
+
+```yaml smart-routing-workflow.yaml
+metadata:
+  name: "smart-content-workflow"
+  version: "1.0.0"
+
+arium:
+  agents:
+    - name: "content_analyzer"
+      role: "Content Analyzer"
+      job: "Analyze content and determine the best processing approach."
+      model:
+        provider: "openai"
+        name: "gpt-4o-mini"
+    
+    - name: "technical_writer"
+      role: "Technical Writer"
+      job: "Create technical documentation and guides."
+      model:
+        provider: "openai"
+        name: "gpt-4o"
+    
+    - name: "creative_writer"
+      role: "Creative Writer"
+      job: "Create engaging creative content."
+      model:
+        provider: "anthropic"
+        name: "claude-3-5-sonnet-20240620"
+    
+    - name: "marketing_writer"
+      role: "Marketing Writer"
+      job: "Create marketing copy and promotional content."
+      model:
+        provider: "openai"
+        name: "gpt-4o"
+
+  routers:
+    - name: "content_router"
+      type: "smart"
+      routing_options:
+        technical_writer: "Technical content, documentation, tutorials, code examples"
+        creative_writer: "Creative writing, storytelling, fiction, poetry"
+        marketing_writer: "Marketing copy, sales content, campaigns, advertisements"
+      model:
+        provider: "openai"
+        name: "gpt-4o-mini"
+        temperature: 0.1
+
+  workflow:
+    start: "content_analyzer"
+    edges:
+      - from: "content_analyzer"
+        to: ["technical_writer", "creative_writer", "marketing_writer"]
+        router: "content_router"
+    end: ["technical_writer", "creative_writer", "marketing_writer"]
+```
+
+## Reflection Patterns
+
+### A→B→A→C Pattern
+
+```yaml reflection-workflow.yaml
+metadata:
+  name: "reflection-writing-workflow"
+  version: "1.0.0"
+
+arium:
+  agents:
+    - name: "writer"
+      role: "Content Writer"
+      job: "Write initial content based on requirements."
+      model:
+        provider: "openai"
+        name: "gpt-4o"
+    
+    - name: "critic"
+      role: "Content Critic"
+      job: "Review and critique the written content."
+      model:
+        provider: "anthropic"
+        name: "claude-3-5-sonnet-20240620"
+    
+    - name: "finalizer"
+      role: "Content Finalizer"
+      job: "Create the final polished version."
+      model:
+        provider: "openai"
+        name: "gpt-4o"
+
+  routers:
+    - name: "reflection_router"
+      type: "reflection"
+      flow_pattern: ["writer", "critic", "writer"]
+      model:
+        provider: "openai"
+        name: "gpt-4o-mini"
+
+  workflow:
+    start: "writer"
+    edges:
+      - from: "writer"
+        to: ["critic"]
+      - from: "critic"
+        to: ["writer"]
+        router: "reflection_router"
+      - from: "writer"
+        to: ["finalizer"]
+    end: ["finalizer"]
+```
+
+## Plan-Execute Workflows
+
+### Cursor-Style Development
+
+```yaml plan-execute-workflow.yaml
+metadata:
+  name: "development-workflow"
+  version: "1.0.0"
+
+arium:
+  agents:
+    - name: "planner"
+      role: "Development Planner"
+      job: "Create detailed execution plans for development tasks."
+      model:
+        provider: "openai"
+        name: "gpt-4o"
+    
+    - name: "developer"
+      role: "Code Developer"
+      job: "Implement features according to the plan."
+      model:
+        provider: "openai"
+        name: "gpt-4o"
+    
+    - name: "tester"
+      role: "Code Tester"
+      job: "Test implementations and validate functionality."
+      model:
+        provider: "anthropic"
+        name: "claude-3-5-sonnet-20240620"
+    
+    - name: "reviewer"
+      role: "Code Reviewer"
+      job: "Review and approve completed work."
+      model:
+        provider: "openai"
+        name: "gpt-4o"
+
+  routers:
+    - name: "plan_execute_router"
+      type: "plan_execute"
+      settings:
+        planner_agent: "planner"
+        executor_agent: "developer"
+        reviewer_agent: "reviewer"
+        max_iterations: 3
+      model:
+        provider: "openai"
+        name: "gpt-4o-mini"
+
+  workflow:
+    start: "planner"
+    edges:
+      - from: "planner"
+        to: ["developer"]
+      - from: "developer"
+        to: ["tester"]
+      - from: "tester"
+        to: ["reviewer"]
+        router: "plan_execute_router"
+    end: ["reviewer"]
+```
+
+## Parallel Processing
+
+### Fan-out/Fan-in Pattern
+
+```yaml parallel-workflow.yaml
+metadata:
+  name: "parallel-analysis-workflow"
+  version: "1.0.0"
+
+arium:
+  agents:
+    - name: "coordinator"
+      role: "Analysis Coordinator"
+      job: "Coordinate parallel analysis tasks."
+      model:
+        provider: "openai"
+        name: "gpt-4o-mini"
+    
+    - name: "sentiment_analyzer"
+      role: "Sentiment Analyzer"
+      job: "Analyze sentiment and emotional tone."
+      model:
+        provider: "openai"
+        name: "gpt-4o-mini"
+    
+    - name: "topic_extractor"
+      role: "Topic Extractor"
+      job: "Extract main topics and themes."
+      model:
+        provider: "anthropic"
+        name: "claude-3-5-sonnet-20240620"
+    
+    - name: "keyword_analyzer"
+      role: "Keyword Analyzer"
+      job: "Extract and analyze keywords."
+      model:
+        provider: "openai"
+        name: "gpt-4o-mini"
+    
+    - name: "synthesizer"
+      role: "Analysis Synthesizer"
+      job: "Combine all analysis results into a comprehensive report."
+      model:
+        provider: "openai"
+        name: "gpt-4o"
+
+  workflow:
+    start: "coordinator"
+    edges:
+      - from: "coordinator"
+        to: ["sentiment_analyzer", "topic_extractor", "keyword_analyzer"]
+      - from: ["sentiment_analyzer", "topic_extractor", "keyword_analyzer"]
+        to: ["synthesizer"]
+    end: ["synthesizer"]
+```
+
+## Complex Multi-Step Workflows
+
+### Research and Analysis Pipeline
+
+```yaml research-workflow.yaml
+metadata:
+  name: "research-pipeline"
+  version: "1.0.0"
+
+arium:
+  agents:
+    - name: "researcher"
+      role: "Research Agent"
+      job: "Conduct research on the given topic."
+      model:
+        provider: "openai"
+        name: "gpt-4o"
+      tools:
+        - name: "web_search"
+          description: "Search the web for information"
+        - name: "database_query"
+          description: "Query internal databases"
+    
+    - name: "analyzer"
+      role: "Data Analyst"
+      job: "Analyze research data and identify patterns."
+      model:
+        provider: "openai"
+        name: "gpt-4o"
+    
+    - name: "synthesizer"
+      role: "Content Synthesizer"
+      job: "Synthesize findings into coherent insights."
+      model:
+        provider: "anthropic"
+        name: "claude-3-5-sonnet-20240620"
+    
+    - name: "validator"
+      role: "Content Validator"
+      job: "Validate accuracy and completeness of findings."
+      model:
+        provider: "openai"
+        name: "gpt-4o"
+    
+    - name: "presenter"
+      role: "Presentation Creator"
+      job: "Create final presentation of findings."
+      model:
+        provider: "openai"
+        name: "gpt-4o"
+
+  workflow:
+    start: "researcher"
+    edges:
+      - from: "researcher"
+        to: ["analyzer"]
+      - from: "analyzer"
+        to: ["synthesizer"]
+      - from: "synthesizer"
+        to: ["validator"]
+      - from: "validator"
+        to: ["presenter"]
+    end: ["presenter"]
+```
+
+## Workflow Configuration Options
+
+### Memory Configuration
+
+```yaml memory-workflow.yaml
+metadata:
+  name: "memory-workflow"
+  version: "1.0.0"
+
+arium:
+  memory:
+    type: "message"
+    max_messages: 10
+    include_metadata: true
+  
+  agents:
+    - name: "conversational_agent"
+      role: "Conversational Agent"
+      job: "Maintain context across multiple interactions."
+      model:
+        provider: "openai"
+        name: "gpt-4o"
+      memory:
+        enabled: true
+        max_context: 5
+
+  workflow:
+    start: "conversational_agent"
+    end: ["conversational_agent"]
+```
+
+### Error Handling
+
+```yaml error-handling-workflow.yaml
+metadata:
+  name: "robust-workflow"
+  version: "1.0.0"
+
+arium:
+  error_handling:
+    max_retries: 3
+    retry_delay: 1.0
+    fallback_agent: "fallback_handler"
+    timeout: 30
+  
+  agents:
+    - name: "primary_agent"
+      role: "Primary Processor"
+      job: "Main processing agent."
+      model:
+        provider: "openai"
+        name: "gpt-4o"
+      retries: 2
+      timeout: 20
+    
+    - name: "fallback_handler"
+      role: "Fallback Handler"
+      job: "Handle errors and provide fallback responses."
+      model:
+        provider: "openai"
+        name: "gpt-4o-mini"
+
+  workflow:
+    start: "primary_agent"
+    edges:
+      - from: "primary_agent"
+        to: ["fallback_handler"]
+        on_error: true
+    end: ["primary_agent", "fallback_handler"]
+```
+
+## Loading and Executing YAML Workflows
+
+### Basic Loading
+
+```python
+from flo_ai.arium import AriumBuilder
+
+# Load workflow from file
+workflow = AriumBuilder.from_yaml('workflow.yaml')
+
+# Execute workflow
+result = await workflow.build_and_run(["Input data here"])
+```
+
+### Advanced Execution
+
+```python
+# Load with custom configuration
+workflow = AriumBuilder.from_yaml(
+    'workflow.yaml',
+    config_overrides={
+        'agents.analyzer.model.temperature': 0.1,
+        'agents.summarizer.model.temperature': 0.5
+    }
+)
+
+# Execute with variables
+result = await workflow.build_and_run(
+    ["Input data"],
+    variables={
+        'user_id': '123',
+        'priority': 'high'
+    }
+)
+```
+
+### Workflow Validation
+
+```python
+# Validate workflow before execution
+try:
+    workflow = AriumBuilder.from_yaml('workflow.yaml')
+    workflow.validate()
+    print("✅ Workflow is valid")
+except Exception as e:
+    print(f"❌ Workflow validation failed: {e}")
+```
+
+## Best Practices
+
+### YAML Structure
+
+1. **Use meaningful names**: Choose descriptive agent and workflow names
+2. **Version your workflows**: Always include version numbers
+3. **Document thoroughly**: Add descriptions for all components
+4. **Validate schemas**: Use YAML schema validation tools
+
+### Performance Optimization
+
+```yaml
+# Optimize for performance
+arium:
+  agents:
+    - name: "fast_agent"
+      model:
+        provider: "openai"
+        name: "gpt-4o-mini"  # Use faster model
+        temperature: 0.1      # Lower temperature
+        max_tokens: 500       # Limit response length
+      cache_ttl: 3600         # Cache for 1 hour
+      timeout: 10            # Short timeout
+```
+
+### Security Considerations
+
+```yaml
+# Secure workflow configuration
+arium:
+  agents:
+    - name: "secure_agent"
+      model:
+        provider: "openai"
+        name: "gpt-4o"
+        temperature: 0.1     # Lower temperature for consistency
+      max_tokens: 200        # Limit response length
+      timeout: 5            # Short timeout
+      retries: 1            # Limit retries
+```
+
+This YAML-based approach makes complex multi-agent workflows declarative, versionable, and easily shareable across teams!

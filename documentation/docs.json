@@ -1,0 +1,98 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Flo AI Documentation",
+  "colors": {
+    "primary": "#3B82F6",
+    "light": "#60A5FA",
+    "dark": "#1E40AF"
+  },
+  "favicon": "/favicon.png",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Guides",
+        "groups": [
+          {
+            "group": "Getting started",
+            "pages": [
+              "index",
+              "quickstart",
+              "development"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "essentials/agents",
+              "essentials/arium",
+              "essentials/studio",
+              "essentials/yaml-agents",
+              "essentials/code"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "essentials/llm-providers",
+              "essentials/tools",
+              "essentials/yaml-workflows",
+              "essentials/routing",
+              "essentials/telemetry"
+            ]
+          }
+        ]
+      }
+    ],
+    "global": {
+      "anchors": [
+        {
+          "anchor": "GitHub",
+          "href": "https://github.com/rootflo/flo-ai",
+          "icon": "github"
+        },
+        {
+          "anchor": "Community",
+          "href": "https://github.com/rootflo/flo-ai/discussions",
+          "icon": "comments"
+        }
+      ]
+    }
+  },
+  "logo": {
+    "light": "/logo/light.png",
+    "dark": "/logo/dark.png"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Examples",
+        "href": "https://github.com/rootflo/flo-ai/tree/main/flo_ai/examples"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Get Started",
+      "href": "https://github.com/rootflo/flo-ai"
+    }
+  },
+  "contextual": {
+    "options": [
+     "copy",
+     "view",
+     "chatgpt",
+     "claude",
+     "perplexity",
+     "mcp",
+     "cursor",
+     "vscode"
+   ]
+  },
+  "footer": {
+    "socials": {
+      "x": "https://x.com/rootflo",
+      "github": "https://github.com/rootflo/flo-ai",
+      "linkedin": "https://linkedin.com/company/rootflo"
+    }
+  }
+}

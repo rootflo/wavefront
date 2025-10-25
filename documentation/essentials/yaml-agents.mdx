@@ -1,0 +1,413 @@
+---
+title: 'YAML-Based Agents'
+description: 'Create and configure agents using YAML configuration files'
+icon: 'file-code'
+---
+
+## YAML Agent Configuration
+
+Flo AI supports creating agents entirely through YAML configuration files, making it easy to version control, share, and manage agent configurations.
+
+## Basic YAML Agent
+
+Create a simple agent using YAML:
+
+```yaml agent.yaml
+metadata:
+  name: "customer-support-agent"
+  version: "1.0.0"
+  description: "Customer support agent for handling inquiries"
+
+agent:
+  name: "Customer Support"
+  prompt: "You are a helpful customer support agent. Provide friendly and accurate assistance."
+  model:
+    provider: "openai"
+    name: "gpt-4o-mini"
+    temperature: 0.7
+  max_tokens: 1000
+  retries: 3
+```
+
+```python Load YAML Agent
+from flo_ai.builder.agent_builder import AgentBuilder
+
+# Load agent from YAML
+agent = AgentBuilder.from_yaml('agent.yaml')
+response = await agent.run('How can I reset my password?')
+```
+
+## Advanced YAML Configuration
+
+### Agent with Tools
+
+```yaml tool-agent.yaml
+metadata:
+  name: "calculator-agent"
+  version: "1.0.0"
+
+agent:
+  name: "Calculator Assistant"
+  prompt: "You are a math assistant that can perform calculations."
+  model:
+    provider: "anthropic"
+    name: "claude-3-5-sonnet-20240620"
+    temperature: 0.3
+  
+  tools:
+    - name: "calculate"
+      description: "Perform mathematical calculations"
+      function: "calculate"
+      parameters:
+        operation:
+          type: "string"
+          description: "Mathematical operation (add, subtract, multiply, divide)"
+        x:
+          type: "number"
+          description: "First number"
+        y:
+          type: "number"
+          description: "Second number"
+```
+
+### Agent with Structured Output
+
+```yaml structured-agent.yaml
+metadata:
+  name: "analysis-agent"
+  version: "1.0.0"
+
+agent:
+  name: "Business Analyst"
+  prompt: "Analyze business data and provide structured insights."
+  model:
+    provider: "openai"
+    name: "gpt-4o"
+    temperature: 0.2
+  
+  output_schema:
+    type: "pydantic"
+    model: "AnalysisResult"
+    fields:
+      summary:
+        type: "string"
+        description: "Executive summary"
+      key_findings:
+        type: "array"
+        description: "List of key findings"
+      recommendations:
+        type: "array"
+        description: "Actionable recommendations"
+```
+
+### Agent with Variables
+
+```yaml variable-agent.yaml
+metadata:
+  name: "personalized-agent"
+  version: "1.0.0"
+
+agent:
+  name: "Personalized Assistant"
+  prompt: |
+    Hello <user_name>! You are a <user_role> at <company>.
+    Provide personalized assistance based on the user's role and company context.
+  model:
+    provider: "openai"
+    name: "gpt-4o-mini"
+  
+  variables:
+    - name: "user_name"
+      description: "User's name"
+      required: true
+    - name: "user_role"
+      description: "User's role"
+      required: true
+    - name: "company"
+      description: "Company name"
+      required: false
+      default: "TechCorp"
+```
+
+## YAML Schema Reference
+
+### Metadata Section
+
+```yaml
+metadata:
+  name: "agent-name"           # Required: Unique agent identifier
+  version: "1.0.0"             # Required: Semantic version
+  description: "Agent description"  # Optional: Human-readable description
+  author: "Your Name"          # Optional: Agent author
+  tags: ["tag1", "tag2"]       # Optional: Categorization tags
+```
+
+### Agent Configuration
+
+```yaml
+agent:
+  name: "Agent Display Name"   # Required: Human-readable name
+  prompt: "System prompt"      # Required: Agent's system prompt
+  model:                       # Required: LLM configuration
+    provider: "openai"         # Required: openai, anthropic, google, ollama
+    name: "gpt-4o-mini"        # Required: Model name
+    temperature: 0.7           # Optional: 0.0 to 2.0
+    max_tokens: 1000          # Optional: Maximum response length
+    timeout: 30               # Optional: Request timeout in seconds
+  
+  # Optional configurations
+  retries: 3                  # Number of retry attempts
+  cache_ttl: 3600            # Cache time-to-live in seconds
+  memory_type: "message"     # Memory type: message, custom
+  tools: []                  # List of tools (see tools section)
+  variables: []              # List of variables (see variables section)
+  output_schema: {}          # Structured output configuration
+```
+
+### Tools Configuration
+
+```yaml
+tools:
+  - name: "tool_name"         # Required: Tool identifier
+    description: "Tool description"  # Required: Tool description
+    function: "function_name"  # Required: Python function name
+    parameters:              # Required: Function parameters
+      param1:
+        type: "string"       # Parameter type
+        description: "Parameter description"
+        required: true       # Whether parameter is required
+        default: "value"     # Default value
+```
+
+### Variables Configuration
+
+```yaml
+variables:
+  - name: "variable_name"     # Required: Variable name
+    description: "Description" # Required: Variable description
+    type: "string"           # Optional: string, number, boolean
+    required: true           # Optional: Whether variable is required
+    default: "default_value" # Optional: Default value
+```
+
+## Loading and Using YAML Agents
+
+### Basic Loading
+
+```python
+from flo_ai.builder.agent_builder import AgentBuilder
+
+# Load from file
+agent = AgentBuilder.from_yaml('agent.yaml')
+
+# Load from string
+yaml_content = """
+agent:
+  name: "Test Agent"
+  prompt: "You are a test agent."
+  model:
+    provider: "openai"
+    name: "gpt-4o-mini"
+"""
+
+agent = AgentBuilder.from_yaml_string(yaml_content)
+```
+
+### Using Variables
+
+```python
+# Load agent with variables
+agent = AgentBuilder.from_yaml('variable-agent.yaml')
+
+# Provide variables at runtime
+variables = {
+    'user_name': 'John',
+    'user_role': 'Data Scientist',
+    'company': 'TechCorp'
+}
+
+response = await agent.run(
+    'What should I focus on today?',
+    variables=variables
+)
+```
+
+### Tool Integration
+
+```python
+# Define tool function
+async def calculate(operation: str, x: float, y: float) -> float:
+    operations = {
+        'add': lambda: x + y,
+        'subtract': lambda: x - y,
+        'multiply': lambda: x * y,
+        'divide': lambda: x / y if y != 0 else 0,
+    }
+    return operations.get(operation, lambda: 0)()
+
+# Load agent with tools
+agent = AgentBuilder.from_yaml('tool-agent.yaml')
+agent.add_tool(calculate)
+
+response = await agent.run('Calculate 5 plus 3')
+```
+
+## Best Practices
+
+### YAML Structure
+
+1. **Use meaningful names**: Choose descriptive agent and variable names
+2. **Version your configurations**: Always include version numbers
+3. **Document thoroughly**: Add descriptions for all components
+4. **Validate schemas**: Use YAML schema validation tools
+
+### Performance Optimization
+
+```yaml
+# Optimize for performance
+agent:
+  name: "Optimized Agent"
+  prompt: "Concise and effective prompt"
+  model:
+    provider: "openai"
+    name: "gpt-4o-mini"  # Use faster model for simple tasks
+    temperature: 0.3     # Lower temperature for consistency
+    max_tokens: 500      # Limit response length
+  cache_ttl: 3600       # Cache responses for 1 hour
+  retries: 2            # Limit retries to avoid costs
+```
+
+### Security Considerations
+
+```yaml
+# Secure configuration
+agent:
+  name: "Secure Agent"
+  prompt: |
+    You are a secure assistant. Never:
+    - Share sensitive information
+    - Execute dangerous commands
+    - Access unauthorized resources
+  model:
+    provider: "openai"
+    name: "gpt-4o"
+    temperature: 0.1    # Lower temperature for consistency
+  max_tokens: 200       # Limit response length
+  timeout: 10          # Short timeout for security
+```
+
+## Validation and Testing
+
+### Schema Validation
+
+```python
+from flo_ai.builder.agent_builder import AgentBuilder
+import yaml
+
+# Validate YAML structure
+def validate_agent_yaml(file_path):
+    try:
+        with open(file_path, 'r') as f:
+            config = yaml.safe_load(f)
+        
+        # Check required fields
+        assert 'agent' in config
+        assert 'name' in config['agent']
+        assert 'prompt' in config['agent']
+        assert 'model' in config['agent']
+        
+        print("✅ YAML configuration is valid")
+        return True
+    except Exception as e:
+        print(f"❌ YAML validation failed: {e}")
+        return False
+
+validate_agent_yaml('agent.yaml')
+```
+
+### Testing YAML Agents
+
+```python
+import asyncio
+
+async def test_yaml_agent():
+    agent = AgentBuilder.from_yaml('agent.yaml')
+    
+    # Test basic functionality
+    response = await agent.run('Hello!')
+    assert response is not None
+    print(f"✅ Agent responds: {response}")
+    
+    # Test with variables
+    if 'variables' in agent.config:
+        variables = {'test_var': 'test_value'}
+        response = await agent.run('Test message', variables=variables)
+        print(f"✅ Agent with variables: {response}")
+
+asyncio.run(test_yaml_agent())
+```
+
+## Examples
+
+### Customer Support Agent
+
+```yaml customer-support.yaml
+metadata:
+  name: "customer-support"
+  version: "1.0.0"
+  description: "Handles customer inquiries and support requests"
+
+agent:
+  name: "Customer Support Agent"
+  prompt: |
+    You are a professional customer support agent. Your role is to:
+    1. Listen to customer concerns with empathy
+    2. Provide accurate and helpful information
+    3. Escalate complex issues when necessary
+    4. Maintain a friendly and professional tone
+    
+    Always be patient, understanding, and solution-oriented.
+  model:
+    provider: "openai"
+    name: "gpt-4o-mini"
+    temperature: 0.3
+  max_tokens: 1000
+  retries: 2
+```
+
+### Data Analysis Agent
+
+```yaml data-analyst.yaml
+metadata:
+  name: "data-analyst"
+  version: "1.0.0"
+  description: "Analyzes data and provides insights"
+
+agent:
+  name: "Data Analyst"
+  prompt: |
+    You are an expert data analyst. Analyze the provided data and:
+    1. Identify key patterns and trends
+    2. Provide statistical insights
+    3. Suggest actionable recommendations
+    4. Highlight any anomalies or concerns
+  model:
+    provider: "openai"
+    name: "gpt-4o"
+    temperature: 0.2
+  output_schema:
+    type: "pydantic"
+    model: "AnalysisResult"
+    fields:
+      summary: 
+        type: "string"
+        description: "Executive summary"
+      insights:
+        type: "array"
+        description: "Key insights"
+      recommendations:
+        type: "array"
+        description: "Actionable recommendations"
+```
+
+This YAML-based approach makes agent configuration declarative, versionable, and easily shareable across teams!

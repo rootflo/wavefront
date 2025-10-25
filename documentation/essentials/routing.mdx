@@ -1,0 +1,472 @@
+---
+title: 'Intelligent Routing'
+description: 'Implement smart routing logic for multi-agent workflows'
+icon: 'route'
+---
+
+## Routing Overview
+
+Flo AI provides powerful routing capabilities that allow you to create intelligent workflows where requests are dynamically routed to the most appropriate agents based on content, context, or custom logic.
+
+## Routing Types
+
+### Conditional Routing
+
+Route based on simple conditions or content analysis:
+
+```python
+from flo_ai.arium.memory import BaseMemory
+
+def route_by_type(memory: BaseMemory) -> str:
+    """Route based on classification result"""
+    messages = memory.get()
+    last_message = str(messages[-1]) if messages else ""
+    
+    if "technical" in last_message.lower():
+        return "tech_specialist"
+    elif "billing" in last_message.lower():
+        return "billing_specialist"
+    else:
+        return "general_specialist"
+
+# Use in workflow
+workflow = (
+    AriumBuilder()
+    .add_agents([classifier, tech_specialist, billing_specialist, general_specialist])
+    .start_with(classifier)
+    .add_edge(classifier, [tech_specialist, billing_specialist, general_specialist], route_by_type)
+    .end_with([tech_specialist, billing_specialist, general_specialist])
+)
+```
+
+### LLM-Powered Routing
+
+Use AI to make intelligent routing decisions:
+
+```yaml smart-routing.yaml
+routers:
+  - name: "content_router"
+    type: "smart"
+    routing_options:
+      technical_writer: "Technical content, documentation, tutorials, code examples"
+      creative_writer: "Creative writing, storytelling, fiction, poetry"
+      marketing_writer: "Marketing copy, sales content, campaigns, advertisements"
+    model:
+      provider: "openai"
+      name: "gpt-4o-mini"
+      temperature: 0.1
+```
+
+### Reflection Routing
+
+Implement A→B→A→C feedback patterns:
+
+```yaml reflection-routing.yaml
+routers:
+  - name: "reflection_router"
+    type: "reflection"
+    flow_pattern: ["writer", "critic", "writer"]
+    model:
+      provider: "openai"
+      name: "gpt-4o-mini"
+    settings:
+      max_iterations: 3
+      convergence_threshold: 0.8
+```
+
+### Plan-Execute Routing
+
+Cursor-style development workflows:
+
+```yaml plan-execute-routing.yaml
+routers:
+  - name: "plan_execute_router"
+    type: "plan_execute"
+    settings:
+      planner_agent: "planner"
+      executor_agent: "developer"
+      reviewer_agent: "reviewer"
+      max_iterations: 5
+      quality_threshold: 0.9
+    model:
+      provider: "openai"
+      name: "gpt-4o-mini"
+```
+
+## Advanced Routing Patterns
+
+### Multi-Criteria Routing
+
+```python
+def advanced_router(memory: BaseMemory) -> str:
+    """Route based on multiple criteria"""
+    messages = memory.get()
+    last_message = str(messages[-1]) if messages else ""
+    
+    # Extract criteria
+    urgency = "urgent" in last_message.lower()
+    technical = "technical" in last_message.lower()
+    billing = "billing" in last_message.lower()
+    
+    # Route based on combination of criteria
+    if urgency and technical:
+        return "senior_tech_specialist"
+    elif urgency and billing:
+        return "billing_manager"
+    elif technical:
+        return "tech_specialist"
+    elif billing:
+        return "billing_specialist"
+    else:
+        return "general_support"
+```
+
+### Context-Aware Routing
+
+```python
+def context_aware_router(memory: BaseMemory) -> str:
+    """Route based on conversation context"""
+    messages = memory.get()
+    
+    # Analyze conversation history
+    conversation_context = []
+    for msg in messages[-5:]:  # Last 5 messages
+        conversation_context.append(str(msg))
+    
+    context_text = " ".join(conversation_context)
+    
+    # Route based on context
+    if "previous issue" in context_text.lower():
+        return "follow_up_specialist"
+    elif "new customer" in context_text.lower():
+        return "onboarding_specialist"
+    else:
+        return "general_specialist"
+```
+
+### Load Balancing
+
+```python
+import random
+from collections import defaultdict
+
+class LoadBalancer:
+    def __init__(self):
+        self.agent_loads = defaultdict(int)
+    
+    def route_with_load_balancing(self, memory: BaseMemory) -> str:
+        """Route to agent with least load"""
+        available_agents = ["agent1", "agent2", "agent3"]
+        
+        # Find agent with minimum load
+        min_load = min(self.agent_loads[agent] for agent in available_agents)
+        least_loaded = [agent for agent in available_agents 
+                       if self.agent_loads[agent] == min_load]
+        
+        # Random selection among least loaded
+        selected = random.choice(least_loaded)
+        self.agent_loads[selected] += 1
+        
+        return selected
+```
+
+## YAML Router Configuration
+
+### Smart Router
+
+```yaml
+routers:
+  - name: "intelligent_router"
+    type: "smart"
+    description: "Route requests based on content analysis"
+    routing_options:
+      technical_support:
+        description: "Technical issues and troubleshooting"
+        keywords: ["error", "bug", "technical", "code", "system"]
+        priority: "high"
+      
+      billing_support:
+        description: "Billing and payment issues"
+        keywords: ["billing", "payment", "invoice", "charge", "refund"]
+        priority: "medium"
+      
+      general_support:
+        description: "General questions and information"
+        keywords: ["question", "help", "information", "general"]
+        priority: "low"
+    
+    model:
+      provider: "openai"
+      name: "gpt-4o-mini"
+      temperature: 0.1
+      max_tokens: 100
+    
+    settings:
+      confidence_threshold: 0.8
+      fallback_route: "general_support"
+      timeout: 10
+```
+
+### Conditional Router
+
+```yaml
+routers:
+  - name: "conditional_router"
+    type: "conditional"
+    description: "Route based on predefined conditions"
+    conditions:
+      - condition: "urgency == 'high' and type == 'technical'"
+        route: "senior_tech_specialist"
+      - condition: "urgency == 'high' and type == 'billing'"
+        route: "billing_manager"
+      - condition: "type == 'technical'"
+        route: "tech_specialist"
+      - condition: "type == 'billing'"
+        route: "billing_specialist"
+      - condition: "default"
+        route: "general_support"
+```
+
+### Reflection Router
+
+```yaml
+routers:
+  - name: "reflection_router"
+    type: "reflection"
+    description: "Implement iterative improvement pattern"
+    flow_pattern: ["writer", "critic", "writer"]
+    model:
+      provider: "openai"
+      name: "gpt-4o-mini"
+    settings:
+      max_iterations: 3
+      convergence_threshold: 0.85
+      improvement_required: true
+      quality_metrics:
+        - "clarity"
+        - "accuracy"
+        - "completeness"
+```
+
+## Custom Router Implementation
+
+### Creating Custom Routers
+
+```python
+from flo_ai.arium.routers import BaseRouter
+from flo_ai.arium.memory import BaseMemory
+
+class CustomRouter(BaseRouter):
+    def __init__(self, config: dict):
+        self.config = config
+        self.routing_rules = config.get('rules', [])
+    
+    async def route(self, memory: BaseMemory) -> str:
+        """Custom routing logic"""
+        messages = memory.get()
+        last_message = str(messages[-1]) if messages else ""
+        
+        # Apply custom routing rules
+        for rule in self.routing_rules:
+            if self._matches_rule(last_message, rule):
+                return rule['target']
+        
+        # Default route
+        return self.config.get('default_route', 'general_agent')
+    
+    def _matches_rule(self, message: str, rule: dict) -> bool:
+        """Check if message matches routing rule"""
+        keywords = rule.get('keywords', [])
+        return any(keyword.lower() in message.lower() for keyword in keywords)
+```
+
+### Using Custom Routers
+
+```python
+# Configure custom router
+router_config = {
+    'rules': [
+        {
+            'keywords': ['urgent', 'critical', 'emergency'],
+            'target': 'priority_support'
+        },
+        {
+            'keywords': ['technical', 'bug', 'error'],
+            'target': 'tech_support'
+        }
+    ],
+    'default_route': 'general_support'
+}
+
+custom_router = CustomRouter(router_config)
+
+# Use in workflow
+workflow = (
+    AriumBuilder()
+    .add_agents([classifier, priority_support, tech_support, general_support])
+    .start_with(classifier)
+    .add_edge(classifier, [priority_support, tech_support, general_support], custom_router)
+    .end_with([priority_support, tech_support, general_support])
+)
+```
+
+## Router Performance
+
+### Caching Routes
+
+```python
+from functools import lru_cache
+
+class CachedRouter:
+    def __init__(self):
+        self.route_cache = {}
+    
+    @lru_cache(maxsize=1000)
+    def get_route(self, message_hash: str) -> str:
+        """Cache routing decisions"""
+        # Routing logic here
+        return route_decision
+    
+    def route(self, memory: BaseMemory) -> str:
+        messages = memory.get()
+        last_message = str(messages[-1]) if messages else ""
+        message_hash = hash(last_message)
+        
+        if message_hash in self.route_cache:
+            return self.route_cache[message_hash]
+        
+        route = self.get_route(message_hash)
+        self.route_cache[message_hash] = route
+        return route
+```
+
+### Performance Monitoring
+
+```python
+import time
+from typing import Dict, List
+
+class MonitoredRouter:
+    def __init__(self):
+        self.routing_times: List[float] = []
+        self.route_counts: Dict[str, int] = {}
+    
+    def route(self, memory: BaseMemory) -> str:
+        start_time = time.time()
+        
+        # Routing logic
+        route_decision = self._determine_route(memory)
+        
+        # Record metrics
+        routing_time = time.time() - start_time
+        self.routing_times.append(routing_time)
+        self.route_counts[route_decision] = self.route_counts.get(route_decision, 0) + 1
+        
+        return route_decision
+    
+    def get_metrics(self) -> dict:
+        return {
+            'avg_routing_time': sum(self.routing_times) / len(self.routing_times),
+            'route_distribution': self.route_counts,
+            'total_routes': len(self.routing_times)
+        }
+```
+
+## Error Handling in Routing
+
+### Fallback Routes
+
+```python
+def robust_router(memory: BaseMemory) -> str:
+    """Router with fallback handling"""
+    try:
+        # Primary routing logic
+        return primary_routing_logic(memory)
+    except Exception as e:
+        print(f"Routing error: {e}")
+        # Fallback to default route
+        return "fallback_agent"
+```
+
+### Retry Logic
+
+```python
+import asyncio
+
+class RetryRouter:
+    def __init__(self, max_retries: int = 3):
+        self.max_retries = max_retries
+    
+    async def route_with_retry(self, memory: BaseMemory) -> str:
+        """Route with retry logic"""
+        for attempt in range(self.max_retries):
+            try:
+                return await self._route(memory)
+            except Exception as e:
+                if attempt == self.max_retries - 1:
+                    return "fallback_agent"
+                await asyncio.sleep(2 ** attempt)  # Exponential backoff
+```
+
+## Best Practices
+
+### Router Design
+
+1. **Keep it simple**: Start with basic conditional routing
+2. **Use LLM routing**: For complex content analysis
+3. **Implement fallbacks**: Always have a default route
+4. **Monitor performance**: Track routing metrics
+5. **Test thoroughly**: Validate routing logic with various inputs
+
+### Performance Optimization
+
+```python
+# Optimize router performance
+class OptimizedRouter:
+    def __init__(self):
+        self.route_cache = {}
+        self.keyword_index = self._build_keyword_index()
+    
+    def _build_keyword_index(self) -> dict:
+        """Pre-build keyword index for fast lookup"""
+        return {
+            'technical': ['bug', 'error', 'code', 'system'],
+            'billing': ['payment', 'invoice', 'charge', 'refund'],
+            'urgent': ['urgent', 'critical', 'emergency', 'asap']
+        }
+    
+    def route(self, memory: BaseMemory) -> str:
+        """Fast routing using pre-built index"""
+        messages = memory.get()
+        last_message = str(messages[-1]) if messages else ""
+        
+        # Fast keyword matching
+        for category, keywords in self.keyword_index.items():
+            if any(keyword in last_message.lower() for keyword in keywords):
+                return f"{category}_agent"
+        
+        return "general_agent"
+```
+
+### Security Considerations
+
+```python
+def secure_router(memory: BaseMemory) -> str:
+    """Router with security validation"""
+    messages = memory.get()
+    last_message = str(messages[-1]) if messages else ""
+    
+    # Validate input
+    if len(last_message) > 10000:  # Prevent very long inputs
+        return "error_handler"
+    
+    # Check for malicious patterns
+    malicious_patterns = ['<script>', 'javascript:', 'eval(']
+    if any(pattern in last_message.lower() for pattern in malicious_patterns):
+        return "security_handler"
+    
+    # Normal routing logic
+    return normal_routing_logic(memory)
+```
+
+This comprehensive routing system allows you to create intelligent, adaptive workflows that can handle complex routing scenarios with high performance and reliability!
