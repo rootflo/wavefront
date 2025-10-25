@@ -28,7 +28,7 @@
    •
     <a href="https://rootflo.ai" target="_blank">Website</a>
    •
-    <a href="https://github.com/rootflo/flo-ai/blob/develop/ROADMAP.md" target="_blank">Roadmap</a>
+    <a href="https://flo-ai.rootflo.ai" target="_blank">Documentation</a>
   </p>
 
   <hr />
