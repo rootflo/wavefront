@@ -20,10 +20,16 @@ class Anthropic(BaseLLM):
         temperature: float = 0.7,
         api_key: Optional[str] = None,
         base_url: str = None,
+        custom_headers: Optional[Dict[str, str]] = None,
         **kwargs,
     ):
         super().__init__(model, api_key, temperature, **kwargs)
-        self.client = AsyncAnthropic(api_key=self.api_key, base_url=base_url)
+        # Add custom headers if base_url is provided (proxy scenario)
+        client_kwargs = {'api_key': self.api_key, 'base_url': base_url}
+        if base_url and custom_headers:
+            client_kwargs['default_headers'] = custom_headers
+
+        self.client = AsyncAnthropic(**client_kwargs)
 
     @trace_llm_call(provider='anthropic')
     async def generate(
@@ -31,6 +37,7 @@ class Anthropic(BaseLLM):
         messages: List[Dict[str, str]],
         functions: Optional[List[Dict[str, Any]]] = None,
         output_schema: Optional[Dict[str, Any]] = None,
+        **kwargs,
     ) -> Dict[str, Any]:
         # Convert messages to Claude format
         system_message = next(
@@ -54,21 +61,22 @@ class Anthropic(BaseLLM):
                 )
 
         try:
-            kwargs = {
+            anthropic_kwargs = {
                 'model': self.model,
                 'messages': conversation,
                 'temperature': self.temperature,
                 'max_tokens': self.kwargs.get('max_tokens', 1024),
                 **self.kwargs,
+                **kwargs,
             }
 
             if system_message:
-                kwargs['system'] = system_message
+                anthropic_kwargs['system'] = system_message
 
             if functions:
-                kwargs['tools'] = functions
+                anthropic_kwargs['tools'] = functions
 
-            response = await self.client.messages.create(**kwargs)
+            response = await self.client.messages.create(**anthropic_kwargs)
 
             # Record token usage if available
             if hasattr(response, 'usage') and response.usage:
@@ -117,6 +125,7 @@ class Anthropic(BaseLLM):
         self,
         messages: List[Dict[str, str]],
         functions: Optional[List[Dict[str, Any]]] = None,
+        **kwargs,
     ) -> AsyncIterator[Dict[str, Any]]:
         """Stream partial responses from the LLM as they are generated"""
         # Convert messages to Claude format
@@ -134,21 +143,22 @@ class Anthropic(BaseLLM):
                     }
                 )
 
-        kwargs = {
+        anthropic_kwargs = {
             'model': self.model,
             'messages': conversation,
             'temperature': self.temperature,
             'max_tokens': self.kwargs.get('max_tokens', 1024),
             **self.kwargs,
+            **kwargs,
         }
 
         if system_message:
-            kwargs['system'] = system_message
+            anthropic_kwargs['system'] = system_message
 
         if functions:
-            kwargs['tools'] = functions
+            anthropic_kwargs['tools'] = functions
         # Use Anthropic SDK streaming API and yield text deltas
-        async with self.client.messages.stream(**kwargs) as stream:
+        async with self.client.messages.stream(**anthropic_kwargs) as stream:
             async for event in stream:
                 if (
                     getattr(event, 'type', None) == 'content_block_delta'

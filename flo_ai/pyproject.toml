@@ -29,6 +29,8 @@ opentelemetry-sdk = "^1.28.2"
 opentelemetry-exporter-otlp = "^1.28.2"
 opentelemetry-instrumentation = "^0.49b2"
 pyyaml = "^6.0.3"
+pyjwt = "^2.10.1"
+cryptography = "^46.0.3"
 
 [tool.poetry.extras]
 vizualize = ["matplotlib", "networkx"]

@@ -19,21 +19,33 @@ class OpenAI(BaseLLM):
         api_key: str = None,
         temperature: float = 0.7,
         base_url: str = None,
+        custom_headers: Optional[Dict[str, str]] = None,
         **kwargs,
     ):
         super().__init__(
             model=model, api_key=api_key, temperature=temperature, **kwargs
         )
-        self.client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+        # Add custom headers if base_url is provided (proxy scenario)
+        client_kwargs = {'api_key': api_key, 'base_url': base_url}
+        if base_url and custom_headers:
+            client_kwargs['default_headers'] = custom_headers
+
+        self.client = AsyncOpenAI(**client_kwargs)
         self.model = model
         self.kwargs = kwargs
 
     @trace_llm_call(provider='openai')
     async def generate(
-        self, messages: list[dict], output_schema: dict = None, **kwargs
+        self,
+        messages: list[dict],
+        functions: Optional[List[Dict[str, Any]]] = None,
+        output_schema: dict = None,
+        **kwargs,
     ) -> Any:
-        # Convert output_schema to OpenAI format if provided
+        # Handle structured output vs tool calling
+        # Priority: output_schema takes precedence over functions for structured output
         if output_schema:
+            # Convert output_schema to OpenAI format for structured output
             kwargs['response_format'] = {'type': 'json_object'}
             kwargs['functions'] = [
                 {
@@ -57,14 +69,17 @@ class OpenAI(BaseLLM):
                         'content': 'Please provide your response in JSON format according to the specified schema.',
                     },
                 )
+        elif functions:
+            # Use functions for tool calling when output_schema is not provided
+            kwargs['functions'] = functions
 
         # Prepare OpenAI API parameters
         openai_kwargs = {
             'model': self.model,
             'messages': messages,
             'temperature': self.temperature,
-            **kwargs,
             **self.kwargs,
+            **kwargs,
         }
 
         # Make the API call
@@ -112,8 +127,8 @@ class OpenAI(BaseLLM):
             'messages': messages,
             'temperature': self.temperature,
             'stream': True,
-            **kwargs,
             **self.kwargs,
+            **kwargs,
         }
 
         if functions:

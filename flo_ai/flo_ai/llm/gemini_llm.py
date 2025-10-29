@@ -22,12 +22,26 @@ class Gemini(BaseLLM):
         temperature: float = 0.7,
         api_key: Optional[str] = None,
         base_url: str = None,
+        custom_headers: Optional[Dict[str, str]] = None,
         **kwargs,
     ):
         super().__init__(model, api_key, temperature, **kwargs)
-        self.client = (
-            genai.Client(api_key=self.api_key) if self.api_key else genai.Client()
-        )
+        # Configure http_options for proxy or custom base_url
+        http_options = {'base_url': base_url} if base_url else {}
+        if base_url and self.api_key:
+            # For custom base_url (proxy), set Authorization header explicitly
+            http_options['headers'] = {'Authorization': f'Bearer {self.api_key}'}
+            # Merge custom headers if provided (proxy scenario)
+            if custom_headers:
+                http_options['headers'].update(custom_headers)
+
+        # Initialize client based on configuration
+        if http_options:
+            self.client = genai.Client(http_options=http_options)
+        elif self.api_key:
+            self.client = genai.Client(api_key=self.api_key)
+        else:
+            self.client = genai.Client()
 
     @trace_llm_call(provider='gemini')
     async def generate(
@@ -35,6 +49,7 @@ class Gemini(BaseLLM):
         messages: List[Dict[str, str]],
         functions: Optional[List[Dict[str, Any]]] = None,
         output_schema: Optional[Dict[str, Any]] = None,
+        **kwargs,
     ) -> Dict[str, Any]:
         # Convert messages to Gemini format
         contents = []
@@ -51,10 +66,12 @@ class Gemini(BaseLLM):
 
         try:
             # Prepare generation config
+            # Merge instance kwargs with method kwargs
+            config_kwargs = {**self.kwargs, **kwargs}
             generation_config = types.GenerateContentConfig(
                 temperature=self.temperature,
                 system_instruction=system_prompt,
-                **self.kwargs,
+                **config_kwargs,
             )
 
             # Add tools if functions are provided
@@ -134,6 +151,7 @@ class Gemini(BaseLLM):
         self,
         messages: List[Dict[str, str]],
         functions: Optional[List[Dict[str, Any]]] = None,
+        **kwargs,
     ) -> AsyncIterator[Dict[str, Any]]:
         """Stream partial responses from Gemini as they are generated"""
         # Convert messages to Gemini format
@@ -150,10 +168,12 @@ class Gemini(BaseLLM):
                 contents.append(message_content)
 
         # Prepare generation config
+        # Merge instance kwargs with method kwargs
+        config_kwargs = {**self.kwargs, **kwargs}
         generation_config = types.GenerateContentConfig(
             temperature=self.temperature,
             system_instruction=system_prompt,
-            **self.kwargs,
+            **config_kwargs,
         )
 
         # Add tools if functions are provided
