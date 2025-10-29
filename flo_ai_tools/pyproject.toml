@@ -1,22 +1,25 @@
-[tool.poetry]
+[project]
 name = "flo_ai_tools"
 version = "0.0.1"
 description = "Some good tool implementations for flo-ai"
-authors = ["rootflo <*@rootflo.ai>"]
-license = "MIT"
+authors = [{ name = "rootflo", email = "*@rootflo.ai" }]
+requires-python = ">=3.9,<4.0"
 readme = "README.md"
-packages = [
-    { include = "flo_ai_tools" }
+license = "MIT"
+dependencies = ["redshift-connector>=2.1.5,<3"]
+
+[dependency-groups]
+dev = [
+    "boto3==1.36.1",
+    "botocore==1.36.1",
 ]
 
-[tool.poetry.dependencies]
-python = ">=3.9,<4.0"
-redshift-connector = "^2.1.5"
+[tool.hatch.build.targets.sdist]
+include = ["flo_ai_tools"]
 
-[tool.poetry.group.dev.dependencies]
-boto3 = "1.36.1"
-botocore = "1.36.1"
+[tool.hatch.build.targets.wheel]
+include = ["flo_ai_tools"]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"

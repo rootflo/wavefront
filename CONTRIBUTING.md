@@ -12,7 +12,5 @@ We appreciate your input!
 ## Installing Dependencies
 
 ```cmd
-poetry lock
-poetry install
-pre-commit install
+uv sync
 ```

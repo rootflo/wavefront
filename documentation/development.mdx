@@ -1,12 +1,10 @@
 ---
-title: 'Development'
-description: 'Set up your development environment for Flo AI'
+title: "Development"
+description: "Set up your development environment for Flo AI"
 ---
 
 <Info>
-  **Prerequisites**:
-  - Python 3.10 or higher
-  - pip or poetry package manager
+  **Prerequisites**: - Python 3.10 or higher - pip, poetry or uv package manager
   - API keys for your chosen LLM providers
 </Info>
 
@@ -15,7 +13,7 @@ Follow these steps to set up your development environment for Flo AI.
 <Steps>
 <Step title="Install Flo AI">
 
-Install Flo AI using pip or poetry:
+Install Flo AI using pip, poetry or uv:
 
 ```bash
 # Using pip
@@ -23,6 +21,9 @@ pip install flo-ai
 
 # Using poetry
 poetry add flo-ai
+
+#Using uv
+uv add flo-ai
 ```
 
 </Step>
@@ -65,7 +66,7 @@ async def test_installation():
         .with_llm(OpenAI(model='gpt-4o-mini'))
         .build()
     )
-    
+
     response = await agent.run('Hello, world!')
     print(f'Agent response: {response}')
 
@@ -151,14 +152,14 @@ flo_ai/
   <Accordion title="Code style and formatting">
 
     Flo AI uses pre-commit hooks for code formatting:
-    
+
     ```bash
     # Install pre-commit
     pip install pre-commit
-    
+
     # Install hooks
     pre-commit install
-    
+
     # Run on all files
     pre-commit run --all-files
     ```
@@ -182,11 +183,13 @@ flo_ai/
   <Accordion title="Import errors">
 
     If you encounter import errors, ensure you're using Python 3.10+ and have installed all dependencies:
-    
+
     ```bash
     pip install -r requirements.txt
     # or
     poetry install
+    # or
+    uv sync
     ```
 
   </Accordion>
@@ -194,7 +197,7 @@ flo_ai/
   <Accordion title="API key issues">
 
     Verify your API keys are correctly set:
-    
+
     ```bash
     echo $OPENAI_API_KEY
     echo $ANTHROPIC_API_KEY
@@ -205,7 +208,7 @@ flo_ai/
   <Accordion title="Studio not loading">
 
     If the studio doesn't load, try:
-    
+
     ```bash
     cd studio
     rm -rf node_modules

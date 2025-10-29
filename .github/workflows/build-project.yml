@@ -4,37 +4,34 @@ on:
   pull_request:
     branches:
       - develop
-  workflow_dispatch:  # Allows manual triggering from the GitHub Actions UI
+  workflow_dispatch: # Allows manual triggering from the GitHub Actions UI
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
 
-    - name: Install and configure Poetry
-      uses: snok/install-poetry@v1
-      with:
-        version: 1.8.3
-        virtualenvs-create: true
-        virtualenvs-in-project: true
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.7.3"
 
-    - name: Install dependencies
-      run: cd flo_ai && poetry lock && poetry install
+      - name: Install dependencies
+        run: cd flo_ai && uv sync
 
-    - name: Run Ruff
-      run: cd flo_ai && poetry run pre-commit run --all-files
-      
-    - name: Run build
-      run: cd flo_ai && poetry build
+      - name: Run Ruff
+        run: cd flo_ai && uv run pre-commit run --all-files
 
-    - name: Run tests
-      run:  cd flo_ai && poetry run pytest -m "not (integration)"
-    
+      - name: Run build
+        run: cd flo_ai && uv build
+
+      - name: Run tests
+        run: cd flo_ai && uv run pytest -m "not (integration)"

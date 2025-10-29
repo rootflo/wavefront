@@ -1,54 +1,72 @@
-[tool.poetry]
+[project]
 name = "flo_ai"
 version = "1.0.7-rc5"
 description = "A easy way to create structured AI agents"
-authors = ["rootflo <*@rootflo.ai>"]
-license = "MIT"
+authors = [{ name = "rootflo", email = "*@rootflo.ai" }]
+requires-python = ">=3.10,<4.0"
 readme = "README.md"
-packages = [
-    { include = "flo_ai" }
+license = "MIT"
+
+dependencies = [
+    "aiohttp>=3.12.14,<4",
+    "anthropic>=0.57.1,<0.58",
+    "chardet>=3.dev0,<4.dev0",
+    "cryptography>=46.0.3",
+    "google-cloud-aiplatform>=1.109.0,<2",
+    "google-genai>=1.25.0,<2",
+    "httpx>=0.28.1",
+    "openai>=1.77.0,<2",
+    "opentelemetry-api>=1.28.2,<2",
+    "opentelemetry-sdk>=1.28.2,<2",
+    "opentelemetry-exporter-otlp>=1.28.2,<2",
+    "opentelemetry-instrumentation>=0.49b2,<0.50",
+    "pillow>=10.3.0,<11",
+    "pydantic>=2.9.2,<3",
+    "pyjwt>=2.10.1",
+    "pypdf>=4.2.0,<5",
+    "pymupdf4llm>=0.0.17,<0.0.18",
+    "pyyaml>=6.0.3,<7",
 ]
 
-[tool.poetry.dependencies]
-python = ">=3.10,<4.0"
-httpx = ">=0.28.1"
-pillow = "^10.3.0"
-pydantic = "^2.9.2"
-openai = "^1.77.0"
-google-genai = "^1.25.0"
-matplotlib = { version = "^3.7.0", optional = true }
-networkx = { version = "^3.0", optional = true }
-anthropic = "^0.57.1"
-aiohttp = "^3.12.14"
-google-cloud-aiplatform = "^1.109.0"
-pypdf = "^4.2.0"
-pymupdf4llm = "^0.0.17"
-chardet = ">=3.dev0,<4.dev0"
-opentelemetry-api = "^1.28.2"
-opentelemetry-sdk = "^1.28.2"
-opentelemetry-exporter-otlp = "^1.28.2"
-opentelemetry-instrumentation = "^0.49b2"
-pyyaml = "^6.0.3"
-pyjwt = "^2.10.1"
-cryptography = "^46.0.3"
+[project.optional-dependencies]
+vizualize = [
+    "matplotlib>=3.7.0,<4",
+    "networkx~=3.0",
+]
 
-[tool.poetry.extras]
-vizualize = ["matplotlib", "networkx"]
+[dependency-groups]
+dev = [
+    "boto3>=1.36.1,<2",
+    "botocore>=1.36.1,<2",
+    "db-sqlite3>=0.0.1,<0.0.2",
+    "ipykernel>=6.29.5,<7",
+    "peewee>=3.17.6,<4",
+    "python-dotenv>=1.0.1,<2",
+    "pytest>=8.3.3,<9",
+    "pytest-asyncio>=0.24.0,<0.25",
+    "pre-commit>=4.0.1,<5",
+    "reportlab>=4.4.3,<5",
+    "streamlit>=1.42.2,<2",
+    "wikipedia>=1.4.0,<2",
+]
 
-[tool.poetry.group.dev.dependencies]
-boto3 = "^1.36.1"
-botocore = "^1.36.1"
-ipykernel = "^6.29.5"
-db-sqlite3 = "^0.0.1"
-peewee = "^3.17.6"
-python-dotenv = "^1.0.1"
-wikipedia = "^1.4.0"
-pytest = "^8.3.3"
-pytest-asyncio = "^0.24.0"
-pre-commit = "^4.0.1"
-reportlab = "^4.4.3"
-streamlit = "^1.42.2"
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "integration: tests that make actual LLM API calls and require API keys",
+    "llm_tests: tests that make actual LLM API calls and require API keys"
+]
+
+[tool.uv]
+required-version = ">=0.7.3"
+
+[tool.hatch.build.targets.sdist]
+include = ["flo_ai"]
+
+[tool.hatch.build.targets.wheel]
+include = ["flo_ai"]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"

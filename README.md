@@ -81,6 +81,8 @@ Flo AI is a Python framework that makes building production-ready AI agents and 
 pip install flo-ai
 # or using poetry
 poetry add flo-ai
+# or using uv
+uv add flo-ai
 ```
 
 ### Your First Agent (30 seconds)
@@ -193,6 +195,7 @@ Flo AI Studio is a modern, intuitive visual editor that allows you to design com
 ### 🏃‍♂️ Quick Start with Studio
 
 1. **Start the Studio**:
+
    ```bash
    cd studio
    pnpm install
@@ -200,17 +203,19 @@ Flo AI Studio is a modern, intuitive visual editor that allows you to design com
    ```
 
 2. **Design Your Workflow**:
+
    - Add agents, routers, and tools to the canvas
    - Configure their properties and connections
    - Test with the built-in validation
 
 3. **Export & Run**:
+
 ```python
 from flo_ai.arium import AriumBuilder
-   
+
    builder = AriumBuilder.from_yaml(yaml_file='your_workflow.yaml')
    result = await builder.build_and_run(['Your input here'])
-   ```
+```
 
 ## 🔧 Core Features
 
@@ -302,7 +307,7 @@ from flo_ai.models.document import DocumentMessage, DocumentType
         document_type=DocumentType.PDF,
         document_file_path='business_report.pdf'
     )
-    
+
 # Process with agent
 agent = (
     AgentBuilder()
@@ -363,20 +368,20 @@ from flo_ai.llm import OpenAI
 
 async def simple_chain():
     llm = OpenAI(model='gpt-4o-mini')
-    
+
     # Create agents
     analyst = Agent(
         name='content_analyst',
         system_prompt='Analyze the input and extract key insights.',
         llm=llm
     )
-    
+
     summarizer = Agent(
-        name='summarizer', 
+        name='summarizer',
         system_prompt='Create a concise summary based on the analysis.',
         llm=llm
     )
-    
+
     # Build and run workflow
     result = await (
         AriumBuilder()
@@ -386,7 +391,7 @@ async def simple_chain():
         .end_with(summarizer)
         .build_and_run(["Analyze this complex business report..."])
     )
-    
+
     return result
 ```
 
@@ -399,12 +404,12 @@ from flo_ai.arium.memory import BaseMemory
         """Route based on classification result"""
     messages = memory.get()
     last_message = str(messages[-1]) if messages else ""
-        
+
         if "technical" in last_message.lower():
             return "tech_specialist"
         else:
             return "business_specialist"
-    
+
     # Build workflow with conditional routing
 result = await (
         AriumBuilder()
@@ -436,7 +441,7 @@ arium:
       model:
         provider: "openai"
         name: "gpt-4o-mini"
-    
+
     - name: "summarizer"
       role: "Content Summarizer"
       job: "Create a concise summary based on the analysis."
@@ -548,6 +553,7 @@ Check out the `examples/` directory for comprehensive examples:
 Visit our [website](https://www.rootflo.ai) to know more
 
 **Additional Resources:**
+
 - [@flo_tool Decorator Guide](TOOLS.md) - Complete guide to the `@flo_tool` decorator
 - [Examples Directory](flo_ai/examples/) - Ready-to-run code examples
 - [Contributing Guide](CONTRIBUTING.md) - How to contribute to Flo AI
@@ -555,17 +561,20 @@ Visit our [website](https://www.rootflo.ai) to know more
 ## 🌟 Why Flo AI?
 
 ### For Developers
+
 - **Simple Setup**: Get started in minutes with minimal configuration
 - **Flexible**: Use YAML or code-based configuration
 - **Production Ready**: Built-in error handling and retry mechanisms
 - **Multi-LLM**: Switch between providers easily
 
 ### For Teams
+
 - **Maintainable**: YAML-first approach makes configurations versionable
 - **Testable**: Each component can be tested independently
 - **Scalable**: From simple agents to complex multi-tool systems
 
 ### Use Cases
+
 - 🤖 Customer Service Automation
 - 📊 Data Analysis and Processing
 - 📝 Content Generation and Summarization
