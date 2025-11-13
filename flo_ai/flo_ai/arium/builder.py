@@ -457,6 +457,9 @@ class AriumBuilder:
                         f'Either provide the agent in the agents parameter or add configuration fields.'
                     )
 
+            elif agents and agent_name in agents:
+                agent = agents[agent_name]
+
             # Method 2: Direct agent definition
             elif (
                 'job' in agent_config
