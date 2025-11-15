@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="../images/rootflo-logo.png" alt="Rootflo" width="150" />
+  <img src="./images/rootflo-logo.png" alt="Rootflo" width="150" />
 </p>
 
 <h1 align="center">Flo AI 🌊</h1>
