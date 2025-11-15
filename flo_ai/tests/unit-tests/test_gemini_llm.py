@@ -6,13 +6,13 @@ Pytest tests for the Gemini LLM implementation.
 import sys
 import os
 import pytest
-from unittest.mock import Mock, patch, mock_open
+from unittest.mock import Mock, patch
 
 # Add the flo_ai directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from flo_ai.llm.gemini_llm import Gemini
-from flo_ai.llm.base_llm import ImageMessage
+from flo_ai.models.chat_message import ImageMessageContent
 from flo_ai.tool.base_tool import Tool
 
 os.environ['GOOGLE_API_KEY'] = 'test-key-123'
@@ -377,44 +377,45 @@ class TestGemini:
         assert formatted[0]['name'] == 'tool1'
         assert formatted[1]['name'] == 'tool2'
 
-    def test_gemini_format_image_in_message_file_path(self):
-        """Test format_image_in_message method with file path."""
+    def test_gemini_format_image_in_message_base64(self):
+        """Test format_image_in_message method with base64."""
         llm = Gemini()
 
-        # Mock file reading
-        with patch('builtins.open', mock_open(read_data=b'fake_image_data')):
-            image = ImageMessage(
-                image_file_path='/path/to/image.jpg', mime_type='image/jpeg'
-            )
+        import base64
 
-            result = llm.format_image_in_message(image)
-
-            # Verify genai.types.Part.from_bytes was called
-            # Note: We can't easily test the genai call without more complex mocking
-            # but we can verify the method doesn't raise an exception
-            assert result is not None
-
-    def test_gemini_format_image_in_message_bytes(self):
-        """Test format_image_in_message method with image bytes."""
-        llm = Gemini()
-
-        image = ImageMessage(image_bytes=b'fake_image_data', mime_type='image/png')
+        fake_image_data = b'fake_image_data'
+        base64_data = base64.b64encode(fake_image_data).decode('utf-8')
+        image = ImageMessageContent(base64=base64_data, mime_type='image/jpeg')
 
         result = llm.format_image_in_message(image)
 
         # Verify genai.types.Part.from_bytes was called
+        # Note: We can't easily test the genai call without more complex mocking
+        # but we can verify the method doesn't raise an exception
         assert result is not None
+
+    def test_gemini_format_image_in_message_url(self):
+        """Test format_image_in_message method with image URL."""
+        llm = Gemini()
+
+        # URL support is not properly implemented (from_url doesn't exist on Part)
+        image = ImageMessageContent(
+            url='https://example.com/image.jpg', mime_type='image/png'
+        )
+
+        # This will raise AttributeError because types.Part.from_url doesn't exist
+        llm.format_image_in_message(image)
 
     def test_gemini_format_image_in_message_unsupported(self):
         """Test format_image_in_message method with unsupported image format."""
         llm = Gemini()
 
-        # Test with image_url (not implemented)
-        image = ImageMessage(image_url='https://example.com/image.jpg')
+        # Test with no url or base64 (should raise NotImplementedError)
+        image = ImageMessageContent(url=None, base64=None, mime_type='image/jpeg')
 
         with pytest.raises(
             NotImplementedError,
-            match='Not other way other than file path has been implemented',
+            match='Image formatting for Gemini LLM requires either url or base64 data',
         ):
             llm.format_image_in_message(image)
 

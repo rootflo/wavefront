@@ -1,4 +1,5 @@
 from typing import List, Optional, Dict, Any, Union, Type
+from flo_ai.models import AssistantMessage
 import yaml
 from flo_ai.models.agent import Agent
 from flo_ai.models.base_agent import ReasoningPattern
@@ -16,22 +17,28 @@ class AgentBuilder:
 
     def __init__(self):
         self._name = 'AI Assistant'
-        self._system_prompt = 'You are a helpful AI assistant.'
+        self._system_prompt: str | AssistantMessage = 'You are a helpful AI assistant.'
         self._llm: Optional[BaseLLM] = None
         self._tools: List[Tool] = []
         self._max_retries = 3
         self._reasoning_pattern = ReasoningPattern.DIRECT
         self._output_schema: Optional[Dict[str, Any]] = None
         self._role: Optional[str] = None
-        self._act_as: Optional[str] = None
+        self._act_as: Optional[str] = (
+            'assistant'  # Default to 'assistant' instead of None
+        )
 
     def with_name(self, name: str) -> 'AgentBuilder':
         """Set the agent's name"""
         self._name = name
         return self
 
-    def with_prompt(self, system_prompt: str) -> 'AgentBuilder':
-        """Set the system prompt"""
+    def with_prompt(self, system_prompt: str | AssistantMessage) -> 'AgentBuilder':
+        """Set the system prompt
+
+        Args:
+            system_prompt: Either a string prompt or a list of InputMessage objects
+        """
         self._system_prompt = system_prompt
         return self
 

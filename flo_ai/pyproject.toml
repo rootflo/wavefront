@@ -66,6 +66,10 @@ include = ["flo_ai"]
 [tool.hatch.build.targets.wheel]
 include = ["flo_ai"]
 
+
+[tool.poetry.group.dev.dependencies]
+reportlab = "^4.4.4"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

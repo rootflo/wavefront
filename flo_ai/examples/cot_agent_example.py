@@ -4,6 +4,8 @@ Example demonstrating Chain of Thought (CoT) reasoning pattern in the Agent clas
 """
 
 import asyncio
+from flo_ai import UserMessage
+from flo_ai import TextMessageContent
 from flo_ai.models.agent import Agent
 from flo_ai.models.base_agent import ReasoningPattern
 from flo_ai.llm.openai_llm import OpenAI
@@ -74,9 +76,15 @@ async def main():
 
     # Test questions
     questions = [
-        'What is 15 + 27?',
-        'If I have 100 apples and I give away 23, then buy 15 more, how many do I have?',
-        'Calculate 8 * 7 and then add 12 to the result.',
+        UserMessage(TextMessageContent(text='What is 15 + 27?')),
+        UserMessage(
+            TextMessageContent(
+                text='If I have 100 apples and I give away 23, then buy 15 more, how many do I have?',
+            )
+        ),
+        UserMessage(
+            TextMessageContent(text='Calculate 8 * 7 and then add 12 to the result.')
+        ),
     ]
 
     print('=== Chain of Thought (CoT) Reasoning Demo ===\n')

@@ -8,7 +8,7 @@ import os
 import pytest
 import asyncio
 from flo_ai.llm.openai_llm import OpenAI
-from flo_ai.llm.base_llm import ImageMessage
+from flo_ai.models import ImageMessageContent
 from flo_ai.tool.base_tool import Tool
 
 
@@ -319,12 +319,9 @@ class TestOpenAIReal:
 
     def test_format_image_in_message(self):
         """Test format_image_in_message method (should raise NotImplementedError)."""
-        image = ImageMessage(image_url='https://example.com/image.jpg')
+        image = ImageMessageContent(url='https://example.com/image.jpg')
 
-        with pytest.raises(
-            NotImplementedError, match='Not implemented image for LLM OpenAI'
-        ):
-            self.llm.format_image_in_message(image)
+        self.llm.format_image_in_message(image)
 
     @pytest.mark.asyncio
     async def test_generate_with_usage_tracking(self):

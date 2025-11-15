@@ -12,7 +12,7 @@ from unittest.mock import Mock, AsyncMock, patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from flo_ai.llm.openai_vllm import OpenAIVLLM
-from flo_ai.llm.base_llm import ImageMessage
+from flo_ai.models.chat_message import ImageMessageContent
 from flo_ai.tool.base_tool import Tool
 
 
@@ -370,13 +370,15 @@ class TestOpenAIVLLM:
             base_url='https://api.vllm.com', model='gpt-4o-mini', api_key='test-key-123'
         )
 
-        # Test with image message
-        image = ImageMessage(image_url='https://example.com/image.jpg')
+        # Test with image message (OpenAIVLLM inherits from OpenAI, so it should work)
+        image = ImageMessageContent(
+            url='https://example.com/image.jpg', mime_type='image/jpeg'
+        )
+        result = llm.format_image_in_message(image)
 
-        with pytest.raises(
-            NotImplementedError, match='Not implemented image for LLM OpenAI'
-        ):
-            llm.format_image_in_message(image)
+        assert result is not None
+        assert result['type'] == 'input_image'
+        assert result['image']['url'] == 'https://example.com/image.jpg'
 
     @pytest.mark.asyncio
     @patch('flo_ai.llm.openai_llm.AsyncOpenAI')

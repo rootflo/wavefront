@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Pytest tests for the BaseLLM abstract class and ImageMessage dataclass.
+Pytest tests for the BaseLLM abstract class and ImageMessageContent dataclass.
 """
 
 import sys
@@ -11,7 +11,8 @@ from unittest.mock import Mock
 # Add the flo_ai directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from flo_ai.llm.base_llm import BaseLLM, ImageMessage
+from flo_ai.llm.base_llm import BaseLLM
+from flo_ai.models import ImageMessageContent
 
 
 class MockLLM(BaseLLM):
@@ -58,41 +59,14 @@ class MockLLM(BaseLLM):
         return f'image:{image.mime_type}'
 
 
-class TestImageMessage:
-    """Test class for ImageMessage dataclass."""
-
-    def test_image_message_creation(self):
-        """Test creating ImageMessage with different parameters."""
-        # Test with image_url
-        img1 = ImageMessage(image_url='https://example.com/image.jpg')
-        assert img1.image_url == 'https://example.com/image.jpg'
-        assert img1.image_bytes is None
-        assert img1.image_file_path is None
-        assert img1.image_base64 is None
-        assert img1.mime_type is None
-
-        # Test with image_bytes
-        img2 = ImageMessage(image_bytes=b'fake_image_data', mime_type='image/jpeg')
-        assert img2.image_bytes == b'fake_image_data'
-        assert img2.mime_type == 'image/jpeg'
-
-        # Test with image_file_path
-        img3 = ImageMessage(image_file_path='/path/to/image.png', mime_type='image/png')
-        assert img3.image_file_path == '/path/to/image.png'
-        assert img3.mime_type == 'image/png'
-
-        # Test with image_base64
-        img4 = ImageMessage(image_base64='base64_encoded_string', mime_type='image/gif')
-        assert img4.image_base64 == 'base64_encoded_string'
-        assert img4.mime_type == 'image/gif'
+class TestImageMessageContent:
+    """Test class for ImageMessageContent dataclass."""
 
     def test_image_message_defaults(self):
-        """Test ImageMessage with no parameters."""
-        img = ImageMessage()
-        assert img.image_url is None
-        assert img.image_bytes is None
-        assert img.image_file_path is None
-        assert img.image_base64 is None
+        """Test ImageMessageContent with no parameters."""
+        img = ImageMessageContent()
+        assert img.url is None
+        assert img.base64 is None
         assert img.mime_type is None
 
 

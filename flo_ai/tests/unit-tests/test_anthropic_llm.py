@@ -12,7 +12,7 @@ from unittest.mock import Mock, AsyncMock, patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from flo_ai.llm.anthropic_llm import Anthropic
-from flo_ai.llm.base_llm import ImageMessage
+from flo_ai.models import ImageMessageContent
 from flo_ai.tool.base_tool import Tool
 
 
@@ -385,7 +385,7 @@ class TestAnthropic:
         llm = Anthropic()
 
         # This method is not implemented yet
-        image = ImageMessage(image_url='https://example.com/image.jpg')
+        image = ImageMessageContent(url='https://example.com/image.jpg')
 
         with pytest.raises(NotImplementedError):
             llm.format_image_in_message(image)

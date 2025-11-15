@@ -3,10 +3,9 @@ from flo_ai.arium.arium import Arium
 from flo_ai.arium.memory import MessageMemory, BaseMemory
 from flo_ai.arium.protocols import ExecutableNode
 from flo_ai.arium.nodes import AriumNode, ForEachNode
-from flo_ai.models.agent import Agent
+from flo_ai.models import BaseMessage, TextMessageContent, UserMessage
+from flo_ai.models.agent import Agent, resolve_variables
 from flo_ai.tool.base_tool import Tool
-from flo_ai.llm.base_llm import ImageMessage
-from flo_ai.models.document import DocumentMessage
 import yaml
 from flo_ai.builder.agent_builder import AgentBuilder
 from flo_ai.llm import BaseLLM
@@ -234,12 +233,24 @@ class AriumBuilder:
 
     async def build_and_run(
         self,
-        inputs: List[Union[str, ImageMessage, DocumentMessage]],
+        inputs: List[BaseMessage] | str,
         variables: Optional[Dict[str, Any]] = None,
     ) -> List[dict]:
         """Build the Arium and run it with the given inputs and optional runtime variables."""
         arium = self.build()
-        return await arium.run(inputs, variables=variables)
+        new_inputs = []
+        for input in inputs:
+            if isinstance(input, str):
+                new_inputs.append(
+                    UserMessage(
+                        TextMessageContent(text=resolve_variables(input, variables))
+                    )
+                )
+            elif isinstance(input, BaseMessage):
+                new_inputs.append(input)
+            else:
+                raise ValueError(f'Invalid input type: {type(input)}')
+        return await arium.run(new_inputs, variables=variables)
 
     def visualize(
         self, output_path: str = 'arium_graph.png', title: str = 'Arium Workflow'

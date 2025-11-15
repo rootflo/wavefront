@@ -4,9 +4,23 @@ Examples demonstrating how to use the AriumBuilder pattern for creating and runn
 
 from typing import Literal
 from flo_ai.arium import AriumBuilder, create_arium
+from flo_ai.llm import OpenAI
+from flo_ai.models import TextMessageContent, UserMessage
 from flo_ai.models.agent import Agent
+from flo_ai.tool import flo_tool
 from flo_ai.tool.base_tool import Tool
 from flo_ai.arium.memory import MessageMemory
+
+
+@flo_tool(
+    description='Calculate mathematical expressions',
+    parameter_descriptions={
+        'result': 'The result to print',
+    },
+)
+async def print_result(result: str) -> str:
+    print(f'Result: {result}')
+    return result
 
 
 # Example 1: Simple Linear Workflow
@@ -14,21 +28,28 @@ async def example_linear_workflow():
     """Example of a simple linear workflow: Agent -> Tool -> Agent"""
 
     # Create some example agents and tools (these would be your actual implementations)
-    analyzer_agent = Agent(name='analyzer', prompt='Analyze the input')
-    processing_tool = Tool(name='processor')
-    summarizer_agent = Agent(name='summarizer', prompt='Summarize the results')
+    analyzer_agent = Agent(
+        name='analyzer',
+        system_prompt='Analyze the input',
+        llm=OpenAI(model='gpt-4o-mini'),
+    )
+    summarizer_agent = Agent(
+        name='summarizer',
+        system_prompt='Summarize the results',
+        llm=OpenAI(model='gpt-4o-mini'),
+    )
 
     # Build and run the workflow
     result = await (
         AriumBuilder()
         .add_agent(analyzer_agent)
-        .add_tool(processing_tool)
+        .add_tool(print_result.tool)
         .add_agent(summarizer_agent)
         .start_with(analyzer_agent)
-        .connect(analyzer_agent, processing_tool)
-        .connect(processing_tool, summarizer_agent)
+        .connect(analyzer_agent, print_result.tool)
+        .connect(print_result.tool, summarizer_agent)
         .end_with(summarizer_agent)
-        .build_and_run(['Analyze this text'])
+        .build_and_run([UserMessage(TextMessageContent(text='Analyze this text'))])
     )
 
     return result
@@ -119,9 +140,14 @@ async def example_complex_workflow():
 async def example_convenience_function():
     """Example using the create_arium convenience function"""
 
-    agent1 = Agent(name='agent1', prompt='First agent')
-    agent2 = Agent(name='agent2', prompt='Second agent')
+    agent1 = Agent(
+        name='agent1', system_prompt='First agent', llm=OpenAI(model='gpt-4o-mini')
+    )
+    agent2 = Agent(
+        name='agent2', system_prompt='Second agent', llm=OpenAI(model='gpt-4o-mini')
+    )
 
+    # Fix: Use proper InputMessage format for consistency
     result = await (
         create_arium()
         .add_agent(agent1)
@@ -129,7 +155,7 @@ async def example_convenience_function():
         .start_with(agent1)
         .connect(agent1, agent2)
         .end_with(agent2)
-        .build_and_run(['Hello'])
+        .build_and_run([UserMessage(TextMessageContent(text='Hello'))])
     )
 
     return result
@@ -164,7 +190,6 @@ if __name__ == '__main__':
         # result3 = await example_complex_workflow()
         # result4 = await example_convenience_function()
         # result5 = await example_build_and_reuse()
-
         print('Examples completed!')
 
     asyncio.run(main())

@@ -8,7 +8,7 @@ import os
 import pytest
 import asyncio
 from flo_ai.llm.anthropic_llm import Anthropic
-from flo_ai.llm.base_llm import ImageMessage
+from flo_ai.models import ImageMessageContent
 from flo_ai.tool.base_tool import Tool
 
 
@@ -24,14 +24,14 @@ class TestAnthropicReal:
             pytest.skip('ANTHROPIC_API_KEY environment variable not set')
 
         self.llm = Anthropic(
-            model='claude-3-5-sonnet-20241022',
+            model='claude-sonnet-4-5',
             api_key=os.getenv('ANTHROPIC_API_KEY'),
             temperature=0.1,  # Low temperature for consistent results
         )
 
     def test_initialization(self):
         """Test Anthropic LLM initialization with real API key."""
-        assert self.llm.model == 'claude-3-5-sonnet-20241022'
+        assert self.llm.model == 'claude-sonnet-4-5'
         assert self.llm.api_key == os.getenv('ANTHROPIC_API_KEY')
         assert self.llm.temperature == 0.1
         assert self.llm.client is not None
@@ -39,14 +39,14 @@ class TestAnthropicReal:
     def test_initialization_with_custom_params(self):
         """Test initialization with custom parameters."""
         custom_llm = Anthropic(
-            model='claude-3-5-sonnet-20241022',
+            model='claude-sonnet-4-5',
             api_key=os.getenv('ANTHROPIC_API_KEY'),
             temperature=0.5,
             max_tokens=100,
             top_p=0.9,
         )
 
-        assert custom_llm.model == 'claude-3-5-sonnet-20241022'
+        assert custom_llm.model == 'claude-sonnet-4-5'
         assert custom_llm.temperature == 0.5
         assert custom_llm.kwargs['max_tokens'] == 100
         assert custom_llm.kwargs['top_p'] == 0.9
@@ -122,7 +122,7 @@ class TestAnthropicReal:
 
         # Create a new LLM instance with kwargs in constructor
         llm_with_kwargs = Anthropic(
-            model='claude-3-5-sonnet-20241022',
+            model='claude-sonnet-4-5',
             api_key=os.getenv('ANTHROPIC_API_KEY'),
             temperature=0.1,
             max_tokens=50,
@@ -389,7 +389,7 @@ class TestAnthropicReal:
 
     def test_format_image_in_message(self):
         """Test format_image_in_message method (should raise NotImplementedError)."""
-        image = ImageMessage(image_url='https://example.com/image.jpg')
+        image = ImageMessageContent(url='https://example.com/image.jpg')
 
         with pytest.raises(
             NotImplementedError, match='Not implemented image for LLM Anthropic'

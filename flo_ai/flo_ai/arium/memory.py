@@ -3,6 +3,8 @@ from typing import TypeVar, Generic, List, Dict, Optional, Any
 from dataclasses import dataclass, field
 from enum import Enum
 
+from flo_ai.models import BaseMessage
+
 # Define the generic type variable
 T = TypeVar('T')
 
@@ -113,14 +115,14 @@ class BaseMemory(ABC, Generic[T]):
         return None
 
 
-class MessageMemory(BaseMemory[Dict[str, str]]):
+class MessageMemory(BaseMemory[BaseMessage]):
     def __init__(self):
         self.messages = []
 
-    def add(self, message: Dict[str, str]):
+    def add(self, message: BaseMessage):
         self.messages.append(message)
 
-    def get(self) -> List[Dict[str, str]]:
+    def get(self) -> List[BaseMessage]:
         return self.messages
 
 

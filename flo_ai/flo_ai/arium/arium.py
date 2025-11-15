@@ -1,7 +1,6 @@
 from flo_ai.arium.base import BaseArium
 from flo_ai.arium.memory import MessageMemory, BaseMemory
-from flo_ai.llm.base_llm import ImageMessage
-from flo_ai.models.document import DocumentMessage
+from flo_ai.models import BaseMessage, UserMessage, TextMessageContent
 from typing import List, Dict, Any, Optional, Callable
 from flo_ai.models.agent import Agent
 from flo_ai.tool.base_tool import Tool
@@ -34,7 +33,7 @@ class Arium(BaseArium):
 
     async def run(
         self,
-        inputs: List[str | ImageMessage | DocumentMessage],
+        inputs: List[BaseMessage] | str,
         variables: Optional[Dict[str, Any]] = None,
         event_callback: Optional[Callable[[AriumEvent], None]] = None,
         events_filter: Optional[List[AriumEventType]] = None,
@@ -51,6 +50,13 @@ class Arium(BaseArium):
         Returns:
             List of workflow execution results
         """
+        if isinstance(inputs, str):
+            inputs = [
+                UserMessage(
+                    TextMessageContent(text=resolve_variables(inputs, variables))
+                )
+            ]
+
         if not self.is_compiled:
             raise ValueError('Arium is not compiled')
 
@@ -194,7 +200,7 @@ class Arium(BaseArium):
 
     async def _execute_graph(
         self,
-        inputs: List[str | ImageMessage | DocumentMessage],
+        inputs: List[BaseMessage],
         event_callback: Optional[Callable[[AriumEvent], None]] = None,
         events_filter: Optional[List[AriumEventType]] = None,
         variables: Optional[Dict[str, Any]] = None,
@@ -246,12 +252,11 @@ class Arium(BaseArium):
             )
 
             if isinstance(result, List):  # for each node will give results array
-                for item in result:
-                    # update each item in result to memory
-                    self._add_to_memory(item)
+                self._add_to_memory(result[-1])
             else:
                 # update results to memory
-                self._add_to_memory(result)
+                if result:
+                    self._add_to_memory(result)
 
             # find next node post current node
             # Prepare execution context for router functions
@@ -308,7 +313,7 @@ class Arium(BaseArium):
 
     def _extract_and_validate_variables(
         self,
-        inputs: List[str | ImageMessage | DocumentMessage],
+        inputs: List[BaseMessage],
         variables: Dict[str, Any],
     ) -> None:
         """Extract variables from inputs and agents, then validate them.
@@ -347,9 +352,9 @@ class Arium(BaseArium):
 
     def _resolve_inputs(
         self,
-        inputs: List[str | ImageMessage | DocumentMessage],
+        inputs: List[BaseMessage],
         variables: Dict[str, Any],
-    ) -> List[str | ImageMessage | DocumentMessage]:
+    ) -> List[BaseMessage]:
         """Resolve variables in input messages.
 
         Args:
@@ -364,7 +369,17 @@ class Arium(BaseArium):
             if isinstance(input_item, str):
                 # Resolve variables in text input
                 resolved_input = resolve_variables(input_item, variables)
-                resolved_inputs.append(resolved_input)
+                resolved_inputs.append(
+                    UserMessage(TextMessageContent(text=resolved_input))
+                )
+            elif isinstance(input_item, TextMessageContent):
+                resolved_inputs.append(
+                    UserMessage(
+                        TextMessageContent(
+                            text=resolve_variables(input_item.text, variables),
+                        )
+                    )
+                )
             else:
                 # ImageMessage and DocumentMessage objects don't need variable resolution
                 resolved_inputs.append(input_item)
@@ -578,7 +593,9 @@ class Arium(BaseArium):
                 # Re-raise the exception
                 raise e
 
-    def _add_to_memory(self, result: str):
-        # TODO result will be None for start and end nodes
-        if result:
-            self.memory.add(result)
+    def _add_to_memory(self, result: BaseMessage):
+        """
+        Store result in memory, converting strings to AssistantMessage if needed.
+        Agent responses should be stored as AssistantMessage, not UserMessage.
+        """
+        self.memory.add(result)
