@@ -6,12 +6,14 @@ instead of programmatic builder patterns.
 """
 
 import asyncio
-from typing import Dict, Literal
+from typing import Dict, Literal, Callable, Optional
 from flo_ai.arium.builder import AriumBuilder
-from flo_ai.models import TextMessageContent, UserMessage
+from flo_ai.arium.memory import MessageMemoryItem
+from flo_ai.models import UserMessage
 from flo_ai.tool.base_tool import Tool
 from flo_ai.llm import OpenAI
 from flo_ai.arium.memory import BaseMemory
+from typing import List
 
 
 # Example YAML configuration for a simple linear workflow (using direct agent definition)
@@ -139,6 +141,141 @@ arium:
 """
 
 
+# Example YAML configuration with function nodes
+FUNCTION_NODES_WORKFLOW_YAML = """
+metadata:
+  name: function-nodes-workflow
+  version: 1.0.0
+  description: "A workflow demonstrating function nodes for data processing"
+
+arium:
+  agents:
+    - name: data_analyzer
+      role: Data Analyzer
+      job: >
+        You are a data analyzer. Analyze the input data and extract key information.
+        Pass the analyzed data to the next processing step.
+      model:
+        provider: openai
+        name: gpt-4o-mini
+      settings:
+        temperature: 0.3
+        
+    - name: report_formatter
+      role: Report Formatter
+      job: >
+        You are a report formatter. Take the processed data and format it into
+        a well-structured final report.
+      model:
+        provider: openai
+        name: gpt-4o-mini
+      settings:
+        temperature: 0.2
+        
+  function_nodes:
+    - name: data_validator
+      function_name: validate_data
+      description: "Validates and cleans input data"
+      
+    - name: data_transformer
+      function_name: transform_data
+      description: "Transforms data into a structured format"
+      
+  workflow:
+    start: data_analyzer
+    edges:
+      - from: data_analyzer
+        to: [data_validator]
+      - from: data_validator
+        to: [data_transformer]
+      - from: data_transformer
+        to: [report_formatter]
+      - from: report_formatter
+        to: [end]
+    end: [report_formatter]
+"""
+
+
+# Example YAML configuration mixing agents, function nodes, and routing
+MIXED_NODES_WORKFLOW_YAML = """
+metadata:
+  name: mixed-nodes-workflow
+  version: 1.0.0
+  description: "A workflow mixing agents, function nodes, and conditional routing"
+
+arium:
+  agents:
+    - name: dispatcher
+      role: Workflow Dispatcher
+      job: >
+        You are a workflow dispatcher. Analyze the input and determine the appropriate
+        processing path: mathematical operations, text processing, or direct summarization.
+      model:
+        provider: openai
+        name: gpt-4o-mini
+      settings:
+        reasoning_pattern: REACT
+        
+    - name: math_agent
+      role: Mathematics Agent
+      job: >
+        You are a mathematics agent. Perform mathematical analysis and calculations
+        on the provided data.
+      model:
+        provider: openai
+        name: gpt-4o-mini
+      tools: ["calculator"]
+      settings:
+        reasoning_pattern: REACT
+        
+    - name: text_agent
+      role: Text Processing Agent
+      job: >
+        You are a text processing agent. Analyze and process text content.
+      model:
+        provider: openai
+        name: gpt-4o-mini
+      tools: ["text_processor"]
+      settings:
+        reasoning_pattern: REACT
+        
+    - name: final_summarizer
+      role: Final Summarizer
+      job: >
+        You are the final summarizer. Create a comprehensive summary of all processing results.
+      model:
+        provider: openai
+        name: gpt-4o-mini
+        
+  function_nodes:
+    - name: preprocessor
+      function_name: preprocess_input
+      description: "Preprocesses input data before agent processing"
+      
+    - name: result_aggregator
+      function_name: aggregate_results
+      description: "Aggregates results from multiple processing paths"
+      
+  workflow:
+    start: dispatcher
+    edges:
+      - from: dispatcher
+        to: [preprocessor]
+      - from: preprocessor
+        to: [math_agent, text_agent, final_summarizer]
+        router: dispatch_router
+      - from: math_agent
+        to: [result_aggregator]
+      - from: text_agent
+        to: [result_aggregator]
+      - from: result_aggregator
+        to: [final_summarizer]
+      - from: final_summarizer
+        to: [end]
+    end: [final_summarizer]
+"""
+
+
 # Example showing mixed configuration approaches
 MIXED_CONFIG_YAML = """
 metadata:
@@ -244,6 +381,31 @@ def research_router(
         return 'final_summarizer'
 
 
+# Custom router function for the mixed nodes workflow
+def dispatch_router(
+    memory: BaseMemory,
+) -> Literal['math_agent', 'text_agent', 'final_summarizer']:
+    """
+    Custom router for the mixed nodes workflow that decides the next step.
+    """
+    memory_content = memory.get()
+    latest_message = memory_content[-1] if memory_content else {}
+    content_text = str(latest_message).lower()
+
+    if any(
+        keyword in content_text
+        for keyword in ['calculate', 'math', 'number', 'compute', 'add', 'multiply']
+    ):
+        return 'math_agent'
+    elif any(
+        keyword in content_text
+        for keyword in ['text', 'analyze', 'process', 'parse', 'word']
+    ):
+        return 'text_agent'
+    else:
+        return 'final_summarizer'
+
+
 async def create_example_tools() -> Dict[str, Tool]:
     """Create example tools for the workflow."""
 
@@ -309,6 +471,67 @@ async def create_example_tools() -> Dict[str, Tool]:
     }
 
 
+async def create_example_functions() -> Dict[str, Callable]:
+    """Create example functions for function nodes."""
+    from typing import List, Any
+
+    async def validate_data(
+        inputs: List[Any], variables: Optional[Dict[str, Any]] = None, **kwargs
+    ) -> str:
+        """Validates and cleans input data."""
+        text = str(inputs[-1]) if inputs else ''
+
+        cleaned = ' '.join(text.split())
+        if not cleaned:
+            return 'Error: Empty input data'
+
+        validation_result = (
+            f'✓ Data validated: {len(cleaned)} characters, {len(cleaned.split())} words'
+        )
+        return validation_result
+
+    async def transform_data(
+        inputs: List[Any], variables: Optional[Dict[str, Any]] = None, **kwargs
+    ) -> str:
+        """Transforms data into a structured format."""
+        text = str(inputs[-1]) if inputs else ''
+
+        words = text.split()
+        transformed = f'STRUCTURED DATA:\n- Word count: {len(words)}\n- Character count: {len(text)}\n- Content: {text[:100]}...'
+        return transformed
+
+    async def preprocess_input(
+        inputs: List[Any], variables: Optional[Dict[str, Any]] = None, **kwargs
+    ) -> str:
+        """Preprocesses input data before agent processing."""
+        text = str(inputs[-1]) if inputs else ''
+
+        normalized = text.strip().lower()
+        preprocessed = f'[PREPROCESSED] {normalized}'
+        return preprocessed
+
+    async def aggregate_results(
+        inputs: List[Any], variables: Optional[Dict[str, Any]] = None, **kwargs
+    ) -> str:
+        """Aggregates results from multiple processing paths."""
+        results = []
+        for inp in inputs:
+            if hasattr(inp, 'content'):
+                results.append(str(inp.content))
+            else:
+                results.append(str(inp))
+
+        aggregated = 'AGGREGATED RESULTS:\n' + '\n'.join(f'- {r}' for r in results)
+        return aggregated
+
+    return {
+        'validate_data': validate_data,
+        'transform_data': transform_data,
+        'preprocess_input': preprocess_input,
+        'aggregate_results': aggregate_results,
+    }
+
+
 async def run_simple_example():
     """Run the simple workflow example."""
     print('=' * 60)
@@ -319,22 +542,20 @@ async def run_simple_example():
     builder = AriumBuilder.from_yaml(yaml_str=SIMPLE_WORKFLOW_YAML)
 
     # Run the workflow
-    result = await builder.build_and_run(
+    result: List[MessageMemoryItem] = await builder.build_and_run(
         [
             UserMessage(
-                TextMessageContent(
-                    text='Machine learning is transforming healthcare by enabling predictive analytics, '
-                    'personalized treatment recommendations, and automated medical imaging analysis. '
-                    'However, challenges include data privacy concerns, the need for regulatory approval, '
-                    'and ensuring AI systems are transparent and unbiased in their decision-making.',
-                )
-            ),
+                'Machine learning is transforming healthcare by enabling predictive analytics, '
+                'personalized treatment recommendations, and automated medical imaging analysis. '
+                'However, challenges include data privacy concerns, the need for regulatory approval, '
+                'and ensuring AI systems are transparent and unbiased in their decision-making.',
+            )
         ]
     )
 
     print('Result:')
-    for i, message in enumerate(result):
-        print(f'{i+1}. {message}')
+    for i, message in enumerate[MessageMemoryItem](result):
+        print(f'{i+1}. {message.result.content}')
 
     return result
 
@@ -353,7 +574,7 @@ async def run_complex_example():
 
     # Create builder from YAML
     builder = AriumBuilder.from_yaml(
-        yaml_str=COMPLEX_WORKFLOW_YAML, tools=tools, routers=routers
+        yaml_str=COMPLEX_WORKFLOW_YAML, tool_registry=tools, routers=routers
     )
 
     # Test with mathematical content
@@ -363,34 +584,30 @@ async def run_complex_example():
     )
 
     print('Result:')
-    for i, message in enumerate(result1):
-        print(f'{i+1}. {message}')
+    for i, message in enumerate[MessageMemoryItem](result1):
+        print(f'{i+1}. {message.result.content}')
 
     # Reset and test with text content
     print('\nTesting with text content:')
     builder.reset()
     builder = AriumBuilder.from_yaml(
-        yaml_str=COMPLEX_WORKFLOW_YAML, tools=tools, routers=routers
+        yaml_str=COMPLEX_WORKFLOW_YAML, tool_registry=tools, routers=routers
     )
 
     result2 = await builder.build_and_run(
         [
             UserMessage(
-                TextMessageContent(
-                    text="Please analyze this text and process it: 'The quick brown fox jumps over the lazy dog. ",
-                )
+                "Please analyze this text and process it: 'The quick brown fox jumps over the lazy dog.'"
             ),
             UserMessage(
-                TextMessageContent(
-                    text="This sentence contains every letter of the alphabet at least once.'",
-                )
+                "This sentence contains every letter of the alphabet at least once.'"
             ),
         ]
     )
 
     print('Result:')
-    for i, message in enumerate(result2):
-        print(f'{i+1}. {message}')
+    for i, message in enumerate[MessageMemoryItem](result2):
+        print(f'{i+1}. {message.result.content}')
 
     return result1, result2
 
@@ -408,21 +625,105 @@ async def run_mixed_config_example():
     result = await builder.build_and_run(
         [
             UserMessage(
-                TextMessageContent(
-                    text='Please analyze this business report: Our Q3 revenue increased by 15% compared to Q2, '
-                    'driven primarily by strong performance in the software division. However, hardware sales '
-                    'declined by 8%. Customer satisfaction scores improved to 4.2/5.0. We recommend focusing '
-                    'on digital transformation initiatives and reconsidering the hardware product line.',
-                )
+                'Please analyze this business report: Our Q3 revenue increased by 15% compared to Q2, '
+                'driven primarily by strong performance in the software division. However, hardware sales '
+                'declined by 8%. Customer satisfaction scores improved to 4.2/5.0. We recommend focusing '
+                'on digital transformation initiatives and reconsidering the hardware product line.'
             ),
         ]
     )
 
     print('Result:')
-    for i, message in enumerate(result):
-        print(f'{i+1}. {message}')
+    for i, message in enumerate[MessageMemoryItem](result):
+        print(f'{i+1}. {message.result.content}')
 
     return result
+
+
+async def run_function_nodes_example():
+    """Run the function nodes workflow example."""
+    print('\n' + '=' * 60)
+    print('RUNNING FUNCTION NODES WORKFLOW EXAMPLE')
+    print('=' * 60)
+
+    # Create function registry
+    functions = await create_example_functions()
+
+    # Create builder from YAML with function registry
+    builder = AriumBuilder.from_yaml(
+        yaml_str=FUNCTION_NODES_WORKFLOW_YAML, function_registry=functions
+    )
+
+    # Run the workflow
+    result = await builder.build_and_run(
+        [
+            UserMessage(
+                'Sample data for processing: Customer satisfaction scores show 85% positive feedback, '
+                'with response times averaging 2.3 minutes. Revenue increased by 12% this quarter.'
+            ),
+        ]
+    )
+
+    print('Result:')
+    for i, message in enumerate[MessageMemoryItem](result):
+        print(f'{i+1}. {message.result.content}')
+
+    return result
+
+
+async def run_mixed_nodes_example():
+    """Run the mixed nodes workflow example with agents, function nodes, and routing."""
+    print('\n' + '=' * 60)
+    print('RUNNING MIXED NODES WORKFLOW EXAMPLE')
+    print('=' * 60)
+
+    # Create tools and functions
+    tools = await create_example_tools()
+    functions = await create_example_functions()
+    routers = {'dispatch_router': dispatch_router}
+
+    # Create builder from YAML
+    builder = AriumBuilder.from_yaml(
+        yaml_str=MIXED_NODES_WORKFLOW_YAML,
+        tool_registry=tools,
+        function_registry=functions,
+        routers=routers,
+    )
+
+    # Test with mathematical content
+    print('\nTesting with mathematical content:')
+    result1 = await builder.build_and_run(
+        ['Please calculate the sum of 15 and 27, then multiply by 2.']
+    )
+
+    print('Result:')
+    for i, message in enumerate[MessageMemoryItem](result1):
+        print(f'{i+1}. {message.result.content}')
+
+    # Reset and test with text content
+    print('\nTesting with text content:')
+    builder.reset()
+    builder = AriumBuilder.from_yaml(
+        yaml_str=MIXED_NODES_WORKFLOW_YAML,
+        tool_registry=tools,
+        function_registry=functions,
+        routers=routers,
+    )
+
+    result2 = await builder.build_and_run(
+        [
+            UserMessage(
+                'Please analyze and process this text: Machine learning algorithms '
+                'are transforming how we process and understand data.'
+            ),
+        ]
+    )
+
+    print('Result:')
+    for i, message in enumerate[MessageMemoryItem](result2):
+        print(f'{i+1}. {message.result.content}')
+
+    return result1, result2
 
 
 async def run_prebuilt_agents_example():
@@ -530,8 +831,8 @@ async def run_prebuilt_agents_example():
     )
 
     print('Result:')
-    for i, message in enumerate(result):
-        print(f'{i+1}. {message}')
+    for i, message in enumerate[MessageMemoryItem](result):
+        print(f'{i+1}. {message.result.content}')
 
     return result
 
@@ -548,6 +849,12 @@ async def main():
         # Run mixed configuration example
         await run_mixed_config_example()
 
+        # Run function nodes example
+        await run_function_nodes_example()
+
+        # Run mixed nodes example
+        await run_mixed_nodes_example()
+
         # Run pre-built agents example
         await run_prebuilt_agents_example()
 
@@ -558,7 +865,9 @@ async def main():
         print('   • Simple linear workflow with direct agent configuration')
         print('   • Complex workflow with tools and conditional routing')
         print('   • Mixed configuration approaches')
-        print('   • Pre-built agents with YAML workflow (NEW!)')
+        print('   • Function nodes workflow (NEW!)')
+        print('   • Mixed nodes workflow with agents and function nodes (NEW!)')
+        print('   • Pre-built agents with YAML workflow')
 
     except Exception as e:
         print(f'Error running examples: {e}')

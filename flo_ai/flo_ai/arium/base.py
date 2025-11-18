@@ -14,8 +14,10 @@ class BaseArium:
     def __init__(self):
         self.start_node_name = '__start__'
         self.end_node_names: set = set()  # Support multiple end nodes
-        self.nodes: Dict[str, ExecutableNode | StartNode | EndNode] = dict()
-        self.edges: Dict[str, Edge] = dict()
+        self.nodes: Dict[str, ExecutableNode | StartNode | EndNode] = dict[
+            str, ExecutableNode | StartNode | EndNode
+        ]()
+        self.edges: Dict[str, Edge] = dict[str, Edge]()
 
     def add_nodes(self, agents: List[ExecutableNode | StartNode | EndNode]):
         self.nodes.update({agent.name: agent for agent in agents})

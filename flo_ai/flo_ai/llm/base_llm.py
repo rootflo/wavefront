@@ -20,6 +20,7 @@ class BaseLLM(ABC):
         self,
         messages: List[Dict[str, str]],
         functions: Optional[List[Dict[str, Any]]] = None,
+        output_schema: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Generate a response from the LLM"""
         pass
@@ -29,6 +30,7 @@ class BaseLLM(ABC):
         self,
         messages: List[Dict[str, str]],
         functions: Optional[List[Dict[str, Any]]] = None,
+        output_schema: Optional[Dict[str, Any]] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """Stream partial responses from the LLM as they are generated"""
         pass

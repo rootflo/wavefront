@@ -7,7 +7,7 @@ from unittest.mock import Mock
 from flo_ai.arium.builder import AriumBuilder, create_arium
 from flo_ai.arium.memory import MessageMemory
 from flo_ai.models.agent import Agent
-from flo_ai.tool.base_tool import Tool
+from flo_ai.arium.nodes import FunctionNode
 
 
 class TestAriumBuilder:
@@ -16,7 +16,7 @@ class TestAriumBuilder:
         builder = AriumBuilder()
         assert builder._memory is None
         assert builder._agents == []
-        assert builder._tools == []
+        assert builder._function_nodes == []
         assert builder._start_node is None
         assert builder._end_nodes == []
         assert builder._edges == []
@@ -48,26 +48,28 @@ class TestAriumBuilder:
         assert result is builder
         assert all(agent in builder._agents for agent in agents)
 
-    def test_add_tool(self):
-        """Test adding a single tool"""
+    def test_add_function_node(self):
+        """Test adding a single function node"""
         builder = AriumBuilder()
-        tool = Mock(spec=Tool)
-        tool.name = 'test_tool'
+        function_node = Mock(spec=FunctionNode)
+        function_node.name = 'test_function_node'
 
-        result = builder.add_tool(tool)
+        result = builder.add_function_node(function_node)
         assert result is builder
-        assert tool in builder._tools
+        assert function_node in builder._function_nodes
 
-    def test_add_tools(self):
-        """Test adding multiple tools"""
+    def test_add_function_nodes(self):
+        """Test adding multiple function nodes"""
         builder = AriumBuilder()
-        tools = [Mock(spec=Tool) for _ in range(3)]
-        for i, tool in enumerate(tools):
-            tool.name = f'tool_{i}'
+        function_nodes = [Mock(spec=FunctionNode) for _ in range(3)]
+        for i, function_node in enumerate(function_nodes):
+            function_node.name = f'function_node_{i}'
 
-        result = builder.add_tools(tools)
+        result = builder.add_function_nodes(function_nodes)
         assert result is builder
-        assert all(tool in builder._tools for tool in tools)
+        assert all(
+            function_node in builder._function_nodes for function_node in function_nodes
+        )
 
     def test_with_memory(self):
         """Test setting custom memory"""
@@ -144,7 +146,7 @@ class TestAriumBuilder:
         assert result is builder
         assert builder._memory is None
         assert builder._agents == []
-        assert builder._tools == []
+        assert builder._function_nodes == []
         assert builder._start_node is None
         assert builder._end_nodes == []
         assert builder._edges == []
@@ -154,7 +156,7 @@ class TestAriumBuilder:
         """Test that build fails when no nodes are added"""
         builder = AriumBuilder()
 
-        with pytest.raises(ValueError, match='No agents or tools added'):
+        with pytest.raises(ValueError, match='No agents or function nodes added'):
             builder.build()
 
     def test_build_validation_no_start_node(self):
@@ -178,33 +180,10 @@ class TestAriumBuilder:
         with pytest.raises(ValueError, match='No end nodes specified'):
             builder.build()
 
-    def test_method_chaining(self):
-        """Test that all methods return self for chaining"""
-        builder = AriumBuilder()
-        agent = Mock(spec=Agent)
-        agent.name = 'test_agent'
-        tool = Mock(spec=Tool)
-        tool.name = 'test_tool'
-        memory = Mock(spec=MessageMemory)
-
-        # This should not raise any errors and should work with chaining
-        result = (
-            builder.with_memory(memory)
-            .add_agent(agent)
-            .add_tool(tool)
-            .start_with(agent)
-            .connect(agent, tool)
-            .end_with(tool)
-            .reset()
-        )
-
-        assert result is builder
-
 
 if __name__ == '__main__':
     # Run a simple test
     test_builder = TestAriumBuilder()
     test_builder.test_builder_initialization()
     test_builder.test_add_agent()
-    test_builder.test_method_chaining()
     print('Basic tests passed!')

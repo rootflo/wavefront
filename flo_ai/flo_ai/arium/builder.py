@@ -1,15 +1,16 @@
 from typing import List, Optional, Callable, Union, Dict, Any
 from flo_ai.arium.arium import Arium
-from flo_ai.arium.memory import MessageMemory, BaseMemory
+from flo_ai.arium.memory import MessageMemory, BaseMemory, MessageMemoryItem
 from flo_ai.arium.protocols import ExecutableNode
 from flo_ai.arium.nodes import AriumNode, ForEachNode
-from flo_ai.models import BaseMessage, TextMessageContent, UserMessage
+from flo_ai.models import BaseMessage, UserMessage
 from flo_ai.models.agent import Agent, resolve_variables
 from flo_ai.tool.base_tool import Tool
 import yaml
 from flo_ai.builder.agent_builder import AgentBuilder
 from flo_ai.llm import BaseLLM
 from flo_ai.arium.llm_router import create_llm_router
+from flo_ai.arium.nodes import FunctionNode
 
 
 class AriumBuilder:
@@ -20,23 +21,23 @@ class AriumBuilder:
         result = (AriumBuilder()
                   .with_memory(my_memory)
                   .add_agent(agent1)
-                  .add_tool(tool1)
+                  .add_function_node(function_node1)
                   .start_with(agent1)
-                  .add_edge(agent1, [tool1], router_fn)
-                  .end_with(tool1)
+                  .add_edge(agent1, [function_node1], router_fn)
+                  .end_with(function_node1)
                   .build_and_run(["Hello, world!"]))
     """
 
     def __init__(self):
         self._memory: Optional[BaseMemory] = None
         self._agents: List[Agent] = []
-        self._tools: List[Tool] = []
         self._ariums: List[
             AriumNode
         ] = []  # only those ariums which are part of main workflow
         self._foreach_nodes: List[ForEachNode] = []
         self._start_node: Optional[ExecutableNode] = None
         self._end_nodes: List[ExecutableNode] = []
+        self._function_nodes: List[FunctionNode] = []
         self._edges: List[tuple] = []  # (from_node, to_nodes, router)
         self._arium: Optional[Arium] = None
         self._all_ariums: List[
@@ -58,14 +59,14 @@ class AriumBuilder:
         self._agents.extend(agents)
         return self
 
-    def add_tool(self, tool: Tool) -> 'AriumBuilder':
-        """Add a tool to the Arium."""
-        self._tools.append(tool)
+    def add_function_node(self, function_node: FunctionNode) -> 'AriumBuilder':
+        """Add a function node to the Arium."""
+        self._function_nodes.append(function_node)
         return self
 
-    def add_tools(self, tools: List[Tool]) -> 'AriumBuilder':
-        """Add multiple tools to the Arium."""
-        self._tools.extend(tools)
+    def add_function_nodes(self, function_nodes: List[FunctionNode]) -> 'AriumBuilder':
+        """Add multiple function nodes to the Arium."""
+        self._function_nodes.extend(function_nodes)
         return self
 
     def add_arium(
@@ -111,7 +112,9 @@ class AriumBuilder:
         # Resolve node reference if string name provided
         if isinstance(execute_node, str):
             # Search across all node types
-            all_nodes = self._agents + self._tools + self._ariums + self._foreach_nodes
+            all_nodes = (
+                self._agents + self._function_nodes + self._ariums + self._foreach_nodes
+            )
             resolved_node = next((n for n in all_nodes if n.name == execute_node), None)
             if not resolved_node:
                 raise ValueError(f"Node '{execute_node}' not found")
@@ -129,7 +132,9 @@ class AriumBuilder:
         """Set the starting node for the Arium."""
         if isinstance(node, str):
             # Search across all node types
-            all_nodes = self._agents + self._tools + self._ariums + self._foreach_nodes
+            all_nodes = (
+                self._agents + self._function_nodes + self._ariums + self._foreach_nodes
+            )
             resolved_node = next((n for n in all_nodes if n.name == node), None)
             if not resolved_node:
                 raise ValueError(f"Node '{node}' not found")
@@ -162,7 +167,9 @@ class AriumBuilder:
 
         if isinstance(from_node, str):
             # Search across all node types
-            all_nodes = self._agents + self._tools + self._ariums + self._foreach_nodes
+            all_nodes = (
+                self._agents + self._function_nodes + self._ariums + self._foreach_nodes
+            )
             resolved_from_node = next(
                 (n for n in all_nodes if n.name == from_node), None
             )
@@ -172,7 +179,9 @@ class AriumBuilder:
 
         if isinstance(to_node, str):
             # Search across all node types
-            all_nodes = self._agents + self._tools + self._ariums + self._foreach_nodes
+            all_nodes = (
+                self._agents + self._function_nodes + self._ariums + self._foreach_nodes
+            )
             resolved_to_node = next((n for n in all_nodes if n.name == to_node), None)
             if not resolved_to_node:
                 raise ValueError(f"Node '{to_node}' not found")
@@ -192,12 +201,12 @@ class AriumBuilder:
         # Add all nodes
         all_nodes = []
         all_nodes.extend(self._agents)
-        all_nodes.extend(self._tools)
+        all_nodes.extend(self._function_nodes)
         all_nodes.extend(self._ariums)
         all_nodes.extend(self._foreach_nodes)
 
         if not all_nodes:
-            raise ValueError('No agents or tools added to the Arium')
+            raise ValueError('No agents or function nodes added to the Arium')
 
         arium.add_nodes(all_nodes)
 
@@ -235,17 +244,13 @@ class AriumBuilder:
         self,
         inputs: List[BaseMessage] | str,
         variables: Optional[Dict[str, Any]] = None,
-    ) -> List[dict]:
+    ) -> List[MessageMemoryItem]:
         """Build the Arium and run it with the given inputs and optional runtime variables."""
         arium = self.build()
         new_inputs = []
         for input in inputs:
             if isinstance(input, str):
-                new_inputs.append(
-                    UserMessage(
-                        TextMessageContent(text=resolve_variables(input, variables))
-                    )
-                )
+                new_inputs.append(UserMessage(resolve_variables(input, variables)))
             elif isinstance(input, BaseMessage):
                 new_inputs.append(input)
             else:
@@ -266,7 +271,7 @@ class AriumBuilder:
         """Reset the builder to start fresh."""
         self._memory = None
         self._agents = []
-        self._tools = []
+        self._function_nodes = []
         self._ariums = []
         self._foreach_nodes = []
         self._start_node = None
@@ -282,9 +287,10 @@ class AriumBuilder:
         yaml_file: Optional[str] = None,
         memory: Optional[BaseMemory] = None,
         agents: Optional[Dict[str, Agent]] = None,
-        tools: Optional[Dict[str, Tool]] = None,
         routers: Optional[Dict[str, Callable]] = None,
         base_llm: Optional[BaseLLM] = None,
+        function_registry: Optional[Dict[str, Callable]] = None,
+        tool_registry: Optional[Dict[str, Tool]] = None,
         **kwargs,
     ) -> 'AriumBuilder':
         """Create an AriumBuilder from a YAML configuration.
@@ -294,10 +300,10 @@ class AriumBuilder:
             yaml_file: Path to YAML file containing arium configuration
             memory: Memory instance to use for the workflow (defaults to MessageMemory)
             agents: Dictionary mapping agent names to pre-built Agent instances
-            tools: Dictionary mapping tool names to Tool instances
             routers: Dictionary mapping router names to router functions
             base_llm: Base LLM to use for all agents if not specified in individual agent configs
-
+            function_registry: Dictionary mapping function names to function objects
+            tool_registry: Dictionary mapping tool names to Tool objects
         Returns:
             AriumBuilder: Configured builder instance
 
@@ -337,9 +343,13 @@ class AriumBuilder:
                 - name: reporter
                   yaml_file: "path/to/reporter.yaml"
 
-              tools:
-                - name: tool1
-                - name: tool2
+              function_nodes:
+                - name: function1
+                  function_name: function1
+                - name: function2
+                  function_name: function2
+                  description: "Function 2"
+                  input_filter: ["input1", "input2"]
 
               # LLM Router definitions (NEW)
               routers:
@@ -479,20 +489,24 @@ class AriumBuilder:
                 and 'yaml_file' not in agent_config
             ):
                 agent = cls._create_agent_from_direct_config(
-                    agent_config, base_llm, tools, **kwargs
+                    agent_config, base_llm, tool_registry, **kwargs
                 )
 
             # Method 3: Inline YAML config
             elif 'yaml_config' in agent_config:
                 agent_builder = AgentBuilder.from_yaml(
-                    yaml_str=agent_config['yaml_config'], base_llm=base_llm
+                    yaml_str=agent_config['yaml_config'],
+                    base_llm=base_llm,
+                    tool_registry=tool_registry,
                 )
                 agent = agent_builder.build()
 
             # Method 4: External file reference
             elif 'yaml_file' in agent_config:
                 agent_builder: AgentBuilder = AgentBuilder.from_yaml(
-                    yaml_file=agent_config['yaml_file'], base_llm=base_llm
+                    yaml_file=agent_config['yaml_file'],
+                    base_llm=base_llm,
+                    tool_registry=tool_registry,
                 )
                 agent = agent_builder.build()
 
@@ -508,23 +522,31 @@ class AriumBuilder:
             agents_dict[agent_name] = agent
             builder.add_agent(agent)
 
-        # Process tools
-        tools_config = arium_config.get('tools', [])
-        tools_dict = {}
+        # Process function nodes
+        function_nodes_config = arium_config.get('function_nodes', [])
+        function_nodes_dict = {}
 
-        for tool_config in tools_config:
-            tool_name = tool_config['name']
+        for function_node_config in function_nodes_config:
+            function_node_name = function_node_config['name']
+            function_name = function_node_config['function_name']
+            function = function_registry.get(function_name)
 
-            # Look up tool in provided tools dictionary
-            if tools and tool_name in tools:
-                tool = tools[tool_name]
-                tools_dict[tool_name] = tool
-                builder.add_tool(tool)
-            else:
+            if function is None:
                 raise ValueError(
-                    f'Tool {tool_name} not found in provided tools dictionary. '
-                    f'Available tools: {list(tools.keys()) if tools else []}'
+                    f'Function {function_name} not found in provided function_registry dictionary. '
+                    f'Available functions: {list[str](function_registry.keys()) if function_registry else []}. '
+                    f'Either provide the function in the function_registry parameter or add configuration fields.'
                 )
+
+            function_node = FunctionNode(
+                name=function_node_name,
+                description=function_node_config.get('description', ''),
+                function=function,
+                input_filter=function_node_config.get('input_filter', None),
+            )
+
+            function_nodes_dict[function_node_name] = function_node
+            builder.add_function_node(function_node)
 
         # Process LLM routers (if defined in YAML)
         routers_config = arium_config.get('routers', [])
@@ -645,9 +667,10 @@ class AriumBuilder:
                     yaml_file=yaml_file_path,
                     memory=None,
                     agents=None,
-                    tools=tools,  # Nested can use parent's tools
                     routers=None,
                     base_llm=base_llm,
+                    function_registry=None,
+                    tool_registry=None,
                 )
                 nested_arium = nested_builder.build()
 
@@ -657,7 +680,7 @@ class AriumBuilder:
                 sub_config = {
                     'arium': {
                         'agents': arium_node_config.get('agents', []),
-                        'tools': arium_node_config.get('tools', []),
+                        'function_nodes': arium_node_config.get('function_nodes', []),
                         'routers': arium_node_config.get('routers', []),
                         'ariums': arium_node_config.get(
                             'ariums', []
@@ -671,9 +694,10 @@ class AriumBuilder:
                     yaml_str=yaml.dump(sub_config),
                     memory=None,
                     agents=None,
-                    tools=tools,
                     routers=None,
                     base_llm=base_llm,
+                    function_registry=None,
+                    tool_registry=None,
                 )
                 nested_arium = nested_builder.build()
 
@@ -706,7 +730,7 @@ class AriumBuilder:
             # Find execute_node from ALL node types
             execute_node = (
                 agents_dict.get(execute_node_name)
-                or tools_dict.get(execute_node_name)
+                or function_nodes_dict.get(execute_node_name)
                 or arium_nodes_dict.get(execute_node_name)
                 or foreach_nodes_dict.get(execute_node_name)
             )
@@ -714,7 +738,7 @@ class AriumBuilder:
             if not execute_node:
                 all_nodes = (
                     list(agents_dict.keys())
-                    + list(tools_dict.keys())
+                    + list(function_nodes_dict.keys())
                     + list(arium_nodes_dict.keys())
                     + list(foreach_nodes_dict.keys())
                 )
@@ -736,7 +760,7 @@ class AriumBuilder:
         def _find_node(node_name: str):
             return (
                 agents_dict.get(node_name)
-                or tools_dict.get(node_name)
+                or function_nodes_dict.get(node_name)
                 or arium_nodes_dict.get(node_name)
                 or foreach_nodes_dict.get(node_name)
             )
@@ -750,7 +774,7 @@ class AriumBuilder:
         if not start_node:
             all_available = (
                 list(agents_dict.keys())
-                + list(tools_dict.keys())
+                + list(function_nodes_dict.keys())
                 + list(arium_nodes_dict.keys())
                 + list(foreach_nodes_dict.keys())
             )

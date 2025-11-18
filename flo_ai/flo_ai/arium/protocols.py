@@ -16,6 +16,8 @@ class ExecutableNode(Protocol):
 
     name: str
     """Unique identifier for the node"""
+    input_filter: Optional[List[str]] = None
+    """List of input keys to include in the node's execution"""
 
     async def run(
         self,

@@ -19,6 +19,22 @@ class StepStatus(Enum):
     SKIPPED = 'skipped'
 
 
+class MessageMemoryItem:
+    def __init__(
+        self, node: str, occurrence: int = 0, result: BaseMessage | str = None
+    ):
+        self.node: str = node
+        self.occurrence: int = occurrence
+        self.result: BaseMessage | str = result
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'node': self.node,
+            'occurrence': self.occurrence,
+            'result': self.result,
+        }
+
+
 @dataclass
 class PlanStep:
     """Represents a single step in an execution plan"""
@@ -94,7 +110,7 @@ class BaseMemory(ABC, Generic[T]):
         pass
 
     @abstractmethod
-    def get(self) -> List[T]:
+    def get(self, include_nodes: Optional[List[str]] = None) -> List[T]:
         pass
 
     # Plan management methods (optional - only implemented by memory classes that support plans)
@@ -115,32 +131,57 @@ class BaseMemory(ABC, Generic[T]):
         return None
 
 
-class MessageMemory(BaseMemory[BaseMessage]):
+class MessageMemory(BaseMemory[MessageMemoryItem]):
     def __init__(self):
-        self.messages = []
+        self.messages: List[MessageMemoryItem] = []
+        self._node_occurrences: Dict[str, int] = {}
 
-    def add(self, message: BaseMessage):
+    def _next_occurrence(self, node: str) -> int:
+        current = self._node_occurrences.get(node, 0) + 1
+        self._node_occurrences[node] = current
+        return current
+
+    def add(self, message: MessageMemoryItem):
+        # Update occurrence count for the node
+        occurrence = self._next_occurrence(message.node)
+        message.occurrence = occurrence
         self.messages.append(message)
 
-    def get(self) -> List[BaseMessage]:
-        return self.messages
+    def get(self, include_nodes: Optional[List[str]] = None) -> List[MessageMemoryItem]:
+        if not include_nodes:
+            return self.messages
+        include = set[str](include_nodes)
+        return [m for m in self.messages if m.node in include]
 
 
-class PlanAwareMemory(BaseMemory[Dict[str, str]]):
+class PlanAwareMemory(BaseMemory[Dict[str, Any]]):
     """Enhanced memory that supports both messages and execution plans"""
 
     def __init__(self):
-        self.messages = []
+        self.messages: List[Dict[str, Any]] = []
         self.plans: Dict[str, ExecutionPlan] = {}
         self.current_plan_id: Optional[str] = None
+        self._node_occurrences: Dict[str, int] = {}
 
-    def add(self, message: Dict[str, str]):
-        """Add a message to memory"""
+    def _next_occurrence(self, node: str) -> int:
+        current = self._node_occurrences.get(node, 0) + 1
+        self._node_occurrences[node] = current
+        return current
+
+    def add(self, message: MessageMemoryItem):
+        # Update occurrence count for the node
+        occurrence = self._next_occurrence(message.node)
+        message.occurrence = occurrence
         self.messages.append(message)
 
-    def get(self) -> List[Dict[str, str]]:
+    def get(self, include_nodes: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """Get all messages"""
-        return self.messages
+        if not include_nodes:
+            return self.messages
+        include = set(include_nodes)
+        return [
+            m for m in self.messages if isinstance(m, dict) and m.get('node') in include
+        ]
 
     # Plan management methods
     def add_plan(self, plan: ExecutionPlan):

@@ -39,6 +39,7 @@ class Agent(BaseAgent):
         output_schema: Optional[Dict[str, Any]] = None,
         role: Optional[str] = None,
         act_as: Optional[str] = MessageType.ASSISTANT,
+        input_filter: Optional[List[str]] = None,
     ):
         # Determine agent type based on tools
         agent_type = AgentType.TOOL_USING if tools else AgentType.CONVERSATIONAL
@@ -65,6 +66,7 @@ class Agent(BaseAgent):
         self.output_schema = output_schema
         self.role = role
         self.act_as = act_as
+        self.input_filter: Optional[List[str]] = input_filter
 
     @trace_agent_execution()
     async def run(
@@ -153,24 +155,31 @@ class Agent(BaseAgent):
                 assistant_message = self.llm.get_message_content(response)
                 logger.debug(f'Extracted message: {assistant_message}')
 
+                # Ensure act_as is not None (default to 'assistant' if missing)
+                role = self.act_as if self.act_as is not None else MessageType.ASSISTANT
+
                 if assistant_message:
-                    # Ensure act_as is not None (default to 'assistant' if missing)
-                    role = (
-                        self.act_as
-                        if self.act_as is not None
-                        else MessageType.ASSISTANT
-                    )
                     self.add_to_history(
                         AssistantMessage(role=role, content=assistant_message)
                     )
-
-                    return self.conversation_history
                 else:
                     possible_tool_message = await self.llm.get_function_call(response)
                     if possible_tool_message:
-                        return possible_tool_message['arguments']
-                    logger.debug('Warning: No message content found in response')
-                    return None
+                        self.add_to_history(
+                            AssistantMessage(
+                                role=role, content=possible_tool_message['arguments']
+                            )
+                        )
+                    else:
+                        logger.debug('Warning: No message content found in response')
+                        self.add_to_history(
+                            AssistantMessage(
+                                role=role,
+                                content='No message content found in response',
+                            )
+                        )
+
+                return self.conversation_history
 
             except Exception as e:
                 retry_count += 1

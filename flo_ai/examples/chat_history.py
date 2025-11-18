@@ -1,13 +1,9 @@
 import asyncio
-from typing import Any
+from typing import List
 from flo_ai.builder.agent_builder import AgentBuilder
 from flo_ai.llm import Gemini
 from flo_ai.models.agent import Agent
-from flo_ai.models import (
-    AssistantMessage,
-    UserMessage,
-    TextMessageContent,
-)
+from flo_ai.models import AssistantMessage, UserMessage, BaseMessage
 from flo_ai.tool import flo_tool
 
 
@@ -34,37 +30,21 @@ async def main() -> None:
         .build()
     )
 
-    response: Any = await agent.run(
+    response: List[BaseMessage] = await agent.run(
         [
-            UserMessage(
-                TextMessageContent(
-                    text='What is the formula for the area of a circle?'
-                ),
-            ),
+            UserMessage('What is the formula for the area of a circle?'),
+            AssistantMessage('The formula for the area of a circle is πr^2.'),
+            UserMessage('What is the formula for the area of a rectangle?'),
             AssistantMessage(
-                TextMessageContent(
-                    text='The formula for the area of a circle is πr^2.'
-                ),
+                'The formula for the area of a rectangle is length * width.'
             ),
             UserMessage(
-                TextMessageContent(
-                    text='What is the formula for the area of a rectangle?'
-                )
-            ),
-            AssistantMessage(
-                TextMessageContent(
-                    text='The formula for the area of a rectangle is length * width.',
-                ),
-            ),
-            UserMessage(
-                TextMessageContent(
-                    text='What is the area of a rectable of length <length> and breadth <breadth>',
-                ),
+                'What is the area of a rectable of length <length> and breadth <breadth>'
             ),
         ],
         variables={'length': 10, 'breadth': 70},
     )
-    print(f'Response: {response}')
+    print(f'Response: {response[-1].content}')
 
 
 asyncio.run(main())
