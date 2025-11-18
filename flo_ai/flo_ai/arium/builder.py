@@ -285,6 +285,7 @@ class AriumBuilder:
         tools: Optional[Dict[str, Tool]] = None,
         routers: Optional[Dict[str, Callable]] = None,
         base_llm: Optional[BaseLLM] = None,
+        **kwargs,
     ) -> 'AriumBuilder':
         """Create an AriumBuilder from a YAML configuration.
 
@@ -478,7 +479,7 @@ class AriumBuilder:
                 and 'yaml_file' not in agent_config
             ):
                 agent = cls._create_agent_from_direct_config(
-                    agent_config, base_llm, tools
+                    agent_config, base_llm, tools, **kwargs
                 )
 
             # Method 3: Inline YAML config
@@ -537,7 +538,7 @@ class AriumBuilder:
             router_llm = None
             if 'model' in router_config:
                 router_llm = cls._create_llm_from_config(
-                    router_config['model'], base_llm
+                    router_config['model'], base_llm, **kwargs
                 )
             else:
                 router_llm = base_llm  # Use base LLM if no specific model configured
@@ -832,7 +833,9 @@ class AriumBuilder:
 
     @staticmethod
     def _create_llm_from_config(
-        model_config: Dict[str, Any], base_llm: Optional[BaseLLM] = None
+        model_config: Dict[str, Any],
+        base_llm: Optional[BaseLLM] = None,
+        **kwargs,
     ) -> BaseLLM:
         """Create an LLM instance from model configuration.
 
@@ -843,33 +846,16 @@ class AriumBuilder:
         Returns:
             BaseLLM: Configured LLM instance
         """
-        from flo_ai.llm import OpenAI, Anthropic, Gemini, OllamaLLM
+        from flo_ai.helpers.llm_factory import create_llm_from_config
 
-        provider = model_config.get('provider', 'openai').lower()
-        model_name = model_config.get('name')
-        base_url = model_config.get('base_url')
-
-        if not model_name:
-            raise ValueError('Model name must be specified in model configuration')
-
-        if provider == 'openai':
-            llm = OpenAI(model=model_name, base_url=base_url)
-        elif provider == 'anthropic':
-            llm = Anthropic(model=model_name, base_url=base_url)
-        elif provider == 'gemini':
-            llm = Gemini(model=model_name, base_url=base_url)
-        elif provider == 'ollama':
-            llm = OllamaLLM(model=model_name, base_url=base_url)
-        else:
-            raise ValueError(f'Unsupported model provider: {provider}')
-
-        return llm
+        return create_llm_from_config(model_config, **kwargs)
 
     @staticmethod
     def _create_agent_from_direct_config(
         agent_config: Dict[str, Any],
         base_llm: Optional[BaseLLM] = None,
         available_tools: Optional[Dict[str, Tool]] = None,
+        **kwargs,
     ) -> Agent:
         """Create an Agent from direct YAML configuration.
 
@@ -891,7 +877,7 @@ class AriumBuilder:
 
         # Configure LLM
         if 'model' in agent_config and base_llm is None:
-            llm = AriumBuilder._create_llm_from_config(agent_config['model'])
+            llm = AriumBuilder._create_llm_from_config(agent_config['model'], **kwargs)
         elif base_llm:
             llm = base_llm
         else:

@@ -50,7 +50,7 @@ def extract_variables_from_inputs(inputs: List[BaseMessage]) -> Set[str]:
         Set of variable names found across all string inputs
 
     Note:
-        ImageMessage objects are skipped as they don't contain variable placeholders
+        ImageMessageContent objects are skipped as they don't contain variable placeholders
     """
     all_variables = set()
     for input_item in inputs:
@@ -61,7 +61,7 @@ def extract_variables_from_inputs(inputs: List[BaseMessage]) -> Set[str]:
         if isinstance(input_item, str):
             variables = extract_variables_from_text(input_item)
             all_variables.update(variables)
-        # Skip ImageMessage objects as they don't contain text variables
+        # Skip ImageMessageContent objects as they don't contain text variables
 
     return all_variables
 

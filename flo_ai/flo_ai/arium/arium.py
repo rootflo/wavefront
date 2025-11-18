@@ -381,7 +381,7 @@ class Arium(BaseArium):
                     )
                 )
             else:
-                # ImageMessage and DocumentMessage objects don't need variable resolution
+                # ImageMessageContent and DocumentMessage objects don't need variable resolution
                 resolved_inputs.append(input_item)
         return resolved_inputs
 
