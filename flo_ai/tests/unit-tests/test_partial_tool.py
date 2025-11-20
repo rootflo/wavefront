@@ -37,14 +37,14 @@ class TestPartialTool:
         # Create partial tool with pre-filled datasource_id and project_id
         partial_tool = PartialTool(
             base_tool=base_tool,
-            pre_filled_params={'datasource_id': 'ds_123', 'project_id': 'my-project'},
+            prefilled_params={'datasource_id': 'ds_123', 'project_id': 'my-project'},
         )
 
         # Verify partial tool properties
         assert partial_tool.name == 'test_tool_partial'
         assert 'pre-configured parameters' in partial_tool.description
         assert partial_tool.base_tool == base_tool
-        assert partial_tool.get_pre_filled_params() == {
+        assert partial_tool.get_prefilled_params() == {
             'datasource_id': 'ds_123',
             'project_id': 'my-project',
         }
@@ -69,7 +69,7 @@ class TestPartialTool:
 
         partial_tool = PartialTool(
             base_tool=base_tool,
-            pre_filled_params={'param1': 'value1'},
+            prefilled_params={'param1': 'value1'},
             name_override='custom_name',
             description_override='Custom description',
         )
@@ -106,7 +106,7 @@ class TestPartialTool:
 
         partial_tool = PartialTool(
             base_tool=base_tool,
-            pre_filled_params={'datasource_id': 'ds_123', 'project_id': 'my-project'},
+            prefilled_params={'datasource_id': 'ds_123', 'project_id': 'my-project'},
         )
 
         # Execute with AI-provided query
@@ -141,7 +141,7 @@ class TestPartialTool:
         )
 
         partial_tool = PartialTool(
-            base_tool=base_tool, pre_filled_params={'datasource_id': 'ds_123'}
+            base_tool=base_tool, prefilled_params={'datasource_id': 'ds_123'}
         )
 
         # Execute with AI-provided datasource_id that should override pre-filled one
@@ -169,23 +169,23 @@ class TestPartialTool:
         )
 
         partial_tool = PartialTool(
-            base_tool=base_tool, pre_filled_params={'param1': 'value1'}
+            base_tool=base_tool, prefilled_params={'param1': 'value1'}
         )
 
         # Test adding a parameter
-        partial_tool.add_pre_filled_param('param2', 'value2')
-        assert partial_tool.get_pre_filled_params() == {
+        partial_tool.add_prefilled_param('param2', 'value2')
+        assert partial_tool.get_prefilled_params() == {
             'param1': 'value1',
             'param2': 'value2',
         }
 
         # Test removing a parameter
-        partial_tool.remove_pre_filled_param('param1')
-        assert partial_tool.get_pre_filled_params() == {'param2': 'value2'}
+        partial_tool.remove_prefilled_param('param1')
+        assert partial_tool.get_prefilled_params() == {'param2': 'value2'}
 
         # Test removing non-existent parameter (should not raise error)
-        partial_tool.remove_pre_filled_param('non_existent')
-        assert partial_tool.get_pre_filled_params() == {'param2': 'value2'}
+        partial_tool.remove_prefilled_param('non_existent')
+        assert partial_tool.get_prefilled_params() == {'param2': 'value2'}
 
     def test_create_partial_tool_helper_function(self):
         """Test the create_partial_tool helper function."""
@@ -214,7 +214,7 @@ class TestPartialTool:
         )
 
         assert isinstance(partial_tool, PartialTool)
-        assert partial_tool.get_pre_filled_params() == {
+        assert partial_tool.get_prefilled_params() == {
             'datasource_id': 'ds_123',
             'project_id': 'my-project',
         }
@@ -234,7 +234,7 @@ class TestPartialTool:
         )
 
         partial_tool = PartialTool(
-            base_tool=base_tool, pre_filled_params={'param1': 'value1'}
+            base_tool=base_tool, prefilled_params={'param1': 'value1'}
         )
 
         # Execute and expect ToolExecutionError
@@ -278,7 +278,7 @@ class TestPartialTool:
         # Pre-fill some required and some optional parameters
         partial_tool = PartialTool(
             base_tool=base_tool,
-            pre_filled_params={
+            prefilled_params={
                 'datasource_id': 'ds_123',
                 'project_id': 'my-project',
                 'optional_param': 'default_value',

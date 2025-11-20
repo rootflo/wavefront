@@ -77,7 +77,7 @@ agent:
     name: "gpt-4"
   tools:
     - name: "test_tool"
-      pre_filled_params:
+      prefilled_params:
         datasource_id: "ds_123"
         project_id: "my-project"
       name_override: "custom_tool_name"
@@ -117,7 +117,7 @@ agent:
   tools:
     - "test_tool"  # Simple reference
     - name: "another_tool"
-      pre_filled_params:
+      prefilled_params:
         datasource_id: "ds_456"
         project_id: "another-project"
 """
@@ -170,7 +170,7 @@ agent:
     provider: "openai"
     name: "gpt-4"
   tools:
-    - pre_filled_params:
+    - prefilled_params:
         datasource_id: "ds_123"
 """
 
@@ -263,7 +263,7 @@ agent:
             'test_tool',  # Simple reference
             {
                 'name': 'another_tool',
-                'pre_filled_params': {'datasource_id': 'ds_123'},
+                'prefilled_params': {'datasource_id': 'ds_123'},
                 'name_override': 'custom_name',
             },
         ]

@@ -71,6 +71,32 @@ class TestAriumBuilder:
             function_node in builder._function_nodes for function_node in function_nodes
         )
 
+    def test_add_function_node_with_prefilled_params(self):
+        """Test adding a function node with prefilled_params"""
+        builder = AriumBuilder()
+
+        def test_function(inputs, variables=None, param1=None, param2=None):
+            return f'Processed with param1={param1}, param2={param2}'
+
+        prefilled_params = {'param1': 'value1', 'param2': 'value2'}
+
+        function_node = FunctionNode(
+            name='test_function_node',
+            description='Test function node with prefilled params',
+            function=test_function,
+            prefilled_params=prefilled_params,
+        )
+
+        result = builder.add_function_node(function_node)
+
+        assert result is builder
+
+        assert function_node in builder._function_nodes
+
+        assert function_node.prefilled_params == prefilled_params
+        assert function_node.prefilled_params['param1'] == 'value1'
+        assert function_node.prefilled_params['param2'] == 'value2'
+
     def test_with_memory(self):
         """Test setting custom memory"""
         builder = AriumBuilder()

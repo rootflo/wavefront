@@ -20,6 +20,7 @@ The Flo AI tools system allows you to create and configure tools that can be use
 - **Entity-attached tools**: Tools that require specific context or configuration (e.g., BigQuery with datasource ID, email with SMTP settings)
 
 The system supports:
+
 - Basic tool creation and usage
 - Partial tools with pre-filled parameters
 - YAML-based tool configuration
@@ -55,6 +56,7 @@ async def calculate(expression: str, precision: int = 2) -> str:
 ### Tool Properties
 
 Every tool has these properties:
+
 - `name`: Tool name (defaults to function name)
 - `description`: Tool description (defaults to docstring)
 - `parameters`: Dictionary of parameter definitions
@@ -81,6 +83,7 @@ Partial tools allow you to pre-fill some parameters during agent building, hidin
 ### Why Use Partial Tools?
 
 **Problem**: Some tools require context-specific parameters that shouldn't be provided by the AI:
+
 - BigQuery tools need `datasource_id` and `project_id`
 - Email tools need SMTP server configuration
 - Database tools need connection strings
@@ -130,7 +133,7 @@ agent = (AgentBuilder()
     .with_tools([
         {
             "tool": bigquery_query.tool,
-            "pre_filled_params": {
+            "prefilled_params": {
                 "datasource_id": "ds_production_123",
                 "project_id": "my-company-prod",
                 "dataset": "analytics"
@@ -194,7 +197,7 @@ from flo_ai.tool.tool_config import ToolConfig
 
 tool_config = ToolConfig(
     tool=my_tool,
-    pre_filled_params={"param1": "value1", "param2": "value2"},
+    prefilled_params={"param1": "value1", "param2": "value2"},
     name_override="custom_tool_name",
     description_override="Custom tool description"
 )
@@ -207,7 +210,7 @@ configured_tool = tool_config.to_tool()
 
 - `is_partial()`: Check if the tool has pre-filled parameters
 - `to_tool()`: Convert configuration to a Tool object
-- `get_pre_filled_params()`: Get pre-filled parameters
+- `get_prefilled_params()`: Get pre-filled parameters
 
 ## YAML Configuration
 
@@ -225,19 +228,19 @@ agent:
   tools:
     # Simple tool reference
     - "calculate"
-    
+
     # Tool with pre-filled parameters
     - name: "bigquery_query"
-      pre_filled_params:
+      prefilled_params:
         datasource_id: "ds_production_123"
         project_id: "my-company-prod"
         dataset: "analytics"
       name_override: "query_production_data"
       description_override: "Query production BigQuery data"
-    
+
     # Tool with different configuration
     - name: "web_search"
-      pre_filled_params:
+      prefilled_params:
         max_results: 5
         language: "en"
       name_override: "search_web"
@@ -257,15 +260,15 @@ agent:
     name: "gpt-4"
   tools:
     - name: "bigquery_query"
-      pre_filled_params:
+      prefilled_params:
         datasource_id: "ds_production_123"
         project_id: "my-company-prod"
         dataset: "analytics"
       name_override: "query_production_data"
       description_override: "Query production BigQuery data"
-    
+
     - name: "send_email"
-      pre_filled_params:
+      prefilled_params:
         smtp_server: "smtp.company.com"
         smtp_port: 587
       name_override: "send_notification"
@@ -283,15 +286,15 @@ agent:
     name: "gpt-4"
   tools:
     - name: "bigquery_query"
-      pre_filled_params:
+      prefilled_params:
         datasource_id: "ds_dev_456"
         project_id: "my-company-dev"
         dataset: "test_data"
       name_override: "query_dev_data"
       description_override: "Query development BigQuery data"
-    
+
     - name: "web_search"
-      pre_filled_params:
+      prefilled_params:
         max_results: 3
         language: "en"
       name_override: "search_web"
@@ -394,14 +397,14 @@ agent:
   tools:
     - "calculate"
     - name: "bigquery_query"
-      pre_filled_params:
+      prefilled_params:
         datasource_id: "ds_production_123"
         project_id: "my-company-prod"
         dataset: "analytics"
       name_override: "query_production_data"
       description_override: "Query production BigQuery data"
     - name: "web_search"
-      pre_filled_params:
+      prefilled_params:
         max_results: 5
         language: "en"
       name_override: "search_web"
@@ -442,6 +445,7 @@ agent = AgentBuilder.from_yaml(
 ```
 
 **Parameters:**
+
 - `name`: Custom name for the tool (defaults to function name)
 - `description`: Tool description (defaults to function docstring)
 - `parameter_descriptions`: Dict mapping parameter names to descriptions
@@ -453,16 +457,17 @@ class ToolConfig:
     def __init__(
         self,
         tool: Tool,
-        pre_filled_params: Optional[Dict[str, Any]] = None,
+        prefilled_params: Optional[Dict[str, Any]] = None,
         name_override: Optional[str] = None,
         description_override: Optional[str] = None,
     )
 ```
 
 **Methods:**
+
 - `is_partial() -> bool`: Check if tool has pre-filled parameters
 - `to_tool() -> Tool`: Convert to Tool object
-- `get_pre_filled_params() -> Dict[str, Any]`: Get pre-filled parameters
+- `get_prefilled_params() -> Dict[str, Any]`: Get pre-filled parameters
 
 ### PartialTool Class
 
@@ -471,23 +476,24 @@ class PartialTool(Tool):
     def __init__(
         self,
         base_tool: Tool,
-        pre_filled_params: Dict[str, Any],
+        prefilled_params: Dict[str, Any],
         name_override: Optional[str] = None,
         description_override: Optional[str] = None,
     )
 ```
 
 **Methods:**
+
 - `get_original_tool() -> Tool`: Get the original tool
-- `get_pre_filled_params() -> Dict[str, Any]`: Get pre-filled parameters
-- `add_pre_filled_param(key: str, value: Any) -> PartialTool`: Add parameter
-- `remove_pre_filled_param(key: str) -> PartialTool`: Remove parameter
+- `get_prefilled_params() -> Dict[str, Any]`: Get pre-filled parameters
+- `add_prefilled_param(key: str, value: Any) -> PartialTool`: Add parameter
+- `remove_prefilled_param(key: str) -> PartialTool`: Remove parameter
 
 ### AgentBuilder Methods
 
 ```python
 # Add single tool with optional pre-filled parameters
-def add_tool(self, tool: Tool, **pre_filled_params) -> 'AgentBuilder'
+def add_tool(self, tool: Tool, **prefilled_params) -> 'AgentBuilder'
 
 # Add multiple tools (supports Tool, ToolConfig, or dict)
 def with_tools(self, tools: Union[List[Tool], List[ToolConfig], List[Dict[str, Any]]]) -> 'AgentBuilder'
@@ -551,7 +557,7 @@ def test_tool_execution():
         function=mock_function,
         parameters={"param1": {"type": "string", "description": "Param 1", "required": True}}
     )
-    
+
     result = await tool.execute(param1="test_value")
     assert result == "test_result"
     mock_function.assert_called_once_with(param1="test_value")
@@ -569,7 +575,7 @@ def test_tool_execution():
 ### Debug Tips
 
 1. **Check tool parameters**: Use `tool.parameters` to see what the AI sees
-2. **Verify pre-filled params**: Use `partial_tool.get_pre_filled_params()`
+2. **Verify pre-filled params**: Use `partial_tool.get_prefilled_params()`
 3. **Test tool execution**: Test tools independently before using in agents
 4. **Check YAML structure**: Validate YAML with online validators
 

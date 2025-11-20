@@ -350,7 +350,9 @@ class AriumBuilder:
                   function_name: function2
                   description: "Function 2"
                   input_filter: ["input1", "input2"]
-
+                  prefilled_params:
+                    param1: "value1"
+                    param2: "value2"
               # LLM Router definitions (NEW)
               routers:
                 - name: content_router
@@ -529,6 +531,9 @@ class AriumBuilder:
         for function_node_config in function_nodes_config:
             function_node_name = function_node_config['name']
             function_name = function_node_config['function_name']
+            prefilled_params = function_node_config.get('prefilled_params', None)
+            description = function_node_config.get('description', None)
+            input_filter = function_node_config.get('input_filter', None)
             function = function_registry.get(function_name)
 
             if function is None:
@@ -540,9 +545,10 @@ class AriumBuilder:
 
             function_node = FunctionNode(
                 name=function_node_name,
-                description=function_node_config.get('description', ''),
+                description=description,
                 function=function,
-                input_filter=function_node_config.get('input_filter', None),
+                input_filter=input_filter,
+                prefilled_params=prefilled_params,
             )
 
             function_nodes_dict[function_node_name] = function_node

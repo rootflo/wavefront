@@ -119,7 +119,7 @@ async def main():
                 # Tool with pre-filled parameters using dictionary format
                 {
                     'tool': bigquery_query.tool,
-                    'pre_filled_params': {
+                    'prefilled_params': {
                         'datasource_id': 'ds_production_456',
                         'project_id': 'company-prod',
                         'dataset': 'analytics',
@@ -128,7 +128,7 @@ async def main():
                 # Tool with pre-filled parameters using dictionary format
                 {
                     'tool': web_search.tool,
-                    'pre_filled_params': {'max_results': 3, 'language': 'en'},
+                    'prefilled_params': {'max_results': 3, 'language': 'en'},
                 },
                 # Regular tool without pre-filling
                 calculate.tool,
@@ -171,12 +171,12 @@ async def main():
     print('5. Demonstrating parameter management...')
 
     # Add a new pre-filled parameter
-    bigquery_partial.add_pre_filled_param('timeout', 30)
-    print(f'Added timeout parameter: {bigquery_partial.get_pre_filled_params()}')
+    bigquery_partial.add_prefilled_param('timeout', 30)
+    print(f'Added timeout parameter: {bigquery_partial.get_prefilled_params()}')
 
     # Remove a parameter
-    bigquery_partial.remove_pre_filled_param('timeout')
-    print(f'Removed timeout parameter: {bigquery_partial.get_pre_filled_params()}')
+    bigquery_partial.remove_prefilled_param('timeout')
+    print(f'Removed timeout parameter: {bigquery_partial.get_prefilled_params()}')
     print()
 
     # Show the difference between original and partial tools
@@ -191,7 +191,7 @@ async def main():
         print(f"  - {param}: {info['type']} (required: {info['required']})")
 
     print(
-        f'\nPre-filled parameters (hidden from AI): {bigquery_partial.get_pre_filled_params()}'
+        f'\nPre-filled parameters (hidden from AI): {bigquery_partial.get_prefilled_params()}'
     )
 
 

@@ -61,7 +61,7 @@ class AgentBuilder:
             tools: List of tools, tool configurations, or tool dictionaries.
                    Each tool dictionary should have:
                    - 'tool': The Tool object
-                   - 'pre_filled_params': Optional dict of pre-filled parameters
+                   - 'prefilled_params': Optional dict of pre-filled parameters
                    - 'name_override': Optional custom name
                    - 'description_override': Optional custom description
 
@@ -71,14 +71,14 @@ class AgentBuilder:
 
             # Tool configurations
             builder.with_tools([
-                ToolConfig(tool1, pre_filled_params={"param1": "value1"}),
-                ToolConfig(tool2, pre_filled_params={"param2": "value2"})
+                ToolConfig(tool1, prefilled_params={"param1": "value1"}),
+                ToolConfig(tool2, prefilled_params={"param2": "value2"})
             ])
 
             # Tool dictionaries
             builder.with_tools([
-                {"tool": tool1, "pre_filled_params": {"param1": "value1"}},
-                {"tool": tool2, "pre_filled_params": {"param2": "value2"}}
+                {"tool": tool1, "prefilled_params": {"param1": "value1"}},
+                {"tool": tool2, "prefilled_params": {"param2": "value2"}}
             ])
         """
         processed_tools = []
@@ -93,13 +93,13 @@ class AgentBuilder:
             elif isinstance(tool_item, dict):
                 # Tool dictionary - convert to ToolConfig then to tool
                 tool = tool_item['tool']
-                pre_filled_params = tool_item.get('pre_filled_params', {})
+                prefilled_params = tool_item.get('prefilled_params', {})
                 name_override = tool_item.get('name_override')
                 description_override = tool_item.get('description_override')
 
                 tool_config = ToolConfig(
                     tool=tool,
-                    pre_filled_params=pre_filled_params,
+                    prefilled_params=prefilled_params,
                     name_override=name_override,
                     description_override=description_override,
                 )
@@ -110,13 +110,13 @@ class AgentBuilder:
         self._tools = processed_tools
         return self
 
-    def add_tool(self, tool: Tool, **pre_filled_params) -> 'AgentBuilder':
+    def add_tool(self, tool: Tool, **prefilled_params) -> 'AgentBuilder':
         """
         Add a single tool with optional pre-filled parameters.
 
         Args:
             tool: The tool to add
-            **pre_filled_params: Pre-filled parameters for the tool
+            **prefilled_params: Pre-filled parameters for the tool
 
         Example:
             builder.add_tool(
@@ -125,8 +125,8 @@ class AgentBuilder:
                 project_id="my-project"
             )
         """
-        if pre_filled_params:
-            tool_config = create_tool_config(tool, **pre_filled_params)
+        if prefilled_params:
+            tool_config = create_tool_config(tool, **prefilled_params)
             self._tools.append(tool_config.to_tool())
         else:
             self._tools.append(tool)
@@ -299,21 +299,21 @@ class AgentBuilder:
                     raise ValueError(f"Tool '{tool_name}' not found in tool registry")
 
                 # Extract configuration
-                pre_filled_params = tool_config.get('pre_filled_params', {})
+                prefilled_params = tool_config.get('prefilled_params', {})
                 name_override = tool_config.get('name_override')
                 description_override = tool_config.get('description_override')
 
                 # Create tool configuration
                 tool_config_obj = ToolConfig(
                     tool=base_tool,
-                    pre_filled_params=pre_filled_params,
+                    prefilled_params=prefilled_params,
                     name_override=name_override,
                     description_override=description_override,
                 )
 
                 # If there are pre-filled parameters or custom name/description, convert to tool
                 if (
-                    pre_filled_params
+                    prefilled_params
                     or name_override is not None
                     or description_override is not None
                 ):

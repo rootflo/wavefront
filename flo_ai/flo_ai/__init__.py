@@ -34,7 +34,6 @@ from .tool import Tool, ToolExecutionError, flo_tool, create_tool_from_function
 from .arium import (
     Arium,
     BaseArium,
-    create_arium,
     MessageMemory,
     BaseMemory,
     StartNode,
@@ -43,7 +42,9 @@ from .arium import (
     AriumBuilder,
     AriumEvent,
     AriumEventType,
+    MessageMemoryItem,
     default_event_callback,
+    create_arium,
 )
 
 # Utils package - Utility functions
@@ -99,6 +100,7 @@ __all__ = [
     'create_arium',
     'MessageMemory',
     'BaseMemory',
+    'MessageMemoryItem',
     'StartNode',
     'EndNode',
     'Edge',

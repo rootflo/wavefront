@@ -207,6 +207,72 @@ class TestAriumYamlBuilder:
             assert builder._function_nodes[0].name == 'test_function_node'
             assert builder._function_nodes[0].function == test_function
 
+    def test_from_yaml_with_function_nodes_prefilled_params(self):
+        """Test YAML configuration with function nodes using prefilled_params."""
+        yaml_config = """
+        arium:
+          agents:
+            - name: test_agent
+              yaml_config: |
+                agent:
+                  name: test_agent
+                  job: "Test agent"
+                  model:
+                    provider: openai
+                    name: gpt-4o-mini
+                    
+          function_nodes:
+            - name: test_function_node
+              function_name: test_function
+              description: "Test function node with prefilled params"
+              prefilled_params:
+                param1: value1
+                param2: value2
+                param3: 42
+            
+          workflow:
+            start: test_agent
+            edges:
+              - from: test_agent
+                to: [test_function_node]
+              - from: test_function_node
+                to: [end]
+            end: [test_function_node]
+        """
+
+        # Create mock function
+        async def test_function(
+            inputs, variables=None, param1=None, param2=None, param3=None
+        ):
+            return f'processed with param1={param1}, param2={param2}, param3={param3}'
+
+        function_registry = {'test_function': test_function}
+
+        with patch('flo_ai.arium.builder.AgentBuilder') as mock_agent_builder:
+            mock_agent = Mock(spec=Agent)
+            mock_agent.name = 'test_agent'
+
+            mock_builder_instance = Mock()
+            mock_builder_instance.build.return_value = mock_agent
+            mock_agent_builder.from_yaml.return_value = mock_builder_instance
+
+            builder = AriumBuilder.from_yaml(
+                yaml_str=yaml_config, function_registry=function_registry
+            )
+
+            # Verify function nodes were added with prefilled_params
+            assert len(builder._function_nodes) == 1
+            function_node = builder._function_nodes[0]
+            assert function_node.name == 'test_function_node'
+            assert function_node.function == test_function
+            assert (
+                function_node.description == 'Test function node with prefilled params'
+            )
+            assert function_node.prefilled_params is not None
+            assert function_node.prefilled_params['param1'] == 'value1'
+            assert function_node.prefilled_params['param2'] == 'value2'
+            assert function_node.prefilled_params['param3'] == 42
+
     def test_from_yaml_with_routers(self):
         """Test YAML configuration with custom routers."""
         yaml_config = """

@@ -12,7 +12,7 @@ class PartialTool(Tool):
     def __init__(
         self,
         base_tool: Tool,
-        pre_filled_params: Dict[str, Any],
+        prefilled_params: Dict[str, Any],
         name_override: Optional[str] = None,
         description_override: Optional[str] = None,
     ):
@@ -21,17 +21,17 @@ class PartialTool(Tool):
 
         Args:
             base_tool: The original tool to wrap
-            pre_filled_params: Parameters to pre-fill (datasource_id, etc.)
+            prefilled_params: Parameters to pre-fill (datasource_id, etc.)
             name_override: Optional custom name for the partial tool
             description_override: Optional custom description
         """
         self.base_tool = base_tool
-        self.pre_filled_params = pre_filled_params.copy()
+        self.prefilled_params = prefilled_params.copy()
 
         # Create filtered parameters (remove pre-filled ones from AI's view)
         filtered_parameters = {}
         for param_name, param_info in base_tool.parameters.items():
-            if param_name not in pre_filled_params:
+            if param_name not in prefilled_params:
                 filtered_parameters[param_name] = param_info.copy()
 
         super().__init__(
@@ -47,7 +47,7 @@ class PartialTool(Tool):
         try:
             # Merge pre-filled params with AI-provided params
             # AI params take precedence over pre-filled ones
-            merged_params = {**self.pre_filled_params, **kwargs}
+            merged_params = {**self.prefilled_params, **kwargs}
 
             logger.info(
                 f'Executing partial tool {self.name} with merged params: {merged_params}'
@@ -64,29 +64,29 @@ class PartialTool(Tool):
         """Get the original tool without pre-filled parameters."""
         return self.base_tool
 
-    def get_pre_filled_params(self) -> Dict[str, Any]:
+    def get_prefilled_params(self) -> Dict[str, Any]:
         """Get the pre-filled parameters."""
-        return self.pre_filled_params.copy()
+        return self.prefilled_params.copy()
 
-    def add_pre_filled_param(self, key: str, value: Any) -> 'PartialTool':
+    def add_prefilled_param(self, key: str, value: Any) -> 'PartialTool':
         """Add or update a pre-filled parameter."""
-        self.pre_filled_params[key] = value
+        self.prefilled_params[key] = value
         return self
 
-    def remove_pre_filled_param(self, key: str) -> 'PartialTool':
+    def remove_prefilled_param(self, key: str) -> 'PartialTool':
         """Remove a pre-filled parameter."""
-        if key in self.pre_filled_params:
-            del self.pre_filled_params[key]
+        if key in self.prefilled_params:
+            del self.prefilled_params[key]
         return self
 
 
-def create_partial_tool(tool: Tool, **pre_filled_params) -> PartialTool:
+def create_partial_tool(tool: Tool, **prefilled_params) -> PartialTool:
     """
     Create a partial tool with pre-filled parameters.
 
     Args:
         tool: The original tool
-        **pre_filled_params: Parameters to pre-fill
+        **prefilled_params: Parameters to pre-fill
 
     Returns:
         PartialTool: A tool with pre-filled parameters
@@ -108,4 +108,4 @@ def create_partial_tool(tool: Tool, **pre_filled_params) -> PartialTool:
         # AI only needs to provide the query
         result = await partial_tool.execute(query="SELECT * FROM users")
     """
-    return PartialTool(tool, pre_filled_params)
+    return PartialTool(tool, prefilled_params)
