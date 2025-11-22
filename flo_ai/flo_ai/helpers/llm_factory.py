@@ -22,6 +22,7 @@ class LLMFactory:
         'ollama',
         'vertexai',
         'rootflo',
+        'openai_vllm',
     }
 
     @staticmethod
@@ -63,6 +64,14 @@ class LLMFactory:
             ...     {'provider': 'rootflo', 'model_id': 'model-123'},
             ...     app_key='key', app_secret='secret', issuer='iss', audience='aud'
             ... )
+
+            >>> # OpenAI vLLM with base_url
+            >>> llm = LLMFactory.create_llm({
+            ...     'provider': 'openai_vllm',
+            ...     'name': 'microsoft/phi-4',
+            ...     'base_url': 'http://localhost:8000/v1',
+            ...     'api_key': 'vllm-key'
+            ... })
         """
         provider = model_config.get('provider', 'openai').lower()
 
@@ -76,6 +85,8 @@ class LLMFactory:
             return LLMFactory._create_rootflo_llm(model_config, **kwargs)
         elif provider == 'vertexai':
             return LLMFactory._create_vertexai_llm(model_config, **kwargs)
+        elif provider == 'openai_vllm':
+            return LLMFactory._create_openai_vllm_llm(model_config, **kwargs)
         else:
             return LLMFactory._create_standard_llm(provider, model_config, **kwargs)
 
@@ -132,6 +143,39 @@ class LLMFactory:
             project=project,
             location=location,
             base_url=base_url,
+        )
+
+    @staticmethod
+    def _create_openai_vllm_llm(model_config: Dict[str, Any], **kwargs) -> 'BaseLLM':
+        """Create OpenAI vLLM instance with base_url handling."""
+        from flo_ai.llm import OpenAIVLLM
+
+        model_name = model_config.get('name')
+        if not model_name:
+            raise ValueError(
+                'openai_vllm provider requires "name" parameter in model configuration'
+            )
+
+        # Priority: kwargs > model_config > None
+        base_url = kwargs.get('base_url') or model_config.get('base_url')
+        if not base_url:
+            raise ValueError(
+                'openai_vllm provider requires "base_url" parameter. '
+                'Provide it in model_config or as a kwarg.'
+            )
+
+        # Optional parameters
+        api_key = kwargs.get('api_key') or model_config.get('api_key')
+        temperature = kwargs.get(
+            'temperature',
+            model_config.get('temperature', 0.7),
+        )
+
+        return OpenAIVLLM(
+            model=model_name,
+            base_url=base_url,
+            api_key=api_key,
+            temperature=temperature,
         )
 
     @staticmethod
