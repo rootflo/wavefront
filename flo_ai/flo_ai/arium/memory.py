@@ -20,12 +20,10 @@ class StepStatus(Enum):
 
 
 class MessageMemoryItem:
-    def __init__(
-        self, node: str, occurrence: int = 0, result: BaseMessage | str = None
-    ):
+    def __init__(self, node: str, occurrence: int = 0, result: BaseMessage = None):
         self.node: str = node
         self.occurrence: int = occurrence
-        self.result: BaseMessage | str = result
+        self.result: BaseMessage = result
 
     def to_dict(self) -> Dict[str, Any]:
         return {

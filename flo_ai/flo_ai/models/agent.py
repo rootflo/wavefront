@@ -9,6 +9,7 @@ from flo_ai.models.chat_message import (
     UserMessage,
     TextMessageContent,
     FunctionMessage,
+    SystemMessage,
 )
 from flo_ai.tool.base_tool import Tool, ToolExecutionError
 from flo_ai.models.agent_error import AgentError
@@ -139,10 +140,7 @@ class Agent(BaseAgent):
                     if self.reasoning_pattern == ReasoningPattern.COT
                     else resolve_variables(self.system_prompt, variables)
                 )
-                system_message = AssistantMessage(
-                    role=MessageType.SYSTEM,
-                    content=TextMessageContent(text=system_content),
-                )
+                system_message = SystemMessage(content=system_content)
                 self.add_to_history(system_message)
                 messages = await self._get_message_history(variables)
 
@@ -220,9 +218,7 @@ class Agent(BaseAgent):
                 else:
                     system_content = resolve_variables(self.system_prompt, variables)
 
-                system_message = AssistantMessage(
-                    role=MessageType.SYSTEM, content=system_content
-                )
+                system_message = SystemMessage(content=system_content)
                 self.add_to_history(system_message)
                 messages = await self._get_message_history(variables)
 
@@ -401,11 +397,8 @@ class Agent(BaseAgent):
                         )
 
                 # Generate final response if we've hit the tool call limit or exited the loop
-                system_message = AssistantMessage(
-                    role=MessageType.SYSTEM,
-                    content=TextMessageContent(
-                        text='Please provide a final answer based on all the tool results above.'
-                    ),
+                system_message = SystemMessage(
+                    content='Please provide a final answer based on all the tool results above.'
                 )
                 self.add_to_history(system_message)
                 messages = await self._get_message_history(variables)

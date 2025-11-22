@@ -6,6 +6,7 @@ from flo_ai.models.agent import Agent
 from flo_ai.tool.base_tool import Tool
 from flo_ai.utils.logger import logger
 from typing import List, Optional, Callable, Literal, get_origin, get_args, Dict
+from collections.abc import Awaitable as AwaitableABC
 from flo_ai.arium.models import StartNode, EndNode, Edge, default_router
 from pathlib import Path
 
@@ -59,8 +60,20 @@ class BaseArium:
             if return_annotation == inspect.Signature.empty:
                 return None
 
-            # Check if the return type is a Literal
+            # Check if the return type is a Literal or Awaitable[Literal[...]]
             origin = get_origin(return_annotation)
+
+            # Handle Awaitable[Literal[...]] for async router functions
+            if origin is AwaitableABC:
+                # Unwrap the Awaitable to get the inner type
+                args = get_args(return_annotation)
+                if args:
+                    inner_type = args[0]
+                    inner_origin = get_origin(inner_type)
+                    if inner_origin is Literal:
+                        # Extract the literal values from the inner Literal type
+                        literal_values = list(get_args(inner_type))
+                        return literal_values
 
             # In Python 3.8+, Literal types have get_origin() return typing.Literal
             if origin is Literal:

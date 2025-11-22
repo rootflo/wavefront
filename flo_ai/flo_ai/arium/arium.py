@@ -50,11 +50,7 @@ class Arium(BaseArium):
             List of workflow execution results
         """
         if isinstance(inputs, str):
-            inputs = [
-                UserMessage(
-                    TextMessageContent(text=resolve_variables(inputs, variables))
-                )
-            ]
+            inputs = [UserMessage(content=resolve_variables(inputs, variables))]
 
         if not self.is_compiled:
             raise ValueError('Arium is not compiled')
@@ -475,13 +471,19 @@ class Arium(BaseArium):
                     elif isinstance(node, FunctionNode):
                         result = await node.run(inputs, variables=None)
                     elif isinstance(node, ForEachNode):
-                        result = await node.run(
+                        foreach_results: List[
+                            MessageMemoryItem | BaseMessage
+                        ] = await node.run(
                             inputs,
                             variables=variables,
                         )
+                        result = self._flatten_results(foreach_results)
                     elif isinstance(node, AriumNode):
                         # AriumNode execution
-                        result = await node.run(inputs, variables=variables)
+                        arium_result: List[MessageMemoryItem] = await node.run(
+                            inputs, variables=variables
+                        )
+                        result = self._flatten_results(arium_result)
                     elif isinstance(node, StartNode):
                         result = None
                     elif isinstance(node, EndNode):
@@ -556,12 +558,18 @@ class Arium(BaseArium):
                 elif isinstance(node, FunctionNode):
                     result = await node.run(inputs, variables=None)
                 elif isinstance(node, ForEachNode):
-                    result = await node.run(
+                    foreach_results: List[
+                        MessageMemoryItem | BaseMessage
+                    ] = await node.run(
                         inputs,
                         variables=variables,
                     )
+                    result = self._flatten_results(foreach_results)
                 elif isinstance(node, AriumNode):
-                    result = await node.run(inputs, variables=variables)
+                    arium_result: List[MessageMemoryItem] = await node.run(
+                        inputs, variables=variables
+                    )
+                    result = self._flatten_results(arium_result)
                 elif isinstance(node, StartNode):
                     result = None
                 elif isinstance(node, EndNode):
@@ -601,6 +609,23 @@ class Arium(BaseArium):
 
                 # Re-raise the exception
                 raise e
+
+    def _flatten_results(
+        self, sequence: List[MessageMemoryItem | BaseMessage | str]
+    ) -> List[BaseMessage | str]:
+        """
+        Flatten a sequence of results by extracting .result from MessageMemoryItem instances.
+
+        Args:
+            sequence: List of items that may be MessageMemoryItem, BaseMessage, or str
+
+        Returns:
+            List of BaseMessage or str with MessageMemoryItem layers removed
+        """
+        return [
+            item.result if isinstance(item, MessageMemoryItem) else item
+            for item in sequence
+        ]
 
     def _add_to_memory(self, message: MessageMemoryItem):
         """

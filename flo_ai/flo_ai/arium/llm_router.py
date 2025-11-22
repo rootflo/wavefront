@@ -6,9 +6,14 @@ to make dynamic routing decisions based on conversation context and history.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Optional, Callable, Any, Union, get_args, List
+from typing import Dict, Optional, Callable, Any, Union, get_args, List, Awaitable
 from functools import wraps
-from flo_ai.arium.memory import BaseMemory, ExecutionPlan, StepStatus
+from flo_ai.arium.memory import (
+    ExecutionPlan,
+    StepStatus,
+    MessageMemory,
+    MessageMemoryItem,
+)
 from flo_ai.llm.base_llm import BaseLLM
 from flo_ai.llm import OpenAI
 from flo_ai.utils.logger import logger
@@ -57,7 +62,7 @@ class BaseLLMRouter(ABC):
     @abstractmethod
     def get_routing_prompt(
         self,
-        memory: BaseMemory,
+        memory: MessageMemory,
         options: Dict[str, str],
         execution_context: dict = None,
     ) -> str:
@@ -96,7 +101,7 @@ class BaseLLMRouter(ABC):
         else:
             return routes[0]
 
-    async def route(self, memory: BaseMemory, execution_context: dict = None) -> str:
+    async def route(self, memory: MessageMemory, execution_context: dict = None) -> str:
         """
         Make a routing decision using the LLM.
 
@@ -180,19 +185,15 @@ class SmartRouter(BaseLLMRouter):
 
     def get_routing_prompt(
         self,
-        memory: BaseMemory,
+        memory: MessageMemory,
         options: Dict[str, str],
         execution_context: dict = None,
     ) -> str:
-        conversation = memory.get()
+        conversation: List[MessageMemoryItem] = memory.get()
 
-        # Format conversation history with smart truncation
-        if isinstance(conversation, list):
-            # Start with last message and add more if we have space
-            messages = conversation[-5:]  # Last 5 messages
-            conversation_text = self._truncate_conversation_for_tokens(messages)
-        else:
-            conversation_text = str(conversation)
+        conversation_text = self._truncate_conversation_for_tokens(
+            [f'{item.node}: {item.result.content}' for item in conversation[-5:]]
+        )
 
         # Format options
         options_text = '\n'.join(
@@ -245,7 +246,7 @@ Agent to route to:"""
         return prompt
 
     def _truncate_conversation_for_tokens(
-        self, messages: List[Any], max_tokens: int = 128000
+        self, messages: List[str], max_tokens: int = 128000
     ) -> str:
         """
         Intelligently truncate conversation to fit within token limits.
@@ -309,15 +310,15 @@ class TaskClassifierRouter(BaseLLMRouter):
 
     def get_routing_prompt(
         self,
-        memory: BaseMemory,
+        memory: MessageMemory,
         options: Dict[str, str],
         execution_context: dict = None,
     ) -> str:
-        conversation = memory.get()
+        conversation: List[MessageMemoryItem] = memory.get()
 
         # Get the latest user input or task
         if isinstance(conversation, list) and conversation:
-            latest_task = str(conversation[-1])
+            latest_task = str(conversation[-1].result.content)
         else:
             latest_task = str(conversation)
 
@@ -445,16 +446,16 @@ class ReflectionRouter(BaseLLMRouter):
 
     def get_routing_prompt(
         self,
-        memory: BaseMemory,
+        memory: MessageMemory,
         options: Dict[str, str],
         execution_context: dict = None,
     ) -> str:
-        conversation = memory.get()
+        conversation: List[MessageMemoryItem] = memory.get()
 
         # Format conversation history
         if isinstance(conversation, list):
             conversation_text = '\n'.join(
-                [str(msg) for msg in conversation[-3:]]
+                [msg.result.content for msg in conversation[-3:]]
             )  # Last 3 messages for flow context
         else:
             conversation_text = str(conversation)
@@ -575,16 +576,16 @@ class PlanExecuteRouter(BaseLLMRouter):
 
     def get_routing_prompt(
         self,
-        memory: BaseMemory,
+        memory: MessageMemory,
         options: Dict[str, str],
         execution_context: dict = None,
     ) -> str:
-        conversation = memory.get()
+        conversation: List[MessageMemoryItem] = memory.get()
 
         # Format conversation history
         if isinstance(conversation, list):
             conversation_text = '\n'.join(
-                [str(msg) for msg in conversation[-3:]]
+                [msg.result.content for msg in conversation[-3:]]
             )  # Last 3 messages for context
         else:
             conversation_text = str(conversation)
@@ -760,17 +761,20 @@ class ConversationAnalysisRouter(BaseLLMRouter):
 
     def get_routing_prompt(
         self,
-        memory: BaseMemory,
+        memory: MessageMemory,
         options: Dict[str, str],
         execution_context: dict = None,
     ) -> str:
-        conversation = memory.get()
+        conversation: List[MessageMemoryItem] = memory.get()
 
         # Analyze recent conversation
         if isinstance(conversation, list):
             recent_messages = conversation[-self.analysis_depth :]
             conversation_text = '\n'.join(
-                [f'Message {i+1}: {msg}' for i, msg in enumerate(recent_messages)]
+                [
+                    f'Message {i+1}: {msg.result.content}'
+                    for i, msg in enumerate(recent_messages)
+                ]
             )
         else:
             conversation_text = str(conversation)
@@ -825,7 +829,9 @@ Next route:"""
         return prompt
 
 
-def create_llm_router(router_type: str, **config) -> Callable[[BaseMemory], str]:
+def create_llm_router(
+    router_type: str, **config
+) -> Callable[[MessageMemory, Optional[dict]], Awaitable[str]]:
     """
     Factory function to create LLM-powered routers with different configurations.
 
@@ -937,12 +943,15 @@ def create_llm_router(router_type: str, **config) -> Callable[[BaseMemory], str]
         literal_type = Literal[option_names]
 
     # Return a function that can be used as a router
-    async def router_function(memory: BaseMemory, execution_context: dict = None):
+    async def router_function(memory: MessageMemory, execution_context: dict = None):
         """Generated router function that uses LLM for routing decisions"""
         return await router_instance.route(memory, execution_context)
 
     # Add proper type annotations for validation
-    router_function.__annotations__ = {'memory': BaseMemory, 'return': literal_type}
+    router_function.__annotations__ = {
+        'memory': MessageMemory,
+        'return': Awaitable[literal_type],
+    }
 
     # Transfer router instance attributes to the function for validation
     router_function.supports_self_reference = getattr(
@@ -976,7 +985,7 @@ def llm_router(
             "analyst": "Analyze data and perform calculations",
             "writer": "Create reports and summaries"
         })
-        def my_smart_router(memory: BaseMemory) -> Literal["researcher", "analyst", "writer"]:
+        def my_smart_router(memory: MessageMemory) -> Literal["researcher", "analyst", "writer"]:
             pass  # Implementation is provided by decorator
     """
 
@@ -1011,7 +1020,7 @@ def llm_router(
         )
 
         @wraps(func)
-        async def wrapper(memory: BaseMemory, execution_context: dict = None):
+        async def wrapper(memory: MessageMemory, execution_context: dict = None):
             return await router_instance.route(memory, execution_context)
 
         # Preserve the original function's type annotations including return type
@@ -1034,7 +1043,7 @@ def create_research_analysis_router(
     analysis_agent: str = 'analyst',
     summary_agent: str = 'summarizer',
     llm: Optional[BaseLLM] = None,
-) -> Callable[[BaseMemory], str]:
+) -> Callable[[MessageMemory, Optional[dict]], Awaitable[str]]:
     """
     Create a router for common research -> analysis -> summary workflows.
 
@@ -1109,7 +1118,7 @@ def create_main_critic_reflection_router(
     final_agent: str = 'final_agent',
     allow_early_exit: bool = False,
     llm: Optional[BaseLLM] = None,
-) -> Callable[[BaseMemory], str]:
+) -> Callable[[MessageMemory, Optional[dict]], Awaitable[str]]:
     """
     Create a router for the A -> B -> A -> C reflection pattern (main -> critic -> main -> final).
 
@@ -1137,7 +1146,7 @@ def create_plan_execute_router(
     reviewer_agent: Optional[str] = None,
     additional_agents: Optional[Dict[str, str]] = None,
     llm: Optional[BaseLLM] = None,
-) -> Callable[[BaseMemory], str]:
+) -> Callable[[MessageMemory, Optional[dict]], Awaitable[str]]:
     """
     Create a router for plan-and-execute workflows like Cursor.
 
@@ -1179,7 +1188,7 @@ def create_main_critic_flow_router(
     final_agent: str = 'final_agent',
     allow_early_exit: bool = False,
     llm: Optional[BaseLLM] = None,
-) -> Callable[[BaseMemory], str]:
+) -> Callable[[MessageMemory, Optional[dict]], Awaitable[str]]:
     """
     DEPRECATED: Use create_main_critic_reflection_router instead.
     Create a router for the A -> B -> A -> C reflection pattern (main -> critic -> main -> final).
