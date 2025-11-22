@@ -32,10 +32,10 @@ class RootFloLLM(BaseLLM):
         self,
         base_url: str,
         model_id: str,
-        app_key: str,
-        app_secret: str,
-        issuer: str,
-        audience: str,
+        app_key: Optional[str] = None,
+        app_secret: Optional[str] = None,
+        issuer: Optional[str] = None,
+        audience: Optional[str] = None,
         access_token: Optional[str] = None,
         temperature: float = 0.7,
         **kwargs,
@@ -82,9 +82,6 @@ class RootFloLLM(BaseLLM):
                     f'Missing required parameters for JWT generation: {", ".join(missing)}. '
                     f'Either provide these parameters or pass an access_token directly.'
                 )
-        else:  # app key is still required
-            if not app_key:
-                raise ValueError('app_key is required even when using access_token')
 
         # Store initialization parameters for lazy initialization
         self._base_url = base_url
@@ -117,7 +114,11 @@ class RootFloLLM(BaseLLM):
         )
 
     async def _fetch_llm_config_async(
-        self, base_url: str, model_id: str, api_token: str, app_key: str
+        self,
+        base_url: str,
+        model_id: str,
+        api_token: str,
+        app_key: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Fetch LLM configuration from the API endpoint asynchronously.
@@ -126,7 +127,7 @@ class RootFloLLM(BaseLLM):
             base_url: The base URL of the API server
             model_id: The model identifier (config_id)
             api_token: The JWT token for authorization
-            app_key: Application key for X-Rootflo-Key header
+            app_key: Optional application key for X-Rootflo-Key header
 
         Returns:
             Dict containing llm_model and type
@@ -137,8 +138,11 @@ class RootFloLLM(BaseLLM):
         config_url = f'{base_url}/v1/llm-inference-configs/{model_id}'
         headers = {
             'Authorization': f'Bearer {api_token}',
-            'X-Rootflo-Key': app_key,
         }
+
+        # Only add X-Rootflo-Key header if app_key is provided
+        if app_key:
+            headers['X-Rootflo-Key'] = app_key
 
         try:
             async with httpx.AsyncClient() as client:
@@ -226,8 +230,8 @@ class RootFloLLM(BaseLLM):
             # Construct full URL for LLM inference
             full_url = f'{self._base_url}/v1/llm-inference/{self._model_id}'
 
-            # Prepare custom headers for proxy authentication
-            custom_headers = {'X-Rootflo-Key': self._app_key}
+            # Prepare custom headers for proxy authentication (only if app_key is provided)
+            custom_headers = {'X-Rootflo-Key': self._app_key} if self._app_key else {}
 
             # Instantiate appropriate SDK wrapper based on llm_provider
             if llm_provider == LLMProvider.OPENAI:

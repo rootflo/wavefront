@@ -220,18 +220,11 @@ class LLMFactory:
                     f'(ROOTFLO_BASE_URL, ROOTFLO_APP_KEY, ROOTFLO_APP_SECRET, ROOTFLO_ISSUER, ROOTFLO_AUDIENCE).'
                 )
         else:
-            # Access token flow - only needs base_url and app_key
-            required_params = {
-                'base_url': base_url,
-                'app_key': app_key,
-            }
-            missing = [k for k, v in required_params.items() if not v]
-
-            if missing:
+            # Access token flow - only needs base_url
+            if not base_url:
                 raise ValueError(
-                    f'RootFlo configuration incomplete. Missing required parameters: {", ".join(missing)}. '
-                    f'These can be provided via kwargs or environment variables '
-                    f'(ROOTFLO_BASE_URL, ROOTFLO_APP_KEY).'
+                    'RootFlo configuration incomplete. Missing required parameter: base_url. '
+                    'Provide it in model_config, as a kwarg, or via ROOTFLO_BASE_URL environment variable.'
                 )
 
         return RootFloLLM(
