@@ -47,9 +47,11 @@
 Wavefront AI is an open-source middleware platform designed to seamlessly integrate AI-driven agents, workflows, and data sources across enterprise environments. It acts as a connective layer that bridges modular frontend applications with complex backend data pipelines, ensuring secure access, observability, and compatibility with modern AI and data infrastructures.
 
 **Status**: Pre-release (Under active development)  
+**Beta release**: Dec 2025  
 **Wavefront License**: GNU AFFERO GENERAL PUBLIC LICENSE 3.0  
 **FloAI License**: MIT LICENSE  
-**Contributing**: We welcome early feedback! See [CONTRIBUTING.md](CONTRIBUTING.md)
+**Contributing**: We welcome early feedback! See [CONTRIBUTING.md](CONTRIBUTING.md).  
+**Community**: Join our discord at https://discord.gg/BPXsNwfuRU 
 
 <p align="center">
   <img src="./images/wavefront-home.png" alt="Rootflo" />
@@ -227,3 +229,5 @@ If you find Wavefront AI useful, please consider:
 Get in touch for production-grade support and SLA-driven deployments that ensure uptime, stability, and performance at scale.
 
 📧 sales@rootflo.ai
+
+**Join our discord at https://discord.gg/BPXsNwfuRU**
