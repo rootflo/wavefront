@@ -47,7 +47,7 @@ class TestAgentBuilderTools:
         """Test adding tool configurations to agent builder."""
         tool_config = ToolConfig(
             tool=self.base_tool,
-            pre_filled_params={'datasource_id': 'ds_123', 'project_id': 'my-project'},
+            prefilled_params={'datasource_id': 'ds_123', 'project_id': 'my-project'},
         )
 
         builder = AgentBuilder()
@@ -62,7 +62,7 @@ class TestAgentBuilderTools:
         """Test adding tool dictionaries to agent builder."""
         tool_dict = {
             'tool': self.base_tool,
-            'pre_filled_params': {
+            'prefilled_params': {
                 'datasource_id': 'ds_123',
                 'project_id': 'my-project',
             },
@@ -81,12 +81,12 @@ class TestAgentBuilderTools:
     def test_with_tools_mixed_types(self):
         """Test adding mixed tool types to agent builder."""
         tool_config = ToolConfig(
-            tool=self.base_tool, pre_filled_params={'datasource_id': 'ds_123'}
+            tool=self.base_tool, prefilled_params={'datasource_id': 'ds_123'}
         )
 
         tool_dict = {
             'tool': self.base_tool,
-            'pre_filled_params': {'project_id': 'my-project'},
+            'prefilled_params': {'project_id': 'my-project'},
         }
 
         builder = AgentBuilder()

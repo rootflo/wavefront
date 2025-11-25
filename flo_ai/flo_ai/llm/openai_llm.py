@@ -1,6 +1,8 @@
+import base64
 from typing import Dict, Any, List, AsyncIterator, Optional
 from openai import AsyncOpenAI
-from .base_llm import BaseLLM, ImageMessage
+from .base_llm import BaseLLM
+from flo_ai.models.chat_message import ImageMessageContent
 from flo_ai.tool.base_tool import Tool
 from flo_ai.telemetry.instrumentation import (
     trace_llm_call,
@@ -180,6 +182,28 @@ class OpenAI(BaseLLM):
         """Format tools for OpenAI's API"""
         return [self.format_tool_for_llm(tool) for tool in tools]
 
-    def format_image_in_message(self, image: ImageMessage) -> str:
+    def format_image_in_message(self, image: ImageMessageContent) -> dict:
         """Format a image in the message"""
-        raise NotImplementedError('Not implemented image for LLM OpenAI')
+        if image.url:
+            return {
+                'type': 'input_image',
+                'image': {
+                    'url': image.url,
+                    'mime_type': image.mime_type,
+                },
+            }
+        elif image.base64:
+            image_bytes = base64.b64decode(image.base64)
+        else:
+            raise NotImplementedError(
+                f'Image formatting for OpenAI LLM requires either url or base64 data. Received: url={image.url}, base64={bool(image.base64)}'
+            )
+        image_64 = base64.b64encode(image_bytes).decode('utf-8')
+
+        return {
+            'type': 'input_image',
+            'image': {
+                'data': image_64,
+                'mime_type': image.mime_type,
+            },
+        }

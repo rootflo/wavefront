@@ -1,13 +1,11 @@
 from flo_ai.arium.base import BaseArium
-from flo_ai.arium.memory import MessageMemory, BaseMemory
-from flo_ai.llm.base_llm import ImageMessage
-from flo_ai.models.document import DocumentMessage
+from flo_ai.arium.memory import MessageMemory, BaseMemory, MessageMemoryItem
+from flo_ai.models import BaseMessage, UserMessage, TextMessageContent
 from typing import List, Dict, Any, Optional, Callable
 from flo_ai.models.agent import Agent
-from flo_ai.tool.base_tool import Tool
 from flo_ai.arium.models import StartNode, EndNode
 from flo_ai.arium.events import AriumEventType, AriumEvent
-from flo_ai.arium.nodes import AriumNode, ForEachNode
+from flo_ai.arium.nodes import AriumNode, ForEachNode, FunctionNode
 from flo_ai.utils.logger import logger
 from flo_ai.utils.variable_extractor import (
     extract_variables_from_inputs,
@@ -34,7 +32,7 @@ class Arium(BaseArium):
 
     async def run(
         self,
-        inputs: List[str | ImageMessage | DocumentMessage],
+        inputs: List[BaseMessage] | str,
         variables: Optional[Dict[str, Any]] = None,
         event_callback: Optional[Callable[[AriumEvent], None]] = None,
         events_filter: Optional[List[AriumEventType]] = None,
@@ -51,6 +49,9 @@ class Arium(BaseArium):
         Returns:
             List of workflow execution results
         """
+        if isinstance(inputs, str):
+            inputs = [UserMessage(content=resolve_variables(inputs, variables))]
+
         if not self.is_compiled:
             raise ValueError('Arium is not compiled')
 
@@ -194,12 +195,15 @@ class Arium(BaseArium):
 
     async def _execute_graph(
         self,
-        inputs: List[str | ImageMessage | DocumentMessage],
+        inputs: List[BaseMessage],
         event_callback: Optional[Callable[[AriumEvent], None]] = None,
         events_filter: Optional[List[AriumEventType]] = None,
         variables: Optional[Dict[str, Any]] = None,
     ):
-        [self.memory.add(msg) for msg in inputs]
+        [
+            self.memory.add(MessageMemoryItem(node='input', occurrence=0, result=msg))
+            for msg in inputs
+        ]
 
         current_node = self.nodes[self.start_node_name]
         current_edge = self.edges[self.start_node_name]
@@ -246,12 +250,15 @@ class Arium(BaseArium):
             )
 
             if isinstance(result, List):  # for each node will give results array
-                for item in result:
-                    # update each item in result to memory
-                    self._add_to_memory(item)
+                self._add_to_memory(
+                    MessageMemoryItem(node=current_node.name, result=result[-1])
+                )
             else:
                 # update results to memory
-                self._add_to_memory(result)
+                if result:
+                    self._add_to_memory(
+                        MessageMemoryItem(node=current_node.name, result=result)
+                    )
 
             # find next node post current node
             # Prepare execution context for router functions
@@ -308,7 +315,7 @@ class Arium(BaseArium):
 
     def _extract_and_validate_variables(
         self,
-        inputs: List[str | ImageMessage | DocumentMessage],
+        inputs: List[BaseMessage],
         variables: Dict[str, Any],
     ) -> None:
         """Extract variables from inputs and agents, then validate them.
@@ -347,9 +354,9 @@ class Arium(BaseArium):
 
     def _resolve_inputs(
         self,
-        inputs: List[str | ImageMessage | DocumentMessage],
+        inputs: List[BaseMessage],
         variables: Dict[str, Any],
-    ) -> List[str | ImageMessage | DocumentMessage]:
+    ) -> List[BaseMessage]:
         """Resolve variables in input messages.
 
         Args:
@@ -364,9 +371,19 @@ class Arium(BaseArium):
             if isinstance(input_item, str):
                 # Resolve variables in text input
                 resolved_input = resolve_variables(input_item, variables)
-                resolved_inputs.append(resolved_input)
+                resolved_inputs.append(
+                    UserMessage(TextMessageContent(text=resolved_input))
+                )
+            elif isinstance(input_item, TextMessageContent):
+                resolved_inputs.append(
+                    UserMessage(
+                        TextMessageContent(
+                            text=resolve_variables(input_item.text, variables),
+                        )
+                    )
+                )
             else:
-                # ImageMessage and DocumentMessage objects don't need variable resolution
+                # ImageMessageContent and DocumentMessage objects don't need variable resolution
                 resolved_inputs.append(input_item)
         return resolved_inputs
 
@@ -383,7 +400,7 @@ class Arium(BaseArium):
 
     async def _execute_node(
         self,
-        node: Agent | Tool | StartNode | EndNode,
+        node: Agent | FunctionNode | ForEachNode | AriumNode | StartNode | EndNode,
         event_callback: Optional[Callable[[AriumEvent], None]] = None,
         events_filter: Optional[List[AriumEventType]] = None,
         variables: Optional[Dict[str, Any]] = None,
@@ -402,8 +419,8 @@ class Arium(BaseArium):
         # Determine node type for events
         if isinstance(node, Agent):
             node_type = 'agent'
-        elif isinstance(node, Tool):
-            node_type = 'tool'
+        elif isinstance(node, FunctionNode):
+            node_type = 'function'
         elif isinstance(node, ForEachNode):
             node_type = 'foreach'
         elif isinstance(node, AriumNode):
@@ -429,6 +446,12 @@ class Arium(BaseArium):
 
         # Start node telemetry tracing
         tracer = get_tracer()
+        memory_items = (
+            self.memory.get(getattr(node, 'input_filter', None))
+            if getattr(node, 'input_filter', None)
+            else self.memory.get()
+        )
+        inputs = [item.result for item in memory_items]
 
         if tracer and node_type not in ['start', 'end']:
             with tracer.start_as_current_span(
@@ -441,21 +464,26 @@ class Arium(BaseArium):
             ) as node_span:
                 try:
                     # Execute the node based on its type
+
                     if isinstance(node, Agent):
                         # Variables are already resolved, pass empty dict to avoid re-processing
-                        result = await node.run(self.memory.get(), variables={})
-                    elif isinstance(node, Tool):
-                        result = await node.run(inputs=[], variables=None)
+                        result = await node.run(inputs, variables={})
+                    elif isinstance(node, FunctionNode):
+                        result = await node.run(inputs, variables=None)
                     elif isinstance(node, ForEachNode):
-                        result = await node.run(
-                            inputs=self.memory.get(),
+                        foreach_results: List[
+                            MessageMemoryItem | BaseMessage
+                        ] = await node.run(
+                            inputs,
                             variables=variables,
                         )
+                        result = self._flatten_results(foreach_results)
                     elif isinstance(node, AriumNode):
                         # AriumNode execution
-                        result = await node.run(
-                            inputs=self.memory.get(), variables=variables
+                        arium_result: List[MessageMemoryItem] = await node.run(
+                            inputs, variables=variables
                         )
+                        result = self._flatten_results(arium_result)
                     elif isinstance(node, StartNode):
                         result = None
                     elif isinstance(node, EndNode):
@@ -526,18 +554,22 @@ class Arium(BaseArium):
             try:
                 # Execute the node based on its type
                 if isinstance(node, Agent):
-                    result = await node.run(self.memory.get(), variables={})
-                elif isinstance(node, Tool):
-                    result = await node.run(inputs=[], variables=None)
+                    result = await node.run(inputs, variables={})
+                elif isinstance(node, FunctionNode):
+                    result = await node.run(inputs, variables=None)
                 elif isinstance(node, ForEachNode):
-                    result = await node.run(
-                        inputs=self.memory.get(),
+                    foreach_results: List[
+                        MessageMemoryItem | BaseMessage
+                    ] = await node.run(
+                        inputs,
                         variables=variables,
                     )
+                    result = self._flatten_results(foreach_results)
                 elif isinstance(node, AriumNode):
-                    result = await node.run(
-                        inputs=self.memory.get(), variables=variables
+                    arium_result: List[MessageMemoryItem] = await node.run(
+                        inputs, variables=variables
                     )
+                    result = self._flatten_results(arium_result)
                 elif isinstance(node, StartNode):
                     result = None
                 elif isinstance(node, EndNode):
@@ -578,7 +610,25 @@ class Arium(BaseArium):
                 # Re-raise the exception
                 raise e
 
-    def _add_to_memory(self, result: str):
-        # TODO result will be None for start and end nodes
-        if result:
-            self.memory.add(result)
+    def _flatten_results(
+        self, sequence: List[MessageMemoryItem | BaseMessage | str]
+    ) -> List[BaseMessage | str]:
+        """
+        Flatten a sequence of results by extracting .result from MessageMemoryItem instances.
+
+        Args:
+            sequence: List of items that may be MessageMemoryItem, BaseMessage, or str
+
+        Returns:
+            List of BaseMessage or str with MessageMemoryItem layers removed
+        """
+        return [
+            item.result if isinstance(item, MessageMemoryItem) else item
+            for item in sequence
+        ]
+
+    def _add_to_memory(self, message: MessageMemoryItem):
+        """
+        Store message in memory
+        """
+        self.memory.add(message)

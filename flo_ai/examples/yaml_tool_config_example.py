@@ -115,7 +115,7 @@ agent:
     name: "gpt-4"
   tools:
     - name: "bigquery_query"
-      pre_filled_params:
+      prefilled_params:
         datasource_id: "ds_production_123"
         project_id: "my-company-prod"
         dataset: "analytics"
@@ -123,14 +123,14 @@ agent:
       description_override: "Query production BigQuery data"
     
     - name: "web_search"
-      pre_filled_params:
+      prefilled_params:
         max_results: 5
         language: "en"
       name_override: "search_web"
       description_override: "Search the web for information"
     
     - name: "send_email"
-      pre_filled_params:
+      prefilled_params:
         smtp_server: "smtp.company.com"
         smtp_port: 587
       name_override: "send_notification"
@@ -160,7 +160,7 @@ agent:
     name: "gpt-4"
   tools:
     - name: "bigquery_query"
-      pre_filled_params:
+      prefilled_params:
         datasource_id: "ds_dev_456"
         project_id: "my-company-dev"
         dataset: "test_data"
@@ -168,7 +168,7 @@ agent:
       description_override: "Query development BigQuery data"
     
     - name: "web_search"
-      pre_filled_params:
+      prefilled_params:
         max_results: 3
         language: "en"
       name_override: "search_web"
@@ -198,13 +198,13 @@ agent:
     - "calculate"  # Simple reference
     
     - name: "bigquery_query"
-      pre_filled_params:
+      prefilled_params:
         datasource_id: "ds_mixed_789"
         project_id: "mixed-project"
         dataset: "mixed_data"
     
     - name: "web_search"
-      pre_filled_params:
+      prefilled_params:
         max_results: 10
         language: "en"
       name_override: "search_web"
@@ -238,7 +238,7 @@ agent:
 
     tool_config = ToolConfig(
         tool=configured_tool,
-        pre_filled_params={
+        prefilled_params={
             'datasource_id': 'ds_production_123',
             'project_id': 'my-company-prod',
             'dataset': 'analytics',
@@ -249,7 +249,7 @@ agent:
     for param, info in configured_tool_for_ai.parameters.items():
         print(f"  - {param}: {info['type']} (required: {info['required']})")
 
-    print(f'\nPre-filled parameters (hidden from AI): {tool_config.pre_filled_params}')
+    print(f'\nPre-filled parameters (hidden from AI): {tool_config.prefilled_params}')
 
 
 if __name__ == '__main__':

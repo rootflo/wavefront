@@ -10,14 +10,22 @@ from .models import (
     AgentType,
     ReasoningPattern,
     DocumentType,
-    DocumentMessage,
     MessageType,
+    SystemMessage,
+    UserMessage,
+    AssistantMessage,
+    FunctionMessage,
+    BaseMessage,
+    MediaMessageContent,
+    TextMessageContent,
+    ImageMessageContent,
+    DocumentMessageContent,
 )
 
 from .builder.agent_builder import AgentBuilder
 
 # LLM package - Language model integrations
-from .llm import BaseLLM, Anthropic, OpenAI, OllamaLLM, Gemini, OpenAIVLLM, ImageMessage
+from .llm import BaseLLM, Anthropic, OpenAI, OllamaLLM, Gemini, OpenAIVLLM
 
 # Tool package - Tool framework components
 from .tool import Tool, ToolExecutionError, flo_tool, create_tool_from_function
@@ -26,7 +34,6 @@ from .tool import Tool, ToolExecutionError, flo_tool, create_tool_from_function
 from .arium import (
     Arium,
     BaseArium,
-    create_arium,
     MessageMemory,
     BaseMemory,
     StartNode,
@@ -35,7 +42,9 @@ from .arium import (
     AriumBuilder,
     AriumEvent,
     AriumEventType,
+    MessageMemoryItem,
     default_event_callback,
+    create_arium,
 )
 
 # Utils package - Utility functions
@@ -58,6 +67,17 @@ __all__ = [
     'AgentType',
     'ReasoningPattern',
     'MessageType',
+    'SystemMessage',
+    'UserMessage',
+    'AssistantMessage',
+    'FunctionMessage',
+    'HumanMessage',
+    'AIMessage',
+    'BaseMessage',
+    'MediaMessageContent',
+    'TextMessageContent',
+    'ImageMessageContent',
+    'DocumentMessageContent',
     # Utils
     'FloUtils',
     # LLM
@@ -68,9 +88,7 @@ __all__ = [
     'Gemini',
     'OpenAIVLLM',
     # LLM DataClass
-    'ImageMessage',
     'DocumentType',
-    'DocumentMessage',
     # Tools
     'Tool',
     'ToolExecutionError',
@@ -82,6 +100,7 @@ __all__ = [
     'create_arium',
     'MessageMemory',
     'BaseMemory',
+    'MessageMemoryItem',
     'StartNode',
     'EndNode',
     'Edge',

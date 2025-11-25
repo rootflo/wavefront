@@ -125,9 +125,9 @@ async def main():
         print(f"  - {param}: {info['type']} (required: {info['required']})")
 
     # Show pre-filled parameters
-    if hasattr(partial_tool, 'get_pre_filled_params'):
+    if hasattr(partial_tool, 'get_prefilled_params'):
         print(
-            f'\nPre-filled parameters (hidden from AI): {partial_tool.get_pre_filled_params()}'
+            f'\nPre-filled parameters (hidden from AI): {partial_tool.get_prefilled_params()}'
         )
     print()
 
@@ -157,14 +157,14 @@ agent:
   tools:
     - "calculate"
     - name: "query_database"
-      pre_filled_params:
+      prefilled_params:
         database_url: "postgresql://yaml-db.company.com:5432/data"
         timeout: 45
         max_rows: 2000
       name_override: "query_yaml_database"
       description_override: "Query YAML-configured database"
     - name: "web_search"
-      pre_filled_params:
+      prefilled_params:
         max_results: 3
         language: "en"
       name_override: "search_web"
@@ -189,14 +189,14 @@ agent:
     # 7. Tool parameter management
     print('7. Tool parameter management...')
 
-    if hasattr(partial_tool, 'add_pre_filled_param'):
+    if hasattr(partial_tool, 'add_prefilled_param'):
         # Add a new pre-filled parameter
-        partial_tool.add_pre_filled_param('retry_count', 3)
-        print(f'Added retry_count parameter: {partial_tool.get_pre_filled_params()}')
+        partial_tool.add_prefilled_param('retry_count', 3)
+        print(f'Added retry_count parameter: {partial_tool.get_prefilled_params()}')
 
         # Remove a parameter
-        partial_tool.remove_pre_filled_param('retry_count')
-        print(f'Removed retry_count parameter: {partial_tool.get_pre_filled_params()}')
+        partial_tool.remove_prefilled_param('retry_count')
+        print(f'Removed retry_count parameter: {partial_tool.get_prefilled_params()}')
     print()
 
     print('=== Quick Start Complete ===')

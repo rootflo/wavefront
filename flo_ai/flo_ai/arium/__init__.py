@@ -1,7 +1,7 @@
 from .arium import Arium
 from .base import BaseArium
 from .builder import AriumBuilder, create_arium
-from .memory import MessageMemory, BaseMemory
+from .memory import MessageMemory, BaseMemory, MessageMemoryItem
 from .models import StartNode, EndNode, Edge
 from .events import AriumEventType, AriumEvent, default_event_callback
 from .llm_router import (
@@ -20,6 +20,7 @@ __all__ = [
     'create_arium',
     'MessageMemory',
     'BaseMemory',
+    'MessageMemoryItem',
     'StartNode',
     'EndNode',
     'Edge',

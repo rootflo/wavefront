@@ -1,7 +1,9 @@
 from typing import Dict, Any, List, Optional, AsyncIterator
 from anthropic import AsyncAnthropic
 import json
-from .base_llm import BaseLLM, ImageMessage
+
+from flo_ai.models.chat_message import ImageMessageContent
+from .base_llm import BaseLLM
 from flo_ai.tool.base_tool import Tool
 from flo_ai.telemetry.instrumentation import (
     trace_llm_call,
@@ -53,12 +55,32 @@ class Anthropic(BaseLLM):
         conversation = []
         for msg in messages:
             if msg['role'] != 'system':
-                conversation.append(
-                    {
-                        'role': 'assistant' if msg['role'] == 'assistant' else 'user',
-                        'content': msg['content'],
-                    }
-                )
+                # Handle function/tool result messages specially for Claude
+                if msg['role'] == 'function':
+                    # Claude expects tool results in a specific format
+                    # If this is a tool result, format it as a user message with tool_result content
+                    tool_use_id = msg.get('tool_use_id', 'unknown')
+                    conversation.append(
+                        {
+                            'role': 'user',
+                            'content': [
+                                {
+                                    'type': 'tool_result',
+                                    'tool_use_id': tool_use_id,
+                                    'content': msg['content'],
+                                }
+                            ],
+                        }
+                    )
+                else:
+                    conversation.append(
+                        {
+                            'role': 'assistant'
+                            if msg['role'] == 'assistant'
+                            else 'user',
+                            'content': msg['content'],
+                        }
+                    )
 
         try:
             anthropic_kwargs = {
@@ -103,19 +125,28 @@ class Anthropic(BaseLLM):
                         },
                     )
 
+            # Extract text content from TextBlock objects
+            text_content = ''
+            for content_block in response.content:
+                if content_block.type == 'text':
+                    text_content = content_block.text
+                    break
+
             # Check if there's a tool use in the response
             for content_block in response.content:
                 if content_block.type == 'tool_use':
                     return {
-                        'content': response.content[0].text if response.content else '',
+                        'content': text_content,
+                        'raw_content': response.content,  # Store raw content for Claude's tool flow
                         'function_call': {
                             'name': content_block.name,
                             'arguments': json.dumps(content_block.input),
+                            'id': content_block.id,  # Include the tool_use_id for Claude
                         },
                     }
 
             # Handle regular text response
-            return {'content': response.content[0].text if response.content else ''}
+            return {'content': text_content}
 
         except Exception as e:
             raise Exception(f'Error in Claude API call: {str(e)}')
@@ -206,6 +237,41 @@ class Anthropic(BaseLLM):
         """Format tools for Claude's API"""
         return [self.format_tool_for_llm(tool) for tool in tools]
 
-    def format_image_in_message(self, image: ImageMessage) -> str:
+    def format_image_in_message(self, image: ImageMessageContent) -> str:
         """Format a image in the message"""
         raise NotImplementedError('Not implemented image for LLM Anthropic')
+
+    def get_assistant_message_for_tool_call(
+        self, response: Dict[str, Any]
+    ) -> Optional[Any]:
+        """
+        Get the assistant message content for tool calls.
+        For Claude, this returns the raw_content which includes tool_use blocks.
+        For other LLMs, returns None to use default text content.
+        """
+        if isinstance(response, dict) and 'raw_content' in response:
+            return response['raw_content']
+        return None
+
+    def get_tool_use_id(self, function_call: Dict[str, Any]) -> Optional[str]:
+        """
+        Extract tool_use_id from function call if available.
+        Returns the ID for Claude's tool_use tracking, None for other LLMs.
+        """
+        return function_call.get('id')
+
+    def format_function_result_message(
+        self, function_name: str, content: str, tool_use_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Format a function result message for the LLM.
+        For Claude, includes tool_use_id in the message.
+        """
+        message = {
+            'role': 'function',
+            'name': function_name,
+            'content': content,
+        }
+        if tool_use_id:
+            message['tool_use_id'] = tool_use_id
+        return message

@@ -1,8 +1,9 @@
 from typing import List, Optional, Dict, Any, Union, Type
+from flo_ai.models import AssistantMessage
 import yaml
 from flo_ai.models.agent import Agent
 from flo_ai.models.base_agent import ReasoningPattern
-from flo_ai.llm import BaseLLM, OpenAI, Anthropic, Gemini, OllamaLLM, VertexAI
+from flo_ai.llm import BaseLLM
 from flo_ai.tool.base_tool import Tool
 from flo_ai.tool.tool_config import ToolConfig, create_tool_config
 from flo_ai.formatter.yaml_format_parser import FloYamlParser
@@ -16,22 +17,28 @@ class AgentBuilder:
 
     def __init__(self):
         self._name = 'AI Assistant'
-        self._system_prompt = 'You are a helpful AI assistant.'
+        self._system_prompt: str | AssistantMessage = 'You are a helpful AI assistant.'
         self._llm: Optional[BaseLLM] = None
         self._tools: List[Tool] = []
         self._max_retries = 3
         self._reasoning_pattern = ReasoningPattern.DIRECT
         self._output_schema: Optional[Dict[str, Any]] = None
         self._role: Optional[str] = None
-        self._act_as: Optional[str] = None
+        self._act_as: Optional[str] = (
+            'assistant'  # Default to 'assistant' instead of None
+        )
 
     def with_name(self, name: str) -> 'AgentBuilder':
         """Set the agent's name"""
         self._name = name
         return self
 
-    def with_prompt(self, system_prompt: str) -> 'AgentBuilder':
-        """Set the system prompt"""
+    def with_prompt(self, system_prompt: str | AssistantMessage) -> 'AgentBuilder':
+        """Set the system prompt
+
+        Args:
+            system_prompt: Either a string prompt or a list of InputMessage objects
+        """
         self._system_prompt = system_prompt
         return self
 
@@ -54,7 +61,7 @@ class AgentBuilder:
             tools: List of tools, tool configurations, or tool dictionaries.
                    Each tool dictionary should have:
                    - 'tool': The Tool object
-                   - 'pre_filled_params': Optional dict of pre-filled parameters
+                   - 'prefilled_params': Optional dict of pre-filled parameters
                    - 'name_override': Optional custom name
                    - 'description_override': Optional custom description
 
@@ -64,14 +71,14 @@ class AgentBuilder:
 
             # Tool configurations
             builder.with_tools([
-                ToolConfig(tool1, pre_filled_params={"param1": "value1"}),
-                ToolConfig(tool2, pre_filled_params={"param2": "value2"})
+                ToolConfig(tool1, prefilled_params={"param1": "value1"}),
+                ToolConfig(tool2, prefilled_params={"param2": "value2"})
             ])
 
             # Tool dictionaries
             builder.with_tools([
-                {"tool": tool1, "pre_filled_params": {"param1": "value1"}},
-                {"tool": tool2, "pre_filled_params": {"param2": "value2"}}
+                {"tool": tool1, "prefilled_params": {"param1": "value1"}},
+                {"tool": tool2, "prefilled_params": {"param2": "value2"}}
             ])
         """
         processed_tools = []
@@ -86,13 +93,13 @@ class AgentBuilder:
             elif isinstance(tool_item, dict):
                 # Tool dictionary - convert to ToolConfig then to tool
                 tool = tool_item['tool']
-                pre_filled_params = tool_item.get('pre_filled_params', {})
+                prefilled_params = tool_item.get('prefilled_params', {})
                 name_override = tool_item.get('name_override')
                 description_override = tool_item.get('description_override')
 
                 tool_config = ToolConfig(
                     tool=tool,
-                    pre_filled_params=pre_filled_params,
+                    prefilled_params=prefilled_params,
                     name_override=name_override,
                     description_override=description_override,
                 )
@@ -103,13 +110,13 @@ class AgentBuilder:
         self._tools = processed_tools
         return self
 
-    def add_tool(self, tool: Tool, **pre_filled_params) -> 'AgentBuilder':
+    def add_tool(self, tool: Tool, **prefilled_params) -> 'AgentBuilder':
         """
         Add a single tool with optional pre-filled parameters.
 
         Args:
             tool: The tool to add
-            **pre_filled_params: Pre-filled parameters for the tool
+            **prefilled_params: Pre-filled parameters for the tool
 
         Example:
             builder.add_tool(
@@ -118,8 +125,8 @@ class AgentBuilder:
                 project_id="my-project"
             )
         """
-        if pre_filled_params:
-            tool_config = create_tool_config(tool, **pre_filled_params)
+        if prefilled_params:
+            tool_config = create_tool_config(tool, **prefilled_params)
             self._tools.append(tool_config.to_tool())
         else:
             self._tools.append(tool)
@@ -183,6 +190,7 @@ class AgentBuilder:
         tools: Optional[List[Tool]] = None,
         base_llm: Optional[BaseLLM] = None,
         tool_registry: Optional[Dict[str, Tool]] = None,
+        **kwargs,
     ) -> 'AgentBuilder':
         """Create an agent builder from a YAML configuration string
 
@@ -212,35 +220,15 @@ class AgentBuilder:
 
         # Configure LLM based on model settings
         if 'model' in agent_config and base_llm is None:
-            base_url = agent_config.get('base_url', None)
+            from flo_ai.helpers.llm_factory import create_llm_from_config
+
             model_config: dict = agent_config['model']
-            provider = model_config.get('provider', 'openai').lower()
-            model_name = model_config.get('name')
+            # Merge base_url from agent_config if present and not in model_config
+            if 'base_url' in agent_config and 'base_url' not in model_config:
+                model_config = {**model_config, 'base_url': agent_config['base_url']}
 
-            if not model_name:
-                raise ValueError('Model name must be specified in YAML configuration')
-
-            if provider == 'openai':
-                builder.with_llm(OpenAI(model=model_name, base_url=base_url))
-            elif provider == 'anthropic':
-                builder.with_llm(Anthropic(model=model_name, base_url=base_url))
-            elif provider == 'gemini':
-                builder.with_llm(Gemini(model=model_name, base_url=base_url))
-            elif provider == 'ollama':
-                builder.with_llm(OllamaLLM(model=model_name, base_url=base_url))
-            elif provider == 'vertexai':
-                project = model_config.get('project')
-                location = model_config.get('location', 'asia-south1')
-                builder.with_llm(
-                    VertexAI(
-                        model=model_name,
-                        project=project,
-                        location=location,
-                        base_url=base_url,
-                    )
-                )
-            else:
-                raise ValueError(f'Unsupported model provider: {provider}')
+            llm = create_llm_from_config(model_config, **kwargs)
+            builder.with_llm(llm)
         else:
             if base_llm is None:
                 raise ValueError(
@@ -311,21 +299,21 @@ class AgentBuilder:
                     raise ValueError(f"Tool '{tool_name}' not found in tool registry")
 
                 # Extract configuration
-                pre_filled_params = tool_config.get('pre_filled_params', {})
+                prefilled_params = tool_config.get('prefilled_params', {})
                 name_override = tool_config.get('name_override')
                 description_override = tool_config.get('description_override')
 
                 # Create tool configuration
                 tool_config_obj = ToolConfig(
                     tool=base_tool,
-                    pre_filled_params=pre_filled_params,
+                    prefilled_params=prefilled_params,
                     name_override=name_override,
                     description_override=description_override,
                 )
 
                 # If there are pre-filled parameters or custom name/description, convert to tool
                 if (
-                    pre_filled_params
+                    prefilled_params
                     or name_override is not None
                     or description_override is not None
                 ):

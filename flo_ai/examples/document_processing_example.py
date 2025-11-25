@@ -13,6 +13,7 @@ import asyncio
 import os
 import base64
 from pathlib import Path
+from flo_ai.models import DocumentMessageContent, TextMessageContent, UserMessage
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
@@ -20,7 +21,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from flo_ai.builder.agent_builder import AgentBuilder
 from flo_ai.arium import AriumBuilder
 from flo_ai.llm import OpenAI, Gemini
-from flo_ai.models.document import DocumentMessage, DocumentType
+from flo_ai.models.document import DocumentType
 
 openai_api_key = os.getenv('OPENAI_API_KEY')
 google_api_key = os.getenv('GOOGLE_API_KEY')
@@ -146,7 +147,7 @@ def create_sample_pdf_file():
 
 async def example_1_basic_document_agent():
     """Example 1: Basic document processing with an agent"""
-    print('=' * 60)
+    print('\n' + '=' * 60)
     print('EXAMPLE 1: Basic Document Processing with Agent')
     print('=' * 60)
 
@@ -154,9 +155,16 @@ async def example_1_basic_document_agent():
     txt_file = create_sample_txt_file()
 
     try:
+        # Read file and convert to base64
+        with open(txt_file, 'rb') as f:
+            txt_bytes = f.read()
+            txt_base64 = base64.b64encode(txt_bytes).decode('utf-8')
+
         # Create document message
-        document = DocumentMessage(
-            document_type=DocumentType.TXT, document_file_path=txt_file
+        document = UserMessage(
+            content=DocumentMessageContent(
+                mime_type=DocumentType.TXT.value, base64=txt_base64
+            )
         )
 
         # Create document analysis agent
@@ -262,10 +270,14 @@ async def example_2_document_workflow():
                 to: [summary_generator]
             end: [summary_generator]
         """
-
+        with open(txt_file, 'rb') as f:
+            txt_bytes = f.read()
+            txt_base64 = base64.b64encode(txt_bytes).decode('utf-8')
         # Create document message for workflow processing
-        document = DocumentMessage(
-            document_type=DocumentType.TXT, document_file_path=txt_file
+        document = UserMessage(
+            content=DocumentMessageContent(
+                mime_type=DocumentType.TXT.value, base64=txt_base64
+            )
         )
 
         # Build and run workflow with DocumentMessage
@@ -273,7 +285,12 @@ async def example_2_document_workflow():
 
         workflow = AriumBuilder().from_yaml(yaml_str=workflow_yaml).build()
 
-        result = await workflow.run([document, 'process this document'])
+        result = await workflow.run(
+            [
+                document,
+                UserMessage(TextMessageContent(text='process this document')),
+            ]
+        )
 
         print('📊 Workflow Analysis Results:')
         for i, message in enumerate(result, 1):
@@ -307,9 +324,14 @@ async def example_6_gemini_document_processing():
     txt_file = create_sample_txt_file()
 
     try:
+        with open(txt_file, 'rb') as f:
+            txt_bytes = f.read()
+            txt_base64 = base64.b64encode(txt_bytes).decode('utf-8')
         # Create document message
-        document = DocumentMessage(
-            document_type=DocumentType.TXT, document_file_path=txt_file
+        document = UserMessage(
+            content=DocumentMessageContent(
+                mime_type=DocumentType.TXT.value, base64=txt_base64
+            )
         )
 
         # Create document analysis agent with Gemini
@@ -352,9 +374,14 @@ async def example_3_pdf_document_processing():
     pdf_file = create_sample_pdf_file()
 
     try:
+        with open(pdf_file, 'rb') as f:
+            pdf_bytes = f.read()
+            pdf_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
         # Create document message for PDF
-        document = DocumentMessage(
-            document_type=DocumentType.PDF, document_file_path=pdf_file
+        document = UserMessage(
+            content=DocumentMessageContent(
+                mime_type=DocumentType.PDF.value, base64=pdf_base64
+            )
         )
 
         # Create PDF analysis agent
@@ -400,18 +427,19 @@ async def example_4_document_bytes_processing():
     try:
         print('🔧 Testing Document Processing from Bytes Data\n')
 
-        # Process TXT from bytes
+        # # Process TXT from bytes
         print('1. Processing TXT document from bytes:')
         with open(txt_file, 'rb') as f:
             txt_bytes = f.read()
+            txt_base64 = base64.b64encode(txt_bytes).decode('utf-8')
 
-        txt_document = DocumentMessage(
-            document_type=DocumentType.TXT,
-            document_bytes=txt_bytes,
-            mime_type='text/plain',
+        txt_document = UserMessage(
+            content=DocumentMessageContent(
+                mime_type=DocumentType.TXT.value, base64=txt_base64
+            )
         )
 
-        # Create agent for bytes processing
+        # # Create agent for bytes processing
         llm = OpenAI(model='gpt-4o-mini', api_key=openai_api_key)
         agent = (
             AgentBuilder()
@@ -424,17 +452,18 @@ async def example_4_document_bytes_processing():
         )
 
         result = await agent.run([txt_document])
-        print(f'   TXT from bytes analysis: {result[:100]}...\n')
+        # print(f'   TXT from bytes analysis: {result[:100]}...\n')
 
         # Process PDF from bytes
         print('2. Processing PDF document from bytes:')
         with open(pdf_file, 'rb') as f:
             pdf_bytes = f.read()
+            pdf_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
 
-        pdf_document = DocumentMessage(
-            document_type=DocumentType.PDF,
-            document_bytes=pdf_bytes,
-            mime_type='application/pdf',
+        pdf_document = UserMessage(
+            content=DocumentMessageContent(
+                mime_type=DocumentType.PDF.value, base64=pdf_base64
+            )
         )
 
         result = await agent.run([pdf_document])
@@ -477,10 +506,10 @@ async def example_5_document_base64_processing():
             txt_bytes = f.read()
             txt_base64 = base64.b64encode(txt_bytes).decode('utf-8')
 
-        txt_document = DocumentMessage(
-            document_type=DocumentType.TXT,
-            document_base64=txt_base64,
-            mime_type='text/plain',
+        txt_document = UserMessage(
+            content=DocumentMessageContent(
+                mime_type=DocumentType.TXT.value, base64=txt_base64
+            )
         )
 
         # Create agent for base64 processing
@@ -504,10 +533,10 @@ async def example_5_document_base64_processing():
             pdf_bytes = f.read()
             pdf_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
 
-        pdf_document = DocumentMessage(
-            document_type=DocumentType.PDF,
-            document_base64=pdf_base64,
-            mime_type='application/pdf',
+        pdf_document = UserMessage(
+            content=DocumentMessageContent(
+                mime_type=DocumentType.PDF.value, base64=pdf_base64
+            )
         )
 
         result = await agent.run([pdf_document])

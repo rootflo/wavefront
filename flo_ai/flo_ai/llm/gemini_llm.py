@@ -1,9 +1,10 @@
 import base64
 import asyncio
 from typing import Dict, Any, List, Optional, AsyncIterator
+from .base_llm import BaseLLM
+from flo_ai.models.chat_message import ImageMessageContent
 from google import genai
 from google.genai import types
-from .base_llm import BaseLLM, ImageMessage
 from flo_ai.tool.base_tool import Tool
 from flo_ai.telemetry.instrumentation import (
     trace_llm_call,
@@ -241,25 +242,19 @@ class Gemini(BaseLLM):
         """Format tools for Gemini's function declarations"""
         return [self.format_tool_for_llm(tool) for tool in tools]
 
-    def format_image_in_message(self, image: ImageMessage) -> str:
+    def format_image_in_message(self, image: ImageMessageContent) -> str:
         """Format a image in the message"""
-        if image.image_file_path:
-            with open(image.image_file_path, 'rb') as image_file:
-                image_bytes = image_file.read()
+
+        if image.base64:
             return types.Part.from_bytes(
-                data=image_bytes,
+                data=base64.b64decode(image.base64),
                 mime_type=image.mime_type,
             )
-        elif image.image_bytes:
-            return types.Part.from_bytes(
-                data=image.image_bytes,
-                mime_type=image.mime_type,
-            )
-        elif image.image_base64:
-            return types.Part.from_bytes(
-                data=base64.b64decode(image.image_base64),
+        elif image.url:
+            return types.Part.from_uri(
+                file_uri=image.url,
                 mime_type=image.mime_type,
             )
         raise NotImplementedError(
-            'Not other way other than file path has been implemented'
+            f'Image formatting for Gemini LLM requires either url or base64 data. Received: url={image.url}, base64={bool(image.base64)}'
         )

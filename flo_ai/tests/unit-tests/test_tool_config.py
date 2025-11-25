@@ -30,13 +30,13 @@ class TestToolConfig:
         # Create tool config with pre-filled parameters
         tool_config = ToolConfig(
             tool=base_tool,
-            pre_filled_params={'datasource_id': 'ds_123'},
+            prefilled_params={'datasource_id': 'ds_123'},
             name_override='custom_name',
             description_override='Custom description',
         )
 
         assert tool_config.tool == base_tool
-        assert tool_config.pre_filled_params == {'datasource_id': 'ds_123'}
+        assert tool_config.prefilled_params == {'datasource_id': 'ds_123'}
         assert tool_config.name_override == 'custom_name'
         assert tool_config.description_override == 'Custom description'
         assert tool_config.is_partial() is True
@@ -55,7 +55,7 @@ class TestToolConfig:
 
         tool_config = ToolConfig(tool=base_tool)
         assert tool_config.tool == base_tool
-        assert tool_config.pre_filled_params == {}
+        assert tool_config.prefilled_params == {}
         assert tool_config.is_partial() is False
 
     def test_tool_config_to_tool_conversion(self):
@@ -86,7 +86,7 @@ class TestToolConfig:
 
         # Test with pre-filled params (should return partial tool)
         tool_config_with_params = ToolConfig(
-            tool=base_tool, pre_filled_params={'datasource_id': 'ds_123'}
+            tool=base_tool, prefilled_params={'datasource_id': 'ds_123'}
         )
         converted_tool = tool_config_with_params.to_tool()
         assert converted_tool.name == 'test_tool_partial'
@@ -119,7 +119,7 @@ class TestToolConfig:
 
         assert isinstance(tool_config, ToolConfig)
         assert tool_config.tool == base_tool
-        assert tool_config.pre_filled_params == {
+        assert tool_config.prefilled_params == {
             'datasource_id': 'ds_123',
             'project_id': 'my-project',
         }

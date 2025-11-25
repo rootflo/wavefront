@@ -13,8 +13,9 @@ from flo_ai.arium.llm_router import (
     create_llm_router,
     llm_router,
 )
-from flo_ai.arium.memory import MessageMemory
+from flo_ai.arium.memory import MessageMemory, MessageMemoryItem
 from flo_ai.llm.base_llm import BaseLLM
+from flo_ai.models import UserMessage
 
 
 class MockLLM(BaseLLM):
@@ -55,8 +56,18 @@ class MockLLM(BaseLLM):
 def mock_memory():
     """Create a mock memory with sample conversation"""
     memory = MessageMemory()
-    memory.add('I need to research market trends for renewable energy')
-    memory.add('Please analyze the data and provide insights')
+    memory.add(
+        MessageMemoryItem(
+            node='researcher',
+            result=UserMessage('I need to research market trends for renewable energy'),
+        )
+    )
+    memory.add(
+        MessageMemoryItem(
+            node='analyst',
+            result=UserMessage('Please analyze the data and provide insights'),
+        )
+    )
     return memory
 
 

@@ -12,7 +12,7 @@ from unittest.mock import Mock, AsyncMock, patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from flo_ai.llm.openai_llm import OpenAI
-from flo_ai.llm.base_llm import ImageMessage
+from flo_ai.models.chat_message import ImageMessageContent
 from flo_ai.tool.base_tool import Tool
 
 
@@ -270,11 +270,15 @@ class TestOpenAI:
         """Test format_image_in_message method."""
         llm = OpenAI(api_key='test-key-123')
 
-        # This method is not implemented yet
-        image = ImageMessage(image_url='https://example.com/image.jpg')
+        # Test with URL (should work)
+        image = ImageMessageContent(
+            url='https://example.com/image.jpg', mime_type='image/jpeg'
+        )
+        result = llm.format_image_in_message(image)
 
-        with pytest.raises(NotImplementedError):
-            llm.format_image_in_message(image)
+        assert result is not None
+        assert result['type'] == 'input_image'
+        assert result['image']['url'] == 'https://example.com/image.jpg'
 
     @pytest.mark.asyncio
     async def test_openai_generate_error_handling(self):

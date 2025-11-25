@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Callable, List
+from typing import Callable, List, Optional
 from functools import partial
 from flo_ai.arium.memory import BaseMemory
 
@@ -14,11 +14,13 @@ def default_router(
 @dataclass
 class StartNode:
     name = '__start__'
+    input_filter: Optional[List[str]] = None
 
 
 @dataclass
 class EndNode:
     name = '__end__'
+    input_filter: Optional[List[str]] = None
 
 
 @dataclass
