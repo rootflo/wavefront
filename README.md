@@ -7,17 +7,18 @@
 <h3 align="center">Open source alternative to UnifyApps, LyzrAI, SuperAGI & AgentGPT</h3>
 <h4 align="center">Alternative to n8n, for building enterprise grade AI workflows</h4>
 
-<p align="center"><a href="https://github.com/rootflo/flo-ai/tree/develop/flo_ai">Built using flo-ai</a></p>
-
 <p align="center">
-  <a href="https://github.com/rootflo/flo-ai/stargazers"><img src="https://img.shields.io/github/stars/rootflo/flo-ai" alt="GitHub stars"></a>
+  <a href="https://github.com/rootflo/flo-ai/stargazers">
+    <img src="https://img.shields.io/github/stars/rootflo/flo-ai?style=for-the-badge&logo=github&logoColor=white&color=yellow" alt="GitHub stars">
+  </a>
   <a href="https://github.com/rootflo/flo-ai/releases">
-    <img src="https://img.shields.io/github/v/release/rootflo/flo-ai?display_name=release" alt="GitHub release (latest)">
+    <img src="https://img.shields.io/github/v/release/rootflo/flo-ai?style=for-the-badge&logo=rocket&logoColor=white&color=blue&display_name=release" alt="GitHub release">
   </a>
-  <a href="https://github.com/rootflo/flo-ai/graphs/commit-activity"><img alt="GitHub commit activity" src="https://img.shields.io/github/commit-activity/m/rootflo/flo-ai/develop">
+  <a href="https://github.com/rootflo/flo-ai/graphs/commit-activity">
+    <img src="https://img.shields.io/github/commit-activity/m/rootflo/flo-ai/develop?style=for-the-badge&logo=github&logoColor=white&color=orange" alt="Commit activity">
   </a>
-  </a>
-  <a href="#"><img src="https://img.shields.io/badge/tests-passing-brightgreen" alt="Tests Passing">
+  <a href="#">
+    <img src="https://img.shields.io/badge/✓_tests-passing-brightgreen?style=for-the-badge&logoColor=white" alt="Tests Passing">
   </a>
   <br/>
 </p>
@@ -30,6 +31,14 @@
    •
     <a href="https://flo-ai.rootflo.ai" target="_blank">Documentation</a>
   </p>
+
+  <p align="center">
+  <a href="https://github.com/rootflo/flo-ai/tree/develop/flo_ai">
+    <img src="https://img.shields.io/badge/🤖_Built_with-flo--ai-blueviolet?style=for-the-badge&logoColor=white" alt="Built with flo-ai">
+  </a>
+  <br/>
+  <sub>✨ <i>Powered by the flo-ai framework</i> ✨</sub>
+</p>
 
   <hr />
 
