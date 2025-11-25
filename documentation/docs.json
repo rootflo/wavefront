@@ -11,12 +11,23 @@
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Wavefront",
         "groups": [
           {
             "group": "Getting started",
             "pages": [
-              "index",
+              "index"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "FloAI",
+        "groups": [
+          {
+            "group": "Getting started",
+            "pages": [
+              "flo-ai",
               "quickstart",
               "development"
             ]
@@ -78,20 +89,20 @@
   },
   "contextual": {
     "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
+      "copy",
+      "view",
+      "chatgpt",
+      "claude",
+      "perplexity",
+      "mcp",
+      "cursor",
+      "vscode"
+    ]
   },
   "footer": {
     "socials": {
       "x": "https://x.com/rootflo",
-      "github": "https://github.com/rootflo/flo-ai",
+      "github": "https://github.com/rootflo/wavefront",
       "linkedin": "https://linkedin.com/company/rootflo"
     }
   }
