@@ -37,7 +37,6 @@
             "pages": [
               "essentials/agents",
               "essentials/arium",
-              "essentials/studio",
               "essentials/yaml-agents",
               "essentials/code"
             ]
