@@ -116,10 +116,10 @@ Wavefront AI is an open-source middleware platform designed to seamlessly integr
 
 As part of the project, we are building the following components
 
-- [FloAI](https://github.com/rootflo/flo-ai/tree/develop/flo_ai) library for Agent Building & A2A Orchestraction
+- [FloAI](https://github.com/rootflo/flo-ai/tree/develop/flo_ai) library for Agent Building & A2A Orchestration
 - **Wavefront Core** Middleware Service, which connects multiple frontend applications with complex backend ai pipelines, provides authentication, authorization, observability, monitoring & evaluation
-- **Wavefront Control Panel** Unified frontend for configuring agents, workflows, AI models, Gaurdrails, RBAC etc.
-- **Wavefront cli** for configuring through cli (Yet to Build), for full developer friendly control
+- **Wavefront Control Panel** Unified frontend for configuring agents, workflows, AI models, Guardrails developer-friendly, RBAC etc.
+- **Wavefront cli** for configuring through cli (Yet to Build), for full developer-friendly control
 
 ## 🛣️ Current Support & Roadmap
 
@@ -177,7 +177,7 @@ As part of the project, we are building the following components
 |---------|--------|-------|
 | Component Library | ✅ Available | React components ready |
 | AI-Based No-Code Builder | 📋 Roadmap | Visual agent creation (Q1 2026) |
-| Low Code AI Agent Builder | ✅ Available | YAML based builder available |
+| Low Code AI Agent Builder | ✅ Available | YAML-based builder available |
 
 ### Release Timeline
 
@@ -186,7 +186,7 @@ As part of the project, we are building the following components
 | **Nov 2025** | Public README.md | Publish readme and take in community feedback |
 | **Dec 2025** | Open-source community edition | Community edition release with working MVP |
 | **Q1 2026** | Enterprise Edition | Advanced RBAC, More Data source Integrations|
-| **Q1 2026** | Rootflo Wavefront Cloud | One click deployable Wavefront Cloud
+| **Q1 2026** | Rootflo Wavefront Cloud | One-click deployable Wavefront Cloud
 
 See [ROADMAP.md](ROADMAP.md) for detailed feature plans and contribution opportunities.
 

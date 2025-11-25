@@ -14,11 +14,9 @@ The roadmap is organized by component and priority, with clear timelines and sta
 - [Wavefront Control Panel](#wavefront-control-panel)
 - [Wavefront CLI](#wavefront-cli)
 - [Data & Integration Layer](#data--integration-layer)
-- [Studio & Developer Experience](#studio--developer-experience)
+- [Developer Experience](#developer-experience)
 - [Enterprise Features](#enterprise-features)
 - [Observability & Monitoring](#observability--monitoring)
-- [Community & Ecosystem](#community--ecosystem)
-- [Released Features](#released-features)
 
 ---
 
@@ -122,9 +120,9 @@ Unified frontend for configuring agents, workflows, AI models, guardrails, and R
 | Feature | Description | Priority | Status | Target Release |
 |---------|-------------|----------|--------|----------------|
 | **Agent Management UI** | YAML interface for creating, editing, and managing agents | High | ✅ Available | v0.1.0 |
-| **Workflow Designer** | YAML workflow builder integrated into control panel | High | ✅ Available | v0.1.0 | |
-| **Data Source Configuration** | UI for configuring and managing data source connections | High | ✅ Available | v0.1.0 | |
-| **LLM Provider Management** | Configure and manage LLM provider credentials and settings | High | ✅ Available | v0.1.0 | |
+| **Workflow Designer** | YAML workflow builder integrated into control panel | High | ✅ Available | v0.1.0 |
+| **Data Source Configuration** | UI for configuring and managing data source connections | High | ✅ Available | v0.1.0 |
+| **LLM Provider Management** | Configure and manage LLM provider credentials and settings | High | ✅ Available | v0.1.0 |
 | **RBAC Configuration** | Visual interface for managing roles and permissions | High | Yet to start | v0.2.0 |
 | **Guardrail Configuration** | Configure AI guardrails and safety policies | High | Yet to start | v0.2.0 |
 | **User Management** | Manage users, groups, and their access | High | Yet to start | v0.2.0 |
