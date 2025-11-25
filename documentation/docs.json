@@ -11,12 +11,23 @@
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Wavefront",
         "groups": [
           {
             "group": "Getting started",
             "pages": [
-              "index",
+              "index"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "FloAI",
+        "groups": [
+          {
+            "group": "Getting started",
+            "pages": [
+              "flo-ai",
               "quickstart",
               "development"
             ]
@@ -78,15 +89,15 @@
   },
   "contextual": {
     "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
+      "copy",
+      "view",
+      "chatgpt",
+      "claude",
+      "perplexity",
+      "mcp",
+      "cursor",
+      "vscode"
+    ]
   },
   "footer": {
     "socials": {
