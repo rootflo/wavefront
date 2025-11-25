@@ -101,9 +101,10 @@
   },
   "footer": {
     "socials": {
-      "x": "https://x.com/rootflo",
+      "x": "https://x.com/rootflo_ai",
       "github": "https://github.com/rootflo/wavefront",
-      "linkedin": "https://linkedin.com/company/rootflo"
+      "linkedin": "https://linkedin.com/company/rootflo",
+      "discord": "https://discord.gg/BPXsNwfuRU"
     }
   }
 }
