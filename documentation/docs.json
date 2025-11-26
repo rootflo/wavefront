@@ -1,7 +1,7 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "Flo AI Documentation",
+  "name": "Wavefront AI | Rootflo",
   "colors": {
     "primary": "#3B82F6",
     "light": "#60A5FA",
@@ -62,8 +62,8 @@
           "icon": "github"
         },
         {
-          "anchor": "Community",
-          "href": "https://github.com/rootflo/flo-ai/discussions",
+          "anchor": "Discord",
+          "href": "https://discord.gg/BPXsNwfuRU",
           "icon": "comments"
         }
       ]
@@ -76,14 +76,14 @@
   "navbar": {
     "links": [
       {
-        "label": "Examples",
-        "href": "https://github.com/rootflo/flo-ai/tree/main/flo_ai/examples"
+        "label": "Website",
+        "href": "https://rootflo.ai"
       }
     ],
     "primary": {
       "type": "button",
-      "label": "Get Started",
-      "href": "https://github.com/rootflo/flo-ai"
+      "label": "Contact us",
+      "href": "mailto:sales@rootflo.ai?subject=Partnership%20Inquiry&body=Hi%2C%0A%0AI%20would%20like%20to%20know%20more%20about%20your%20Wavefront%20Enterprise%20AI%20Platform.%0A%0AThanks%2C%0A%0A"
     }
   },
   "contextual": {
