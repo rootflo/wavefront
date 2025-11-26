@@ -82,7 +82,7 @@
     ],
     "primary": {
       "type": "button",
-      "label": "Get in touch",
+      "label": "Contact us",
       "href": "mailto:sales@rootflo.ai?subject=Partnership%20Inquiry&body=Hi%2C%0A%0AI%20would%20like%20to%20know%20more%20about%20your%20Wavefront%20Enterprise%20AI%20Platform.%0A%0AThanks%2C%0A%0A"
     }
   },
