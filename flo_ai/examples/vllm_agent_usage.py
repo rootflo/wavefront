@@ -15,6 +15,9 @@ vllm_model = 'microsoft/phi-4'
 
 async def example_simple_vllm_agent():
     # Create a simple conversational agent with vLLM
+    if not vllm_base_url:
+        raise ValueError('VLLM base URL is not set')
+
     agent = (
         AgentBuilder()
         .with_name('Math Tutor')
@@ -60,6 +63,9 @@ async def example_vllm_tool_agent():
             'y': {'type': 'number', 'description': 'Second number'},
         },
     )
+
+    if not vllm_base_url:
+        raise ValueError('VLLM base URL is not set')
 
     # Create a tool-using agent with vLLM
     agent = (
@@ -113,6 +119,9 @@ async def example_vllm_structured_output():
             'required': ['problem', 'steps', 'final_answer', 'explanation'],
         },
     }
+
+    if not vllm_base_url:
+        raise ValueError('VLLM base URL is not set')
 
     # Create an agent with structured output using vLLM
     agent = (
@@ -209,6 +218,9 @@ async def example_vllm_tool_agent_structured_output():
             'required': ['task', 'calculations', 'final_answer', 'summary'],
         },
     }
+
+    if not vllm_base_url:
+        raise ValueError('VLLM base URL is not set')
 
     # Create a tool-using agent with structured output
     agent = (

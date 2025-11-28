@@ -67,9 +67,7 @@ class FloJsonParser:
             'float': float,
             'literal': self.__create_literal_type,
             'object': lambda f: self.__create_nested_model(f, model_name),
-            'array': lambda f: List[
-                self.__get_field_type_annotation(f['items'], f'{model_name}_item')
-            ],
+            'array': lambda f: self.__create_array_type(f, model_name),
         }
 
         field_type = field['type']
@@ -91,8 +89,16 @@ class FloJsonParser:
             raise ValueError(
                 f"Field '{field['name']}' of type 'literal' must specify 'values'."
             )
-        literals = [literal_value['value'] for literal_value in literal_values]
-        return Literal[tuple(literals)]
+        literals = tuple(literal_value['value'] for literal_value in literal_values)
+        # Construct Literal type dynamically at runtime
+        return Literal.__class_getitem__(literals)  # type: ignore
+
+    def __create_array_type(self, field: Dict[str, Any], model_name: str) -> Any:
+        """Creates a List type from field definition"""
+        inner_type = self.__get_field_type_annotation(
+            field['items'], f'{model_name}_item'
+        )
+        return List[inner_type]
 
     def get_format(self) -> BaseModel:
         return self.__create_contract_from_json()
@@ -127,8 +133,8 @@ class FloJsonParser:
         return DynamicModel
 
     @staticmethod
-    def create(json_dict: Optional[Dict] = None, json_path: Optional[str] = None):
-        return FloJsonParser.Builder(json_dict=json_dict, json_path=json_path).build()
+    def create(yaml_dict: Optional[Dict] = None, yaml_path: Optional[str] = None):
+        return FloYamlParser.Builder(yaml_dict=yaml_dict, yaml_path=yaml_path).build()
 
     class Builder:
         def __init__(
@@ -142,11 +148,14 @@ class FloJsonParser:
             self.json_path = json_path
 
         def build(self):
+            if not self.json_path and not self.json_dict:
+                raise ValueError('json_path or json_dict must be provided')
+
             if self.json_dict:
                 name = self.json_dict['name']
                 fields = self.json_dict['fields']
             else:
-                with open(self.json_path) as f:
+                with open(str(self.json_path), 'r', encoding='utf-8') as f:
                     json_contract = json.load(f)
                 name = json_contract['name']
                 fields = json_contract['fields']
@@ -165,8 +174,8 @@ class FloYamlParser(FloJsonParser):
         Create a FloYamlParser instance from either a YAML dictionary or a YAML file path.
 
         Args:
-            yaml_dict: A dictionary containing the YAML parser definition
-            yaml_path: Path to a YAML file containing the parser definition
+            json_dict: A dictionary containing the YAML parser definition (parameter name matches parent class)
+            json_path: Path to a YAML file containing the parser definition (parameter name matches parent class)
 
         Returns:
             FloYamlParser: A configured parser instance
@@ -185,10 +194,13 @@ class FloYamlParser(FloJsonParser):
             self.yaml_path = yaml_path
 
         def build(self):
+            if not self.yaml_path and not self.yaml_dict:
+                raise ValueError('yaml_path or yaml_dict must be provided')
+
             if self.yaml_dict:
                 parser_def = self.yaml_dict
             else:
-                with open(self.yaml_path) as f:
+                with open(str(self.yaml_path), 'r', encoding='utf-8') as f:
                     parser_def = yaml.safe_load(f)
 
             # Extract parser definition from agent YAML

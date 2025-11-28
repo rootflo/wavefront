@@ -107,9 +107,7 @@ def validate_variables(
         )
 
 
-def resolve_variables(
-    text: str | BaseMessage | AssistantMessage, variables: Dict[str, Any]
-) -> str | BaseMessage | AssistantMessage:
+def resolve_variables(text: str, variables: Dict[str, Any] = {}) -> str:
     """Replace <variable_name> patterns with actual values
 
     Args:
@@ -122,8 +120,8 @@ def resolve_variables(
     Raises:
         ValueError: If a variable placeholder is found but not provided in variables
     """
-    if not text or not variables:
-        return text
+    if not text:
+        raise ValueError('Text is required to resolve variables')
 
     def replace_var(match):
         var_name = match.group(1)

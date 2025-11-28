@@ -143,9 +143,7 @@ async def test_multi_agent_complete_variables():
             .connect(content_creator, editor)
             .end_with(editor)
             .build_and_run(
-                inputs=[
-                    'Create content about the given topic: <topic>. Keeping it under <word_limit> words.'
-                ],
+                inputs='Create content about the given topic: <topic>. Keeping it under <word_limit> words.',
                 variables=complete_variables,
             )
         )
@@ -207,9 +205,7 @@ async def test_multi_agent_incomplete_variables():
             .connect(researcher, summarizer)
             .end_with(summarizer)
             .build_and_run(
-                inputs=[
-                    'Research the given topic: <research_topic>. Highlight <key_points> key points'
-                ],
+                inputs='Research the given topic: <research_topic>. Highlight <key_points> key points',
                 variables=incomplete_variables,
             )
         )

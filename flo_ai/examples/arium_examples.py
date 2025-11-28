@@ -58,14 +58,22 @@ async def example_branching_workflow():
     """Example of a branching workflow with conditional routing"""
 
     # Create agents and function nodes
-    classifier_agent = Agent(name='classifier', prompt='Classify the input type')
+    classifier_agent = Agent(
+        name='classifier',
+        system_prompt='Classify the input type',
+        llm=OpenAI(model='gpt-4o-mini'),
+    )
     text_processor_node = FunctionNode(
         name='text_processor', description='Process text', function=lambda x: x
     )
     image_processor_node = FunctionNode(
         name='image_processor', description='Process image', function=lambda x: x
     )
-    final_agent = Agent(name='final', prompt='Provide final response')
+    final_agent = Agent(
+        name='final',
+        system_prompt='Provide final response',
+        llm=OpenAI(model='gpt-4o-mini'),
+    )
 
     # Router function for conditional branching
     def content_router(memory) -> Literal['text_processor', 'image_processor']:
@@ -101,7 +109,7 @@ async def example_branching_workflow():
         .connect(text_processor_node, final_agent)
         .connect(image_processor_node, final_agent)
         .end_with(final_agent)
-        .build_and_run(['Process this content'])
+        .build_and_run('Process this content')
     )
     return result
 
@@ -111,10 +119,26 @@ async def example_complex_workflow():
     """Example of a more complex workflow with multiple agents and function nodes"""
 
     # Create multiple agents and function nodes
-    input_agent = Agent(name='input_handler', prompt='Handle initial input')
-    researcher_agent = Agent(name='researcher', prompt='Research the topic')
-    analyzer_agent = Agent(name='analyzer', prompt='Analyze findings')
-    writer_agent = Agent(name='writer', prompt='Write the final report')
+    input_agent = Agent(
+        name='input_handler',
+        system_prompt='Handle initial input',
+        llm=OpenAI(model='gpt-4o-mini'),
+    )
+    researcher_agent = Agent(
+        name='researcher',
+        system_prompt='Research the topic',
+        llm=OpenAI(model='gpt-4o-mini'),
+    )
+    analyzer_agent = Agent(
+        name='analyzer',
+        system_prompt='Analyze findings',
+        llm=OpenAI(model='gpt-4o-mini'),
+    )
+    writer_agent = Agent(
+        name='writer',
+        system_prompt='Write the final report',
+        llm=OpenAI(model='gpt-4o-mini'),
+    )
 
     search_function_node = FunctionNode(
         name='search_function', description='Search the web', function=lambda x: x
@@ -151,7 +175,7 @@ async def example_complex_workflow():
     )
 
     # Run the workflow
-    result = await arium.run(['Research and write a report on AI trends'])
+    result = await arium.run('Research and write a report on AI trends')
     return result
 
 
@@ -184,14 +208,18 @@ async def example_convenience_function():
 async def example_build_and_reuse():
     """Example of building an Arium once and reusing it"""
 
-    agent = Agent(name='echo_agent', prompt='Echo the input')
+    agent = Agent(
+        name='echo_agent',
+        system_prompt='Echo the input',
+        llm=OpenAI(model='gpt-4o-mini'),
+    )
 
     # Build the Arium
     arium = AriumBuilder().add_agent(agent).start_with(agent).end_with(agent).build()
 
     # Run it multiple times with different inputs
-    result1 = await arium.run(['First input'])
-    result2 = await arium.run(['Second input'])
+    result1 = await arium.run('First input')
+    result2 = await arium.run('Second input')
 
     return result1, result2
 
@@ -262,7 +290,7 @@ async def example_function_nodes_with_filters():
         .connect(t2, t3)
         .connect(t3, t1)
         .end_with(t4)
-        .build_and_run(['hello world'])
+        .build_and_run('hello world')
     )
 
     return result

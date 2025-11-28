@@ -8,7 +8,7 @@ class OpenAIVLLM(OpenAI):
         self,
         base_url: str,
         model: str,
-        api_key: str = None,
+        api_key: Optional[str] = None,
         temperature: float = 0.7,
         **kwargs,
     ):
@@ -25,7 +25,11 @@ class OpenAIVLLM(OpenAI):
 
     # overriden
     async def generate(
-        self, messages: list[dict], output_schema: dict = None, **kwargs
+        self,
+        messages: list[dict],
+        functions: Optional[List[Dict[str, Any]]] = None,
+        output_schema: Optional[Dict[str, Any]] = None,
+        **kwargs,
     ) -> Any:
         # Convert output_schema to OpenAI format if provided
         if output_schema:

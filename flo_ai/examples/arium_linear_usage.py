@@ -33,7 +33,7 @@ async def simple_example():
         .start_with(greeter)
         .connect(greeter, responder)  # Direct connection
         .end_with(responder)
-        .build_and_run(["Hello, I'd like to learn about Python programming!"])
+        .build_and_run("Hello, I'd like to learn about Python programming!")
     )
 
     print('Simple Example Result:')
@@ -87,14 +87,12 @@ async def main():
         .connect(content_analyst, summary_generator)  # Direct connection
         .end_with(summary_generator)
         .build_and_run(
-            [
-                'Machine learning is revolutionizing various industries. '
-                'From healthcare to finance, AI systems are being deployed '
-                'to automate processes, improve decision-making, and enhance '
-                'customer experiences. However, challenges remain around '
-                'data privacy, algorithmic bias, and the need for skilled '
-                'professionals to manage these systems effectively.'
-            ]
+            """Machine learning is revolutionizing various industries.
+                From healthcare to finance, AI systems are being deployed
+                to automate processes, improve decision-making, and enhance
+                customer experiences. However, challenges remain around
+                data privacy, algorithmic bias, and the need for skilled
+                professionals to manage these systems effectively."""
         )
     )
 

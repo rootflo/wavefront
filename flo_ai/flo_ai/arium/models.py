@@ -30,5 +30,5 @@ class Edge:
 
     def is_default_router(self) -> bool:
         if isinstance(self.router_fn, partial):
-            return self.router_fn.func.__name__ == 'default_router'
+            return self.router_fn.func.__name__ == 'default_router'  # type: ignore
         return False

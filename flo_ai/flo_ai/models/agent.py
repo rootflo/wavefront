@@ -55,7 +55,7 @@ class Agent(BaseAgent):
 
         super().__init__(
             name=name,
-            system_prompt=enhanced_prompt,
+            system_prompt=str(enhanced_prompt),
             agent_type=agent_type,
             llm=llm,
             max_retries=max_retries,
@@ -74,7 +74,7 @@ class Agent(BaseAgent):
         self,
         inputs: List[BaseMessage] | str,
         variables: Optional[Dict[str, Any]] = None,
-    ) -> str:
+    ) -> List[BaseMessage]:
         variables = variables or {}
         if isinstance(inputs, str):
             inputs = [UserMessage(TextMessageContent(text=inputs))]
@@ -128,7 +128,7 @@ class Agent(BaseAgent):
 
     async def _run_conversational(
         self, retry_count: int, variables: Optional[Dict[str, Any]] = None
-    ) -> str:
+    ) -> List[BaseMessage]:
         """Run as a conversational agent when no tools are provided"""
         variables = variables or {}
 
@@ -201,9 +201,12 @@ class Agent(BaseAgent):
                         original_error=e,
                     )
 
+        # return conversation history if we exit the loop without returning
+        return self.conversation_history
+
     async def _run_with_tools(
         self, retry_count: int = 0, variables: Optional[Dict[str, Any]] = None
-    ) -> str:
+    ) -> List[BaseMessage]:
         """Run as a tool-using agent when tools are provided"""
         variables = variables or {}
         print('running with tools')
@@ -419,7 +422,15 @@ class Agent(BaseAgent):
                     self.add_to_history(AssistantMessage(content=assistant_message))
                     return self.conversation_history
 
-                return f'The final result based on the tool executions is: {function_response}'
+                return [
+                    FunctionMessage(
+                        content=str(
+                            'The final result based on the tool executions is: \n'
+                            + str(function_response)
+                        ),
+                        name=function_name,
+                    )
+                ]
 
             except Exception as e:
                 retry_count += 1

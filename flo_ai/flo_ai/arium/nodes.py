@@ -1,4 +1,3 @@
-from flo_ai.arium.protocols import ExecutableNode
 from typing import List, Any, Dict, Optional, TYPE_CHECKING, Callable
 from flo_ai.utils.logger import logger
 from flo_ai.arium.memory import MessageMemory
@@ -7,6 +6,7 @@ import asyncio
 
 if TYPE_CHECKING:  # need to have an optional import else will get circular dependency error as arium also has AriumNode reference
     from flo_ai.arium.arium import Arium
+    from flo_ai.arium.base import AriumNodeType
 
 
 class AriumNode:
@@ -33,13 +33,13 @@ class AriumNode:
         self.input_filter: Optional[List[str]] = input_filter
 
     async def run(
-        self, inputs: List[Any], variables: Optional[Dict[str, Any]] = None, **kwargs
+        self, inputs: List[Any], variables: Dict[str, Any] = {}, **kwargs
     ) -> Any:
         """Execute the nested Arium workflow with isolated memory"""
 
         # Handle variable inheritance
         execution_variables = (
-            variables.copy() if (self.inherit_variables and variables) else None
+            variables.copy() if (self.inherit_variables and variables) else {}
         )
 
         # Execute the nested Arium with isolated memory
@@ -60,7 +60,7 @@ class ForEachNode:
     def __init__(
         self,
         name: str,
-        execute_node: ExecutableNode,
+        execute_node: AriumNodeType,
         input_filter: Optional[List[str]] = None,
     ):
         """
@@ -128,9 +128,7 @@ class ForEachNode:
         item_variables = (variables or {}).copy()
 
         # If the execute_node is an AriumNode, we can create a new memory instance
-        if hasattr(self.execute_node, 'arium') and hasattr(
-            self.execute_node.arium, 'memory'
-        ):
+        if isinstance(self.execute_node, AriumNode):
             # Create a new memory instance for this iteration
             original_memory = self.execute_node.arium.memory
             self.execute_node.arium.memory = MessageMemory()
