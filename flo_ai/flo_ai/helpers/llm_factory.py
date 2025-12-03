@@ -142,7 +142,7 @@ class LLMFactory:
             model=model_name,
             project=project,
             location=location,
-            base_url=base_url,
+            base_url=str(base_url),
         )
 
     @staticmethod
@@ -173,8 +173,8 @@ class LLMFactory:
 
         return OpenAIVLLM(
             model=model_name,
-            base_url=base_url,
-            api_key=api_key,
+            base_url=str(base_url),
+            api_key=str(api_key),
             temperature=temperature,
         )
 
@@ -201,34 +201,15 @@ class LLMFactory:
         audience = kwargs.get('audience') or os.getenv('ROOTFLO_AUDIENCE')
         access_token = kwargs.get('access_token')  # Optional, from kwargs only
 
-        # Validate required parameters based on auth method
-        if not access_token:
-            # JWT auth flow - requires all parameters
-            required_params = {
-                'base_url': base_url,
-                'app_key': app_key,
-                'app_secret': app_secret,
-                'issuer': issuer,
-                'audience': audience,
-            }
-            missing = [k for k, v in required_params.items() if not v]
-
-            if missing:
-                raise ValueError(
-                    f'RootFlo configuration incomplete. Missing required parameters: {", ".join(missing)}. '
-                    f'These can be provided via kwargs or environment variables '
-                    f'(ROOTFLO_BASE_URL, ROOTFLO_APP_KEY, ROOTFLO_APP_SECRET, ROOTFLO_ISSUER, ROOTFLO_AUDIENCE).'
-                )
-        else:
-            # Access token flow - only needs base_url
-            if not base_url:
-                raise ValueError(
-                    'RootFlo configuration incomplete. Missing required parameter: base_url. '
-                    'Provide it in model_config, as a kwarg, or via ROOTFLO_BASE_URL environment variable.'
-                )
+        # Access token flow - only needs base_url
+        if not base_url:
+            raise ValueError(
+                'RootFlo configuration incomplete. Missing required parameter: base_url. '
+                'Provide it in model_config, as a kwarg, or via ROOTFLO_BASE_URL environment variable.'
+            )
 
         return RootFloLLM(
-            base_url=base_url,
+            base_url=str(base_url),
             model_id=model_id,
             app_key=app_key,
             app_secret=app_secret,
