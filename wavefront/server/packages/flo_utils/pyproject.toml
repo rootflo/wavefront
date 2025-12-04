@@ -1,0 +1,35 @@
+[project]
+name = "flo-utils"
+version = "0.1.0"
+description = "Add your description here"
+authors = [
+    { name = "rootflo engineering", email = "engineering@rootflo.ai" }
+]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "boto3<=1.38.40",
+    "google-cloud-kms>=3.5.1",
+    "tenacity>=8.4.1",
+    "common-module",
+    "db-repo-module",
+    "pyyaml>=6.0.3,<7"
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.uv]
+package = true
+
+[tool.uv.sources]
+common-module = { workspace = true }
+db-repo-module = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["flo_utils"]
