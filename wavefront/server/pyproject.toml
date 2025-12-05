@@ -13,6 +13,9 @@ dev = [
     "ty>=0.0.1a28",
 ]
 
+[tool.ty.environment]
+root = ["../server"]
+
 [tool.uv.workspace]
 members = [
  "apps/*",

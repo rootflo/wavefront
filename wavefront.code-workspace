@@ -1,0 +1,18 @@
+{
+    "folders": [
+        {
+            "name": "flo-ai",
+            "path": "flo_ai"
+        },
+        {
+            "name": "wavefront",
+            "path": "wavefront"
+        }
+    ],
+    "settings": {
+        "python.analysis.extraPaths": [
+            "${workspaceFolder:wavefront}",
+            "${workspaceFolder:flo-ai}"
+        ]
+    }
+}
