@@ -12,10 +12,8 @@ bin
 .DS_Store
 *.sql
 *.log
-*.yaml
 examples/local/*
 .logs
-.*
 *.png
 *.html
 node_modules/
