@@ -2,7 +2,6 @@ __pycache__
 enviroment.py
 chroma
 xamples
-.env
 dist
 .venv
 dataset
@@ -14,7 +13,5 @@ bin
 *.log
 examples/local/*
 .logs
-*.png
-*.html
 node_modules/
 flo_ai/usecases
