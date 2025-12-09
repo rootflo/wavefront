@@ -14,4 +14,5 @@ bin
 examples/local/*
 .logs
 node_modules/
+.vite
 flo_ai/usecases
