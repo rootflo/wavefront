@@ -1,7 +1,7 @@
 """created the kb_inference table
 
 Revision ID: 497a13558d60
-Revises: d77dca43b31d
+Revises: a0dfba41ef64
 Create Date: 2025-05-02 13:00:14.942014
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '497a13558d60'
-down_revision: Union[str, None] = 'd77dca43b31d'
+down_revision: Union[str, None] = 'a0dfba41ef64'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

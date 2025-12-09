@@ -1,7 +1,7 @@
 """adding notification
 
 Revision ID: 78655faf6488
-Revises: f9c4c1c48d46
+Revises: 01a4c5202566
 Create Date: 2025-02-28 16:02:31.108730
 
 """
@@ -14,7 +14,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '78655faf6488'
-down_revision: Union[str, None] = 'f9c4c1c48d46'
+down_revision: Union[str, None] = '01a4c5202566'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

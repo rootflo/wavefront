@@ -1,7 +1,7 @@
 """Update the metadata column in knowledge base documents table
 
 Revision ID: 9bd8b7884ab0
-Revises: 6742f38ca303
+Revises: 22ec0134dcf8
 Create Date: 2025-11-03 14:37:38.268823
 
 """

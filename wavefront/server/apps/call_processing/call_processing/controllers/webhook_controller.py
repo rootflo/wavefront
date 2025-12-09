@@ -49,7 +49,7 @@ async def twiml_endpoint(
     logger.info(f'Welcome message audio URL: {welcome_message_audio_url}')
 
     # Build WebSocket URL
-    base_url = os.getenv('CALL_PROCESSING_BASE_URL', 'http://localhost:8003')
+    base_url = os.getenv('CALL_PROCESSING_BASE_URL', 'http://localhost:8004')
 
     # Convert https:// to wss:// (or http:// to ws://)
     if base_url.startswith('https://'):

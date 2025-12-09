@@ -20,3 +20,4 @@ examples/local/*
 *.html
 node_modules/
 flo_ai/usecases
+*.json
