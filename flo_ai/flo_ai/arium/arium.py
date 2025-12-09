@@ -374,16 +374,10 @@ class Arium(BaseArium):
             if isinstance(input_item, str):
                 # Resolve variables in text input
                 resolved_input = resolve_variables(input_item, variables)
-                resolved_inputs.append(
-                    UserMessage(TextMessageContent(text=resolved_input))
-                )
+                resolved_inputs.append(UserMessage(resolved_input))
             elif isinstance(input_item, TextMessageContent):
                 resolved_inputs.append(
-                    UserMessage(
-                        TextMessageContent(
-                            text=resolve_variables(input_item.text, variables),
-                        )
-                    )
+                    UserMessage(resolve_variables(input_item.text, variables))
                 )
             else:
                 # ImageMessageContent and DocumentMessage objects don't need variable resolution

@@ -1,7 +1,6 @@
 import asyncio
 from flo_ai import UserMessage
 from flo_ai.builder.agent_builder import AgentBuilder
-from flo_ai.models import TextMessageContent
 from flo_ai.tool.base_tool import Tool
 from flo_ai.models.base_agent import ReasoningPattern
 from flo_ai.llm.openai_llm import OpenAI
@@ -19,11 +18,7 @@ async def example_simple_agent():
     )
 
     response = await agent.run(
-        [
-            UserMessage(
-                TextMessageContent(text='What is the formula for the area of a circle?')
-            )
-        ]
+        [UserMessage('What is the formula for the area of a circle?')]
     )
     print(f'Simple Agent Response: {response}')
 
@@ -74,14 +69,10 @@ async def example_tool_agent():
         .build()
     )
 
-    response = await agent_openai.run(
-        [UserMessage(TextMessageContent(text='Calculate 5 plus 3'))]
-    )
+    response = await agent_openai.run([UserMessage('Calculate 5 plus 3')])
     print(f'OpenAI Tool Agent Response: {response}')
 
-    response = await agent_claude.run(
-        [UserMessage(TextMessageContent(text='Calculate 5 plus 3'))]
-    )
+    response = await agent_claude.run([UserMessage('Calculate 5 plus 3')])
     print(f'Claude Tool Agent Response: {response}')
 
 
@@ -108,9 +99,7 @@ async def example_structured_output():
         .build()
     )
 
-    response = await agent.run(
-        [UserMessage(TextMessageContent(text='Solve: 2x + 5 = 15'))]
-    )
+    response = await agent.run([UserMessage('Solve: 2x + 5 = 15')])
     print(f'Structured Output Response: {response}')
 
 

@@ -5,7 +5,7 @@ Examples demonstrating how to use the AriumBuilder pattern for creating and runn
 from typing import Literal
 from flo_ai.arium import AriumBuilder, create_arium
 from flo_ai.llm import OpenAI
-from flo_ai.models import TextMessageContent, UserMessage
+from flo_ai.models import UserMessage
 from flo_ai.models.agent import Agent
 from flo_ai.arium.nodes import FunctionNode
 from flo_ai.arium.memory import MessageMemory, MessageMemoryItem
@@ -47,7 +47,7 @@ async def example_linear_workflow():
         .connect(analyzer_agent, processing_function_node)
         .connect(processing_function_node, summarizer_agent)
         .end_with(summarizer_agent)
-        .build_and_run([UserMessage(TextMessageContent(text='Analyze this text'))])
+        .build_and_run([UserMessage('Analyze this text')])
     )
 
     return result
@@ -198,7 +198,7 @@ async def example_convenience_function():
         .start_with(agent1)
         .connect(agent1, agent2)
         .end_with(agent2)
-        .build_and_run([UserMessage(TextMessageContent(text='Hello'))])
+        .build_and_run([UserMessage('Hello')])
     )
 
     return result

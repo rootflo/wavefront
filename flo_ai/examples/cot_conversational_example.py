@@ -4,7 +4,7 @@ Example demonstrating Chain of Thought (CoT) reasoning pattern in conversational
 """
 
 import asyncio
-from flo_ai.models.agent import Agent, TextMessageContent, UserMessage
+from flo_ai.models.agent import Agent, UserMessage
 from flo_ai.models.base_agent import ReasoningPattern
 from flo_ai.llm.openai_llm import OpenAI
 import os
@@ -34,19 +34,13 @@ async def main():
     # Test questions that require step-by-step reasoning
     questions = [
         UserMessage(
-            TextMessageContent(
-                text='If a train leaves station A at 2 PM traveling 60 mph and another train leaves station B at 3 PM traveling 80 mph, and the stations are 300 miles apart, when will they meet?',
-            )
+            'If a train leaves station A at 2 PM traveling 60 mph and another train leaves station B at 3 PM traveling 80 mph, and the stations are 300 miles apart, when will they meet?'
         ),
         UserMessage(
-            TextMessageContent(
-                text='A store has a 20% discount on all items. If a customer buys 3 items that originally cost $50, $30, and $20, what is the final total after the discount?',
-            )
+            'A store has a 20% discount on all items. If a customer buys 3 items that originally cost $50, $30, and $20, what is the final total after the discount?'
         ),
         UserMessage(
-            TextMessageContent(
-                text='Explain why the sky appears blue during the day but red during sunset.',
-            )
+            'Explain why the sky appears blue during the day but red during sunset.'
         ),
     ]
 

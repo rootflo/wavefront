@@ -2,6 +2,7 @@ from typing import List, Any, Dict, Optional, TYPE_CHECKING, Callable
 from flo_ai.utils.logger import logger
 from flo_ai.arium.memory import MessageMemory
 from flo_ai.models import BaseMessage, UserMessage
+from flo_ai.arium.protocols import ExecutableNode
 import asyncio
 
 if TYPE_CHECKING:  # need to have an optional import else will get circular dependency error as arium also has AriumNode reference
@@ -85,6 +86,9 @@ class ForEachNode:
         item_variables = (variables or {}).copy()
 
         # Execute the node
+        # Only ExecutableNode types have a run method
+        if not isinstance(self.execute_node, ExecutableNode):
+            raise TypeError(f'Node {self.execute_node.name} does not support execution')
         result = await self.execute_node.run(
             inputs=[item],
             variables=item_variables,
@@ -144,10 +148,17 @@ class ForEachNode:
                 self.execute_node.arium.memory = original_memory
         else:
             # For non-Arium nodes, execute normally
-            result = await self.execute_node.run(
-                inputs=[item],
-                variables=item_variables,
-            )
+            # Only ExecutableNode types have a run method
+            if isinstance(self.execute_node, ExecutableNode):
+                result = await self.execute_node.run(
+                    inputs=[item],
+                    variables=item_variables,
+                )
+            else:
+                # StartNode/EndNode don't have run methods
+                raise TypeError(
+                    f'Node {self.execute_node.name} does not support execution'
+                )
 
         # Return last item if result is a list, otherwise return as-is
         if isinstance(result, list) and result:
