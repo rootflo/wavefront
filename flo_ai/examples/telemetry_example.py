@@ -177,8 +177,8 @@ async def example_workflow(llm):
 
     # Compile and set name for telemetry
     workflow = builder.build()
-    workflow.name = (
-        'research_workflow'  # This name will appear in telemetry # type: ignore
+    workflow.name = (  # type: ignore[assignment]
+        'research_workflow'  # This name will appear in telemetry
     )
 
     # Run workflow - all node executions are tracked

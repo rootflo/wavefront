@@ -189,7 +189,8 @@ Focus on delivering high-quality results.""",
             for i, msg in enumerate(memory.get(), 1):
                 role = msg.result.role
                 content = str(msg.result.content)[:200]
-                print(f'{i}. {role.upper()}: {content}...')
+                role_str = role.upper() if role else 'UNKNOWN'
+                print(f'{i}. {role_str}: {content}...')
 
         # Show final result
         if result:

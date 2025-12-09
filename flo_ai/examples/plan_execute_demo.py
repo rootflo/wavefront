@@ -69,6 +69,9 @@ def demonstrate_plan_aware_memory():
     # Show initial state
     def show_plan_status():
         current = memory.get_current_plan()
+        if current is None:
+            print('\n📋 Plan Status: No plan available')
+            return
         print(f'\n📋 Plan Status: {current.title}')
         for step in current.steps:
             status_icon = {
@@ -90,6 +93,9 @@ def demonstrate_plan_aware_memory():
     print('\n🔄 Simulating step-by-step execution...')
 
     current_plan = memory.get_current_plan()
+    if current_plan is None:
+        print('No plan available')
+        return
 
     # Execute step 1
     next_steps = current_plan.get_next_steps()

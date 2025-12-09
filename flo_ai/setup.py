@@ -1,4 +1,4 @@
-import setuptools
+import setuptools  # type: ignore[import-untyped]
 
 with open('README.md', 'r') as fh:
     long_description = fh.read()

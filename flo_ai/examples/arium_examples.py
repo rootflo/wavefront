@@ -229,18 +229,16 @@ async def example_function_nodes_with_filters():
     """Workflow of only FunctionNodes; each uses input_filter to read from specific nodes."""
 
     # Define simple functions as nodes
-    async def pass_through(inputs: List[BaseMessage] | str, variables=None, **kwargs):
+    async def pass_through(inputs: List[BaseMessage], variables=None, **kwargs):
         return inputs[-1].content
 
-    async def capitalize_last(
-        inputs: List[BaseMessage] | str, variables=None, **kwargs
-    ):
+    async def capitalize_last(inputs: List[BaseMessage], variables=None, **kwargs):
         return str(inputs[-1].content).capitalize()
 
-    async def uppercase_all(inputs: List[BaseMessage] | str, variables=None, **kwargs):
+    async def uppercase_all(inputs: List[BaseMessage], variables=None, **kwargs):
         return ' '.join([str(x.content).upper() for x in inputs])
 
-    async def summarize(inputs: List[BaseMessage] | str, variables=None, **kwargs):
+    async def summarize(inputs: List[BaseMessage], variables=None, **kwargs):
         return f"count={len(inputs or [])} last={(str(inputs[-1].content) if inputs else '')}"
 
     # Create four FunctionNodes with input filters

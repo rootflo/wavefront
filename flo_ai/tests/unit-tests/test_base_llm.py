@@ -7,6 +7,7 @@ import sys
 import os
 import pytest
 from unittest.mock import Mock
+from typing import List, Dict, Any, Optional, AsyncIterator
 
 # Add the flo_ai directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -18,7 +19,18 @@ from flo_ai.models import ImageMessageContent
 class MockLLM(BaseLLM):
     """Mock LLM implementation for testing BaseLLM functionality"""
 
-    async def generate(self, messages, functions=None):
+    def __init__(
+        self, model: str = 'mock', response_text: str = 'Mock response', **kwargs
+    ):
+        super().__init__(model=model, **kwargs)
+        self.response_text = response_text
+
+    async def generate(
+        self,
+        messages: List[Dict[str, str]],
+        functions: Optional[List[Dict[str, Any]]] = None,
+        output_schema: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         return {'content': 'Mock response'}
 
     async def get_function_call(self, response):
@@ -34,7 +46,12 @@ class MockLLM(BaseLLM):
             }
         return None
 
-    async def stream(self, messages, functions=None):
+    async def stream(
+        self,
+        messages: List[Dict[str, str]],
+        functions: Optional[List[Dict[str, Any]]] = None,
+        output_schema: Optional[Dict[str, Any]] = None,
+    ) -> AsyncIterator[Dict[str, Any]]:
         async def generator():
             yield {'response': self.response_text}
 

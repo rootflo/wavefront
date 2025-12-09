@@ -202,7 +202,7 @@ class TestOpenAI:
         llm = OpenAI(api_key='test-key-123')
 
         # Test with string response
-        result = llm.get_message_content('Hello, world!')
+        result = llm.get_message_content('Hello, world!')  # type: ignore[arg-type]
         assert result == 'Hello, world!'
 
         # Test with message object

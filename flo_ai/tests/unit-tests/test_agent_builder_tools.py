@@ -90,7 +90,7 @@ class TestAgentBuilderTools:
         }
 
         builder = AgentBuilder()
-        builder.with_tools([self.base_tool, tool_config, tool_dict])
+        builder.with_tools([self.base_tool, tool_config, tool_dict])  # type: ignore[arg-type]
 
         assert len(builder._tools) == 3
         # First tool should be the original
@@ -104,7 +104,7 @@ class TestAgentBuilderTools:
         builder = AgentBuilder()
 
         with pytest.raises(ValueError, match='Unsupported tool type'):
-            builder.with_tools(['invalid_tool'])
+            builder.with_tools(['invalid_tool'])  # type: ignore[arg-type]
 
     def test_add_tool_regular_tool(self):
         """Test adding a regular tool using add_tool method."""

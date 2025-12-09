@@ -297,7 +297,7 @@ class TestOpenAIVLLM:
         assert result == "{'content': 'Hello, world!'}"
 
         # Test with string response
-        result = llm.get_message_content('Direct string')
+        result = llm.get_message_content('Direct string')  # type: ignore[arg-type]
         assert result == 'Direct string'
 
         # Test with empty content

@@ -86,7 +86,7 @@ Check plan status first, then execute writing steps thoroughly.""",
     # Build workflow
     arium = (
         AriumBuilder()
-        .with_memory(memory)
+        .with_memory(memory)  # type: ignore[arg-type]
         .add_agents(agents)
         .start_with(planner)
         .add_edge(planner, agents, router)
