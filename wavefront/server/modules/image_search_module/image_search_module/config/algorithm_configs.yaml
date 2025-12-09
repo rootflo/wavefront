@@ -1,0 +1,16 @@
+# Service configuration
+service:
+  active_algorithm: sift
+  max_results: 10
+
+# Algorithm configurations
+algorithms:
+  sift:
+    max_features: 5000
+    lowe_ratio: 0.75
+    match_threshold: 10
+    min_homography_matches: 4
+    target_width: 800
+    gaussian_blur_kernel: [3, 3]
+    clahe_clip_limit: 2.0
+    clahe_tile_grid_size: [8, 8]
