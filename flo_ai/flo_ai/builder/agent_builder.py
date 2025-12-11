@@ -193,7 +193,7 @@ class AgentBuilder:
         tool_registry: Optional[Dict[str, Tool]] = None,
         **kwargs,
     ) -> 'AgentBuilder':
-        """Create an agent builder from a YAML configuration string
+        """Create an agent builder from a YAML configuration string or file
 
         Args:
             yaml_str: YAML string containing agent configuration
@@ -209,10 +209,10 @@ class AgentBuilder:
         if yaml_str is None and yaml_file is None:
             raise ValueError('Either yaml_str or yaml_file must be provided')
 
-        if yaml_str and yaml_file:
+        if yaml_str is not None and yaml_file is not None:
             raise ValueError('Only one of yaml_str or yaml_file should be provided')
 
-        if yaml_str:
+        if yaml_str is not None:
             config = yaml.safe_load(yaml_str)
         else:
             if yaml_file is None:

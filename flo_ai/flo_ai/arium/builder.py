@@ -243,9 +243,10 @@ class AriumBuilder:
     async def build_and_run(
         self,
         inputs: List[BaseMessage] | str,
-        variables: Dict[str, Any] = {},
+        variables: Optional[Dict[str, Any]] = None,
     ) -> List[MessageMemoryItem]:
         """Build the Arium and run it with the given inputs and optional runtime variables."""
+        variables = variables if variables is not None else {}
         arium = self.build()
         new_inputs = []
         if isinstance(inputs, list):

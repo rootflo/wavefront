@@ -1,11 +1,14 @@
 """
 Examples demonstrating how to use the AriumBuilder pattern for creating and running Arium workflows.
+
+Note: Both string inputs and list of UserMessage inputs are supported:
+    - String: build_and_run('Hello') - simpler for single text inputs
+    - List: build_and_run([UserMessage('Hello')]) - required for multiple messages or complex message types
 """
 
 from typing import Literal
 from flo_ai.arium import AriumBuilder, create_arium
 from flo_ai.llm import OpenAI
-from flo_ai.models import UserMessage
 from flo_ai.models.agent import Agent
 from flo_ai.arium.nodes import FunctionNode
 from flo_ai.arium.memory import MessageMemory, MessageMemoryItem
@@ -47,7 +50,7 @@ async def example_linear_workflow():
         .connect(analyzer_agent, processing_function_node)
         .connect(processing_function_node, summarizer_agent)
         .end_with(summarizer_agent)
-        .build_and_run([UserMessage('Analyze this text')])
+        .build_and_run('Analyze this text')
     )
 
     return result
@@ -190,7 +193,6 @@ async def example_convenience_function():
         name='agent2', system_prompt='Second agent', llm=OpenAI(model='gpt-4o-mini')
     )
 
-    # Fix: Use proper InputMessage format for consistency
     result = await (
         create_arium()
         .add_agent(agent1)
@@ -198,7 +200,7 @@ async def example_convenience_function():
         .start_with(agent1)
         .connect(agent1, agent2)
         .end_with(agent2)
-        .build_and_run([UserMessage('Hello')])
+        .build_and_run('Hello')
     )
 
     return result

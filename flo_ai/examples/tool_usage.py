@@ -17,7 +17,7 @@ async def test_conversational():
     )
 
     response = await agent.run([UserMessage('What is the capital of France?')])
-    print(response)
+    print(response[-1].content)
 
 
 # Example of using ToolAgent with tools
@@ -45,7 +45,7 @@ async def test_tool_agent():
     )
 
     response = await agent.run([UserMessage("What's the weather like in Paris?")])
-    print(response)
+    print(response[-1].content)
 
 
 async def test_error_handling():
@@ -75,8 +75,8 @@ async def test_error_handling():
 
     try:
         # This will trigger error handling and retries
-        response = await agent.run(UserMessage("What's the weather like in error?"))
-        print(response)
+        response = await agent.run("What's the weather like in error?")
+        print(response[-1].content)
     except AgentError as e:
         print(f'Agent error: {str(e)}')
         if e.original_error:
@@ -115,8 +115,8 @@ async def test_direct_reasoning():
         reasoning_pattern=ReasoningPattern.DIRECT,
     )
 
-    response = await agent.run(UserMessage('Calculate 5 plus 3'))
-    print(response)
+    response = await agent.run('Calculate 5 plus 3')
+    print(response[-1].content)
 
 
 # Run the examples

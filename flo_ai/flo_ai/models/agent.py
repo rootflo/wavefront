@@ -227,6 +227,8 @@ class Agent(BaseAgent):
 
                 # Keep executing tools until we get a final answer
                 tool_call_count = 0
+                function_response = None
+                function_name = None
                 while tool_call_count < self.max_tool_calls:
                     formatted_tools = self.llm.format_tools_for_llm(self.tools)
                     response = await self.llm.generate(
@@ -373,8 +375,12 @@ class Agent(BaseAgent):
 
                     except (json.JSONDecodeError, KeyError, ToolExecutionError) as e:
                         # Record tool call failure
+                        # Safely extract function_name from function_call if available
+                        error_function_name: str = function_name or 'unknown'
+                        if error_function_name == 'unknown' and function_call:
+                            error_function_name = function_call.get('name') or 'unknown'
                         agent_metrics.record_tool_call(
-                            self.name, function_name, 'error'
+                            self.name, error_function_name, 'error'
                         )
 
                         retry_count += 1
@@ -399,6 +405,10 @@ class Agent(BaseAgent):
                             f'Tool execution failed: {analysis}', original_error=e
                         )
 
+                # If no tools were called, return conversation history
+                if tool_call_count == 0:
+                    return self.conversation_history
+
                 # Generate final response if we've hit the tool call limit or exited the loop
                 system_message = SystemMessage(
                     content='Please provide a final answer based on all the tool results above.'
@@ -422,15 +432,20 @@ class Agent(BaseAgent):
                     self.add_to_history(AssistantMessage(content=assistant_message))
                     return self.conversation_history
 
-                return [
-                    FunctionMessage(
-                        content=str(
-                            'The final result based on the tool executions is: \n'
-                            + str(function_response)
-                        ),
-                        name=function_name,
-                    )
-                ]
+                # Fallback: return function message only if we have valid tool execution data
+                if function_response is not None and function_name is not None:
+                    return [
+                        FunctionMessage(
+                            content=str(
+                                'The final result based on the tool executions is: \n'
+                                + str(function_response)
+                            ),
+                            name=function_name,
+                        )
+                    ]
+                else:
+                    # No tools were executed and no assistant message, return safe fallback
+                    return self.conversation_history
 
             except Exception as e:
                 retry_count += 1

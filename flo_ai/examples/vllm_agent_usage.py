@@ -13,10 +13,16 @@ vllm_base_url = os.getenv('VLLM_BASE_URL')
 vllm_model = 'microsoft/phi-4'
 
 
-async def example_simple_vllm_agent():
-    # Create a simple conversational agent with vLLM
+def ensure_vllm_base_url() -> str:
+    """Ensure VLLM base URL is set, raising ValueError if not."""
     if not vllm_base_url:
         raise ValueError('VLLM base URL is not set')
+    return vllm_base_url
+
+
+async def example_simple_vllm_agent():
+    # Create a simple conversational agent with vLLM
+    base_url = ensure_vllm_base_url()
 
     agent = (
         AgentBuilder()
@@ -25,7 +31,7 @@ async def example_simple_vllm_agent():
         .with_llm(
             OpenAIVLLM(
                 model=vllm_model,
-                base_url=vllm_base_url,
+                base_url=base_url,
                 temperature=0.7,
                 api_key='',
             )
@@ -64,8 +70,7 @@ async def example_vllm_tool_agent():
         },
     )
 
-    if not vllm_base_url:
-        raise ValueError('VLLM base URL is not set')
+    base_url = ensure_vllm_base_url()
 
     # Create a tool-using agent with vLLM
     agent = (
@@ -77,7 +82,7 @@ async def example_vllm_tool_agent():
         .with_llm(
             OpenAIVLLM(
                 model=vllm_model,
-                base_url=vllm_base_url,
+                base_url=base_url,
                 temperature=0.7,
                 api_key='',
             )
@@ -120,8 +125,7 @@ async def example_vllm_structured_output():
         },
     }
 
-    if not vllm_base_url:
-        raise ValueError('VLLM base URL is not set')
+    base_url = ensure_vllm_base_url()
 
     # Create an agent with structured output using vLLM
     agent = (
@@ -134,7 +138,7 @@ async def example_vllm_structured_output():
         .with_llm(
             OpenAIVLLM(
                 model=vllm_model,
-                base_url=vllm_base_url,
+                base_url=base_url,
                 temperature=0.3,
                 api_key='',
             )
@@ -219,8 +223,7 @@ async def example_vllm_tool_agent_structured_output():
         },
     }
 
-    if not vllm_base_url:
-        raise ValueError('VLLM base URL is not set')
+    base_url = ensure_vllm_base_url()
 
     # Create a tool-using agent with structured output
     agent = (
@@ -232,7 +235,7 @@ async def example_vllm_tool_agent_structured_output():
         .with_llm(
             OpenAIVLLM(
                 model=vllm_model,
-                base_url=vllm_base_url,
+                base_url=base_url,
                 temperature=0.3,
                 api_key='',
             )

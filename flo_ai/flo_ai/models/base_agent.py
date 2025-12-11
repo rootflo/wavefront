@@ -1,4 +1,4 @@
-from typing import Dict, Any, List, Tuple, cast
+from typing import Dict, Any, List, Tuple, cast, Optional
 from abc import ABC, abstractmethod
 from enum import Enum
 from flo_ai.llm.base_llm import BaseLLM
@@ -84,7 +84,8 @@ class BaseAgent(ABC):
         """Clear conversation history"""
         self.conversation_history = []
 
-    async def _get_message_history(self, variables: Dict[str, Any] = {}):
+    async def _get_message_history(self, variables: Optional[Dict[str, Any]] = None):
+        variables = variables if variables is not None else {}
         message_history = []
         for input in self.conversation_history:
             # Handle FunctionMessage (OpenAI function role format)

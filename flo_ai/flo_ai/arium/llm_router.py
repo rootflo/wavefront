@@ -583,34 +583,37 @@ class PlanExecuteRouter(BaseLLMRouter):
 
     def get_routing_prompt(
         self,
-        memory: MessageMemory[MessageMemoryItem],
+        memory: MessageMemory,
         options: Dict[str, str],
         execution_context: Optional[dict] = None,
     ) -> str:
-        conversation: List[MessageMemoryItem] = memory.get()
+        return ''
+        # TODO: Implement plan-and-execute router
 
-        filtered_conversation = [
-            msg.result.content
-            for msg in conversation
-            if isinstance(msg.result.content, str)
-        ]
-        conversation_text = '\n'.join(
-            filtered_conversation[-3:]
-        )  # Last 3 messages for context
+        # conversation: List[MessageMemoryItem] = memory.get()
 
-        # Check if we have a plan in memory
-        current_plan = (
-            memory.get_current_plan() if hasattr(memory, 'get_current_plan') else None
-        )
+        # filtered_conversation = [
+        #     msg.result.content
+        #     for msg in conversation
+        #     if isinstance(msg.result.content, str)
+        # ]
+        # conversation_text = '\n'.join(
+        #     filtered_conversation[-3:]
+        # )  # Last 3 messages for context
 
-        if current_plan is None:
-            # No plan exists - route to planner
-            return self._create_planning_prompt(conversation_text, options)
-        else:
-            # Plan exists - determine next action based on plan state
-            return self._create_execution_prompt(
-                current_plan, conversation_text, options, execution_context
-            )
+        # # Check if we have a plan in memory
+        # current_plan = (
+        #     memory.get_current_plan() if hasattr(memory, 'get_current_plan') else None
+        # )
+
+        # if current_plan is None:
+        #     # No plan exists - route to planner
+        #     return self._create_planning_prompt(conversation_text, options)
+        # else:
+        #     # Plan exists - determine next action based on plan state
+        #     return self._create_execution_prompt(
+        #         current_plan, conversation_text, options, execution_context
+        #     )
 
     def _create_planning_prompt(
         self, conversation_text: str, options: Dict[str, str]

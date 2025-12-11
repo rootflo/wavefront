@@ -5,6 +5,7 @@ from flo_ai.models import BaseMessage, UserMessage
 from flo_ai.arium.protocols import ExecutableNode
 import asyncio
 
+
 if TYPE_CHECKING:  # need to have an optional import else will get circular dependency error as arium also has AriumNode reference
     from flo_ai.arium.arium import Arium
     from flo_ai.arium.base import AriumNodeType
@@ -34,13 +35,13 @@ class AriumNode:
         self.input_filter: Optional[List[str]] = input_filter
 
     async def run(
-        self, inputs: List[Any], variables: Dict[str, Any] = {}, **kwargs
+        self, inputs: List[Any], variables: Optional[Dict[str, Any]] = None, **kwargs
     ) -> Any:
         """Execute the nested Arium workflow with isolated memory"""
 
         # Handle variable inheritance
         execution_variables = (
-            variables.copy() if (self.inherit_variables and variables) else {}
+            (variables or {}).copy() if (self.inherit_variables and variables) else {}
         )
 
         # Execute the nested Arium with isolated memory
@@ -61,7 +62,7 @@ class ForEachNode:
     def __init__(
         self,
         name: str,
-        execute_node: AriumNodeType,
+        execute_node: 'AriumNodeType',
         input_filter: Optional[List[str]] = None,
     ):
         """

@@ -27,11 +27,18 @@ class Anthropic(BaseLLM):
     ):
         super().__init__(model, api_key, temperature, **kwargs)
 
+        # Filter out keys that are already passed explicitly to avoid duplicate keyword arguments
+        filtered_kwargs = {
+            k: v
+            for k, v in kwargs.items()
+            if k not in ('api_key', 'base_url', 'default_headers')
+        }
+
         self.client = AsyncAnthropic(
             api_key=self.api_key,
             base_url=base_url,
             default_headers=custom_headers,
-            **kwargs,
+            **filtered_kwargs,
         )
 
     @trace_llm_call(provider='anthropic')

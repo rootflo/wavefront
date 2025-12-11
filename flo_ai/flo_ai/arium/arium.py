@@ -34,7 +34,7 @@ class Arium(BaseArium):
     async def run(
         self,
         inputs: List[BaseMessage] | str,
-        variables: Dict[str, Any] = {},
+        variables: Optional[Dict[str, Any]] = None,
         event_callback: Optional[Callable[[AriumEvent], None]] = None,
         events_filter: Optional[List[AriumEventType]] = None,
     ):
@@ -50,6 +50,7 @@ class Arium(BaseArium):
         Returns:
             List of workflow execution results
         """
+        variables = variables if variables is not None else {}
         if isinstance(inputs, str):
             inputs: list[BaseMessage] = [
                 UserMessage(content=resolve_variables(inputs, variables))
@@ -201,8 +202,9 @@ class Arium(BaseArium):
         inputs: List[BaseMessage],
         event_callback: Optional[Callable[[AriumEvent], None]] = None,
         events_filter: Optional[List[AriumEventType]] = None,
-        variables: Dict[str, Any] = {},
+        variables: Optional[Dict[str, Any]] = None,
     ):
+        variables = variables if variables is not None else {}
         [
             self.memory.add(MessageMemoryItem(node='input', occurrence=0, result=msg))
             for msg in inputs
@@ -358,7 +360,7 @@ class Arium(BaseArium):
     def _resolve_inputs(
         self,
         inputs: List[BaseMessage],
-        variables: Dict[str, Any] = {},
+        variables: Optional[Dict[str, Any]] = None,
     ) -> List[BaseMessage]:
         """Resolve variables in input messages.
 
@@ -369,6 +371,7 @@ class Arium(BaseArium):
         Returns:
             List of inputs with variables resolved
         """
+        variables = variables if variables is not None else {}
         resolved_inputs = []
         for input_item in inputs:
             if isinstance(input_item, str):
@@ -400,7 +403,7 @@ class Arium(BaseArium):
         node: AriumNodeType,
         event_callback: Optional[Callable[[AriumEvent], None]] = None,
         events_filter: Optional[List[AriumEventType]] = None,
-        variables: Dict[str, Any] = {},
+        variables: Optional[Dict[str, Any]] = None,
     ):
         """
         Execute a single node with optional event emission.
@@ -413,6 +416,7 @@ class Arium(BaseArium):
         Returns:
             The result of node execution
         """
+        variables = variables if variables is not None else {}
         # Determine node type for events
         if isinstance(node, Agent):
             node_type = 'agent'
