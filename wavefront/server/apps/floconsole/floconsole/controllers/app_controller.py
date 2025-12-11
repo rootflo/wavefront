@@ -22,8 +22,6 @@ from floconsole.db.repositories.sql_alchemy_repository import SQLAlchemyReposito
 from floconsole.db.models.user import User
 from floconsole.constants.app import AppDeploymentType, AppStatus
 
-build_trigger_url = 'https://cloudbuild.googleapis.com/v1/projects/aesy-330511/locations/asia-south1/triggers/new-app:webhook?key=AIzaSyA_cDcmEHojgD7SG2OI2_6DYSBMeLY8kWk&trigger=new-app&projectId=aesy-330511&secret=Buildtriggersecret'
-
 app_router = APIRouter(prefix='/v1')
 
 
@@ -97,6 +95,7 @@ async def create_app(
         Provide[CommonContainer.response_formatter]
     ),
     app_service: AppService = Depends(Provide[ApplicationContainer.app_service]),
+    config: dict = Depends(Provide[ApplicationContainer.config]),
 ):
     try:
         app = await app_service.get_app_by_name(app_data.app_name)
@@ -134,6 +133,7 @@ async def create_app(
                 },
             }
 
+            build_trigger_url = config['deployment']['build_trigger_url']
             response = requests.post(build_trigger_url, json=data)
 
             if response.status_code != 200:
@@ -308,6 +308,7 @@ async def delete_app(
                 },
             }
 
+            build_trigger_url = config['deployment']['build_trigger_url']
             response = requests.post(build_trigger_url, json=data)
 
             if response.status_code != 200:
