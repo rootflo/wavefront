@@ -1,29 +1,32 @@
 import inspect
 from functools import partial
-from flo_ai.arium.nodes import AriumNode, ForEachNode
+from flo_ai.arium.nodes import AriumNode, ForEachNode, FunctionNode
 from flo_ai.arium.protocols import ExecutableNode
 from flo_ai.models.agent import Agent
 from flo_ai.tool.base_tool import Tool
 from flo_ai.utils.logger import logger
-from typing import List, Optional, Callable, Literal, get_origin, get_args, Dict
+from typing import List, Optional, Callable, Literal, get_origin, get_args, Dict, Union
 from collections.abc import Awaitable as AwaitableABC
 from flo_ai.arium.models import StartNode, EndNode, Edge, default_router
 from pathlib import Path
+from typing import TypeAlias
+
+AriumNodeType: TypeAlias = Union[
+    ExecutableNode, StartNode, EndNode, ForEachNode, AriumNode, FunctionNode
+]
 
 
 class BaseArium:
     def __init__(self):
         self.start_node_name = '__start__'
         self.end_node_names: set = set()  # Support multiple end nodes
-        self.nodes: Dict[str, ExecutableNode | StartNode | EndNode] = dict[
-            str, ExecutableNode | StartNode | EndNode
-        ]()
+        self.nodes: Dict[str, AriumNodeType] = dict[str, AriumNodeType]()
         self.edges: Dict[str, Edge] = dict[str, Edge]()
 
-    def add_nodes(self, agents: List[ExecutableNode | StartNode | EndNode]):
+    def add_nodes(self, agents: List[AriumNodeType]):
         self.nodes.update({agent.name: agent for agent in agents})
 
-    def start_at(self, node: ExecutableNode):
+    def start_at(self, node: AriumNodeType):
         start_node = StartNode()
         if start_node.name in self.nodes:
             raise ValueError(f'Start node {start_node.name} already exists')
@@ -32,7 +35,7 @@ class BaseArium:
             router_fn=partial(default_router, to_node=node.name), to_nodes=[node.name]
         )
 
-    def add_end_to(self, node: ExecutableNode):
+    def add_end_to(self, node: AriumNodeType):
         # Create a unique end node name for this specific node
         end_node_name = f'__end__{node.name}__'
         end_node = EndNode()
@@ -90,7 +93,7 @@ class BaseArium:
     def add_edge(
         self,
         from_node: str,
-        to_nodes: List[str] = None,
+        to_nodes: List[str],
         router: Optional[Callable] = None,
     ):
         if router and not callable(router):
@@ -227,9 +230,9 @@ class BaseArium:
             font_size: Font size for node labels
             dpi: Resolution of the saved image
         """
-        import matplotlib.pyplot as plt
-        import matplotlib.patches as patches
-        import networkx as nx
+        import matplotlib.pyplot as plt  # type: ignore
+        import matplotlib.patches as patches  # type: ignore
+        import networkx as nx  # type: ignore
 
         if not self.nodes:
             logger.error('No nodes to visualize')
@@ -370,11 +373,11 @@ class BaseArium:
         plt.tight_layout()
 
         # Save the figure
-        output_path = Path(output_path)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        created_output_path = Path(output_path)
+        created_output_path.parent.mkdir(parents=True, exist_ok=True)
 
         plt.savefig(
-            str(output_path),
+            str(created_output_path),
             format='png',
             dpi=dpi,
             bbox_inches='tight',
@@ -383,7 +386,7 @@ class BaseArium:
         )
         plt.close()
 
-        logger.info(f'Graph visualization saved to: {output_path}')
+        logger.info(f'Graph visualization saved to: {created_output_path}')
 
     def _get_node_type(self, node) -> str:
         """Helper method to determine node type for visualization."""

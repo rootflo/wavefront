@@ -580,7 +580,7 @@ async def run_complex_example():
     # Test with mathematical content
     print('\nTesting with mathematical content:')
     result1 = await builder.build_and_run(
-        ['Please calculate the sum of 25 and 17, then multiply the result by 3.']
+        'Please calculate the sum of 25 and 17, then multiply the result by 3.'
     )
 
     print('Result:')
@@ -693,7 +693,7 @@ async def run_mixed_nodes_example():
     # Test with mathematical content
     print('\nTesting with mathematical content:')
     result1 = await builder.build_and_run(
-        ['Please calculate the sum of 15 and 27, then multiply by 2.']
+        'Please calculate the sum of 15 and 27, then multiply by 2.'
     )
 
     print('Result:')
@@ -820,14 +820,13 @@ async def run_prebuilt_agents_example():
 
     # Run the workflow
     result = await builder.build_and_run(
-        [
-            'The global renewable energy market reached $1.1 trillion in 2023, representing a 15% '
-            'increase from the previous year. Solar energy dominated with 45% market share, followed '
-            'by wind energy at 35%. Government incentives in Europe and Asia drove significant growth, '
-            'while corporate sustainability commitments increased private sector investment. However, '
-            'supply chain challenges and raw material costs remain key obstacles. Industry experts '
-            'predict continued expansion, with the market expected to reach $1.8 trillion by 2030.'
-        ]
+        """The global renewable energy market reached $1.1 trillion in 2023, representing a 15%
+            increase from the previous year. Solar energy dominated with 45% market share, followed by wind energy at 35%. 
+            Government incentives in Europe and Asia drove significant growth,
+            by wind energy at 35%. Government incentives in Europe and Asia drove significant growth
+            while corporate sustainability commitments increased private sector investment. However
+            supply chain challenges and raw material costs remain key obstacles. Industry experts
+            predict continued expansion, with the market expected to reach $1.8 trillion by 2030."""
     )
 
     print('Result:')

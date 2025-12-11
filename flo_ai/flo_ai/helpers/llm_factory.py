@@ -138,6 +138,12 @@ class LLMFactory:
                 'Provide it in model_config or as a kwarg.'
             )
 
+        if not base_url:
+            raise ValueError(
+                'VertexAI provider requires "base_url" parameter. '
+                'Provide it in model_config or as a kwarg.'
+            )
+
         return VertexAI(
             model=model_name,
             project=project,
@@ -166,6 +172,11 @@ class LLMFactory:
 
         # Optional parameters
         api_key = kwargs.get('api_key') or model_config.get('api_key')
+        if not api_key:
+            raise ValueError(
+                'openai_vllm provider requires "api_key" parameter. '
+                'Provide it in model_config or as a kwarg.'
+            )
         temperature = kwargs.get(
             'temperature',
             model_config.get('temperature', 0.7),

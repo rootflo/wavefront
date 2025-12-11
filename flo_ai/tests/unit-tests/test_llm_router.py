@@ -4,7 +4,7 @@ Test cases for LLM-powered routers in Arium workflows.
 
 import pytest
 from unittest.mock import Mock, AsyncMock
-from typing import Literal
+from typing import Literal, List, Dict, Any, Optional, AsyncIterator
 
 from flo_ai.arium.llm_router import (
     SmartRouter,
@@ -26,11 +26,21 @@ class MockLLM(BaseLLM):
         self.response_text = response_text
         self.call_count = 0
 
-    async def generate(self, messages, **kwargs):
+    async def generate(
+        self,
+        messages: List[Dict[str, str]],
+        functions: Optional[List[Dict[str, Any]]] = None,
+        output_schema: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         self.call_count += 1
         return {'response': self.response_text}
 
-    async def stream(self, messages, functions=None):
+    async def stream(
+        self,
+        messages: List[Dict[str, str]],
+        functions: Optional[List[Dict[str, Any]]] = None,
+        output_schema: Optional[Dict[str, Any]] = None,
+    ) -> AsyncIterator[Dict[str, Any]]:
         async def generator():
             yield {'response': self.response_text}
 
@@ -257,7 +267,7 @@ class TestDecorator:
 
         @llm_router(routing_options, llm=mock_llm)
         def test_router(memory) -> Literal['researcher', 'analyst']:
-            pass
+            return 'researcher'  # Mock return value
 
         assert callable(test_router)
         # Test would require actual execution which needs async setup

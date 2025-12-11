@@ -1,11 +1,14 @@
 """
 Examples demonstrating how to use the AriumBuilder pattern for creating and running Arium workflows.
+
+Note: Both string inputs and list of UserMessage inputs are supported:
+    - String: build_and_run('Hello') - simpler for single text inputs
+    - List: build_and_run([UserMessage('Hello')]) - required for multiple messages or complex message types
 """
 
 from typing import Literal
 from flo_ai.arium import AriumBuilder, create_arium
 from flo_ai.llm import OpenAI
-from flo_ai.models import TextMessageContent, UserMessage
 from flo_ai.models.agent import Agent
 from flo_ai.arium.nodes import FunctionNode
 from flo_ai.arium.memory import MessageMemory, MessageMemoryItem
@@ -47,7 +50,7 @@ async def example_linear_workflow():
         .connect(analyzer_agent, processing_function_node)
         .connect(processing_function_node, summarizer_agent)
         .end_with(summarizer_agent)
-        .build_and_run([UserMessage(TextMessageContent(text='Analyze this text'))])
+        .build_and_run('Analyze this text')
     )
 
     return result
@@ -58,14 +61,22 @@ async def example_branching_workflow():
     """Example of a branching workflow with conditional routing"""
 
     # Create agents and function nodes
-    classifier_agent = Agent(name='classifier', prompt='Classify the input type')
+    classifier_agent = Agent(
+        name='classifier',
+        system_prompt='Classify the input type',
+        llm=OpenAI(model='gpt-4o-mini'),
+    )
     text_processor_node = FunctionNode(
         name='text_processor', description='Process text', function=lambda x: x
     )
     image_processor_node = FunctionNode(
         name='image_processor', description='Process image', function=lambda x: x
     )
-    final_agent = Agent(name='final', prompt='Provide final response')
+    final_agent = Agent(
+        name='final',
+        system_prompt='Provide final response',
+        llm=OpenAI(model='gpt-4o-mini'),
+    )
 
     # Router function for conditional branching
     def content_router(memory) -> Literal['text_processor', 'image_processor']:
@@ -101,7 +112,7 @@ async def example_branching_workflow():
         .connect(text_processor_node, final_agent)
         .connect(image_processor_node, final_agent)
         .end_with(final_agent)
-        .build_and_run(['Process this content'])
+        .build_and_run('Process this content')
     )
     return result
 
@@ -111,10 +122,26 @@ async def example_complex_workflow():
     """Example of a more complex workflow with multiple agents and function nodes"""
 
     # Create multiple agents and function nodes
-    input_agent = Agent(name='input_handler', prompt='Handle initial input')
-    researcher_agent = Agent(name='researcher', prompt='Research the topic')
-    analyzer_agent = Agent(name='analyzer', prompt='Analyze findings')
-    writer_agent = Agent(name='writer', prompt='Write the final report')
+    input_agent = Agent(
+        name='input_handler',
+        system_prompt='Handle initial input',
+        llm=OpenAI(model='gpt-4o-mini'),
+    )
+    researcher_agent = Agent(
+        name='researcher',
+        system_prompt='Research the topic',
+        llm=OpenAI(model='gpt-4o-mini'),
+    )
+    analyzer_agent = Agent(
+        name='analyzer',
+        system_prompt='Analyze findings',
+        llm=OpenAI(model='gpt-4o-mini'),
+    )
+    writer_agent = Agent(
+        name='writer',
+        system_prompt='Write the final report',
+        llm=OpenAI(model='gpt-4o-mini'),
+    )
 
     search_function_node = FunctionNode(
         name='search_function', description='Search the web', function=lambda x: x
@@ -151,7 +178,7 @@ async def example_complex_workflow():
     )
 
     # Run the workflow
-    result = await arium.run(['Research and write a report on AI trends'])
+    result = await arium.run('Research and write a report on AI trends')
     return result
 
 
@@ -166,7 +193,6 @@ async def example_convenience_function():
         name='agent2', system_prompt='Second agent', llm=OpenAI(model='gpt-4o-mini')
     )
 
-    # Fix: Use proper InputMessage format for consistency
     result = await (
         create_arium()
         .add_agent(agent1)
@@ -174,7 +200,7 @@ async def example_convenience_function():
         .start_with(agent1)
         .connect(agent1, agent2)
         .end_with(agent2)
-        .build_and_run([UserMessage(TextMessageContent(text='Hello'))])
+        .build_and_run('Hello')
     )
 
     return result
@@ -184,14 +210,18 @@ async def example_convenience_function():
 async def example_build_and_reuse():
     """Example of building an Arium once and reusing it"""
 
-    agent = Agent(name='echo_agent', prompt='Echo the input')
+    agent = Agent(
+        name='echo_agent',
+        system_prompt='Echo the input',
+        llm=OpenAI(model='gpt-4o-mini'),
+    )
 
     # Build the Arium
     arium = AriumBuilder().add_agent(agent).start_with(agent).end_with(agent).build()
 
     # Run it multiple times with different inputs
-    result1 = await arium.run(['First input'])
-    result2 = await arium.run(['Second input'])
+    result1 = await arium.run('First input')
+    result2 = await arium.run('Second input')
 
     return result1, result2
 
@@ -201,18 +231,16 @@ async def example_function_nodes_with_filters():
     """Workflow of only FunctionNodes; each uses input_filter to read from specific nodes."""
 
     # Define simple functions as nodes
-    async def pass_through(inputs: List[BaseMessage] | str, variables=None, **kwargs):
+    async def pass_through(inputs: List[BaseMessage], variables=None, **kwargs):
         return inputs[-1].content
 
-    async def capitalize_last(
-        inputs: List[BaseMessage] | str, variables=None, **kwargs
-    ):
+    async def capitalize_last(inputs: List[BaseMessage], variables=None, **kwargs):
         return str(inputs[-1].content).capitalize()
 
-    async def uppercase_all(inputs: List[BaseMessage] | str, variables=None, **kwargs):
+    async def uppercase_all(inputs: List[BaseMessage], variables=None, **kwargs):
         return ' '.join([str(x.content).upper() for x in inputs])
 
-    async def summarize(inputs: List[BaseMessage] | str, variables=None, **kwargs):
+    async def summarize(inputs: List[BaseMessage], variables=None, **kwargs):
         return f"count={len(inputs or [])} last={(str(inputs[-1].content) if inputs else '')}"
 
     # Create four FunctionNodes with input filters
@@ -262,7 +290,7 @@ async def example_function_nodes_with_filters():
         .connect(t2, t3)
         .connect(t3, t1)
         .end_with(t4)
-        .build_and_run(['hello world'])
+        .build_and_run('hello world')
     )
 
     return result

@@ -103,10 +103,8 @@ async def example_1_smart_router():
             yaml_str=workflow_yaml, routers={'intelligent_router': intelligent_router}
         )
         .build_and_run(
-            [
-                'I need to understand the current state of renewable energy adoption globally. '
-                'Please provide statistics, trends, and market analysis for solar and wind energy.'
-            ]
+            """I need to understand the current state of renewable energy adoption globally.
+                Please provide statistics, trends, and market analysis for solar and wind energy."""
         )
     )
 
@@ -136,7 +134,7 @@ async def example_2_decorator_router():
         llm=llm,
         context_description='a content creation workflow that should progress to review after 1-2 editing rounds',
     )
-    def content_workflow_router(memory: BaseMemory) -> Literal['editor', 'reviewer']:
+    def content_workflow_router(memory: BaseMemory) -> Literal['editor', 'reviewer']:  # type: ignore
         """Smart router for content creation workflow"""
         pass  # Implementation provided by decorator
 
@@ -184,10 +182,8 @@ async def example_2_decorator_router():
         )  # Editor always goes to reviewer (no router needed for single destination)
         .end_with(reviewer)
         .build_and_run(
-            [
-                'Write a blog post about the benefits of remote work for software developers. '
-                'Make it engaging and include practical tips.'
-            ]
+            """Write a blog post about the benefits of remote work for software developers.
+                Make it engaging and include practical tips."""
         )
     )
 
@@ -328,7 +324,7 @@ async def example_3_task_classifier_router():
             .end_with(math_specialist)
             .end_with(text_specialist)
             .end_with(research_specialist)
-            .build_and_run([task])
+            .build_and_run(task)
         )
 
         print(f'Result: {result[-1]}')
@@ -396,10 +392,8 @@ async def example_4_conversation_analysis_router():
         .add_edge(executor, [planner, executor, reviewer], flow_router)
         .end_with(reviewer)
         .build_and_run(
-            [
-                'I need to create a comprehensive marketing strategy for launching a new mobile app. '
-                'The app is a personal finance tracker targeting millennials.'
-            ]
+            """I need to create a comprehensive marketing strategy for launching a new mobile app.
+                The app is a personal finance tracker targeting millennials."""
         )
     )
 

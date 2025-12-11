@@ -65,7 +65,7 @@ async def create_tools():
     )
 
     # Weather tool (mock)
-    async def get_weather(city: str, country: str = None) -> str:
+    async def get_weather(city: str, country: str = '') -> str:
         # This is a mock weather tool - in real use, you'd call a weather API
         weather_data = {
             'london': {'temp': 18, 'condition': 'cloudy'},

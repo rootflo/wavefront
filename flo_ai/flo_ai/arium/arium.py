@@ -1,8 +1,9 @@
 from flo_ai.arium.base import BaseArium
-from flo_ai.arium.memory import MessageMemory, BaseMemory, MessageMemoryItem
+from flo_ai.arium.memory import MessageMemory, MessageMemoryItem
 from flo_ai.models import BaseMessage, UserMessage, TextMessageContent
 from typing import List, Dict, Any, Optional, Callable
 from flo_ai.models.agent import Agent
+from flo_ai.arium.base import AriumNodeType
 from flo_ai.arium.models import StartNode, EndNode
 from flo_ai.arium.events import AriumEventType, AriumEvent
 from flo_ai.arium.nodes import AriumNode, ForEachNode, FunctionNode
@@ -21,7 +22,7 @@ import time
 
 
 class Arium(BaseArium):
-    def __init__(self, memory: BaseMemory):
+    def __init__(self, memory: MessageMemory):
         super().__init__()
         self.is_compiled = False
         self.memory = memory if memory else MessageMemory()
@@ -49,8 +50,11 @@ class Arium(BaseArium):
         Returns:
             List of workflow execution results
         """
+        variables = variables if variables is not None else {}
         if isinstance(inputs, str):
-            inputs = [UserMessage(content=resolve_variables(inputs, variables))]
+            inputs: list[BaseMessage] = [
+                UserMessage(content=resolve_variables(inputs, variables))
+            ]
 
         if not self.is_compiled:
             raise ValueError('Arium is not compiled')
@@ -189,7 +193,7 @@ class Arium(BaseArium):
             events_filter: List of event types to listen for
             **kwargs: Additional event data (node_name, error, etc.)
         """
-        if callback and event_type in events_filter:
+        if callback and events_filter and event_type in events_filter:
             event = AriumEvent(event_type=event_type, timestamp=time.time(), **kwargs)
             callback(event)
 
@@ -200,6 +204,7 @@ class Arium(BaseArium):
         events_filter: Optional[List[AriumEventType]] = None,
         variables: Optional[Dict[str, Any]] = None,
     ):
+        variables = variables if variables is not None else {}
         [
             self.memory.add(MessageMemoryItem(node='input', occurrence=0, result=msg))
             for msg in inputs
@@ -355,7 +360,7 @@ class Arium(BaseArium):
     def _resolve_inputs(
         self,
         inputs: List[BaseMessage],
-        variables: Dict[str, Any],
+        variables: Optional[Dict[str, Any]] = None,
     ) -> List[BaseMessage]:
         """Resolve variables in input messages.
 
@@ -366,21 +371,16 @@ class Arium(BaseArium):
         Returns:
             List of inputs with variables resolved
         """
+        variables = variables if variables is not None else {}
         resolved_inputs = []
         for input_item in inputs:
             if isinstance(input_item, str):
                 # Resolve variables in text input
                 resolved_input = resolve_variables(input_item, variables)
-                resolved_inputs.append(
-                    UserMessage(TextMessageContent(text=resolved_input))
-                )
+                resolved_inputs.append(UserMessage(resolved_input))
             elif isinstance(input_item, TextMessageContent):
                 resolved_inputs.append(
-                    UserMessage(
-                        TextMessageContent(
-                            text=resolve_variables(input_item.text, variables),
-                        )
-                    )
+                    UserMessage(resolve_variables(input_item.text, variables))
                 )
             else:
                 # ImageMessageContent and DocumentMessage objects don't need variable resolution
@@ -400,7 +400,7 @@ class Arium(BaseArium):
 
     async def _execute_node(
         self,
-        node: Agent | FunctionNode | ForEachNode | AriumNode | StartNode | EndNode,
+        node: AriumNodeType,
         event_callback: Optional[Callable[[AriumEvent], None]] = None,
         events_filter: Optional[List[AriumEventType]] = None,
         variables: Optional[Dict[str, Any]] = None,
@@ -416,6 +416,7 @@ class Arium(BaseArium):
         Returns:
             The result of node execution
         """
+        variables = variables if variables is not None else {}
         # Determine node type for events
         if isinstance(node, Agent):
             node_type = 'agent'

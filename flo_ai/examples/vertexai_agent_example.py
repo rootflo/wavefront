@@ -45,7 +45,7 @@ async def create_tools():
     )
 
     # Weather tool (mock implementation)
-    async def get_weather(city: str, country: str = None) -> str:
+    async def get_weather(city: str, country: str = '') -> str:
         location = f'{city}, {country}' if country else city
         # This would normally call a weather API
         return f"Currently in {location}, it's sunny and warm with a temperature of 24°C (75°F)."

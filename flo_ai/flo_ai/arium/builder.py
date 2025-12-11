@@ -1,7 +1,6 @@
 from typing import List, Optional, Callable, Union, Dict, Any
 from flo_ai.arium.arium import Arium
-from flo_ai.arium.memory import MessageMemory, BaseMemory, MessageMemoryItem
-from flo_ai.arium.protocols import ExecutableNode
+from flo_ai.arium.memory import MessageMemory, MessageMemoryItem
 from flo_ai.arium.nodes import AriumNode, ForEachNode
 from flo_ai.models import BaseMessage, UserMessage
 from flo_ai.models.agent import Agent, resolve_variables
@@ -11,6 +10,7 @@ from flo_ai.builder.agent_builder import AgentBuilder
 from flo_ai.llm import BaseLLM
 from flo_ai.arium.llm_router import create_llm_router
 from flo_ai.arium.nodes import FunctionNode
+from flo_ai.arium.base import AriumNodeType
 
 
 class AriumBuilder:
@@ -29,14 +29,14 @@ class AriumBuilder:
     """
 
     def __init__(self):
-        self._memory: Optional[BaseMemory] = None
+        self._memory: Optional[MessageMemory] = None
         self._agents: List[Agent] = []
         self._ariums: List[
             AriumNode
         ] = []  # only those ariums which are part of main workflow
         self._foreach_nodes: List[ForEachNode] = []
-        self._start_node: Optional[ExecutableNode] = None
-        self._end_nodes: List[ExecutableNode] = []
+        self._start_node: Optional[AriumNodeType] = None
+        self._end_nodes: List[AriumNodeType] = []
         self._function_nodes: List[FunctionNode] = []
         self._edges: List[tuple] = []  # (from_node, to_nodes, router)
         self._arium: Optional[Arium] = None
@@ -44,7 +44,7 @@ class AriumBuilder:
             AriumNode
         ] = []  # all the ariums either of main workflow or when used as a node in foreachnode or any sub workflow
 
-    def with_memory(self, memory: BaseMemory) -> 'AriumBuilder':
+    def with_memory(self, memory: MessageMemory) -> 'AriumBuilder':
         """Set the memory for the Arium."""
         self._memory = memory
         return self
@@ -94,7 +94,7 @@ class AriumBuilder:
         return self
 
     def add_foreach(
-        self, name: str, execute_node: Union[ExecutableNode, str]
+        self, name: str, execute_node: Union[AriumNodeType, str]
     ) -> 'AriumBuilder':
         """
         Add a ForEach node for batch processing.
@@ -128,7 +128,7 @@ class AriumBuilder:
                 self._all_ariums.append(execute_node)
         return self
 
-    def start_with(self, node: ExecutableNode | str) -> 'AriumBuilder':
+    def start_with(self, node: AriumNodeType | str) -> 'AriumBuilder':
         """Set the starting node for the Arium."""
         if isinstance(node, str):
             # Search across all node types
@@ -142,7 +142,7 @@ class AriumBuilder:
         self._start_node = node
         return self
 
-    def end_with(self, node: ExecutableNode) -> 'AriumBuilder':
+    def end_with(self, node: AriumNodeType) -> 'AriumBuilder':
         """Add an ending node to the Arium."""
         if node not in self._end_nodes:
             self._end_nodes.append(node)
@@ -150,8 +150,8 @@ class AriumBuilder:
 
     def add_edge(
         self,
-        from_node: ExecutableNode,
-        to_nodes: List[ExecutableNode],
+        from_node: AriumNodeType,
+        to_nodes: List[AriumNodeType],
         router: Optional[Callable] = None,
     ) -> 'AriumBuilder':
         """Add an edge between nodes with an optional router function."""
@@ -160,8 +160,8 @@ class AriumBuilder:
 
     def connect(
         self,
-        from_node: ExecutableNode | str,
-        to_node: ExecutableNode | str,
+        from_node: AriumNodeType | str,
+        to_node: AriumNodeType | str,
     ) -> 'AriumBuilder':
         """Simple connection between two nodes without a router."""
 
@@ -246,25 +246,28 @@ class AriumBuilder:
         variables: Optional[Dict[str, Any]] = None,
     ) -> List[MessageMemoryItem]:
         """Build the Arium and run it with the given inputs and optional runtime variables."""
+        variables = variables if variables is not None else {}
         arium = self.build()
         new_inputs = []
-        for input in inputs:
-            if isinstance(input, str):
-                new_inputs.append(UserMessage(resolve_variables(input, variables)))
-            elif isinstance(input, BaseMessage):
-                new_inputs.append(input)
-            else:
-                raise ValueError(f'Invalid input type: {type(input)}')
+        if isinstance(inputs, list):
+            for input in inputs:
+                if isinstance(input, str):
+                    new_inputs.append(UserMessage(resolve_variables(input, variables)))
+                elif isinstance(input, BaseMessage):
+                    new_inputs.append(input)
+                else:
+                    raise ValueError(f'Invalid input type: {type(input)}')
+        else:
+            new_inputs.append(UserMessage(resolve_variables(inputs, variables)))
         return await arium.run(new_inputs, variables=variables)
 
     def visualize(
         self, output_path: str = 'arium_graph.png', title: str = 'Arium Workflow'
     ) -> 'AriumBuilder':
         """Generate a visualization of the Arium graph."""
-        if self._arium is None:
-            self.build()
+        arium = self._arium if self._arium is not None else self.build()
 
-        self._arium.visualize_graph(output_path=output_path, graph_title=title)
+        arium.visualize_graph(output_path=output_path, graph_title=title)
         return self
 
     def reset(self) -> 'AriumBuilder':
@@ -285,7 +288,7 @@ class AriumBuilder:
         cls,
         yaml_str: Optional[str] = None,
         yaml_file: Optional[str] = None,
-        memory: Optional[BaseMemory] = None,
+        memory: Optional[MessageMemory] = None,
         agents: Optional[Dict[str, Agent]] = None,
         routers: Optional[Dict[str, Callable]] = None,
         base_llm: Optional[BaseLLM] = None,
@@ -447,6 +450,8 @@ class AriumBuilder:
         if yaml_str:
             config = yaml.safe_load(yaml_str)
         else:
+            if yaml_file is None:
+                raise ValueError('yaml_file must be provided when yaml_str is empty')
             with open(yaml_file, 'r') as f:
                 config = yaml.safe_load(f)
 
@@ -534,7 +539,11 @@ class AriumBuilder:
             prefilled_params = function_node_config.get('prefilled_params', None)
             description = function_node_config.get('description', None)
             input_filter = function_node_config.get('input_filter', None)
-            function = function_registry.get(function_name)
+            function = (
+                function_registry.get(function_name)
+                if function_registry is not None
+                else None
+            )
 
             if function is None:
                 raise ValueError(
@@ -903,7 +912,11 @@ class AriumBuilder:
         # Extract basic configuration
         name = agent_config['name']
         job = agent_config['job']
-        role = agent_config.get('role')
+        role: str = (
+            str(agent_config.get('role'))
+            if agent_config.get('role') is not None
+            else ''
+        )
 
         # Configure LLM
         if 'model' in agent_config and base_llm is None:
@@ -945,7 +958,7 @@ class AriumBuilder:
                     )
 
         # Handle parser configuration if present
-        output_schema = None
+        output_schema: Optional[Dict[str, Any]] = None
         if 'parser' in agent_config:
             from flo_ai.formatter.yaml_format_parser import FloYamlParser
 
@@ -962,7 +975,7 @@ class AriumBuilder:
             .with_tools(agent_tools)
             .with_retries(max_retries)
             .with_reasoning(reasoning_pattern)
-            .with_output_schema(output_schema)
+            .with_output_schema(output_schema if output_schema is not None else {})
             .with_role(role)
             .build()
         )

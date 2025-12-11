@@ -11,7 +11,6 @@ from flo_ai.llm import OpenAI
 from flo_ai.arium.memory import PlanAwareMemory
 from flo_ai.arium.llm_router import create_plan_execute_router
 from flo_ai.arium import AriumBuilder
-from flo_ai.models import TextMessageContent, UserMessage
 from flo_ai.models.plan_agents import PlannerAgent, ExecutorAgent
 
 
@@ -87,7 +86,7 @@ Check plan status first, then execute writing steps thoroughly.""",
     # Build workflow
     arium = (
         AriumBuilder()
-        .with_memory(memory)
+        .with_memory(memory)  # type: ignore[arg-type]
         .add_agents(agents)
         .start_with(planner)
         .add_edge(planner, agents, router)
@@ -99,12 +98,7 @@ Check plan status first, then execute writing steps thoroughly.""",
     )
 
     # Execute task
-    task = UserMessage(
-        TextMessageContent(
-            type='text',
-            text='Research the impact of AI on software development productivity',
-        )
-    )
+    task = 'Research the impact of AI on software development productivity'
     print(f'📋 Task: {task}')
     print('🔄 Executing custom research workflow...\n')
 

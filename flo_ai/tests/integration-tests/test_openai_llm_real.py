@@ -197,7 +197,7 @@ class TestOpenAIReal:
     def test_get_message_content_string(self):
         """Test get_message_content with string input."""
         test_string = 'Hello, World!'
-        result = self.llm.get_message_content(test_string)
+        result = self.llm.get_message_content(test_string)  # type: ignore[arg-type]
         assert result == test_string
 
     def test_get_message_content_message_object(self):
@@ -209,7 +209,7 @@ class TestOpenAIReal:
                 self.content = content
 
         mock_message = MockMessage('Test content')
-        result = self.llm.get_message_content(mock_message)
+        result = self.llm.get_message_content(mock_message)  # type: ignore[arg-type]
         assert result == 'Test content'
 
     def test_get_message_content_object_without_content(self):
@@ -220,7 +220,7 @@ class TestOpenAIReal:
                 return 'Mock object string'
 
         mock_obj = MockObject()
-        result = self.llm.get_message_content(mock_obj)
+        result = self.llm.get_message_content(mock_obj)  # type: ignore[arg-type]
         assert result == 'Mock object string'
 
     def test_format_tool_for_llm(self):

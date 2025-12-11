@@ -186,16 +186,18 @@ class AgentBuilder:
     @classmethod
     def from_yaml(
         cls,
-        yaml_str: str,
+        yaml_str: Optional[str] = None,
+        yaml_file: Optional[str] = None,
         tools: Optional[List[Tool]] = None,
         base_llm: Optional[BaseLLM] = None,
         tool_registry: Optional[Dict[str, Tool]] = None,
         **kwargs,
     ) -> 'AgentBuilder':
-        """Create an agent builder from a YAML configuration string
+        """Create an agent builder from a YAML configuration string or file
 
         Args:
             yaml_str: YAML string containing agent configuration
+            yaml_file: Optional path to YAML file containing agent configuration
             tools: Optional list of tools to use with the agent
             base_llm: Optional base LLM to use
             tool_registry: Optional dictionary mapping tool names to Tool objects
@@ -204,7 +206,19 @@ class AgentBuilder:
         Returns:
             AgentBuilder: Configured agent builder instance
         """
-        config = yaml.safe_load(yaml_str)
+        if yaml_str is None and yaml_file is None:
+            raise ValueError('Either yaml_str or yaml_file must be provided')
+
+        if yaml_str is not None and yaml_file is not None:
+            raise ValueError('Only one of yaml_str or yaml_file should be provided')
+
+        if yaml_str is not None:
+            config = yaml.safe_load(yaml_str)
+        else:
+            if yaml_file is None:
+                raise ValueError('yaml_file must be provided when yaml_str is empty')
+            with open(yaml_file, 'r') as f:
+                config = yaml.safe_load(f)
 
         if 'agent' not in config:
             raise ValueError('YAML must contain an "agent" section')

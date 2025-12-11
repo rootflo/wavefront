@@ -269,7 +269,8 @@ agent:
         ]
 
         processed_tools = AgentBuilder._process_yaml_tools(
-            tools_config, self.tool_registry
+            tools_config,  # type: ignore[arg-type]
+            self.tool_registry,
         )
 
         assert len(processed_tools) == 2

@@ -61,7 +61,7 @@ async def convert_units(value: float, from_unit: str, to_unit: str) -> str:
 @flo_tool(
     name='weather_checker', description='Get current weather information for a city'
 )
-async def get_weather(city: str, country: str = None) -> str:
+async def get_weather(city: str, country: str = '') -> str:
     """Get weather information for a specific city."""
     # This is a mock weather tool - in real use, you'd call a weather API
     weather_data = {

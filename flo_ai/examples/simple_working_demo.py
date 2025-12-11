@@ -11,9 +11,10 @@ import asyncio
 import os
 from flo_ai.models.agent import Agent
 from flo_ai.llm import OpenAI
-from flo_ai.arium.memory import MessageMemory
+from flo_ai.arium.memory import MessageMemory, MessageMemoryItem
 from flo_ai.arium.llm_router import create_plan_execute_router
 from flo_ai.arium import AriumBuilder
+from flo_ai.models.agent import UserMessage
 
 
 async def simple_working_demo():
@@ -175,7 +176,7 @@ Focus on delivering high-quality results.""",
 
     try:
         # Execute workflow
-        result = await arium.run([task])
+        result = await arium.run(task)
 
         print('\n' + '=' * 50)
         print('🎉 SIMPLE WORKFLOW COMPLETED!')
@@ -186,13 +187,14 @@ Focus on delivering high-quality results.""",
             print('\n📄 Conversation Flow:')
             print('-' * 30)
             for i, msg in enumerate(memory.get(), 1):
-                role = msg.get('role', 'unknown')
-                content = str(msg.get('content', ''))[:200]
-                print(f'{i}. {role.upper()}: {content}...')
+                role = msg.result.role
+                content = str(msg.result.content)[:200]
+                role_str = role.upper() if role else 'UNKNOWN'
+                print(f'{i}. {role_str}: {content}...')
 
         # Show final result
         if result:
-            final_result = result[-1] if isinstance(result, list) else result
+            final_result = result[-1].result.content
             print('\n📄 Final Output:')
             print('-' * 30)
             print(final_result)
@@ -243,7 +245,9 @@ async def demonstrate_plan_execute_router():
 
     print('\n🧠 Router Decision Making:')
     for scenario in scenarios:
-        memory.add({'role': 'user', 'content': scenario['msg']})
+        memory.add(
+            MessageMemoryItem(node='user', result=UserMessage(content=scenario['msg']))
+        )
 
         try:
             # This would make an actual LLM call to decide routing
