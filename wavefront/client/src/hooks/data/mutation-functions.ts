@@ -20,16 +20,14 @@ export const updateAgentMutationFn = async ({
 export const updateAppFn = async (data: {
   appId: string;
   appName: string;
-  appUrl: string;
-  appKey: string;
-  appSecret: string;
+  public_url: string;
+  private_url: string;
 }) => {
-  const { appId, appName, appUrl, appKey, appSecret } = data;
+  const { appId, appName, public_url, private_url } = data;
   const response = await floConsoleService.appService.updateApp(appId, {
     app_name: appName,
-    app_url: appUrl,
-    app_key: appKey,
-    app_secret: appSecret,
+    public_url: public_url,
+    private_url: private_url,
   });
   return response.data;
 };

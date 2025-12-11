@@ -20,24 +20,22 @@ import { useNotifyStore } from "@app/store";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { X } from "lucide-react";
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate, useParams } from "react-router";
 import { z } from "zod";
-import { baseAppSchema } from "../schemas";
+import { createAppSchema } from "../schemas";
 
-type TEditAppInputSchema = z.infer<typeof baseAppSchema>;
+type TEditAppInputSchema = z.infer<typeof createAppSchema>;
 
 const EditApp: React.FC = () => {
   const { appId } = useParams<{ appId: string }>();
   const navigate = useNavigate();
   const { notifySuccess, notifyError } = useNotifyStore();
 
-  const [updating, setUpdating] = useState(false);
-
   const { data: response } = useGetAppById(appId!, !!appId);
   const queryClient = useQueryClient();
-  const { mutate: updateApp } = useUpdateApp(
+  const { mutate: updateApp, isPending: isUpdating } = useUpdateApp(
     queryClient,
     notifySuccess,
     notifyError
@@ -49,13 +47,12 @@ const EditApp: React.FC = () => {
     response;
 
   const form = useForm<TEditAppInputSchema>({
-    resolver: zodResolver(baseAppSchema),
+    resolver: zodResolver(createAppSchema),
     defaultValues: {
       deployment_type: "auto" as "manual" | "auto",
       app_name: "",
-      app_url: "",
-      app_key: "",
-      app_secret: "",
+      public_url: "",
+      private_url: "",
     },
   });
 
@@ -66,27 +63,23 @@ const EditApp: React.FC = () => {
         deployment_type:
           (appData.deployment_type as "manual" | "auto") || "auto",
         app_name: appData.app_name || "",
-        app_url: appData.app_url || "",
-        app_key: appData.app_key || "",
-        app_secret: "", // Don't populate secret for security
+        public_url: appData.public_url || "",
+        private_url: appData.private_url || "",
       });
     }
   }, [appData, form]);
 
   const handleEditAppSubmit = async (formData: TEditAppInputSchema) => {
-    setUpdating(true);
     try {
       updateApp({
         appId: appId!,
         appName: formData.app_name,
-        appUrl: formData.app_url!,
-        appKey: formData.app_key!,
-        appSecret: formData.app_secret!,
+        public_url: formData.public_url!,
+        private_url: formData.private_url!,
       });
+      navigate(`/apps`);
     } catch (error) {
       console.error("Error updating app:", error);
-    } finally {
-      setUpdating(false);
     }
   };
 
@@ -157,70 +150,48 @@ const EditApp: React.FC = () => {
                 )}
               />
             </div>
-            {appData?.deployment_type === "manual" && (
-              <>
-                <div className="flex justify-between gap-10">
-                  <FormField
-                    control={form.control}
-                    name="app_url"
-                    render={({ field }) => (
-                      <FormItem className="flex w-full flex-col">
-                        <FormLabel>App URL</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="https://myapp.example.com"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="app_key"
-                    render={({ field }) => (
-                      <FormItem className="flex w-full flex-col">
-                        <FormLabel>App Key</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Enter App Key" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <div className="flex justify-between gap-10">
-                  <FormField
-                    control={form.control}
-                    name="app_secret"
-                    render={({ field }) => (
-                      <FormItem className="flex w-full flex-col">
-                        <FormLabel>App Secret (Optional)</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="password"
-                            placeholder="************"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </>
-            )}
+
+            <div className="flex justify-between gap-10">
+              <FormField
+                control={form.control}
+                name="public_url"
+                render={({ field }) => (
+                  <FormItem className="flex w-full flex-col">
+                    <FormLabel>Public URL</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="https://myapp.example.com"
+                        {...field}
+                        autoFocus
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="private_url"
+                render={({ field }) => (
+                  <FormItem className="flex w-full flex-col">
+                    <FormLabel>Private URL</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="https://myapp.example.com"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
           </div>
           <div className="flex justify-end gap-4">
-            <Button
-              type="button"
-              onClick={handleCancel}
-              className="w-max border border-[#101010] bg-white px-4 text-black"
-            >
+            <Button variant="outline" type="button" onClick={handleCancel}>
               Cancel
             </Button>
-            <Button className="px-4" type="submit" loading={updating}>
+            <Button type="submit" loading={isUpdating}>
               Update App
             </Button>
           </div>

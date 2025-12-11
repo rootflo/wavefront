@@ -4,27 +4,25 @@ import { IApiResponse } from "@app/lib/axios";
 export interface App {
   id: string;
   app_name: string;
-  app_url: string;
-  app_key: string;
   created_at: string;
-  updated_at: string | null;
-  status: string;
   config: Record<string, string>;
+  public_url: string;
+  private_url: string;
+  status: string;
+  updated_at: string | null;
 }
 
 export interface CreateAppRequest {
   app_name: string;
-  app_url: string;
-  app_secret: string;
-  app_key: string;
   deployment_type: string;
+  public_url: string;
+  private_url: string;
 }
 
 export interface UpdateAppRequest {
   app_name?: string;
-  app_url?: string;
-  app_secret?: string;
-  app_key?: string;
+  public_url?: string;
+  private_url?: string;
 }
 
 export interface AppData {

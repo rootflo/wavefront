@@ -38,7 +38,7 @@ export class AppService {
     appId: string,
     appData: UpdateAppRequest
   ): Promise<AppResponse> {
-    const response: IApiResponse<AppData> = await this.http.put(
+    const response: IApiResponse<AppData> = await this.http.patch(
       `/v1/apps/${appId}`,
       appData
     );

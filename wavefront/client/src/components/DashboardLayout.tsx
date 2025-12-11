@@ -1,6 +1,6 @@
 import Topbar from "@app/components/topbar/Topbar";
-import { App } from "@app/types/app";
 import { CURRENT_PATH_KEY } from "@app/lib/constants";
+import { App } from "@app/types/app";
 import { useCallback, useEffect, useRef } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router";
 
@@ -11,30 +11,7 @@ interface IUser {
   id: string;
 }
 
-interface LayoutConfig {
-  logo?: {
-    logo: string | null;
-    alt: string;
-    width?: number;
-  };
-}
-
-const DashboardLayout = ({
-  user,
-  config,
-  customTitle,
-  poweredByFlag = true,
-  hideSidebar = false,
-  apps = [],
-}: {
-  user: IUser;
-  config?: LayoutConfig;
-  customTitle?: string;
-  poweredByFlag?: boolean;
-  hideSidebar?: boolean;
-  apps: App[];
-}) => {
-  const { logo = { logo: null, alt: "Logo", width: 140 } } = config || {};
+const DashboardLayout = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
   const currentPath = useLocation();
   const navigate = useNavigate();
   const timeoutRef = useRef<number | null>(null);
@@ -124,14 +101,7 @@ const DashboardLayout = ({
   return (
     <div className="flex h-full w-full">
       <div className={"relative flex h-full flex-1 flex-col"}>
-        <Topbar
-          user={user}
-          customTitle={customTitle}
-          poweredByFlag={poweredByFlag}
-          logo={logo}
-          hideSidebar={hideSidebar}
-          apps={apps}
-        />
+        <Topbar user={user} apps={apps} />
         <main className="flex-1 overflow-auto bg-[#f6fafd]">
           <Outlet />
         </main>

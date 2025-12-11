@@ -24,6 +24,8 @@ import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router";
 import { z } from "zod";
 import { createAppSchema } from "./schemas";
+import { Checkbox } from "@app/components/ui/checkbox";
+import { appEnv } from "@app/config/env";
 
 type TCreateAppInputSchema = z.infer<typeof createAppSchema>;
 
@@ -40,7 +42,7 @@ const CreateApp: React.FC = () => {
   const form = useForm<TCreateAppInputSchema>({
     resolver: zodResolver(createAppSchema),
     defaultValues: {
-      deployment_type: "auto",
+      deployment_type: "manual",
     },
   });
 
@@ -79,7 +81,7 @@ const CreateApp: React.FC = () => {
 
   // Effect to handle polling
   useEffect(() => {
-    if (pollingAppId) {
+    if (pollingAppId && deploymentType === "auto") {
       // Start polling immediately
       pollAppStatus(pollingAppId);
 
@@ -96,7 +98,7 @@ const CreateApp: React.FC = () => {
         pollingIntervalRef.current = null;
       }
     };
-  }, [pollingAppId, pollAppStatus]);
+  }, [pollingAppId, pollAppStatus, deploymentType]);
 
   const appCreationSubmit = async (formData: TCreateAppInputSchema) => {
     setCreating(true);
@@ -105,16 +107,22 @@ const CreateApp: React.FC = () => {
       const appData: CreateAppRequest = {
         app_name: formData.app_name,
         deployment_type: formData.deployment_type,
-        app_url: formData.app_url || "",
-        app_secret: formData.app_secret || "",
-        app_key: formData.app_key || "",
+        public_url: formData.public_url,
+        private_url: formData.private_url,
       };
 
       const response = await floConsoleService.appService.createApp(appData);
 
       if (response.data?.data?.app.status === "in_progress") {
-        // Start polling for status updates
-        setPollingAppId(response.data.data.app.id);
+        // Start polling for status updates only if deployment type is auto
+        if (formData.deployment_type === "auto") {
+          setPollingAppId(response.data.data.app.id);
+        } else {
+          // For manual deployment, just show success
+          setCreating(false);
+          notifySuccess("App created successfully");
+          navigate("/apps");
+        }
       } else if (response.data?.data?.app.status === "success") {
         // If already successful, show success immediately
         setCreating(false);
@@ -132,6 +140,18 @@ const CreateApp: React.FC = () => {
     navigate("/apps");
   };
 
+  const handleAddLocalApp = () => {
+    form.setValue("app_name", "localhost");
+    form.setValue("public_url", "http://localhost:8001");
+    form.setValue("private_url", "http://localhost:8001");
+  };
+
+  const handleRemoveLocalApp = () => {
+    form.setValue("app_name", "");
+    form.setValue("public_url", "");
+    form.setValue("private_url", "");
+  };
+
   return (
     <div className="flex h-full items-center justify-center bg-gray-50 bg-[url('/background.webp')] bg-cover bg-center p-6 px-[210px] pb-[138px] pt-[139px]">
       <Form {...form}>
@@ -139,11 +159,32 @@ const CreateApp: React.FC = () => {
           onSubmit={form.handleSubmit(appCreationSubmit)}
           className="flex w-full max-w-[940px] flex-col gap-16 rounded-2xl bg-white p-8 shadow-[0_4px_40px_0_rgba(0,0,0,0.04)]"
         >
-          <div className="flex flex-col gap-2">
-            <p className="text-2xl font-semibold text-black">Create new app</p>
-            <p className="text-lg font-normal text-[#585858]">
-              Add a new application to the console
-            </p>
+          <div className="flex justify-between">
+            <div className="mb-2">
+              <p className="text-2xl font-semibold text-black">
+                Create new app
+              </p>
+              <p className="text-lg font-normal text-[#585858]">
+                Add a new application to the console
+              </p>
+            </div>
+            {appEnv.isLocal && (
+              <label
+                htmlFor="add-local-app"
+                className="cursor-pointer flex items-center gap-2"
+              >
+                <Checkbox
+                  id="add-local-app"
+                  onCheckedChange={(checked) => {
+                    if (checked) handleAddLocalApp();
+                    else handleRemoveLocalApp();
+                  }}
+                />
+                <span className="text-sm font-normal text-[#585858]">
+                  Add local app
+                </span>
+              </label>
+            )}
           </div>
           <div className="flex flex-col gap-10">
             <div className="flex justify-between gap-10">
@@ -173,7 +214,11 @@ const CreateApp: React.FC = () => {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem className="cursor-pointer" value="auto">
+                        <SelectItem
+                          disabled={true}
+                          className="cursor-pointer"
+                          value="auto"
+                        >
                           Auto
                         </SelectItem>
                         <SelectItem className="cursor-pointer" value="manual">
@@ -187,53 +232,35 @@ const CreateApp: React.FC = () => {
               />
             </div>
 
-            <div
-              className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                deploymentType === "manual"
-                  ? "max-h-[500px] opacity-100"
-                  : "max-h-0 opacity-0"
-              }`}
-            >
-              <div className="flex w-full flex-col gap-4">
-                <div className="grid w-full grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="app_url"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>App URL</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="https://myapp.example.com"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="app_key"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>App Key</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Enter App Key" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+            <div className="overflow-hidden transition-all duration-300 ease-in-out">
+              <div className="grid w-full grid-cols-2 gap-10">
                 <FormField
                   control={form.control}
-                  name="app_secret"
+                  name="public_url"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>App Secret</FormLabel>
+                      <FormLabel>Public URL</FormLabel>
                       <FormControl>
-                        <Input placeholder="Enter App Secret" {...field} />
+                        <Input
+                          placeholder="https://myapp.example.com"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="private_url"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Private URL</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="http://36.77.240.111:8000"
+                          {...field}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

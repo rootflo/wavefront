@@ -1,3 +1,4 @@
+import { RootfloIcon } from "@app/assets/icons";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,37 +15,28 @@ import {
   SelectValue,
 } from "@app/components/ui/select";
 import { IUser } from "@app/pages/types";
+import { useAuthStore } from "@app/store";
 import { useDashboardStore } from "@app/store/dashboard-store";
 import { App } from "@app/types/app";
-import { Link2Icon, UserIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { UserIcon } from "lucide-react";
+import { useEffect } from "react";
 import { useNavigate } from "react-router";
 
-const Topbar = ({
-  user,
-  customTitle,
-  poweredByFlag = true,
-  logo,
-  hideSidebar = false,
-  apps = [],
-}: {
-  user: IUser;
-  customTitle?: string;
-  poweredByFlag?: boolean;
-  logo?: {
-    logo: string | null;
-    alt: string;
-    width?: number;
-  };
-  hideSidebar: boolean;
-  apps: App[];
-}) => {
-  const [imageLoading, setImageLoading] = useState(true);
+const Topbar = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
   const { selectedApp, setSelectedApp } = useDashboardStore();
+  const { authenticated } = useAuthStore();
   const navigate = useNavigate();
 
   const handleLogout = () => {
     navigate("/logout");
+  };
+
+  const handleNavIconClick = () => {
+    if (authenticated) {
+      navigate("/apps");
+    } else {
+      navigate("/login");
+    }
   };
 
   useEffect(() => {
@@ -55,42 +47,21 @@ const Topbar = ({
 
   return (
     <div className="flex h-20 justify-between border-b">
-      {hideSidebar && (
-        <div
-          className="flex min-w-[240px] cursor-pointer justify-center border-r px-8 py-5"
-          onClick={() => navigate("/")}
-        >
-          {logo && logo.logo && (
-            <>
-              {imageLoading && (
-                <div
-                  className={`h-1/2 w-3/4 animate-pulse rounded-lg bg-gray-200`}
-                />
-              )}
-              <img
-                className={`animate-fade-in object-contain ${
-                  imageLoading ? "hidden" : ""
-                }`}
-                style={{ width: `${logo.width}px` }}
-                src={logo.logo}
-                alt="Uploaded preview"
-                onLoad={() => setImageLoading(false)}
-              />
-            </>
-          )}
-        </div>
-      )}
+      <a
+        className="flex min-w-[240px] cursor-pointer justify-center border-r px-8 py-5"
+        onClick={handleNavIconClick}
+      >
+        <RootfloIcon />
+      </a>
 
       <div className="flex w-full justify-between px-8 py-5">
         <div id="left_part" className="flex items-center justify-center gap-3">
-          <p className="text-[16.33px] font-bold text-black">{customTitle}</p>
-          {poweredByFlag && <p>|</p>}
-          {poweredByFlag && (
-            <div className="flex items-center justify-center gap-1">
-              <p className="text-[13px] font-normal">Powered by </p>
-              <Link2Icon />
-            </div>
-          )}
+          <p className="text-[16.33px] font-bold text-black">AI Middleware</p>
+          {/* <p>|</p> */}
+          {/* <div className="flex items-center justify-center gap-1">
+            <p className="text-[13px] font-normal">Powered by </p>
+            <RootfloIcon />
+          </div> */}
         </div>
         <div id="right_part" className="flex items-center justify-center gap-3">
           {apps && (

@@ -1,5 +1,6 @@
 import floConsoleService from "@app/api";
 import { RootfloIcon } from "@app/assets/icons";
+import aiCircle from "@app/assets/images/ai_circle.png";
 import { Button } from "@app/components/ui/button";
 import {
   Form,
@@ -15,11 +16,10 @@ import { validationMessage } from "@app/utils/form-validation";
 import { emailRegex } from "@app/utils/regex";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { EyeIcon, EyeOffIcon } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router";
 import { z } from "zod";
-import aiCircle from "@app/assets/images/ai_circle.png";
 
 export const LoginSchema = z.object({
   email: z
@@ -66,6 +66,14 @@ const Login = () => {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (token) {
+      setAuthenticatedState(true);
+      navigate("/apps");
+    }
+  }, []);
 
   return (
     <div

@@ -76,12 +76,6 @@ const AppRouter = () => {
                 user={
                   user || { first_name: "", last_name: "", email: "", id: "" }
                 }
-                customTitle="AI Middleware"
-                poweredByFlag={false}
-                config={{
-                  logo: { logo: "/logo.svg", alt: "AI Middleware", width: 90 },
-                }}
-                hideSidebar={true}
                 apps={apps}
               />
             }
