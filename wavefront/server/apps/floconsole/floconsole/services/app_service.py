@@ -29,10 +29,9 @@ class AppService:
     async def create_app(
         self,
         app_name: str,
-        app_url: Optional[str] = None,
+        public_url: Optional[str] = None,
+        private_url: Optional[str] = None,
         status: str = 'in_progress',
-        app_secret: Optional[str] = None,
-        app_key: Optional[str] = None,
         deployment_type: str = 'manual',
         type: str = 'custom',
         config: dict = {},
@@ -40,10 +39,9 @@ class AppService:
         """Create a new app"""
         result = await self.app_repository.create(
             app_name=app_name,
-            app_url=app_url,
+            public_url=public_url,
+            private_url=private_url,
             status=status,
-            app_secret=app_secret,
-            app_key=app_key,
             deployment_type=deployment_type,
             type=type,
             config=config,

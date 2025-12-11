@@ -13,6 +13,7 @@ from floconsole.db import (
 from floconsole.services.token_service import TokenService
 from floconsole.services.floware_proxy_service import FlowareProxyService
 from floconsole.services.app_service import AppService
+from floconsole.services.user_service import UserService
 
 
 class ApplicationContainer(containers.DeclarativeContainer):
@@ -48,6 +49,11 @@ class ApplicationContainer(containers.DeclarativeContainer):
 
     # services
     app_service = providers.Singleton(AppService, app_repository=app_repository)
+
+    user_service = providers.Factory(
+        UserService,
+        user_repository=user_repository,
+    )
 
     kms_service = providers.Selector(
         config.jwt_token.enable_cloud_kms,

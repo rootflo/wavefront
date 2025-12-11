@@ -392,8 +392,7 @@ async def global_exception_handler(request: Request, exc: Exception):
         prometheus_middleware.http_errors_total.labels(**labels, status_code=500).inc()
 
     error_message = 'An unexpected error has occurred while performing this action, please try again'
-    if environment != 'production':
-        error_message += f' - {str(exc)}'
+    error_message += f' - {str(exc)}'
 
     request_id = getattr(request.state, 'request_id', get_current_request_id())
     logger.error(f'Error in API call [Request ID: {request_id}]: {exc}', exc_info=True)

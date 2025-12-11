@@ -633,7 +633,7 @@ requires-dist = [
     { name = "dependency-injector", specifier = ">=4.46.0,<5.0.0" },
     { name = "fastapi", specifier = ">=0.115.2,<1.0.0" },
     { name = "httpx", specifier = ">=0.27.0" },
-    { name = "pipecat-ai", extras = ["websocket", "cartesia", "google", "silero", "deepgram", "groq", "runner"], specifier = "==0.0.91" },
+    { name = "pipecat-ai", extras = ["websocket", "cartesia", "google", "silero", "deepgram", "groq", "runner"], specifier = "==0.0.97" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "python-dotenv", specifier = ">=1.1.0,<2.0.0" },
     { name = "python-multipart", specifier = ">=0.0.9" },
@@ -3928,7 +3928,7 @@ wheels = [
 
 [[package]]
 name = "pipecat-ai"
-version = "0.0.91"
+version = "0.0.97"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
@@ -3949,9 +3949,9 @@ dependencies = [
     { name = "soxr" },
     { name = "wait-for2", marker = "python_full_version < '3.12'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a7/4c/9d3fabce446fa208a10009c6306cca4e032f591b22fb30a4db6c7fec6515/pipecat_ai-0.0.91.tar.gz", hash = "sha256:a21ce6fd062ffa4d4944e1a479418e3e1626429e346f077ff185da134c4e9bf3", size = 10700370, upload-time = "2025-10-22T02:11:52.816Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8d/23/affeb18644f9aa3d4a5cb36a99160290a27a2a321fc34f53ecef0ebf058a/pipecat_ai-0.0.97.tar.gz", hash = "sha256:71ce27d1b5c9353958e3f4ac0c8ca18b8c00840d0be3f33350bd138d7329c24d", size = 10768149, upload-time = "2025-12-05T23:53:11.077Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/00/4f/99336f563164b734b6849eefa6cf5bc26923b8b4ec6de0d85497a07008f6/pipecat_ai-0.0.91-py3-none-any.whl", hash = "sha256:2f70f22a4625d855ee5742cc7d654ea3ec7837fae9de3bd5cdea77a550080d14", size = 10381447, upload-time = "2025-10-22T02:11:50.436Z" },
+    { url = "https://files.pythonhosted.org/packages/a0/9a/e71f7ec77153fafa509928414086310984f2cce39cad17b915974580208b/pipecat_ai-0.0.97-py3-none-any.whl", hash = "sha256:dc637121ed4aece2053194bf0e94be0b984f2bd887f83118092c1fbd223a9374", size = 10448878, upload-time = "2025-12-05T23:53:08.447Z" },
 ]
 
 [package.optional-dependencies]
@@ -3961,6 +3961,7 @@ cartesia = [
 ]
 deepgram = [
     { name = "deepgram-sdk" },
+    { name = "websockets" },
 ]
 google = [
     { name = "google-cloud-speech" },

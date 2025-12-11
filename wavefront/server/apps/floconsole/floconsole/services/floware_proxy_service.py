@@ -1,11 +1,9 @@
 from dataclasses import dataclass
 
 # from floconsole.constants.app import AppDeploymentType
-from floconsole.constants.auth import SERVICE_AUTH_ROLE_ID, RootfloHeaders
+from floconsole.constants.auth import RootfloHeaders
 import httpx
-import jwt
 import os
-from datetime import datetime, timedelta
 from fastapi import Request
 from fastapi.responses import Response, StreamingResponse
 
@@ -39,40 +37,16 @@ class FlowareProxyService:
         self.temporary_token_expiry = int(temporary_token_expiry)
         self.passthrough_secret = os.getenv('PASSTHROUGH_SECRET')
 
-    async def _get_app_base_url(self, app_url: str, app_id: str) -> str:
+    async def _get_app_base_url(self, private_url: str, app_id: str) -> str:
         """Get app base URL - used for both floware URL and JWT audience"""
-        if app_url.startswith('http'):
-            return app_url.rstrip('/')
+        if private_url.startswith('http'):
+            return private_url.rstrip('/')
         elif self.is_dev and 'localhost' in app_id:
             return f'http://{app_id}'
         elif self.is_dev and 'host.docker.internal' in app_id:
             return f'http://{app_id}'
         else:
-            return app_url.rstrip('/')
-
-    async def _generate_service_token(
-        self, session: UserSession, app, app_base_url: str
-    ) -> str:
-        """Generate T2 service token using app secret"""
-        now = datetime.now()
-
-        # Create service token with console issuer and app-specific audience
-        payload = {
-            'iss': self.service_issuer,
-            'aud': app_base_url,
-            'iat': int(now.timestamp()),
-            'exp': int(
-                (now + timedelta(seconds=self.temporary_token_expiry)).timestamp()
-            ),  # Short-lived
-            'sub': session.user_id,
-            'user_id': session.user_id,
-            'role_id': SERVICE_AUTH_ROLE_ID,
-            'service_auth': True,  # Mark as service-to-service token
-        }
-
-        # Sign with app-specific secret
-        service_token = jwt.encode(payload, app.app_secret, algorithm='HS256')
-        return f'{self.token_prefix}{service_token}'
+            return private_url.rstrip('/')
 
     async def proxy_request(
         self, method: str, app_id: str, path: str, request: Request
@@ -101,18 +75,15 @@ class FlowareProxyService:
             raise ValueError(f'Invalid app_id format: {app_id}')
 
         # if app.deployment_type == AppDeploymentType.MANUAL.value:
-        #     app_base_url = await self._get_app_base_url(app.app_url, app_id)
+        #     app_base_url = await self._get_app_base_url(app.private_url, app_id)
         # else:
         #     app_base_url = await self._get_app_base_url(
         #         'https://' + app.app_name + '-floware.apps.rootflo.ai', app_id
         #     )
 
-        app_base_url = await self._get_app_base_url(app.app_url, app_id)
+        app_base_url = await self._get_app_base_url(app.private_url, app_id)
 
-        # Step 4: Generate T2 service token with app-specific secret
-        # service_token = await self._generate_service_token(session, app, app_base_url)
-
-        # Step 5: Prepare request to floware
+        # Step 3: Prepare request to floware
         floware_url = f'{app_base_url}/floware/{path}'
 
         # Copy headers from original request, excluding Authorization
@@ -122,21 +93,18 @@ class FlowareProxyService:
             if key.lower() not in ['authorization', 'host', 'content-length']
         }
 
-        # Add service authentication headers using app-specific credentials
-        # headers[RootfloHeaders.CLIENT_KEY] = app.app_key
-        # headers['Authorization'] = f'Bearer {service_token}'
         headers['Content-Type'] = request.headers.get(
             'Content-Type', 'application/json'
         )
 
-        # Add passthrough header for non-production environments
+        # Step 4: Add passthrough header for non-production environments
         if self.app_env != 'production' and self.passthrough_secret:
             headers[RootfloHeaders.PASSTHROUGH] = self.passthrough_secret
 
         # Copy query parameters
         query_params = dict(request.query_params)
 
-        # Detect if streaming (SSE) is needed
+        # Step 5: Detect if streaming (SSE) is needed
         is_streaming = 'text/event-stream' in request.headers.get('accept', '').lower()
 
         # Step 6: Make request to floware

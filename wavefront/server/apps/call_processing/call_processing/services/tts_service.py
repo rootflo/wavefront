@@ -151,8 +151,6 @@ class TTSServiceFactory:
 
         if 'speed' in parameters:
             params_dict['speed'] = parameters['speed']
-        if 'emotion' in parameters:
-            params_dict['emotion'] = parameters['emotion']
 
         # Create InputParams object (only if we have params)
         input_params = (
