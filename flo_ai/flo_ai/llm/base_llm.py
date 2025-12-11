@@ -35,6 +35,7 @@ class BaseLLM(ABC):
         messages: List[Dict[str, str]],
         functions: Optional[List[Dict[str, Any]]] = None,
         output_schema: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
     ) -> AsyncIterator[Dict[str, Any]]:
         """Stream partial responses from the LLM as they are generated"""
         pass
