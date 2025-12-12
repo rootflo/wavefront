@@ -1,7 +1,7 @@
 ---
-title: 'Arium Workflows'
-description: 'Create complex multi-agent workflows with Arium orchestration'
-icon: 'sitemap'
+title: "Arium Workflows"
+description: "Create complex multi-agent workflows with Arium orchestration"
+icon: "sitemap"
 ---
 
 ## What is Arium?
@@ -16,25 +16,25 @@ Create a linear workflow with multiple agents:
 
 ```python
 from flo_ai.arium import AriumBuilder
-from flo_ai.models.agent import Agent
+from flo_ai.agent import Agent
 from flo_ai.llm import OpenAI
 
 async def simple_chain():
     llm = OpenAI(model='gpt-4o-mini')
-    
+
     # Create agents
     analyst = Agent(
         name='content_analyst',
         system_prompt='Analyze the input and extract key insights.',
         llm=llm
     )
-    
+
     summarizer = Agent(
-        name='summarizer', 
+        name='summarizer',
         system_prompt='Create a concise summary based on the analysis.',
         llm=llm
     )
-    
+
     # Build and run workflow
     result = await (
         AriumBuilder()
@@ -44,7 +44,7 @@ async def simple_chain():
         .end_with(summarizer)
         .build_and_run(["Analyze this complex business report..."])
     )
-    
+
     return result
 ```
 
@@ -59,7 +59,7 @@ def route_by_type(memory: BaseMemory) -> str:
     """Route based on classification result"""
     messages = memory.get()
     last_message = str(messages[-1]) if messages else ""
-    
+
     if "technical" in last_message.lower():
         return "tech_specialist"
     else:
@@ -96,7 +96,7 @@ arium:
       model:
         provider: "openai"
         name: "gpt-4o-mini"
-    
+
     - name: "summarizer"
       role: "Content Summarizer"
       job: "Create a concise summary based on the analysis."
@@ -130,7 +130,7 @@ Use LLMs for intelligent routing decisions:
 ```yaml
 routers:
   - name: "content_type_router"
-    type: "smart"  # Uses LLM for intelligent routing
+    type: "smart" # Uses LLM for intelligent routing
     routing_options:
       technical_writer: "Technical content, documentation, tutorials"
       creative_writer: "Creative writing, storytelling, fiction"
@@ -148,7 +148,7 @@ For A→B→A→C feedback patterns:
 routers:
   - name: "reflection_router"
     type: "reflection"
-    flow_pattern: [writer, critic, writer]  # A → B → A pattern
+    flow_pattern: [writer, critic, writer] # A → B → A pattern
     model:
       provider: "openai"
       name: "gpt-4o-mini"
@@ -248,10 +248,10 @@ from flo_ai.arium.memory import BaseMemory
 class CustomMemory(BaseMemory):
     def __init__(self):
         self.data = {}
-    
+
     def add(self, key, value):
         self.data[key] = value
-    
+
     def get(self, key):
         return self.data.get(key)
 

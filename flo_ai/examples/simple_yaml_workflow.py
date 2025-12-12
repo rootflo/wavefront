@@ -125,7 +125,7 @@ async def main():
         print('-' * 30)
         if isinstance(result, list):
             for i, message in enumerate(result):
-                print(f'{i+1}. {message}')
+                print(f'{i+1}. {message.result.content}')
         else:
             print(result)
 

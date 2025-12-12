@@ -1,13 +1,15 @@
 from typing import List, Optional, Dict, Any, Union, Type
 from flo_ai.models import AssistantMessage
 import yaml
-from flo_ai.models.agent import Agent
-from flo_ai.models.base_agent import ReasoningPattern
+from flo_ai.agent import Agent
+from flo_ai.agent.base_agent import ReasoningPattern
 from flo_ai.llm import BaseLLM
 from flo_ai.tool.base_tool import Tool
 from flo_ai.tool.tool_config import ToolConfig, create_tool_config
 from flo_ai.formatter.yaml_format_parser import FloYamlParser
-from pydantic import BaseModel
+from flo_ai.models.agent import AgentYamlModel, LLMConfigModel
+from flo_ai.helpers.yaml_validation import format_validation_error_path
+from pydantic import BaseModel, ValidationError
 
 
 class AgentBuilder:
@@ -183,6 +185,36 @@ class AgentBuilder:
             act_as=self._act_as,
         )
 
+    @staticmethod
+    def _validate_yaml_config(config: Dict[str, Any]) -> AgentYamlModel:
+        """Validate YAML configuration using Pydantic models.
+
+        Args:
+            config: Dictionary containing YAML configuration
+
+        Returns:
+            AgentYamlModel: Validated configuration model
+
+        Raises:
+            ValueError: If validation fails with formatted error messages
+        """
+        try:
+            validated_config = AgentYamlModel(**config)
+        except ValidationError as e:
+            # Format validation errors for better readability
+            error_messages = []
+            for error in e.errors():
+                field_path = format_validation_error_path(error['loc'], config)
+                error_msg = f"{field_path}: {error['msg']}"
+                if 'ctx' in error:
+                    error_msg += f" (context: {error['ctx']})"
+                error_messages.append(error_msg)
+            raise ValueError(
+                'YAML validation failed:\n'
+                + '\n'.join(f'  - {msg}' for msg in error_messages)
+            ) from e
+        return validated_config
+
     @classmethod
     def from_yaml(
         cls,
@@ -220,26 +252,28 @@ class AgentBuilder:
             with open(yaml_file, 'r') as f:
                 config = yaml.safe_load(f)
 
-        if 'agent' not in config:
-            raise ValueError('YAML must contain an "agent" section')
-
-        agent_config = config['agent']
+        validated_config = cls._validate_yaml_config(config)
+        agent = validated_config.agent
         builder = cls()
 
-        # Set basic properties
-        builder.with_name(agent_config.get('name', 'AI Assistant'))
-        builder.with_prompt(agent_config.get('job', 'You are a helpful AI assistant.'))
-        builder.with_role(agent_config.get('role'))
-        builder.with_actas(agent_config.get('act_as'))
+        builder.with_name(agent.name or 'AI Assistant')
+        # Handle both 'job' and 'prompt' fields (job takes precedence)
+        prompt = agent.job or agent.prompt or 'You are a helpful AI assistant.'
+        builder.with_prompt(prompt)
+        builder.with_role(agent.role)
+        builder.with_actas(agent.act_as)
 
         # Configure LLM based on model settings
-        if 'model' in agent_config and base_llm is None:
+        if agent.model is not None and base_llm is None:
             from flo_ai.helpers.llm_factory import create_llm_from_config
 
-            model_config: dict = agent_config['model']
-            # Merge base_url from agent_config if present and not in model_config
-            if 'base_url' in agent_config and 'base_url' not in model_config:
-                model_config = {**model_config, 'base_url': agent_config['base_url']}
+            # Merge base_url from agent if present and not in model_config
+            model_config: LLMConfigModel = agent.model
+            if agent.base_url is not None and model_config.base_url is None:
+                # Create a new model instance with merged base_url using model_copy
+                model_config = model_config.model_copy(
+                    update={'base_url': agent.base_url}
+                )
 
             llm = create_llm_from_config(model_config, **kwargs)
             builder.with_llm(llm)
@@ -250,29 +284,34 @@ class AgentBuilder:
                 )
             builder.with_llm(base_llm)
 
-        # Handle tools configuration
-        if 'tools' in agent_config:
-            # Process tools from YAML configuration
-            yaml_tools = cls._process_yaml_tools(agent_config['tools'], tool_registry)
+        if agent.tools is not None:
+            tools_list = []
+            for tool in agent.tools:
+                if isinstance(tool, str):
+                    tools_list.append(tool)
+                else:
+                    # ToolConfigModel - convert to dict
+                    tools_list.append(tool.model_dump(exclude_none=True))
+
+            yaml_tools = cls._process_yaml_tools(tools_list, tool_registry)
             builder.with_tools(yaml_tools)
         elif tools:
             # Use provided tools
             builder.with_tools(tools)
 
-        # Set parser if present
-        if 'parser' in agent_config:
+        if agent.parser is not None:
+            config = agent.parser.model_dump(exclude_none=True)
             parser = FloYamlParser.create(yaml_dict=config)
             builder.with_output_schema(parser.get_format())
 
-        # Apply settings if present
-        if 'settings' in agent_config:
-            settings = agent_config['settings']
-            if 'temperature' in settings:
-                builder._llm.temperature = settings['temperature']
-            if 'max_retries' in settings:
-                builder.with_retries(settings['max_retries'])
-            if 'reasoning_pattern' in settings:
-                builder.with_reasoning(ReasoningPattern[settings['reasoning_pattern']])
+        if agent.settings is not None:
+            settings = agent.settings
+            if settings.temperature is not None:
+                builder._llm.temperature = settings.temperature
+            if settings.max_retries is not None:
+                builder.with_retries(settings.max_retries)
+            if settings.reasoning_pattern is not None:
+                builder.with_reasoning(ReasoningPattern[settings.reasoning_pattern])
 
         return builder
 

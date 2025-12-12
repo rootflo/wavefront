@@ -6,7 +6,7 @@ import pytest
 from unittest.mock import Mock
 from flo_ai.arium.builder import AriumBuilder, create_arium
 from flo_ai.arium.memory import MessageMemory
-from flo_ai.models.agent import Agent
+from flo_ai.agent import Agent
 from flo_ai.arium.nodes import FunctionNode
 
 

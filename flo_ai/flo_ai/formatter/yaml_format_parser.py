@@ -91,7 +91,7 @@ class FloJsonParser:
             )
         literals = tuple(literal_value['value'] for literal_value in literal_values)
         # Construct Literal type dynamically at runtime
-        return Literal.__class_getitem__(literals)  # type: ignore
+        return Literal.__getitem__(literals)
 
     def __create_array_type(self, field: Dict[str, Any], model_name: str) -> Any:
         """Creates a List type from field definition"""
@@ -190,7 +190,7 @@ class FloYamlParser(FloJsonParser):
                 raise ValueError(
                     'Either yaml_dict or yaml_path is required to build a FloYamlParser'
                 )
-            self.yaml_dict = yaml_dict
+            self.yaml_dict: dict[str, Any] | None = yaml_dict
             self.yaml_path = yaml_path
 
         def build(self):

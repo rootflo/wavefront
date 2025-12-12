@@ -10,7 +10,7 @@ import uuid
 from flo_ai.arium.builder import AriumBuilder
 from flo_ai.arium.memory import PlanAwareMemory, ExecutionPlan, PlanStep, StepStatus
 from flo_ai.llm import OpenAI
-from flo_ai.models.agent import Agent
+from flo_ai.agent import Agent
 from flo_ai.arium.llm_router import create_plan_execute_router
 
 

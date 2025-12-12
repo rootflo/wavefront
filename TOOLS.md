@@ -65,7 +65,7 @@ Every tool has these properties:
 ### Using Tools in Agents
 
 ```python
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import AgentBuilder
 from flo_ai.llm import OpenAI
 
 agent = (AgentBuilder()
@@ -95,7 +95,7 @@ Partial tools allow you to pre-fill some parameters during agent building, hidin
 #### Method 1: Using AgentBuilder.add_tool()
 
 ```python
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import AgentBuilder
 
 # BigQuery tool with multiple parameters
 @flo_tool(description="Query BigQuery database")
@@ -304,7 +304,7 @@ agent:
 ### Using YAML Configuration
 
 ```python
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import AgentBuilder
 
 # Create tool registry
 tool_registry = {
@@ -331,7 +331,7 @@ agent = AgentBuilder.from_yaml(
 ```python
 import asyncio
 from flo_ai.tool.flo_tool import flo_tool
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import AgentBuilder
 from flo_ai.llm import OpenAI
 
 # Define tools

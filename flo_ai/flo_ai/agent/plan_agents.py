@@ -6,7 +6,7 @@ making it easy to create plan-and-execute workflows.
 """
 
 from typing import List, Optional
-from flo_ai.models.agent import Agent
+from flo_ai.agent import Agent
 from flo_ai.llm.base_llm import BaseLLM
 from flo_ai.arium.memory import PlanAwareMemory
 from flo_ai.tool.plan_tool import PlanTool, StepTool, PlanStatusTool

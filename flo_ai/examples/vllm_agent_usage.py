@@ -1,8 +1,8 @@
 import asyncio
 import os
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import AgentBuilder
 from flo_ai.tool.base_tool import Tool
-from flo_ai.models.base_agent import ReasoningPattern
+from flo_ai.agent import ReasoningPattern
 from flo_ai.llm.openai_vllm import OpenAIVLLM
 from dotenv import load_dotenv
 

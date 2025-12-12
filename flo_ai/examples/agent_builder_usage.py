@@ -1,8 +1,8 @@
 import asyncio
 from flo_ai import UserMessage
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import AgentBuilder
 from flo_ai.tool.base_tool import Tool
-from flo_ai.models.base_agent import ReasoningPattern
+from flo_ai.agent import ReasoningPattern
 from flo_ai.llm.openai_llm import OpenAI
 from flo_ai.llm.anthropic_llm import Anthropic
 

@@ -5,11 +5,11 @@ This script creates a simple workflow with agents and tools, then generates a PN
 """
 
 from flo_ai.arium.base import BaseArium
-from flo_ai.models.agent import Agent
+from flo_ai.agent import Agent
 from flo_ai.tool.flo_tool import flo_tool
 from flo_ai.llm.openai_llm import OpenAI
 from flo_ai.llm.base_llm import BaseLLM
-from typing import Literal
+from typing import Literal, Any
 
 
 # Create a simple validation tool using the @flo_tool decorator
@@ -45,10 +45,14 @@ def create_sample_agents():
             def __init__(self, model):
                 super().__init__(model=model)
 
-            async def generate(self, messages, functions=None, output_schema=None):
+            async def generate(
+                self, messages, functions=None, output_schema=None, **kwargs: Any
+            ):
                 return {'content': 'Mock response'}
 
-            async def stream(self, messages, functions=None, output_schema=None):
+            async def stream(
+                self, messages, functions=None, output_schema=None, **kwargs: Any
+            ):
                 yield {'content': 'Mock response'}
 
             def get_message_content(self, response):

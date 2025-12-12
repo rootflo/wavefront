@@ -329,14 +329,18 @@ arium:
             description: "Executive summary"
           - name: findings
             type: array
-            items:
-              type: str
             description: "Key findings list"
+            items:
+              name: finding
+              type: str
+              description: "A single finding"
           - name: recommendations
             type: array
-            items:
-              type: str
             description: "Recommended actions"
+            items:
+              name: recommendation
+              type: str
+              description: "A single recommendation"
         
   workflow:
     start: input_validator
@@ -733,8 +737,8 @@ async def run_prebuilt_agents_example():
     print('=' * 60)
 
     # Build agents separately using AgentBuilder
-    from flo_ai.builder.agent_builder import AgentBuilder
-    from flo_ai.models.base_agent import ReasoningPattern
+    from flo_ai.agent import AgentBuilder
+    from flo_ai.agent import ReasoningPattern
 
     llm = OpenAI(model='gpt-4o-mini')
 

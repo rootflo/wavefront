@@ -85,7 +85,7 @@ uv add flo-ai
 
 ```python
 import asyncio
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import AgentBuilder
 from flo_ai.llm import OpenAI
 
 async def main():
@@ -108,7 +108,7 @@ asyncio.run(main())
 
 ```python
 import asyncio
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import AgentBuilder
 from flo_ai.tool import flo_tool
 from flo_ai.llm import Anthropic
 
@@ -144,7 +144,7 @@ asyncio.run(main())
 ```python
 import asyncio
 from pydantic import BaseModel, Field
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import AgentBuilder
 from flo_ai.llm import OpenAI
 
 class MathSolution(BaseModel):
@@ -359,7 +359,7 @@ Arium is Flo AI's powerful workflow orchestration engine for creating complex mu
 
 ```python
 from flo_ai.arium import AriumBuilder
-from flo_ai.models.agent import Agent
+from flo_ai.agent import Agent
 from flo_ai.llm import OpenAI
 
 async def simple_chain():

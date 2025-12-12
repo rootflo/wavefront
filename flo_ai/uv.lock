@@ -897,7 +897,7 @@ wheels = [
 
 [[package]]
 name = "flo-ai"
-version = "1.1.0rc3"
+version = "1.1.0rc5"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },

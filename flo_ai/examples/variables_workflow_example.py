@@ -8,9 +8,9 @@ This example shows:
 
 import os
 import asyncio
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import AgentBuilder
 from flo_ai.arium.builder import AriumBuilder
-from flo_ai.models.agent import Agent
+from flo_ai.agent import Agent
 from flo_ai.llm.gemini_llm import Gemini
 
 from dotenv import load_dotenv
