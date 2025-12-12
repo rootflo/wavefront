@@ -137,7 +137,7 @@ async def main():
 
     # Process the email thread
     result = await agent.run(email_thread)
-    print('Analysis Result:', result)
+    print('Analysis Result:', result[-1].content)
 
 
 if __name__ == '__main__':

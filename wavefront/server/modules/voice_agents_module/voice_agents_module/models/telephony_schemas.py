@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 from typing import Optional, Union, Any, Dict, List, Literal
 from enum import Enum
 from datetime import datetime
@@ -91,12 +91,10 @@ class CreateTelephonyConfigPayload(BaseModel):
         None, description='SIP configuration (required for SIP connection type)'
     )
 
-    @model_validator(mode='after')
-    def validate_connection_type_requirements(self):
+    def model_post_init(self, __context):
         """Validate connection type specific requirements"""
         if self.connection_type == ConnectionType.SIP and not self.sip_config:
             raise ValueError('sip_config is required for SIP connection type')
-        return self
 
 
 class UpdateTelephonyConfigPayload(BaseModel):

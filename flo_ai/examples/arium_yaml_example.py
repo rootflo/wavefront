@@ -329,14 +329,18 @@ arium:
             description: "Executive summary"
           - name: findings
             type: array
-            items:
-              type: str
             description: "Key findings list"
+            items:
+              name: finding
+              type: str
+              description: "A single finding"
           - name: recommendations
             type: array
-            items:
-              type: str
             description: "Recommended actions"
+            items:
+              name: recommendation
+              type: str
+              description: "A single recommendation"
         
   workflow:
     start: input_validator
