@@ -16,6 +16,7 @@ const ProtectedLayout = ({
     if (!token) {
       setAuthenticatedState(false);
       navigate("/login");
+      return;
     } else {
       setAuthenticatedState(true);
     }

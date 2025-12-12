@@ -159,27 +159,23 @@ export class KnowledgeBaseService {
     keywordWeight?: number,
     imageData?: string
   ): Promise<RagInferenceResponse> {
-    let url = `/v1/:appId/floware/v1/knowledge-base/${kbId}/augment/${inferenceId}?query=${query}`;
+    const params: Record<string, string | number> = { query };
 
-    if (threshold) {
-      url += `&threshold=${threshold}`;
-    }
-    if (topK) {
-      url += `&top_k=${topK}`;
-    }
-    if (vectorWeight) {
-      url += `&vector_weight=${vectorWeight}`;
-    }
-    if (keywordWeight) {
-      url += `&keyword_weight=${keywordWeight}`;
-    }
+    if (threshold) params.threshold = threshold;
+    if (topK) params.top_k = topK;
+    if (vectorWeight) params.vector_weight = vectorWeight;
+    if (keywordWeight) params.keyword_weight = keywordWeight;
 
     const data: { image_data?: string } = {};
     if (imageData) {
       data.image_data = imageData;
     }
 
-    const response: RagInferenceResponse = await this.http.post(url, data);
+    const response: RagInferenceResponse = await this.http.post(
+      `/v1/:appId/floware/v1/knowledge-base/${kbId}/augment/${inferenceId}`,
+      data,
+      { params }
+    );
     return response;
   }
 

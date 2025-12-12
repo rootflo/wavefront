@@ -80,8 +80,6 @@ from llm_inference_config_module.controllers.llm_inference_config_controller imp
 from llm_inference_config_module.controllers.inference_proxy_controller import (
     inference_proxy_router,
 )
-from image_search_module.controllers.image_search_controller import image_search_router
-from image_search_module.image_search_container import ImageSearchContainer
 from tools_module.controllers.tools_controller import tools_router
 from tools_module.tools_container import ToolsContainer
 from voice_agents_module.voice_agents_container import VoiceAgentsContainer
@@ -171,11 +169,6 @@ inference_container = InferenceContainer(
 llm_inference_config_container = LlmInferenceConfigContainer(
     db_client=db_repo_container.db_client,
     cache_manager=db_repo_container.cache_manager,
-)
-
-image_search_container = ImageSearchContainer(
-    db_client=db_repo_container.db_client,
-    cloud_storage_manager=common_container.cloud_storage_manager,
 )
 
 # API Services Container
@@ -371,7 +364,6 @@ app.include_router(inference_router, prefix='/floware')
 
 app.include_router(llm_inference_config_router, prefix='/floware')
 app.include_router(inference_proxy_router, prefix='/floware')
-app.include_router(image_search_router, prefix='/floware')
 app.include_router(tools_router, prefix='/floware')
 app.include_router(telephony_config_router, prefix='/floware')
 app.include_router(tts_config_router, prefix='/floware')
@@ -411,7 +403,6 @@ db_repo_container.wire(
     modules=[__name__],
     packages=[
         'product_analysis_module.product_analysis_service',
-        'image_search_module.services',
     ],
 )
 
@@ -474,7 +465,6 @@ common_container.wire(
         'inference_module.controllers',
         'llm_inference_config_module.controllers',
         'tools_module.controllers',
-        'image_search_module.controllers',
         'voice_agents_module.controllers',
     ],
 )
@@ -526,11 +516,6 @@ tools_container.wire(
     packages=[
         'tools_module.controllers',
     ],
-)
-
-image_search_container.wire(
-    modules=[__name__],
-    packages=['image_search_module.controllers'],
 )
 
 api_services_container.wire(

@@ -21,7 +21,6 @@ dependencies = [
     "inference-module",
     "llm-inference-config-module",
     "tools-module",
-    "image-search-module",
     "api-services-module",
     "voice-agents-module",
 
@@ -48,7 +47,6 @@ agents-module = {workspace = true}
 inference-module = {workspace = true}
 llm-inference-config-module = {workspace = true}
 tools-module = {workspace = true}
-image-search-module = {workspace = true}
 api-services-module = {workspace = true}
 voice-agents-module = {workspace = true}
 
