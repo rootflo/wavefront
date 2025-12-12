@@ -220,6 +220,15 @@ class AgentConfigModel(BaseModel):
         """Validate tools configuration."""
         if v is None:
             return v
+
+        # Normalize singletons (common YAML mistake) or fail fast with a clear error
+        if isinstance(v, (str, dict, ToolConfigModel)):
+            v = [v]
+        if not isinstance(v, list):
+            raise ValueError(
+                'Tools must be a list of tool names or tool config objects'
+            )
+
         for tool in v:
             if isinstance(tool, str):
                 # String reference - valid

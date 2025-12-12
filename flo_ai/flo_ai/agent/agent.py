@@ -132,16 +132,11 @@ class Agent(BaseAgent):
         """Run as a conversational agent when no tools are provided"""
         variables = variables or {}
 
+        # Create and add system message once before the retry loop
+        self._setup_system_message(variables, include_react=False)
+
         while retry_count <= self.max_retries:
             try:
-                # Resolve variables in system prompt
-                system_content = (
-                    self._get_cot_prompt(variables)
-                    if self.reasoning_pattern == ReasoningPattern.COT
-                    else resolve_variables(self.system_prompt, variables)
-                )
-                system_message = SystemMessage(content=system_content)
-                self.add_to_history(system_message)
                 messages = await self._get_message_history(variables)
 
                 logger.debug(f'Sending messages to LLM: {messages}')
@@ -209,20 +204,13 @@ class Agent(BaseAgent):
     ) -> List[BaseMessage]:
         """Run as a tool-using agent when tools are provided"""
         variables = variables or {}
-        print('running with tools')
+        logger.debug('Running agent with tools')
+
+        # Create and add system message once before the retry loop
+        self._setup_system_message(variables, include_react=True)
 
         while retry_count <= self.max_retries:
             try:
-                # Resolve variables in system prompt based on reasoning pattern
-                if self.reasoning_pattern == ReasoningPattern.REACT:
-                    system_content = self._get_react_prompt(variables)
-                elif self.reasoning_pattern == ReasoningPattern.COT:
-                    system_content = self._get_cot_prompt(variables)
-                else:
-                    system_content = resolve_variables(self.system_prompt, variables)
-
-                system_message = SystemMessage(content=system_content)
-                self.add_to_history(system_message)
                 messages = await self._get_message_history(variables)
 
                 # Keep executing tools until we get a final answer
@@ -429,7 +417,9 @@ class Agent(BaseAgent):
                         if self.act_as is not None
                         else MessageType.ASSISTANT
                     )
-                    self.add_to_history(AssistantMessage(content=assistant_message))
+                    self.add_to_history(
+                        AssistantMessage(role=role, content=assistant_message)
+                    )
                     return self.conversation_history
 
                 # Fallback: return function message only if we have valid tool execution data
@@ -472,6 +462,37 @@ class Agent(BaseAgent):
                 )
 
         raise AgentError(f'Failed after maximum {self.max_retries} attempts.')
+
+    def _setup_system_message(
+        self, variables: Optional[Dict[str, Any]] = None, include_react: bool = False
+    ) -> None:
+        """
+        Create and add system message once before retry loop.
+        Removes any existing system messages to avoid duplicates on retries.
+
+        Args:
+            variables: Optional variables for resolving system prompt
+            include_react: Whether to check for REACT reasoning pattern (only for tool-using agents)
+        """
+        variables = variables or {}
+
+        # Remove any existing system messages to avoid duplicates on retries
+        self.conversation_history = [
+            msg
+            for msg in self.conversation_history
+            if not isinstance(msg, SystemMessage)
+        ]
+
+        # Resolve variables in system prompt based on reasoning pattern
+        if include_react and self.reasoning_pattern == ReasoningPattern.REACT:
+            system_content = self._get_react_prompt(variables)
+        elif self.reasoning_pattern == ReasoningPattern.COT:
+            system_content = self._get_cot_prompt(variables)
+        else:
+            system_content = resolve_variables(self.system_prompt, variables)
+
+        system_message = SystemMessage(content=system_content)
+        self.add_to_history(system_message)
 
     def _get_react_prompt(self, variables: Optional[Dict[str, Any]] = None) -> str:
         """Get system prompt modified for ReACT pattern"""

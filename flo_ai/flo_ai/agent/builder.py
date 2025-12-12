@@ -253,9 +253,6 @@ class AgentBuilder:
                 config = yaml.safe_load(f)
 
         validated_config = cls._validate_yaml_config(config)
-
-        # Use validated config directly - convert to dict only when needed for compatibility
-        config = validated_config.model_dump(exclude_none=True)
         agent = validated_config.agent
         builder = cls()
 
@@ -303,6 +300,7 @@ class AgentBuilder:
             builder.with_tools(tools)
 
         if agent.parser is not None:
+            config = agent.parser.model_dump(exclude_none=True)
             parser = FloYamlParser.create(yaml_dict=config)
             builder.with_output_schema(parser.get_format())
 

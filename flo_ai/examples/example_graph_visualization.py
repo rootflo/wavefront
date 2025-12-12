@@ -45,7 +45,9 @@ def create_sample_agents():
             def __init__(self, model):
                 super().__init__(model=model)
 
-            async def generate(self, messages, functions=None, output_schema=None):
+            async def generate(
+                self, messages, functions=None, output_schema=None, **kwargs: Any
+            ):
                 return {'content': 'Mock response'}
 
             async def stream(

@@ -363,9 +363,6 @@ class AriumBuilder:
                 config = yaml.safe_load(f)
 
         validated_config = cls._validate_yaml_config(config)
-
-        # Use validated config directly - convert to dict only when needed for compatibility
-        config = validated_config.model_dump(exclude_none=True, by_alias=True)
         arium = validated_config.arium
         builder = cls()
 
@@ -458,7 +455,7 @@ class AriumBuilder:
             if function is None:
                 raise ValueError(
                     f'Function {function_node.function_name} not found in provided function_registry dictionary. '
-                    f'Available functions: {list[str](function_registry.keys()) if function_registry else []}. '
+                    f'Available functions: {list(function_registry.keys()) if function_registry else []}. '
                     f'Either provide the function in the function_registry parameter or add configuration fields.'
                 )
 
@@ -843,7 +840,11 @@ class AriumBuilder:
         job = (
             agent_config.job or agent_config.prompt or 'You are a helpful AI assistant.'
         )
-        role: str = str(agent_config.role) if agent_config.role is not None else ''
+        role: str = (
+            ''
+            if agent_config.role is None or agent_config.role == 'None'
+            else agent_config.role
+        )
         act_as = agent_config.act_as
 
         # Configure LLM

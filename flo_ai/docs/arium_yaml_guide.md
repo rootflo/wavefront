@@ -264,7 +264,7 @@ tools:
 
 **Inline YAML Configuration:**
 
-- ⚠️ Requires nested YAML string
+- ⚠️ Requires YAML to be nested as a string
 - ⚠️ Limited IDE support for nested content
 - ✅ Maintains existing workflow compatibility
 - ✅ Good for complex parser configurations
