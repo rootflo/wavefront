@@ -5,8 +5,8 @@ Example demonstrating Chain of Thought (CoT) reasoning pattern in the Agent clas
 
 import asyncio
 from flo_ai import UserMessage
-from flo_ai.models.agent import Agent
-from flo_ai.models.base_agent import ReasoningPattern
+from flo_ai.agent import Agent
+from flo_ai.agent import ReasoningPattern
 from flo_ai.llm.openai_llm import OpenAI
 from flo_ai.tool.base_tool import Tool
 import os

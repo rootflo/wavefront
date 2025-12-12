@@ -733,8 +733,8 @@ async def run_prebuilt_agents_example():
     print('=' * 60)
 
     # Build agents separately using AgentBuilder
-    from flo_ai.builder.agent_builder import AgentBuilder
-    from flo_ai.models.base_agent import ReasoningPattern
+    from flo_ai.agent import AgentBuilder
+    from flo_ai.agent import ReasoningPattern
 
     llm = OpenAI(model='gpt-4o-mini')
 

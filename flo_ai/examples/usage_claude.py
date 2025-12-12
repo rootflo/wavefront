@@ -1,7 +1,7 @@
 import asyncio
 import os
-from flo_ai.models.base_agent import ReasoningPattern
-from flo_ai.models.agent import Agent as ToolAgent
+from flo_ai.agent import ReasoningPattern
+from flo_ai.agent import Agent as ToolAgent
 from flo_ai.llm.anthropic_llm import Anthropic
 from flo_ai.tool.base_tool import Tool
 from flo_ai.models.agent_error import AgentError

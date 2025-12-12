@@ -1,6 +1,6 @@
 import asyncio
 from flo_ai.arium.builder import AriumBuilder
-from flo_ai.models.agent import Agent
+from flo_ai.agent import Agent
 from flo_ai.llm.openai_llm import OpenAI
 
 

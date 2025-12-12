@@ -8,7 +8,7 @@ that are hidden from the AI, allowing for cleaner agent interactions.
 import asyncio
 from flo_ai.tool.flo_tool import flo_tool
 from flo_ai.tool.partial_tool import create_partial_tool
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import AgentBuilder
 from flo_ai.llm import OpenAI
 
 

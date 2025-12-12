@@ -3,8 +3,8 @@ from textwrap import dedent
 from pydantic import BaseModel, Field
 from flo_ai.llm.openai_llm import OpenAI
 from flo_ai.llm.anthropic_llm import Anthropic
-from flo_ai.models.agent import Agent as ToolAgent
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import Agent as ToolAgent
+from flo_ai.agent import AgentBuilder
 
 
 # Define the output schema using Pydantic

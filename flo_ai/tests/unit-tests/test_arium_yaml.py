@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 
 from flo_ai.arium.builder import AriumBuilder
 from flo_ai.arium.memory import MessageMemory, BaseMemory
-from flo_ai.models.agent import Agent
+from flo_ai.agent import Agent
 from flo_ai.llm import OpenAI
 
 

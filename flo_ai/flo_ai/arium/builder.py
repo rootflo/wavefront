@@ -3,10 +3,10 @@ from flo_ai.arium.arium import Arium
 from flo_ai.arium.memory import MessageMemory, MessageMemoryItem
 from flo_ai.arium.nodes import AriumNode, ForEachNode
 from flo_ai.models import BaseMessage, UserMessage
-from flo_ai.models.agent import Agent, resolve_variables
+from flo_ai.agent.agent import Agent, resolve_variables
 from flo_ai.tool.base_tool import Tool
 import yaml
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import AgentBuilder
 from flo_ai.llm import BaseLLM
 from flo_ai.arium.llm_router import create_llm_router
 from flo_ai.arium.nodes import FunctionNode
@@ -906,7 +906,7 @@ class AriumBuilder:
         Returns:
             Agent: Configured agent instance
         """
-        from flo_ai.models.base_agent import ReasoningPattern
+        from flo_ai.agent.base_agent import ReasoningPattern
         # from flo_ai.llm import OpenAI, Anthropic, Gemini, OllamaLLM
 
         # Extract basic configuration

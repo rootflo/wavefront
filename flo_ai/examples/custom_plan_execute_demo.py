@@ -11,7 +11,7 @@ from flo_ai.llm import OpenAI
 from flo_ai.arium.memory import PlanAwareMemory
 from flo_ai.arium.llm_router import create_plan_execute_router
 from flo_ai.arium import AriumBuilder
-from flo_ai.models.plan_agents import PlannerAgent, ExecutorAgent
+from flo_ai.agent import PlannerAgent, ExecutorAgent
 
 
 async def main():

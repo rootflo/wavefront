@@ -1,4 +1,4 @@
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import AgentBuilder
 
 # Example YAML configuration
 yaml_config = """

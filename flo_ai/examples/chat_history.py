@@ -1,8 +1,8 @@
 import asyncio
 from typing import List
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import AgentBuilder
 from flo_ai.llm import Gemini
-from flo_ai.models.agent import Agent
+from flo_ai.agent import Agent
 from flo_ai.models import AssistantMessage, UserMessage, BaseMessage
 from flo_ai.tool import flo_tool
 

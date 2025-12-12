@@ -9,7 +9,7 @@ Note: Both string inputs and list of UserMessage inputs are supported:
 from typing import Literal
 from flo_ai.arium import AriumBuilder, create_arium
 from flo_ai.llm import OpenAI
-from flo_ai.models.agent import Agent
+from flo_ai.agent import Agent
 from flo_ai.arium.nodes import FunctionNode
 from flo_ai.arium.memory import MessageMemory, MessageMemoryItem
 from flo_ai.models import BaseMessage

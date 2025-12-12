@@ -1,8 +1,8 @@
 from typing import List, Optional, Dict, Any, Union, Type
 from flo_ai.models import AssistantMessage
 import yaml
-from flo_ai.models.agent import Agent
-from flo_ai.models.base_agent import ReasoningPattern
+from flo_ai.agent import Agent
+from flo_ai.agent.base_agent import ReasoningPattern
 from flo_ai.llm import BaseLLM
 from flo_ai.tool.base_tool import Tool
 from flo_ai.tool.tool_config import ToolConfig, create_tool_config

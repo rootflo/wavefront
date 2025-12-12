@@ -1,7 +1,7 @@
 ---
-title: 'YAML-Based Agents'
-description: 'Create and configure agents using YAML configuration files'
-icon: 'file-code'
+title: "YAML-Based Agents"
+description: "Create and configure agents using YAML configuration files"
+icon: "file-code"
 ---
 
 ## YAML Agent Configuration
@@ -30,7 +30,7 @@ agent:
 ```
 
 ```python Load YAML Agent
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import AgentBuilder
 
 # Load agent from YAML
 agent = AgentBuilder.from_yaml('agent.yaml')
@@ -53,7 +53,7 @@ agent:
     provider: "anthropic"
     name: "claude-3-5-sonnet-20240620"
     temperature: 0.3
-  
+
   tools:
     - name: "calculate"
       description: "Perform mathematical calculations"
@@ -84,7 +84,7 @@ agent:
     provider: "openai"
     name: "gpt-4o"
     temperature: 0.2
-  
+
   output_schema:
     type: "pydantic"
     model: "AnalysisResult"
@@ -115,7 +115,7 @@ agent:
   model:
     provider: "openai"
     name: "gpt-4o-mini"
-  
+
   variables:
     - name: "user_name"
       description: "User's name"
@@ -135,58 +135,58 @@ agent:
 
 ```yaml
 metadata:
-  name: "agent-name"           # Required: Unique agent identifier
-  version: "1.0.0"             # Required: Semantic version
-  description: "Agent description"  # Optional: Human-readable description
-  author: "Your Name"          # Optional: Agent author
-  tags: ["tag1", "tag2"]       # Optional: Categorization tags
+  name: "agent-name" # Required: Unique agent identifier
+  version: "1.0.0" # Required: Semantic version
+  description: "Agent description" # Optional: Human-readable description
+  author: "Your Name" # Optional: Agent author
+  tags: ["tag1", "tag2"] # Optional: Categorization tags
 ```
 
 ### Agent Configuration
 
 ```yaml
 agent:
-  name: "Agent Display Name"   # Required: Human-readable name
-  prompt: "System prompt"      # Required: Agent's system prompt
-  model:                       # Required: LLM configuration
-    provider: "openai"         # Required: openai, anthropic, google, ollama
-    name: "gpt-4o-mini"        # Required: Model name
-    temperature: 0.7           # Optional: 0.0 to 2.0
-    max_tokens: 1000          # Optional: Maximum response length
-    timeout: 30               # Optional: Request timeout in seconds
-  
+  name: "Agent Display Name" # Required: Human-readable name
+  prompt: "System prompt" # Required: Agent's system prompt
+  model: # Required: LLM configuration
+    provider: "openai" # Required: openai, anthropic, google, ollama
+    name: "gpt-4o-mini" # Required: Model name
+    temperature: 0.7 # Optional: 0.0 to 2.0
+    max_tokens: 1000 # Optional: Maximum response length
+    timeout: 30 # Optional: Request timeout in seconds
+
   # Optional configurations
-  retries: 3                  # Number of retry attempts
-  cache_ttl: 3600            # Cache time-to-live in seconds
-  memory_type: "message"     # Memory type: message, custom
-  tools: []                  # List of tools (see tools section)
-  variables: []              # List of variables (see variables section)
-  output_schema: {}          # Structured output configuration
+  retries: 3 # Number of retry attempts
+  cache_ttl: 3600 # Cache time-to-live in seconds
+  memory_type: "message" # Memory type: message, custom
+  tools: [] # List of tools (see tools section)
+  variables: [] # List of variables (see variables section)
+  output_schema: {} # Structured output configuration
 ```
 
 ### Tools Configuration
 
 ```yaml
 tools:
-  - name: "tool_name"         # Required: Tool identifier
-    description: "Tool description"  # Required: Tool description
-    function: "function_name"  # Required: Python function name
-    parameters:              # Required: Function parameters
+  - name: "tool_name" # Required: Tool identifier
+    description: "Tool description" # Required: Tool description
+    function: "function_name" # Required: Python function name
+    parameters: # Required: Function parameters
       param1:
-        type: "string"       # Parameter type
+        type: "string" # Parameter type
         description: "Parameter description"
-        required: true       # Whether parameter is required
-        default: "value"     # Default value
+        required: true # Whether parameter is required
+        default: "value" # Default value
 ```
 
 ### Variables Configuration
 
 ```yaml
 variables:
-  - name: "variable_name"     # Required: Variable name
+  - name: "variable_name" # Required: Variable name
     description: "Description" # Required: Variable description
-    type: "string"           # Optional: string, number, boolean
-    required: true           # Optional: Whether variable is required
+    type: "string" # Optional: string, number, boolean
+    required: true # Optional: Whether variable is required
     default: "default_value" # Optional: Default value
 ```
 
@@ -195,7 +195,7 @@ variables:
 ### Basic Loading
 
 ```python
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import AgentBuilder
 
 # Load from file
 agent = AgentBuilder.from_yaml('agent.yaml')
@@ -270,11 +270,11 @@ agent:
   prompt: "Concise and effective prompt"
   model:
     provider: "openai"
-    name: "gpt-4o-mini"  # Use faster model for simple tasks
-    temperature: 0.3     # Lower temperature for consistency
-    max_tokens: 500      # Limit response length
-  cache_ttl: 3600       # Cache responses for 1 hour
-  retries: 2            # Limit retries to avoid costs
+    name: "gpt-4o-mini" # Use faster model for simple tasks
+    temperature: 0.3 # Lower temperature for consistency
+    max_tokens: 500 # Limit response length
+  cache_ttl: 3600 # Cache responses for 1 hour
+  retries: 2 # Limit retries to avoid costs
 ```
 
 ### Security Considerations
@@ -291,9 +291,9 @@ agent:
   model:
     provider: "openai"
     name: "gpt-4o"
-    temperature: 0.1    # Lower temperature for consistency
-  max_tokens: 200       # Limit response length
-  timeout: 10          # Short timeout for security
+    temperature: 0.1 # Lower temperature for consistency
+  max_tokens: 200 # Limit response length
+  timeout: 10 # Short timeout for security
 ```
 
 ## Validation and Testing
@@ -301,7 +301,7 @@ agent:
 ### Schema Validation
 
 ```python
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import AgentBuilder
 import yaml
 
 # Validate YAML structure
@@ -309,13 +309,13 @@ def validate_agent_yaml(file_path):
     try:
         with open(file_path, 'r') as f:
             config = yaml.safe_load(f)
-        
+
         # Check required fields
         assert 'agent' in config
         assert 'name' in config['agent']
         assert 'prompt' in config['agent']
         assert 'model' in config['agent']
-        
+
         print("✅ YAML configuration is valid")
         return True
     except Exception as e:
@@ -332,12 +332,12 @@ import asyncio
 
 async def test_yaml_agent():
     agent = AgentBuilder.from_yaml('agent.yaml')
-    
+
     # Test basic functionality
     response = await agent.run('Hello!')
     assert response is not None
     print(f"✅ Agent responds: {response}")
-    
+
     # Test with variables
     if 'variables' in agent.config:
         variables = {'test_var': 'test_value'}
@@ -365,7 +365,7 @@ agent:
     2. Provide accurate and helpful information
     3. Escalate complex issues when necessary
     4. Maintain a friendly and professional tone
-    
+
     Always be patient, understanding, and solution-oriented.
   model:
     provider: "openai"
@@ -399,7 +399,7 @@ agent:
     type: "pydantic"
     model: "AnalysisResult"
     fields:
-      summary: 
+      summary:
         type: "string"
         description: "Executive summary"
       insights:

@@ -4,13 +4,8 @@ flo_ai - A flexible agent framework for LLM-powered applications
 
 # Models package - Agent framework components
 from .models import (
-    Agent,
     AgentError,
-    BaseAgent,
-    AgentType,
-    ReasoningPattern,
     DocumentType,
-    MessageType,
     SystemMessage,
     UserMessage,
     AssistantMessage,
@@ -20,9 +15,8 @@ from .models import (
     TextMessageContent,
     ImageMessageContent,
     DocumentMessageContent,
+    MessageType,
 )
-
-from .builder.agent_builder import AgentBuilder
 
 # LLM package - Language model integrations
 from .llm import BaseLLM, Anthropic, OpenAI, OllamaLLM, Gemini, OpenAIVLLM
@@ -45,6 +39,14 @@ from .arium import (
     MessageMemoryItem,
     default_event_callback,
     create_arium,
+)
+
+from .agent import (
+    Agent,
+    BaseAgent,
+    AgentType,
+    ReasoningPattern,
+    AgentBuilder,
 )
 
 # Utils package - Utility functions
