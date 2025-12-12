@@ -1,0 +1,17 @@
+**/*/node_modules
+**/*/dist
+**/*/.git
+**/*/.github
+**/*/.gitignore
+**/*/.env
+**/*/.env.staging
+**/*/.env.production
+**/*/.prettierrc.json
+**/*/eslint.config.js
+**/*/.husky
+**/*/.vscode
+**/*/.yarn
+**/*/.yarnrc
+.yarnrc.yml
+README.md
+extras

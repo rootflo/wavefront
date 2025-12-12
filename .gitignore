@@ -2,7 +2,6 @@ __pycache__
 enviroment.py
 chroma
 xamples
-.env
 dist
 .venv
 dataset
@@ -12,13 +11,8 @@ bin
 .DS_Store
 *.sql
 *.log
-*.yaml
 examples/local/*
 .logs
-scratch_pad.py
-.*
-*.png
-*.html
-usecases/
-compare_gemini_outputs_v1.py
 node_modules/
+.vite
+flo_ai/usecases

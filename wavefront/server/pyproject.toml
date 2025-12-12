@@ -1,0 +1,38 @@
+[project]
+name = "wavefront"
+version = "0.1.0"
+description = "Monorepo backend for wavefront apps"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.2.0",
+    "ty>=0.0.1a28",
+]
+
+[tool.ty.environment]
+root = ["../server"]
+
+[tool.uv.workspace]
+members = [
+ "apps/*",
+ "modules/*",
+ "misc/*",
+ "packages/*",
+ "plugins/*",
+ "background_jobs/*"
+]
+
+[tool.uv]
+required-version = ">=0.7.3"
+override-dependencies = [
+    "torch>=2.6.0 ; sys_platform != 'darwin'",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "--ignore=background_jobs/cadenceflo/test --ignore=background_jobs/auraflo/tests"

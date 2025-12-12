@@ -1,0 +1,40 @@
+[project]
+name = "tools_module"
+version = "0.1.0"
+description = "Tools module for Flo AI agent system"
+dependencies = [
+    "flo-ai>=1.1.0-rc5",
+    "flo_cloud",
+
+    "datasource",
+    "common_module",
+    "plugins-module",
+    "knowledge-base-module"
+]
+
+[tool.uv.sources]
+flo-cloud = { workspace = true }
+common-module = { workspace = true }
+plugins-module = { workspace = true }
+datasource = { workspace = true }
+knowledge-base-module = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.3,<9.0.0",
+    "pytest-asyncio>=0.24.0,<1.0.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[tool.uv]
+package = true
+
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["tools_module"]
