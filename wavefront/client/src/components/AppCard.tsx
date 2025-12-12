@@ -50,7 +50,7 @@ const AppCard: React.FC<AppCardProps> = ({ app, onClick, onDeleteClick }) => {
       <div>
         <p className="text-xl font-medium text-[#101010]">{app.app_name}</p>
         <p className="text-base font-normal text-[#878787] truncate">
-          {app.app_url}
+          {app.public_url}
         </p>
       </div>
       <div className="text-sm font-normal text-[#B8B8B8]">

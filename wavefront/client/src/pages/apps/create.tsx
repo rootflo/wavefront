@@ -181,7 +181,7 @@ const CreateApp: React.FC = () => {
                   }}
                 />
                 <span className="text-sm font-normal text-[#585858]">
-                  Add local app
+                  Create local app for development
                 </span>
               </label>
             )}

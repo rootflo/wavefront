@@ -70,6 +70,15 @@ const Dashboard: React.FC = () => {
           Your applications
         </p>
         <div className="grid w-full justify-center gap-5 xl:grid-cols-2 2xl:grid-cols-3">
+          <div
+            className="flex w-full cursor-pointer flex-col items-center justify-center gap-8 rounded-xl border border-[#FFF] bg-white/60 p-5"
+            onClick={handleCreateApp}
+          >
+            <PlusIcon className="h-6 w-6 text-[#101010]" />
+            <p className="text-lg font-medium text-[#101010]">
+              Create new application
+            </p>
+          </div>
           {appsLoading ? (
             <div className="flex w-full items-center justify-center">
               <Spinner />
@@ -84,15 +93,6 @@ const Dashboard: React.FC = () => {
               />
             ))
           )}
-          <div
-            className="flex w-full cursor-pointer flex-col items-center justify-center gap-8 rounded-xl border border-[#FFF] bg-white/60 p-5"
-            onClick={handleCreateApp}
-          >
-            <PlusIcon className="h-6 w-6 text-[#101010]" />
-            <p className="text-lg font-medium text-[#101010]">
-              Create new application
-            </p>
-          </div>
         </div>
       </div>
 
