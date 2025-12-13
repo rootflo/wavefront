@@ -1,10 +1,7 @@
-import { IApiResponse } from "@app/lib/axios";
+import { IApiResponse } from '@app/lib/axios';
 
 // Authenticator type union matching API auth_type field
-export type AuthenticatorType =
-  | "google_oauth"
-  | "microsoft_oauth"
-  | "email_password";
+export type AuthenticatorType = 'google_oauth' | 'microsoft_oauth' | 'email_password';
 
 // Main Authenticator entity interface
 export interface Authenticator {
@@ -50,8 +47,7 @@ export interface AuthenticatorEnableDisableData {
 export type AuthenticatorResponse = IApiResponse<AuthenticatorData>;
 export type AuthenticatorDetailResponse = IApiResponse<Authenticator>;
 export type AuthenticatorListResponse = IApiResponse<AuthenticatorListData>;
-export type AuthenticatorEnableDisableResponse =
-  IApiResponse<AuthenticatorEnableDisableData>;
+export type AuthenticatorEnableDisableResponse = IApiResponse<AuthenticatorEnableDisableData>;
 
 // Google OAuth specific config interface
 export interface GoogleOAuthConfig {

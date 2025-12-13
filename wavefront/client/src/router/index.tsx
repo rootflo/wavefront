@@ -1,11 +1,11 @@
-import DashboardLayout from "@app/components/DashboardLayout";
-import ProtectedLayout from "@app/components/ProtectedLayout";
-import { useGetAllApps, useGetCurrentUser } from "@app/hooks";
-import NotFoundPage from "@app/not-found";
-import { useAuthStore } from "@app/store";
-import { ReactNode } from "react";
-import { BrowserRouter, Route, Routes } from "react-router";
-import routes from "./routes";
+import DashboardLayout from '@app/components/DashboardLayout';
+import ProtectedLayout from '@app/components/ProtectedLayout';
+import { useGetAllApps, useGetCurrentUser } from '@app/hooks';
+import NotFoundPage from '@app/not-found';
+import { useAuthStore } from '@app/store';
+import { ReactNode } from 'react';
+import { BrowserRouter, Route, Routes } from 'react-router';
+import routes from './routes';
 
 interface ChildrenRoute {
   index?: boolean;
@@ -18,19 +18,18 @@ interface Routes {
   element: ReactNode;
   children?: ChildrenRoute[];
 }
-const renderChildren = (route: Routes, parentKey = "") => {
+const renderChildren = (route: Routes, parentKey = '') => {
   const routeKey = parentKey ? `${parentKey}-${route.path}` : route.path;
 
   if (route.children) {
     return (
       <Route key={routeKey} path={route.path} element={route.element}>
         {route.children.map((child, index) => {
-          const childKey =
-            child.path || (child.index ? "index" : `child-${index}`);
+          const childKey = child.path || (child.index ? 'index' : `child-${index}`);
           if (child.children) {
             return renderChildren(
               {
-                path: child.path || "",
+                path: child.path || '',
                 element: child.element,
                 children: child.children,
               },
@@ -65,19 +64,10 @@ const AppRouter = () => {
           <Route key={route.path} path={route.path} element={route.element} />
         ))}
 
-        <Route
-          element={
-            <ProtectedLayout setAuthenticatedState={setAuthenticatedState} />
-          }
-        >
+        <Route element={<ProtectedLayout setAuthenticatedState={setAuthenticatedState} />}>
           <Route
             element={
-              <DashboardLayout
-                user={
-                  user || { first_name: "", last_name: "", email: "", id: "" }
-                }
-                apps={apps}
-              />
+              <DashboardLayout user={user || { first_name: '', last_name: '', email: '', id: '' }} apps={apps} />
             }
           >
             {routes.private.map((route) => renderChildren(route))}

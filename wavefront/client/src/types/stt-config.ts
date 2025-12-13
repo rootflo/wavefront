@@ -1,6 +1,6 @@
-import { IApiResponse } from "@app/lib/axios";
+import { IApiResponse } from '@app/lib/axios';
 
-export type SttProvider = "deepgram";
+export type SttProvider = 'deepgram';
 
 export interface SttConfig {
   id: string;

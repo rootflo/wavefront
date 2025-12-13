@@ -1,34 +1,33 @@
-import floConsoleService from "@app/api";
-import DatasourceCard from "@app/components/DatasourceCard";
-import DeleteConfirmationDialog from "@app/components/DeleteConfirmationDialog";
-import { EmptyStateCard } from "@app/components/EmptyCard";
-import { ResourceCardSkeleton } from "@app/components/ResourceCard";
+import floConsoleService from '@app/api';
+import DatasourceCard from '@app/components/DatasourceCard';
+import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
+import { EmptyStateCard } from '@app/components/EmptyCard';
+import { ResourceCardSkeleton } from '@app/components/ResourceCard';
 import {
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbLink,
   BreadcrumbList,
   BreadcrumbSeparator,
-} from "@app/components/ui/breadcrumb";
-import { Button } from "@app/components/ui/button";
-import { Input } from "@app/components/ui/input";
-import { getAllDatasourcesKey, useGetAllDatasources } from "@app/hooks";
-import { useDashboardStore, useNotifyStore } from "@app/store";
-import { Datasource } from "@app/types/datasource";
-import { useQueryClient } from "@tanstack/react-query";
-import React, { useState } from "react";
-import { useNavigate, useParams } from "react-router";
-import CreateDatasourceDialog from "./CreateDatasourceDialog";
+} from '@app/components/ui/breadcrumb';
+import { Button } from '@app/components/ui/button';
+import { Input } from '@app/components/ui/input';
+import { getAllDatasourcesKey, useGetAllDatasources } from '@app/hooks';
+import { useDashboardStore, useNotifyStore } from '@app/store';
+import { Datasource } from '@app/types/datasource';
+import { useQueryClient } from '@tanstack/react-query';
+import React, { useState } from 'react';
+import { useNavigate, useParams } from 'react-router';
+import CreateDatasourceDialog from './CreateDatasourceDialog';
 
 const DatasourcesManagement: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();
 
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState('');
   const [deleteItem, setDeleteItem] = useState<Datasource | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const { data: datasources = [], isLoading: datasourcesLoading } =
-    useGetAllDatasources(appId || "");
+  const { data: datasources = [], isLoading: datasourcesLoading } = useGetAllDatasources(appId || '');
 
   const { selectedApp } = useDashboardStore();
   const navigate = useNavigate();
@@ -63,17 +62,15 @@ const DatasourcesManagement: React.FC = () => {
     if (!deleteItem) return;
     setDeleting(true);
     try {
-      await floConsoleService.datasourcesService.deleteDatasource(
-        deleteItem.id
-      );
+      await floConsoleService.datasourcesService.deleteDatasource(deleteItem.id);
       queryClient.invalidateQueries({
-        queryKey: getAllDatasourcesKey(appId || ""),
+        queryKey: getAllDatasourcesKey(appId || ''),
       });
 
-      notifySuccess("Datasource deleted successfully");
+      notifySuccess('Datasource deleted successfully');
       setDeleteItem(null);
     } catch (error) {
-      console.error("Error deleting datasource:", error);
+      console.error('Error deleting datasource:', error);
     } finally {
       setDeleting(false);
     }
@@ -89,11 +86,7 @@ const DatasourcesManagement: React.FC = () => {
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate("/apps")}
-                className="hover:text-foreground cursor-pointer"
-              >
+              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
                 Apps
               </button>
             </BreadcrumbLink>
@@ -115,12 +108,8 @@ const DatasourcesManagement: React.FC = () => {
 
       <div className="mb-8 flex w-full items-start justify-between">
         <div>
-          <h1 className="animate-fade-in text-3xl font-bold text-gray-900">
-            Datasources
-          </h1>
-          <p className="animate-fade-in mt-2 text-gray-600">
-            Manage data connections for {selectedApp?.app_name}
-          </p>
+          <h1 className="animate-fade-in text-3xl font-bold text-gray-900">Datasources</h1>
+          <p className="animate-fade-in mt-2 text-gray-600">Manage data connections for {selectedApp?.app_name}</p>
         </div>
         <div className="animate-fade-in flex items-center gap-4">
           <Input
@@ -137,11 +126,7 @@ const DatasourcesManagement: React.FC = () => {
         {datasourcesLoading ? (
           <>
             {Array.from({ length: 6 }).map((_, index) => (
-              <ResourceCardSkeleton
-                key={index}
-                showDescription
-                metadataCount={3}
-              />
+              <ResourceCardSkeleton key={index} showDescription metadataCount={3} />
             ))}
           </>
         ) : filteredDatasources.length === 0 ? (

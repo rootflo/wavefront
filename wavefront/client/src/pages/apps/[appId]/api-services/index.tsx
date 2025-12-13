@@ -1,31 +1,31 @@
-import floConsoleService from "@app/api";
-import ApiServiceCard from "@app/components/ApiServiceCard";
-import DeleteConfirmationDialog from "@app/components/DeleteConfirmationDialog";
-import { ResourceCardSkeleton } from "@app/components/ResourceCard";
+import floConsoleService from '@app/api';
+import ApiServiceCard from '@app/components/ApiServiceCard';
+import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
+import { ResourceCardSkeleton } from '@app/components/ResourceCard';
 import {
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbLink,
   BreadcrumbList,
   BreadcrumbSeparator,
-} from "@app/components/ui/breadcrumb";
-import { Button } from "@app/components/ui/button";
-import { Input } from "@app/components/ui/input";
-import { useGetApiServices } from "@app/hooks";
-import { getApiServicesKey } from "@app/hooks/data/query-keys";
-import { useDashboardStore, useNotifyStore } from "@app/store";
-import { ApiServiceItem } from "@app/types/api-service";
-import { useQueryClient } from "@tanstack/react-query";
-import React, { useState } from "react";
-import { useNavigate, useParams } from "react-router";
-import CreateApiServiceDialog from "./CreateApiServiceDialog";
-import { EmptyStateCard } from "@app/components/EmptyCard";
+} from '@app/components/ui/breadcrumb';
+import { Button } from '@app/components/ui/button';
+import { Input } from '@app/components/ui/input';
+import { useGetApiServices } from '@app/hooks';
+import { getApiServicesKey } from '@app/hooks/data/query-keys';
+import { useDashboardStore, useNotifyStore } from '@app/store';
+import { ApiServiceItem } from '@app/types/api-service';
+import { useQueryClient } from '@tanstack/react-query';
+import React, { useState } from 'react';
+import { useNavigate, useParams } from 'react-router';
+import CreateApiServiceDialog from './CreateApiServiceDialog';
+import { EmptyStateCard } from '@app/components/EmptyCard';
 
 const ApiServiceManagement: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState('');
   const [deleteItem, setDeleteItem] = useState<ApiServiceItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -33,14 +33,11 @@ const ApiServiceManagement: React.FC = () => {
   const { selectedApp } = useDashboardStore();
   const { notifySuccess, notifyError } = useNotifyStore();
 
-  const { data: apiServices = [], isLoading: loading } =
-    useGetApiServices(appId);
+  const { data: apiServices = [], isLoading: loading } = useGetApiServices(appId);
 
   const filteredApiServices = apiServices.filter(
     (service) =>
-      (service.name || service.service_id)
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase()) ||
+      (service.name || service.service_id).toLowerCase().includes(searchTerm.toLowerCase()) ||
       service.service_id.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -49,7 +46,7 @@ const ApiServiceManagement: React.FC = () => {
   };
 
   const handleCreateSuccess = () => {
-    queryClient.invalidateQueries({ queryKey: getApiServicesKey(appId || "") });
+    queryClient.invalidateQueries({ queryKey: getApiServicesKey(appId || '') });
     setCreateDialogOpen(false);
   };
 
@@ -67,17 +64,15 @@ const ApiServiceManagement: React.FC = () => {
 
     setDeleting(true);
     try {
-      await floConsoleService.apiServiceService.deleteApiService(
-        deleteItem.service_id
-      );
-      notifySuccess("API Service deleted successfully");
+      await floConsoleService.apiServiceService.deleteApiService(deleteItem.service_id);
+      notifySuccess('API Service deleted successfully');
       queryClient.invalidateQueries({
-        queryKey: getApiServicesKey(appId || ""),
+        queryKey: getApiServicesKey(appId || ''),
       });
       setDeleteItem(null);
     } catch (error) {
-      console.error("Error deleting API service:", error);
-      notifyError("Failed to delete API service");
+      console.error('Error deleting API service:', error);
+      notifyError('Failed to delete API service');
     } finally {
       setDeleting(false);
     }
@@ -93,11 +88,7 @@ const ApiServiceManagement: React.FC = () => {
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate("/apps")}
-                className="hover:text-foreground cursor-pointer"
-              >
+              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
                 Apps
               </button>
             </BreadcrumbLink>
@@ -119,12 +110,8 @@ const ApiServiceManagement: React.FC = () => {
 
       <div className="mb-8 flex w-full items-start justify-between">
         <div>
-          <h1 className="animate-fade-in text-3xl font-bold text-gray-900">
-            API Services
-          </h1>
-          <p className="animate-fade-in mt-2 text-gray-600">
-            Manage API Connectors for {selectedApp?.app_name}
-          </p>
+          <h1 className="animate-fade-in text-3xl font-bold text-gray-900">API Services</h1>
+          <p className="animate-fade-in mt-2 text-gray-600">Manage API Connectors for {selectedApp?.app_name}</p>
         </div>
         <div className="animate-fade-in flex items-center gap-4">
           <Input
@@ -141,11 +128,7 @@ const ApiServiceManagement: React.FC = () => {
         {loading ? (
           <>
             {Array.from({ length: 20 }).map((_, index) => (
-              <ResourceCardSkeleton
-                key={index}
-                showDescription
-                metadataCount={2}
-              />
+              <ResourceCardSkeleton key={index} showDescription metadataCount={2} />
             ))}
           </>
         ) : filteredApiServices.length === 0 ? (

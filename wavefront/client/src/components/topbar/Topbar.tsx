@@ -1,4 +1,4 @@
-import { RootfloIcon } from "@app/assets/icons";
+import { RootfloIcon } from '@app/assets/icons';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -6,21 +6,15 @@ import {
   DropdownMenuLabel,
   DropdownMenuShortcut,
   DropdownMenuTrigger,
-} from "@app/components/ui/dropdown-menu";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@app/components/ui/select";
-import { IUser } from "@app/pages/types";
-import { useAuthStore } from "@app/store";
-import { useDashboardStore } from "@app/store/dashboard-store";
-import { App } from "@app/types/app";
-import { UserIcon } from "lucide-react";
-import { useEffect } from "react";
-import { useNavigate } from "react-router";
+} from '@app/components/ui/dropdown-menu';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
+import { IUser } from '@app/pages/types';
+import { useAuthStore } from '@app/store';
+import { useDashboardStore } from '@app/store/dashboard-store';
+import { App } from '@app/types/app';
+import { UserIcon } from 'lucide-react';
+import { useEffect } from 'react';
+import { useNavigate } from 'react-router';
 
 const Topbar = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
   const { selectedApp, setSelectedApp } = useDashboardStore();
@@ -28,29 +22,26 @@ const Topbar = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
   const navigate = useNavigate();
 
   const handleLogout = () => {
-    navigate("/logout");
+    navigate('/logout');
   };
 
   const handleNavIconClick = () => {
     if (authenticated) {
-      navigate("/apps");
+      navigate('/apps');
     } else {
-      navigate("/login");
+      navigate('/login');
     }
   };
 
   useEffect(() => {
     const pageUrl = new URL(window.location.href);
-    const appId = pageUrl.pathname.split("/")[2];
+    const appId = pageUrl.pathname.split('/')[2];
     setSelectedApp(apps.find((app) => app.id === appId) || null);
   }, [apps]);
 
   return (
     <div className="flex h-20 justify-between border-b">
-      <a
-        className="flex min-w-[240px] cursor-pointer justify-center border-r px-8 py-5"
-        onClick={handleNavIconClick}
-      >
+      <a className="flex min-w-[240px] cursor-pointer justify-center border-r px-8 py-5" onClick={handleNavIconClick}>
         <RootfloIcon />
       </a>
 
@@ -71,7 +62,7 @@ const Topbar = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
                 const currentPath = location.pathname;
                 // Extract the path after /apps/:appId/ and take only the first segment
                 const pathMatch = currentPath.match(/\/apps\/[^/]+\/([^/]+)/);
-                const subPath = pathMatch ? `${pathMatch[1]}` : "agents";
+                const subPath = pathMatch ? `${pathMatch[1]}` : 'agents';
                 setSelectedApp(apps.find((app) => app.id === value) || null);
                 navigate(`/apps/${value}/${subPath}`);
               }}
@@ -81,17 +72,13 @@ const Topbar = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
               </SelectTrigger>
               <SelectContent>
                 {apps.map((app) => (
-                  <SelectItem
-                    className="cursor-pointer"
-                    key={app.id}
-                    value={app.id}
-                  >
+                  <SelectItem className="cursor-pointer" key={app.id} value={app.id}>
                     {app.app_name}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-          )}{" "}
+          )}{' '}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <div className="border-heading flex w-[180px] cursor-pointer items-center gap-1 rounded-full border p-1.5 capitalize">
@@ -103,10 +90,7 @@ const Topbar = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-56" align="end">
               <DropdownMenuLabel>My Account</DropdownMenuLabel>
-              <DropdownMenuItem
-                className="cursor-pointer"
-                onClick={handleLogout}
-              >
+              <DropdownMenuItem className="cursor-pointer" onClick={handleLogout}>
                 Log out
                 <DropdownMenuShortcut>⇧⌘Q</DropdownMenuShortcut>
               </DropdownMenuItem>

@@ -1,6 +1,6 @@
-import floConsoleService from "@app/api";
-import ChatBot from "@app/components/ChatBot";
-import DeleteConfirmationDialog from "@app/components/DeleteConfirmationDialog";
+import floConsoleService from '@app/api';
+import ChatBot from '@app/components/ChatBot';
+import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -8,28 +8,18 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
-} from "@app/components/ui/breadcrumb";
-import { Button } from "@app/components/ui/button";
-import { useDeleteAgent } from "@app/hooks";
-import {
-  useGetAgent,
-  useGetLLMConfigs,
-  useGetTools,
-} from "@app/hooks/data/fetch-hooks";
-import { getAgentKey } from "@app/hooks/data/query-keys";
-import { useNotifyStore } from "@app/store";
-import { scrollToBottom } from "@app/utils/scroll";
-import { useQueryClient } from "@tanstack/react-query";
-import yaml from "js-yaml";
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { useNavigate, useParams } from "react-router";
-import EditAgentDialog from "./EditAgentDialog";
+} from '@app/components/ui/breadcrumb';
+import { Button } from '@app/components/ui/button';
+import { useDeleteAgent } from '@app/hooks';
+import { useGetAgent, useGetLLMConfigs, useGetTools } from '@app/hooks/data/fetch-hooks';
+import { getAgentKey } from '@app/hooks/data/query-keys';
+import { useNotifyStore } from '@app/store';
+import { scrollToBottom } from '@app/utils/scroll';
+import { useQueryClient } from '@tanstack/react-query';
+import yaml from 'js-yaml';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router';
+import EditAgentDialog from './EditAgentDialog';
 
 const AgentDetail: React.FC = () => {
   const { app: appId, id } = useParams<{ app: string; id: string }>();
@@ -39,7 +29,7 @@ const AgentDetail: React.FC = () => {
 
   const [showUploadMenu, setShowUploadMenu] = useState(false);
   const [showVariablesInput, setShowVariablesInput] = useState(false);
-  const [yamlContent, setYamlContent] = useState("");
+  const [yamlContent, setYamlContent] = useState('');
   const [saving, setSaving] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteItem, setDeleteItem] = useState<{
@@ -48,12 +38,12 @@ const AgentDetail: React.FC = () => {
   } | null>(null);
 
   // Inference state
-  const [inferenceInput, setInferenceInput] = useState("");
-  const [inferenceVariables, setInferenceVariables] = useState("{}");
+  const [inferenceInput, setInferenceInput] = useState('');
+  const [inferenceVariables, setInferenceVariables] = useState('{}');
   const [runningInference, setRunningInference] = useState(false);
 
   // LLM Config selection state
-  const [selectedLLMConfigId, setSelectedLLMConfigId] = useState<string>("");
+  const [selectedLLMConfigId, setSelectedLLMConfigId] = useState<string>('');
 
   // Image upload state
   const [uploadedImages, setUploadedImages] = useState<
@@ -73,24 +63,19 @@ const AgentDetail: React.FC = () => {
       base64: string; // Full data URL for display
       base64Content: string; // Just base64 content for API
       mimeType: string;
-      documentType: "pdf" | "txt";
+      documentType: 'pdf' | 'txt';
     }>
   >([]);
   const [uploadingDocument, setUploadingDocument] = useState(false);
-  const [chatHistory, setChatHistory] = useState<
-    { role: "user" | "assistant"; content: any }[]
-  >([]);
+  const [chatHistory, setChatHistory] = useState<{ role: 'user' | 'assistant'; content: any }[]>([]);
 
   // Datasource and tool selection state
-  const [selectedTools, setSelectedTools] = useState<
-    { id: string; value: string }[]
-  >([]);
+  const [selectedTools, setSelectedTools] = useState<{ id: string; value: string }[]>([]);
   const isUpdatingYamlRef = useRef(false);
 
   // Fetch data using hooks
   const { data: agent, isLoading: agentLoading } = useGetAgent(appId, id);
-  const { data: llmConfigs = [], isLoading: loadingConfigs } =
-    useGetLLMConfigs(appId);
+  const { data: llmConfigs = [], isLoading: loadingConfigs } = useGetLLMConfigs(appId);
   const { data: availableTools = [] } = useGetTools(appId);
   const deleteAgentMutation = useDeleteAgent(appId);
 
@@ -123,14 +108,14 @@ const AgentDetail: React.FC = () => {
       const prefilledValuesString = prefillValues
         .filter((key) => tool.prefilled_value?.[key])
         .map((key) => tool.prefilled_value?.[key]) // Only show the value, not the key
-        .join(", ");
+        .join(', ');
 
       return {
         name: tool.name,
         prefilled_values: prefilledValue,
-        display_name: `${tool.resource_name ? tool.resource_name + " - " : ""}${
+        display_name: `${tool.resource_name ? tool.resource_name + ' - ' : ''}${
           tool.name
-        }${prefilledValuesString ? ` (${prefilledValuesString})` : ""}`,
+        }${prefilledValuesString ? ` (${prefilledValuesString})` : ''}`,
         description: tool.description,
       };
     });
@@ -139,21 +124,18 @@ const AgentDetail: React.FC = () => {
   const handleQuestionEntered = () => {
     if (inferenceInput.trim().length > 0) {
       handleRunInference();
-      setInferenceInput("");
+      setInferenceInput('');
       requestAnimationFrame(() => {
-        setTimeout(() => scrollToBottom("message-container", "smooth"), 150);
+        setTimeout(() => scrollToBottom('message-container', 'smooth'), 150);
       });
     }
   };
 
   useEffect(() => {
     // Skip if we're updating YAML from agent data or if dependencies are not ready
-    if (isUpdatingYamlRef.current || !yamlContent || toolsDetails.length === 0)
-      return;
+    if (isUpdatingYamlRef.current || !yamlContent || toolsDetails.length === 0) return;
 
-    const tools = toolsDetails.filter((tool) =>
-      selectedTools.some((selected) => selected.value === tool.display_name)
-    );
+    const tools = toolsDetails.filter((tool) => selectedTools.some((selected) => selected.value === tool.display_name));
     const parsedYaml = yaml.load(yamlContent) as any;
     if (parsedYaml && parsedYaml.agent) {
       if (!parsedYaml.agent.tools) {
@@ -166,10 +148,7 @@ const AgentDetail: React.FC = () => {
         const prefilledParams: Record<string, string> | undefined =
           tool.prefilled_values && tool.prefilled_values.length > 0
             ? tool.prefilled_values.reduce(
-                (
-                  acc: Record<string, string>,
-                  obj: { [key: string]: string }
-                ) => {
+                (acc: Record<string, string>, obj: { [key: string]: string }) => {
                   // Each obj is like { datasource_id: "value" }
                   return { ...acc, ...obj };
                 },
@@ -194,8 +173,7 @@ const AgentDetail: React.FC = () => {
           if (!newTool) return true;
           return (
             existingTool.name !== newTool.name ||
-            JSON.stringify(existingTool.prefilled_params || {}) !==
-              JSON.stringify(newTool.prefilled_params || {})
+            JSON.stringify(existingTool.prefilled_params || {}) !== JSON.stringify(newTool.prefilled_params || {})
           );
         });
 
@@ -217,166 +195,145 @@ const AgentDetail: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTools, toolsDetails]);
 
-  const handleImageUpload = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      const files = event.target.files;
-      if (!files || files.length === 0) return;
+  const handleImageUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
 
-      // Validate file type
-      const allowedTypes = [
-        "image/jpeg",
-        "image/jpg",
-        "image/png",
-        "image/gif",
-        "image/webp",
-      ];
-      const maxSize = 10 * 1024 * 1024; // 10MB
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    const maxSize = 10 * 1024 * 1024; // 10MB
 
-      // Validate all files before processing
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        if (!allowedTypes.includes(file.type)) {
-          notifyError(
-            `File ${file.name} is not a valid image type. Please select JPEG, PNG, GIF, or WebP files.`
-          );
-          return;
-        }
-        if (file.size > maxSize) {
-          notifyError(`File ${file.name} exceeds 10MB limit`);
-          return;
-        }
+    // Validate all files before processing
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (!allowedTypes.includes(file.type)) {
+        notifyError(`File ${file.name} is not a valid image type. Please select JPEG, PNG, GIF, or WebP files.`);
+        return;
       }
+      if (file.size > maxSize) {
+        notifyError(`File ${file.name} exceeds 10MB limit`);
+        return;
+      }
+    }
 
-      setUploadingImage(true);
+    setUploadingImage(true);
 
-      // Process all files
-      const filePromises = Array.from(files).map(
-        (file) =>
-          new Promise<{
-            file: File;
-            base64: string;
-            base64Content: string;
-            mimeType: string;
-          }>((resolve, reject) => {
-            const reader = new FileReader();
+    // Process all files
+    const filePromises = Array.from(files).map(
+      (file) =>
+        new Promise<{
+          file: File;
+          base64: string;
+          base64Content: string;
+          mimeType: string;
+        }>((resolve, reject) => {
+          const reader = new FileReader();
 
-            reader.onload = (e) => {
-              const base64 = e.target?.result as string;
-              // Extract just the base64 content without the data URL prefix
-              const base64Content = base64.split(",")[1] || base64;
-              resolve({
-                file,
-                base64,
-                base64Content,
-                mimeType: file.type,
-              });
-            };
+          reader.onload = (e) => {
+            const base64 = e.target?.result as string;
+            // Extract just the base64 content without the data URL prefix
+            const base64Content = base64.split(',')[1] || base64;
+            resolve({
+              file,
+              base64,
+              base64Content,
+              mimeType: file.type,
+            });
+          };
 
-            reader.onerror = () =>
-              reject(new Error(`Error reading ${file.name}`));
-            reader.readAsDataURL(file);
-          })
-      );
-
-      Promise.all(filePromises)
-        .then((newImages) => {
-          setUploadedImages((prev) => [...prev, ...newImages]);
-          setUploadingImage(false);
-          notifySuccess(`${newImages.length} image(s) uploaded successfully`);
-          // Reset file input
-          event.target.value = "";
-          // Close the upload menu after successful upload
-          setShowUploadMenu(false);
+          reader.onerror = () => reject(new Error(`Error reading ${file.name}`));
+          reader.readAsDataURL(file);
         })
-        .catch((error) => {
-          notifyError(error.message || "Error reading image files");
-          setUploadingImage(false);
-        });
-    },
-    []
-  );
+    );
+
+    Promise.all(filePromises)
+      .then((newImages) => {
+        setUploadedImages((prev) => [...prev, ...newImages]);
+        setUploadingImage(false);
+        notifySuccess(`${newImages.length} image(s) uploaded successfully`);
+        // Reset file input
+        event.target.value = '';
+        // Close the upload menu after successful upload
+        setShowUploadMenu(false);
+      })
+      .catch((error) => {
+        notifyError(error.message || 'Error reading image files');
+        setUploadingImage(false);
+      });
+  }, []);
 
   const handleRemoveImage = useCallback((index: number) => {
     setUploadedImages((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
-  const handleDocumentUpload = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      const files = event.target.files;
-      if (!files || files.length === 0) return;
+  const handleDocumentUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
 
-      // Validate file type
-      const allowedTypes = ["application/pdf", "text/plain"];
-      const maxSize = 50 * 1024 * 1024; // 50MB
+    // Validate file type
+    const allowedTypes = ['application/pdf', 'text/plain'];
+    const maxSize = 50 * 1024 * 1024; // 50MB
 
-      // Validate all files before processing
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        if (!allowedTypes.includes(file.type)) {
-          notifyError(
-            `Invalid file type for ${file.name}. Please select PDF or TXT files only.`
-          );
-          return;
-        }
-        if (file.size > maxSize) {
-          notifyError(`File ${file.name} is too large. Maximum size is 50MB.`);
-          return;
-        }
+    // Validate all files before processing
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (!allowedTypes.includes(file.type)) {
+        notifyError(`Invalid file type for ${file.name}. Please select PDF or TXT files only.`);
+        return;
       }
+      if (file.size > maxSize) {
+        notifyError(`File ${file.name} is too large. Maximum size is 50MB.`);
+        return;
+      }
+    }
 
-      setUploadingDocument(true);
+    setUploadingDocument(true);
 
-      // Process all files
-      const filePromises = Array.from(files).map((file) => {
-        return new Promise<{
-          file: File;
-          base64: string;
-          base64Content: string;
-          mimeType: string;
-          documentType: "pdf" | "txt";
-        }>((resolve, reject) => {
-          const reader = new FileReader();
+    // Process all files
+    const filePromises = Array.from(files).map((file) => {
+      return new Promise<{
+        file: File;
+        base64: string;
+        base64Content: string;
+        mimeType: string;
+        documentType: 'pdf' | 'txt';
+      }>((resolve, reject) => {
+        const reader = new FileReader();
 
-          reader.onload = (e) => {
-            const dataUrl = e.target?.result as string;
-            const base64 = dataUrl.split(",")[1];
-            const documentType =
-              file.type === "application/pdf" ? "pdf" : "txt";
+        reader.onload = (e) => {
+          const dataUrl = e.target?.result as string;
+          const base64 = dataUrl.split(',')[1];
+          const documentType = file.type === 'application/pdf' ? 'pdf' : 'txt';
 
-            resolve({
-              file,
-              base64: dataUrl,
-              base64Content: base64,
-              mimeType: file.type,
-              documentType,
-            });
-          };
+          resolve({
+            file,
+            base64: dataUrl,
+            base64Content: base64,
+            mimeType: file.type,
+            documentType,
+          });
+        };
 
-          reader.onerror = () =>
-            reject(new Error(`Error reading ${file.name}`));
-          reader.readAsDataURL(file);
-        });
+        reader.onerror = () => reject(new Error(`Error reading ${file.name}`));
+        reader.readAsDataURL(file);
       });
+    });
 
-      Promise.all(filePromises)
-        .then((newDocuments) => {
-          setUploadedDocuments((prev) => [...prev, ...newDocuments]);
-          setUploadingDocument(false);
-          notifySuccess(
-            `${newDocuments.length} document(s) uploaded successfully`
-          );
-          // Reset file input
-          event.target.value = "";
-          // Close the upload menu after successful upload
-          setShowUploadMenu(false);
-        })
-        .catch((error) => {
-          notifyError(error.message || "Error reading document files");
-          setUploadingDocument(false);
-        });
-    },
-    []
-  );
+    Promise.all(filePromises)
+      .then((newDocuments) => {
+        setUploadedDocuments((prev) => [...prev, ...newDocuments]);
+        setUploadingDocument(false);
+        notifySuccess(`${newDocuments.length} document(s) uploaded successfully`);
+        // Reset file input
+        event.target.value = '';
+        // Close the upload menu after successful upload
+        setShowUploadMenu(false);
+      })
+      .catch((error) => {
+        notifyError(error.message || 'Error reading document files');
+        setUploadingDocument(false);
+      });
+  }, []);
 
   const handleRemoveDocument = useCallback((index: number) => {
     setUploadedDocuments((prev) => prev.filter((_, i) => i !== index));
@@ -390,11 +347,11 @@ const AgentDetail: React.FC = () => {
       await floConsoleService.agentService.updateAgent(id, yamlContent);
       // Invalidate agent query to refetch updated data
       queryClient.invalidateQueries({
-        queryKey: getAgentKey(appId || "", id || ""),
+        queryKey: getAgentKey(appId || '', id || ''),
       });
-      notifySuccess("Agent updated successfully");
+      notifySuccess('Agent updated successfully');
     } catch (error) {
-      console.error("Error updating agent:", error);
+      console.error('Error updating agent:', error);
     } finally {
       setSaving(false);
     }
@@ -426,9 +383,7 @@ const AgentDetail: React.FC = () => {
         uploadedDocuments.length === 0 &&
         selectedTools.length === 0)
     ) {
-      notifyError(
-        "Please provide text input, upload an image/document, or select tools to run inference"
-      );
+      notifyError('Please provide text input, upload an image/document, or select tools to run inference');
       return;
     }
 
@@ -439,7 +394,7 @@ const AgentDetail: React.FC = () => {
         try {
           variables = JSON.parse(inferenceVariables);
         } catch {
-          notifyError("Invalid JSON in variables field");
+          notifyError('Invalid JSON in variables field');
           setRunningInference(false);
           return;
         }
@@ -468,12 +423,9 @@ const AgentDetail: React.FC = () => {
             image_base64: image.base64Content,
             mime_type: image.mimeType,
           };
-          setChatHistory((prev) => [
-            ...prev,
-            { role: "user", content: imageMessage },
-          ]);
+          setChatHistory((prev) => [...prev, { role: 'user', content: imageMessage }]);
           conversationInputs.push({
-            role: "user",
+            role: 'user',
             content: imageMessage,
           });
         });
@@ -491,12 +443,9 @@ const AgentDetail: React.FC = () => {
               size: doc.file.size,
             },
           };
-          setChatHistory((prev) => [
-            ...prev,
-            { role: "user", content: documentMessage },
-          ]);
+          setChatHistory((prev) => [...prev, { role: 'user', content: documentMessage }]);
           conversationInputs.push({
-            role: "user",
+            role: 'user',
             content: documentMessage,
           });
         });
@@ -504,12 +453,9 @@ const AgentDetail: React.FC = () => {
 
       // Add text input last if provided
       if (finalTextInput) {
-        setChatHistory((prev) => [
-          ...prev,
-          { role: "user", content: finalTextInput },
-        ]);
+        setChatHistory((prev) => [...prev, { role: 'user', content: finalTextInput }]);
         conversationInputs.push({
-          role: "user",
+          role: 'user',
           content: finalTextInput,
         });
       }
@@ -521,9 +467,8 @@ const AgentDetail: React.FC = () => {
         // Tools only - provide a generic instruction
         inputs = [
           {
-            role: "user",
-            content:
-              "Please use the available tools to assist with the request.",
+            role: 'user',
+            content: 'Please use the available tools to assist with the request.',
           },
         ];
       }
@@ -532,29 +477,22 @@ const AgentDetail: React.FC = () => {
         variables,
         inputs,
         selectedLLMConfigId || undefined,
-        selectedTools.length > 0
-          ? selectedTools.map((tool) => tool.value)
-          : undefined
+        selectedTools.length > 0 ? selectedTools.map((tool) => tool.value) : undefined
       );
       const responseData = (result as any).data?.data?.data;
       const agentResponse =
-        typeof responseData?.result === "string"
-          ? responseData.result
-          : JSON.stringify(responseData?.result, null, 2);
-      setChatHistory((prev) => [
-        ...prev,
-        { role: "assistant", content: agentResponse },
-      ]);
+        typeof responseData?.result === 'string' ? responseData.result : JSON.stringify(responseData?.result, null, 2);
+      setChatHistory((prev) => [...prev, { role: 'assistant', content: agentResponse }]);
       // Wait for DOM to update before scrolling
       requestAnimationFrame(() => {
-        setTimeout(() => scrollToBottom("message-container", "smooth"), 150);
+        setTimeout(() => scrollToBottom('message-container', 'smooth'), 150);
       });
       //clearing the documents and images
       setUploadedDocuments([]);
       setUploadedImages([]);
     } catch (error) {
-      console.error("Error running inference:", error);
-      notifyError("Failed to run inference. Please try again.");
+      console.error('Error running inference:', error);
+      notifyError('Failed to run inference. Please try again.');
     } finally {
       setRunningInference(false);
     }
@@ -566,11 +504,7 @@ const AgentDetail: React.FC = () => {
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate("/apps")}
-                className="hover:text-foreground cursor-pointer"
-              >
+              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
                 Apps
               </button>
             </BreadcrumbLink>
@@ -595,19 +529,13 @@ const AgentDetail: React.FC = () => {
       </Breadcrumb>
 
       {agentLoading ? (
-        <div className="flex items-center justify-center p-8">
-          Loading agent...
-        </div>
+        <div className="flex items-center justify-center p-8">Loading agent...</div>
       ) : !agent ? (
-        <div className="flex items-center justify-center p-8 text-red-600">
-          Agent not found
-        </div>
+        <div className="flex items-center justify-center p-8 text-red-600">Agent not found</div>
       ) : (
         <div className="flex w-full flex-1 flex-col gap-10">
           <div className="flex items-start justify-between">
-            <p className="text-2xl font-semibold leading-normal text-black">
-              {agent.name}
-            </p>
+            <p className="text-2xl leading-normal font-semibold text-black">{agent.name}</p>
             <div className="flex gap-4">
               <Button variant="outline" onClick={() => setEditDialogOpen(true)}>
                 Edit

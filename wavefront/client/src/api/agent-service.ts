@@ -1,4 +1,4 @@
-import { IApiResponse } from "@app/lib/axios";
+import { IApiResponse } from '@app/lib/axios';
 import {
   AgentData,
   AgentListData,
@@ -6,23 +6,19 @@ import {
   AgentResponse,
   InferenceData,
   InferenceResponse,
-} from "@app/types/agent";
-import { AxiosInstance } from "axios";
+} from '@app/types/agent';
+import { AxiosInstance } from 'axios';
 
 export class AgentService {
   constructor(private http: AxiosInstance) {}
 
-  async createAgent(
-    name: string,
-    yamlContent: string,
-    namespace: string = "default"
-  ): Promise<AgentResponse> {
+  async createAgent(name: string, yamlContent: string, namespace: string = 'default'): Promise<AgentResponse> {
     const response: IApiResponse<AgentData> = await this.http.post(
       `/v1/:appId/floware/v1/agent-management/agents/${name}`,
       yamlContent,
       {
         headers: {
-          "Content-Type": "text/plain",
+          'Content-Type': 'text/plain',
         },
         params: {
           namespace,
@@ -45,7 +41,7 @@ export class AgentService {
       yamlContent,
       {
         headers: {
-          "Content-Type": "text/plain",
+          'Content-Type': 'text/plain',
         },
       }
     );
@@ -82,12 +78,9 @@ export class AgentService {
   }
 
   async listAgents(namespace?: string): Promise<AgentListResponse> {
-    const response: IApiResponse<AgentListData> = await this.http.get(
-      `/v1/:appId/floware/v1/agent-management/agents`,
-      {
-        params: namespace ? { namespace } : undefined,
-      }
-    );
+    const response: IApiResponse<AgentListData> = await this.http.get(`/v1/:appId/floware/v1/agent-management/agents`, {
+      params: namespace ? { namespace } : undefined,
+    });
     return response;
   }
 

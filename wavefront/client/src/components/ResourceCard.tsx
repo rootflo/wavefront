@@ -31,13 +31,13 @@ const ResourceCard: React.FC<ResourceCardProps> = ({
       className="group cursor-pointer rounded-xl border-[0.5px] bg-white p-6 shadow-sm transition-all duration-500 hover:translate-y-[-4px] hover:shadow-md"
     >
       <div className="mb-3 flex items-start justify-between">
-        <h3 className="overflow-hidden text-ellipsis pr-2 text-lg font-semibold text-gray-900 transition-colors group-hover:text-blue-500">
+        <h3 className="overflow-hidden pr-2 text-lg font-semibold text-ellipsis text-gray-900 transition-colors group-hover:text-blue-500">
           {title}
         </h3>
         <div className="flex items-center space-x-2">
           <button
             onClick={onDeleteClick}
-            className="cursor-pointer rounded p-1 text-red-500 opacity-0 transition-opacity hover:bg-red-50 hover:text-red-700 group-hover:opacity-100"
+            className="cursor-pointer rounded p-1 text-red-500 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-50 hover:text-red-700"
             title={deleteTitle}
           >
             <TrashIcon className="h-4 w-4" />

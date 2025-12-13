@@ -1,5 +1,5 @@
-import { IApiResponse } from "@app/lib/axios";
-import { AxiosInstance } from "axios";
+import { IApiResponse } from '@app/lib/axios';
+import { AxiosInstance } from 'axios';
 
 // Interface for creating a new knowledge base
 export interface NewKnowledgeBasePayload {
@@ -47,8 +47,7 @@ export interface KnowledgeBaseDocumentsListData {
   resources: DocumentData[];
 }
 
-export type KnowledgeBaseDocumentsListResponse =
-  IApiResponse<KnowledgeBaseDocumentsListData>;
+export type KnowledgeBaseDocumentsListResponse = IApiResponse<KnowledgeBaseDocumentsListData>;
 
 // Interface for RAG inference response
 export interface RagInferenceResultData {
@@ -89,9 +88,7 @@ export type AllConfigsResponse = IApiResponse<AllConfigsData[]>;
 export class KnowledgeBaseService {
   constructor(private http: AxiosInstance) {}
 
-  async createKnowledgeBase(
-    payload: NewKnowledgeBasePayload
-  ): Promise<KnowledgeBaseDetailResponse> {
+  async createKnowledgeBase(payload: NewKnowledgeBasePayload): Promise<KnowledgeBaseDetailResponse> {
     const response: KnowledgeBaseDetailResponse = await this.http.post(
       `/v1/:appId/floware/v1/knowledge-bases`,
       payload
@@ -99,36 +96,28 @@ export class KnowledgeBaseService {
     return response;
   }
 
-  async listKnowledgeBases(
-    offset: number = 0,
-    limit: number = 10
-  ): Promise<KnowledgeBaseListResponse> {
-    const response: KnowledgeBaseListResponse = await this.http.get(
-      `/v1/:appId/floware/v1/knowledge-bases`,
-      {
-        params: { offset, limit },
-      }
-    );
+  async listKnowledgeBases(offset: number = 0, limit: number = 10): Promise<KnowledgeBaseListResponse> {
+    const response: KnowledgeBaseListResponse = await this.http.get(`/v1/:appId/floware/v1/knowledge-bases`, {
+      params: { offset, limit },
+    });
     return response;
   }
 
   async getKnowledgeBase(kbId: string): Promise<KnowledgeBaseDetail> {
-    const response: KnowledgeBaseDetail = await this.http.get(
-      `/v1/:appId/floware/v1/knowledge-bases/${kbId}`
-    );
+    const response: KnowledgeBaseDetail = await this.http.get(`/v1/:appId/floware/v1/knowledge-bases/${kbId}`);
     return response;
   }
 
   async uploadDocument(kbId: string, file: File): Promise<IApiResponse<any>> {
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append('file', file);
 
     const response: IApiResponse<any> = await this.http.post(
       `/v1/:appId/floware/v1/knowledge-bases/${kbId}/documents`,
       formData,
       {
         headers: {
-          "Content-Type": "multipart/form-data",
+          'Content-Type': 'multipart/form-data',
         },
       }
     );
@@ -203,19 +192,14 @@ export class KnowledgeBaseService {
     return response;
   }
 
-  async deleteSystemPrompt(
-    kbId: string,
-    inferenceId: string
-  ): Promise<IApiResponse<any>> {
+  async deleteSystemPrompt(kbId: string, inferenceId: string): Promise<IApiResponse<any>> {
     const response: IApiResponse<any> = await this.http.delete(
       `/v1/:appId/floware/v1/knowledge-base/${kbId}/inference/${inferenceId}`
     );
     return response;
   }
 
-  async listInferencesForKnowledgeBase(
-    kbId: string
-  ): Promise<InferenceListResponse> {
+  async listInferencesForKnowledgeBase(kbId: string): Promise<InferenceListResponse> {
     const response: InferenceListResponse = await this.http.get(
       `/v1/:appId/floware/v1/knowledge-base/${kbId}/inference`
     );
@@ -223,16 +207,11 @@ export class KnowledgeBaseService {
   }
 
   async deleteKnowledgeBase(kbId: string): Promise<IApiResponse<any>> {
-    const response: IApiResponse<any> = await this.http.delete(
-      `/v1/:appId/floware/v1/knowledge-bases/${kbId}`
-    );
+    const response: IApiResponse<any> = await this.http.delete(`/v1/:appId/floware/v1/knowledge-bases/${kbId}`);
     return response;
   }
 
-  async deleteDocument(
-    kbId: string,
-    documentId: string
-  ): Promise<IApiResponse<any>> {
+  async deleteDocument(kbId: string, documentId: string): Promise<IApiResponse<any>> {
     const response: IApiResponse<any> = await this.http.delete(
       `/v1/:appId/floware/v1/knowledge-bases/${kbId}/documents/${documentId}`
     );
@@ -240,9 +219,7 @@ export class KnowledgeBaseService {
   }
 
   async getAllConfigs(): Promise<AllConfigsResponse> {
-    const response: AllConfigsResponse = await this.http.get(
-      `/v1/:appId/floware/v1/llm-inference-configs`
-    );
+    const response: AllConfigsResponse = await this.http.get(`/v1/:appId/floware/v1/llm-inference-configs`);
     return response;
   }
 }

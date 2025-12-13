@@ -1,4 +1,4 @@
-import { IApiResponse } from "@app/lib/axios";
+import { IApiResponse } from '@app/lib/axios';
 
 export interface Tool {
   name: string;

@@ -1,6 +1,6 @@
-import { IApiResponse } from "@app/lib/axios";
+import { IApiResponse } from '@app/lib/axios';
 
-export type TtsProvider = "elevenlabs" | "deepgram" | "cartesia";
+export type TtsProvider = 'elevenlabs' | 'deepgram' | 'cartesia';
 
 export interface TtsConfig {
   id: string;

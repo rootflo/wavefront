@@ -1,7 +1,7 @@
-import { TOKEN_KEY } from "@app/lib/constants";
-import { useEffect } from "react";
-import AppRouter from "./router";
-import { useAuthStore } from "./store";
+import { TOKEN_KEY } from '@app/lib/constants';
+import { useEffect } from 'react';
+import AppRouter from './router';
+import { useAuthStore } from './store';
 
 function App() {
   const { setAuthenticatedState } = useAuthStore();

@@ -1,4 +1,4 @@
-import { IApiResponse } from "@app/lib/axios";
+import { IApiResponse } from '@app/lib/axios';
 import {
   AllYamlsResponse,
   Datasource,
@@ -12,8 +12,8 @@ import {
   TestDatasourceData,
   TestDatasourceResponse,
   YamlResponse,
-} from "@app/types/datasource";
-import { AxiosInstance } from "axios";
+} from '@app/types/datasource';
+import { AxiosInstance } from 'axios';
 
 export class DatasourcesService {
   constructor(private http: AxiosInstance) {}
@@ -24,15 +24,12 @@ export class DatasourcesService {
     config: Record<string, any>,
     description?: string
   ): Promise<DatasourceResponse> {
-    const response: IApiResponse<DatasourceData> = await this.http.post(
-      `/v1/:appId/floware/v1/datasources`,
-      {
-        name,
-        type,
-        config: JSON.stringify(config),
-        description,
-      }
-    );
+    const response: IApiResponse<DatasourceData> = await this.http.post(`/v1/:appId/floware/v1/datasources`, {
+      name,
+      type,
+      config: JSON.stringify(config),
+      description,
+    });
     return response;
   }
 
@@ -76,58 +73,36 @@ export class DatasourcesService {
     return response;
   }
 
-  async getAllDatasources(): Promise<
-    IApiResponse<{ datasources: Datasource[] }>
-  > {
+  async getAllDatasources(): Promise<IApiResponse<{ datasources: Datasource[] }>> {
     return this.http.get(`/v1/:appId/floware/v1/datasources`);
   }
 
-  async getDatasourceResources(
-    datasourceId: string
-  ): Promise<DatasourceResourcesResponse> {
+  async getDatasourceResources(datasourceId: string): Promise<DatasourceResourcesResponse> {
     const response: IApiResponse<DatasourceResourcesData> = await this.http.get(
       `/v1/:appId/floware/v1/datasources/${datasourceId}/resources`
     );
     return response;
   }
 
-  async createYaml(
-    dataSourceId: string,
-    yamlQuery: string
-  ): Promise<YamlResponse> {
-    const response = await this.http.put(
-      `/v1/:appId/floware/v1/${dataSourceId}/dynamic-queries`,
-      {
-        dynamic_query: yamlQuery,
-      }
-    );
+  async createYaml(dataSourceId: string, yamlQuery: string): Promise<YamlResponse> {
+    const response = await this.http.put(`/v1/:appId/floware/v1/${dataSourceId}/dynamic-queries`, {
+      dynamic_query: yamlQuery,
+    });
     return response;
   }
 
   async getAllYamls(dataSourceId: string): Promise<AllYamlsResponse> {
-    const response = await this.http.get(
-      `/v1/:appId/floware/v1/${dataSourceId}/dynamic-queries`
-    );
+    const response = await this.http.get(`/v1/:appId/floware/v1/${dataSourceId}/dynamic-queries`);
     return response;
   }
 
-  async readYaml(
-    dataSourceId: string,
-    yamlId: string
-  ): Promise<ReadYamlResponse> {
-    const response = await this.http.get(
-      `/v1/:appId/floware/v1/${dataSourceId}/dynamic-queries/${yamlId}`
-    );
+  async readYaml(dataSourceId: string, yamlId: string): Promise<ReadYamlResponse> {
+    const response = await this.http.get(`/v1/:appId/floware/v1/${dataSourceId}/dynamic-queries/${yamlId}`);
     return response;
   }
 
-  async deleteYaml(
-    dataSourceId: string,
-    yamlId: string
-  ): Promise<DeleteYamlResponse> {
-    const response = await this.http.delete(
-      `/v1/:appId/floware/v1/${dataSourceId}/dynamic-queries/${yamlId}`
-    );
+  async deleteYaml(dataSourceId: string, yamlId: string): Promise<DeleteYamlResponse> {
+    const response = await this.http.delete(`/v1/:appId/floware/v1/${dataSourceId}/dynamic-queries/${yamlId}`);
     return response;
   }
 
@@ -136,12 +111,9 @@ export class DatasourcesService {
     yamlId: string,
     params: Record<string, string>
   ): Promise<ExecuteYamlResponse> {
-    const response = await this.http.post(
-      `/v1/:appId/floware/v1/${dataSourceId}/dynamic-queries/${yamlId}/execute`,
-      {
-        params: params,
-      }
-    );
+    const response = await this.http.post(`/v1/:appId/floware/v1/${dataSourceId}/dynamic-queries/${yamlId}/execute`, {
+      params: params,
+    });
     return response;
   }
 }

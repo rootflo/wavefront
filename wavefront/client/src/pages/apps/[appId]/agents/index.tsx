@@ -1,35 +1,29 @@
-import AgentCard from "@app/components/AgentCard";
-import DeleteConfirmationDialog from "@app/components/DeleteConfirmationDialog";
-import { EmptyStateCard } from "@app/components/EmptyCard";
-import { ResourceCardSkeleton } from "@app/components/ResourceCard";
+import AgentCard from '@app/components/AgentCard';
+import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
+import { EmptyStateCard } from '@app/components/EmptyCard';
+import { ResourceCardSkeleton } from '@app/components/ResourceCard';
 import {
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbLink,
   BreadcrumbList,
   BreadcrumbSeparator,
-} from "@app/components/ui/breadcrumb";
-import { Button } from "@app/components/ui/button";
-import { Input } from "@app/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@app/components/ui/select";
-import { useDeleteAgent, useGetAgents, useGetNamespaces } from "@app/hooks";
-import { useDashboardStore } from "@app/store";
-import { AgentListItem } from "@app/types/agent";
-import React, { useState } from "react";
-import { useNavigate, useParams } from "react-router";
-import CreateAgentDialog from "./CreateAgentDialog";
+} from '@app/components/ui/breadcrumb';
+import { Button } from '@app/components/ui/button';
+import { Input } from '@app/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
+import { useDeleteAgent, useGetAgents, useGetNamespaces } from '@app/hooks';
+import { useDashboardStore } from '@app/store';
+import { AgentListItem } from '@app/types/agent';
+import React, { useState } from 'react';
+import { useNavigate, useParams } from 'react-router';
+import CreateAgentDialog from './CreateAgentDialog';
 
 const AgentManagement: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();
   const navigate = useNavigate();
-  const [searchTerm, setSearchTerm] = useState("");
-  const [namespace, setNamespace] = useState("");
+  const [searchTerm, setSearchTerm] = useState('');
+  const [namespace, setNamespace] = useState('');
   const [deleteItem, setDeleteItem] = useState<AgentListItem | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
@@ -37,13 +31,9 @@ const AgentManagement: React.FC = () => {
   const deleteAgentMutation = useDeleteAgent(appId);
 
   // Get the namespace value for the query (undefined if 'all' or empty)
-  const namespaceForQuery =
-    namespace === "all" || !namespace ? undefined : namespace;
+  const namespaceForQuery = namespace === 'all' || !namespace ? undefined : namespace;
 
-  const { data: agents = [], isLoading: agentsLoading } = useGetAgents(
-    appId,
-    namespaceForQuery
-  );
+  const { data: agents = [], isLoading: agentsLoading } = useGetAgents(appId, namespaceForQuery);
   const { data: namespaces = [] } = useGetNamespaces(appId);
 
   const filteredAgents = agents.filter(
@@ -88,11 +78,7 @@ const AgentManagement: React.FC = () => {
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate("/apps")}
-                className="hover:text-foreground cursor-pointer"
-              >
+              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
                 Apps
               </button>
             </BreadcrumbLink>
@@ -115,9 +101,7 @@ const AgentManagement: React.FC = () => {
       <div className="mb-8 flex w-full items-start justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Agents</h1>
-          <p className="mt-2 text-gray-600">
-            Manage AI agents for {selectedApp?.app_name}
-          </p>
+          <p className="mt-2 text-gray-600">Manage AI agents for {selectedApp?.app_name}</p>
         </div>
         <div className="flex items-center gap-4">
           <Input
@@ -137,11 +121,7 @@ const AgentManagement: React.FC = () => {
                 All Namespaces
               </SelectItem>
               {namespaces.map((ns) => (
-                <SelectItem
-                  className="cursor-pointer"
-                  key={ns.name}
-                  value={ns.name}
-                >
+                <SelectItem className="cursor-pointer" key={ns.name} value={ns.name}>
                   {ns.name}
                 </SelectItem>
               ))}
@@ -169,12 +149,7 @@ const AgentManagement: React.FC = () => {
         ) : (
           <>
             {filteredAgents.map((agent) => (
-              <AgentCard
-                key={agent.id}
-                agent={agent}
-                onClick={handleAgentClick}
-                onDeleteClick={handleDeleteClick}
-              />
+              <AgentCard key={agent.id} agent={agent} onClick={handleAgentClick} onDeleteClick={handleDeleteClick} />
             ))}
           </>
         )}

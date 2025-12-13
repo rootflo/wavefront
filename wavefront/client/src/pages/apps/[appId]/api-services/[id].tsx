@@ -1,5 +1,5 @@
-import floConsoleService from "@app/api";
-import DeleteConfirmationDialog from "@app/components/DeleteConfirmationDialog";
+import floConsoleService from '@app/api';
+import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -7,41 +7,28 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
-} from "@app/components/ui/breadcrumb";
-import { Button } from "@app/components/ui/button";
-import { Checkbox } from "@app/components/ui/checkbox";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@app/components/ui/form";
-import { Input } from "@app/components/ui/input";
-import { Label } from "@app/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@app/components/ui/select";
-import { useGetApiService } from "@app/hooks";
-import { getApiServiceKey } from "@app/hooks/data/query-keys";
-import { useNotifyStore } from "@app/store";
-import { ApiServiceItem } from "@app/types/api-service";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useQueryClient } from "@tanstack/react-query";
-import { langs } from "@uiw/codemirror-extensions-langs";
-import CodeMirror from "@uiw/react-codemirror";
-import clsx from "clsx";
-import yaml from "js-yaml";
-import { Plus, Trash2 } from "lucide-react";
-import React, { useEffect, useState } from "react";
-import { useFieldArray, useForm } from "react-hook-form";
-import { useNavigate, useParams } from "react-router";
-import { z } from "zod";
+} from '@app/components/ui/breadcrumb';
+import { Button } from '@app/components/ui/button';
+import { Checkbox } from '@app/components/ui/checkbox';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
+import { Input } from '@app/components/ui/input';
+import { Label } from '@app/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
+import { useGetApiService } from '@app/hooks';
+import { getApiServiceKey } from '@app/hooks/data/query-keys';
+import { useNotifyStore } from '@app/store';
+import { ApiServiceItem } from '@app/types/api-service';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useQueryClient } from '@tanstack/react-query';
+import { langs } from '@uiw/codemirror-extensions-langs';
+import CodeMirror from '@uiw/react-codemirror';
+import clsx from 'clsx';
+import yaml from 'js-yaml';
+import { Plus, Trash2 } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { useFieldArray, useForm } from 'react-hook-form';
+import { useNavigate, useParams } from 'react-router';
+import { z } from 'zod';
 
 const keyValuePairSchema = z.object({
   key: z.string(),
@@ -53,7 +40,7 @@ const apiEndpointSchema = z.object({
   version: z.string(),
   path: z.string(),
   backend_path: z.string(),
-  method: z.enum(["GET", "POST", "PUT", "DELETE", "PATCH"]),
+  method: z.enum(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']),
   additional_headers: z.array(keyValuePairSchema),
   backend_query_params: z.array(keyValuePairSchema),
   output_mapper_enabled: z.boolean(),
@@ -61,12 +48,12 @@ const apiEndpointSchema = z.object({
 });
 
 const apiServiceFormSchema = z.object({
-  id: z.string().min(1, "Service ID is required"),
-  base_url: z.string().min(1, "Base URL is required"),
+  id: z.string().min(1, 'Service ID is required'),
+  base_url: z.string().min(1, 'Base URL is required'),
   auth: z.object({
     id: z.string(),
     version: z.string(),
-    type: z.enum(["basic", "bearer", "api_key", "none"]),
+    type: z.enum(['basic', 'bearer', 'api_key', 'none']),
     base_url: z.string().optional(),
     path: z.string().optional(),
     username: z.string().optional(),
@@ -82,19 +69,19 @@ const apiServiceFormSchema = z.object({
 type ApiServiceForm = z.infer<typeof apiServiceFormSchema>;
 
 const initialFormState: ApiServiceForm = {
-  id: "",
-  base_url: "",
+  id: '',
+  base_url: '',
   auth: {
-    id: "basic-auth",
-    version: "v1",
-    type: "basic",
-    base_url: "",
-    path: "",
-    username: "",
-    password: "",
-    token: "",
-    api_key: "",
-    api_key_header: "X-API-Key",
+    id: 'basic-auth',
+    version: 'v1',
+    type: 'basic',
+    base_url: '',
+    path: '',
+    username: '',
+    password: '',
+    token: '',
+    api_key: '',
+    api_key_header: 'X-API-Key',
     additional_headers: [],
   },
   apis: [],
@@ -102,8 +89,8 @@ const initialFormState: ApiServiceForm = {
 
 const ApiServiceDetail: React.FC = () => {
   const [editing, setEditing] = useState(false);
-  const [view, setView] = useState<"form" | "yaml">("form");
-  const [yamlContent, setYamlContent] = useState("");
+  const [view, setView] = useState<'form' | 'yaml'>('form');
+  const [yamlContent, setYamlContent] = useState('');
   const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
@@ -117,17 +104,17 @@ const ApiServiceDetail: React.FC = () => {
   const form = useForm<ApiServiceForm>({
     resolver: zodResolver(apiServiceFormSchema),
     defaultValues: initialFormState,
-    mode: "onChange",
+    mode: 'onChange',
   });
 
   const authHeadersFieldArray = useFieldArray({
     control: form.control,
-    name: "auth.additional_headers",
+    name: 'auth.additional_headers',
   });
 
   const apisFieldArray = useFieldArray({
     control: form.control,
-    name: "apis",
+    name: 'apis',
   });
 
   const generateYaml = (data: ApiServiceForm) => {
@@ -208,64 +195,52 @@ const ApiServiceDetail: React.FC = () => {
       const s = parsed.service;
 
       const authHeaders = s.auth?.additional_headers || {};
-      const auth_additional_headers = Object.entries(authHeaders).map(
-        ([key, value]) => ({
-          key,
-          value: String(value),
-        })
-      );
+      const auth_additional_headers = Object.entries(authHeaders).map(([key, value]) => ({
+        key,
+        value: String(value),
+      }));
 
       return {
-        id: s.id || "",
-        base_url: s.base_url || "",
+        id: s.id || '',
+        base_url: s.base_url || '',
         auth: {
-          id: s.auth?.id || "basic-auth",
-          version: s.auth?.version || "v1",
-          type:
-            (s.auth?.type as "basic" | "bearer" | "api_key" | "none") ||
-            "basic",
-          base_url: s.auth?.base_url || "",
-          path: s.auth?.path || "",
-          username: s.auth?.username || "",
-          password: s.auth?.password || "",
-          token: s.auth?.token || "",
-          api_key: s.auth?.api_key || "",
-          api_key_header: s.auth?.api_key_header || "X-API-Key",
+          id: s.auth?.id || 'basic-auth',
+          version: s.auth?.version || 'v1',
+          type: (s.auth?.type as 'basic' | 'bearer' | 'api_key' | 'none') || 'basic',
+          base_url: s.auth?.base_url || '',
+          path: s.auth?.path || '',
+          username: s.auth?.username || '',
+          password: s.auth?.password || '',
+          token: s.auth?.token || '',
+          api_key: s.auth?.api_key || '',
+          api_key_header: s.auth?.api_key_header || 'X-API-Key',
           additional_headers: auth_additional_headers,
         },
         apis: (s.apis || []).map((api: any) => {
           const apiHeaders = api.additional_headers || {};
-          const api_additional_headers = Object.entries(apiHeaders).map(
-            ([key, value]) => ({
-              key,
-              value: String(value),
-            })
-          );
+          const api_additional_headers = Object.entries(apiHeaders).map(([key, value]) => ({
+            key,
+            value: String(value),
+          }));
 
           const backendQueryParams = api.backend_query_params || {};
-          const backend_query_params = Object.entries(backendQueryParams).map(
-            ([key, value]) => ({
-              key,
-              value: String(value),
-            })
-          );
+          const backend_query_params = Object.entries(backendQueryParams).map(([key, value]) => ({
+            key,
+            value: String(value),
+          }));
 
           const outputMapper = api.output_mapper || {};
-          const output_mapper = Object.entries(outputMapper).map(
-            ([key, value]) => ({
-              key,
-              value: String(value),
-            })
-          );
+          const output_mapper = Object.entries(outputMapper).map(([key, value]) => ({
+            key,
+            value: String(value),
+          }));
 
           return {
-            id: api.id || "",
-            version: api.version || "v1",
-            path: api.path || "",
-            backend_path: api.backend_path || "",
-            method:
-              (api.method as "GET" | "POST" | "PUT" | "DELETE" | "PATCH") ||
-              "GET",
+            id: api.id || '',
+            version: api.version || 'v1',
+            path: api.path || '',
+            backend_path: api.backend_path || '',
+            method: (api.method as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH') || 'GET',
             additional_headers: api_additional_headers,
             backend_query_params: backend_query_params,
             output_mapper_enabled: api.output_mapper_enabled || false,
@@ -274,19 +249,17 @@ const ApiServiceDetail: React.FC = () => {
         }),
       };
     } catch (e) {
-      console.error("Error parsing YAML", e);
+      console.error('Error parsing YAML', e);
       return null;
     }
   };
 
   const mapServiceToForm = (serviceData: ApiServiceItem): ApiServiceForm => {
     const authHeaders = serviceData.auth.additional_headers || {};
-    const auth_additional_headers = Object.entries(authHeaders).map(
-      ([key, value]) => ({
-        key,
-        value: String(value),
-      })
-    );
+    const auth_additional_headers = Object.entries(authHeaders).map(([key, value]) => ({
+      key,
+      value: String(value),
+    }));
 
     return {
       id: serviceData.service_id,
@@ -294,49 +267,41 @@ const ApiServiceDetail: React.FC = () => {
       auth: {
         id: serviceData.auth.id,
         version: serviceData.auth.version,
-        type:
-          (serviceData.auth.type as "basic" | "bearer" | "api_key" | "none") ||
-          "basic",
-        base_url: serviceData.auth.base_url || "",
-        path: serviceData.auth.path || "",
-        username: serviceData.auth.username || "",
-        password: serviceData.auth.password || "",
-        token: serviceData.auth.token || "",
-        api_key: serviceData.auth.api_key || "",
-        api_key_header: serviceData.auth.api_key_header || "X-API-Key",
+        type: (serviceData.auth.type as 'basic' | 'bearer' | 'api_key' | 'none') || 'basic',
+        base_url: serviceData.auth.base_url || '',
+        path: serviceData.auth.path || '',
+        username: serviceData.auth.username || '',
+        password: serviceData.auth.password || '',
+        token: serviceData.auth.token || '',
+        api_key: serviceData.auth.api_key || '',
+        api_key_header: serviceData.auth.api_key_header || 'X-API-Key',
         additional_headers: auth_additional_headers,
       },
       apis: (serviceData.apis || []).map((api) => {
         const apiHeaders = api.additional_headers || {};
-        const api_additional_headers = Object.entries(apiHeaders).map(
-          ([key, value]) => ({
-            key,
-            value: String(value),
-          })
-        );
+        const api_additional_headers = Object.entries(apiHeaders).map(([key, value]) => ({
+          key,
+          value: String(value),
+        }));
 
         const backendQueryParams = api.backend_query_params || {};
-        const backend_query_params = Object.entries(backendQueryParams).map(
-          ([key, value]) => ({
-            key,
-            value: String(value),
-          })
-        );
+        const backend_query_params = Object.entries(backendQueryParams).map(([key, value]) => ({
+          key,
+          value: String(value),
+        }));
 
         const outputMapper = api.output_mapper || {};
-        const output_mapper = Object.entries(outputMapper).map(
-          ([key, value]) => ({
-            key,
-            value: String(value),
-          })
-        );
+        const output_mapper = Object.entries(outputMapper).map(([key, value]) => ({
+          key,
+          value: String(value),
+        }));
 
         return {
           id: api.id,
           version: api.version,
           path: api.path,
-          backend_path: api.backend_path || "",
-          method: api.method as "GET" | "POST" | "PUT" | "DELETE" | "PATCH",
+          backend_path: api.backend_path || '',
+          method: api.method as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH',
           additional_headers: api_additional_headers,
           backend_query_params: backend_query_params,
           output_mapper_enabled: api.output_mapper_enabled || false,
@@ -350,7 +315,7 @@ const ApiServiceDetail: React.FC = () => {
   useEffect(() => {
     if (!service) return;
 
-    let content = service.yaml_content || "";
+    let content = service.yaml_content || '';
     let parsedForm: ApiServiceForm | null = null;
 
     if (content) {
@@ -359,9 +324,7 @@ const ApiServiceDetail: React.FC = () => {
       // If YAML exists but couldn't be parsed, fall back to mapping service data
       if (!parsedForm) {
         parsedForm = mapServiceToForm(service);
-        notifyError(
-          "YAML could not be parsed. Showing form populated from service data instead."
-        );
+        notifyError('YAML could not be parsed. Showing form populated from service data instead.');
       }
     } else {
       // Fallback: map service object to form
@@ -378,14 +341,14 @@ const ApiServiceDetail: React.FC = () => {
 
   useEffect(() => {
     if (!appId) {
-      navigate("/apps");
+      navigate('/apps');
       return;
     }
   }, [appId, navigate]);
 
   // Sync Form -> YAML when switching to YAML view
   useEffect(() => {
-    if (view === "yaml" && editing) {
+    if (view === 'yaml' && editing) {
       const formValues = form.getValues();
       const generated = generateYaml(formValues);
       setYamlContent(generated);
@@ -394,7 +357,7 @@ const ApiServiceDetail: React.FC = () => {
 
   // Sync YAML -> Form when switching to Form view
   useEffect(() => {
-    if (view === "form" && yamlContent && editing) {
+    if (view === 'form' && yamlContent && editing) {
       const parsed = parseYaml(yamlContent);
       if (parsed) {
         form.reset(parsed);
@@ -407,7 +370,7 @@ const ApiServiceDetail: React.FC = () => {
 
     // Ensure we have the latest content based on current view
     const formValues = data || form.getValues();
-    const finalYaml = view === "form" ? generateYaml(formValues) : yamlContent;
+    const finalYaml = view === 'form' ? generateYaml(formValues) : yamlContent;
 
     setSaving(true);
     try {
@@ -415,22 +378,19 @@ const ApiServiceDetail: React.FC = () => {
 
       // Invalidate query to refetch updated data
       queryClient.invalidateQueries({
-        queryKey: getApiServiceKey(appId || "", id || ""),
+        queryKey: getApiServiceKey(appId || '', id || ''),
       });
-      queryClient.invalidateQueries({ queryKey: ["api-services", appId] });
+      queryClient.invalidateQueries({ queryKey: ['api-services', appId] });
 
       setYamlContent(finalYaml);
       const parsed = parseYaml(finalYaml);
       if (parsed) form.reset(parsed);
 
       setEditing(false);
-      notifySuccess("API Service updated successfully");
+      notifySuccess('API Service updated successfully');
     } catch (error: any) {
-      console.error("Error updating API service:", error);
-      const errorMessage =
-        error?.response?.data?.meta?.error ||
-        error?.message ||
-        "Failed to update API service";
+      console.error('Error updating API service:', error);
+      const errorMessage = error?.response?.data?.meta?.error || error?.message || 'Failed to update API service';
       notifyError(errorMessage);
     } finally {
       setSaving(false);
@@ -442,16 +402,16 @@ const ApiServiceDetail: React.FC = () => {
 
     try {
       await floConsoleService.apiServiceService.deleteApiService(id);
-      notifySuccess("API Service deleted successfully");
+      notifySuccess('API Service deleted successfully');
       navigate(`/apps/${appId}/api-services`);
     } catch (error) {
-      console.error("Error deleting API service:", error);
-      notifyError("Failed to delete API service");
+      console.error('Error deleting API service:', error);
+      notifyError('Failed to delete API service');
     }
   };
 
   const handleAddHeader = () => {
-    authHeadersFieldArray.append({ key: "", value: "" });
+    authHeadersFieldArray.append({ key: '', value: '' });
   };
 
   const handleRemoveHeader = (index: number) => {
@@ -460,11 +420,11 @@ const ApiServiceDetail: React.FC = () => {
 
   const handleAddApi = () => {
     apisFieldArray.append({
-      id: "",
-      version: "v1",
-      path: "",
-      backend_path: "",
-      method: "GET",
+      id: '',
+      version: 'v1',
+      path: '',
+      backend_path: '',
+      method: 'GET',
       additional_headers: [],
       backend_query_params: [],
       output_mapper_enabled: false,
@@ -477,17 +437,12 @@ const ApiServiceDetail: React.FC = () => {
   };
 
   const handleAddApiHeader = (apiIndex: number) => {
-    const currentHeaders =
-      form.getValues(`apis.${apiIndex}.additional_headers`) || [];
-    form.setValue(`apis.${apiIndex}.additional_headers`, [
-      ...currentHeaders,
-      { key: "", value: "" },
-    ]);
+    const currentHeaders = form.getValues(`apis.${apiIndex}.additional_headers`) || [];
+    form.setValue(`apis.${apiIndex}.additional_headers`, [...currentHeaders, { key: '', value: '' }]);
   };
 
   const handleRemoveApiHeader = (apiIndex: number, headerIndex: number) => {
-    const currentHeaders =
-      form.getValues(`apis.${apiIndex}.additional_headers`) || [];
+    const currentHeaders = form.getValues(`apis.${apiIndex}.additional_headers`) || [];
     form.setValue(
       `apis.${apiIndex}.additional_headers`,
       currentHeaders.filter((_, i) => i !== headerIndex)
@@ -495,20 +450,12 @@ const ApiServiceDetail: React.FC = () => {
   };
 
   const handleAddBackendQueryParam = (apiIndex: number) => {
-    const currentParams =
-      form.getValues(`apis.${apiIndex}.backend_query_params`) || [];
-    form.setValue(`apis.${apiIndex}.backend_query_params`, [
-      ...currentParams,
-      { key: "", value: "" },
-    ]);
+    const currentParams = form.getValues(`apis.${apiIndex}.backend_query_params`) || [];
+    form.setValue(`apis.${apiIndex}.backend_query_params`, [...currentParams, { key: '', value: '' }]);
   };
 
-  const handleRemoveBackendQueryParam = (
-    apiIndex: number,
-    paramIndex: number
-  ) => {
-    const currentParams =
-      form.getValues(`apis.${apiIndex}.backend_query_params`) || [];
+  const handleRemoveBackendQueryParam = (apiIndex: number, paramIndex: number) => {
+    const currentParams = form.getValues(`apis.${apiIndex}.backend_query_params`) || [];
     form.setValue(
       `apis.${apiIndex}.backend_query_params`,
       currentParams.filter((_, i) => i !== paramIndex)
@@ -516,17 +463,12 @@ const ApiServiceDetail: React.FC = () => {
   };
 
   const handleAddOutputMapper = (apiIndex: number) => {
-    const currentMappers =
-      form.getValues(`apis.${apiIndex}.output_mapper`) || [];
-    form.setValue(`apis.${apiIndex}.output_mapper`, [
-      ...currentMappers,
-      { key: "", value: "" },
-    ]);
+    const currentMappers = form.getValues(`apis.${apiIndex}.output_mapper`) || [];
+    form.setValue(`apis.${apiIndex}.output_mapper`, [...currentMappers, { key: '', value: '' }]);
   };
 
   const handleRemoveOutputMapper = (apiIndex: number, mapperIndex: number) => {
-    const currentMappers =
-      form.getValues(`apis.${apiIndex}.output_mapper`) || [];
+    const currentMappers = form.getValues(`apis.${apiIndex}.output_mapper`) || [];
     form.setValue(
       `apis.${apiIndex}.output_mapper`,
       currentMappers.filter((_, i) => i !== mapperIndex)
@@ -534,16 +476,12 @@ const ApiServiceDetail: React.FC = () => {
   };
 
   return (
-    <div className="h-full bg-white px-8 pb-[200px] pt-8">
+    <div className="h-full bg-white px-8 pt-8 pb-[200px]">
       <Breadcrumb className="mb-6">
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate("/apps")}
-                className="hover:text-foreground cursor-pointer"
-              >
+              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
                 Apps
               </button>
             </BreadcrumbLink>
@@ -562,25 +500,18 @@ const ApiServiceDetail: React.FC = () => {
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
-            <BreadcrumbPage>
-              {service?.name || service?.service_id || id}
-            </BreadcrumbPage>
+            <BreadcrumbPage>{service?.name || service?.service_id || id}</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
 
       <div className="flex w-full flex-col gap-10 pb-5">
         <div className="flex items-center justify-between">
-          <p className="text-2xl font-semibold leading-normal text-black">
-            {service?.name || service?.service_id}
-          </p>
+          <p className="text-2xl leading-normal font-semibold text-black">{service?.name || service?.service_id}</p>
           <div className="flex gap-4">
             {editing ? (
               <>
-                <Button
-                  onClick={form.handleSubmit(handleSave)}
-                  loading={saving}
-                >
+                <Button onClick={form.handleSubmit(handleSave)} loading={saving}>
                   Save
                 </Button>
                 <Button
@@ -589,9 +520,7 @@ const ApiServiceDetail: React.FC = () => {
                     setEditing(false);
                     // Revert changes by resetting form to service data
                     if (service) {
-                      const parsed = service.yaml_content
-                        ? parseYaml(service.yaml_content)
-                        : mapServiceToForm(service);
+                      const parsed = service.yaml_content ? parseYaml(service.yaml_content) : mapServiceToForm(service);
                       if (parsed) {
                         form.reset(parsed);
                         const yaml = generateYaml(parsed);
@@ -608,10 +537,7 @@ const ApiServiceDetail: React.FC = () => {
                 Edit
               </Button>
             )}
-            <Button
-              variant="destructive"
-              onClick={() => setShowDeleteConfirm(true)}
-            >
+            <Button variant="destructive" onClick={() => setShowDeleteConfirm(true)}>
               Delete
             </Button>
           </div>
@@ -622,42 +548,33 @@ const ApiServiceDetail: React.FC = () => {
           <div className="flex border-b border-gray-200">
             <button
               className={clsx(
-                "px-4 py-2 text-sm font-medium transition-colors",
-                view === "form"
-                  ? "border-b-2 border-blue-500 text-blue-600"
-                  : "text-gray-500 hover:text-gray-700"
+                'px-4 py-2 text-sm font-medium transition-colors',
+                view === 'form' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-700'
               )}
-              onClick={() => setView("form")}
+              onClick={() => setView('form')}
             >
               Form View
             </button>
             <button
               className={clsx(
-                "px-4 py-2 text-sm font-medium transition-colors",
-                view === "yaml"
-                  ? "border-b-2 border-blue-500 text-blue-600"
-                  : "text-gray-500 hover:text-gray-700"
+                'px-4 py-2 text-sm font-medium transition-colors',
+                view === 'yaml' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-700'
               )}
-              onClick={() => setView("yaml")}
+              onClick={() => setView('yaml')}
             >
               YAML View
             </button>
           </div>
 
-          {view === "form" ? (
+          {view === 'form' ? (
             <Form {...form}>
               <form
                 onSubmit={form.handleSubmit(handleSave)}
-                className={clsx(
-                  "flex w-full flex-col gap-8",
-                  !editing && "pointer-events-none opacity-80"
-                )}
+                className={clsx('flex w-full flex-col gap-8', !editing && 'pointer-events-none opacity-80')}
               >
                 {/* Service Details */}
                 <div className="flex w-full flex-col gap-6 rounded-lg border border-gray-200 bg-white p-6">
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    Service Details
-                  </h3>
+                  <h3 className="text-lg font-semibold text-gray-900">Service Details</h3>
                   <div className="grid w-full gap-6 lg:grid-cols-2">
                     <FormField
                       control={form.control}
@@ -666,11 +583,7 @@ const ApiServiceDetail: React.FC = () => {
                         <FormItem>
                           <FormLabel>Service ID</FormLabel>
                           <FormControl>
-                            <Input
-                              placeholder="e.g., my-service-v1"
-                              disabled={!editing}
-                              {...field}
-                            />
+                            <Input placeholder="e.g., my-service-v1" disabled={!editing} {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -683,11 +596,7 @@ const ApiServiceDetail: React.FC = () => {
                         <FormItem>
                           <FormLabel>Base URL</FormLabel>
                           <FormControl>
-                            <Input
-                              placeholder="https://api.example.com"
-                              disabled={!editing}
-                              {...field}
-                            />
+                            <Input placeholder="https://api.example.com" disabled={!editing} {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -698,9 +607,7 @@ const ApiServiceDetail: React.FC = () => {
 
                 {/* Authentication */}
                 <div className="flex w-full flex-col gap-6 rounded-lg border border-gray-200 bg-white p-6">
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    Authentication
-                  </h3>
+                  <h3 className="text-lg font-semibold text-gray-900">Authentication</h3>
                   <div className="grid w-full gap-6 lg:grid-cols-4">
                     <FormField
                       control={form.control}
@@ -721,11 +628,7 @@ const ApiServiceDetail: React.FC = () => {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Type</FormLabel>
-                          <Select
-                            onValueChange={field.onChange}
-                            value={field.value}
-                            disabled={!editing}
-                          >
+                          <Select onValueChange={field.onChange} value={field.value} disabled={!editing}>
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="Select auth type" />
@@ -733,9 +636,7 @@ const ApiServiceDetail: React.FC = () => {
                             </FormControl>
                             <SelectContent>
                               <SelectItem value="basic">Basic Auth</SelectItem>
-                              <SelectItem value="bearer">
-                                Bearer Token
-                              </SelectItem>
+                              <SelectItem value="bearer">Bearer Token</SelectItem>
                               <SelectItem value="api_key">API Key</SelectItem>
                               <SelectItem value="none">None</SelectItem>
                             </SelectContent>
@@ -751,11 +652,7 @@ const ApiServiceDetail: React.FC = () => {
                         <FormItem>
                           <FormLabel>Version</FormLabel>
                           <FormControl>
-                            <Input
-                              placeholder="v1"
-                              disabled={!editing}
-                              {...field}
-                            />
+                            <Input placeholder="v1" disabled={!editing} {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -768,11 +665,7 @@ const ApiServiceDetail: React.FC = () => {
                         <FormItem>
                           <FormLabel>Auth Base URL (Optional)</FormLabel>
                           <FormControl>
-                            <Input
-                              placeholder="Override service base URL"
-                              disabled={!editing}
-                              {...field}
-                            />
+                            <Input placeholder="Override service base URL" disabled={!editing} {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -785,18 +678,14 @@ const ApiServiceDetail: React.FC = () => {
                         <FormItem>
                           <FormLabel>Auth Path (Optional)</FormLabel>
                           <FormControl>
-                            <Input
-                              placeholder="/auth/token"
-                              disabled={!editing}
-                              {...field}
-                            />
+                            <Input placeholder="/auth/token" disabled={!editing} {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
 
-                    {form.watch("auth.type") === "basic" && (
+                    {form.watch('auth.type') === 'basic' && (
                       <>
                         <FormField
                           control={form.control}
@@ -818,11 +707,7 @@ const ApiServiceDetail: React.FC = () => {
                             <FormItem>
                               <FormLabel>Password</FormLabel>
                               <FormControl>
-                                <Input
-                                  type="password"
-                                  disabled={!editing}
-                                  {...field}
-                                />
+                                <Input type="password" disabled={!editing} {...field} />
                               </FormControl>
                               <FormMessage />
                             </FormItem>
@@ -830,7 +715,7 @@ const ApiServiceDetail: React.FC = () => {
                         />
                       </>
                     )}
-                    {form.watch("auth.type") === "bearer" && (
+                    {form.watch('auth.type') === 'bearer' && (
                       <FormField
                         control={form.control}
                         name="auth.token"
@@ -845,7 +730,7 @@ const ApiServiceDetail: React.FC = () => {
                         )}
                       />
                     )}
-                    {form.watch("auth.type") === "api_key" && (
+                    {form.watch('auth.type') === 'api_key' && (
                       <>
                         <FormField
                           control={form.control}
@@ -867,11 +752,7 @@ const ApiServiceDetail: React.FC = () => {
                             <FormItem>
                               <FormLabel>Header Name</FormLabel>
                               <FormControl>
-                                <Input
-                                  placeholder="X-API-Key"
-                                  disabled={!editing}
-                                  {...field}
-                                />
+                                <Input placeholder="X-API-Key" disabled={!editing} {...field} />
                               </FormControl>
                               <FormMessage />
                             </FormItem>
@@ -884,16 +765,8 @@ const ApiServiceDetail: React.FC = () => {
                   {/* Additional Headers */}
                   <div className="mt-4 w-full">
                     <div className="mb-4 flex items-center justify-between">
-                      <Label className="text-sm font-medium">
-                        Additional Headers
-                      </Label>
-                      <Button
-                        type="button"
-                        onClick={handleAddHeader}
-                        variant="outline"
-                        size="icon"
-                        disabled={!editing}
-                      >
+                      <Label className="text-sm font-medium">Additional Headers</Label>
+                      <Button type="button" onClick={handleAddHeader} variant="outline" size="icon" disabled={!editing}>
                         <Plus />
                       </Button>
                     </div>
@@ -906,11 +779,7 @@ const ApiServiceDetail: React.FC = () => {
                             render={({ field }) => (
                               <FormItem className="flex-1">
                                 <FormControl>
-                                  <Input
-                                    placeholder="Header Key"
-                                    disabled={!editing}
-                                    {...field}
-                                  />
+                                  <Input placeholder="Header Key" disabled={!editing} {...field} />
                                 </FormControl>
                                 <FormMessage />
                               </FormItem>
@@ -922,11 +791,7 @@ const ApiServiceDetail: React.FC = () => {
                             render={({ field }) => (
                               <FormItem className="flex-1">
                                 <FormControl>
-                                  <Input
-                                    placeholder="Header Value"
-                                    disabled={!editing}
-                                    {...field}
-                                  />
+                                  <Input placeholder="Header Value" disabled={!editing} {...field} />
                                 </FormControl>
                                 <FormMessage />
                               </FormItem>
@@ -950,16 +815,8 @@ const ApiServiceDetail: React.FC = () => {
                 {/* APIs */}
                 <div className="flex w-full flex-col gap-6 rounded-lg border border-gray-200 bg-white p-6">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-semibold text-gray-900">
-                      API Endpoints
-                    </h3>
-                    <Button
-                      type="button"
-                      onClick={handleAddApi}
-                      variant="outline"
-                      size="icon"
-                      disabled={!editing}
-                    >
+                    <h3 className="text-lg font-semibold text-gray-900">API Endpoints</h3>
+                    <Button type="button" onClick={handleAddApi} variant="outline" size="icon" disabled={!editing}>
                       <Plus />
                     </Button>
                   </div>
@@ -979,11 +836,7 @@ const ApiServiceDetail: React.FC = () => {
                                 <FormItem>
                                   <FormLabel>Endpoint ID</FormLabel>
                                   <FormControl>
-                                    <Input
-                                      placeholder="e.g., get-users"
-                                      disabled={!editing}
-                                      {...field}
-                                    />
+                                    <Input placeholder="e.g., get-users" disabled={!editing} {...field} />
                                   </FormControl>
                                   <FormMessage />
                                 </FormItem>
@@ -995,11 +848,7 @@ const ApiServiceDetail: React.FC = () => {
                               render={({ field }) => (
                                 <FormItem>
                                   <FormLabel>Method</FormLabel>
-                                  <Select
-                                    onValueChange={field.onChange}
-                                    value={field.value}
-                                    disabled={!editing}
-                                  >
+                                  <Select onValueChange={field.onChange} value={field.value} disabled={!editing}>
                                     <FormControl>
                                       <SelectTrigger>
                                         <SelectValue placeholder="Select method" />
@@ -1009,12 +858,8 @@ const ApiServiceDetail: React.FC = () => {
                                       <SelectItem value="GET">GET</SelectItem>
                                       <SelectItem value="POST">POST</SelectItem>
                                       <SelectItem value="PUT">PUT</SelectItem>
-                                      <SelectItem value="DELETE">
-                                        DELETE
-                                      </SelectItem>
-                                      <SelectItem value="PATCH">
-                                        PATCH
-                                      </SelectItem>
+                                      <SelectItem value="DELETE">DELETE</SelectItem>
+                                      <SelectItem value="PATCH">PATCH</SelectItem>
                                     </SelectContent>
                                   </Select>
                                   <FormMessage />
@@ -1028,11 +873,7 @@ const ApiServiceDetail: React.FC = () => {
                                 <FormItem>
                                   <FormLabel>Version</FormLabel>
                                   <FormControl>
-                                    <Input
-                                      placeholder="v1"
-                                      disabled={!editing}
-                                      {...field}
-                                    />
+                                    <Input placeholder="v1" disabled={!editing} {...field} />
                                   </FormControl>
                                   <FormMessage />
                                 </FormItem>
@@ -1045,11 +886,7 @@ const ApiServiceDetail: React.FC = () => {
                                 <FormItem>
                                   <FormLabel>Path</FormLabel>
                                   <FormControl>
-                                    <Input
-                                      placeholder="/api/v1/users"
-                                      disabled={!editing}
-                                      {...field}
-                                    />
+                                    <Input placeholder="/api/v1/users" disabled={!editing} {...field} />
                                   </FormControl>
                                   <FormMessage />
                                 </FormItem>
@@ -1062,11 +899,7 @@ const ApiServiceDetail: React.FC = () => {
                                 <FormItem>
                                   <FormLabel>Backend Path</FormLabel>
                                   <FormControl>
-                                    <Input
-                                      placeholder="users/all"
-                                      disabled={!editing}
-                                      {...field}
-                                    />
+                                    <Input placeholder="users/all" disabled={!editing} {...field} />
                                   </FormControl>
                                   <FormMessage />
                                 </FormItem>
@@ -1077,9 +910,7 @@ const ApiServiceDetail: React.FC = () => {
                           {/* API Additional Headers */}
                           <div className="mt-6 w-full">
                             <div className="mb-4 flex items-center justify-between">
-                              <Label className="text-sm font-medium">
-                                Additional Headers
-                              </Label>
+                              <Label className="text-sm font-medium">Additional Headers</Label>
                               <Button
                                 type="button"
                                 onClick={() => handleAddApiHeader(index)}
@@ -1091,71 +922,55 @@ const ApiServiceDetail: React.FC = () => {
                               </Button>
                             </div>
                             <div className="flex w-full flex-col gap-3">
-                              {(
-                                form.watch(
-                                  `apis.${index}.additional_headers`
-                                ) || []
-                              ).map((_header: any, hIndex: number) => (
-                                <div key={hIndex} className="flex w-full gap-3">
-                                  <FormField
-                                    control={form.control}
-                                    name={`apis.${index}.additional_headers.${hIndex}.key`}
-                                    render={({ field }) => (
-                                      <FormItem className="flex-1">
-                                        <FormControl>
-                                          <Input
-                                            placeholder="Key"
-                                            disabled={!editing}
-                                            {...field}
-                                          />
-                                        </FormControl>
-                                        <FormMessage />
-                                      </FormItem>
-                                    )}
-                                  />
-                                  <FormField
-                                    control={form.control}
-                                    name={`apis.${index}.additional_headers.${hIndex}.value`}
-                                    render={({ field }) => (
-                                      <FormItem className="flex-1">
-                                        <FormControl>
-                                          <Input
-                                            placeholder="Value"
-                                            disabled={!editing}
-                                            {...field}
-                                          />
-                                        </FormControl>
-                                        <FormMessage />
-                                      </FormItem>
-                                    )}
-                                  />
-                                  <Button
-                                    type="button"
-                                    onClick={() =>
-                                      handleRemoveApiHeader(index, hIndex)
-                                    }
-                                    variant="outline"
-                                    size="icon"
-                                    disabled={!editing}
-                                  >
-                                    <Trash2 color="#DD5252" />
-                                  </Button>
-                                </div>
-                              ))}
+                              {(form.watch(`apis.${index}.additional_headers`) || []).map(
+                                (_header: any, hIndex: number) => (
+                                  <div key={hIndex} className="flex w-full gap-3">
+                                    <FormField
+                                      control={form.control}
+                                      name={`apis.${index}.additional_headers.${hIndex}.key`}
+                                      render={({ field }) => (
+                                        <FormItem className="flex-1">
+                                          <FormControl>
+                                            <Input placeholder="Key" disabled={!editing} {...field} />
+                                          </FormControl>
+                                          <FormMessage />
+                                        </FormItem>
+                                      )}
+                                    />
+                                    <FormField
+                                      control={form.control}
+                                      name={`apis.${index}.additional_headers.${hIndex}.value`}
+                                      render={({ field }) => (
+                                        <FormItem className="flex-1">
+                                          <FormControl>
+                                            <Input placeholder="Value" disabled={!editing} {...field} />
+                                          </FormControl>
+                                          <FormMessage />
+                                        </FormItem>
+                                      )}
+                                    />
+                                    <Button
+                                      type="button"
+                                      onClick={() => handleRemoveApiHeader(index, hIndex)}
+                                      variant="outline"
+                                      size="icon"
+                                      disabled={!editing}
+                                    >
+                                      <Trash2 color="#DD5252" />
+                                    </Button>
+                                  </div>
+                                )
+                              )}
                             </div>
                           </div>
 
                           {/* Backend Query Params */}
                           <div className="mt-6 w-full">
                             <div className="mb-4 flex items-center justify-between">
-                              <Label className="text-sm font-medium">
-                                Backend Query Params
-                              </Label>
+                              <Label className="text-sm font-medium">Backend Query Params</Label>
                               <Button
                                 type="button"
-                                onClick={() =>
-                                  handleAddBackendQueryParam(index)
-                                }
+                                onClick={() => handleAddBackendQueryParam(index)}
                                 variant="outline"
                                 size="icon"
                                 disabled={!editing}
@@ -1164,60 +979,45 @@ const ApiServiceDetail: React.FC = () => {
                               </Button>
                             </div>
                             <div className="flex w-full flex-col gap-3">
-                              {(
-                                form.watch(
-                                  `apis.${index}.backend_query_params`
-                                ) || []
-                              ).map((_param: any, pIndex: number) => (
-                                <div key={pIndex} className="flex w-full gap-3">
-                                  <FormField
-                                    control={form.control}
-                                    name={`apis.${index}.backend_query_params.${pIndex}.key`}
-                                    render={({ field }) => (
-                                      <FormItem className="flex-1">
-                                        <FormControl>
-                                          <Input
-                                            placeholder="Key"
-                                            disabled={!editing}
-                                            {...field}
-                                          />
-                                        </FormControl>
-                                        <FormMessage />
-                                      </FormItem>
-                                    )}
-                                  />
-                                  <FormField
-                                    control={form.control}
-                                    name={`apis.${index}.backend_query_params.${pIndex}.value`}
-                                    render={({ field }) => (
-                                      <FormItem className="flex-1">
-                                        <FormControl>
-                                          <Input
-                                            placeholder="Value"
-                                            disabled={!editing}
-                                            {...field}
-                                          />
-                                        </FormControl>
-                                        <FormMessage />
-                                      </FormItem>
-                                    )}
-                                  />
-                                  <Button
-                                    type="button"
-                                    onClick={() =>
-                                      handleRemoveBackendQueryParam(
-                                        index,
-                                        pIndex
-                                      )
-                                    }
-                                    variant="outline"
-                                    size="icon"
-                                    disabled={!editing}
-                                  >
-                                    <Trash2 color="#DD5252" />
-                                  </Button>
-                                </div>
-                              ))}
+                              {(form.watch(`apis.${index}.backend_query_params`) || []).map(
+                                (_param: any, pIndex: number) => (
+                                  <div key={pIndex} className="flex w-full gap-3">
+                                    <FormField
+                                      control={form.control}
+                                      name={`apis.${index}.backend_query_params.${pIndex}.key`}
+                                      render={({ field }) => (
+                                        <FormItem className="flex-1">
+                                          <FormControl>
+                                            <Input placeholder="Key" disabled={!editing} {...field} />
+                                          </FormControl>
+                                          <FormMessage />
+                                        </FormItem>
+                                      )}
+                                    />
+                                    <FormField
+                                      control={form.control}
+                                      name={`apis.${index}.backend_query_params.${pIndex}.value`}
+                                      render={({ field }) => (
+                                        <FormItem className="flex-1">
+                                          <FormControl>
+                                            <Input placeholder="Value" disabled={!editing} {...field} />
+                                          </FormControl>
+                                          <FormMessage />
+                                        </FormItem>
+                                      )}
+                                    />
+                                    <Button
+                                      type="button"
+                                      onClick={() => handleRemoveBackendQueryParam(index, pIndex)}
+                                      variant="outline"
+                                      size="icon"
+                                      disabled={!editing}
+                                    >
+                                      <Trash2 color="#DD5252" />
+                                    </Button>
+                                  </div>
+                                )
+                              )}
                             </div>
                           </div>
 
@@ -1229,7 +1029,7 @@ const ApiServiceDetail: React.FC = () => {
                                   control={form.control}
                                   name={`apis.${index}.output_mapper_enabled`}
                                   render={({ field }) => (
-                                    <FormItem className="flex flex-row items-center space-x-2 space-y-0">
+                                    <FormItem className="flex flex-row items-center space-y-0 space-x-2">
                                       <FormControl>
                                         <Checkbox
                                           checked={field.value}
@@ -1237,16 +1037,12 @@ const ApiServiceDetail: React.FC = () => {
                                           disabled={!editing}
                                         />
                                       </FormControl>
-                                      <FormLabel className="mb-0 cursor-pointer">
-                                        Enable Output Mapper
-                                      </FormLabel>
+                                      <FormLabel className="mb-0 cursor-pointer">Enable Output Mapper</FormLabel>
                                     </FormItem>
                                   )}
                                 />
                               </div>
-                              {form.watch(
-                                `apis.${index}.output_mapper_enabled`
-                              ) && (
+                              {form.watch(`apis.${index}.output_mapper_enabled`) && (
                                 <Button
                                   type="button"
                                   onClick={() => handleAddOutputMapper(index)}
@@ -1259,63 +1055,47 @@ const ApiServiceDetail: React.FC = () => {
                               )}
                             </div>
 
-                            {form.watch(
-                              `apis.${index}.output_mapper_enabled`
-                            ) && (
+                            {form.watch(`apis.${index}.output_mapper_enabled`) && (
                               <div className="flex w-full flex-col gap-3">
-                                {(
-                                  form.watch(`apis.${index}.output_mapper`) ||
-                                  []
-                                ).map((_mapper: any, mIndex: number) => (
-                                  <div
-                                    key={mIndex}
-                                    className="flex w-full gap-3"
-                                  >
-                                    <FormField
-                                      control={form.control}
-                                      name={`apis.${index}.output_mapper.${mIndex}.key`}
-                                      render={({ field }) => (
-                                        <FormItem className="flex-1">
-                                          <FormControl>
-                                            <Input
-                                              placeholder="Source Field"
-                                              disabled={!editing}
-                                              {...field}
-                                            />
-                                          </FormControl>
-                                          <FormMessage />
-                                        </FormItem>
-                                      )}
-                                    />
-                                    <FormField
-                                      control={form.control}
-                                      name={`apis.${index}.output_mapper.${mIndex}.value`}
-                                      render={({ field }) => (
-                                        <FormItem className="flex-1">
-                                          <FormControl>
-                                            <Input
-                                              placeholder="Target Field"
-                                              disabled={!editing}
-                                              {...field}
-                                            />
-                                          </FormControl>
-                                          <FormMessage />
-                                        </FormItem>
-                                      )}
-                                    />
-                                    <Button
-                                      type="button"
-                                      onClick={() =>
-                                        handleRemoveOutputMapper(index, mIndex)
-                                      }
-                                      variant="outline"
-                                      size="icon"
-                                      disabled={!editing}
-                                    >
-                                      <Trash2 color="#DD5252" />
-                                    </Button>
-                                  </div>
-                                ))}
+                                {(form.watch(`apis.${index}.output_mapper`) || []).map(
+                                  (_mapper: any, mIndex: number) => (
+                                    <div key={mIndex} className="flex w-full gap-3">
+                                      <FormField
+                                        control={form.control}
+                                        name={`apis.${index}.output_mapper.${mIndex}.key`}
+                                        render={({ field }) => (
+                                          <FormItem className="flex-1">
+                                            <FormControl>
+                                              <Input placeholder="Source Field" disabled={!editing} {...field} />
+                                            </FormControl>
+                                            <FormMessage />
+                                          </FormItem>
+                                        )}
+                                      />
+                                      <FormField
+                                        control={form.control}
+                                        name={`apis.${index}.output_mapper.${mIndex}.value`}
+                                        render={({ field }) => (
+                                          <FormItem className="flex-1">
+                                            <FormControl>
+                                              <Input placeholder="Target Field" disabled={!editing} {...field} />
+                                            </FormControl>
+                                            <FormMessage />
+                                          </FormItem>
+                                        )}
+                                      />
+                                      <Button
+                                        type="button"
+                                        onClick={() => handleRemoveOutputMapper(index, mIndex)}
+                                        variant="outline"
+                                        size="icon"
+                                        disabled={!editing}
+                                      >
+                                        <Trash2 color="#DD5252" />
+                                      </Button>
+                                    </div>
+                                  )
+                                )}
                               </div>
                             )}
                           </div>
@@ -1350,8 +1130,8 @@ const ApiServiceDetail: React.FC = () => {
                 onChange={(value: string) => setYamlContent(value)}
                 theme="dark"
                 className={clsx(
-                  "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 font-mono text-sm text-black outline-none",
-                  !editing && "pointer-events-none opacity-80"
+                  'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 font-mono text-sm text-black outline-none',
+                  !editing && 'pointer-events-none opacity-80'
                 )}
                 placeholder="Enter your API service YAML configuration..."
               />
