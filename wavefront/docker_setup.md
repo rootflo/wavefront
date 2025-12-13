@@ -236,6 +236,9 @@ WORKFLOW_WORKER_TOPIC: Workflow Pub/Sub topic
 - `APP_ENV`: Application environment
 - `ENABLE_CLOUD_KMS`: Enable cloud KMS for key management (`true` or `false`)
 - `PASSTHROUGH_SECRET`: Secret for service-to-service authentication (**IMPORTANT**: Must be the same as floware and call_processing)
+- `DEFAULT_APP_NAME`: Name for the default app created automatically (e.g., `floware-dev`)
+- `DEFAULT_APP_PUBLIC_URL`: Public URL for the default app (e.g., `http://floware:8001`)
+- `DEFAULT_APP_PRIVATE_URL`: Private URL for the default app (e.g., `http://floware:8001`)
 
 ### Call Processing Service
 
@@ -514,7 +517,26 @@ Increase Docker memory limit in Docker Desktop settings (recommended: 8GB minimu
 
 After starting all services, you need to configure floconsole to connect to floware:
 
-### Create Application in FloConsole
+### Option 1: Automatic App Creation (Recommended)
+
+Configure the default app using environment variables in docker-compose.yml:
+
+```yaml
+DEFAULT_APP_NAME: floware-dev
+DEFAULT_APP_PUBLIC_URL: http://floware:8001
+DEFAULT_APP_PRIVATE_URL: http://floware:8001
+```
+
+When the FloConsole service starts, it will automatically create this app with `success` status if these environment variables are set.
+
+**Why `http://floware:8001` and not `http://localhost:8001`?**
+- Inside Docker containers, services communicate using Docker service names
+- `localhost` inside a container refers to the container itself, not other containers
+- Using `http://floware:8001` allows floconsole to properly proxy requests to the floware service
+
+### Option 2: Manual App Creation
+
+If you prefer to create the app manually or need additional apps:
 
 1. **Access FloConsole**: Navigate to `http://localhost:8002`
 
@@ -525,12 +547,8 @@ After starting all services, you need to configure floconsole to connect to flow
 3. **Create New App**:
    - **Deployment Type**: Select `Manual`
    - **App Name**: Any name you prefer (e.g., `floware-dev`)
-   - **App URL**: `http://floware:8001` (**IMPORTANT**: Use Docker service name, not `localhost`)
-
-**Why `http://floware:8001` and not `http://localhost:8001`?**
-- Inside Docker containers, services communicate using Docker service names
-- `localhost` inside a container refers to the container itself, not other containers
-- Using `http://floware:8001` allows floconsole to properly proxy requests to the floware service
+   - **Public URL**: `http://floware:8001` (**IMPORTANT**: Use Docker service name, not `localhost`)
+   - **Private URL**: `http://floware:8001`
 
 ## Production Deployment Notes
 

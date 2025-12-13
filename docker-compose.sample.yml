@@ -319,6 +319,12 @@ services:
       - APP_ENV=<YOUR_APP_ENV>
       - ENABLE_CLOUD_KMS=<YOUR_ENABLE_CLOUD_KMS>
       - PASSTHROUGH_SECRET=<YOUR_PASSTHROUGH_SECRET>
+      # ===============================================
+      # Default App
+      # ===============================================
+      - DEFAULT_APP_NAME=floware-dev
+      - DEFAULT_APP_PUBLIC_URL=http://floware:8001
+      - DEFAULT_APP_PRIVATE_URL=http://floware:8001
     depends_on:
       postgres-console:
         condition: service_healthy
