@@ -16,8 +16,21 @@ echo -e "${BLUE}Installing dependencies for all projects...${NC}\n"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# 1. Install dependencies for flo_ai using uv
-echo -e "${YELLOW}[1/3] Installing dependencies for flo_ai using uv...${NC}"
+# 1. Install pre-commit using uv in the root and run pre-commit install
+echo -e "${YELLOW}[1/4] Installing pre-commit using uv...${NC}"
+if command -v uv &> /dev/null; then
+    uv pip install pre-commit --system
+    echo -e "${GREEN}✓ pre-commit installed successfully${NC}"
+    echo -e "${YELLOW}Running pre-commit install...${NC}"
+    uv run pre-commit install
+    echo -e "${GREEN}✓ pre-commit hooks installed successfully${NC}\n"
+else
+    echo -e "${YELLOW}Warning: uv not found. Please install uv first.${NC}\n"
+    exit 1
+fi
+
+# 2. Install dependencies for flo_ai using uv
+echo -e "${YELLOW}[2/4] Installing dependencies for flo_ai using uv...${NC}"
 cd flo_ai
 if command -v uv &> /dev/null; then
     uv sync
@@ -28,8 +41,8 @@ else
 fi
 cd ..
 
-# 2. Install dependencies for wavefront/server using uv
-echo -e "${YELLOW}[2/3] Installing dependencies for wavefront/server using uv...${NC}"
+# 3. Install dependencies for wavefront/server using uv
+echo -e "${YELLOW}[3/4] Installing dependencies for wavefront/server using uv...${NC}"
 cd wavefront/server
 if command -v uv &> /dev/null; then
     uv sync --all-packages
@@ -40,8 +53,8 @@ else
 fi
 cd ../..
 
-# 3. Install dependencies for wavefront/client using pnpm
-echo -e "${YELLOW}[3/3] Installing dependencies for wavefront/client using pnpm...${NC}"
+# 4. Install dependencies for wavefront/client using pnpm
+echo -e "${YELLOW}[4/4] Installing dependencies for wavefront/client using pnpm...${NC}"
 cd wavefront/client
 if command -v pnpm &> /dev/null; then
     pnpm install
