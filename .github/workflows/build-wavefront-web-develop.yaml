@@ -2,9 +2,6 @@ name: (Develop) Build and Push Wavefront Web app to AWS and GCP
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - wavefront
 
 env:
   PROJECT_ID: aesy-330511
