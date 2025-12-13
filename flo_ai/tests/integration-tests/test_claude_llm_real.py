@@ -322,7 +322,9 @@ class TestAnthropicReal:
     def test_format_tool_for_llm_with_optional_params(self):
         """Test format_tool_for_llm with optional parameters."""
 
-        def test_function(required_param: str, optional_param: str = None) -> str:
+        def test_function(
+            required_param: str, optional_param: str | None = None
+        ) -> str:
             return f'Result: {required_param} {optional_param}'
 
         tool = Tool(

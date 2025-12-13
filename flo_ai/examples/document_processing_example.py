@@ -13,12 +13,12 @@ import asyncio
 import os
 import base64
 from pathlib import Path
-from flo_ai.models import DocumentMessageContent, TextMessageContent, UserMessage
+from flo_ai.models import DocumentMessageContent, UserMessage
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import AgentBuilder
 from flo_ai.arium import AriumBuilder
 from flo_ai.llm import OpenAI, Gemini
 from flo_ai.models.document import DocumentType
@@ -288,7 +288,7 @@ async def example_2_document_workflow():
         result = await workflow.run(
             [
                 document,
-                UserMessage(TextMessageContent(text='process this document')),
+                UserMessage('process this document'),
             ]
         )
 

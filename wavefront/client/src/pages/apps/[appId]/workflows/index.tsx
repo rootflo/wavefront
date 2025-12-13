@@ -1,42 +1,33 @@
-import floConsoleService from "@app/api";
-import DeleteConfirmationDialog from "@app/components/DeleteConfirmationDialog";
-import { EmptyStateCard } from "@app/components/EmptyCard";
-import { ResourceCardSkeleton } from "@app/components/ResourceCard";
-import { Button } from "@app/components/ui/button";
-import { Input } from "@app/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@app/components/ui/select";
-import WorkflowCard from "@app/components/WorkflowCard";
-import { useGetNamespaces, useGetWorkflows } from "@app/hooks";
-import { getWorkflowsKey } from "@app/hooks/data/query-keys";
-import { useNotifyStore } from "@app/store";
-import { WorkflowListItem } from "@app/types/workflow";
-import { useQueryClient } from "@tanstack/react-query";
-import React, { useState } from "react";
-import { useNavigate, useParams } from "react-router";
-import CreateWorkflowDialog from "./CreateWorkflowDialog";
+import floConsoleService from '@app/api';
+import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
+import { EmptyStateCard } from '@app/components/EmptyCard';
+import { ResourceCardSkeleton } from '@app/components/ResourceCard';
+import { Button } from '@app/components/ui/button';
+import { Input } from '@app/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
+import WorkflowCard from '@app/components/WorkflowCard';
+import { useGetNamespaces, useGetWorkflows } from '@app/hooks';
+import { getWorkflowsKey } from '@app/hooks/data/query-keys';
+import { useNotifyStore } from '@app/store';
+import { WorkflowListItem } from '@app/types/workflow';
+import { useQueryClient } from '@tanstack/react-query';
+import React, { useState } from 'react';
+import { useNavigate, useParams } from 'react-router';
+import CreateWorkflowDialog from './CreateWorkflowDialog';
 
 const WorkflowManagement: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { notifySuccess, notifyError } = useNotifyStore();
-  const [searchTerm, setSearchTerm] = useState("");
-  const [namespace, setNamespace] = useState("");
+  const [searchTerm, setSearchTerm] = useState('');
+  const [namespace, setNamespace] = useState('');
   const [deleteItem, setDeleteItem] = useState<WorkflowListItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   // Fetch workflows and namespaces
-  const { data: workflows = [], isLoading: loading } = useGetWorkflows(
-    appId,
-    namespace || undefined
-  );
+  const { data: workflows = [], isLoading: loading } = useGetWorkflows(appId, namespace || undefined);
   const { data: namespaces = [] } = useGetNamespaces(appId);
 
   const filteredWorkflows = workflows.filter(
@@ -49,10 +40,7 @@ const WorkflowManagement: React.FC = () => {
     setNamespace(value);
   };
 
-  const handleDeleteClick = (
-    e: React.MouseEvent,
-    workflow: WorkflowListItem
-  ) => {
+  const handleDeleteClick = (e: React.MouseEvent, workflow: WorkflowListItem) => {
     e.stopPropagation();
     setDeleteItem(workflow);
   };
@@ -63,14 +51,14 @@ const WorkflowManagement: React.FC = () => {
     setDeleting(true);
     try {
       await floConsoleService.workflowService.deleteWorkflow(deleteItem.id);
-      notifySuccess("Workflow deleted successfully");
+      notifySuccess('Workflow deleted successfully');
       queryClient.invalidateQueries({
-        queryKey: getWorkflowsKey(appId || "", namespace || undefined),
+        queryKey: getWorkflowsKey(appId || '', namespace || undefined),
       });
       setDeleteItem(null);
     } catch (error) {
-      console.error("Error deleting workflow:", error);
-      notifyError("Failed to delete workflow");
+      console.error('Error deleting workflow:', error);
+      notifyError('Failed to delete workflow');
     } finally {
       setDeleting(false);
     }
@@ -86,7 +74,7 @@ const WorkflowManagement: React.FC = () => {
 
   const handleCreateSuccess = () => {
     queryClient.invalidateQueries({
-      queryKey: getWorkflowsKey(appId || "", namespace || undefined),
+      queryKey: getWorkflowsKey(appId || '', namespace || undefined),
     });
     setCreateDialogOpen(false);
   };
@@ -95,10 +83,7 @@ const WorkflowManagement: React.FC = () => {
     <div className="h-full w-full overflow-hidden">
       <div className="mb-8 flex items-center justify-end">
         <div className="flex items-center gap-4">
-          <Select
-            value={namespace || undefined}
-            onValueChange={(value) => handleNamespaceChange(value || "")}
-          >
+          <Select value={namespace || undefined} onValueChange={(value) => handleNamespaceChange(value || '')}>
             <SelectTrigger className="w-48 cursor-pointer">
               <SelectValue placeholder="All Namespaces" />
             </SelectTrigger>

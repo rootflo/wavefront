@@ -20,7 +20,7 @@ class StepStatus(Enum):
 
 
 class MessageMemoryItem:
-    def __init__(self, node: str, occurrence: int = 0, result: BaseMessage = None):
+    def __init__(self, node: str, result: BaseMessage, occurrence: int = 0):
         self.node: str = node
         self.occurrence: int = occurrence
         self.result: BaseMessage = result
@@ -66,7 +66,8 @@ class ExecutionPlan:
             if step.status == StepStatus.PENDING:
                 # Check if all dependencies are completed
                 if all(
-                    self.get_step(dep_id).status == StepStatus.COMPLETED
+                    (dep_step := self.get_step(dep_id)) is not None
+                    and dep_step.status == StepStatus.COMPLETED
                     for dep_id in step.dependencies
                 ):
                     next_steps.append(step)
@@ -79,14 +80,14 @@ class ExecutionPlan:
                 return step
         return None
 
-    def mark_step_completed(self, step_id: str, result: str = None):
+    def mark_step_completed(self, step_id: str, result: str):
         """Mark a step as completed"""
         step = self.get_step(step_id)
         if step:
             step.status = StepStatus.COMPLETED
             step.result = result
 
-    def mark_step_failed(self, step_id: str, error: str = None):
+    def mark_step_failed(self, step_id: str, error: str):
         """Mark a step as failed"""
         step = self.get_step(step_id)
         if step:
@@ -104,7 +105,7 @@ class ExecutionPlan:
 
 class BaseMemory(ABC, Generic[T]):
     @abstractmethod
-    def add(self, m: T):
+    def add(self, message: T) -> None:
         pass
 
     @abstractmethod
@@ -129,7 +130,7 @@ class BaseMemory(ABC, Generic[T]):
         return None
 
 
-class MessageMemory(BaseMemory[MessageMemoryItem]):
+class MessageMemory:
     def __init__(self):
         self.messages: List[MessageMemoryItem] = []
         self._node_occurrences: Dict[str, int] = {}
@@ -139,7 +140,7 @@ class MessageMemory(BaseMemory[MessageMemoryItem]):
         self._node_occurrences[node] = current
         return current
 
-    def add(self, message: MessageMemoryItem):
+    def add(self, message: MessageMemoryItem) -> None:
         # Update occurrence count for the node
         occurrence = self._next_occurrence(message.node)
         message.occurrence = occurrence
@@ -161,15 +162,7 @@ class PlanAwareMemory(BaseMemory[Dict[str, Any]]):
         self.current_plan_id: Optional[str] = None
         self._node_occurrences: Dict[str, int] = {}
 
-    def _next_occurrence(self, node: str) -> int:
-        current = self._node_occurrences.get(node, 0) + 1
-        self._node_occurrences[node] = current
-        return current
-
-    def add(self, message: MessageMemoryItem):
-        # Update occurrence count for the node
-        occurrence = self._next_occurrence(message.node)
-        message.occurrence = occurrence
+    def add(self, message: Dict[str, Any]) -> None:
         self.messages.append(message)
 
     def get(self, include_nodes: Optional[List[str]] = None) -> List[Dict[str, Any]]:

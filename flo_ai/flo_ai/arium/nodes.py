@@ -1,12 +1,14 @@
-from flo_ai.arium.protocols import ExecutableNode
 from typing import List, Any, Dict, Optional, TYPE_CHECKING, Callable
 from flo_ai.utils.logger import logger
 from flo_ai.arium.memory import MessageMemory
 from flo_ai.models import BaseMessage, UserMessage
+from flo_ai.arium.protocols import ExecutableNode
 import asyncio
+
 
 if TYPE_CHECKING:  # need to have an optional import else will get circular dependency error as arium also has AriumNode reference
     from flo_ai.arium.arium import Arium
+    from flo_ai.arium.base import AriumNodeType
 
 
 class AriumNode:
@@ -39,7 +41,7 @@ class AriumNode:
 
         # Handle variable inheritance
         execution_variables = (
-            variables.copy() if (self.inherit_variables and variables) else None
+            (variables or {}).copy() if (self.inherit_variables and variables) else {}
         )
 
         # Execute the nested Arium with isolated memory
@@ -60,7 +62,7 @@ class ForEachNode:
     def __init__(
         self,
         name: str,
-        execute_node: ExecutableNode,
+        execute_node: 'AriumNodeType',
         input_filter: Optional[List[str]] = None,
     ):
         """
@@ -85,6 +87,9 @@ class ForEachNode:
         item_variables = (variables or {}).copy()
 
         # Execute the node
+        # Only ExecutableNode types have a run method
+        if not isinstance(self.execute_node, ExecutableNode):
+            raise TypeError(f'Node {self.execute_node.name} does not support execution')
         result = await self.execute_node.run(
             inputs=[item],
             variables=item_variables,
@@ -128,9 +133,7 @@ class ForEachNode:
         item_variables = (variables or {}).copy()
 
         # If the execute_node is an AriumNode, we can create a new memory instance
-        if hasattr(self.execute_node, 'arium') and hasattr(
-            self.execute_node.arium, 'memory'
-        ):
+        if isinstance(self.execute_node, AriumNode):
             # Create a new memory instance for this iteration
             original_memory = self.execute_node.arium.memory
             self.execute_node.arium.memory = MessageMemory()
@@ -146,10 +149,17 @@ class ForEachNode:
                 self.execute_node.arium.memory = original_memory
         else:
             # For non-Arium nodes, execute normally
-            result = await self.execute_node.run(
-                inputs=[item],
-                variables=item_variables,
-            )
+            # Only ExecutableNode types have a run method
+            if isinstance(self.execute_node, ExecutableNode):
+                result = await self.execute_node.run(
+                    inputs=[item],
+                    variables=item_variables,
+                )
+            else:
+                # StartNode/EndNode don't have run methods
+                raise TypeError(
+                    f'Node {self.execute_node.name} does not support execution'
+                )
 
         # Return last item if result is a list, otherwise return as-is
         if isinstance(result, list) and result:

@@ -1,7 +1,7 @@
 import asyncio
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import AgentBuilder
 from flo_ai.tool.base_tool import Tool
-from flo_ai.models.base_agent import ReasoningPattern
+from flo_ai.agent import ReasoningPattern
 
 from flo_ai.llm import Anthropic, Gemini, OpenAI, BaseLLM
 
@@ -65,7 +65,7 @@ async def create_tools():
     )
 
     # Weather tool (mock)
-    async def get_weather(city: str, country: str = None) -> str:
+    async def get_weather(city: str, country: str = '') -> str:
         # This is a mock weather tool - in real use, you'd call a weather API
         weather_data = {
             'london': {'temp': 18, 'condition': 'cloudy'},

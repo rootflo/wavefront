@@ -6,7 +6,7 @@ to make dynamic routing decisions based on conversation context and history.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Optional, Callable, Any, Union, get_args, List, Awaitable
+from typing import Dict, Optional, Callable, Any, Union, get_args, List, Awaitable, cast
 from functools import wraps
 from flo_ai.arium.memory import (
     ExecutionPlan,
@@ -64,7 +64,7 @@ class BaseLLMRouter(ABC):
         self,
         memory: MessageMemory,
         options: Dict[str, str],
-        execution_context: dict = None,
+        execution_context: Optional[dict] = None,
     ) -> str:
         """
         Generate the prompt for the LLM to make routing decisions.
@@ -101,7 +101,9 @@ class BaseLLMRouter(ABC):
         else:
             return routes[0]
 
-    async def route(self, memory: MessageMemory, execution_context: dict = None) -> str:
+    async def route(
+        self, memory: MessageMemory, execution_context: Optional[dict] = None
+    ) -> str:
         """
         Make a routing decision using the LLM.
 
@@ -187,7 +189,7 @@ class SmartRouter(BaseLLMRouter):
         self,
         memory: MessageMemory,
         options: Dict[str, str],
-        execution_context: dict = None,
+        execution_context: Optional[dict] = None,
     ) -> str:
         conversation: List[MessageMemoryItem] = memory.get()
 
@@ -312,7 +314,7 @@ class TaskClassifierRouter(BaseLLMRouter):
         self,
         memory: MessageMemory,
         options: Dict[str, str],
-        execution_context: dict = None,
+        execution_context: Optional[dict] = None,
     ) -> str:
         conversation: List[MessageMemoryItem] = memory.get()
 
@@ -448,20 +450,25 @@ class ReflectionRouter(BaseLLMRouter):
         self,
         memory: MessageMemory,
         options: Dict[str, str],
-        execution_context: dict = None,
+        execution_context: Optional[dict] = None,
     ) -> str:
         conversation: List[MessageMemoryItem] = memory.get()
 
-        # Format conversation history
-        if isinstance(conversation, list):
-            conversation_text = '\n'.join(
-                [msg.result.content for msg in conversation[-3:]]
-            )  # Last 3 messages for flow context
-        else:
-            conversation_text = str(conversation)
+        filtered_conversation = [
+            msg.result.content
+            for msg in conversation
+            if isinstance(msg.result.content, str)
+        ]
+        conversation_text = '\n'.join(
+            filtered_conversation[-3:]
+        )  # Last 3 messages for flow context
 
         # Determine suggested next step based on reflection pattern
-        suggested_next = self._get_next_step_in_pattern(execution_context)
+        suggested_next = (
+            self._get_next_step_in_pattern(execution_context)
+            if execution_context is not None
+            else None
+        )
 
         # Format options
         options_text = '\n'.join(
@@ -578,31 +585,35 @@ class PlanExecuteRouter(BaseLLMRouter):
         self,
         memory: MessageMemory,
         options: Dict[str, str],
-        execution_context: dict = None,
+        execution_context: Optional[dict] = None,
     ) -> str:
-        conversation: List[MessageMemoryItem] = memory.get()
+        return ''
+        # TODO: Implement plan-and-execute router
 
-        # Format conversation history
-        if isinstance(conversation, list):
-            conversation_text = '\n'.join(
-                [msg.result.content for msg in conversation[-3:]]
-            )  # Last 3 messages for context
-        else:
-            conversation_text = str(conversation)
+        # conversation: List[MessageMemoryItem] = memory.get()
 
-        # Check if we have a plan in memory
-        current_plan = (
-            memory.get_current_plan() if hasattr(memory, 'get_current_plan') else None
-        )
+        # filtered_conversation = [
+        #     msg.result.content
+        #     for msg in conversation
+        #     if isinstance(msg.result.content, str)
+        # ]
+        # conversation_text = '\n'.join(
+        #     filtered_conversation[-3:]
+        # )  # Last 3 messages for context
 
-        if current_plan is None:
-            # No plan exists - route to planner
-            return self._create_planning_prompt(conversation_text, options)
-        else:
-            # Plan exists - determine next action based on plan state
-            return self._create_execution_prompt(
-                current_plan, conversation_text, options, execution_context
-            )
+        # # Check if we have a plan in memory
+        # current_plan = (
+        #     memory.get_current_plan() if hasattr(memory, 'get_current_plan') else None
+        # )
+
+        # if current_plan is None:
+        #     # No plan exists - route to planner
+        #     return self._create_planning_prompt(conversation_text, options)
+        # else:
+        #     # Plan exists - determine next action based on plan state
+        #     return self._create_execution_prompt(
+        #         current_plan, conversation_text, options, execution_context
+        #     )
 
     def _create_planning_prompt(
         self, conversation_text: str, options: Dict[str, str]
@@ -637,7 +648,7 @@ Next agent:"""
         plan: ExecutionPlan,
         conversation_text: str,
         options: Dict[str, str],
-        execution_context: dict = None,
+        execution_context: Optional[dict] = None,
     ) -> str:
         """Create prompt for execution phase based on current plan state"""
 
@@ -763,7 +774,7 @@ class ConversationAnalysisRouter(BaseLLMRouter):
         self,
         memory: MessageMemory,
         options: Dict[str, str],
-        execution_context: dict = None,
+        execution_context: Optional[dict] = None,
     ) -> str:
         conversation: List[MessageMemoryItem] = memory.get()
 
@@ -937,13 +948,15 @@ def create_llm_router(
 
     if len(option_names) == 1:
         # Handle single option case
-        literal_type = Literal[option_names[0]]
+        literal_type = Literal[option_names[0]]  # type: ignore
     else:
         # Handle multiple options case
-        literal_type = Literal[option_names]
+        literal_type = Literal[option_names]  # type: ignore
 
     # Return a function that can be used as a router
-    async def router_function(memory: MessageMemory, execution_context: dict = None):
+    async def router_function(
+        memory: MessageMemory, execution_context: Optional[dict] = None
+    ):
         """Generated router function that uses LLM for routing decisions"""
         return await router_instance.route(memory, execution_context)
 
@@ -954,7 +967,7 @@ def create_llm_router(
     }
 
     # Transfer router instance attributes to the function for validation
-    router_function.supports_self_reference = getattr(
+    cast(Any, router_function).supports_self_reference = getattr(
         router_instance, 'supports_self_reference', False
     )
 
@@ -1020,7 +1033,9 @@ def llm_router(
         )
 
         @wraps(func)
-        async def wrapper(memory: MessageMemory, execution_context: dict = None):
+        async def wrapper(
+            memory: MessageMemory, execution_context: Optional[dict] = None
+        ):
             return await router_instance.route(memory, execution_context)
 
         # Preserve the original function's type annotations including return type

@@ -1,5 +1,5 @@
-import floConsoleService from "@app/api";
-import InferencePopup from "@app/components/InferencePopup";
+import floConsoleService from '@app/api';
+import InferencePopup from '@app/components/InferencePopup';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -7,8 +7,8 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
-} from "@app/components/ui/breadcrumb";
-import { Button } from "@app/components/ui/button";
+} from '@app/components/ui/breadcrumb';
+import { Button } from '@app/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -16,29 +16,16 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@app/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@app/components/ui/table";
-import { useGetWorkflowRuns } from "@app/hooks";
-import { getWorkflowRunsKey } from "@app/hooks/data/query-keys";
-import { WorkflowRun } from "@app/types/workflow";
-import { useQueryClient } from "@tanstack/react-query";
-import {
-  ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  getPaginationRowModel,
-  useReactTable,
-} from "@tanstack/react-table";
-import dayjs from "dayjs";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+} from '@app/components/ui/dialog';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
+import { useGetWorkflowRuns } from '@app/hooks';
+import { getWorkflowRunsKey } from '@app/hooks/data/query-keys';
+import { WorkflowRun } from '@app/types/workflow';
+import { useQueryClient } from '@tanstack/react-query';
+import { ColumnDef, flexRender, getCoreRowModel, getPaginationRowModel, useReactTable } from '@tanstack/react-table';
+import dayjs from 'dayjs';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router';
 
 const PAGE_SIZE = 10;
 
@@ -57,9 +44,7 @@ const WorkflowPipelineDetail = () => {
 
   // Polling state
   const [activeRunIds, setActiveRunIds] = useState<Set<string>>(new Set());
-  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
-    null
-  );
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Output popup state
   const [isOutputPopupOpen, setIsOutputPopupOpen] = useState(false);
@@ -79,10 +64,7 @@ const WorkflowPipelineDetail = () => {
   useEffect(() => {
     if (workflowRuns.length > 0) {
       const activeRuns = workflowRuns.filter(
-        (run) =>
-          run.status === "in_progress" ||
-          run.status === "pending" ||
-          run.status === "running"
+        (run) => run.status === 'in_progress' || run.status === 'pending' || run.status === 'running'
       );
       if (activeRuns.length > 0) {
         const newActiveRunIds = new Set(activeRuns.map((run) => run.id));
@@ -95,27 +77,17 @@ const WorkflowPipelineDetail = () => {
   const pollWorkflowRun = useCallback(
     async (runId: string) => {
       try {
-        const response = await floConsoleService.workflowService.getWorkflowRun(
-          runId
-        );
+        const response = await floConsoleService.workflowService.getWorkflowRun(runId);
         if (response.data?.data?.workflow_run) {
           const updatedRun = response.data.data.workflow_run;
 
           // Invalidate the query to refetch
           queryClient.invalidateQueries({
-            queryKey: getWorkflowRunsKey(
-              appId || "",
-              workflowPipelineId || "",
-              offset,
-              PAGE_SIZE
-            ),
+            queryKey: getWorkflowRunsKey(appId || '', workflowPipelineId || '', offset, PAGE_SIZE),
           });
 
           // If the run is completed or failed, remove it from active runs
-          if (
-            updatedRun.status === "completed" ||
-            updatedRun.status === "failed"
-          ) {
+          if (updatedRun.status === 'completed' || updatedRun.status === 'failed') {
             setActiveRunIds((prev) => {
               const newSet = new Set(prev);
               newSet.delete(runId);
@@ -175,40 +147,34 @@ const WorkflowPipelineDetail = () => {
   }, [activeRunIds.size, startPolling, stopPolling]);
 
   const formatDateTime = (dateString: string | null) => {
-    if (!dateString) return "-";
-    return dayjs(dayjs(dateString).add(5, "hours").add(30, "minutes")).format(
-      "DD MMM YYYY hh:mm:ss A"
-    );
+    if (!dateString) return '-';
+    return dayjs(dayjs(dateString).add(5, 'hours').add(30, 'minutes')).format('DD MMM YYYY hh:mm:ss A');
   };
 
   const formatOutput = (output: unknown) => {
-    if (!output) return "-";
-    if (typeof output === "string") return output;
+    if (!output) return '-';
+    if (typeof output === 'string') return output;
     return JSON.stringify(output, null, 2);
   };
 
   const getStatusBadgeClass = (status: string) => {
     switch (status) {
-      case "completed":
-        return "bg-green-100 text-green-800";
-      case "failed":
-        return "bg-red-100 text-red-800";
-      case "in_progress":
-      case "running":
-        return "bg-blue-100 text-blue-800";
+      case 'completed':
+        return 'bg-green-100 text-green-800';
+      case 'failed':
+        return 'bg-red-100 text-red-800';
+      case 'in_progress':
+      case 'running':
+        return 'bg-blue-100 text-blue-800';
       default:
-        return "bg-yellow-100 text-yellow-800";
+        return 'bg-yellow-100 text-yellow-800';
     }
   };
 
   const downloadCsv = async () => {
     try {
       if (!appId || !workflowPipelineId) return;
-      const response = await floConsoleService.workflowService.getWorkflowRuns(
-        workflowPipelineId,
-        0,
-        2000
-      );
+      const response = await floConsoleService.workflowService.getWorkflowRuns(workflowPipelineId, 0, 2000);
       if (!response.data?.data) return;
       const runs = response.data.data.workflow_runs;
       if (!runs || runs.length === 0) return;
@@ -216,20 +182,20 @@ const WorkflowPipelineDetail = () => {
       // Helper function to escape CSV values
       const escapeCsvValue = (value: unknown): string => {
         if (value === null || value === undefined) {
-          return "";
+          return '';
         }
 
-        let stringValue = "";
-        if (typeof value === "object") {
+        let stringValue = '';
+        if (typeof value === 'object') {
           stringValue = JSON.stringify(value);
         } else {
           stringValue = String(value);
         }
 
         if (
-          stringValue.includes(",") ||
-          stringValue.includes("\n") ||
-          stringValue.includes("\r") ||
+          stringValue.includes(',') ||
+          stringValue.includes('\n') ||
+          stringValue.includes('\r') ||
           stringValue.includes('"')
         ) {
           stringValue = stringValue.replace(/"/g, '""');
@@ -250,17 +216,17 @@ const WorkflowPipelineDetail = () => {
         csvRow.push(row);
       }
 
-      let csvContent = "";
-      csvContent += allKeys.join(",") + "\r\n";
+      let csvContent = '';
+      csvContent += allKeys.join(',') + '\r\n';
       csvRow.forEach((row) => {
-        csvContent += row.join(",") + "\r\n";
+        csvContent += row.join(',') + '\r\n';
       });
 
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.setAttribute("href", url);
-      link.setAttribute("download", "workflow_runs.csv");
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', 'workflow_runs.csv');
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -277,59 +243,53 @@ const WorkflowPipelineDetail = () => {
 
   const columns: ColumnDef<WorkflowRun>[] = [
     {
-      accessorKey: "id",
-      header: "ID",
-      cell: ({ row }) => (
-        <div className="font-mono text-sm">{row.getValue("id")}</div>
-      ),
+      accessorKey: 'id',
+      header: 'ID',
+      cell: ({ row }) => <div className="font-mono text-sm">{row.getValue('id')}</div>,
     },
     {
-      accessorKey: "status",
-      header: "Status",
+      accessorKey: 'status',
+      header: 'Status',
       cell: ({ row }) => {
-        const status = row.getValue("status") as string;
+        const status = row.getValue('status') as string;
         return (
-          <span
-            className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${getStatusBadgeClass(
-              status
-            )}`}
-          >
+          <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${getStatusBadgeClass(status)}`}>
             {status}
           </span>
         );
       },
     },
     {
-      accessorKey: "start_time",
-      header: "Start Time",
+      accessorKey: 'start_time',
+      header: 'Start Time',
       cell: ({ row }) => {
-        const startTime = row.getValue("start_time") as string;
+        const startTime = row.getValue('start_time') as string;
         return <div className="text-sm">{formatDateTime(startTime)}</div>;
       },
     },
     {
-      accessorKey: "end_time",
-      header: "End Time",
+      accessorKey: 'end_time',
+      header: 'End Time',
       cell: ({ row }) => {
         const endTime = row.original.end_time;
         return <div className="text-sm">{formatDateTime(endTime || null)}</div>;
       },
     },
     {
-      accessorKey: "error",
-      header: "Error",
+      accessorKey: 'error',
+      header: 'Error',
       cell: ({ row }) => {
         const error = row.original.error;
         return (
-          <div className="max-w-xs truncate text-sm" title={error || ""}>
-            {error || "-"}
+          <div className="max-w-xs truncate text-sm" title={error || ''}>
+            {error || '-'}
           </div>
         );
       },
     },
     {
-      accessorKey: "output",
-      header: "Output",
+      accessorKey: 'output',
+      header: 'Output',
       cell: ({ row }) => {
         const output = row.original.output;
         const formatted = formatOutput(output);
@@ -356,7 +316,7 @@ const WorkflowPipelineDetail = () => {
       },
     },
     onPaginationChange: (updater) => {
-      if (typeof updater === "function") {
+      if (typeof updater === 'function') {
         const newPagination = updater({ pageIndex, pageSize: PAGE_SIZE });
         setPageIndex(newPagination.pageIndex);
       }
@@ -365,12 +325,7 @@ const WorkflowPipelineDetail = () => {
 
   const handleRefresh = () => {
     queryClient.invalidateQueries({
-      queryKey: getWorkflowRunsKey(
-        appId || "",
-        workflowPipelineId || "",
-        offset,
-        PAGE_SIZE
-      ),
+      queryKey: getWorkflowRunsKey(appId || '', workflowPipelineId || '', offset, PAGE_SIZE),
     });
   };
 
@@ -380,11 +335,7 @@ const WorkflowPipelineDetail = () => {
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <button
-                type="button"
-                onClick={() => navigate("/apps")}
-                className="hover:text-foreground cursor-pointer"
-              >
+              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
                 Apps
               </button>
             </BreadcrumbLink>
@@ -409,14 +360,10 @@ const WorkflowPipelineDetail = () => {
       </Breadcrumb>
 
       <div className="mb-6 flex justify-between gap-4">
-        <h2 className="text-2xl font-semibold text-gray-900">
-          Workflow Pipeline Runs
-        </h2>
+        <h2 className="text-2xl font-semibold text-gray-900">Workflow Pipeline Runs</h2>
         <div className="flex items-center gap-2">
           <Button onClick={downloadCsv}>Download as CSV</Button>
-          <Button onClick={() => setIsInferencePopupOpen(true)}>
-            Publish To Pipeline
-          </Button>
+          <Button onClick={() => setIsInferencePopupOpen(true)}>Publish To Pipeline</Button>
         </div>
       </div>
 
@@ -451,10 +398,7 @@ const WorkflowPipelineDetail = () => {
                         <TableHead key={header.id}>
                           {header.isPlaceholder
                             ? null
-                            : flexRender(
-                                header.column.columnDef.header,
-                                header.getContext()
-                              )}
+                            : flexRender(header.column.columnDef.header, header.getContext())}
                         </TableHead>
                       ))}
                     </TableRow>
@@ -465,26 +409,20 @@ const WorkflowPipelineDetail = () => {
                     table.getRowModel().rows.map((row) => (
                       <TableRow
                         key={row.id}
-                        data-state={row.getIsSelected() && "selected"}
+                        data-state={row.getIsSelected() && 'selected'}
                         className="cursor-pointer"
                         onClick={() => handleRowClick(row.original)}
                       >
                         {row.getVisibleCells().map((cell) => (
                           <TableCell key={cell.id}>
-                            {flexRender(
-                              cell.column.columnDef.cell,
-                              cell.getContext()
-                            )}
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
                           </TableCell>
                         ))}
                       </TableRow>
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell
-                        colSpan={columns.length}
-                        className="h-24 text-center"
-                      >
+                      <TableCell colSpan={columns.length} className="h-24 text-center">
                         No results.
                       </TableCell>
                     </TableRow>
@@ -494,8 +432,7 @@ const WorkflowPipelineDetail = () => {
             </div>
             <div className="flex items-center justify-between border-t border-gray-200 px-6 py-4">
               <div className="text-sm text-gray-500">
-                Showing {pageIndex * PAGE_SIZE + 1} to{" "}
-                {Math.min((pageIndex + 1) * PAGE_SIZE, totalCount)} of{" "}
+                Showing {pageIndex * PAGE_SIZE + 1} to {Math.min((pageIndex + 1) * PAGE_SIZE, totalCount)} of{' '}
                 {totalCount} results
               </div>
               <div className="flex items-center gap-2">
@@ -507,12 +444,7 @@ const WorkflowPipelineDetail = () => {
                 >
                   Previous
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => table.nextPage()}
-                  disabled={!table.getCanNextPage()}
-                >
+                <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
                   Next
                 </Button>
               </div>
@@ -521,10 +453,7 @@ const WorkflowPipelineDetail = () => {
         )}
       </div>
 
-      <Dialog
-        open={isInferencePopupOpen}
-        onOpenChange={setIsInferencePopupOpen}
-      >
+      <Dialog open={isInferencePopupOpen} onOpenChange={setIsInferencePopupOpen}>
         <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Publish to Pipeline</DialogTitle>
@@ -548,19 +477,15 @@ const WorkflowPipelineDetail = () => {
         <DialogContent className="max-h-[80vh] max-w-4xl">
           <DialogHeader>
             <DialogTitle>Workflow Run Output</DialogTitle>
-            <DialogDescription>
-              View the output of the selected workflow run
-            </DialogDescription>
+            <DialogDescription>View the output of the selected workflow run</DialogDescription>
           </DialogHeader>
           <div className="max-h-[60vh] overflow-auto">
             {selectedRunOutput ? (
-              <pre className="whitespace-pre-wrap wrap-break-word text-sm text-gray-900">
+              <pre className="text-sm wrap-break-word whitespace-pre-wrap text-gray-900">
                 {formatOutput(selectedRunOutput)}
               </pre>
             ) : (
-              <div className="text-center text-gray-500">
-                No output available
-              </div>
+              <div className="text-center text-gray-500">No output available</div>
             )}
           </div>
           <DialogFooter>

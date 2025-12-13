@@ -1,4 +1,4 @@
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Tuple, cast, Optional
 from abc import ABC, abstractmethod
 from enum import Enum
 from flo_ai.llm.base_llm import BaseLLM
@@ -42,7 +42,7 @@ class BaseAgent(ABC):
         self.conversation_history: List[BaseMessage] = []
 
     @abstractmethod
-    async def run(self, input_text: str) -> str:
+    async def run(self, input_text: str) -> List[BaseMessage]:
         """Execute the agent's main functionality"""
         pass
 
@@ -76,7 +76,7 @@ class BaseAgent(ABC):
 
     def add_to_history(self, input_message: BaseMessage | List[BaseMessage]):
         if isinstance(input_message, list):
-            self.conversation_history.extend(input_message)
+            self.conversation_history.extend(cast(List[BaseMessage], input_message))
         else:
             self.conversation_history.append(input_message)
 
@@ -85,6 +85,7 @@ class BaseAgent(ABC):
         self.conversation_history = []
 
     async def _get_message_history(self, variables: Optional[Dict[str, Any]] = None):
+        variables = variables if variables is not None else {}
         message_history = []
         for input in self.conversation_history:
             # Handle FunctionMessage (OpenAI function role format)
@@ -102,7 +103,7 @@ class BaseAgent(ABC):
             elif isinstance(input.content, MediaMessageContent):
                 if input.content.type == 'image':
                     # Format image message and add to history
-                    formatted_content = self.llm.format_image_in_message(input.content)
+                    formatted_content = self.llm.format_image_in_message(input.content)  # type: ignore
                     message_history.append(
                         {'role': input.role, 'content': formatted_content}
                     )
@@ -110,7 +111,7 @@ class BaseAgent(ABC):
                 elif input.content.type == 'document':
                     # Format document message and add to history
                     formatted_content = await self.llm.format_document_in_message(
-                        input.content
+                        input.content  # type: ignore
                     )
                     message_history.append(
                         {'role': input.role, 'content': formatted_content}

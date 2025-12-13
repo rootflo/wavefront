@@ -1,4 +1,4 @@
-import { IApiResponse } from "@app/lib/axios";
+import { IApiResponse } from '@app/lib/axios';
 import {
   CreateLLMConfigRequest,
   LLMConfigListData,
@@ -6,15 +6,13 @@ import {
   LLMConfigResponse,
   LLMInferenceConfig,
   UpdateLLMConfigRequest,
-} from "@app/types/llm-inference-config";
-import { AxiosInstance } from "axios";
+} from '@app/types/llm-inference-config';
+import { AxiosInstance } from 'axios';
 
 export class LLMInferenceService {
   constructor(private http: AxiosInstance) {}
 
-  async createLLMConfig(
-    data: CreateLLMConfigRequest
-  ): Promise<LLMConfigResponse> {
+  async createLLMConfig(data: CreateLLMConfigRequest): Promise<LLMConfigResponse> {
     const response: IApiResponse<LLMInferenceConfig> = await this.http.post(
       `/v1/:appId/floware/v1/llm-inference-configs`,
       data
@@ -29,10 +27,7 @@ export class LLMInferenceService {
     return response;
   }
 
-  async updateLLMConfig(
-    configId: string,
-    data: UpdateLLMConfigRequest
-  ): Promise<LLMConfigResponse> {
+  async updateLLMConfig(configId: string, data: UpdateLLMConfigRequest): Promise<LLMConfigResponse> {
     const response: IApiResponse<LLMInferenceConfig> = await this.http.patch(
       `/v1/:appId/floware/v1/llm-inference-configs/${configId}`,
       data

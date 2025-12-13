@@ -6,7 +6,7 @@ inputs, and agent configurations for runtime variable validation.
 """
 
 import re
-from typing import List, Set, Dict, Any
+from typing import List, Set, Dict, Any, Optional
 
 from flo_ai.models.chat_message import BaseMessage, TextMessageContent, AssistantMessage
 
@@ -107,9 +107,7 @@ def validate_variables(
         )
 
 
-def resolve_variables(
-    text: str | BaseMessage | AssistantMessage, variables: Dict[str, Any]
-) -> str | BaseMessage | AssistantMessage:
+def resolve_variables(text: str, variables: Optional[Dict[str, Any]] = None) -> str:
     """Replace <variable_name> patterns with actual values
 
     Args:
@@ -122,8 +120,9 @@ def resolve_variables(
     Raises:
         ValueError: If a variable placeholder is found but not provided in variables
     """
-    if not text or not variables:
-        return text
+
+    if variables is None:
+        variables = {}
 
     def replace_var(match):
         var_name = match.group(1)

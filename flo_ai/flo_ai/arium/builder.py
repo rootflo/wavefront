@@ -1,16 +1,20 @@
 from typing import List, Optional, Callable, Union, Dict, Any
 from flo_ai.arium.arium import Arium
-from flo_ai.arium.memory import MessageMemory, BaseMemory, MessageMemoryItem
-from flo_ai.arium.protocols import ExecutableNode
+from flo_ai.arium.memory import MessageMemory, MessageMemoryItem
 from flo_ai.arium.nodes import AriumNode, ForEachNode
 from flo_ai.models import BaseMessage, UserMessage
-from flo_ai.models.agent import Agent, resolve_variables
+from flo_ai.agent.agent import Agent, resolve_variables
 from flo_ai.tool.base_tool import Tool
 import yaml
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import AgentBuilder
 from flo_ai.llm import BaseLLM
 from flo_ai.arium.llm_router import create_llm_router
 from flo_ai.arium.nodes import FunctionNode
+from flo_ai.arium.base import AriumNodeType
+from flo_ai.models.arium import AriumYamlModel, AriumAgentConfigModel
+from flo_ai.models.agent import LLMConfigModel
+from flo_ai.helpers.yaml_validation import format_validation_error_path
+from pydantic import ValidationError
 
 
 class AriumBuilder:
@@ -29,14 +33,14 @@ class AriumBuilder:
     """
 
     def __init__(self):
-        self._memory: Optional[BaseMemory] = None
+        self._memory: Optional[MessageMemory] = None
         self._agents: List[Agent] = []
         self._ariums: List[
             AriumNode
         ] = []  # only those ariums which are part of main workflow
         self._foreach_nodes: List[ForEachNode] = []
-        self._start_node: Optional[ExecutableNode] = None
-        self._end_nodes: List[ExecutableNode] = []
+        self._start_node: Optional[AriumNodeType] = None
+        self._end_nodes: List[AriumNodeType] = []
         self._function_nodes: List[FunctionNode] = []
         self._edges: List[tuple] = []  # (from_node, to_nodes, router)
         self._arium: Optional[Arium] = None
@@ -44,7 +48,7 @@ class AriumBuilder:
             AriumNode
         ] = []  # all the ariums either of main workflow or when used as a node in foreachnode or any sub workflow
 
-    def with_memory(self, memory: BaseMemory) -> 'AriumBuilder':
+    def with_memory(self, memory: MessageMemory) -> 'AriumBuilder':
         """Set the memory for the Arium."""
         self._memory = memory
         return self
@@ -94,7 +98,7 @@ class AriumBuilder:
         return self
 
     def add_foreach(
-        self, name: str, execute_node: Union[ExecutableNode, str]
+        self, name: str, execute_node: Union[AriumNodeType, str]
     ) -> 'AriumBuilder':
         """
         Add a ForEach node for batch processing.
@@ -128,7 +132,7 @@ class AriumBuilder:
                 self._all_ariums.append(execute_node)
         return self
 
-    def start_with(self, node: ExecutableNode | str) -> 'AriumBuilder':
+    def start_with(self, node: AriumNodeType | str) -> 'AriumBuilder':
         """Set the starting node for the Arium."""
         if isinstance(node, str):
             # Search across all node types
@@ -142,7 +146,7 @@ class AriumBuilder:
         self._start_node = node
         return self
 
-    def end_with(self, node: ExecutableNode) -> 'AriumBuilder':
+    def end_with(self, node: AriumNodeType) -> 'AriumBuilder':
         """Add an ending node to the Arium."""
         if node not in self._end_nodes:
             self._end_nodes.append(node)
@@ -150,8 +154,8 @@ class AriumBuilder:
 
     def add_edge(
         self,
-        from_node: ExecutableNode,
-        to_nodes: List[ExecutableNode],
+        from_node: AriumNodeType,
+        to_nodes: List[AriumNodeType],
         router: Optional[Callable] = None,
     ) -> 'AriumBuilder':
         """Add an edge between nodes with an optional router function."""
@@ -160,8 +164,8 @@ class AriumBuilder:
 
     def connect(
         self,
-        from_node: ExecutableNode | str,
-        to_node: ExecutableNode | str,
+        from_node: AriumNodeType | str,
+        to_node: AriumNodeType | str,
     ) -> 'AriumBuilder':
         """Simple connection between two nodes without a router."""
 
@@ -246,25 +250,29 @@ class AriumBuilder:
         variables: Optional[Dict[str, Any]] = None,
     ) -> List[MessageMemoryItem]:
         """Build the Arium and run it with the given inputs and optional runtime variables."""
+        variables = variables if variables is not None else {}
         arium = self.build()
         new_inputs = []
-        for input in inputs:
-            if isinstance(input, str):
-                new_inputs.append(UserMessage(resolve_variables(input, variables)))
-            elif isinstance(input, BaseMessage):
-                new_inputs.append(input)
-            else:
-                raise ValueError(f'Invalid input type: {type(input)}')
+
+        if isinstance(inputs, list):
+            for input in inputs:
+                if isinstance(input, str):
+                    new_inputs.append(UserMessage(resolve_variables(input, variables)))
+                elif isinstance(input, BaseMessage):
+                    new_inputs.append(input)
+                else:
+                    raise ValueError(f'Invalid input type: {type(input)}')
+        else:
+            new_inputs.append(UserMessage(resolve_variables(inputs, variables)))
         return await arium.run(new_inputs, variables=variables)
 
     def visualize(
         self, output_path: str = 'arium_graph.png', title: str = 'Arium Workflow'
     ) -> 'AriumBuilder':
         """Generate a visualization of the Arium graph."""
-        if self._arium is None:
-            self.build()
+        arium = self._arium if self._arium is not None else self.build()
 
-        self._arium.visualize_graph(output_path=output_path, graph_title=title)
+        arium.visualize_graph(output_path=output_path, graph_title=title)
         return self
 
     def reset(self) -> 'AriumBuilder':
@@ -280,12 +288,42 @@ class AriumBuilder:
         self._arium = None
         return self
 
+    @staticmethod
+    def _validate_yaml_config(config: Dict[str, Any]) -> AriumYamlModel:
+        """Validate YAML configuration using Pydantic models.
+
+        Args:
+            config: Dictionary containing YAML configuration
+
+        Returns:
+            AriumYamlModel: Validated configuration model
+
+        Raises:
+            ValueError: If validation fails with formatted error messages
+        """
+        try:
+            validated_config = AriumYamlModel(**config)
+        except ValidationError as e:
+            # Format validation errors for better readability
+            error_messages = []
+            for error in e.errors():
+                field_path = format_validation_error_path(error['loc'], config)
+                error_msg = f"{field_path}: {error['msg']}"
+                if 'ctx' in error:
+                    error_msg += f" (context: {error['ctx']})"
+                error_messages.append(error_msg)
+            raise ValueError(
+                'YAML validation failed:\n'
+                + '\n'.join(f'  - {msg}' for msg in error_messages)
+            ) from e
+        return validated_config
+
     @classmethod
     def from_yaml(
         cls,
         yaml_str: Optional[str] = None,
         yaml_file: Optional[str] = None,
-        memory: Optional[BaseMemory] = None,
+        memory: Optional[MessageMemory] = None,
         agents: Optional[Dict[str, Agent]] = None,
         routers: Optional[Dict[str, Callable]] = None,
         base_llm: Optional[BaseLLM] = None,
@@ -307,136 +345,8 @@ class AriumBuilder:
         Returns:
             AriumBuilder: Configured builder instance
 
-        Example YAML structure:
-            metadata:
-              name: my-workflow
-              version: 1.0.0
-              description: "Example workflow"
-
-            arium:
-              agents:
-                # Method 1: Reference pre-built agents
-                - name: content_analyst  # Must exist in agents parameter
-                - name: summarizer       # Must exist in agents parameter
-
-                # Method 2: Direct agent definition
-                - name: validator
-                  role: "Data Validator"
-                  job: "You are a data validator"
-                  model:
-                    provider: openai
-                    name: gpt-4o-mini
-                  settings:
-                    temperature: 0.1
-
-                # Method 3: Inline YAML configuration
-                - name: processor
-                  yaml_config: |
-                    agent:
-                      name: processor
-                      job: "You are a data processor"
-                      model:
-                        provider: openai
-                        name: gpt-4o-mini
-
-                # Method 4: External file reference
-                - name: reporter
-                  yaml_file: "path/to/reporter.yaml"
-
-              function_nodes:
-                - name: function1
-                  function_name: function1
-                - name: function2
-                  function_name: function2
-                  description: "Function 2"
-                  input_filter: ["input1", "input2"]
-                  prefilled_params:
-                    param1: "value1"
-                    param2: "value2"
-              # LLM Router definitions (NEW)
-              routers:
-                - name: content_router
-                  type: smart  # smart, task_classifier, conversation_analysis, reflection, plan_execute
-                  routing_options:
-                    technical_writer: "Handle technical documentation tasks"
-                    creative_writer: "Handle creative writing tasks"
-                    editor: "Handle editing and review tasks"
-                  model:
-                    provider: openai
-                    name: gpt-4o-mini
-                  settings:
-                    temperature: 0.3
-                    fallback_strategy: first
-
-                # Reflection router for A -> B -> A -> C patterns
-                - name: main_critic_reflection
-                  type: reflection
-                  flow_pattern: [main_agent, critic, main_agent, final_agent]
-                  settings:
-                    allow_early_exit: false
-
-                # Plan-Execute router for Cursor-style workflows
-                - name: plan_execute_router
-                  type: plan_execute
-                  agents:
-                    planner: "Creates detailed execution plans"
-                    developer: "Implements code and features"
-                    tester: "Tests implementations"
-                    reviewer: "Reviews final results"
-                  settings:
-                    planner_agent: planner
-                    executor_agent: developer
-                    reviewer_agent: reviewer
-
-              # AriumNode definitions (nested Arium workflows)
-              arium_nodes:
-                # Method 1: Inline nested Arium definition
-                - name: document_processor
-                  inherit_variables: true  # optional, default: true
-                  agents:
-                    - name: classifier
-                      job: "Classify documents"
-                      model:
-                        provider: openai
-                        name: gpt-4o-mini
-                    - name: specialist
-                      job: "Process classified documents"
-                      model:
-                        provider: openai
-                        name: gpt-4o-mini
-                  workflow:
-                    start: classifier
-                    edges:
-                      - from: classifier
-                        to: [specialist]
-                    end: [specialist]
-
-                # Method 2: External YAML file reference
-                - name: complex_processor
-                  yaml_file: "workflows/document_classifier.yaml"
-                  inherit_variables: false
-
-              # ForEachNode definitions
-              foreach_nodes:
-                - name: batch_processor
-                  execute_node: document_processor  # Can reference any node type
-
-              workflow:
-                start: batch_processor  # Can reference any node type including foreach/arium nodes
-                edges:
-                  - from: content_analyst
-                    to: [validator, summarizer]
-                    router: content_router  # References router defined above
-                  - from: validator
-                    to: [processor]
-                  - from: summarizer
-                    to: [reporter]
-                  - from: processor
-                    to: [end]
-                  - from: reporter
-                    to: [end]
-                end: [processor, reporter]
         """
+
         if yaml_str is None and yaml_file is None:
             raise ValueError('Either yaml_str or yaml_file must be provided')
 
@@ -447,13 +357,13 @@ class AriumBuilder:
         if yaml_str:
             config = yaml.safe_load(yaml_str)
         else:
+            if yaml_file is None:
+                raise ValueError('yaml_file must be provided when yaml_str is empty')
             with open(yaml_file, 'r') as f:
                 config = yaml.safe_load(f)
 
-        if 'arium' not in config:
-            raise ValueError('YAML must contain an "arium" section')
-
-        arium_config = config['arium']
+        validated_config = cls._validate_yaml_config(config)
+        arium = validated_config.arium
         builder = cls()
 
         # Configure memory - use provided memory or default to MessageMemory
@@ -463,14 +373,21 @@ class AriumBuilder:
             builder.with_memory(MessageMemory())
 
         # Process agents
-        agents_config = arium_config.get('agents', [])
+        agents_list = arium.agents or []
         agents_dict = {}
 
-        for agent_config in agents_config:
-            agent_name = agent_config['name']
+        for agent_config in agents_list:
+            agent_name = agent_config.name
 
             # Method 1: Reference pre-built agent
-            if len(agent_config) == 1 and 'name' in agent_config:
+            # Check if only name is provided (no other config fields)
+            if (
+                agent_config.job is None
+                and agent_config.prompt is None
+                and agent_config.yaml_config is None
+                and agent_config.yaml_file is None
+                and agent_config.model is None
+            ):
                 # Only has name field, so it's a reference to a pre-built agent
                 if agents and agent_name in agents:
                     agent = agents[agent_name]
@@ -486,27 +403,27 @@ class AriumBuilder:
 
             # Method 2: Direct agent definition
             elif (
-                'job' in agent_config
-                and 'yaml_config' not in agent_config
-                and 'yaml_file' not in agent_config
+                (agent_config.job is not None or agent_config.prompt is not None)
+                and agent_config.yaml_config is None
+                and agent_config.yaml_file is None
             ):
                 agent = cls._create_agent_from_direct_config(
                     agent_config, base_llm, tool_registry, **kwargs
                 )
 
             # Method 3: Inline YAML config
-            elif 'yaml_config' in agent_config:
+            elif agent_config.yaml_config is not None:
                 agent_builder = AgentBuilder.from_yaml(
-                    yaml_str=agent_config['yaml_config'],
+                    yaml_str=agent_config.yaml_config,
                     base_llm=base_llm,
                     tool_registry=tool_registry,
                 )
                 agent = agent_builder.build()
 
             # Method 4: External file reference
-            elif 'yaml_file' in agent_config:
+            elif agent_config.yaml_file is not None:
                 agent_builder: AgentBuilder = AgentBuilder.from_yaml(
-                    yaml_file=agent_config['yaml_file'],
+                    yaml_file=agent_config.yaml_file,
                     base_llm=base_llm,
                     tool_registry=tool_registry,
                 )
@@ -525,122 +442,124 @@ class AriumBuilder:
             builder.add_agent(agent)
 
         # Process function nodes
-        function_nodes_config = arium_config.get('function_nodes', [])
+        function_nodes_list = arium.function_nodes or []
         function_nodes_dict = {}
 
-        for function_node_config in function_nodes_config:
-            function_node_name = function_node_config['name']
-            function_name = function_node_config['function_name']
-            prefilled_params = function_node_config.get('prefilled_params', None)
-            description = function_node_config.get('description', None)
-            input_filter = function_node_config.get('input_filter', None)
-            function = function_registry.get(function_name)
+        for function_node in function_nodes_list:
+            function = (
+                function_registry.get(function_node.function_name)
+                if function_registry is not None
+                else None
+            )
 
             if function is None:
                 raise ValueError(
-                    f'Function {function_name} not found in provided function_registry dictionary. '
-                    f'Available functions: {list[str](function_registry.keys()) if function_registry else []}. '
+                    f'Function {function_node.function_name} not found in provided function_registry dictionary. '
+                    f'Available functions: {list(function_registry.keys()) if function_registry else []}. '
                     f'Either provide the function in the function_registry parameter or add configuration fields.'
                 )
 
             function_node = FunctionNode(
-                name=function_node_name,
-                description=description,
+                name=function_node.name,
+                description=function_node.description,
                 function=function,
-                input_filter=input_filter,
-                prefilled_params=prefilled_params,
+                input_filter=function_node.input_filter,
+                prefilled_params=function_node.prefilled_params,
             )
 
-            function_nodes_dict[function_node_name] = function_node
+            function_nodes_dict[function_node.name] = function_node
             builder.add_function_node(function_node)
 
         # Process LLM routers (if defined in YAML)
-        routers_config = arium_config.get('routers', [])
+        routers_list = arium.routers or []
         yaml_routers = {}  # Store routers created from YAML config
 
-        for router_config in routers_config:
-            router_name = router_config['name']
-            router_type = router_config.get('type', 'smart')
+        for router in routers_list:
+            router_type = router.type or 'smart'
 
             # Create LLM instance for router
             router_llm = None
-            if 'model' in router_config:
+            if router.model is not None:
                 router_llm = cls._create_llm_from_config(
-                    router_config['model'], base_llm, **kwargs
+                    router.model, base_llm, **kwargs
                 )
             else:
                 router_llm = base_llm  # Use base LLM if no specific model configured
 
             # Extract router-specific settings
-            settings = router_config.get('settings', {})
+            settings = (
+                router.settings.model_dump(exclude_none=True) if router.settings else {}
+            )
 
             # Create router based on type
             if router_type == 'smart':
-                routing_options = router_config.get('routing_options', {})
-                if not routing_options:
+                if not router.routing_options:
                     raise ValueError(
-                        f'Smart router {router_name} must specify routing_options'
+                        f'Smart router {router.name} must specify routing_options'
                     )
 
                 router_fn = create_llm_router(
                     router_type='smart',
-                    routing_options=routing_options,
+                    routing_options=router.routing_options,
                     llm=router_llm,
                     **settings,
                 )
 
             elif router_type == 'task_classifier':
-                task_categories = router_config.get('task_categories', {})
-                if not task_categories:
+                if not router.task_categories:
                     raise ValueError(
-                        f'Task classifier router {router_name} must specify task_categories'
+                        f'Task classifier router {router.name} must specify task_categories'
                     )
+                # Convert TaskCategoryModel dict to regular dict
+                task_categories_dict = {
+                    k: v.model_dump(exclude_none=True)
+                    if hasattr(v, 'model_dump')
+                    else v
+                    for k, v in router.task_categories.items()
+                }
 
                 router_fn = create_llm_router(
                     router_type='task_classifier',
-                    task_categories=task_categories,
+                    task_categories=task_categories_dict,
                     llm=router_llm,
                     **settings,
                 )
 
             elif router_type == 'conversation_analysis':
-                routing_logic = router_config.get('routing_logic', {})
-                if not routing_logic:
+                if not router.routing_logic:
                     raise ValueError(
-                        f'Conversation analysis router {router_name} must specify routing_logic'
+                        f'Conversation analysis router {router.name} must specify routing_logic'
                     )
 
                 router_fn = create_llm_router(
                     router_type='conversation_analysis',
-                    routing_logic=routing_logic,
+                    routing_logic=router.routing_logic,
                     llm=router_llm,
                     **settings,
                 )
 
             elif router_type == 'reflection':
-                flow_pattern = router_config.get('flow_pattern', [])
-                if not flow_pattern:
+                if not router.flow_pattern:
                     raise ValueError(
-                        f'Reflection router {router_name} must specify flow_pattern'
+                        f'Reflection router {router.name} must specify flow_pattern'
                     )
 
                 router_fn = create_llm_router(
                     router_type='reflection',
-                    flow_pattern=flow_pattern,
+                    flow_pattern=router.flow_pattern,
                     llm=router_llm,
                     **settings,
                 )
 
             elif router_type == 'plan_execute':
-                agents = router_config.get('agents', {})
-                if not agents:
+                if not router.agents:
                     raise ValueError(
-                        f'Plan-Execute router {router_name} must specify agents'
+                        f'Plan-Execute router {router.name} must specify agents'
                     )
 
                 router_fn = create_llm_router(
                     router_type='plan_execute',
-                    agents=agents,
+                    agents=router.agents,
                     llm=router_llm,
                     **settings,
                 )
@@ -649,7 +568,7 @@ class AriumBuilder:
                     f'Unknown router type: {router_type}. Supported types: smart, task_classifier, conversation_analysis, reflection, plan_execute'
                 )
 
-            yaml_routers[router_name] = router_fn
+            yaml_routers[router.name] = router_fn
 
         # Merge YAML routers with provided routers
         all_routers = {}
@@ -658,19 +577,20 @@ class AriumBuilder:
         all_routers.update(yaml_routers)
 
         # Process AriumNodes (nested Arium workflows)
-        arium_nodes_config = arium_config.get('ariums', [])
+        arium_nodes_list = arium.ariums or []
         arium_nodes_dict = {}
 
-        for arium_node_config in arium_nodes_config:
-            node_name = arium_node_config['name']
-            inherit_vars = arium_node_config.get('inherit_variables', True)
+        for arium_node in arium_nodes_list:
+            inherit_vars = (
+                arium_node.inherit_variables
+                if arium_node.inherit_variables is not None
+                else True
+            )
 
             # Method 1: External YAML file reference
-            if 'yaml_file' in arium_node_config:
-                yaml_file_path = arium_node_config['yaml_file']
-
+            if arium_node.yaml_file is not None:
                 nested_builder = cls.from_yaml(
-                    yaml_file=yaml_file_path,
+                    yaml_file=arium_node.yaml_file,
                     memory=None,
                     agents=None,
                     routers=None,
@@ -685,14 +605,29 @@ class AriumBuilder:
                 # Build sub-config from inline definition
                 sub_config = {
                     'arium': {
-                        'agents': arium_node_config.get('agents', []),
-                        'function_nodes': arium_node_config.get('function_nodes', []),
-                        'routers': arium_node_config.get('routers', []),
-                        'ariums': arium_node_config.get(
-                            'ariums', []
-                        ),  # Support nesting!
-                        'iterators': arium_node_config.get('iterators', []),
-                        'workflow': arium_node_config['workflow'],
+                        'agents': [
+                            agent.model_dump(exclude_none=True, by_alias=True)
+                            for agent in (arium_node.agents or [])
+                        ],
+                        'function_nodes': [
+                            fn.model_dump(exclude_none=True, by_alias=True)
+                            for fn in (arium_node.function_nodes or [])
+                        ],
+                        'routers': [
+                            router.model_dump(exclude_none=True, by_alias=True)
+                            for router in (arium_node.routers or [])
+                        ],
+                        'ariums': [
+                            a.model_dump(exclude_none=True, by_alias=True)
+                            for a in (arium_node.ariums or [])
+                        ],  # Support nesting!
+                        'iterators': [
+                            it.model_dump(exclude_none=True, by_alias=True)
+                            for it in (arium_node.iterators or [])
+                        ],
+                        'workflow': arium_node.workflow.model_dump(
+                            exclude_none=True, by_alias=True
+                        ),
                     }
                 }
 
@@ -709,20 +644,20 @@ class AriumBuilder:
 
             # Wrap in AriumNode
             arium_node = AriumNode(
-                name=node_name, arium=nested_arium, inherit_variables=inherit_vars
+                name=arium_node.name, arium=nested_arium, inherit_variables=inherit_vars
             )
 
-            arium_nodes_dict[node_name] = arium_node
+            arium_nodes_dict[arium_node.name] = arium_node
             builder._all_ariums.append(arium_node)
             # Don't add to builder yet - will add during workflow processing if actually used
 
         # Process ForEachNodes (store configs, resolve later)
-        foreach_nodes_config = arium_config.get('iterators', [])
+        foreach_nodes_list = arium.iterators or []
         foreach_nodes_dict = {}
 
-        for foreach_config in foreach_nodes_config:
-            foreach_name = foreach_config['name']
-            execute_node_name = foreach_config['execute_node']
+        for foreach_config in foreach_nodes_list:
+            foreach_name = foreach_config.name
+            execute_node_name = foreach_config.execute_node
 
             foreach_nodes_dict[foreach_name] = {
                 'name': foreach_name,
@@ -760,7 +695,7 @@ class AriumBuilder:
             builder._foreach_nodes.append(foreach_node)
 
         # Process workflow
-        workflow_config = arium_config.get('workflow', {})
+        workflow = arium.workflow
 
         # Helper function to find node from all sources
         def _find_node(node_name: str):
@@ -772,7 +707,7 @@ class AriumBuilder:
             )
 
         # Set start node
-        start_node_name = workflow_config.get('start')
+        start_node_name = workflow.start
         if not start_node_name:
             raise ValueError('Workflow must specify a start node')
 
@@ -795,12 +730,12 @@ class AriumBuilder:
         builder.start_with(start_node)
 
         # Process edges
-        edges_config = workflow_config.get('edges', [])
+        edges_list = workflow.edges
 
-        for edge_config in edges_config:
-            from_node_name = edge_config['from']
-            to_nodes_names = edge_config['to']
-            router_name = edge_config.get('router')
+        for edge_config in edges_list:
+            from_node_name = edge_config.from_
+            to_nodes_names = edge_config.to
+            router_name = edge_config.router
 
             # Find from node
             from_node = _find_node(from_node_name)
@@ -844,7 +779,7 @@ class AriumBuilder:
                 builder.add_edge(from_node, to_nodes, router_fn)
 
         # Set end nodes
-        end_nodes_names = workflow_config.get('end', [])
+        end_nodes_names = workflow.end
         if not end_nodes_names:
             raise ValueError('Workflow must specify end nodes')
 
@@ -863,14 +798,14 @@ class AriumBuilder:
 
     @staticmethod
     def _create_llm_from_config(
-        model_config: Dict[str, Any],
+        model_config: LLMConfigModel,
         base_llm: Optional[BaseLLM] = None,
         **kwargs,
     ) -> BaseLLM:
         """Create an LLM instance from model configuration.
 
         Args:
-            model_config: Dictionary containing model configuration
+            model_config: LLMConfigModel instance containing model configuration
             base_llm: Base LLM to use as fallback
 
         Returns:
@@ -882,7 +817,7 @@ class AriumBuilder:
 
     @staticmethod
     def _create_agent_from_direct_config(
-        agent_config: Dict[str, Any],
+        agent_config: AriumAgentConfigModel,
         base_llm: Optional[BaseLLM] = None,
         available_tools: Optional[Dict[str, Tool]] = None,
         **kwargs,
@@ -890,24 +825,38 @@ class AriumBuilder:
         """Create an Agent from direct YAML configuration.
 
         Args:
-            agent_config: Dictionary containing agent configuration
+            agent_config: AriumAgentConfigModel instance containing agent configuration
             base_llm: Base LLM to use if not specified in config
             available_tools: Available tools dictionary for tool lookup
 
         Returns:
             Agent: Configured agent instance
         """
-        from flo_ai.models.base_agent import ReasoningPattern
+        from flo_ai.agent.base_agent import ReasoningPattern
         # from flo_ai.llm import OpenAI, Anthropic, Gemini, OllamaLLM
 
         # Extract basic configuration
-        name = agent_config['name']
-        job = agent_config['job']
-        role = agent_config.get('role')
+        name = agent_config.name
+        job = (
+            agent_config.job or agent_config.prompt or 'You are a helpful AI assistant.'
+        )
+        role: str = (
+            ''
+            if agent_config.role is None or agent_config.role == 'None'
+            else agent_config.role
+        )
+        act_as = agent_config.act_as
 
         # Configure LLM
-        if 'model' in agent_config and base_llm is None:
-            llm = AriumBuilder._create_llm_from_config(agent_config['model'], **kwargs)
+        if agent_config.model is not None and base_llm is None:
+            # Merge base_url from agent_config if present and not in model_config
+            model_config = agent_config.model
+            if agent_config.base_url is not None and model_config.base_url is None:
+                # Create a new model instance with merged base_url using model_copy
+                model_config = model_config.model_copy(
+                    update={'base_url': agent_config.base_url}
+                )
+            llm = AriumBuilder._create_llm_from_config(model_config, **kwargs)
         elif base_llm:
             llm = base_llm
         else:
@@ -916,10 +865,16 @@ class AriumBuilder:
             )
 
         # Extract settings
-        settings = agent_config.get('settings', {})
-        temperature = settings.get('temperature')
-        max_retries = settings.get('max_retries', 3)
-        reasoning_pattern_str = settings.get('reasoning_pattern', 'DIRECT')
+        settings = agent_config.settings
+        temperature = settings.temperature if settings else None
+        max_retries = (
+            settings.max_retries if settings and settings.max_retries is not None else 3
+        )
+        reasoning_pattern_str = (
+            settings.reasoning_pattern
+            if settings and settings.reasoning_pattern
+            else 'DIRECT'
+        )
 
         # Convert reasoning pattern string to enum
         try:
@@ -933,9 +888,16 @@ class AriumBuilder:
 
         # Extract and resolve tools
         agent_tools = []
-        tool_names = agent_config.get('tools', [])
-        if tool_names and available_tools:
-            for tool_name in tool_names:
+        tool_configs = agent_config.tools or []
+        if tool_configs and available_tools:
+            for tool_item in tool_configs:
+                # Handle both string tool names and ToolConfigModel instances
+                if isinstance(tool_item, str):
+                    tool_name = tool_item
+                else:
+                    # ToolConfigModel - extract name
+                    tool_name = tool_item.name
+
                 if tool_name in available_tools:
                     agent_tools.append(available_tools[tool_name])
                 else:
@@ -945,16 +907,17 @@ class AriumBuilder:
                     )
 
         # Handle parser configuration if present
-        output_schema = None
-        if 'parser' in agent_config:
+        output_schema: Optional[Dict[str, Any]] = None
+        if agent_config.parser is not None:
             from flo_ai.formatter.yaml_format_parser import FloYamlParser
 
             # Convert agent_config to the format expected by FloYamlParser
-            parser_config = {'agent': {'parser': agent_config['parser']}}
+            parser_dict = agent_config.parser.model_dump(exclude_none=True)
+            parser_config = {'agent': {'parser': parser_dict}}
             parser = FloYamlParser.create(yaml_dict=parser_config)
             output_schema = parser.get_format()
 
-        agent = (
+        builder = (
             AgentBuilder()
             .with_name(name)
             .with_prompt(job)
@@ -962,10 +925,14 @@ class AriumBuilder:
             .with_tools(agent_tools)
             .with_retries(max_retries)
             .with_reasoning(reasoning_pattern)
-            .with_output_schema(output_schema)
+            .with_output_schema(output_schema if output_schema is not None else {})
             .with_role(role)
-            .build()
         )
+
+        if act_as is not None:
+            builder.with_actas(act_as)
+
+        agent = builder.build()
 
         return agent
 

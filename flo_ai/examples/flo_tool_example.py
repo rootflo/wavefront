@@ -1,7 +1,7 @@
 import asyncio
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import AgentBuilder
 from flo_ai.tool import flo_tool, create_tool_from_function
-from flo_ai.models.base_agent import ReasoningPattern
+from flo_ai.agent import ReasoningPattern
 from flo_ai.llm.openai_llm import OpenAI
 from flo_ai.llm.anthropic_llm import Anthropic
 from flo_ai.llm.base_llm import BaseLLM
@@ -61,7 +61,7 @@ async def convert_units(value: float, from_unit: str, to_unit: str) -> str:
 @flo_tool(
     name='weather_checker', description='Get current weather information for a city'
 )
-async def get_weather(city: str, country: str = None) -> str:
+async def get_weather(city: str, country: str = '') -> str:
     """Get weather information for a specific city."""
     # This is a mock weather tool - in real use, you'd call a weather API
     weather_data = {

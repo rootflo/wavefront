@@ -10,7 +10,7 @@ import uuid
 from flo_ai.arium.builder import AriumBuilder
 from flo_ai.arium.memory import PlanAwareMemory, ExecutionPlan, PlanStep, StepStatus
 from flo_ai.llm import OpenAI
-from flo_ai.models.agent import Agent
+from flo_ai.agent import Agent
 from flo_ai.arium.llm_router import create_plan_execute_router
 
 
@@ -105,6 +105,9 @@ async def demo_plan_aware_memory():
 
     # Execute step 1
     current_plan = memory.get_current_plan()
+    if current_plan is None:
+        print('No plan available')
+        return
     next_steps = current_plan.get_next_steps()
     if next_steps:
         step = next_steps[0]
@@ -122,6 +125,9 @@ async def demo_plan_aware_memory():
 
     # Execute step 2
     current_plan = memory.get_current_plan()
+    if current_plan is None:
+        print('No plan available')
+        return
     next_steps = current_plan.get_next_steps()
     if next_steps:
         step = next_steps[0]
@@ -135,6 +141,9 @@ async def demo_plan_aware_memory():
 
     # Check what's next
     current_plan = memory.get_current_plan()
+    if current_plan is None:
+        print('No plan available')
+        return
     next_steps = current_plan.get_next_steps()
     print(f'\n🎯 Next steps ready for execution: {len(next_steps)}')
     for step in next_steps:
@@ -214,7 +223,7 @@ Always include clear dependencies and assign appropriate agents.""",
 
     # Test routing with no plan (should route to planner)
     try:
-        next_agent = plan_router(memory)
+        next_agent = await plan_router(memory, None)  # type: ignore[arg-type]
         print(f'📍 Router decision (no plan): {next_agent}')
         print('   Expected: planner (to create execution plan)')
 

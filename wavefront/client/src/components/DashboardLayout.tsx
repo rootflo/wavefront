@@ -1,8 +1,8 @@
-import Topbar from "@app/components/topbar/Topbar";
-import { App } from "@app/types/app";
-import { CURRENT_PATH_KEY } from "@app/lib/constants";
-import { useCallback, useEffect, useRef } from "react";
-import { Outlet, useLocation, useNavigate } from "react-router";
+import Topbar from '@app/components/topbar/Topbar';
+import { CURRENT_PATH_KEY } from '@app/lib/constants';
+import { App } from '@app/types/app';
+import { useCallback, useEffect, useRef } from 'react';
+import { Outlet, useLocation, useNavigate } from 'react-router';
 
 interface IUser {
   first_name: string;
@@ -11,30 +11,7 @@ interface IUser {
   id: string;
 }
 
-interface LayoutConfig {
-  logo?: {
-    logo: string | null;
-    alt: string;
-    width?: number;
-  };
-}
-
-const DashboardLayout = ({
-  user,
-  config,
-  customTitle,
-  poweredByFlag = true,
-  hideSidebar = false,
-  apps = [],
-}: {
-  user: IUser;
-  config?: LayoutConfig;
-  customTitle?: string;
-  poweredByFlag?: boolean;
-  hideSidebar?: boolean;
-  apps: App[];
-}) => {
-  const { logo = { logo: null, alt: "Logo", width: 140 } } = config || {};
+const DashboardLayout = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
   const currentPath = useLocation();
   const navigate = useNavigate();
   const timeoutRef = useRef<number | null>(null);
@@ -43,9 +20,7 @@ const DashboardLayout = ({
   creating a channel with name 'timeout' 
   */
   const bc = useRef<BroadcastChannel | null>(
-    typeof BroadcastChannel !== "undefined"
-      ? new BroadcastChannel("timeout")
-      : null
+    typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('timeout') : null
   );
 
   const resetTimer = useCallback(() => {
@@ -55,7 +30,7 @@ const DashboardLayout = ({
     // @ts-ignore
     timeoutRef.current = setTimeout(
       () => {
-        navigate("/logout");
+        navigate('/logout');
       },
       30 * 60 * 1000 // 30 minutes
     );
@@ -65,12 +40,12 @@ const DashboardLayout = ({
     // Initial timer setup
     resetTimer();
 
-    const events = ["click", "keypress"];
+    const events = ['click', 'keypress'];
 
     const handleEvent = () => {
       resetTimer();
       if (bc.current) {
-        bc.current.postMessage("resetTimer");
+        bc.current.postMessage('resetTimer');
       }
     };
 
@@ -78,15 +53,12 @@ const DashboardLayout = ({
       try {
         // listening to the message from the channel
         bc.current.onmessage = (event) => {
-          if (event.data === "resetTimer") {
+          if (event.data === 'resetTimer') {
             resetTimer();
           }
         };
       } catch (error) {
-        console.warn(
-          "BroadcastChannel not supported or failed to create:",
-          error
-        );
+        console.warn('BroadcastChannel not supported or failed to create:', error);
       }
 
       events.forEach((event) => {
@@ -115,23 +87,13 @@ const DashboardLayout = ({
   }, [resetTimer]);
 
   useEffect(() => {
-    localStorage.setItem(
-      CURRENT_PATH_KEY,
-      `${currentPath.pathname}${currentPath.search}`
-    );
+    localStorage.setItem(CURRENT_PATH_KEY, `${currentPath.pathname}${currentPath.search}`);
   }, [currentPath]);
 
   return (
     <div className="flex h-full w-full">
-      <div className={"relative flex h-full flex-1 flex-col"}>
-        <Topbar
-          user={user}
-          customTitle={customTitle}
-          poweredByFlag={poweredByFlag}
-          logo={logo}
-          hideSidebar={hideSidebar}
-          apps={apps}
-        />
+      <div className={'relative flex h-full flex-1 flex-col'}>
+        <Topbar user={user} apps={apps} />
         <main className="flex-1 overflow-auto bg-[#f6fafd]">
           <Outlet />
         </main>

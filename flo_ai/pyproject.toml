@@ -47,6 +47,7 @@ dev = [
     "reportlab>=4.4.3,<5",
     "streamlit>=1.42.2,<2",
     "wikipedia>=1.4.0,<2",
+    "ty>=0.0.1a28",
 ]
 
 [tool.pytest.ini_options]

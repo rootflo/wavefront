@@ -1,4 +1,4 @@
-import { IApiResponse } from "@app/lib/axios";
+import { IApiResponse } from '@app/lib/axios';
 
 /**
  * Voice Agent entity interface
@@ -14,7 +14,7 @@ export interface VoiceAgent {
   system_prompt: string;
   welcome_message: string;
   conversation_config: Record<string, any> | null;
-  status: "active" | "inactive";
+  status: 'active' | 'inactive';
   is_deleted: boolean;
   created_at: string;
   updated_at: string;
@@ -33,7 +33,7 @@ export interface CreateVoiceAgentRequest {
   system_prompt: string;
   welcome_message: string;
   conversation_config?: Record<string, any> | null;
-  status?: "active" | "inactive";
+  status?: 'active' | 'inactive';
 }
 
 /**
@@ -50,7 +50,7 @@ export interface UpdateVoiceAgentRequest {
   system_prompt?: string;
   welcome_message?: string;
   conversation_config?: Record<string, any> | null;
-  status?: "active" | "inactive";
+  status?: 'active' | 'inactive';
 }
 
 /**

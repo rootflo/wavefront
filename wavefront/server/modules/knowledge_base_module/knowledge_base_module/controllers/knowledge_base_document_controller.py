@@ -33,16 +33,6 @@ from sqlalchemy import select
 kb_document_router = APIRouter()
 
 
-async def handle_database_error(session, error_msg: str, error) -> JSONResponse:
-    """Handle database errors and return appropriate response."""
-    await session.rollback()
-    logger.error(f'{error_msg} with error as {str(error)}')
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content=ResponseFormatter.buildErrorResponse(str(error)),
-    )
-
-
 class KnowledgeBaseDocumentResponse(BaseModel):
     """Response model for knowledge base document data."""
 

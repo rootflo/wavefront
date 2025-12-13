@@ -1,34 +1,28 @@
-import floConsoleService from "@app/api";
-import ChatBot from "@app/components/ChatBot";
-import { Button } from "@app/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@app/components/ui/dialog";
-import { appEnv } from "@app/config/env";
-import { useNotifyStore } from "@app/store";
-import { Workflow, WorkflowEvent } from "@app/types/workflow";
-import { scrollToBottom } from "@app/utils/scroll";
-import { langs } from "@uiw/codemirror-extensions-langs";
-import CodeMirror from "@uiw/react-codemirror";
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { flushSync } from "react-dom";
-import { useParams } from "react-router";
+import floConsoleService from '@app/api';
+import ChatBot from '@app/components/ChatBot';
+import { Button } from '@app/components/ui/button';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@app/components/ui/dialog';
+import { appEnv } from '@app/config/env';
+import { useNotifyStore } from '@app/store';
+import { Workflow, WorkflowEvent } from '@app/types/workflow';
+import { scrollToBottom } from '@app/utils/scroll';
+import { langs } from '@uiw/codemirror-extensions-langs';
+import CodeMirror from '@uiw/react-codemirror';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
+import { useParams } from 'react-router';
 
 const WorkflowDetail: React.FC = () => {
   const { app: appId, id } = useParams<{ app: string; id: string }>();
   const { notifySuccess, notifyError } = useNotifyStore();
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
-  const [yamlContent, setYamlContent] = useState("");
+  const [yamlContent, setYamlContent] = useState('');
   const [saving, setSaving] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   // Inference state
-  const [inferenceInput, setInferenceInput] = useState("");
-  const [inferenceVariables, setInferenceVariables] = useState("{}");
+  const [inferenceInput, setInferenceInput] = useState('');
+  const [inferenceVariables, setInferenceVariables] = useState('{}');
   const [runningInference, setRunningInference] = useState(false);
 
   // Image upload state (keeping single for backward compatibility, but also adding array for ChatBot)
@@ -48,12 +42,10 @@ const WorkflowDetail: React.FC = () => {
   >([]);
 
   // Chat history and menu states
-  const [chatHistory, setChatHistory] = useState<
-    { role: "user" | "assistant"; content: any }[]
-  >([]);
+  const [chatHistory, setChatHistory] = useState<{ role: 'user' | 'assistant'; content: any }[]>([]);
   const [showUploadMenu, setShowUploadMenu] = useState(false);
   const [showVariablesInput, setShowVariablesInput] = useState(false);
-  const [selectedLLMConfigId, setSelectedLLMConfigId] = useState<string>("");
+  const [selectedLLMConfigId, setSelectedLLMConfigId] = useState<string>('');
 
   // Document upload state
   const [uploadedDocuments, setUploadedDocuments] = useState<
@@ -62,7 +54,7 @@ const WorkflowDetail: React.FC = () => {
       base64: string; // Full data URL for display
       base64Content: string; // Just base64 content for API
       mimeType: string;
-      documentType: "pdf" | "txt";
+      documentType: 'pdf' | 'txt';
     }>
   >([]);
   const [uploadingDocument, setUploadingDocument] = useState(false);
@@ -70,10 +62,8 @@ const WorkflowDetail: React.FC = () => {
   // JSON output state
 
   // SSE state
-  const [listenEventsEnabled, setListenEventsEnabled] =
-    useState<boolean>(false);
-  const [abortController, setAbortController] =
-    useState<AbortController | null>(null);
+  const [listenEventsEnabled, setListenEventsEnabled] = useState<boolean>(false);
+  const [abortController, setAbortController] = useState<AbortController | null>(null);
   const [streamingEvents, setStreamingEvents] = useState<WorkflowEvent[]>([]);
   const [isStreaming, setIsStreaming] = useState<boolean>(false);
 
@@ -85,23 +75,20 @@ const WorkflowDetail: React.FC = () => {
 
     try {
       const response = await floConsoleService.workflowService.getWorkflow(id);
-      if (
-        response.data?.meta?.status === "success" &&
-        response.data.data?.data
-      ) {
+      if (response.data?.meta?.status === 'success' && response.data.data?.data) {
         const workflowData: Workflow = {
           id: response.data.data.data.id,
           name: response.data.data.data.name,
           namespace: response.data.data.data.namespace,
           created_at: response.data.data.data.created_at,
           updated_at: response.data.data.data.updated_at,
-          yaml_content: response.data.data.data.yaml_content || "",
+          yaml_content: response.data.data.data.yaml_content || '',
         };
         setWorkflow(workflowData);
-        setYamlContent(response.data.data.data.yaml_content || "");
+        setYamlContent(response.data.data.data.yaml_content || '');
       }
     } catch (error) {
-      console.error("Error loading workflow:", error);
+      console.error('Error loading workflow:', error);
     }
   }, [id]);
 
@@ -111,22 +98,14 @@ const WorkflowDetail: React.FC = () => {
       if (!files || files.length === 0) return;
 
       // Validate file type
-      const allowedTypes = [
-        "image/jpeg",
-        "image/jpg",
-        "image/png",
-        "image/gif",
-        "image/webp",
-      ];
+      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
       const maxSize = 10 * 1024 * 1024; // 10MB
 
       // Validate all files before processing
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         if (!allowedTypes.includes(file.type)) {
-          notifyError(
-            `File ${file.name} is not a valid image type. Please select JPEG, PNG, GIF, or WebP files.`
-          );
+          notifyError(`File ${file.name} is not a valid image type. Please select JPEG, PNG, GIF, or WebP files.`);
           return;
         }
         if (file.size > maxSize) {
@@ -150,7 +129,7 @@ const WorkflowDetail: React.FC = () => {
 
             reader.onload = (e) => {
               const base64 = e.target?.result as string;
-              const base64Content = base64.split(",")[1] || base64;
+              const base64Content = base64.split(',')[1] || base64;
               resolve({
                 file,
                 base64,
@@ -159,8 +138,7 @@ const WorkflowDetail: React.FC = () => {
               });
             };
 
-            reader.onerror = () =>
-              reject(new Error(`Error reading ${file.name}`));
+            reader.onerror = () => reject(new Error(`Error reading ${file.name}`));
             reader.readAsDataURL(file);
           })
       );
@@ -178,11 +156,11 @@ const WorkflowDetail: React.FC = () => {
           }
           setUploadingImage(false);
           notifySuccess(`${newImages.length} image(s) uploaded successfully`);
-          event.target.value = "";
+          event.target.value = '';
           setShowUploadMenu(false);
         })
         .catch((error) => {
-          notifyError(error.message || "Error reading image files");
+          notifyError(error.message || 'Error reading image files');
           setUploadingImage(false);
         });
     },
@@ -221,16 +199,14 @@ const WorkflowDetail: React.FC = () => {
       if (!files || files.length === 0) return;
 
       // Validate file type
-      const allowedTypes = ["application/pdf", "text/plain"];
+      const allowedTypes = ['application/pdf', 'text/plain'];
       const maxSize = 50 * 1024 * 1024; // 50MB
 
       // Validate all files before processing
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         if (!allowedTypes.includes(file.type)) {
-          notifyError(
-            `Invalid file type for ${file.name}. Please select PDF or TXT files only.`
-          );
+          notifyError(`Invalid file type for ${file.name}. Please select PDF or TXT files only.`);
           return;
         }
         if (file.size > maxSize) {
@@ -248,15 +224,14 @@ const WorkflowDetail: React.FC = () => {
           base64: string;
           base64Content: string;
           mimeType: string;
-          documentType: "pdf" | "txt";
+          documentType: 'pdf' | 'txt';
         }>((resolve, reject) => {
           const reader = new FileReader();
 
           reader.onload = (e) => {
             const dataUrl = e.target?.result as string;
-            const base64 = dataUrl.split(",")[1];
-            const documentType =
-              file.type === "application/pdf" ? "pdf" : "txt";
+            const base64 = dataUrl.split(',')[1];
+            const documentType = file.type === 'application/pdf' ? 'pdf' : 'txt';
 
             resolve({
               file,
@@ -267,8 +242,7 @@ const WorkflowDetail: React.FC = () => {
             });
           };
 
-          reader.onerror = () =>
-            reject(new Error(`Error reading ${file.name}`));
+          reader.onerror = () => reject(new Error(`Error reading ${file.name}`));
           reader.readAsDataURL(file);
         });
       });
@@ -279,10 +253,10 @@ const WorkflowDetail: React.FC = () => {
           setUploadingDocument(false);
           // Reset file input
           setShowUploadMenu(false);
-          event.target.value = "";
+          event.target.value = '';
         })
         .catch((error) => {
-          notifyError(error.message || "Error reading document files");
+          notifyError(error.message || 'Error reading document files');
           setUploadingDocument(false);
         });
     },
@@ -306,9 +280,9 @@ const WorkflowDetail: React.FC = () => {
       await floConsoleService.workflowService.updateWorkflow(id, yamlContent);
       setWorkflow({ ...workflow, yaml_content: yamlContent });
       setEditDialogOpen(false);
-      notifySuccess("Workflow updated successfully");
+      notifySuccess('Workflow updated successfully');
     } catch (error) {
-      console.error("Error updating workflow:", error);
+      console.error('Error updating workflow:', error);
     } finally {
       setSaving(false);
     }
@@ -322,7 +296,7 @@ const WorkflowDetail: React.FC = () => {
     setEditDialogOpen(false);
     // Reset yamlContent to original workflow content when canceling
     if (workflow) {
-      setYamlContent(workflow.yaml_content || "");
+      setYamlContent(workflow.yaml_content || '');
     }
   };
 
@@ -334,25 +308,20 @@ const WorkflowDetail: React.FC = () => {
       uploadedImage
     ) {
       handleRunInference();
-      setInferenceInput("");
+      setInferenceInput('');
       setUploadedImages([]);
       setUploadedImage(null);
       // Clear documents after inference
       setUploadedDocuments([]);
       requestAnimationFrame(() => {
-        setTimeout(() => scrollToBottom("message-container", "smooth"), 150);
+        setTimeout(() => scrollToBottom('message-container', 'smooth'), 150);
       });
     }
   };
   const handleRunInference = async () => {
     // Validate input: require either text input, uploaded image, or uploaded document(s)
-    if (
-      !id ||
-      (!inferenceInput.trim() &&
-        !uploadedImage &&
-        uploadedDocuments.length === 0)
-    ) {
-      notifyError("Please provide text input, upload an image/document");
+    if (!id || (!inferenceInput.trim() && !uploadedImage && uploadedDocuments.length === 0)) {
+      notifyError('Please provide text input, upload an image/document');
       return;
     }
 
@@ -373,7 +342,7 @@ const WorkflowDetail: React.FC = () => {
         try {
           variables = JSON.parse(inferenceVariables);
         } catch {
-          notifyError("Invalid JSON in variables field");
+          notifyError('Invalid JSON in variables field');
           setRunningInference(false);
           return;
         }
@@ -400,24 +369,18 @@ const WorkflowDetail: React.FC = () => {
             image_base64: image.base64Content,
             mime_type: image.mimeType,
           };
-          messageInputs.push({ role: "user", content: imageMessage });
-          setChatHistory((prev) => [
-            ...prev,
-            { role: "user", content: imageMessage },
-          ]);
+          messageInputs.push({ role: 'user', content: imageMessage });
+          setChatHistory((prev) => [...prev, { role: 'user', content: imageMessage }]);
         });
       } else if (uploadedImage) {
         // Fallback to single image for backward compatibility
-        const imageBase64Content = uploadedImage.base64.split(",")[1];
+        const imageBase64Content = uploadedImage.base64.split(',')[1];
         const imageMessage = {
           image_base64: imageBase64Content,
           mime_type: uploadedImage.mimeType,
         };
-        messageInputs.push({ role: "user", content: imageMessage });
-        setChatHistory((prev) => [
-          ...prev,
-          { role: "user", content: imageMessage },
-        ]);
+        messageInputs.push({ role: 'user', content: imageMessage });
+        setChatHistory((prev) => [...prev, { role: 'user', content: imageMessage }]);
       }
 
       // Add all documents if uploaded
@@ -432,22 +395,16 @@ const WorkflowDetail: React.FC = () => {
               size: doc.file.size,
             },
           };
-          messageInputs.push({ role: "user", content: documentMessage });
-          setChatHistory((prev) => [
-            ...prev,
-            { role: "user", content: documentMessage },
-          ]);
+          messageInputs.push({ role: 'user', content: documentMessage });
+          setChatHistory((prev) => [...prev, { role: 'user', content: documentMessage }]);
         });
       }
 
       // Add text input if provided
       if (inferenceInput.trim()) {
         const textInput = inferenceInput.trim();
-        messageInputs.push({ role: "user", content: textInput });
-        setChatHistory((prev) => [
-          ...prev,
-          { role: "user", content: textInput },
-        ]);
+        messageInputs.push({ role: 'user', content: textInput });
+        setChatHistory((prev) => [...prev, { role: 'user', content: textInput }]);
       }
 
       // Determine final inputs format
@@ -455,7 +412,7 @@ const WorkflowDetail: React.FC = () => {
         inputs = messageInputs;
       } else {
         // This shouldn't happen due to validation, but fallback
-        inputs = "";
+        inputs = '';
       }
 
       if (listenEventsEnabled) {
@@ -463,22 +420,15 @@ const WorkflowDetail: React.FC = () => {
         await handleSSEInference(inputs, variables);
       } else {
         // Handle normal inference
-        const result = await floConsoleService.workflowService.runInference(
-          id,
-          inputs,
-          variables
-        );
+        const result = await floConsoleService.workflowService.runInference(id, inputs, variables);
         const resultContent = result.data?.data?.data?.result;
         if (resultContent) {
-          setChatHistory((prev) => [
-            ...prev,
-            { role: "assistant", content: resultContent },
-          ]);
+          setChatHistory((prev) => [...prev, { role: 'assistant', content: resultContent }]);
         }
       }
     } catch (error) {
-      console.error("Error running inference:", error);
-      notifyError("Failed to run inference. Please try again.");
+      console.error('Error running inference:', error);
+      notifyError('Failed to run inference. Please try again.');
     } finally {
       if (!listenEventsEnabled) {
         setRunningInference(false);
@@ -486,19 +436,16 @@ const WorkflowDetail: React.FC = () => {
     }
   };
 
-  const handleSSEInference = async (
-    inputs: string | any[],
-    variables: Record<string, any>
-  ) => {
+  const handleSSEInference = async (inputs: string | any[], variables: Record<string, any>) => {
     if (!id) return;
 
     try {
       setIsStreaming(true);
       setStreamingEvents([]); // Clear previous events immediately
 
-      const token = localStorage.getItem("authToken");
+      const token = localStorage.getItem('authToken');
       if (!token) {
-        throw new Error("Authentication token not found");
+        throw new Error('Authentication token not found');
       }
 
       const baseUrl = appEnv.baseURL;
@@ -518,44 +465,42 @@ const WorkflowDetail: React.FC = () => {
 
       // RAW FETCH with immediate ReadableStream processing
       const response = await fetch(url, {
-        method: "POST",
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
-          Accept: "text/event-stream",
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
           Authorization: `Bearer ${token}`,
-          "Cache-Control": "no-cache",
-          Connection: "keep-alive",
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
           // 'Accept-Encoding': 'gzip,deflate,br',
         },
-        mode: "cors",
+        mode: 'cors',
         body: JSON.stringify(requestBody),
         signal: controller.signal,
       });
 
       if (!response.ok) {
         if (response.status === 401) {
-          throw new Error("Authentication failed. Please login again.");
+          throw new Error('Authentication failed. Please login again.');
         } else if (response.status === 403) {
-          throw new Error("Access denied. Check your permissions.");
+          throw new Error('Access denied. Check your permissions.');
         } else if (response.status === 404) {
-          throw new Error("Workflow not found.");
+          throw new Error('Workflow not found.');
         } else if (response.status >= 500) {
-          throw new Error("Server error. Please try again later.");
+          throw new Error('Server error. Please try again later.');
         } else {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
       }
 
-      const reader = response.body
-        ?.pipeThrough(new TextDecoderStream())
-        .getReader();
+      const reader = response.body?.pipeThrough(new TextDecoderStream()).getReader();
       // const decoder = new TextDecoder();
 
       if (!reader) {
-        throw new Error("ReadableStream not supported");
+        throw new Error('ReadableStream not supported');
       }
 
-      let buffer = "";
+      let buffer = '';
 
       try {
         while (true) {
@@ -571,21 +516,21 @@ const WorkflowDetail: React.FC = () => {
           buffer += chunk;
 
           // PROPER SSE EVENT PROCESSING - split on double newline
-          const events = buffer.split("\n\n");
-          buffer = events.pop() || ""; // Keep incomplete event in buffer
+          const events = buffer.split('\n\n');
+          buffer = events.pop() || ''; // Keep incomplete event in buffer
 
           // Process complete events
           for (let i = 0; i < events.length; i++) {
             const event = events[i];
-            if (event.trim() === "") continue;
+            if (event.trim() === '') continue;
 
             // Parse SSE event format properly
-            const lines = event.split("\n");
-            let data = "";
+            const lines = event.split('\n');
+            let data = '';
 
             for (const line of lines) {
-              if (line.startsWith("data: ")) {
-                data += line.substring(6) + "\n";
+              if (line.startsWith('data: ')) {
+                data += line.substring(6) + '\n';
               }
             }
 
@@ -610,9 +555,7 @@ const WorkflowDetail: React.FC = () => {
                 // IMMEDIATE scroll update
                 if (eventsContainerRef.current) {
                   const container = eventsContainerRef.current;
-                  const isNearBottom =
-                    container.scrollTop + container.clientHeight >=
-                    container.scrollHeight - 50;
+                  const isNearBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 50;
 
                   if (isNearBottom) {
                     container.scrollTop = container.scrollHeight;
@@ -621,41 +564,37 @@ const WorkflowDetail: React.FC = () => {
 
                 // Handle different event types
                 switch (eventData.event_type) {
-                  case "workflow_started":
+                  case 'workflow_started':
                     break;
 
-                  case "node_started":
+                  case 'node_started':
                     break;
 
-                  case "node_completed":
+                  case 'node_completed':
                     break;
 
-                  case "node_failed":
-                    console.error(
-                      "Node failed:",
-                      eventData.node_name,
-                      eventData.error
-                    );
+                  case 'node_failed':
+                    console.error('Node failed:', eventData.node_name, eventData.error);
                     break;
 
-                  case "workflow_completed":
+                  case 'workflow_completed':
                     break;
 
-                  case "workflow_failed":
-                    console.error("Workflow failed:", eventData.error);
+                  case 'workflow_failed':
+                    console.error('Workflow failed:', eventData.error);
                     break;
 
-                  case "output":
+                  case 'output':
                     // Use flushSync for critical final update
                     flushSync(() => {
                       const agentResponse =
-                        typeof eventData.result === "string"
+                        typeof eventData.result === 'string'
                           ? eventData.result
                           : JSON.stringify(eventData.result, null, 2);
                       setChatHistory((prev) => [
                         ...prev,
                         {
-                          role: "assistant",
+                          role: 'assistant',
                           content: agentResponse,
                         },
                       ]);
@@ -670,21 +609,16 @@ const WorkflowDetail: React.FC = () => {
                     break;
                 }
               } catch (e) {
-                console.error(
-                  "Error parsing event data:",
-                  e,
-                  "Raw event:",
-                  event
-                );
+                console.error('Error parsing event data:', e, 'Raw event:', event);
               }
             }
           }
         }
       } catch (error) {
-        if (error instanceof Error && error.name === "AbortError") {
+        if (error instanceof Error && error.name === 'AbortError') {
           // Stream aborted by user
         } else {
-          console.error("Stream error:", error);
+          console.error('Stream error:', error);
           throw error;
         }
       } finally {
@@ -692,11 +626,11 @@ const WorkflowDetail: React.FC = () => {
         cleanup();
       }
     } catch (error) {
-      console.error("Error setting up SSE connection:", error);
+      console.error('Error setting up SSE connection:', error);
 
-      if (error instanceof Error && error.name !== "AbortError") {
-        const errorMessage = error.message.includes("Authentication")
-          ? "Authentication failed. Please login again."
+      if (error instanceof Error && error.name !== 'AbortError') {
+        const errorMessage = error.message.includes('Authentication')
+          ? 'Authentication failed. Please login again.'
           : `Failed to connect: ${error.message}`;
 
         notifyError(errorMessage);
@@ -717,9 +651,7 @@ const WorkflowDetail: React.FC = () => {
     <div className="h-full bg-white py-5">
       <div className="flex h-full w-full flex-col gap-10">
         <div className="flex items-center justify-between">
-          <p className="text-2xl font-semibold leading-normal text-black">
-            {workflow?.name}
-          </p>
+          <p className="text-2xl leading-normal font-semibold text-black">{workflow?.name}</p>
           <div className="flex gap-4">
             <Button variant="outline" onClick={handleEditDialogOpen}>
               Edit
@@ -730,9 +662,7 @@ const WorkflowDetail: React.FC = () => {
         <div className="flex w-full flex-1 gap-10 pb-5">
           <div className="flex h-full w-full flex-col gap-10">
             <div className="flex h-full flex-col gap-3">
-              <p className="text-lg font-medium leading-4 text-black">
-                Configuration
-              </p>
+              <p className="text-lg leading-4 font-medium text-black">Configuration</p>
               <CodeMirror
                 value={yamlContent}
                 editable={false}
@@ -796,16 +726,12 @@ const WorkflowDetail: React.FC = () => {
               className="w-full"
               extensions={[langs.yaml()]}
             />
-            <p className="text-sm font-normal leading-normal text-[#878787]">
+            <p className="text-sm leading-normal font-normal text-[#878787]">
               Define your workflow configuration in YAML format.
             </p>
           </div>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={handleEditDialogClose}
-              disabled={saving}
-            >
+            <Button variant="outline" onClick={handleEditDialogClose} disabled={saving}>
               Cancel
             </Button>
             <Button onClick={handleSave} loading={saving}>

@@ -81,7 +81,7 @@ const CreatePipeline: React.FC = () => {
               id="project_name"
               value={formData.project_name}
               onChange={(e) => setFormData({ ...formData, project_name: e.target.value })}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-black focus:outline-none focus:ring-black"
+              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-black focus:ring-black focus:outline-none"
               placeholder="my_analytics_pipeline"
             />
             {errors.project_name && <p className="mt-1 text-sm text-red-600">{errors.project_name}</p>}
@@ -96,7 +96,7 @@ const CreatePipeline: React.FC = () => {
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               rows={3}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-black focus:outline-none focus:ring-black"
+              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-black focus:ring-black focus:outline-none"
               placeholder="Analytics pipeline for customer data"
             />
           </div>
@@ -110,7 +110,7 @@ const CreatePipeline: React.FC = () => {
               id="schedule_interval"
               value={formData.schedule_interval}
               onChange={(e) => setFormData({ ...formData, schedule_interval: e.target.value })}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-black focus:outline-none focus:ring-black"
+              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-black focus:ring-black focus:outline-none"
               placeholder="0 6 * * *"
             />
             <p className="mt-1 text-sm text-gray-500">
@@ -127,7 +127,7 @@ const CreatePipeline: React.FC = () => {
               id="start_at"
               value={formData.start_at}
               onChange={(e) => setFormData({ ...formData, start_at: e.target.value })}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-black focus:outline-none focus:ring-black"
+              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-black focus:ring-black focus:outline-none"
             />
             {errors.start_at && <p className="mt-1 text-sm text-red-600">{errors.start_at}</p>}
             <p className="mt-1 text-sm text-gray-500">Pipeline start time (immutable after creation)</p>
@@ -141,7 +141,7 @@ const CreatePipeline: React.FC = () => {
               id="type"
               value={formData.type}
               onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-black focus:outline-none focus:ring-black"
+              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-black focus:ring-black focus:outline-none"
             >
               <option value="dbt">DBT</option>
             </select>

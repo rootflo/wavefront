@@ -43,7 +43,7 @@ jobs:
       - name: Build Docker Image
         id: build-image
         run: |
-          docker build -f docker/wavefront-web.Dockerfile -t rootflo:${{ steps.get-commit-hash.outputs.commit-hash }}-${{ steps.get-timestamp.outputs.timestamp }} .
+          docker build -f wavefront/client/Dockerfile -t rootflo:${{ steps.get-commit-hash.outputs.commit-hash }}-${{ steps.get-timestamp.outputs.timestamp }} .
           echo "IMAGE_TAG=${{ steps.get-commit-hash.outputs.commit-hash }}-${{ steps.get-timestamp.outputs.timestamp }}" >> $GITHUB_ENV
 
       - id: "Auth-to-GCP"

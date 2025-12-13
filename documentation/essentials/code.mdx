@@ -1,7 +1,7 @@
 ---
-title: 'Code Examples'
-description: 'Flo AI code examples and syntax highlighting'
-icon: 'code'
+title: "Code Examples"
+description: "Flo AI code examples and syntax highlighting"
+icon: "code"
 ---
 
 ## Basic Agent Creation
@@ -10,7 +10,7 @@ Here's how to create a simple conversational agent with Flo AI:
 
 ```python Simple Agent
 import asyncio
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import AgentBuilder
 from flo_ai.llm import OpenAI
 
 async def main():
@@ -34,7 +34,7 @@ Create agents that can use custom tools:
 
 ```python Tool-Using Agent
 import asyncio
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import AgentBuilder
 from flo_ai.tool import flo_tool
 from flo_ai.llm import Anthropic
 
@@ -72,7 +72,7 @@ Use Pydantic models for structured agent responses:
 ```python Structured Output
 import asyncio
 from pydantic import BaseModel, Field
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import AgentBuilder
 from flo_ai.llm import OpenAI
 
 class MathSolution(BaseModel):
@@ -102,25 +102,25 @@ Create complex workflows with multiple agents:
 ```python Multi-Agent Workflow
 import asyncio
 from flo_ai.arium import AriumBuilder
-from flo_ai.models.agent import Agent
+from flo_ai.agent import Agent
 from flo_ai.llm import OpenAI
 
 async def content_analysis_workflow():
     llm = OpenAI(model='gpt-4o-mini')
-    
+
     # Create specialized agents
     analyst = Agent(
         name='content_analyst',
         system_prompt='Analyze the input and extract key insights.',
         llm=llm
     )
-    
+
     summarizer = Agent(
-        name='summarizer', 
+        name='summarizer',
         system_prompt='Create a concise summary based on the analysis.',
         llm=llm
     )
-    
+
     # Build and run workflow
     result = await (
         AriumBuilder()
@@ -130,7 +130,7 @@ async def content_analysis_workflow():
         .end_with(summarizer)
         .build_and_run(["Analyze this complex business report..."])
     )
-    
+
     return result
 
 asyncio.run(content_analysis_workflow())
@@ -154,7 +154,7 @@ arium:
       model:
         provider: "openai"
         name: "gpt-4o-mini"
-    
+
     - name: "summarizer"
       role: "Content Summarizer"
       job: "Create a concise summary based on the analysis."

@@ -1,7 +1,7 @@
 ---
-title: 'Telemetry & Observability'
-description: 'Monitor and observe your AI agents with OpenTelemetry integration'
-icon: 'chart-line'
+title: "Telemetry & Observability"
+description: "Monitor and observe your AI agents with OpenTelemetry integration"
+icon: "chart-line"
 ---
 
 ## OpenTelemetry Integration
@@ -48,7 +48,7 @@ export JAEGER_AGENT_PORT="14268"
 ### Automatic Instrumentation
 
 ```python
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import AgentBuilder
 from flo_ai.llm import OpenAI
 
 # Agents are automatically instrumented
@@ -75,13 +75,13 @@ async def custom_agent_operation():
     with tracer.start_as_current_span("custom_operation") as span:
         span.set_attribute("operation.type", "data_processing")
         span.set_attribute("operation.input_size", 1000)
-        
+
         # Your custom logic here
         result = await process_data()
-        
+
         span.set_attribute("operation.output_size", len(result))
         span.set_attribute("operation.success", True)
-        
+
         return result
 ```
 
@@ -127,15 +127,15 @@ workflow_duration = meter.create_histogram(
 # Record metrics
 async def execute_workflow():
     start_time = time.time()
-    
+
     workflow_counter.add(1, {"workflow_type": "analysis"})
-    
+
     # Execute workflow
     result = await workflow.build_and_run(["data"])
-    
+
     duration = time.time() - start_time
     workflow_duration.record(duration, {"workflow_type": "analysis"})
-    
+
     return result
 ```
 
@@ -168,26 +168,26 @@ agent_metrics = {
 # Record agent metrics
 async def execute_agent_with_metrics(agent, input_data):
     start_time = time.time()
-    
+
     agent_metrics["agent_executions_total"].add(1, {
         "agent_name": agent.name,
         "model": agent.llm.model
     })
-    
+
     response = await agent.run(input_data)
-    
+
     duration = time.time() - start_time
     agent_metrics["agent_duration_seconds"].record(duration, {
         "agent_name": agent.name
     })
-    
+
     # Record token usage if available
     if hasattr(response, 'usage'):
         agent_metrics["agent_tokens_used"].add(
             response.usage.total_tokens,
             {"agent_name": agent.name}
         )
-    
+
     return response
 ```
 
@@ -217,30 +217,30 @@ llm_metrics = {
 # Record LLM metrics
 async def llm_request_with_metrics(llm, prompt):
     start_time = time.time()
-    
+
     llm_metrics["llm_requests_total"].add(1, {
         "provider": llm.provider,
         "model": llm.model
     })
-    
+
     try:
         response = await llm.generate(prompt)
-        
+
         duration = time.time() - start_time
         llm_metrics["llm_request_duration"].record(duration, {
             "provider": llm.provider,
             "model": llm.model
         })
-        
+
         # Record token usage
         if hasattr(response, 'usage'):
             llm_metrics["llm_tokens_total"].add(
                 response.usage.total_tokens,
                 {"provider": llm.provider, "model": llm.model}
             )
-        
+
         return response
-        
+
     except Exception as e:
         llm_metrics["llm_errors_total"].add(1, {
             "provider": llm.provider,
@@ -260,15 +260,15 @@ from opentelemetry.trace import get_current_span
 async def distributed_workflow():
     # Get current trace context
     current_span = get_current_span()
-    
+
     if current_span:
         # Add custom attributes
         current_span.set_attribute("workflow.id", "analysis_workflow")
         current_span.set_attribute("workflow.version", "1.0.0")
-    
+
     # Execute workflow - trace context is automatically propagated
     result = await workflow.build_and_run(["data"])
-    
+
     return result
 ```
 
@@ -302,21 +302,21 @@ async def custom_operation():
         # Set span attributes
         span.set_attribute("operation.name", "data_processing")
         span.set_attribute("operation.input_size", 1000)
-        
+
         # Add events
         span.add_event("Processing started")
-        
+
         # Your custom logic
         result = await process_data()
-        
+
         span.add_event("Processing completed", {
             "output_size": len(result),
             "processing_time": time.time() - start_time
         })
-        
+
         # Set status
         span.set_status(trace.Status(trace.StatusCode.OK))
-        
+
         return result
 ```
 
@@ -341,15 +341,15 @@ custom_histogram = meter.create_histogram(
 # Record custom metrics
 async def custom_operation_with_metrics():
     start_time = time.time()
-    
+
     custom_counter.add(1, {"operation_type": "data_processing"})
-    
+
     # Your operation
     result = await custom_operation()
-    
+
     duration = time.time() - start_time
     custom_histogram.record(duration, {"operation_type": "data_processing"})
-    
+
     return result
 ```
 
@@ -425,7 +425,7 @@ async def monitored_operation():
             result = await risky_operation()
             span.set_status(trace.Status(trace.StatusCode.OK))
             return result
-            
+
         except Exception as e:
             # Record exception
             span.record_exception(e)
@@ -468,7 +468,7 @@ latency_histogram = meter.create_histogram(
 
 async def monitored_operation():
     start_time = time.time()
-    
+
     try:
         result = await operation()
         return result
@@ -521,13 +521,13 @@ configure_telemetry(
 def sanitize_span_attributes(attributes):
     sensitive_keys = ['password', 'token', 'key', 'secret']
     sanitized = {}
-    
+
     for key, value in attributes.items():
         if any(sensitive in key.lower() for sensitive in sensitive_keys):
             sanitized[key] = "[REDACTED]"
         else:
             sanitized[key] = value
-    
+
     return sanitized
 ```
 

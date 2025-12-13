@@ -271,19 +271,25 @@ class RootFloLLM(BaseLLM):
     ) -> Dict[str, Any]:
         """Generate a response from the LLM"""
         await self._ensure_initialized()
+        if self._llm is None:
+            raise RuntimeError('LLM initialization failed: _llm is None')
         return await self._llm.generate(
             messages, functions=functions, output_schema=output_schema, **kwargs
         )
 
-    async def stream(
+    async def stream(  # type: ignore[override]
         self,
-        messages: List[Dict[str, Any]],
+        messages: List[Dict[str, str]],
         functions: Optional[List[Dict[str, Any]]] = None,
-        **kwargs: Any,
+        output_schema: Optional[Dict[str, Any]] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """Generate a streaming response from the LLM"""
         await self._ensure_initialized()
-        async for chunk in self._llm.stream(messages, functions=functions, **kwargs):
+        if self._llm is None:
+            raise RuntimeError('LLM initialization failed: _llm is None')
+        async for chunk in self._llm.stream(
+            messages, functions=functions, output_schema=output_schema
+        ):
             yield chunk
 
     def get_message_content(self, response: Any) -> str:
@@ -296,12 +302,18 @@ class RootFloLLM(BaseLLM):
 
     def format_tool_for_llm(self, tool: 'Tool') -> Dict[str, Any]:
         """Format a tool for the specific LLM's API"""
+        if self._llm is None:
+            raise RuntimeError('LLM initialization failed: _llm is None')
         return self._llm.format_tool_for_llm(tool)
 
     def format_tools_for_llm(self, tools: List['Tool']) -> List[Dict[str, Any]]:
         """Format a list of tools for the specific LLM's API"""
+        if self._llm is None:
+            raise RuntimeError('LLM initialization failed: _llm is None')
         return self._llm.format_tools_for_llm(tools)
 
-    def format_image_in_message(self, image: ImageMessageContent) -> str:
+    def format_image_in_message(self, image: ImageMessageContent) -> Any:
         """Format a image in the message"""
+        if self._llm is None:
+            raise RuntimeError('LLM initialization failed: _llm is None')
         return self._llm.format_image_in_message(image)

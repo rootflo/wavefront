@@ -10,9 +10,9 @@ class VertexAI(Gemini):
         model: str = 'gemini-2.5-flash',
         temperature: float = 0.7,
         api_key: Optional[str] = None,
-        base_url: str = None,
-        project: str = None,
-        location: str = None,
+        base_url: Optional[str] = None,
+        project: Optional[str] = None,
+        location: Optional[str] = None,
         **kwargs,
     ):
         # Initialize only the BaseLLM part to avoid Gemini's client creation

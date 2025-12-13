@@ -16,23 +16,24 @@ class App(Base):
         primary_key=True, default=uuid.uuid4, index=True
     )
     app_name: Mapped[str] = mapped_column(nullable=False)
-    app_url: Mapped[str] = mapped_column(nullable=False)
-    app_secret: Mapped[str] = mapped_column(nullable=True)
-    app_key: Mapped[str] = mapped_column(nullable=True)
+    public_url: Mapped[str] = mapped_column(nullable=False)
+    private_url: Mapped[str] = mapped_column(nullable=False)
     deleted: Mapped[bool] = mapped_column(default=False)
     status: Mapped[str] = mapped_column(default='in_progress')
     config: Mapped[dict] = mapped_column(JSON, default={})
     deployment_type: Mapped[str] = mapped_column(nullable=False, default='manual')
     type: Mapped[str] = mapped_column(nullable=False, default='custom')
     created_at: Mapped[datetime] = mapped_column(default=datetime.now)
-    updated_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(
+        nullable=True, default=datetime.now
+    )
 
     def to_dict(self):
         return {
             'id': str(self.id),
             'app_name': self.app_name,
-            'app_url': self.app_url,
-            'app_key': self.app_key,
+            'public_url': self.public_url,
+            'private_url': self.private_url,
             'status': self.status,
             'config': self.config,
             'deployment_type': self.deployment_type,

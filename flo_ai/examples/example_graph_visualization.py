@@ -5,10 +5,11 @@ This script creates a simple workflow with agents and tools, then generates a PN
 """
 
 from flo_ai.arium.base import BaseArium
-from flo_ai.models.agent import Agent
+from flo_ai.agent import Agent
 from flo_ai.tool.flo_tool import flo_tool
 from flo_ai.llm.openai_llm import OpenAI
-from typing import Literal
+from flo_ai.llm.base_llm import BaseLLM
+from typing import Literal, Any
 
 
 # Create a simple validation tool using the @flo_tool decorator
@@ -40,9 +41,31 @@ def create_sample_agents():
         llm = OpenAI(model='gpt-4')
     except Exception:
         # If OpenAI is not available, create a mock LLM
-        class MockLLM:
+        class MockLLM(BaseLLM):
             def __init__(self, model):
-                self.model = model
+                super().__init__(model=model)
+
+            async def generate(
+                self, messages, functions=None, output_schema=None, **kwargs: Any
+            ):
+                return {'content': 'Mock response'}
+
+            async def stream(
+                self, messages, functions=None, output_schema=None, **kwargs: Any
+            ):
+                yield {'content': 'Mock response'}
+
+            def get_message_content(self, response):
+                return response.get('content', 'Mock response')
+
+            def format_tool_for_llm(self, tool):
+                return {'name': tool.name, 'description': tool.description}
+
+            def format_tools_for_llm(self, tools):
+                return [self.format_tool_for_llm(tool) for tool in tools]
+
+            def format_image_in_message(self, image):
+                return {'type': 'image_url', 'image_url': {'url': 'mock_url'}}
 
         llm = MockLLM('gpt-4')
 

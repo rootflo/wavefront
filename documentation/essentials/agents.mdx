@@ -1,7 +1,7 @@
 ---
-title: 'Agents'
-description: 'Learn how to create and configure AI agents with Flo AI'
-icon: 'robot'
+title: "Agents"
+description: "Learn how to create and configure AI agents with Flo AI"
+icon: "robot"
 ---
 
 ## Creating Agents
@@ -13,7 +13,7 @@ Agents are the core building blocks of Flo AI. They represent AI-powered entitie
 Create a simple conversational agent:
 
 ```python
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import AgentBuilder
 from flo_ai.llm import OpenAI
 
 agent = (
@@ -180,7 +180,7 @@ well_prompted_agent = (
     1. Review code for bugs, security issues, and best practices
     2. Suggest improvements and optimizations
     3. Provide constructive feedback
-    
+
     Always be specific about issues and provide actionable suggestions.
     Focus on code quality, performance, and maintainability.
     ''')
@@ -263,10 +263,10 @@ from flo_ai.arium.memory import BaseMemory
 class CustomMemory(BaseMemory):
     def __init__(self):
         self.messages = []
-    
+
     def add(self, message):
         self.messages.append(message)
-    
+
     def get(self):
         return self.messages
 

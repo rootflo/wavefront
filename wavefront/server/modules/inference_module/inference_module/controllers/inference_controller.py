@@ -17,16 +17,6 @@ import uuid
 inference_router = APIRouter()
 
 
-async def handle_database_error(session, error_msg: str, error) -> JSONResponse:
-    """Handle database errors and return appropriate response."""
-    await session.rollback()
-    logger.error(f'{error_msg} with error as {str(error)}')
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content=ResponseFormatter.buildErrorResponse(str(error)),
-    )
-
-
 @inference_router.post('/v1/model-repository/model')
 @inject
 async def model_loading(

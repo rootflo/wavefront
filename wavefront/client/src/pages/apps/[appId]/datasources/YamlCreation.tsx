@@ -1,4 +1,4 @@
-import { Button } from "@app/components/ui/button";
+import { Button } from '@app/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -6,12 +6,12 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@app/components/ui/dialog";
-import { validateDynamicQueryYaml } from "@app/lib/utils";
-import { langs } from "@uiw/codemirror-extensions-langs";
-import CodeMirror from "@uiw/react-codemirror";
-import clsx from "clsx";
-import { useState } from "react";
+} from '@app/components/ui/dialog';
+import { validateDynamicQueryYaml } from '@app/lib/utils';
+import { langs } from '@uiw/codemirror-extensions-langs';
+import CodeMirror from '@uiw/react-codemirror';
+import clsx from 'clsx';
+import { useState } from 'react';
 
 interface YamlCreationProps {
   yamlContent: string;
@@ -28,13 +28,12 @@ const YamlCreation: React.FC<YamlCreationProps> = ({
   setYamlCreation,
   createYaml,
 }) => {
-  const [error, setError] = useState<string>("");
+  const [error, setError] = useState<string>('');
   const [isCreating, setIsCreating] = useState<boolean>(false);
 
   const handleSubmit = (yamlContent: string) => {
     // build the yaml content
-    const response: { valid: boolean; error: string } =
-      validateDynamicQueryYaml(yamlContent);
+    const response: { valid: boolean; error: string } = validateDynamicQueryYaml(yamlContent);
     if (response.valid) {
       setIsCreating(true);
       createYaml();
@@ -43,9 +42,9 @@ const YamlCreation: React.FC<YamlCreationProps> = ({
     }
   };
   const handleClose = () => {
-    setYamlContent("");
+    setYamlContent('');
     setYamlCreation(false);
-    setError("");
+    setError('');
   };
 
   const handleOpenChange = (open: boolean) => {
@@ -56,12 +55,10 @@ const YamlCreation: React.FC<YamlCreationProps> = ({
 
   return (
     <Dialog open={yamlCreation} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-h-[90vh] min-w-[800px] max-w-[800px] overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-[800px] min-w-[800px] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add YAML</DialogTitle>
-          <DialogDescription>
-            Define your YAML configuration for the datasource query.
-          </DialogDescription>
+          <DialogDescription>Define your YAML configuration for the datasource query.</DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
@@ -77,8 +74,8 @@ const YamlCreation: React.FC<YamlCreationProps> = ({
 
         <p
           className={clsx(
-            "min-h-4 text-sm text-red-500 transition-opacity duration-200",
-            error ? "opacity-100" : "opacity-0"
+            'min-h-4 text-sm text-red-500 transition-opacity duration-200',
+            error ? 'opacity-100' : 'opacity-0'
           )}
         >
           {error}
@@ -88,12 +85,8 @@ const YamlCreation: React.FC<YamlCreationProps> = ({
           <Button variant="outline" onClick={handleClose} disabled={isCreating}>
             Cancel
           </Button>
-          <Button
-            onClick={() => handleSubmit(yamlContent)}
-            disabled={isCreating}
-            loading={isCreating}
-          >
-            {isCreating ? "Creating..." : "Create YAML"}
+          <Button onClick={() => handleSubmit(yamlContent)} disabled={isCreating} loading={isCreating}>
+            {isCreating ? 'Creating...' : 'Create YAML'}
           </Button>
         </DialogFooter>
       </DialogContent>

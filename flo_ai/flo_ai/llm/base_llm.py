@@ -8,7 +8,11 @@ from flo_ai.models.chat_message import DocumentMessageContent, ImageMessageConte
 
 class BaseLLM(ABC):
     def __init__(
-        self, model: str, api_key: str = None, temperature: float = 0.7, **kwargs
+        self,
+        model: str,
+        api_key: Optional[str] = None,
+        temperature: float = 0.7,
+        **kwargs,
     ):
         self.model = model
         self.api_key = api_key
@@ -41,14 +45,17 @@ class BaseLLM(ABC):
     ) -> Optional[Dict[str, Any]]:
         """Extract function call information from LLM response"""
         if hasattr(response, 'function_call') and response.function_call:
-            result = {
-                'name': response.function_call.name,
-                'arguments': response.function_call.arguments,
-            }
-            # Include ID if available (LLM-specific)
-            if hasattr(response.function_call, 'id'):
-                result['id'] = response.function_call.id
-            return result
+            function_call = response.function_call
+            if hasattr(function_call, 'name') and hasattr(function_call, 'arguments'):
+                result = {
+                    'name': function_call.name,
+                    'arguments': function_call.arguments,
+                }
+                # Include ID if available (LLM-specific)
+                if hasattr(function_call, 'id'):
+                    result['id'] = function_call.id
+                return result
+
         elif isinstance(response, dict) and 'function_call' in response:
             result = {
                 'name': response['function_call']['name'],
@@ -110,7 +117,7 @@ class BaseLLM(ABC):
         pass
 
     @abstractmethod
-    def format_image_in_message(self, image: ImageMessageContent) -> str:
+    def format_image_in_message(self, image: ImageMessageContent) -> Any:
         """Format a image in the message"""
         pass
 

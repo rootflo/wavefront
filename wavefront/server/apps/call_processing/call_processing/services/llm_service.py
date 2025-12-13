@@ -25,7 +25,7 @@ class LLMServiceFactory:
 
         Args:
             llm_config: {
-                'type': 'openai' | 'anthropic' | 'google' | 'groq',
+                'type': 'openai' | 'anthropic' | 'gemini' | 'groq',
                 'api_key': 'key',
                 'llm_model': 'gpt-4',
                 'parameters': {
@@ -50,7 +50,7 @@ class LLMServiceFactory:
 
         if llm_type == 'openai':
             return LLMServiceFactory._create_openai_llm(api_key, model, parameters)
-        elif llm_type == 'google':
+        elif llm_type == 'gemini':
             return LLMServiceFactory._create_google_llm(api_key, model, parameters)
         elif llm_type == 'groq':
             return LLMServiceFactory._create_groq_llm(api_key, model, parameters)
@@ -65,8 +65,6 @@ class LLMServiceFactory:
 
         if 'temperature' in parameters:
             params_dict['temperature'] = parameters['temperature']
-        if 'max_tokens' in parameters:
-            params_dict['max_tokens'] = parameters['max_tokens']
         if 'max_completion_tokens' in parameters:
             params_dict['max_completion_tokens'] = parameters['max_completion_tokens']
         if 'top_p' in parameters:
@@ -121,8 +119,6 @@ class LLMServiceFactory:
 
         if 'temperature' in parameters:
             params_dict['temperature'] = parameters['temperature']
-        if 'max_tokens' in parameters:
-            params_dict['max_tokens'] = parameters['max_tokens']
         if 'max_completion_tokens' in parameters:
             params_dict['max_completion_tokens'] = parameters['max_completion_tokens']
         if 'top_p' in parameters:

@@ -117,9 +117,10 @@ class TestOpenAIVLLM:
             api_key='test-key-123',
         )
 
-        mock_async_openai.assert_called_once_with(
-            api_key='test-key-123', base_url='https://custom.vllm.com'
-        )
+        mock_async_openai.assert_called_once()
+        call_kwargs = mock_async_openai.call_args[1]
+        assert call_kwargs['api_key'] == 'test-key-123'
+        assert call_kwargs['base_url'] == 'https://custom.vllm.com'
         assert llm.client == mock_client
 
         # Test without API key
@@ -128,9 +129,10 @@ class TestOpenAIVLLM:
             base_url='https://api.vllm.com', model='gpt-4o-mini', api_key='test-key-123'
         )
 
-        mock_async_openai.assert_called_once_with(
-            api_key='test-key-123', base_url='https://api.vllm.com'
-        )
+        mock_async_openai.assert_called_once()
+        call_kwargs = mock_async_openai.call_args[1]
+        assert call_kwargs['api_key'] == 'test-key-123'
+        assert call_kwargs['base_url'] == 'https://api.vllm.com'
         assert llm.client == mock_client
 
     @pytest.mark.asyncio
@@ -297,7 +299,7 @@ class TestOpenAIVLLM:
         assert result == "{'content': 'Hello, world!'}"
 
         # Test with string response
-        result = llm.get_message_content('Direct string')
+        result = llm.get_message_content('Direct string')  # type: ignore[arg-type]
         assert result == 'Direct string'
 
         # Test with empty content

@@ -7,11 +7,7 @@ class ExecutableNode(Protocol):
     Protocol defining the interface for any node that can be executed
     within an Arium workflow.
 
-    Any class implementing this protocol can be used as a node:
-    - Agent (already implements)
-    - Tool (already implements)
-    - Arium (already implements!)
-    - Custom node types
+    Any class implementing this protocol can be used as a node
     """
 
     name: str

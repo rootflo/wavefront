@@ -46,7 +46,7 @@ def flo_tool(
         )
 
         # Attach the tool to the function
-        func.tool = tool
+        func.tool = tool  # type: ignore[attr-defined]
 
         # Return the original function (wrapped to preserve async behavior)
         @wraps(func)
@@ -59,10 +59,10 @@ def flo_tool(
 
         # Return appropriate wrapper based on whether function is async
         if asyncio.iscoroutinefunction(func):
-            async_wrapper.tool = tool
+            async_wrapper.tool = tool  # type: ignore[attr-defined]
             return async_wrapper
         else:
-            sync_wrapper.tool = tool
+            sync_wrapper.tool = tool  # type: ignore[attr-defined]
             return sync_wrapper
 
     return decorator
@@ -79,10 +79,14 @@ def _create_tool_from_function(
     sig = inspect.signature(func)
 
     # Determine tool name
-    tool_name = name or func.__name__
+    tool_name = name or getattr(func, '__name__', 'unknown')
 
     # Determine tool description
-    tool_description = description or func.__doc__ or f'Tool for {func.__name__}'
+    tool_description = (
+        description
+        or getattr(func, '__doc__', None)
+        or f"Tool for {getattr(func, '__name__', 'unknown')}"
+    )
 
     # Extract parameters
     parameters = {}

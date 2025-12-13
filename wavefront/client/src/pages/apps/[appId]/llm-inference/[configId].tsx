@@ -183,7 +183,7 @@ const LLMInferenceConfigDetail: React.FC = () => {
   };
 
   return (
-    <div className="h-full bg-white px-8 pb-[200px] pt-8">
+    <div className="h-full bg-white px-8 pt-8 pb-[200px]">
       <Breadcrumb className="mb-6">
         <BreadcrumbList>
           <BreadcrumbItem>
@@ -214,7 +214,7 @@ const LLMInferenceConfigDetail: React.FC = () => {
 
       <div className="flex w-full flex-col gap-10 pb-5">
         <div className="flex items-center justify-between">
-          <p className="text-2xl font-semibold leading-normal text-black">{config?.display_name}</p>
+          <p className="text-2xl leading-normal font-semibold text-black">{config?.display_name}</p>
           <div className="flex gap-4">
             {editing ? (
               <>
@@ -428,7 +428,7 @@ const LLMInferenceConfigDetail: React.FC = () => {
                                       }}
                                       disabled={!editing}
                                     />
-                                    <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                    <label className="text-sm leading-none font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                                       Enable
                                     </label>
                                   </div>

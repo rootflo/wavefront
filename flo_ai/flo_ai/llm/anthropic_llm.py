@@ -18,20 +18,28 @@ from opentelemetry import trace
 class Anthropic(BaseLLM):
     def __init__(
         self,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
         model: str = 'claude-3-5-sonnet-20240620',
         temperature: float = 0.7,
-        api_key: Optional[str] = None,
-        base_url: str = None,
         custom_headers: Optional[Dict[str, str]] = None,
         **kwargs,
     ):
         super().__init__(model, api_key, temperature, **kwargs)
-        # Add custom headers if base_url is provided (proxy scenario)
-        client_kwargs = {'api_key': self.api_key, 'base_url': base_url}
-        if base_url and custom_headers:
-            client_kwargs['default_headers'] = custom_headers
 
-        self.client = AsyncAnthropic(**client_kwargs)
+        # Filter out keys that are already passed explicitly to avoid duplicate keyword arguments
+        filtered_kwargs = {
+            k: v
+            for k, v in kwargs.items()
+            if k not in ('api_key', 'base_url', 'default_headers')
+        }
+
+        self.client = AsyncAnthropic(
+            api_key=self.api_key,
+            base_url=base_url,
+            default_headers=custom_headers,
+            **filtered_kwargs,
+        )
 
     @trace_llm_call(provider='anthropic')
     async def generate(
@@ -174,7 +182,7 @@ class Anthropic(BaseLLM):
                     }
                 )
 
-        anthropic_kwargs = {
+        anthropic_kwargs: Dict[str, Any] = {
             'model': self.model,
             'messages': conversation,
             'temperature': self.temperature,

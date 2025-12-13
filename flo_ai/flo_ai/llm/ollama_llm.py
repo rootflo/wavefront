@@ -12,7 +12,7 @@ class OllamaLLM(BaseLLM):
     def __init__(
         self,
         model: str = 'llama2',
-        api_key: str = None,
+        api_key: Optional[str] = None,
         temperature: float = 0.7,
         base_url: str = 'http://localhost:11434',
         **kwargs,
