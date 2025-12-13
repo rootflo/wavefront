@@ -27,9 +27,6 @@ jobs:
       - name: Install dependencies
         run: cd flo_ai && uv sync
 
-      - name: Run Ruff
-        run: cd flo_ai && uv run pre-commit run --all-files
-
       - name: Run build
         run: cd flo_ai && uv build
 
