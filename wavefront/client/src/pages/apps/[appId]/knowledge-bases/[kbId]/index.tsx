@@ -53,7 +53,7 @@ const KnowledgeBaseDetailPage: React.FC = () => {
   // Create System Prompt Dialog state
   const [showCreatePromptModal, setShowCreatePromptModal] = useState<boolean>(false);
   const [systemPrompt, setSystemPrompt] = useState<string>('');
-  const [selectedConfigId, setSelectedConfigId] = useState<string>('');
+  const [selectedConfigId, setSelectedConfigId] = useState<string | undefined>(undefined);
   const [creatingPrompt, setCreatingPrompt] = useState<boolean>(false);
 
   // Test Inference Dialog state
@@ -147,7 +147,7 @@ const KnowledgeBaseDetailPage: React.FC = () => {
         queryClient.invalidateQueries({ queryKey: getKnowledgeBaseInferencesKey(appId || '', kbId || '') });
         setShowCreatePromptModal(false);
         setSystemPrompt('');
-        setSelectedConfigId('');
+        setSelectedConfigId(undefined);
       } else {
         notifyError('Failed to create system prompt.');
       }
@@ -162,7 +162,7 @@ const KnowledgeBaseDetailPage: React.FC = () => {
   const handleCloseCreatePromptModal = () => {
     setShowCreatePromptModal(false);
     setSystemPrompt('');
-    setSelectedConfigId('');
+    setSelectedConfigId(undefined);
   };
 
   const handleOpenTestInference = (inferenceId: string) => {
