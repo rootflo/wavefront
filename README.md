@@ -100,13 +100,13 @@ Wavefront AI is an open-source middleware platform designed to:
 - **🎯 Modular AI Application Integration (Coming Soon)**  
 Deploy diverse AI agents for auditing, underwriting, contact center supervision, and business process automation without rebuilding infrastructure.
 
-# Quick Start
+## Quick Start
 
 **Option 1**: [Contact us](mailto:vishnu@rootflo.ai) for a demo and we help you build immediately. 
 
 **Option 2**: Self-host for maximum control and customization. Please find the self-hosting instructions in the [Wavefront Documentation](https://github.com/rootflo/wavefront/tree/develop/wavefront).
 
-# Platform Components
+## Platform Components
 
 As part of the project, we are building the following components
 
@@ -117,7 +117,7 @@ As part of the project, we are building the following components
 | **wavefront-client** | Unified frontend for configuring agents, workflows, AI models, Guardrails developer-friendly, RBAC etc. Details [here](https://github.com/rootflo/wavefront/tree/develop/wavefront). |
 | **wavefront-cli** | for configuring through cli, for full developer-friendly control [Coming Soon]
 
-# Release Timeline
+## Release Timeline
 
 | Quarter | Milestone | Features |
 |---------|-----------|----------|
@@ -138,8 +138,6 @@ If you find Wavefront AI useful, please consider:
 - Providing feedback and feature requests
 
 ---
-
-# Next Steps
 
 ## Next Steps
 
