@@ -1,7 +1,14 @@
 {
-    "folders": [
-      { "path": "flo_ai" },
-      { "path": "wavefront" }
-    ]
-  }
-  
+  "folders": [
+    {
+      "path": ".",
+      "name": "wavefront-root-dir"
+    },
+    {
+      "path": "flo_ai"
+    },
+    {
+      "path": "wavefront"
+    }
+  ]
+}
