@@ -10,6 +10,9 @@ echo "Generating RSA key pair for JWT authentication..."
 # Generate private key
 ssh-keygen -t rsa -b 2048 -m PEM -f private.pem -N "" -q
 
+# Restrict permissions on private key immediately
+chmod 600 private.pem
+
 # Extract public key
 openssl rsa -in private.pem -pubout -out public.pem 2>/dev/null
 
