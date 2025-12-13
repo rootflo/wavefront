@@ -22,7 +22,6 @@
   </a>
   <br/>
 </p>
-
 <p align="center">
   <br/>
    <a href="https://github.com/rootflo/flo-ai">GitHub</a>
@@ -30,6 +29,8 @@
     <a href="https://rootflo.ai" target="_blank">Website</a>
    •
     <a href="https://flo-ai.rootflo.ai" target="_blank">Documentation</a>
+   •
+    <a href="https://discord.gg/BPXsNwfuRU" target="_blank">Discord</a>
   </p>
 
   <p align="center">
@@ -42,15 +43,15 @@
 
   <hr />
 
-# What is Wavefront ?
+## What is Wavefront ?
 
 Wavefront AI is an open-source middleware platform designed to:
 - Seamlessly connect to any API, database or file storage system
 - Connect to any LLM or SLMs
 - Build AI-driven agents, workflows, and automations across enterprise by connecting to multiple data sources, knowledge bases, and services
-- Provide authentication, authorization, observability, monitoring & evaluation for to all agents & workflows
+- Provide authentication, authorization, observability, monitoring & evaluation for all agents & workflows
 
-# What people build with Wavefront ?
+## What people build with Wavefront ?
 - To build AI agents & workflows to audit, underwrite, supervise contact center, and automate business processes
 - To build knowledge bases & RAG ready applications for internal enterprise use
 - To build voice & conversational agents collections and sales usecases
@@ -61,13 +62,11 @@ Wavefront AI is an open-source middleware platform designed to:
   <img src="./images/wavefront-home.png" alt="Rootflo" />
 </p>
 
-
-|**Release Status** | Beta Release| 
+| Project Information | Details |
 |-----------|------------|
+|**Release Status** | Beta Release| 
 |**Wavefront License** | GNU AFFERO GENERAL PUBLIC LICENSE 3.0 |
 |**FloAI License** | MIT LICENSE |
-|**Contributing** | We welcome early feedback! See [CONTRIBUTING.md](CONTRIBUTING.md). |
-|**Community** | Join our discord at https://discord.gg/BPXsNwfuRU or post a message at https://github.com/rootflo/wavefront/discussions|
 
 ## ✨ Key Capabilities
 
@@ -146,6 +145,7 @@ If you find Wavefront AI useful, please consider:
 
 - [Join our Discord](https://discord.gg/BPXsNwfuRU)
 - [Read our docs](https://wavefront.rootflo.ai/)
+- [Submit an issue](https://github.com/rootflo/wavefront/issues/new/choose)
 - [Talk to us](mailto:sales@rootflo.ai)
 
 Text us! <br>
