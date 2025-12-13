@@ -1,14 +1,10 @@
-import { appEnv } from "@app/config/env";
-import { TOKEN_KEY } from "@app/lib/constants";
-import { useAuthStore, useNotifyStore } from "@app/store";
-import axios, {
-  AxiosError,
-  AxiosResponse,
-  InternalAxiosRequestConfig,
-} from "axios";
+import { appEnv } from '@app/config/env';
+import { TOKEN_KEY } from '@app/lib/constants';
+import { useAuthStore, useNotifyStore } from '@app/store';
+import axios, { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 
 export interface Meta {
-  status: "success" | "failure";
+  status: 'success' | 'failure';
   code: number;
   error?: string;
 }
@@ -31,10 +27,10 @@ axiosInstance.interceptors.request.use(
     }
 
     // Replace :appId with the actual appId from the URL
-    if (config.url?.includes(":appId")) {
+    if (config.url?.includes(':appId')) {
       const pageUrl = new URL(window.location.href);
-      const appId = pageUrl.pathname.split("/")[2];
-      config.url = config.url?.replace(":appId", appId || "");
+      const appId = pageUrl.pathname.split('/')[2];
+      config.url = config.url?.replace(':appId', appId || '');
     }
 
     return config;
@@ -52,8 +48,8 @@ axiosInstance.interceptors.response.use(
     const errorData = err.response as IApiResponse;
     useNotifyStore.setState({
       visible: true,
-      type: "error",
-      message: errorData.data?.meta?.error || "Something went wrong",
+      type: 'error',
+      message: errorData.data?.meta?.error || 'Something went wrong',
     });
     const errCode = err.response?.status;
     if (errCode === 401) {
@@ -61,7 +57,7 @@ axiosInstance.interceptors.response.use(
       useAuthStore.setState({
         authenticated: false,
       });
-      window.location.href = "/login";
+      window.location.href = '/login';
     }
 
     return Promise.reject(err);

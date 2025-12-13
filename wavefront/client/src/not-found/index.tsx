@@ -1,13 +1,7 @@
-import { Button } from "@app/components/ui/button";
-import {
-  Empty,
-  EmptyContent,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyTitle,
-} from "@app/components/ui/empty";
-import { useAuthStore } from "@app/store";
-import { useNavigate } from "react-router";
+import { Button } from '@app/components/ui/button';
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from '@app/components/ui/empty';
+import { useAuthStore } from '@app/store';
+import { useNavigate } from 'react-router';
 
 const NotFoundPage = () => {
   const navigate = useNavigate();
@@ -15,9 +9,9 @@ const NotFoundPage = () => {
 
   const handleGoBack = () => {
     if (authenticated) {
-      navigate("/apps");
+      navigate('/apps');
     } else {
-      navigate("/login");
+      navigate('/login');
     }
   };
 
@@ -27,12 +21,7 @@ const NotFoundPage = () => {
         <EmptyTitle>404 - Not Found</EmptyTitle>
         <EmptyDescription>
           The page you&apos;re looking for doesn&apos;t exist. <br />
-          <Button
-            className="mt-4"
-            variant="outline"
-            size="sm"
-            onClick={handleGoBack}
-          >
+          <Button className="mt-4" variant="outline" size="sm" onClick={handleGoBack}>
             Go Back
           </Button>
         </EmptyDescription>

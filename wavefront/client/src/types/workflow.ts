@@ -1,4 +1,4 @@
-import { IApiResponse } from "@app/lib/axios";
+import { IApiResponse } from '@app/lib/axios';
 
 export interface Workflow {
   id: string;
@@ -83,52 +83,52 @@ export interface WorkflowEventBase {
 }
 
 export interface WorkflowStartedEvent extends WorkflowEventBase {
-  event_type: "workflow_started";
+  event_type: 'workflow_started';
 }
 
 export interface WorkflowCompletedEvent extends WorkflowEventBase {
-  event_type: "workflow_completed";
+  event_type: 'workflow_completed';
 }
 
 export interface WorkflowFailedEvent extends WorkflowEventBase {
-  event_type: "workflow_failed";
+  event_type: 'workflow_failed';
   error: string;
 }
 
 export interface NodeStartedEvent extends WorkflowEventBase {
-  event_type: "node_started";
+  event_type: 'node_started';
   node_name: string;
   node_type: string;
 }
 
 export interface NodeCompletedEvent extends WorkflowEventBase {
-  event_type: "node_completed";
+  event_type: 'node_completed';
   node_name: string;
   execution_time: number;
 }
 
 export interface NodeFailedEvent extends WorkflowEventBase {
-  event_type: "node_failed";
+  event_type: 'node_failed';
   node_name: string;
   error: string;
 }
 
 export interface RouterDecisionEvent extends WorkflowEventBase {
-  event_type: "router_decision";
+  event_type: 'router_decision';
   router_choice: string;
 }
 
 export interface EdgeTraversedEvent extends WorkflowEventBase {
-  event_type: "edge_traversed";
+  event_type: 'edge_traversed';
 }
 
 export interface OutputEvent extends WorkflowEventBase {
-  event_type: "output";
+  event_type: 'output';
   result: string | object;
 }
 
 export interface ErrorEvent {
-  event_type: "error";
+  event_type: 'error';
   error: string;
   timestamp: number;
 }
@@ -173,7 +173,6 @@ export interface WorkflowRunData {
 export type WorkflowInferenceResponse = IApiResponse<WorkflowInferenceData>;
 export type WorkflowResponse = IApiResponse<WorkflowData>;
 export type WorkflowListResponse = IApiResponse<WorkflowListData>;
-export type WorkflowPipelineListResponse =
-  IApiResponse<WorkflowPipelineListData>;
+export type WorkflowPipelineListResponse = IApiResponse<WorkflowPipelineListData>;
 export type WorkflowRunListResponse = IApiResponse<WorkflowRunListData>;
 export type WorkflowRunResponse = IApiResponse<WorkflowRunData>;

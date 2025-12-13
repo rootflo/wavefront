@@ -1,37 +1,31 @@
-import floConsoleService from "@app/api";
-import { RootfloIcon } from "@app/assets/icons";
-import aiCircle from "@app/assets/images/ai_circle.png";
-import { Button } from "@app/components/ui/button";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormMessage,
-} from "@app/components/ui/form";
-import { Input } from "@app/components/ui/input";
-import { TOKEN_KEY } from "@app/lib/constants";
-import { useAuthStore, useNotifyStore } from "@app/store";
-import { validationMessage } from "@app/utils/form-validation";
-import { emailRegex } from "@app/utils/regex";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { EyeIcon, EyeOffIcon } from "lucide-react";
-import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
-import { Link, useNavigate } from "react-router";
-import { z } from "zod";
+import floConsoleService from '@app/api';
+import { RootfloIcon } from '@app/assets/icons';
+import aiCircle from '@app/assets/images/ai_circle.png';
+import { Button } from '@app/components/ui/button';
+import { Form, FormControl, FormField, FormItem, FormMessage } from '@app/components/ui/form';
+import { Input } from '@app/components/ui/input';
+import { TOKEN_KEY } from '@app/lib/constants';
+import { useAuthStore, useNotifyStore } from '@app/store';
+import { validationMessage } from '@app/utils/form-validation';
+import { emailRegex } from '@app/utils/regex';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { EyeIcon, EyeOffIcon } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { Link, useNavigate } from 'react-router';
+import { z } from 'zod';
 
 export const LoginSchema = z.object({
   email: z
     .string({
-      required_error: validationMessage.isRequired("Email"),
+      required_error: validationMessage.isRequired('Email'),
     })
-    .regex(emailRegex, { message: validationMessage.isInvalid("Email") }),
+    .regex(emailRegex, { message: validationMessage.isInvalid('Email') }),
   password: z
     .string({
-      required_error: validationMessage.isRequired("Password"),
+      required_error: validationMessage.isRequired('Password'),
     })
-    .min(8, { message: validationMessage.minValue("Password", 8) }),
+    .min(8, { message: validationMessage.minValue('Password', 8) }),
 });
 
 const Login = () => {
@@ -45,22 +39,20 @@ const Login = () => {
   const form = useForm<z.infer<typeof LoginSchema>>({
     resolver: zodResolver(LoginSchema),
     defaultValues: {
-      email: "",
-      password: "",
+      email: '',
+      password: '',
     },
   });
 
   const handleLogin = async (value: z.infer<typeof LoginSchema>) => {
     try {
       setIsLoading(true);
-      const { data } = await floConsoleService.consoleAuthService.authenticate(
-        value
-      );
-      localStorage.setItem(TOKEN_KEY, data?.data?.user.access_token || "");
+      const { data } = await floConsoleService.consoleAuthService.authenticate(value);
+      localStorage.setItem(TOKEN_KEY, data?.data?.user.access_token || '');
       setAuthenticatedState(true);
-      navigate("/apps");
+      navigate('/apps');
     } catch (err) {
-      notifyError("Email or password incorrect. \nPlease try again");
+      notifyError('Email or password incorrect. \nPlease try again');
       console.log(err);
     } finally {
       setIsLoading(false);
@@ -71,15 +63,12 @@ const Login = () => {
     const token = localStorage.getItem(TOKEN_KEY);
     if (token) {
       setAuthenticatedState(true);
-      navigate("/apps");
+      navigate('/apps');
     }
   }, []);
 
   return (
-    <div
-      id="login__page"
-      className="flex h-full w-full flex-col items-center justify-center gap-12"
-    >
+    <div id="login__page" className="flex h-full w-full flex-col items-center justify-center gap-12">
       <div className="flex h-[100px] w-[100px] animate-[spin_3s_linear_infinite] items-center justify-center rounded-[50%]">
         <img src={aiCircle} alt="" className="rounded-full" />
       </div>
@@ -87,15 +76,10 @@ const Login = () => {
         <RootfloIcon />
         <div className="flex w-full flex-col items-center justify-center">
           <p className="text-2xl font-medium text-black">Welcome back!</p>
-          <p className="text-gray_text text-base font-normal">
-            Enter your credentials to access your account
-          </p>
+          <p className="text-gray_text text-base font-normal">Enter your credentials to access your account</p>
         </div>
         <Form {...form}>
-          <form
-            className="flex w-full flex-col gap-6"
-            onSubmit={form.handleSubmit(handleLogin)}
-          >
+          <form className="flex w-full flex-col gap-6" onSubmit={form.handleSubmit(handleLogin)}>
             <div className="flex w-full flex-col gap-3">
               <FormField
                 control={form.control}
@@ -128,21 +112,14 @@ const Login = () => {
                       <div className="border-border_color focus-within:ring-border_color flex h-12 items-center gap-3 rounded-lg border px-3 py-2 focus-within:ring-1">
                         {/* <PasswordIcon /> */}
                         <Input
-                          type={showPassword ? "text" : "password"}
+                          type={showPassword ? 'text' : 'password'}
                           placeholder="Enter password"
                           autoComplete="off"
                           className="text-gray_text w-full border-0 bg-transparent text-base font-medium shadow-none outline-none focus-visible:ring-0"
                           {...field}
                         />
-                        <div
-                          className="cursor-pointer"
-                          onClick={() => setShowPassword(!showPassword)}
-                        >
-                          {showPassword ? (
-                            <EyeIcon className="size-4" />
-                          ) : (
-                            <EyeOffIcon className="size-4" />
-                          )}
+                        <div className="cursor-pointer" onClick={() => setShowPassword(!showPassword)}>
+                          {showPassword ? <EyeIcon className="size-4" /> : <EyeOffIcon className="size-4" />}
                         </div>
                       </div>
                     </FormControl>

@@ -1,5 +1,5 @@
-import { IApiResponse } from "@app/lib/axios";
-import { AxiosInstance } from "axios";
+import { IApiResponse } from '@app/lib/axios';
+import { AxiosInstance } from 'axios';
 
 export interface PreprocessingStep {
   preprocess_filter: string;
@@ -69,20 +69,17 @@ export class ModelInferenceService {
     });
   }
 
-  async uploadModel(
-    modelType: string,
-    modelFile: File
-  ): Promise<ModelUploadResponse> {
+  async uploadModel(modelType: string, modelFile: File): Promise<ModelUploadResponse> {
     const formData = new FormData();
-    formData.append("model_type", modelType);
-    formData.append("model_file", modelFile);
+    formData.append('model_type', modelType);
+    formData.append('model_file', modelFile);
 
     const response: ModelUploadResponse = await this.http.post(
       `/v1/:appId/floware/v1/model-repository/model`,
       formData,
       {
         headers: {
-          "Content-Type": "multipart/form-data",
+          'Content-Type': 'multipart/form-data',
         },
       }
     );
@@ -90,9 +87,7 @@ export class ModelInferenceService {
   }
 
   async listAllModels(): Promise<ModelListResponse> {
-    const response: ModelListResponse = await this.http.get(
-      `/v1/:appId/floware/v1/model-repository/model`
-    );
+    const response: ModelListResponse = await this.http.get(`/v1/:appId/floware/v1/model-repository/model`);
     return response;
   }
 
@@ -107,12 +102,12 @@ export class ModelInferenceService {
   async runInferenceWithImageFile(
     modelId: string,
     imageFile: File,
-    options?: Omit<InferencePayload, "payload_type" | "data">
+    options?: Omit<InferencePayload, 'payload_type' | 'data'>
   ): Promise<ModelInferenceResponse> {
     try {
       const base64Data = await this.fileToBase64(imageFile);
       const payload: InferencePayload = {
-        payload_type: "image",
+        payload_type: 'image',
         data: base64Data,
         ...options,
       };
@@ -123,10 +118,7 @@ export class ModelInferenceService {
     }
   }
 
-  async runInference(
-    modelId: string,
-    payload: InferencePayload
-  ): Promise<ModelInferenceResponse> {
+  async runInference(modelId: string, payload: InferencePayload): Promise<ModelInferenceResponse> {
     const response: ModelInferenceResponse = await this.http.post(
       `/v1/:appId/floware/v1/model-repository/model/${modelId}/infer`,
       payload

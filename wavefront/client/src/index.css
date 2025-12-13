@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 html,
 body,
@@ -12,8 +12,8 @@ body,
 }
 
 @font-face {
-  font-family: "sf-pro-display";
-  src: url("/font/SFPRODISPLAYMEDIUM.OTF") format("opentype");
+  font-family: 'sf-pro-display';
+  src: url('/font/SFPRODISPLAYMEDIUM.OTF') format('opentype');
   font-style: normal;
 }
 

@@ -1,4 +1,4 @@
-import { IApiResponse } from "@app/lib/axios";
+import { IApiResponse } from '@app/lib/axios';
 
 export interface AgentApi {
   id: string;
@@ -11,7 +11,7 @@ export interface AgentApi {
 
 export interface InferenceData {
   meta: {
-    status: "success" | "failure";
+    status: 'success' | 'failure';
     code: number;
     error: string | null;
   };
@@ -69,7 +69,7 @@ export type AgentResponse = IApiResponse<AgentData>;
 export type AgentListResponse = IApiResponse<AgentListData>;
 
 export interface LLMConfig {
-  provider: "openai" | "anthropic" | "gemini" | "ollama";
+  provider: 'openai' | 'anthropic' | 'gemini' | 'ollama';
   name: string;
   base_url?: string;
 }
@@ -77,12 +77,12 @@ export interface LLMConfig {
 export interface AgentSettings {
   temperature?: number;
   max_retries?: number;
-  reasoning_pattern?: "DIRECT" | "REACT" | "COT";
+  reasoning_pattern?: 'DIRECT' | 'REACT' | 'COT';
 }
 
 export interface ParserField {
   name: string;
-  type: "str" | "literal" | "array" | "object";
+  type: 'str' | 'literal' | 'array' | 'object';
   description?: string;
   required?: boolean;
   values?: Array<{
@@ -124,19 +124,13 @@ export interface Router {
   id?: string;
   name: string;
   description: string;
-  type?:
-    | "smart"
-    | "task_classifier"
-    | "conversation_analysis"
-    | "reflection"
-    | "plan_execute"
-    | "custom";
+  type?: 'smart' | 'task_classifier' | 'conversation_analysis' | 'reflection' | 'plan_execute' | 'custom';
   code?: string;
   routing_options?: Record<string, string>;
   model?: LLMConfig;
   settings?: {
     temperature?: number;
-    fallback_strategy?: "first" | "last" | "random";
+    fallback_strategy?: 'first' | 'last' | 'random';
     analysis_depth?: number;
     allow_early_exit?: boolean;
   };

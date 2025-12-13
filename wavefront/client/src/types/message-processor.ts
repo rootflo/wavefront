@@ -1,4 +1,4 @@
-import { IApiResponse } from "@app/lib/axios";
+import { IApiResponse } from '@app/lib/axios';
 
 export interface MessageProcessor {
   id: string;
@@ -50,7 +50,5 @@ export interface ExecuteMessageProcessorData {
 }
 
 export type MessageProcessorResponse = IApiResponse<MessageProcessorData>;
-export type MessageProcessorListResponse =
-  IApiResponse<MessageProcessorListData>;
-export type ExecuteMessageProcessorResponse =
-  IApiResponse<ExecuteMessageProcessorData>;
+export type MessageProcessorListResponse = IApiResponse<MessageProcessorListData>;
+export type ExecuteMessageProcessorResponse = IApiResponse<ExecuteMessageProcessorData>;

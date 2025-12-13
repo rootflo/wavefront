@@ -8,18 +8,18 @@ import {
   PhoneIcon,
   RagIcon,
   WorkflowIcon,
-} from "@app/assets/icons";
-import { appEnv } from "@app/config/env";
-import clsx from "clsx";
-import React from "react";
-import { Outlet, useLocation, useNavigate, useParams } from "react-router";
+} from '@app/assets/icons';
+import { appEnv } from '@app/config/env';
+import clsx from 'clsx';
+import React from 'react';
+import { Outlet, useLocation, useNavigate, useParams } from 'react-router';
 
 const navItems = [
   {
-    name: "Agents",
+    name: 'Agents',
     icon: AiAgentIcon,
     link: `/apps/:appId/agents`,
-    description: "Manage and configure agents for this application",
+    description: 'Manage and configure agents for this application',
   },
   // {
   //   name: 'Authenticators',
@@ -28,46 +28,46 @@ const navItems = [
   //   description: 'Manage authentication provider configurations',
   // },
   {
-    name: "Datasources",
+    name: 'Datasources',
     icon: DatasourcesIcon,
     link: `/apps/:appId/datasources`,
-    description: "Manage and configure data sources for this application",
+    description: 'Manage and configure data sources for this application',
   },
   {
-    name: "Functions",
+    name: 'Functions',
     icon: WorkflowIcon,
     link: `/apps/:appId/functions`,
-    description: "Create, manage, and execute functions",
+    description: 'Create, manage, and execute functions',
   },
   {
-    name: "LLM Repository",
+    name: 'LLM Repository',
     icon: ModelRepositoryIcon,
     link: `/apps/:appId/llm-repository`,
-    description: "Manage and configure LLMs for your application",
+    description: 'Manage and configure LLMs for your application',
   },
   {
-    name: "Model Inference",
+    name: 'Model Inference',
     icon: ModelInferenceIcon,
     link: `/apps/:appId/model-inference`,
-    description: "Manage and configure model inference for this application",
+    description: 'Manage and configure model inference for this application',
   },
   {
-    name: "RAG Service",
+    name: 'RAG Service',
     icon: RagIcon,
     link: `/apps/:appId/knowledge-bases`,
-    description: "Manage and configure knowledge bases for this application",
+    description: 'Manage and configure knowledge bases for this application',
   },
   {
-    name: "Voice Agents",
+    name: 'Voice Agents',
     icon: PhoneIcon,
     link: `/apps/:appId/voice-agents`,
-    description: "Manage AI voice agents with LLM, TTS, STT, and telephony",
+    description: 'Manage AI voice agents with LLM, TTS, STT, and telephony',
   },
   {
-    name: "Workflows",
+    name: 'Workflows',
     icon: WorkflowIcon,
     link: `/apps/:appId/workflows`,
-    description: "Manage and configure workflows for this application",
+    description: 'Manage and configure workflows for this application',
   },
   // {
   //   name: 'Pipelines',
@@ -80,10 +80,10 @@ const navItems = [
 let finalNavItems = navItems;
 if (appEnv.isApiServicesEnabled) {
   const apiServiceNavItem = {
-    name: "API Services",
+    name: 'API Services',
     icon: ApiIcon,
     link: `/apps/:appId/api-services`,
-    description: "Manage API Connectors",
+    description: 'Manage API Connectors',
   };
   finalNavItems = [navItems[0], apiServiceNavItem, ...navItems.slice(1)];
 }
@@ -98,40 +98,31 @@ const AppLayout: React.FC = () => {
       <div className="flex h-full w-full overflow-auto">
         <div className="flex h-full w-[240px] flex-col gap-3 border-r border-gray-200 p-5">
           {finalNavItems.map((item) => {
-            const isActive = location.pathname.includes(
-              item.link.split("/")[3]
-            );
+            const isActive = location.pathname.includes(item.link.split('/')[3]);
             return (
               <div
                 key={item.name}
                 className={clsx(
-                  "cursor-pointer rounded-lg border-[0.5px] border-[#EFF0F1] p-3",
-                  isActive && "bg-[#FBFBFB]"
+                  'cursor-pointer rounded-lg border-[0.5px] border-[#EFF0F1] p-3',
+                  isActive && 'bg-[#FBFBFB]'
                 )}
-                onClick={() => navigate(item.link.replace(":appId", app!))}
+                onClick={() => navigate(item.link.replace(':appId', app!))}
               >
                 <div className="flex items-center gap-2">
-                  <item.icon color={isActive ? "#000" : "#fff"} />
+                  <item.icon color={isActive ? '#000' : '#fff'} />
                   <p
-                    className={clsx(
-                      isActive
-                        ? "font-medium text-[#101010]"
-                        : "font-normal text-[#585858]",
-                      "text-sm"
-                    )}
+                    className={clsx(isActive ? 'font-medium text-[#101010]' : 'font-normal text-[#585858]', 'text-sm')}
                   >
                     {item.name}
                   </p>
                 </div>
                 <div
                   className={clsx(
-                    "overflow-hidden transition-all duration-300 ease-in-out",
-                    isActive ? "max-h-16 opacity-100" : "max-h-0 opacity-0"
+                    'overflow-hidden transition-all duration-300 ease-in-out',
+                    isActive ? 'max-h-16 opacity-100' : 'max-h-0 opacity-0'
                   )}
                 >
-                  <p className="mt-2 text-xs text-[#9F9F9F]">
-                    {item.description}
-                  </p>
+                  <p className="mt-2 text-xs text-[#9F9F9F]">{item.description}</p>
                 </div>
               </div>
             );

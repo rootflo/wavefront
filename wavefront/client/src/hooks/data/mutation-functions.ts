@@ -1,4 +1,4 @@
-import floConsoleService from "@app/api";
+import floConsoleService from '@app/api';
 
 /**
  * Agent mutation functions

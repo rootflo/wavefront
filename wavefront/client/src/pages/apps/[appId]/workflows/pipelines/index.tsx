@@ -1,42 +1,33 @@
-import floConsoleService from "@app/api";
-import DeleteConfirmationDialog from "@app/components/DeleteConfirmationDialog";
-import { EmptyStateCard } from "@app/components/EmptyCard";
-import { ResourceCardSkeleton } from "@app/components/ResourceCard";
-import { Button } from "@app/components/ui/button";
-import { Input } from "@app/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@app/components/ui/select";
-import WorkflowPipelineCard from "@app/components/WorkflowPipelineCard";
-import { useGetWorkflowPipelines, useGetWorkflows } from "@app/hooks";
-import { getWorkflowPipelinesKey } from "@app/hooks/data/query-keys";
-import { useNotifyStore } from "@app/store";
-import { WorkflowPipelineListItem } from "@app/types/workflow";
-import { useQueryClient } from "@tanstack/react-query";
-import React, { useState } from "react";
-import { useNavigate, useParams } from "react-router";
-import CreateWorkflowPipelineDialog from "./CreateWorkflowPipelineDialog";
+import floConsoleService from '@app/api';
+import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
+import { EmptyStateCard } from '@app/components/EmptyCard';
+import { ResourceCardSkeleton } from '@app/components/ResourceCard';
+import { Button } from '@app/components/ui/button';
+import { Input } from '@app/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
+import WorkflowPipelineCard from '@app/components/WorkflowPipelineCard';
+import { useGetWorkflowPipelines, useGetWorkflows } from '@app/hooks';
+import { getWorkflowPipelinesKey } from '@app/hooks/data/query-keys';
+import { useNotifyStore } from '@app/store';
+import { WorkflowPipelineListItem } from '@app/types/workflow';
+import { useQueryClient } from '@tanstack/react-query';
+import React, { useState } from 'react';
+import { useNavigate, useParams } from 'react-router';
+import CreateWorkflowPipelineDialog from './CreateWorkflowPipelineDialog';
 
 const WorkflowPipelinesPage: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { notifySuccess, notifyError } = useNotifyStore();
-  const [searchTerm, setSearchTerm] = useState("");
-  const [workflow, setWorkflow] = useState("");
-  const [deleteItem, setDeleteItem] = useState<WorkflowPipelineListItem | null>(
-    null
-  );
+  const [searchTerm, setSearchTerm] = useState('');
+  const [workflow, setWorkflow] = useState('');
+  const [deleteItem, setDeleteItem] = useState<WorkflowPipelineListItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   // Fetch workflow pipelines and workflows
-  const { data: workflowPipelines = [], isLoading: workflowPipelinesLoading } =
-    useGetWorkflowPipelines(appId);
+  const { data: workflowPipelines = [], isLoading: workflowPipelinesLoading } = useGetWorkflowPipelines(appId);
   const { data: workflows = [] } = useGetWorkflows(appId);
 
   const filteredWorkflowPipelines = workflowPipelines.filter((pipeline) => {
@@ -54,10 +45,7 @@ const WorkflowPipelinesPage: React.FC = () => {
     setWorkflow(value);
   };
 
-  const handleDeleteClick = (
-    e: React.MouseEvent,
-    pipeline: WorkflowPipelineListItem
-  ) => {
+  const handleDeleteClick = (e: React.MouseEvent, pipeline: WorkflowPipelineListItem) => {
     e.stopPropagation();
     setDeleteItem(pipeline);
   };
@@ -67,17 +55,15 @@ const WorkflowPipelinesPage: React.FC = () => {
 
     setDeleting(true);
     try {
-      await floConsoleService.workflowService.deleteWorkflowPipeline(
-        deleteItem.id
-      );
-      notifySuccess("Workflow pipeline deleted successfully");
+      await floConsoleService.workflowService.deleteWorkflowPipeline(deleteItem.id);
+      notifySuccess('Workflow pipeline deleted successfully');
       queryClient.invalidateQueries({
-        queryKey: getWorkflowPipelinesKey(appId || ""),
+        queryKey: getWorkflowPipelinesKey(appId || ''),
       });
       setDeleteItem(null);
     } catch (error) {
-      console.error("Error deleting workflow pipeline:", error);
-      notifyError("Failed to delete workflow pipeline");
+      console.error('Error deleting workflow pipeline:', error);
+      notifyError('Failed to delete workflow pipeline');
     } finally {
       setDeleting(false);
     }
@@ -93,7 +79,7 @@ const WorkflowPipelinesPage: React.FC = () => {
 
   const handleCreateSuccess = () => {
     queryClient.invalidateQueries({
-      queryKey: getWorkflowPipelinesKey(appId || ""),
+      queryKey: getWorkflowPipelinesKey(appId || ''),
     });
     setCreateDialogOpen(false);
   };
@@ -102,10 +88,7 @@ const WorkflowPipelinesPage: React.FC = () => {
     <div className="h-full w-full overflow-hidden">
       <div className="mb-8 flex items-center justify-end">
         <div className="flex items-center gap-4">
-          <Select
-            value={workflow || undefined}
-            onValueChange={(value) => handleWorkflowChange(value || "")}
-          >
+          <Select value={workflow || undefined} onValueChange={(value) => handleWorkflowChange(value || '')}>
             <SelectTrigger className="w-48 cursor-pointer">
               <SelectValue placeholder="All Workflows" />
             </SelectTrigger>
@@ -152,9 +135,7 @@ const WorkflowPipelinesPage: React.FC = () => {
               <WorkflowPipelineCard
                 key={workflowPipeline.id}
                 pipeline={workflowPipeline}
-                onClick={(id) =>
-                  navigate(`/apps/${appId}/workflows/pipelines/${id}`)
-                }
+                onClick={(id) => navigate(`/apps/${appId}/workflows/pipelines/${id}`)}
                 onDeleteClick={handleDeleteClick}
               />
             ))}
