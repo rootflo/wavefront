@@ -118,6 +118,12 @@ Some services require credential files (JSON files for GCP, OAuth, etc.). Follow
 - `FLOWARE_JWT_AUDIENCE`: JWT audience URL for floware
 - `FLOWARE_JWT_VALIDATION_ISSUER`: Comma-separated list of valid issuers
 
+**Initial User configuration**:
+- `EMAIL`: User Email
+- `PASSWORD`: User Password
+- `FIRST_NAME`: User first name
+- `LAST_NAME`: User last name
+
 **Cloud Provider** (Choose one: `aws` or `gcp`):
 - `CLOUD_PROVIDER`: Set to `aws` or `gcp`
 
@@ -209,6 +215,7 @@ WORKFLOW_WORKER_TOPIC: Workflow Pub/Sub topic
 
 #### Required Variables
 
+- `ALLOWED_ORIGINS`: Allowed origins (http://wavefront:3000)
 - `CONSOLE_DB_HOST`: Database host (default: `postgres-console`)
 - `CONSOLE_DB_PORT`: Database port (default: `5432`)
 - `CONSOLE_DB_USERNAME`: Database username (default: `postgres`)

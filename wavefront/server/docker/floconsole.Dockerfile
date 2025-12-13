@@ -9,13 +9,13 @@ RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml uv.lock ./
+COPY wavefront/server/pyproject.toml wavefront/server/uv.lock ./
 
-COPY modules/common_module /app/modules/common_module
+COPY wavefront/server/modules/common_module /app/modules/common_module
 
-COPY packages/flo_cloud /app/packages/flo_cloud
+COPY wavefront/server/packages/flo_cloud /app/packages/flo_cloud
 
-COPY apps/floconsole /app/apps/floconsole
+COPY wavefront/server/apps/floconsole /app/apps/floconsole
 
 RUN uv sync --package floconsole --frozen --no-dev
 

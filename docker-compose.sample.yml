@@ -73,11 +73,27 @@ services:
     networks:
       - floware-network
 
+  # Wavefront - AI middleware web
+  wavefront:
+    build:
+      context: .
+      dockerfile: ./wavefront/client/.Dockerfile
+    container_name: wavefront
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      - APP_ENV=local
+      - BASE_URL=http://floconsole:8002/floconsole
+      - FEATURE_API_SERVICES=true
+    networks:
+      - floware-network
+
   # Floware - Core AI middleware
   floware:
     build:
       context: .
-      dockerfile: ./docker/floware.Dockerfile
+      dockerfile: ./wavefront/server/docker/floware.Dockerfile
     container_name: floware
     restart: unless-stopped
     ports:
@@ -138,6 +154,14 @@ services:
       - FLOWARE_JWT_VALIDATION_ISSUER=<YOUR_FLOWARE_JWT_VALIDATION_ISSUER>
       - PRIVATE_KEY=<YOUR_BASE64_ENCODED_PRIVATE_KEY>
       - PUBLIC_KEY=<YOUR_BASE64_ENCODED_PUBLIC_KEY>
+
+      # ============================================
+      # Initial User configuration
+      # ============================================
+      - EMAIL=<USER_EMAIL>
+      - PASSWORD=<USER_PASSWORD>
+      - FIRST_NAME=<USER_FIRST_NAME> 
+      - LAST_NAME=<USER_LAST_NAME>
 
       # ============================================
       # Cloud Provider Configuration
@@ -265,7 +289,7 @@ services:
   floconsole:
     build:
       context: .
-      dockerfile: ./docker/floconsole.Dockerfile
+      dockerfile: ./wavefront/server/docker/floconsole.Dockerfile
     container_name: floconsole
     restart: unless-stopped
     ports:
@@ -279,6 +303,7 @@ services:
       # ============================================
       # Application Configuration
       # ============================================
+      - ALLOWED_ORIGINS=http://wavefront:3000
       - CONSOLE_EMAIL=<YOUR_ADMIN_EMAIL>
       - CONSOLE_PASSWORD=<YOUR_ADMIN_PASSWORD>
       - CONSOLE_FIRST_NAME=<YOUR_FIRST_NAME>
@@ -306,7 +331,7 @@ services:
   call_processing:
     build:
       context: .
-      dockerfile: ./docker/call_processing.Dockerfile
+      dockerfile: ./wavefront/server/docker/call_processing.Dockerfile
     container_name: call_processing
     restart: unless-stopped
     ports:
@@ -353,7 +378,7 @@ services:
   inference_app:
     build:
       context: .
-      dockerfile: ./docker/inference_app.Dockerfile
+      dockerfile: ./wavefront/server/docker/inference_app.Dockerfile
     container_name: inference_app
     restart: unless-stopped
     ports:

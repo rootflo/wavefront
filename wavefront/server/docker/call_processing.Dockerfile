@@ -12,9 +12,9 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml uv.lock ./
+COPY wavefront/server/pyproject.toml wavefront/server/uv.lock ./
 
-COPY apps/call_processing /app/apps/call_processing
+COPY wavefront/server/apps/call_processing /app/apps/call_processing
 
 RUN uv sync --package call_processing --frozen --no-dev
 

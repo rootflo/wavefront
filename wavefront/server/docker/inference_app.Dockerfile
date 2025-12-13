@@ -11,11 +11,11 @@ RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml uv.lock .python-version ./
+COPY wavefront/server/pyproject.toml wavefront/server/uv.lock wavefront/server/.python-version ./
 
-COPY modules/common_module /app/modules/common_module
-COPY packages/flo_cloud /app/packages/flo_cloud
-COPY apps/inference_app /app/apps/inference_app
+COPY wavefront/server/modules/common_module /app/modules/common_module
+COPY wavefront/server/packages/flo_cloud /app/packages/flo_cloud
+COPY wavefront/server/apps/inference_app /app/apps/inference_app
 
 RUN uv sync --package inference-app --frozen --no-dev
 
