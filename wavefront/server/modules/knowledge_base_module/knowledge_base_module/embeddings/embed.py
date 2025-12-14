@@ -1,3 +1,4 @@
+import os
 import requests
 from typing import List
 from dataclasses import dataclass
@@ -13,7 +14,7 @@ class KnowledgeBaseEmbeddingObject:
 class EmbeddingFunc:
     def __init__(self, embedding_url):
         self.max_batch_size = 32
-        self.bgm_url = f'{embedding_url}/v1/embeddings'
+        self.bgm_url = f'{embedding_url}'
 
     def generate_document_embeddings(self, chunks):
         contents = [v['content'] for v in chunks.values()]
@@ -42,12 +43,16 @@ class EmbeddingFunc:
         return embeddings
 
     def bgm_embedding(self, texts):
+        openai_api_key = os.getenv('OPENAI_API_KEY') or ''
         response = requests.post(
             self.bgm_url,
+            headers={'Authorization': 'Bearer ' + openai_api_key},
             json={
-                'model': 'BAAI/bge-m3',
+                # 'model': 'BAAI/bge-m3',
+                'model': 'text-embedding-3-small',
                 'input': texts,
                 'encoding_format': 'float',
             },
         )
-        return response.json()['data'][0]['embedding']
+        res = response.json()
+        return res['data'][0]['embedding']
