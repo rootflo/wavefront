@@ -1,4 +1,19 @@
-## Wavefront AI Platform
+<p align="center">
+  <a href="https://rootflo.ai">
+  <img src="../images/wavefront-icon.png" alt="Wavefront" width="300"/>
+  </a>
+</p>
+
+## Prerequisites
+
+The project has its backend services written in python and frontend in reactjs. It has the following dependencies:
+
+- Python >=3.11
+- Node.js >=22.12
+- uv >=0.7.15
+- pnpm >=10.13.1
+
+## Wavefront Overview
 
 The platform consist of following components, which create a microservice mesh to provide scalable, secure, and reliable AI services. We have not used a fully microservice architecture as it is not necessary for our use case.
 
@@ -22,15 +37,6 @@ The platform consists of following components:
 <p align="center">
   <img src="../images/wavefront-service-mesh.png" alt="Wavefront" width="600"/>
 </p>
-
-## Prerequisites
-
-The project has its backend services written in python and frontend in reactjs. It has the following dependencies:
-
-- Python >=3.11
-- Node.js >=22.12
-- uv >=0.7.15
-- pnpm >=10.13.1
 
 The project is ready for production use only in Google Cloud Console and Amazon Web Services. 
 In the current state of the project, it requires following cloud services to run locally (We are working on removing this dependencies for local runs):
