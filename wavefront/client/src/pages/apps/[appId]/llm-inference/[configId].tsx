@@ -14,7 +14,13 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Slider } from '@app/components/ui/slider';
-import { cleanParameters, getProviderConfig, mergeParameters, ParameterConfig } from '@app/config/llm-providers';
+import {
+  cleanParameters,
+  getDefaultBaseUrl,
+  getProviderConfig,
+  mergeParameters,
+  ParameterConfig,
+} from '@app/config/llm-providers';
 import { useGetLLMConfig } from '@app/hooks';
 import { getLLMConfigKey, getLLMConfigsKey } from '@app/hooks/data/query-keys';
 import { useNotifyStore } from '@app/store';
@@ -92,13 +98,19 @@ const LLMInferenceConfigDetail: React.FC = () => {
     }
   }, [config, form]);
 
-  // Update parameters when provider type changes in edit mode
+  // Update parameters and base URL when provider type changes in edit mode
   const watchedType = form.watch('type');
   useEffect(() => {
     if (editing && config) {
       const mergedParams = mergeParameters(watchedType, watchedType === config.type ? config.parameters : null);
       setParameters(mergedParams);
       form.setValue('parameters', mergedParams);
+
+      // Update base URL to the new provider's default when type changes
+      if (watchedType !== config.type) {
+        const defaultBaseUrl = getDefaultBaseUrl(watchedType);
+        form.setValue('base_url', defaultBaseUrl);
+      }
     }
   }, [watchedType, editing, config, form]);
 
@@ -179,7 +191,7 @@ const LLMInferenceConfigDetail: React.FC = () => {
   };
 
   const supportsBaseUrl = (engineType: InferenceEngineType) => {
-    return ['ollama', 'vllm', 'azure_openai'].includes(engineType);
+    return ['ollama', 'vllm', 'azure_openai', 'openai', 'anthropic', 'gemini', 'groq'].includes(engineType);
   };
 
   return (

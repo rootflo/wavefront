@@ -22,7 +22,13 @@ import {
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Slider } from '@app/components/ui/slider';
-import { cleanParameters, getProviderConfig, initializeParameters, ParameterConfig } from '@app/config/llm-providers';
+import {
+  cleanParameters,
+  getDefaultBaseUrl,
+  getProviderConfig,
+  initializeParameters,
+  ParameterConfig,
+} from '@app/config/llm-providers';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { InferenceEngineType } from '@app/types/llm-inference-config';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -55,10 +61,10 @@ const BASE_URL_PLACEHOLDERS: Record<InferenceEngineType, string> = {
   ollama: 'http://localhost:11434',
   vllm: 'http://localhost:8000',
   azure_openai: 'https://your-resource.openai.azure.com',
-  openai: 'Base URL',
-  anthropic: 'Base URL',
-  gemini: 'Base URL',
-  groq: 'Base URL',
+  openai: 'https://api.openai.com/v1',
+  anthropic: 'https://api.anthropic.com',
+  gemini: 'https://generativelanguage.googleapis.com',
+  groq: 'https://api.groq.com/openai/v1',
 };
 
 const createLLMInferenceSchema = z.object({
@@ -98,7 +104,7 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
       llmModel: '',
       type: 'openai',
       apiKey: '',
-      baseUrl: '',
+      baseUrl: getDefaultBaseUrl('openai'),
     },
   });
 
@@ -110,21 +116,26 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
       setType(newType);
       const defaultParams = initializeParameters(newType);
       setParameters(defaultParams);
+
+      // Set default base URL for the provider
+      const defaultBaseUrl = getDefaultBaseUrl(newType);
+      form.setValue('baseUrl', defaultBaseUrl);
     }
-  }, [watchedType, isOpen]);
+  }, [watchedType, isOpen, form]);
 
   // Reset form when dialog closes
   useEffect(() => {
     if (!isOpen) {
+      const defaultType = 'openai';
       form.reset({
         displayName: '',
         llmModel: '',
-        type: 'openai',
+        type: defaultType,
         apiKey: '',
-        baseUrl: '',
+        baseUrl: getDefaultBaseUrl(defaultType),
       });
-      setType('openai');
-      setParameters(initializeParameters('openai'));
+      setType(defaultType);
+      setParameters(initializeParameters(defaultType));
     }
   }, [isOpen, form]);
 
@@ -133,7 +144,7 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
   };
 
   const supportsBaseUrl = (engineType: InferenceEngineType) => {
-    return ['ollama', 'vllm', 'azure_openai'].includes(engineType);
+    return ['ollama', 'vllm', 'azure_openai', 'openai', 'anthropic', 'gemini', 'groq'].includes(engineType);
   };
 
   const setParameter = (key: string, value: any) => {
@@ -330,6 +341,10 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
                         const newType = value as InferenceEngineType;
                         setType(newType);
                         setParameters(initializeParameters(newType));
+
+                        // Set default base URL for the provider
+                        const defaultBaseUrl = getDefaultBaseUrl(newType);
+                        form.setValue('baseUrl', defaultBaseUrl);
                       }}
                       value={field.value}
                     >

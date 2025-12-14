@@ -20,6 +20,7 @@ export interface ParameterConfig {
 
 export interface ProviderConfig {
   name: string;
+  baseUrl?: string;
   badge: {
     bg: string;
     text: string;
@@ -36,6 +37,7 @@ export type InferenceEngineType = 'gemini' | 'openai' | 'ollama' | 'vllm' | 'ant
 export const LLM_PROVIDERS_CONFIG: Record<InferenceEngineType, ProviderConfig> = {
   openai: {
     name: 'OpenAI GPT',
+    baseUrl: 'https://api.openai.com/v1',
     badge: {
       bg: 'bg-green-100',
       text: 'text-green-800',
@@ -117,6 +119,7 @@ export const LLM_PROVIDERS_CONFIG: Record<InferenceEngineType, ProviderConfig> =
   },
   anthropic: {
     name: 'Anthropic Claude',
+    baseUrl: 'https://api.anthropic.com',
     badge: {
       bg: 'bg-orange-100',
       text: 'text-orange-800',
@@ -162,6 +165,7 @@ export const LLM_PROVIDERS_CONFIG: Record<InferenceEngineType, ProviderConfig> =
   },
   gemini: {
     name: 'Google Gemini',
+    baseUrl: 'https://generativelanguage.googleapis.com',
     badge: {
       bg: 'bg-blue-100',
       text: 'text-blue-800',
@@ -279,6 +283,7 @@ export const LLM_PROVIDERS_CONFIG: Record<InferenceEngineType, ProviderConfig> =
   },
   groq: {
     name: 'Groq',
+    baseUrl: 'https://api.groq.com/openai/v1',
     badge: {
       bg: 'bg-purple-100',
       text: 'text-purple-800',
@@ -535,4 +540,12 @@ export function cleanParameters(params: Record<string, any>): Record<string, any
     }
   });
   return cleaned;
+}
+
+/**
+ * Get default base URL for a provider
+ */
+export function getDefaultBaseUrl(provider: InferenceEngineType): string {
+  const config = getProviderConfig(provider);
+  return config?.baseUrl || '';
 }

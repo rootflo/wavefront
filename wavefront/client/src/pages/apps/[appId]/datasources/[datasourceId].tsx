@@ -117,8 +117,7 @@ const DatasourceDetail: React.FC = () => {
     if (!datasourceId) return;
     if (yamlContent) {
       const yamlResponse = validateDynamicQueryYaml(yamlContent);
-      if (yamlResponse.valid) {
-      } else {
+      if (!yamlResponse.valid) {
         notifyError(yamlResponse.error);
         return;
       }
@@ -190,6 +189,7 @@ const DatasourceDetail: React.FC = () => {
       notifySuccess('Datasource deleted successfully');
       navigate(`/apps/${appId}/datasources`);
     } catch (error) {
+      console.error('Error deleting datasource');
     } finally {
       setDeleting(false);
       setShowDeleteConfirm(false);

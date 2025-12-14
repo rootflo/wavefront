@@ -27,7 +27,7 @@ const DashboardLayout = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
-    // @ts-ignore
+    // @ts-expect-error ts-expect error
     timeoutRef.current = setTimeout(
       () => {
         navigate('/logout');
