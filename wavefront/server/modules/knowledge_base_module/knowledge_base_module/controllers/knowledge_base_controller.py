@@ -82,16 +82,17 @@ async def create_knowledge_base(
         )
 
 
-@knowledge_base_router.get(
-    '/v1/knowledge-bases/{kb_id}', response_model=KnowledgeBaseResponse
-)
+@knowledge_base_router.get('/v1/knowledge-bases/{kb_id}')
 @inject
 async def get_knowledge_bases_id(
     kb_id: uuid.UUID,
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
     knowledge_base_repository: SQLAlchemyRepository[KnowledgeBase] = Depends(
         Provide[KnowledgeBaseContainer.knowledge_base_repository]
     ),
-) -> KnowledgeBaseResponse:
+) -> JSONResponse:
     """Get knowledge base by ID."""
     fetch_knowledge_base_id = await knowledge_base_repository.find_one(id=kb_id)
     if not fetch_knowledge_base_id:
@@ -100,13 +101,11 @@ async def get_knowledge_bases_id(
             detail="Knowledge Base with the mentioned id doesn't exist",
         )
 
-    return KnowledgeBaseResponse(
-        id=fetch_knowledge_base_id.id,
-        name=fetch_knowledge_base_id.name,
-        description=fetch_knowledge_base_id.description,
-        type=fetch_knowledge_base_id.type,
-        created_at=fetch_knowledge_base_id.created_at,
-        updated_at=fetch_knowledge_base_id.updated_at,
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            data=fetch_knowledge_base_id.to_dict()
+        ),
     )
 
 

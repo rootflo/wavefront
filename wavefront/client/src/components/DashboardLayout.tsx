@@ -14,7 +14,7 @@ interface IUser {
 const DashboardLayout = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
   const currentPath = useLocation();
   const navigate = useNavigate();
-  const timeoutRef = useRef<number | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /*
   The Broadcast Channel API enables communication between different browser windows, tabs, iframes, and web workers. 
   creating a channel with name 'timeout' 
@@ -27,7 +27,7 @@ const DashboardLayout = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
-    // @ts-ignore
+
     timeoutRef.current = setTimeout(
       () => {
         navigate('/logout');

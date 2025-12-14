@@ -403,7 +403,7 @@ const AgentDetail: React.FC = () => {
       // Prepare inputs based on what's provided
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let inputs: string | any[];
-      let finalTextInput = inferenceInput.trim();
+      const finalTextInput = inferenceInput.trim();
       // Handle different input combinations
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const conversationInputs: any[] = [];
