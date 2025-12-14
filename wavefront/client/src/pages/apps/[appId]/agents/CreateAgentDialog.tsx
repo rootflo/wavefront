@@ -44,7 +44,7 @@ agent:
     name: gemini-2.5-flash
   settings:
     temperature: 0.7
-job: You are a translator. Use this tone <tone>
+  job: You are a translator. Use this tone <tone>
 `;
 
 interface CreateAgentDialogProps {

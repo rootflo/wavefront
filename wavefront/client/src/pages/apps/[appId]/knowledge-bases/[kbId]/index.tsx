@@ -53,7 +53,7 @@ const KnowledgeBaseDetailPage: React.FC = () => {
   // Create System Prompt Dialog state
   const [showCreatePromptModal, setShowCreatePromptModal] = useState<boolean>(false);
   const [systemPrompt, setSystemPrompt] = useState<string>('');
-  const [selectedConfigId, setSelectedConfigId] = useState<string>('');
+  const [selectedConfigId, setSelectedConfigId] = useState<string | null>(null);
   const [creatingPrompt, setCreatingPrompt] = useState<boolean>(false);
 
   // Test Inference Dialog state
@@ -147,7 +147,7 @@ const KnowledgeBaseDetailPage: React.FC = () => {
         queryClient.invalidateQueries({ queryKey: getKnowledgeBaseInferencesKey(appId || '', kbId || '') });
         setShowCreatePromptModal(false);
         setSystemPrompt('');
-        setSelectedConfigId('');
+        setSelectedConfigId(null);
       } else {
         notifyError('Failed to create system prompt.');
       }
@@ -162,7 +162,7 @@ const KnowledgeBaseDetailPage: React.FC = () => {
   const handleCloseCreatePromptModal = () => {
     setShowCreatePromptModal(false);
     setSystemPrompt('');
-    setSelectedConfigId('');
+    setSelectedConfigId(null);
   };
 
   const handleOpenTestInference = (inferenceId: string) => {
@@ -488,7 +488,11 @@ const KnowledgeBaseDetailPage: React.FC = () => {
               <Label htmlFor="llm-config" className="mb-2">
                 Select LLM Model <span className="text-red-500">*</span>
               </Label>
-              <Select value={selectedConfigId} onValueChange={setSelectedConfigId} disabled={llmConfigs.length === 0}>
+              <Select
+                value={selectedConfigId ?? undefined}
+                onValueChange={(value) => setSelectedConfigId(value ?? null)}
+                disabled={llmConfigs.length === 0}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select an LLM configuration" />
                 </SelectTrigger>
