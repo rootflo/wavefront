@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'darwin'",
@@ -90,7 +90,7 @@ dependencies = [
 requires-dist = [
     { name = "api-services-module", editable = "modules/api_services_module" },
     { name = "common-module", editable = "modules/common_module" },
-    { name = "flo-ai", specifier = ">=1.1.0rc5" },
+    { name = "flo-ai", specifier = "==1.1.0rc5" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "flo-utils", editable = "packages/flo_utils" },
     { name = "tools-module", editable = "modules/tools_module" },
@@ -648,7 +648,7 @@ version = "2.0.17"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
-    { name = "audioop-lts", marker = "python_full_version >= '3.13' and python_full_version < '4.0'" },
+    { name = "audioop-lts", marker = "python_full_version >= '3.13' and python_full_version < '4'" },
     { name = "httpx" },
     { name = "httpx-sse" },
     { name = "iterators" },
@@ -2576,7 +2576,7 @@ dev = [
 requires-dist = [
     { name = "boto3", specifier = "<=1.38.40" },
     { name = "datasource", editable = "plugins/datasource" },
-    { name = "flo-ai", specifier = ">=1.1.0rc5" },
+    { name = "flo-ai", specifier = "==1.1.0rc5" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "google-cloud-pubsub", specifier = "~=2.30.0" },
     { name = "numpy", specifier = ">=1.24,<2.0" },
@@ -5482,7 +5482,7 @@ dev = [
 requires-dist = [
     { name = "common-module", editable = "modules/common_module" },
     { name = "datasource", editable = "plugins/datasource" },
-    { name = "flo-ai", specifier = ">=1.1.0rc5" },
+    { name = "flo-ai", specifier = "==1.1.0rc5" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "knowledge-base-module", editable = "modules/knowledge_base_module" },
     { name = "plugins-module", editable = "modules/plugins_module" },

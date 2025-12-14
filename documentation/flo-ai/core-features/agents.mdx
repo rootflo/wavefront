@@ -1,0 +1,411 @@
+---
+title: "Agents"
+description: "Learn how to create and configure AI agents with Flo AI"
+icon: "robot"
+---
+
+## Creating Agents
+
+Agents are the core building blocks of Flo AI. They represent AI-powered entities that can process inputs, use tools, and generate responses.
+
+### AgentBuilder Methods
+
+The `AgentBuilder` class provides a fluent interface for configuring agents. All methods return `self` for method chaining. Here's a complete reference:
+
+| Method | Description | Parameters |
+|--------|-------------|------------|
+| `with_name(name: str)` | Set the agent's name | `name`: Display name for the agent |
+| `with_prompt(system_prompt: str \| AssistantMessage)` | Set the system prompt | `system_prompt`: Instructions defining agent behavior |
+| `with_llm(llm: BaseLLM)` | Configure the LLM provider | `llm`: Instance of OpenAI, Anthropic, Gemini, etc. |
+| `with_tools(tools: List[Tool])` | Add tools to the agent | `tools`: List of Tool objects, ToolConfig, or tool dicts |
+| `add_tool(tool: Tool, **prefilled_params)` | Add a single tool with optional pre-filled parameters | `tool`: Tool object, `**prefilled_params`: Parameters to pre-fill |
+| `with_reasoning(pattern: ReasoningPattern)` | Set reasoning pattern | `pattern`: `REACT`, `COT`, or `DIRECT` |
+| `with_retries(max_retries: int)` | Set maximum retry attempts | `max_retries`: Number of retries on failure (default: 3) |
+| `with_output_schema(schema: Dict \| Type[BaseModel])` | Set structured output schema | `schema`: Pydantic model class or JSON schema dict |
+| `with_role(role: str)` | Set the agent's role | `role`: Internal role description |
+| `with_actas(act_as: str)` | Set how agent presents itself | `act_as`: Message role (e.g., 'assistant', 'user') |
+| `build()` | Create and return the configured Agent | Returns: `Agent` instance |
+
+**Note:** `with_llm()` is required before calling `build()`. All other methods are optional.
+
+### Basic Agent Creation
+
+Create a simple conversational agent:
+
+```python
+from flo_ai.agent import AgentBuilder
+from flo_ai.llm import OpenAI
+
+agent = (
+    AgentBuilder()
+    .with_name('Customer Support')
+    .with_prompt('You are a helpful customer support agent.')
+    .with_llm(OpenAI(model='gpt-4o-mini'))
+    .build()
+)
+
+response = await agent.run('How can I reset my password?')
+```
+
+### Agent Configuration
+
+Configure agents with various options:
+
+```python
+agent = (
+    AgentBuilder()
+    .with_name('Data Analyst')
+    .with_prompt('You are an expert data analyst.')
+    .with_llm(OpenAI(model='gpt-4o', temperature=0.3))
+    .with_retries(3)  # Retry on failure
+    .build()
+)
+```
+
+## Agent Types
+
+### Conversational Agents
+
+Basic agents for chat and Q&A:
+
+```python
+conversational_agent = (
+    AgentBuilder()
+    .with_name('Chat Assistant')
+    .with_prompt('You are a friendly conversational assistant.')
+    .with_llm(OpenAI(model='gpt-4o-mini'))
+    .build()
+)
+```
+
+### Tool-Using Agents
+
+Agents that can use external tools:
+
+```python
+from flo_ai.tool import flo_tool
+
+@flo_tool(description="Get weather information")
+async def get_weather(city: str) -> str:
+    return f"Weather in {city}: sunny, 25°C"
+
+tool_agent = (
+    AgentBuilder()
+    .with_name('Weather Assistant')
+    .with_prompt('You help users get weather information.')
+    .with_llm(OpenAI(model='gpt-4o-mini'))
+    .with_tools([get_weather.tool])
+    .build()
+)
+```
+
+### Structured Output Agents
+
+Agents that return structured data:
+
+```python
+from pydantic import BaseModel, Field
+
+class AnalysisResult(BaseModel):
+    summary: str = Field(description="Executive summary")
+    key_findings: list = Field(description="List of key findings")
+    recommendations: list = Field(description="Actionable recommendations")
+
+structured_agent = (
+    AgentBuilder()
+    .with_name('Business Analyst')
+    .with_prompt('Analyze business data and provide insights.')
+    .with_llm(OpenAI(model='gpt-4o'))
+    .with_output_schema(AnalysisResult)
+    .build()
+)
+```
+
+## Agent Capabilities
+
+### Variable Resolution
+
+Use dynamic variables in agent prompts:
+
+```python
+agent = (
+    AgentBuilder()
+    .with_name('Personalized Assistant')
+    .with_prompt('Hello <user_name>! You are <user_role> at <company>.')
+    .with_llm(OpenAI(model='gpt-4o-mini'))
+    .build()
+)
+
+# Use variables at runtime
+variables = {
+    'user_name': 'John',
+    'user_role': 'Data Scientist',
+    'company': 'TechCorp'
+}
+
+response = await agent.run(
+    'What should I focus on today?',
+    variables=variables
+)
+```
+
+### Document Processing
+
+Process PDF and text documents:
+
+```python
+from flo_ai.models import DocumentMessageContent, UserMessage
+from flo_ai.models.document import DocumentType
+import base64
+
+# Read file and encode as base64
+with open('report.pdf', 'rb') as f:
+    pdf_bytes = f.read()
+    pdf_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
+
+# Create document message
+document = UserMessage(
+    content=DocumentMessageContent(
+        mime_type=DocumentType.PDF.value,
+        base64=pdf_base64
+    )
+)
+
+# Process with agent
+response = await agent.run([document, "Analyse the document"])
+```
+
+### Error Handling
+
+Built-in retry mechanisms and error recovery:
+
+```python
+robust_agent = (
+    AgentBuilder()
+    .with_name('Reliable Agent')
+    .with_prompt('You are a reliable assistant.')
+    .with_llm(OpenAI(model='gpt-4o'))
+    .with_retries(3)  # Retry up to 3 times
+    .build()
+)
+```
+
+### Conversation History
+
+Agents automatically maintain conversation history across multiple interactions. The `run()` method returns the complete conversation history as a list of messages.
+
+```python
+agent = (
+    AgentBuilder()
+    .with_name('Chat Assistant')
+    .with_prompt('You are a helpful assistant.')
+    .with_llm(OpenAI(model='gpt-4o-mini'))
+    .build()
+)
+
+# First interaction
+response1 = await agent.run('Hello, my name is Alice.')
+print(f"Response: {response1[-1].content}")  # Get last message
+
+# Second interaction - agent remembers the conversation
+response2 = await agent.run('What is my name?')
+print(f"Response: {response2[-1].content}")  # Agent knows the name is Alice
+
+# Access full conversation history
+for message in agent.conversation_history:
+    print(f"{message.role}: {message.content}")
+```
+
+#### Accessing Conversation History
+
+The conversation history is stored in the `conversation_history` attribute:
+
+```python
+# Get all messages
+all_messages = agent.conversation_history
+
+# Get the last message
+last_message = agent.conversation_history[-1]
+
+# Filter messages by role
+from flo_ai.models import UserMessage, AssistantMessage
+
+user_messages = [
+    msg for msg in agent.conversation_history 
+    if isinstance(msg, UserMessage)
+]
+
+assistant_messages = [
+    msg for msg in agent.conversation_history 
+    if isinstance(msg, AssistantMessage)
+]
+```
+
+#### Clearing History
+
+Clear the conversation history to start a new conversation:
+
+```python
+# Clear all conversation history
+agent.clear_history()
+
+# Now the agent starts fresh
+response = await agent.run('Hello!')
+```
+
+#### Manual History Management
+
+You can manually add messages to the conversation history:
+
+```python
+from flo_ai.models import UserMessage, AssistantMessage
+
+# Add a user message
+agent.add_to_history(UserMessage('Previous context'))
+
+# Add multiple messages at once
+agent.add_to_history([
+    UserMessage('Message 1'),
+    AssistantMessage('Response 1'),
+    UserMessage('Message 2')
+])
+```
+
+## Best Practices
+
+### Prompt Engineering
+
+- **Be specific**: Clearly define the agent's role and capabilities
+- **Use examples**: Provide examples of expected inputs and outputs
+- **Set boundaries**: Define what the agent should and shouldn't do
+
+```python
+well_prompted_agent = (
+    AgentBuilder()
+    .with_name('Code Reviewer')
+    .with_prompt('''
+    You are an expert code reviewer. Your role is to:
+    1. Review code for bugs, security issues, and best practices
+    2. Suggest improvements and optimizations
+    3. Provide constructive feedback
+
+    Always be specific about issues and provide actionable suggestions.
+    Focus on code quality, performance, and maintainability.
+    ''')
+    .with_llm(OpenAI(model='gpt-4o'))
+    .build()
+)
+```
+
+### Model Selection
+
+Choose the right model for your use case:
+
+- **GPT-4o**: Best for complex reasoning and analysis
+- **GPT-4o-mini**: Good balance of performance and cost
+- **Claude-3.5-Sonnet**: Excellent for creative tasks
+- **Gemini**: Good for multilingual applications
+
+### Performance Optimization
+
+```python
+# Configure LLM with appropriate settings for performance
+optimized_agent = (
+    AgentBuilder()
+    .with_name('Content Generator')
+    .with_prompt('Generate detailed content.')
+    .with_llm(OpenAI(model='gpt-4o-mini', temperature=0.7))
+    .with_retries(2)  # Reduce retries for faster failure
+    .build()
+)
+```
+
+## Agent Lifecycle
+
+### Creation
+
+```python
+# Create agent
+agent = (
+    AgentBuilder()
+    .with_name('My Agent')
+    .with_prompt('You are a helpful assistant.')
+    .with_llm(OpenAI(model='gpt-4o-mini'))
+    .build()
+)
+```
+
+### Execution
+
+```python
+# Simple execution
+response = await agent.run('Hello!')
+
+# With variables
+response = await agent.run('Hello!', variables={'name': 'John'})
+
+# With multiple messages
+from flo_ai.models import UserMessage
+response = await agent.run([
+    UserMessage('First message'),
+    UserMessage('Second message')
+])
+```
+
+## Advanced Features
+
+### Reasoning Patterns
+
+Configure agents to use different reasoning patterns:
+
+```python
+from flo_ai.agent import ReasoningPattern
+
+# ReACT pattern - for tool-using agents that need structured reasoning
+react_agent = (
+    AgentBuilder()
+    .with_name('ReACT Agent')
+    .with_prompt('You solve problems step by step.')
+    .with_llm(OpenAI(model='gpt-4o'))
+    .with_tools([get_weather.tool])
+    .with_reasoning(ReasoningPattern.REACT)
+    .build()
+)
+
+# Chain of Thought pattern - for complex reasoning tasks
+cot_agent = (
+    AgentBuilder()
+    .with_name('CoT Agent')
+    .with_prompt('You think through problems carefully.')
+    .with_llm(OpenAI(model='gpt-4o'))
+    .with_tools([get_weather.tool])
+    .with_reasoning(ReasoningPattern.COT)
+    .build()
+)
+
+# Direct pattern (default) - for straightforward tasks
+direct_agent = (
+    AgentBuilder()
+    .with_name('Direct Agent')
+    .with_prompt('You provide direct answers.')
+    .with_llm(OpenAI(model='gpt-4o'))
+    .with_reasoning(ReasoningPattern.DIRECT)
+    .build()
+)
+```
+
+### Role and Act-As Configuration
+
+Configure agent roles and how they present themselves:
+
+```python
+agent = (
+    AgentBuilder()
+    .with_name('Customer Support')
+    .with_prompt('You help customers with their questions.')
+    .with_role('Senior Support Specialist')  # Internal role description
+    .with_actas('assistant')  # How the agent presents itself in messages
+    .with_llm(OpenAI(model='gpt-4o-mini'))
+    .build()
+)
+```

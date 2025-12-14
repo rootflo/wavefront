@@ -2,7 +2,7 @@ FROM nvidia/cuda:12.6.3-cudnn-devel-ubuntu22.04
 
 WORKDIR /app
 
-COPY --from=ghcr.io/astral-sh/uv:0.7.15 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.8.6 /uv /uvx /bin/
 
 RUN apt-get update && apt-get install -y \
     libpq-dev \

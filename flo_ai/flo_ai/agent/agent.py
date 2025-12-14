@@ -77,7 +77,7 @@ class Agent(BaseAgent):
     ) -> List[BaseMessage]:
         variables = variables or {}
         if isinstance(inputs, str):
-            inputs = [UserMessage(TextMessageContent(text=inputs))]
+            inputs = [UserMessage(content=resolve_variables(inputs, variables))]
 
         # Perform runtime variable validation if not already resolved (single agent usage)
         if not self.resolved_variables:

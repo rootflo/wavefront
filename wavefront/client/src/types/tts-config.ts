@@ -71,5 +71,4 @@ export interface CartesiaParameters {
   model?: string; // default: 'sonic-2'
   language?: string; // Language enum
   speed?: number;
-  emotion?: string[];
 }

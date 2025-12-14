@@ -22,7 +22,6 @@
   </a>
   <br/>
 </p>
-
 <p align="center">
   <br/>
    <a href="https://github.com/rootflo/flo-ai">GitHub</a>
@@ -30,6 +29,8 @@
     <a href="https://rootflo.ai" target="_blank">Website</a>
    •
     <a href="https://flo-ai.rootflo.ai" target="_blank">Documentation</a>
+   •
+    <a href="https://discord.gg/BPXsNwfuRU" target="_blank">Discord</a>
   </p>
 
   <p align="center">
@@ -42,33 +43,38 @@
 
   <hr />
 
-# 🚀 Wavefront AI Middleware
+## What is Wavefront ?
 
-Wavefront AI is an open-source middleware platform designed to seamlessly build AI-driven agents, workflows, and automations across enterprise environments. It acts as a connective layer that bridges frontend applications and AI automations with backend databases, data-warehouses, data-lakes, third-party services, ensuring secure access, observability, and compatibility with modern AI
+Wavefront AI is an open-source middleware platform designed to:
+- Seamlessly connect to any API, database or file storage system
+- Connect to any LLM or SLM
+- Build AI-driven agents, workflows, and automations across enterprise by connecting to multiple data sources, knowledge bases, and services
+- Provide authentication, authorization, observability, monitoring & evaluation for all agents & workflows
 
-**Status**: Beta Release 
-**Beta release**: Dec 2025  
-**Wavefront License**: GNU AFFERO GENERAL PUBLIC LICENSE 3.0  
-**FloAI License**: MIT LICENSE  
-**Contributing**: We welcome early feedback! See [CONTRIBUTING.md](CONTRIBUTING.md).  
-**Community**: Join our discord at https://discord.gg/BPXsNwfuRU 
+## What people build with Wavefront ?
+- To build AI agents & workflows to audit, underwrite, supervise contact center, and automate business processes
+- To build knowledge bases & RAG ready applications for internal enterprise use
+- To build voice & conversational agents collections and sales use-cases
+- To build AI workflows to connect multiple data sources, knowledge bases, and services
+
 
 <p align="center">
   <img src="./images/wavefront-home.png" alt="Rootflo" />
 </p>
 
----
+| Project Information | Details |
+|-----------|------------|
+|**Release Status** | Beta Release| 
+|**Wavefront License** | GNU AFFERO GENERAL PUBLIC LICENSE 3.0 |
+|**FloAI License** | MIT LICENSE |
 
 ## ✨ Key Capabilities
 
-- **🎯 Modular AI Application Integration**  
-  Deploy diverse AI agents for auditing, underwriting, contact center supervision, and business process automation without rebuilding infrastructure.
-
 - **🔌 Unified API Layer**  
-  Standardized APIs for developing, deploying, and managing AI workflows across multiple use cases and frameworks.
+  Standardized APIs for developing, deploying, and managing AI workflows & agents across multiple use cases and frameworks.
 
 - **🔐 Enterprise-Grade Authentication & Authorization**  
-  Native integrations with Google Auth, LDAP, Auth0, Okta, and Microsoft AD/Entra for seamless SSO and access controls.
+  Native integrations with Google Auth and Microsoft AD/Entra for seamless SSO and access controls for client applications
 
 - **🌐 Comprehensive Data Connectivity**  
   Ingest data from OLAP/OLTP systems (BigQuery, Redshift), HDFS, cloud storage (S3, GCS), databases (PostgreSQL, MongoDB), and enterprise APIs (Salesforce, SAP).
@@ -83,7 +89,7 @@ Wavefront AI is an open-source middleware platform designed to seamlessly build 
   Built-in telemetry with Grafana and Prometheus support. Track agent performance, audit trails, and guardrail enforcement in real-time.
 
 - **🤖 No Code Agent & Workflow Builder**
-  Built-in capabilities to build and customer AI agents, and AI Workflows, connecting Data Sources, Knowledge Bases, in minutes
+  Built-in capabilities to build and customize AI agents, and AI Workflows, connecting Data Sources, Knowledge Bases, in minutes
 
 - **🔊 Voice & Conversational Agents**  
   Integrated Voice-to-Voice Bots, ASR models, and agentic flows for contact center and conversational use cases.
@@ -91,127 +97,42 @@ Wavefront AI is an open-source middleware platform designed to seamlessly build 
 - **🧠 Knowledge Bases & RAG Ready**  
   Native support for Retrieval-Augmented Generation with MCP connectors and external knowledge bases.
 
----
+- **🎯 Modular AI Application Integration (Coming Soon)**  
+Deploy diverse AI agents for auditing, underwriting, contact center supervision, and business process automation without rebuilding infrastructure.
 
-## 🏗️ Architecture Overview
+## Quick Start
 
-<p align="center">
-  <img src="./images/wavefront-arc.png" alt="Rootflo" />
-</p>
+**Option 1**: [Schedule a demo](https://calendly.com/meetings-rootflo/30min) and we help you build immediately. 
 
-### Layer Descriptions
+**Option 2**: Self-host for maximum control and customization. Please find the self-hosting instructions in the [Wavefront Documentation](https://github.com/rootflo/wavefront/tree/develop/wavefront).
 
-| Layer | Purpose | Components |
-|-------|---------|------------|
-| **Frontend Applications** | User-facing AI interfaces | Supervisors, Audit Agents, Underwriters, Copilots |
-| **API Layer** | Standardized communication | Frontend SDK, REST/GraphQL APIs |
-| **Authentication** | Identity verification & SSO | Google Auth, LDAP, Auth0, Okta, Microsoft AD |
-| **Authorization (Agents)** | Agent-level access policies | Role definitions, permission mapping |
-| **AI Workflows** | Intelligent automation | Agentic flows, Voice agents, LLM integrations, RAG |
-| **Data Processing** | ETL and API management | Pipelines, transformations, HTTP endpoints |
-| **Authorization (Data)** | Data source access control | Fine-grained permissions, audit logging |
-| **Data Sources** | Enterprise data systems/Services | Databases, APIs, Cloud storage, Data warehouses, Servics like Salesforce, SAP etc. |
 
 ## Platform Components
 
 As part of the project, we are building the following components
 
-- [FloAI](https://github.com/rootflo/flo-ai/tree/develop/flo_ai) library for Agent Building & A2A Orchestration
-- **Wavefront Core** Middleware Service, which connects multiple frontend applications with complex backend ai pipelines, provides authentication, authorization, observability, monitoring & evaluation
-- **Wavefront Control Panel** Unified frontend for configuring agents, workflows, AI models, Guardrails developer-friendly, RBAC etc.
-- **Wavefront cli** for configuring through cli (Yet to Build), for full developer-friendly control
+| Component | Description |
+|---------|-------------|
+| **flo-ai** | [FloAI](https://github.com/rootflo/flo-ai/tree/develop/flo_ai) library for Agent Building & A2A Orchestration. Detailed documentation is available [here](https://wavefront.rootflo.ai/flo-ai). |
+| **wavefront-server** | Core Middleware Service, which connects everything and orchestrates the flows. Detailed documentation is available [here](https://github.com/rootflo/wavefront/tree/develop/wavefront). |
+| **wavefront-client** | Unified frontend for configuring agents, workflows, AI models, Guardrails developer-friendly, RBAC etc. Details [here](https://github.com/rootflo/wavefront/tree/develop/wavefront). |
+| **wavefront-cli** | for configuring through cli, for full developer-friendly control (**Coming Soon**) |
 
-## 🛣️ Current Support & Roadmap
-
-### Data Adapters
-
-| Adapter | Status | Notes |
-|---------|--------|-------|
-| BigQuery | ✅ Available | Full read/write support |
-| Redshift | ✅ Available | Production-ready |
-| PostgreSQL | 🔄 In Progress | Optimized for large datasets |
-| MySQL | 📋 Roadmap | Compatible with MySQL 5.7+ |
-
-### API Adapters
-
-| Adapter | Status | Notes |
-|---------|--------|-------|
-| Custom API Configuration | 🔄 In Progress | Flexible HTTP endpoint support |
-| Salesforce | 🔄 In Progress | Native API integration |
-
-### LLM Connectors
-
-| Model/Service | Status | Notes |
-|---------------|--------|-------|
-| OpenAI | ✅ Available | GPT-3.5, GPT-4 support |
-| Anthropic | ✅ Available | Claude models supported |
-| vLLM (Open-Source) | ✅ Available | Self-hosted inference |
-| Ollama | ✅ Available | Local model deployment |
-| GroqAI | 🔄 In Progress | Fast inference support |
-| Vertex AI | ✅ Available | Google Cloud integration |
-| Bedrock | 🔄 In Progress | AWS integration coming soon |
-
-### Authentication Providers
-
-| Provider | Status | Notes |
-|----------|--------|-------|
-| Google Auth | ✅ Available | OAuth 2.0 support |
-| Microsoft AD/Entra | ✅ Available | Enterprise SSO ready |
-| Okta | 📋 Roadmap | Q1 2026 |
-| SAML 2.0 | 📋 Roadmap | Q1 2026 |
-
-### Audit & Observability
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Application Metrics | ✅ Available | Prometheus-compatible |
-| Application Logs | ✅ Available | Structured logging |
-| AI Token Tracking | ✅ Available | Token tracking per agent |
-| Open Telemetry | ✅ Available | Full OTel support |
-| AI Audit Logging | 🔄 In Progress | Detailed decision trails (Q4 2025) |
-| AI Guardrails | 📋 Roadmap | Policy enforcement (Q1 2026) |
-
-### Frontend SDK
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Component Library | ✅ Available | React components ready |
-| AI-Based No-Code Builder | 📋 Roadmap | Visual agent creation (Q1 2026) |
-| Low Code AI Agent Builder | ✅ Available | YAML-based builder available |
-
-### Release Timeline
+## Release Timeline
 
 | Quarter | Milestone | Features |
 |---------|-----------|----------|
 | **Nov 2025** | Public README.md | Publish readme and take in community feedback |
-| **Dec 2025** | Open-source community edition | Community edition release with working MVP |
-| **Q1 2026** | Enterprise Edition | Advanced RBAC, More Data source Integrations|
-| **Q1 2026** | Rootflo Wavefront Cloud | One-click deployable Wavefront Cloud
+| **Dec 2025** | Open-source Beta Release | Beta with basic features |
+| **Q1 2026** | GA Release | Advanced RBAC, More Data source Integrations|
+| **Q1 2026** | Rootflo Wavefront Cloud | Multi-tenant Cloud offering |
 
 See [ROADMAP.md](ROADMAP.md) for detailed feature plans and contribution opportunities.
 
----
-
-## 🤝 Contributing
-
-We welcome contributions from the community! Whether it's bug reports, feature requests, or code contributions:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
-
----
-
-
-## 🙏 Acknowledgments
-
-Wavefront AI was built with inspiration from leading open-source projects in the AI infrastructure space. Special thanks to our early adopters and community contributors.
-
----
+> [!WARNING]
+> 
+> - This project is under active development and APIs may change without notice. Please checkout the [platform docs](https://wavefront.rootflo.ai) for the latest information.
+> - The platform is not in the GA state, and there are unimplemented feature. Checkout [ROADMAP.md](../ROADMAP.md) for the list of features, and whats missing.
 
 ## ⭐ Show Your Support
 
@@ -224,10 +145,13 @@ If you find Wavefront AI useful, please consider:
 
 ---
 
-**Ready to transform your enterprise AI infrastructure?**
+## Next Steps
 
-Get in touch for production-grade support and SLA-driven deployments that ensure uptime, stability, and performance at scale.
+- [Join our Discord](https://discord.gg/BPXsNwfuRU)
+- [Read our docs](https://wavefront.rootflo.ai/)
+- [Submit an issue](https://github.com/rootflo/wavefront/issues/new/choose)
+- [Talk to us](https://calendly.com/meetings-rootflo/30min)
 
-📧 sales@rootflo.ai
-
-**Join our discord at https://discord.gg/BPXsNwfuRU**
+Text us! <br>
+[![Twitter Vishnu](https://img.shields.io/twitter/follow/viz_satiz?style=flat-square&logo=X)](https://x.com/viz_satiz)
+[![Twitter Nitin](https://img.shields.io/twitter/follow/ntinkster?style=flat-square&logo=X)](https://x.com/ntinkster)

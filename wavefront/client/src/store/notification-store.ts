@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-type TToastType = 'success' | 'error' | 'warning' | null;
+export type TToastType = 'success' | 'error' | 'warning' | null;
 
 type State = {
   visible: boolean;

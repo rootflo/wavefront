@@ -22,7 +22,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
-          version: "0.7.3"
+          version: "0.8.6"
 
       - name: Install dependencies
         run: cd flo_ai && uv sync

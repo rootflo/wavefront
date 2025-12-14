@@ -157,12 +157,6 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
             placeholder: '1.0',
             step: 0.1,
           },
-          emotion: {
-            type: 'array',
-            default: [],
-            description: 'Comma-separated emotion tags',
-            placeholder: 'happy, excited',
-          },
         },
       },
     },
