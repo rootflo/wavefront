@@ -1,4 +1,4 @@
-name: (Develop) Build and Push Wavefront Web app to AWS and GCP
+name: (Develop) Build and Push Wavefront Floconsole app to AWS and GCP
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ env:
   PROJECT_ID: aesy-330511
   GCP_REGION: asia-south1
   GAR_LOCATION: asia-south1-docker.pkg.dev/aesy-330511/root-hub
-  IMAGE_NAME: wavefront-web
+  IMAGE_NAME: wavefront-floconsole
 
 jobs:
   build-push-artifact:
@@ -40,7 +40,7 @@ jobs:
       - name: Build Docker Image
         id: build-image
         run: |
-          docker build -f wavefront/client/Dockerfile -t rootflo:${{ steps.get-commit-hash.outputs.commit-hash }}-${{ steps.get-timestamp.outputs.timestamp }} .
+          docker build -f wavefront/server/docker/floconsole.Dockerfile -t rootflo:${{ steps.get-commit-hash.outputs.commit-hash }}-${{ steps.get-timestamp.outputs.timestamp }} .
           echo "IMAGE_TAG=${{ steps.get-commit-hash.outputs.commit-hash }}-${{ steps.get-timestamp.outputs.timestamp }}" >> $GITHUB_ENV
 
       - id: "Auth-to-GCP"
