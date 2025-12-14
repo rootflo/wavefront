@@ -1,8 +1,8 @@
-import os
 from rag_ingestion.models.knowledge_base_embeddings import KnowledgeBaseEmbeddingObject
 import requests
 from rag_ingestion.env import EMBEDDING_SERVICE_URL
 from flo_utils.utils.log import logger
+from rag_ingestion.env import OPENAI_API_KEY, EMBEDDING_MODEL
 
 
 class EmbeddingFunc:
@@ -34,16 +34,20 @@ class EmbeddingFunc:
         return embeddings
 
     def bgm_embedding(self, texts):
-        openai_api_key = os.getenv('OPENAI_API_KEY') or ''
+        headers = {
+            'Authorization': f'Bearer {OPENAI_API_KEY}',
+        }
+
         response = requests.post(
             self.bgm_url,
-            headers={'Authorization': 'Bearer ' + openai_api_key},
+            headers=headers if EMBEDDING_MODEL == 'text-embedding-3-small' else None,
             json={
-                # 'model': 'BAAI/bge-m3',
-                'model': 'text-embedding-3-small',
+                'model': EMBEDDING_MODEL,
                 'input': texts,
                 'encoding_format': 'float',
             },
+            timeout=60,
         )
+        response.raise_for_status()
         res = response.json()
         return res['data'][0]['embedding']
