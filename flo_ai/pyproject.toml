@@ -1,8 +1,8 @@
 [project]
 name = "flo_ai"
-version = "1.1.0-rc5"
+version = "1.1.0-rc6"
 description = "A easy way to create structured AI agents"
-authors = [{ name = "rootflo", email = "*@rootflo.ai" }]
+authors = [{ name = "rootflo", email = "engineering.tools@rootflo.ai" }]
 requires-python = ">=3.10,<4.0"
 readme = "README.md"
 license = "MIT"
