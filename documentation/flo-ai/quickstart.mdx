@@ -55,7 +55,7 @@ async def main():
     )
 
     response = await agent.run('What is the formula for the area of a circle?')
-    print(f'Response: {response}')
+    print(f'Response: {response[-1].content}')
 
 asyncio.run(main())
 ```
@@ -96,7 +96,7 @@ async def main():
     )
 
     response = await agent.run('Calculate 5 plus 3')
-    print(f'Response: {response}')
+    print(f'Response: {response[-1].content}')
 
 asyncio.run(main())
 ```

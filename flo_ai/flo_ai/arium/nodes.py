@@ -177,13 +177,13 @@ class FunctionNode:
     def __init__(
         self,
         name: str,
-        description: str,
         function: Callable[..., Any],
+        description: Optional[str] = None,
         prefilled_params: Optional[Dict[str, Any]] = None,
         input_filter: Optional[List[str]] = None,
     ) -> None:
         self.name = name
-        self.description = description
+        self.description = description or f"Function node '{name}'"
         self.function = function
         self.prefilled_params = prefilled_params or {}
         self.input_filter: Optional[List[str]] = input_filter

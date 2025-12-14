@@ -10,7 +10,7 @@ The project has its backend services written in python and frontend in reactjs. 
 
 - Python >=3.11
 - Node.js >=22.12
-- uv >=0.7.15
+- uv >=0.8.6
 - pnpm >=10.13.1
 
 ## Wavefront Overview
@@ -19,12 +19,12 @@ The platform consist of following components, which create a microservice mesh t
 
 The platform consists of following components:
 
-| Service | Port | Description | Release Status | 
-|---------|------|-------------|----------------|
-| **floware** | 8001 | Core AI middleware service. This service connects wavefront to multiple backends, databases, AI models and more. This is the core control center of the platform. | Beta |
-| **floconsole** | 8002 | Management console service, this module is multi-app control centre for configuriong multiple apps on the wavefront middleware. | Beta |
-| **inference_app** | 8003 | Inference App service. A simple service for running pytorch models. We right now support all models which works on pytorch version 0.16.0. | Experimental |
-| **call_processing** | 8004 | Voice call processing service (Pipecat) | Beta |
+| Service             | Port | Description                                                                                                                                                       | Release Status |
+| ------------------- | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| **floware**         | 8001 | Core AI middleware service. This service connects wavefront to multiple backends, databases, AI models and more. This is the core control center of the platform. | Beta           |
+| **floconsole**      | 8002 | Management console service, this module is multi-app control centre for configuriong multiple apps on the wavefront middleware.                                   | Beta           |
+| **inference_app**   | 8003 | Inference App service. A simple service for running pytorch models. We right now support all models which works on pytorch version 0.16.0.                        | Experimental   |
+| **call_processing** | 8004 | Voice call processing service (Pipecat)                                                                                                                           | Beta           |
 
 #### Middleware High Level Architecture:
 
@@ -38,7 +38,7 @@ The platform consists of following components:
   <img src="../images/wavefront-service-mesh.png" alt="Wavefront" width="600"/>
 </p>
 
-The project is ready for production use only in Google Cloud Console and Amazon Web Services. 
+The project is ready for production use only in Google Cloud Console and Amazon Web Services.
 In the current state of the project, it requires following cloud services to run locally (We are working on removing this dependencies for local runs):
 
 - Google Cloud Storage or Amazon S3
@@ -47,7 +47,7 @@ In the current state of the project, it requires following cloud services to run
 ## Quick Start
 
 > [!WARNING]
-> 
+>
 > - This project is under active development and APIs may change without notice. Please checkout the [platform docs](https://wavefront.rootflo.ai) for the latest information.
 > - The platform is not in the GA state, and there are unimplemented feature. Checkout [ROADMAP.md](../ROADMAP.md) for the list of features, and whats missing.
 
@@ -91,7 +91,7 @@ Now open http://localhost:5173 in your browser to see the frontend & login with 
 
 ## Next Steps
 
-Connect your datasources, and create your first agent & workflow or go ahead an try out the voice bot feature. 
+Connect your datasources, and create your first agent & workflow or go ahead an try out the voice bot feature.
 
 - Checkout the platform docs here [https://wavefront.rootflo.ai](https://wavefront.rootflo.ai/).
 - Incase you face any issues, dont hesitate to reach out to schedule a call with us [here](https://calendly.com/meetings-rootflo/30min)
