@@ -47,14 +47,14 @@
 
 Wavefront AI is an open-source middleware platform designed to:
 - Seamlessly connect to any API, database or file storage system
-- Connect to any LLM or SLMs
+- Connect to any LLM or SLM
 - Build AI-driven agents, workflows, and automations across enterprise by connecting to multiple data sources, knowledge bases, and services
 - Provide authentication, authorization, observability, monitoring & evaluation for all agents & workflows
 
 ## What people build with Wavefront ?
 - To build AI agents & workflows to audit, underwrite, supervise contact center, and automate business processes
 - To build knowledge bases & RAG ready applications for internal enterprise use
-- To build voice & conversational agents collections and sales usecases
+- To build voice & conversational agents collections and sales use-cases
 - To build AI workflows to connect multiple data sources, knowledge bases, and services
 
 
@@ -89,7 +89,7 @@ Wavefront AI is an open-source middleware platform designed to:
   Built-in telemetry with Grafana and Prometheus support. Track agent performance, audit trails, and guardrail enforcement in real-time.
 
 - **🤖 No Code Agent & Workflow Builder**
-  Built-in capabilities to build and customer AI agents, and AI Workflows, connecting Data Sources, Knowledge Bases, in minutes
+  Built-in capabilities to build and customize AI agents, and AI Workflows, connecting Data Sources, Knowledge Bases, in minutes
 
 - **🔊 Voice & Conversational Agents**  
   Integrated Voice-to-Voice Bots, ASR models, and agentic flows for contact center and conversational use cases.
@@ -115,7 +115,7 @@ As part of the project, we are building the following components
 | **flo-ai** | [FloAI](https://github.com/rootflo/flo-ai/tree/develop/flo_ai) library for Agent Building & A2A Orchestration. Detailed documentation is available [here](https://wavefront.rootflo.ai/flo-ai). |
 | **wavefront-server** | Core Middleware Service, which connects everything and orchestrates the flows. Detailed documentation is available [here](https://github.com/rootflo/wavefront/tree/develop/wavefront). |
 | **wavefront-client** | Unified frontend for configuring agents, workflows, AI models, Guardrails developer-friendly, RBAC etc. Details [here](https://github.com/rootflo/wavefront/tree/develop/wavefront). |
-| **wavefront-cli** | for configuring through cli, for full developer-friendly control [Coming Soon]
+| **wavefront-cli** | for configuring through cli, for full developer-friendly control (**Coming Soon**) |
 
 ## Release Timeline
 
