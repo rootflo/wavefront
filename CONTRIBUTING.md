@@ -1,27 +1,8 @@
-# Contributing to Flo AI
+# Contributing to Wavefront
 
-Thank you for your interest in contributing to Flo AI! We welcome contributions from the community and are excited to work with you.
+Thank you for your interest in contributing to Wavefront! We welcome contributions from the community and are excited to work with you.
 
-This guide will help you get started with contributing to the Flo AI project. Please read it carefully before making your first contribution.
-
-> **Note**: This contributing guide currently focuses on **Flo AI**, the core agent building and orchestration library. **Wavefront AI** (the enterprise middleware platform) is currently in development and will be open-sourced in the future. When Wavefront AI is released, we will update this guide with additional contribution guidelines for the middleware platform.
-
----
-
-## 📋 Table of Contents
-
-- [Code of Conduct](#code-of-conduct)
-- [Getting Started](#getting-started)
-- [Development Environment Setup](#development-environment-setup)
-- [Project Structure](#project-structure)
-- [Development Workflow](#development-workflow)
-- [Code Style and Standards](#code-style-and-standards)
-- [Testing Guidelines](#testing-guidelines)
-- [Documentation Guidelines](#documentation-guidelines)
-- [Commit Message Guidelines](#commit-message-guidelines)
-- [Pull Request Process](#pull-request-process)
-- [Types of Contributions](#types-of-contributions)
-- [Questions and Support](#questions-and-support)
+This guide will help you get started with contributing to the Wavefront project. Please read it carefully before making your first contribution.
 
 ---
 
@@ -116,27 +97,11 @@ source .venv/bin/activate  # On macOS/Linux
 
 ### Environment Variables
 
-Set up your API keys for testing (create a `.env` file or export them):
+Set up your API keys for testing (create a `.env` file or export them). Please find the documentation on environment variables [here](DOCKER_SETUP.md).
 
-[Documentation to be added soon]
+## 📁 Setting up the project Locally
 
-### Verify Installation
-
-Test your installation:
-
-```bash
-# Run the test suite
-pytest tests/unit-tests/
-
-# Run a specific test
-pytest tests/unit-tests/test_agent_builder_tools.py
-```
-
-## 📁 Project Structure
-
-Understanding the project structure will help you navigate the codebase:
-
-[To be added]
+For local development, you can use the following instructions in quick start mentioned [here](/wavefront/README.md#quick-start).
 
 ---
 
@@ -232,91 +197,12 @@ git push origin feature/your-feature-name
 
 ---
 
-## 💻 Code Style and Standards
-
-### Python Code Style
-
-We use **pre-commit hooks** to ensure code quality. Set it up:
-
-```bash
-# Install pre-commit
-pip install pre-commit
-
-# Install hooks
-pre-commit install
-
-# Run on all files (optional, but recommended)
-pre-commit run --all-files
-```
-
-**Key style guidelines:**
-
-1. **Follow PEP 8** - Python style guide
-2. **Type hints** - Use type hints for function signatures:
-   ```python
-   from typing import Optional, List
-   
-   async def process_data(
-       items: List[str],
-       limit: Optional[int] = None
-   ) -> dict:
-       ...
-   ```
-3. **Docstrings** - Use Google-style docstrings:
-   ```python
-   def my_function(param1: str, param2: int) -> bool:
-       """Brief description of the function.
-       
-       Args:
-           param1: Description of param1
-           param2: Description of param2
-           
-       Returns:
-           Description of return value
-           
-       Raises:
-           ValueError: When something goes wrong
-       """
-   ```
-4. **Async/Await** - Use async/await for I/O operations
-5. **Error Handling** - Use appropriate exception types and provide clear error messages
-
-## 🧪 Testing Guidelines
-
-### Writing Tests
-
-1. **Test Coverage** - Aim for high test coverage, especially for new features
-2. **Test Organization**:
-   - Unit tests in `tests/unit-tests/`
-   - Integration tests in `tests/integration-tests/`
-   - Mark integration tests with `@pytest.mark.integration`
-
-3. **Test Naming**:
-   ```python
-   def test_function_name_with_condition_returns_expected():
-       """Test that function_name returns expected when condition is met."""
-   ```
-
-4. **Async Tests**:
-   ```python
-   import pytest
-   
-   @pytest.mark.asyncio
-   async def test_async_function():
-       result = await my_async_function()
-       assert result == expected
-   ```
-
-5. **Fixtures** - Use pytest fixtures for common setup:
-   ```python
-   @pytest.fixture
-   def sample_agent():
-       return AgentBuilder().with_name('test').build()
-   ```
-
 ### Running Tests
 
 ```bash
+# Run all tests
+cd wavefront
+
 # Run all unit tests
 pytest tests/unit-tests/
 
@@ -342,32 +228,6 @@ pytest -m "not integration"
 - New features should include tests
 - Bug fixes should include regression tests
 - Integration tests are optional but encouraged for LLM integrations
-
----
-
-## 📚 Documentation Guidelines
-
-### Code Documentation
-
-- **Docstrings** - All public functions, classes, and methods should have docstrings
-- **Type hints** - Use type hints for better IDE support and documentation
-- **Comments** - Add comments for complex logic, but prefer self-documenting code
-
-### Documentation Updates
-
-When adding new features, update:
-
-1. **README.md** - If the feature is user-facing
-2. **API Documentation** - If adding new APIs
-3. **Examples** - Add examples in `flo_ai/examples/` if applicable
-4. **Docstrings** - Update docstrings for any changed functions
-
-### Documentation Format
-
-- Use Markdown for documentation files
-- Use MDX for the documentation site
-- Include code examples where helpful
-- Keep documentation up-to-date with code changes
 
 ---
 
@@ -572,18 +432,6 @@ Contributors will be recognized in:
 
 ---
 
-## 📄 License
-
-By contributing, you agree that your contributions will be licensed under the same license as the project (MIT License for Flo AI).
-
----
-
 ## 🙏 Thank You!
 
-Thank you for taking the time to contribute to Flo AI! Your contributions help make this project better for everyone.
-
-**Happy Contributing! 🚀**
-
----
-
-**Questions?** Feel free to open an issue or reach out to vishnu@rootflo.ai
+Thank you for taking the time to contribute to Wavefront! Your contributions help make this project better for everyone.

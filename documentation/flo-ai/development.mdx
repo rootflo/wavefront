@@ -1,0 +1,178 @@
+---
+title: "Development"
+description: "Set up your development environment for Flo AI"
+---
+
+<Info>
+  **Prerequisites**: - Python 3.10 or higher - pip, poetry or uv package manager
+  - API keys for your chosen LLM providers
+</Info>
+
+Follow these steps to set up your development environment for Flo AI.
+
+<Steps>
+<Step title="Install Flo AI">
+
+Install Flo AI using pip, poetry or uv:
+
+```bash
+# Using pip
+pip install flo-ai
+
+# Using poetry
+poetry add flo-ai
+
+#Using uv
+uv add flo-ai
+```
+
+</Step>
+
+<Step title="Set up environment variables">
+
+Configure your API keys for LLM providers:
+
+```bash
+# OpenAI
+export OPENAI_API_KEY="your-openai-key"
+
+# Anthropic
+export ANTHROPIC_API_KEY="your-anthropic-key"
+
+# Google Gemini
+export GOOGLE_API_KEY="your-google-key"
+
+# For Google Vertex AI
+export GOOGLE_APPLICATION_CREDENTIALS="path/to/service-account.json"
+export GOOGLE_CLOUD_PROJECT="your-project-id"
+```
+
+</Step>
+
+<Step title="Verify installation">
+
+Test your installation with a simple agent:
+
+```python
+import asyncio
+from flo_ai.agent import AgentBuilder
+from flo_ai.llm import OpenAI
+
+async def test_installation():
+    agent = (
+        AgentBuilder()
+        .with_name('Test Agent')
+        .with_prompt('You are a helpful assistant.')
+        .with_llm(OpenAI(model='gpt-4o-mini'))
+        .build()
+    )
+
+    response = await agent.run('Hello, world!')
+    print(f'Agent response: {response[-1].content}')
+
+asyncio.run(test_installation())
+```
+
+</Step>
+</Steps>
+
+### Testing
+
+Run the test suite to ensure everything is working correctly:
+
+```bash
+# Run all tests
+pytest
+
+# Run specific test files
+pytest tests/unit-tests/test_agent.py
+
+# Run with coverage
+pytest --cov=flo_ai
+```
+
+## Project Structure
+
+Understanding the Flo AI project structure:
+
+```
+flo_ai/
+├── flo_ai/                 # Core package
+│   ├── agent/              # Agent 
+│   ├── arium/              # Workflow orchestration
+│   ├── formatter/          # Format parsers
+│   ├── helpers/            # Helper utilities
+│   ├── llm/                # LLM provider integrations
+│   ├── models/             # Data models
+│   ├── telemetry/          # Observability
+│   ├── tool/               # Tool framework
+│   └── utils/              # Utility functions
+├── docs/                   # Documentation
+├── examples/               # Example implementations
+└── tests/                  # Test suite
+    ├── integration-tests/  # Integration tests
+    └── unit-tests/         # Unit tests
+```
+
+## Contributing
+
+Learn how to set up your development environment and submit changes to the Flo AI project.
+
+#### Prerequisites
+
+Before setting up for development, ensure you have the following tools installed:
+
+- **uv**: Fast Python package installer and resolver. [Install uv](https://docs.astral.sh/uv/getting-started/installation/)
+- **pnpm**(optional): Package manager for Node.js. [Install pnpm](https://pnpm.io/installation)
+
+#### Setting up for development
+
+1. Fork the wavefront repository
+2. Clone your fork: `git clone https://github.com/your-username/wavefront.git`
+3. Enable workspace mode to start development (Recommended)
+4. Run the `install-dep-local.sh` script in the root directory, or navigate to the `flo_ai` workspace and run `uv sync`
+5. Start a new terminal in the `flo_ai` workspace
+6. Start contributing!
+
+#### Submitting changes
+
+1. Create a feature branch: `git checkout -b feature/your-feature`
+2. Make your changes and add tests
+3. Run tests: `pytest`
+4. Commit with conventional commits: `git commit -m "feat: add new feature"`. Ensure the pre-commit hook runs without any errors
+5. Push and create a pull request
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Import errors">
+
+    If you encounter import errors, ensure you're using Python 3.10+ and have installed all dependencies:
+
+    ```bash
+    pip install -r requirements.txt
+    # or
+    poetry install
+    # or
+    uv sync
+    ```
+
+  </Accordion>
+
+  <Accordion title="API key issues">
+
+    Verify your API keys are correctly set:
+
+    ```bash
+    echo $OPENAI_API_KEY
+    echo $ANTHROPIC_API_KEY
+    ```
+
+  </Accordion>
+</AccordionGroup>
+
+## Need Help?
+
+- Check out our [examples](https://github.com/rootflo/flo-ai/tree/main/flo_ai/examples)
+- Join our [community discussions](https://github.com/rootflo/flo-ai/discussions)
+- Read the [contributing guide](https://github.com/rootflo/flo-ai/blob/main/CONTRIBUTING.md)

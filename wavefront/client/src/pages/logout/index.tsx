@@ -1,9 +1,9 @@
-import floConsoleService from "@app/api";
-import { useAuthStore, useNotifyStore } from "@app/store";
-import { useDashboardStore } from "@app/store";
-import { useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
-import { useNavigate } from "react-router";
+import floConsoleService from '@app/api';
+import { useAuthStore, useNotifyStore } from '@app/store';
+import { useDashboardStore } from '@app/store';
+import { useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useNavigate } from 'react-router';
 
 const resetAllStores = () => {
   useAuthStore.getState().reset();
@@ -19,7 +19,7 @@ const Logout = () => {
     resetAllStores();
     localStorage.clear();
     queryClient.clear();
-    navigate("/login");
+    navigate('/login');
   };
 
   const handleLogOut = async () => {

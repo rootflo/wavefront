@@ -1,13 +1,13 @@
-import { IApiResponse } from "@app/lib/axios";
+import { IApiResponse } from '@app/lib/axios';
 
 // Telephony provider types
-export type TelephonyProvider = "twilio";
+export type TelephonyProvider = 'twilio';
 
 // Connection types
-export type ConnectionType = "websocket" | "sip";
+export type ConnectionType = 'websocket' | 'sip';
 
 // SIP transport protocols
-export type SipTransport = "udp" | "tcp" | "tls";
+export type SipTransport = 'udp' | 'tcp' | 'tls';
 
 // Credentials interface for Twilio
 export interface TelephonyCredentials {

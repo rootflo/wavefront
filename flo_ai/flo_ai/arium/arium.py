@@ -2,7 +2,7 @@ from flo_ai.arium.base import BaseArium
 from flo_ai.arium.memory import MessageMemory, MessageMemoryItem
 from flo_ai.models import BaseMessage, UserMessage, TextMessageContent
 from typing import List, Dict, Any, Optional, Callable
-from flo_ai.models.agent import Agent
+from flo_ai.agent.agent import Agent
 from flo_ai.arium.base import AriumNodeType
 from flo_ai.arium.models import StartNode, EndNode
 from flo_ai.arium.events import AriumEventType, AriumEvent

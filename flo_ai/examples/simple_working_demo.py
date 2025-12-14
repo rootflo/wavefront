@@ -9,12 +9,12 @@ This version fixes the planner loop by using a different approach:
 
 import asyncio
 import os
-from flo_ai.models.agent import Agent
+from flo_ai.agent import Agent
 from flo_ai.llm import OpenAI
 from flo_ai.arium.memory import MessageMemory, MessageMemoryItem
 from flo_ai.arium.llm_router import create_plan_execute_router
 from flo_ai.arium import AriumBuilder
-from flo_ai.models.agent import UserMessage
+from flo_ai.models import UserMessage
 
 
 async def simple_working_demo():

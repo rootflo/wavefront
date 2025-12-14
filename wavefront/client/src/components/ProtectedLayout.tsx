@@ -1,12 +1,8 @@
-import { CURRENT_PATH_KEY, TOKEN_KEY } from "@app/lib/constants";
-import { useEffect } from "react";
-import { Outlet, useNavigate } from "react-router";
+import { CURRENT_PATH_KEY, TOKEN_KEY } from '@app/lib/constants';
+import { useEffect } from 'react';
+import { Outlet, useNavigate } from 'react-router';
 
-const ProtectedLayout = ({
-  setAuthenticatedState,
-}: {
-  setAuthenticatedState: (authenticated: boolean) => void;
-}) => {
+const ProtectedLayout = ({ setAuthenticatedState }: { setAuthenticatedState: (authenticated: boolean) => void }) => {
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -15,7 +11,7 @@ const ProtectedLayout = ({
 
     if (!token) {
       setAuthenticatedState(false);
-      navigate("/login");
+      navigate('/login');
       return;
     } else {
       setAuthenticatedState(true);

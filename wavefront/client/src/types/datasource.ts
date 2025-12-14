@@ -1,4 +1,4 @@
-import { IApiResponse } from "@app/lib/axios";
+import { IApiResponse } from '@app/lib/axios';
 
 export interface Datasource {
   id: string;
@@ -27,7 +27,7 @@ export interface UpdateDatasourceRequest {
 export type TestDatasourceData = boolean;
 
 export interface DatasourceData {
-  status: "success" | "error";
+  status: 'success' | 'error';
   data: {
     message?: string;
     datasource_id?: string;
@@ -35,20 +35,20 @@ export interface DatasourceData {
 }
 
 export interface DatasourceListData {
-  status: "success" | "error";
+  status: 'success' | 'error';
   data: {
     datasources: Datasource[];
   };
 }
 
 export interface DatasourceResourcesData {
-  status: "success" | "error";
+  status: 'success' | 'error';
   data: {
     resources: string[];
   };
 }
 export interface YamlDataSource {
-  status: "success" | "error";
+  status: 'success' | 'error';
   data: {
     message: string;
   };

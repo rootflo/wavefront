@@ -1,0 +1,437 @@
+version: '3.8'
+
+services:
+  # PostgreSQL for Floware with pgvector extension
+  postgres-floware:
+    image: ankane/pgvector
+    container_name: postgres-floware
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=<YOUR_POSTGRES_USER>
+      - POSTGRES_PASSWORD=<YOUR_POSTGRES_PASSWORD>
+      - POSTGRES_DB=<YOUR_FLOWARE_DB_NAME>
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres-floware-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U <YOUR_POSTGRES_USER> -d <YOUR_FLOWARE_DB_NAME>"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - floware-network
+
+  # PostgreSQL for Console
+  postgres-console:
+    image: postgres:16
+    container_name: postgres-console
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=<YOUR_POSTGRES_USER>
+      - POSTGRES_PASSWORD=<YOUR_POSTGRES_PASSWORD>
+      - POSTGRES_DB=<YOUR_CONSOLE_DB_NAME>
+    ports:
+      - '5433:5432'
+    volumes:
+      - postgres-console-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U <YOUR_POSTGRES_USER> -d <YOUR_CONSOLE_DB_NAME>"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - floware-network
+
+  # Redis for Floware
+  redis-floware:
+    image: redis:7.4
+    container_name: redis-floware
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - floware-network
+
+  # Redis for Call Processing
+  redis-call-processing:
+    image: redis:7.4
+    container_name: redis-call-processing
+    restart: unless-stopped
+    ports:
+      - '6380:6379'
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - floware-network
+
+  # Wavefront - AI middleware web
+  wavefront:
+    build:
+      context: .
+      dockerfile: ./wavefront/client/.Dockerfile
+    container_name: wavefront
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      - APP_ENV=local
+      - BASE_URL=http://floconsole:8002/floconsole
+      - FEATURE_API_SERVICES=true
+    networks:
+      - floware-network
+
+  # Floware - Core AI middleware
+  floware:
+    build:
+      context: .
+      dockerfile: ./wavefront/server/docker/floware.Dockerfile
+    container_name: floware
+    restart: unless-stopped
+    ports:
+      - '8001:8001'
+
+    # ============================================
+    # Volume Mounts for Credential Files
+    # Uncomment the volumes you need and update the host path (left side of :)
+    # ============================================
+    volumes:
+      # GCP Service Account JSON (for cloud storage, KMS, Pub/Sub)
+      # Required if CLOUD_PROVIDER=gcp
+      - ./credentials/gcp-service-account.json:/app/credentials/gcp-service-account.json:ro
+
+      # Google OAuth Client Secret (for Google OAuth integration)
+      # Required if using Google OAuth for Gmail/Drive
+      # - ./credentials/google-oauth-client-secret.json:/app/credentials/google-oauth-client-secret.json:ro
+
+      # Gmail Service Account JSON (for Gmail email sending)
+      # Required if EMAIL_PROVIDER=gmail with service account
+      # - ./credentials/gmail-service-account.json:/app/credentials/gmail-service-account.json:ro
+
+    environment:
+      # ============================================
+      # Database Configuration
+      # ============================================
+      - DB_USERNAME=<YOUR_DB_USERNAME>
+      - DB_PASSWORD=<YOUR_DB_PASSWORD>
+      - DB_HOST=postgres-floware
+      - DB_PORT=5432
+      - DB_NAME=<YOUR_FLOWARE_DB_NAME>
+
+      # ============================================
+      # Redis Configuration
+      # ============================================
+      - REDIS_PROTOCOL=redis
+      - REDIS_HOST=redis-floware
+      - REDIS_PORT=6379
+
+      # ============================================
+      # Application Settings
+      # ============================================
+      - APP_ENV=<YOUR_APP_ENV>
+      - APP_NAME=floware
+      - ALLOWED_ORIGINS=<YOUR_ALLOWED_ORIGINS>
+      - PASSTHROUGH_SECRET=<YOUR_PASSTHROUGH_SECRET>
+
+      # ============================================
+      # JWT Configuration
+      # Generate keys using: ./scripts/generate-keys.sh
+      # ============================================
+      - TOKEN_EXPIRY=<YOUR_TOKEN_EXPIRY>
+      - TEMPORARY_TOKEN_EXPIRY=<YOUR_TEMPORARY_TOKEN_EXPIRY>
+      - ENABLE_CLOUD_KMS=<YOUR_ENABLE_CLOUD_KMS>
+      - CONSOLE_TOKEN_PREFIX=<YOUR_CONSOLE_TOKEN_PREFIX>
+      - FLOWARE_JWT_ISSUER=<YOUR_FLOWARE_JWT_ISSUER>
+      - FLOWARE_JWT_AUDIENCE=<YOUR_FLOWARE_JWT_AUDIENCE>
+      - FLOWARE_JWT_VALIDATION_ISSUER=<YOUR_FLOWARE_JWT_VALIDATION_ISSUER>
+      - PRIVATE_KEY=<YOUR_BASE64_ENCODED_PRIVATE_KEY>
+      - PUBLIC_KEY=<YOUR_BASE64_ENCODED_PUBLIC_KEY>
+
+      # ============================================
+      # Initial User configuration
+      # ============================================
+      - EMAIL=<USER_EMAIL>
+      - PASSWORD=<USER_PASSWORD>
+      - FIRST_NAME=<USER_FIRST_NAME> 
+      - LAST_NAME=<USER_LAST_NAME>
+
+      # ============================================
+      # Cloud Provider Configuration
+      # Choose: aws or gcp
+      # ============================================
+      - CLOUD_PROVIDER=<YOUR_CLOUD_PROVIDER>
+
+      # AWS Configuration (if CLOUD_PROVIDER=aws)
+      - AWS_ACCESS_KEY_ID=<YOUR_AWS_ACCESS_KEY>
+      - AWS_SECRET_ACCESS_KEY=<YOUR_AWS_SECRET_KEY>
+      - AWS_REGION=<YOUR_AWS_REGION>
+      - AWS_KMS_ARN=<YOUR_AWS_KMS_ARN>
+      - AWS_QUEUE_URL=<YOUR_AWS_QUEUE_URL>
+      - TRANSCRIPT_BUCKET_NAME=<YOUR_TRANSCRIPT_BUCKET>
+      - AUDIO_BUCKET_NAME=<YOUR_AUDIO_BUCKET>
+      - AWS_GOLD_ASSET_BUCKET_NAME=<YOUR_ASSETS_BUCKET>
+      - MODEL_STORAGE_BUCKET=<YOUR_MODEL_BUCKET>
+      - AGENT_YAML_BUCKET=<YOUR_AGENT_YAML_BUCKET>
+      - VOICE_AGENT_BUCKET=<YOUR_VOICE_AGENT_BUCKET>
+      - IMAGE_SEARCH_REFERENCE_IMAGES_BUCKET=<YOUR_IMAGES_BUCKET>
+      - APPLICATION_BUCKET=<YOUR_APPLICATION_BUCKET>
+
+      # GCP Configuration (if CLOUD_PROVIDER=gcp)
+      - GCP_PROJECT_ID=<YOUR_GCP_PROJECT_ID>
+      - GCP_LOCATION=<YOUR_GCP_LOCATION>
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/gcp-service-account.json
+      - GCP_ASSET_STORAGE_BUCKET=<YOUR_GCP_ASSETS_BUCKET>
+      - GCP_KMS_KEY_RING=<YOUR_KEY_RING>
+      - GCP_KMS_CRYPTO_KEY=<YOUR_CRYPTO_KEY>
+      - GCP_KMS_CRYPTO_KEY_VERSION=<YOUR_GCP_KMS_CRYPTO_KEY_VERSION>
+      - GCP_GOLD_TOPIC_ID=<YOUR_GOLD_TOPIC>
+      - GCP_EMAIL_TOPIC_ID=<YOUR_EMAIL_TOPIC>
+      - WORKFLOW_WORKER_TOPIC=<YOUR_WORKFLOW_TOPIC>
+
+      # ============================================
+      # LLM/AI Configuration
+      # ============================================
+      - OPENAI_API_KEY=<YOUR_OPENAI_API_KEY>
+      - OPENAI_MODEL_NAME=<YOUR_OPENAI_MODEL_NAME>
+
+      # Other AI APIs
+      - GOOGLE_API_KEY=<YOUR_GOOGLE_API_KEY>
+
+      # ============================================
+      # External Services
+      # ============================================
+      - INFERENCE_SERVICE_URL=<YOUR_INFERENCE_SERVICE_URL>
+      - EMBEDDING_SERVICE_URL=<YOUR_EMBEDDING_SERVICE_URL>
+      - CALL_PROCESSING_BASE_URL=<YOUR_CALL_PROCESSING_BASE_URL>
+      - HERMES_URL=<YOUR_HERMES_URL>
+
+      # ============================================
+      # OAuth Configuration (Optional)
+      # ============================================
+      # Azure OAuth
+      - AZURE_CLIENT_ID=<YOUR_AZURE_CLIENT_ID>
+      - AZURE_TENANT_ID=<YOUR_AZURE_TENANT_ID>
+      - AZURE_CLIENT_SECRET=<YOUR_AZURE_CLIENT_SECRET>
+      - AZURE_SCOPES=<YOUR_AZURE_SCOPES>
+      - AZURE_REDIRECT_URI=<YOUR_AZURE_REDIRECT_URI>
+
+      # ============================================
+      # Email Configuration (Optional)
+      # ============================================
+      - EMAIL_PROVIDER=<YOUR_EMAIL_PROVIDER>
+
+      # Gmail
+      - GMAIL_SERVICE_ACCOUNT_FILE=/app/credentials/gmail-service-account.json
+      - GMAIL_SENDER_EMAILID=<YOUR_SENDER_EMAIL>
+      - GMAIL_DELEGATE_USER=<YOUR_DELEGATE_EMAIL>
+
+      # Outlook
+      - OUTLOOK_CLIENT_ID=<YOUR_OUTLOOK_CLIENT_ID>
+      - OUTLOOK_CLIENT_SECRET=<YOUR_OUTLOOK_CLIENT_SECRET>
+      - OUTLOOK_TENANT_ID=<YOUR_OUTLOOK_TENANT_ID>
+      - OUTLOOK_SENDER_EMAILID=<YOUR_OUTLOOK_EMAIL>
+
+      # ============================================
+      # Analytics (Optional)
+      # ============================================
+      - SUPERSET_URL=<YOUR_SUPERSET_URL>
+      - SUPERSET_USERNAME=<YOUR_SUPERSET_USERNAME>
+      - SUPERSET_PASSWORD=<YOUR_SUPERSET_PASSWORD>
+      - SUPERSET_FLAG=<YOUR_SUPERSET_FLAG>
+      - BQ_PROJECT_ID=<YOUR_BIGQUERY_PROJECT>
+      - BQ_DATASET_ID=<YOUR_BIGQUERY_DATASET>
+
+      # Redshift
+      - REDSHIFT_DB=<YOUR_REDSHIFT_DB>
+      - REDSHIFT_USERNAME=<YOUR_REDSHIFT_USER>
+      - REDSHIFT_PASSWORD=<YOUR_REDSHIFT_PASSWORD>
+      - REDSHIFT_HOST=<YOUR_REDSHIFT_HOST>
+      - REDSHIFT_PORT=<YOUR_REDSHIFT_PORT>
+
+      # ============================================
+      # Security Settings
+      # ============================================
+      - MAX_FAILED_ATTEMPTS=<YOUR_MAX_FAILED_ATTEMPTS>
+      - LOCKOUT_DURATION_HOURS=<YOUR_LOCKOUT_DURATION_HOURS>
+      - INACTIVE_DAYS_THRESHOLD=<YOUR_INACTIVE_DAYS_THRESHOLD>
+
+      # ============================================
+      # Feature Flags (true/false)
+      # ============================================
+      - AZURE_FLAG=<YOUR_AZURE_FLAG>
+      - AZURE_OPENAI_FLAG=<YOUR_AZURE_OPENAI_FLAG>
+      - CELERY_FLAG=<YOUR_CELERY_FLAG>
+      - EMAIL_SYNC_FLAG=<YOUR_EMAIL_SYNC_FLAG>
+      - GOOGLE_FLAG=<YOUR_GOOGLE_FLAG>
+      - INACTIVE_ACCOUNT_DISABLE_FLAG=<YOUR_INACTIVE_ACCOUNT_DISABLE_FLAG>
+      - SAML_FLAG=<YOUR_SAML_FLAG>
+      - SLACK_FLAG=<YOUR_SLACK_FLAG>
+      - SUPERSET_FLAG=<YOUR_SUPERSET_FLAG>
+      - VECTOR_DB_FLAG=<YOUR_VECTOR_DB_FLAG>
+
+    depends_on:
+      postgres-floware:
+        condition: service_healthy
+      redis-floware:
+        condition: service_healthy
+    networks:
+      - floware-network
+
+  # FloConsole - Management console
+  floconsole:
+    build:
+      context: .
+      dockerfile: ./wavefront/server/docker/floconsole.Dockerfile
+    container_name: floconsole
+    restart: unless-stopped
+    ports:
+      - '8002:8002'
+    environment:
+      - CONSOLE_DB_HOST=postgres-console
+      - CONSOLE_DB_PORT=5432
+      - CONSOLE_DB_USERNAME=<YOUR_CONSOLE_DB_USERNAME>
+      - CONSOLE_DB_PASSWORD=<YOUR_CONSOLE_DB_PASSWORD>
+      - CONSOLE_DB_NAME=<YOUR_CONSOLE_DB_NAME>
+      # ============================================
+      # Application Configuration
+      # ============================================
+      - ALLOWED_ORIGINS=http://wavefront:3000
+      - CONSOLE_EMAIL=<YOUR_ADMIN_EMAIL>
+      - CONSOLE_PASSWORD=<YOUR_ADMIN_PASSWORD>
+      - CONSOLE_FIRST_NAME=<YOUR_FIRST_NAME>
+      - CONSOLE_LAST_NAME=<YOUR_LAST_NAME>
+      - CONSOLE_JWT_ISSUER=<YOUR_CONSOLE_JWT_ISSUER>
+      - CONSOLE_JWT_AUDIENCE=<YOUR_CONSOLE_JWT_AUDIENCE>
+      - CONSOLE_TOKEN_PREFIX=<YOUR_CONSOLE_TOKEN_PREFIX>
+      - SUPER_ADMIN_EMAIL=<YOUR_SUPER_ADMIN_EMAIL>
+      - TOKEN_EXPIRY=<YOUR_TOKEN_EXPIRY>
+      - TEMPORARY_TOKEN_EXPIRY=<YOUR_TEMPORARY_TOKEN_EXPIRY>
+      - PRIVATE_KEY=<YOUR_BASE64_ENCODED_PRIVATE_KEY>
+      - PUBLIC_KEY=<YOUR_BASE64_ENCODED_PUBLIC_KEY>
+      - APP_ENV=<YOUR_APP_ENV>
+      - ENABLE_CLOUD_KMS=<YOUR_ENABLE_CLOUD_KMS>
+      - PASSTHROUGH_SECRET=<YOUR_PASSTHROUGH_SECRET>
+      # ===============================================
+      # Default App
+      # ===============================================
+      - DEFAULT_APP_NAME=floware-dev
+      - DEFAULT_APP_PUBLIC_URL=http://floware:8001
+      - DEFAULT_APP_PRIVATE_URL=http://floware:8001
+    depends_on:
+      postgres-console:
+        condition: service_healthy
+      floware:
+        condition: service_started
+    networks:
+      - floware-network
+
+  # Call Processing - Voice call processing with Pipecat
+  call_processing:
+    build:
+      context: .
+      dockerfile: ./wavefront/server/docker/call_processing.Dockerfile
+    container_name: call_processing
+    restart: unless-stopped
+    ports:
+      - '8004:8004'
+    environment:
+      # ============================================
+      # Redis Configuration
+      # ============================================
+      - REDIS_HOST=redis-call-processing
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+
+      # ============================================
+      # Application Settings
+      # ============================================
+      - APP_ENV=<YOUR_APP_ENV>
+      - APP_NAME=call_processing
+      - APP_NAME_FLOWARE=floware
+
+      # ============================================
+      # Floware Integration
+      # ============================================
+      - FLOWARE_BASE_URL=<YOUR_FLOWARE_BASE_URL>
+      - PASSTHROUGH_SECRET=<YOUR_PASSTHROUGH_SECRET>
+
+      # ============================================
+      # JWT Configuration
+      # ============================================
+      - TOKEN_EXPIRY=<YOUR_TOKEN_EXPIRY>
+      - TEMPORARY_TOKEN_EXPIRY=<YOUR_TEMPORARY_TOKEN_EXPIRY>
+      - CALL_PROCESSING_TOKEN_PREFIX=<YOUR_CALL_PROCESSING_TOKEN_PREFIX>
+      - CALL_PROCESSING_JWT_ISSUER=<YOUR_CALL_PROCESSING_JWT_ISSUER>
+
+    depends_on:
+      redis-call-processing:
+        condition: service_healthy
+      floware:
+        condition: service_started
+    networks:
+      - floware-network
+
+  # Inference App - ML inference service
+  # Uncomment to enable inference service
+  inference_app:
+    build:
+      context: .
+      dockerfile: ./wavefront/server/docker/inference_app.Dockerfile
+    container_name: inference_app
+    restart: unless-stopped
+    ports:
+      - '8003:8003'
+  #
+    # ============================================
+    # Volume Mounts for Credential Files
+    # Uncomment if using GCP for model storage
+    # ============================================
+    volumes:
+      # GCP Service Account JSON (for model storage access)
+      # Required if CLOUD_PROVIDER=gcp
+      - ./credentials/gcp-service-account.json:/app/credentials/gcp-service-account.json:ro
+  
+    environment:
+      # ============================================
+      # Application Settings
+      # ============================================
+      - APP_ENV=<YOUR_APP_ENV>
+  
+      # ============================================
+      # Cloud Provider Configuration
+      # Choose: aws or gcp
+      # ============================================
+      - CLOUD_PROVIDER=<YOUR_CLOUD_PROVIDER>
+  
+      # AWS Configuration (if CLOUD_PROVIDER=aws)
+      - AWS_ACCESS_KEY_ID=<YOUR_AWS_ACCESS_KEY>
+      - AWS_SECRET_ACCESS_KEY=<YOUR_AWS_SECRET_KEY>
+      - AWS_REGION=<YOUR_AWS_REGION>
+      - MODEL_STORAGE_BUCKET=<YOUR_MODEL_BUCKET>
+  
+      # GCP Configuration (if CLOUD_PROVIDER=gcp)
+      - GCP_PROJECT_ID=<YOUR_GCP_PROJECT_ID>
+      - GCP_LOCATION=<YOUR_GCP_LOCATION>
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/gcp-service-account.json
+      - MODEL_STORAGE_BUCKET=<YOUR_MODEL_BUCKET>
+  
+    networks:
+      - floware-network
+
+volumes:
+  postgres-floware-data:
+    driver: local
+  postgres-console-data:
+    driver: local
+
+networks:
+  floware-network:
+    driver: bridge

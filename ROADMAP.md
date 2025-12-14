@@ -2,23 +2,7 @@
 
 This roadmap provides a comprehensive overview of the direction Wavefront AI is heading. It covers all major components of the platform: the Flo AI library, Wavefront Core middleware, Control Panel, CLI, and ecosystem tools.
 
-The roadmap is organized by component and priority, with clear timelines and status indicators. We welcome community feedback and contributions!
-
----
-
-## 📋 Table of Contents
-
-- [Release Timeline](#release-timeline)
-- [Flo AI Library](#flo-ai-library)
-- [Wavefront Core Middleware](#wavefront-core-middleware)
-- [Wavefront Control Panel](#wavefront-control-panel)
-- [Wavefront CLI](#wavefront-cli)
-- [Data & Integration Layer](#data--integration-layer)
-- [Developer Experience](#developer-experience)
-- [Enterprise Features](#enterprise-features)
-- [Observability & Monitoring](#observability--monitoring)
-
----
+The roadmap is organized by component and priority. We welcome community feedback and contributions!
 
 ## 🗓️ Release Timeline
 
@@ -31,9 +15,22 @@ The roadmap is organized by component and priority, with clear timelines and sta
 
 ---
 
+## 📊 Beta Release Scope
+
+Current release has the following features implemented:
+
+| Feature | Limitation | 
+|---------|------------|
+| **Datasource** | You can connect to multiple data sources. Current support is for Google Bigquery and AWS redshift. |
+| **Agent** | You can create agents using the console and run them using the middleware. |
+| **Workflow** | You can create workflows using the console and run them using the middleware. |
+| **Voice Bots** | You can process voice calls using the middleware. But currently only outgoing calls are supported. Only supported telephony service is Twilio |
+| **Inference App** | You can create inference pytorch models using the middleware, but the support is limited to certain pytorch models. This feature is fully `experimental`, and APIs are bound to change. |
+| **API Service** | You can create API services to connect to any backend service. We have provided support for JSON and non JSON payload. Authenticate is limited to API Key, Basic Auth & Bearer Token. |
+
 ## 🤖 Flo AI Library
 
-The core agent building and orchestration framework.
+The core agent building and orchestration framework. The following are that is going to be implemented in the coming releases
 
 ### Core Features
 
@@ -70,7 +67,7 @@ The core agent building and orchestration framework.
 
 ---
 
-## 🏗️ Wavefront Core Middleware
+## 🏗️ Wavefront Core Middleware (a.k.a Floware)
 
 The core middleware service that provides APIs, authentication, authorization, and data connectivity.
 
@@ -105,13 +102,11 @@ The core middleware service that provides APIs, authentication, authorization, a
 | **Agent-Level RBAC** | Fine-grained permissions for agent access and execution | High | Yet to start | v0.1.0 |
 | **Data Source RBAC** | Granular permissions for data source access | High | Yet to start | v0.1.0 |
 | **Role Management** | Create, update, and manage custom roles | High | ✅ Available | v0.1.0 |
-| **Permission Inheritance** | Hierarchical permission inheritance | Medium | Yet to start | v0.2.0 |
-| **Attribute-Based Access Control (ABAC)** | Advanced ABAC policies | Low | Yet to start | v0.3.0 |
 | **Audit Logging for Access** | Comprehensive audit logs for all access attempts | High | Yet to start | v0.1.0 |
 
 ---
 
-## 🎛️ Wavefront Control Panel
+## 🎛️ Wavefront Control Panel (a.k.a Flo Console)
 
 Unified frontend for configuring agents, workflows, AI models, guardrails, and RBAC.
 
@@ -193,12 +188,11 @@ Command-line interface for configuring and managing Wavefront AI.
 
 | Adapter | Description | Priority | Status | Target Release |
 |---------|-------------|----------|--------|----------------|
-| **Custom API Configuration** | Flexible HTTP endpoint support with custom authentication | High | 🔄 In Progress | v0.1.0 |
+| **Custom API Configuration** | Flexible HTTP endpoint support with custom authentication | High | ✅ Available | v0.1.0 |
 | **Salesforce** | Native Salesforce API integration | High | 🔄 In Progress | v0.1.0 |
 | **SAP** | SAP ERP system integration | Medium | Yet to start | v0.2.0 |
-| **ServiceNow** | ServiceNow API integration | Medium | Yet to start | v0.2.0 |
 | **Jira** | Jira API integration for project management | Low | Yet to start | v0.3.0 |
-| **Slack** | Slack API integration for notifications and workflows | Medium | Yet to start | v0.2.0 |
+| **Slack** | Slack API integration for notifications and workflows | Medium | ✅ Available | v0.2.0 |
 | **Microsoft 365** | Microsoft 365 API integration | Medium | Yet to start | v0.2.0 |
 | **GitHub/GitLab** | Version control system integrations | Low | Yet to start | v0.3.0 |
 
@@ -223,8 +217,6 @@ Command-line interface for configuring and managing Wavefront AI.
 ---
 
 ## 🎨 Developer Experience
-
-### Flo AI Studio Enhancements
 
 ### Developer Tools
 
@@ -302,87 +294,7 @@ Command-line interface for configuring and managing Wavefront AI.
 
 ---
 
-## 🌍 Community & Ecosystem
-
-### Documentation
-
-| Feature | Description | Priority | Status | Target Release |
-|---------|-------------|----------|--------|----------------|
-| **Getting Started Guide** | Comprehensive getting started documentation | High | 🔄 In Progress | v0.1.0 |
-| **API Documentation** | Complete API reference documentation | High | Yet to start | v0.1.0 |
-| **Tutorials** | Step-by-step tutorials for common use cases | High | Yet to start | v0.1.0 |
-| **Architecture Documentation** | Detailed architecture and design documentation | Medium | Yet to start | v0.2.0 |
-| **Best Practices Guide** | Best practices for building production agents | Medium | Yet to start | v0.2.0 |
-| **Video Tutorials** | Video tutorials and demos | Low | Yet to start | v0.3.0 |
-
-### Examples & Templates
-
-| Feature | Description | Priority | Status | Target Release |
-|---------|-------------|----------|--------|----------------|
-| **Example Gallery** | Comprehensive collection of example agents and workflows | High | 🔄 In Progress | v0.1.0 |
-| **Use Case Templates** | Pre-built templates for common use cases | High | Yet to start | v0.2.0 |
-| **Integration Examples** | Examples for integrating with popular services | Medium | Yet to start | v0.2.0 |
-| **Community Templates** | Platform for sharing community-created templates | Low | Yet to start | v0.3.0 |
-
-### Community Features
-
-| Feature | Description | Priority | Status | Target Release |
-|---------|-------------|----------|--------|----------------|
-| **Community Forum** | Discussion forum for community support | Medium | Yet to start | v0.2.0 |
-| **Template Marketplace** | Marketplace for sharing and discovering templates | Low | Yet to start | v0.3.0 |
-| **Contributor Guide** | Comprehensive guide for contributors | High | 🔄 In Progress | v0.1.0 |
-| **Community Showcase** | Showcase of community-built solutions | Low | Yet to start | v0.3.0 |
-
----
-
-## ✅ Released Features
-
-### Flo AI Library
-
-| Feature | Description | Status | Version |
-|---------|-------------|--------|---------|
-| **Full Composability** | Teams can be combined with teams and agents with agents. Extended to team + agent composability | ✅ | v0.0.4 |
-| **Error Handling** | Ability to handle errors autonomously | ✅ | v0.0.4 |
-| **LLM Extensibility** | Ability to use different LLMs across different agents and teams | ✅ | v0.0.4 |
-| **Async Tools** | Ability to create tools easily within asyncio | ✅ | v0.0.4 |
-| **Observer Framework** | Observer framework for raising agent decision events and other important events | ✅ | v0.0.4 |
-| **Test Framework** | Framework for unit-testing flo-ai and its internal functionalities | ✅ | v0.0.4 |
-| **Linear Router** | Router that lets you build agents or teams that execute linearly or sequentially | ✅ | v0.0.3 |
-| **Reflection Router** | Component that can make the AI retrospectively look at the current output and retry or work again on the task | ✅ | v0.0.3 |
-| **Delegator Router** | Component that can help delegate a flo to a particular agent, by some condition | ✅ | v0.0.3 |
-| **Logging Framework** | Better logging framework which can be extended to parent application (with log level control) | ✅ | v0.0.3 |
-| **Output Formatter** | Ability to templatize output format using Pydantic | ✅ | v0.0.5 |
-| **YAML-Based Agents** | Define agents and workflows using YAML configuration | ✅ | v1.0.0 |
-| **LLM-Powered Routers** | Intelligent routing using Large Language Models | ✅ | v1.0.0 |
-| **Plan-Execute Router** | Cursor-style plan-and-execute workflows | ✅ | v1.0.0 |
-| **Document Processing** | Process PDF and TXT documents with AI agents | ✅ | v1.0.0 |
-| **Variables System** | Dynamic variable resolution in agent prompts | ✅ | v1.0.0 |
-| **Agent Builder Pattern** | Fluent interface for building agents | ✅ | v1.0.0 |
-| **Arium Workflow Engine** | Multi-agent workflow orchestration engine | ✅ | v1.0.0 |
-| **OpenTelemetry Integration** | Built-in observability with automatic instrumentation | ✅ | v1.0.0 |
-| **Flo AI Studio** | Visual workflow designer with React-based UI | ✅ | v1.0.0 |
-
-### Platform Components
-
-| Feature | Description | Status | Version |
-|---------|-------------|--------|---------|
-| **Frontend SDK** | React component library for building AI applications | ✅ | v1.0.0 |
-| **Low Code YAML Builder** | YAML-based agent and workflow builder | ✅ | v1.0.0 |
-
----
-
 ## 📝 Notes
-
-- **Status Legend**:
-  - ✅ Available - Feature is implemented and available
-  - 🔄 In Progress - Feature is currently being developed
-  - Yet to start - Feature is planned but not yet started
-  - 📋 Roadmap - Feature is on the roadmap with lower priority
-
-- **Priority Levels**:
-  - **High**: Critical for core functionality or major milestones
-  - **Medium**: Important but not blocking
-  - **Low**: Nice to have, can be deferred
 
 - **Version Numbers**: Version numbers are estimates and subject to change based on priorities and community feedback.
 

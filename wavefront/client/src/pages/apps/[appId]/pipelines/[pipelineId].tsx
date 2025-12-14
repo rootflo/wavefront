@@ -337,13 +337,13 @@ const PipelineDetail: React.FC = () => {
               e.stopPropagation();
               setShowMenu(!showMenu);
             }}
-            className="rounded px-1 opacity-0 hover:bg-gray-200 group-hover:opacity-100"
+            className="rounded px-1 opacity-0 group-hover:opacity-100 hover:bg-gray-200"
           >
             ⋮
           </button>
         </button>
         {showMenu && (
-          <div className="absolute right-2 top-8 z-10 rounded border border-gray-200 bg-white shadow-lg">
+          <div className="absolute top-8 right-2 z-10 rounded border border-gray-200 bg-white shadow-lg">
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -520,10 +520,10 @@ const PipelineDetail: React.FC = () => {
                   <textarea
                     value={fileContent}
                     onChange={(e) => setFileContent(e.target.value)}
-                    className="h-full w-full rounded border border-gray-300 p-4 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-black"
+                    className="h-full w-full rounded border border-gray-300 p-4 font-mono text-sm focus:ring-2 focus:ring-black focus:outline-none"
                   />
                 ) : (
-                  <pre className="whitespace-pre-wrap font-mono text-sm">{fileContent}</pre>
+                  <pre className="font-mono text-sm whitespace-pre-wrap">{fileContent}</pre>
                 )}
               </div>
             </div>
@@ -535,7 +535,7 @@ const PipelineDetail: React.FC = () => {
 
       {/* Create File Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+        <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black">
           <div className="w-full max-w-2xl rounded-lg bg-white p-6">
             <h2 className="mb-4 text-xl font-bold text-gray-900">Create New File</h2>
             <div className="space-y-4">
@@ -552,7 +552,7 @@ const PipelineDetail: React.FC = () => {
                     setFilePathError('');
                   }}
                   placeholder="models/staging/new_model.sql or tests/test_data.sql"
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-black focus:ring-1 focus:ring-black focus:outline-none"
                 />
                 {filePathError && <p className="mt-1 text-sm text-red-600">{filePathError}</p>}
                 <p className="mt-1 text-sm text-gray-500">
@@ -569,7 +569,7 @@ const PipelineDetail: React.FC = () => {
                   onChange={(e) => setNewFileContent(e.target.value)}
                   rows={10}
                   placeholder="-- New DBT model&#10;&#10;SELECT * FROM {{ ref('source_table') }}"
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-sm focus:border-black focus:ring-1 focus:ring-black focus:outline-none"
                 />
               </div>
               <div className="flex justify-end gap-3">
@@ -600,7 +600,7 @@ const PipelineDetail: React.FC = () => {
 
       {/* Delete File Confirmation */}
       {fileToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+        <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black">
           <div className="w-full max-w-md rounded-lg bg-white p-6">
             <h2 className="mb-4 text-xl font-bold text-gray-900">Delete File</h2>
             <p className="mb-6 text-gray-600">
@@ -626,7 +626,7 @@ const PipelineDetail: React.FC = () => {
 
       {/* Edit Schedule Modal */}
       {showScheduleModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+        <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black">
           <div className="w-full max-w-md rounded-lg bg-white p-6">
             <h2 className="mb-4 text-xl font-bold text-gray-900">Edit Schedule</h2>
             <div className="space-y-4">
@@ -640,7 +640,7 @@ const PipelineDetail: React.FC = () => {
                   value={scheduleValue}
                   onChange={(e) => setScheduleValue(e.target.value)}
                   placeholder="0 6 * * *"
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-black focus:ring-1 focus:ring-black focus:outline-none"
                 />
                 <div className="mt-2 space-y-1 text-sm text-gray-500">
                   <p>Examples:</p>

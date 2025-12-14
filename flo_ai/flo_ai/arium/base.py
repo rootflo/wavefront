@@ -2,7 +2,7 @@ import inspect
 from functools import partial
 from flo_ai.arium.nodes import AriumNode, ForEachNode, FunctionNode
 from flo_ai.arium.protocols import ExecutableNode
-from flo_ai.models.agent import Agent
+from flo_ai.agent import Agent
 from flo_ai.tool.base_tool import Tool
 from flo_ai.utils.logger import logger
 from typing import List, Optional, Callable, Literal, get_origin, get_args, Dict, Union

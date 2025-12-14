@@ -1,31 +1,18 @@
-import floConsoleService from "@app/api";
-import { Button } from "@app/components/ui/button";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@app/components/ui/form";
-import { Input } from "@app/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@app/components/ui/select";
-import { useNotifyStore } from "@app/store";
-import { CreateAppRequest } from "@app/types/app";
-import { zodResolver } from "@hookform/resolvers/zod";
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useForm } from "react-hook-form";
-import { useNavigate } from "react-router";
-import { z } from "zod";
-import { createAppSchema } from "./schemas";
-import { Checkbox } from "@app/components/ui/checkbox";
-import { appEnv } from "@app/config/env";
+import floConsoleService from '@app/api';
+import { Button } from '@app/components/ui/button';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
+import { Input } from '@app/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
+import { useNotifyStore } from '@app/store';
+import { CreateAppRequest } from '@app/types/app';
+import { zodResolver } from '@hookform/resolvers/zod';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { useNavigate } from 'react-router';
+import { z } from 'zod';
+import { createAppSchema } from './schemas';
+import { Checkbox } from '@app/components/ui/checkbox';
+import { appEnv } from '@app/config/env';
 
 type TCreateAppInputSchema = z.infer<typeof createAppSchema>;
 
@@ -35,25 +22,23 @@ const CreateApp: React.FC = () => {
 
   const [creating, setCreating] = useState(false);
   const [pollingAppId, setPollingAppId] = useState<string | null>(null);
-  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
-    null
-  );
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const form = useForm<TCreateAppInputSchema>({
     resolver: zodResolver(createAppSchema),
     defaultValues: {
-      deployment_type: "manual",
+      deployment_type: 'manual',
     },
   });
 
-  const deploymentType = form.watch("deployment_type");
+  const deploymentType = form.watch('deployment_type');
 
   // Polling function to check app status
   const pollAppStatus = useCallback(
     async (appId: string) => {
       try {
         const { data } = await floConsoleService.appService.getAppStatus(appId);
-        if (data.data?.status === "success") {
+        if (data.data?.status === 'success') {
           // Clear polling interval
           if (pollingIntervalRef.current) {
             clearInterval(pollingIntervalRef.current);
@@ -61,11 +46,11 @@ const CreateApp: React.FC = () => {
           }
           setPollingAppId(null);
           setCreating(false);
-          notifySuccess("App created successfully");
-          navigate("/apps");
+          notifySuccess('App created successfully');
+          navigate('/apps');
         }
       } catch (error) {
-        console.error("Error polling app status:", error);
+        console.error('Error polling app status:', error);
         // Stop polling on error
         if (pollingIntervalRef.current) {
           clearInterval(pollingIntervalRef.current);
@@ -73,7 +58,7 @@ const CreateApp: React.FC = () => {
         }
         setPollingAppId(null);
         setCreating(false);
-        notifyError("Failed to check app status");
+        notifyError('Failed to check app status');
       }
     },
     [notifySuccess, notifyError, navigate]
@@ -81,7 +66,7 @@ const CreateApp: React.FC = () => {
 
   // Effect to handle polling
   useEffect(() => {
-    if (pollingAppId && deploymentType === "auto") {
+    if (pollingAppId && deploymentType === 'auto') {
       // Start polling immediately
       pollAppStatus(pollingAppId);
 
@@ -113,47 +98,47 @@ const CreateApp: React.FC = () => {
 
       const response = await floConsoleService.appService.createApp(appData);
 
-      if (response.data?.data?.app.status === "in_progress") {
+      if (response.data?.data?.app.status === 'in_progress') {
         // Start polling for status updates only if deployment type is auto
-        if (formData.deployment_type === "auto") {
+        if (formData.deployment_type === 'auto') {
           setPollingAppId(response.data.data.app.id);
         } else {
           // For manual deployment, just show success
           setCreating(false);
-          notifySuccess("App created successfully");
-          navigate("/apps");
+          notifySuccess('App created successfully');
+          navigate('/apps');
         }
-      } else if (response.data?.data?.app.status === "success") {
+      } else if (response.data?.data?.app.status === 'success') {
         // If already successful, show success immediately
         setCreating(false);
-        notifySuccess("App created successfully");
-        navigate("/apps");
+        notifySuccess('App created successfully');
+        navigate('/apps');
       }
     } catch (error) {
-      console.error("Error creating app:", error);
-      notifyError("Failed to create app");
+      console.error('Error creating app:', error);
+      notifyError('Failed to create app');
       setCreating(false);
     }
   };
 
   const handleCancel = () => {
-    navigate("/apps");
+    navigate('/apps');
   };
 
   const handleAddLocalApp = () => {
-    form.setValue("app_name", "localhost");
-    form.setValue("public_url", "http://localhost:8001");
-    form.setValue("private_url", "http://localhost:8001");
+    form.setValue('app_name', 'localhost');
+    form.setValue('public_url', 'http://localhost:8001');
+    form.setValue('private_url', 'http://localhost:8001');
   };
 
   const handleRemoveLocalApp = () => {
-    form.setValue("app_name", "");
-    form.setValue("public_url", "");
-    form.setValue("private_url", "");
+    form.setValue('app_name', '');
+    form.setValue('public_url', '');
+    form.setValue('private_url', '');
   };
 
   return (
-    <div className="flex h-full items-center justify-center bg-gray-50 bg-[url('/background.webp')] bg-cover bg-center p-6 px-[210px] pb-[138px] pt-[139px]">
+    <div className="flex h-full items-center justify-center bg-gray-50 bg-[url('/background.webp')] bg-cover bg-center p-6 px-[210px] pt-[139px] pb-[138px]">
       <Form {...form}>
         <form
           onSubmit={form.handleSubmit(appCreationSubmit)}
@@ -161,18 +146,11 @@ const CreateApp: React.FC = () => {
         >
           <div className="flex justify-between">
             <div className="mb-2">
-              <p className="text-2xl font-semibold text-black">
-                Create new app
-              </p>
-              <p className="text-lg font-normal text-[#585858]">
-                Add a new application to the console
-              </p>
+              <p className="text-2xl font-semibold text-black">Create new app</p>
+              <p className="text-lg font-normal text-[#585858]">Add a new application to the console</p>
             </div>
             {appEnv.isLocal && (
-              <label
-                htmlFor="add-local-app"
-                className="cursor-pointer flex items-center gap-2"
-              >
+              <label htmlFor="add-local-app" className="flex cursor-pointer items-center gap-2">
                 <Checkbox
                   id="add-local-app"
                   onCheckedChange={(checked) => {
@@ -180,9 +158,7 @@ const CreateApp: React.FC = () => {
                     else handleRemoveLocalApp();
                   }}
                 />
-                <span className="text-sm font-normal text-[#585858]">
-                  Create local app for development
-                </span>
+                <span className="text-sm font-normal text-[#585858]">Create local app for development</span>
               </label>
             )}
           </div>
@@ -214,11 +190,7 @@ const CreateApp: React.FC = () => {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem
-                          disabled={true}
-                          className="cursor-pointer"
-                          value="auto"
-                        >
+                        <SelectItem disabled={true} className="cursor-pointer" value="auto">
                           Auto
                         </SelectItem>
                         <SelectItem className="cursor-pointer" value="manual">
@@ -241,10 +213,7 @@ const CreateApp: React.FC = () => {
                     <FormItem>
                       <FormLabel>Public URL</FormLabel>
                       <FormControl>
-                        <Input
-                          placeholder="https://myapp.example.com"
-                          {...field}
-                        />
+                        <Input placeholder="https://myapp.example.com" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -257,10 +226,7 @@ const CreateApp: React.FC = () => {
                     <FormItem>
                       <FormLabel>Private URL</FormLabel>
                       <FormControl>
-                        <Input
-                          placeholder="http://36.77.240.111:8000"
-                          {...field}
-                        />
+                        <Input placeholder="http://36.77.240.111:8000" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

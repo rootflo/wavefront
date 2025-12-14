@@ -2,14 +2,16 @@
 LLM Factory - Centralized LLM creation from configuration.
 
 This module provides a unified factory function for creating LLM instances
-from configuration dictionaries, supporting all providers in the flo_ai ecosystem.
+from configuration models, supporting all providers in the flo_ai ecosystem.
 """
 
 import os
-from typing import Dict, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from flo_ai.llm import BaseLLM
+
+from flo_ai.models.agent import LLMConfigModel
 
 
 class LLMFactory:
@@ -26,17 +28,11 @@ class LLMFactory:
     }
 
     @staticmethod
-    def create_llm(model_config: Dict[str, Any], **kwargs) -> 'BaseLLM':
+    def create_llm(model_config: LLMConfigModel, **kwargs) -> 'BaseLLM':
         """Create an LLM instance from model configuration.
 
         Args:
-            model_config: Dictionary containing model configuration with keys:
-                - provider (str): LLM provider name (default: 'openai')
-                - name (str): Model name (required for most providers)
-                - base_url (str, optional): Custom base URL
-                - model_id (str): For RootFlo provider
-                - project (str): For VertexAI provider
-                - location (str): For VertexAI provider (default: 'asia-south1')
+            model_config: LLMConfigModel instance containing model configuration
             **kwargs: Additional parameters that override config and env vars:
                 - base_url: Override base URL
                 - For RootFlo: app_key, app_secret, issuer, audience, access_token
@@ -46,34 +42,8 @@ class LLMFactory:
 
         Raises:
             ValueError: If provider is unsupported or required parameters are missing
-
-        Examples:
-            >>> # OpenAI
-            >>> llm = LLMFactory.create_llm({'provider': 'openai', 'name': 'gpt-4'})
-
-            >>> # VertexAI with project
-            >>> llm = LLMFactory.create_llm({
-            ...     'provider': 'vertexai',
-            ...     'name': 'gemini-pro',
-            ...     'project': 'my-project',
-            ...     'location': 'us-central1'
-            ... })
-
-            >>> # RootFlo with auth
-            >>> llm = LLMFactory.create_llm(
-            ...     {'provider': 'rootflo', 'model_id': 'model-123'},
-            ...     app_key='key', app_secret='secret', issuer='iss', audience='aud'
-            ... )
-
-            >>> # OpenAI vLLM with base_url
-            >>> llm = LLMFactory.create_llm({
-            ...     'provider': 'openai_vllm',
-            ...     'name': 'microsoft/phi-4',
-            ...     'base_url': 'http://localhost:8000/v1',
-            ...     'api_key': 'vllm-key'
-            ... })
         """
-        provider = model_config.get('provider', 'openai').lower()
+        provider = model_config.provider.lower()
 
         if provider not in LLMFactory.SUPPORTED_PROVIDERS:
             raise ValueError(
@@ -92,19 +62,19 @@ class LLMFactory:
 
     @staticmethod
     def _create_standard_llm(
-        provider: str, model_config: Dict[str, Any], **kwargs
+        provider: str, model_config: LLMConfigModel, **kwargs
     ) -> 'BaseLLM':
         """Create standard LLM instances (OpenAI, Anthropic, Gemini, Ollama)."""
         from flo_ai.llm import OpenAI, Anthropic, Gemini, OllamaLLM
 
-        model_name = model_config.get('name')
+        model_name = model_config.name
         if not model_name:
             raise ValueError(
                 f'{provider.title()} provider requires "name" parameter in model configuration'
             )
 
         # Priority: kwargs > model_config > None
-        base_url = kwargs.get('base_url') or model_config.get('base_url')
+        base_url = kwargs.get('base_url') or model_config.base_url
 
         provider_map = {
             'openai': OpenAI,
@@ -117,20 +87,20 @@ class LLMFactory:
         return llm_class(model=model_name, base_url=base_url)
 
     @staticmethod
-    def _create_vertexai_llm(model_config: Dict[str, Any], **kwargs) -> 'BaseLLM':
+    def _create_vertexai_llm(model_config: LLMConfigModel, **kwargs) -> 'BaseLLM':
         """Create VertexAI LLM instance with project and location."""
         from flo_ai.llm import VertexAI
 
-        model_name = model_config.get('name')
+        model_name = model_config.name
         if not model_name:
             raise ValueError(
                 'VertexAI provider requires "name" parameter in model configuration'
             )
 
         # Get VertexAI-specific parameters
-        project = kwargs.get('project') or model_config.get('project')
-        location = kwargs.get('location') or model_config.get('location', 'asia-south1')
-        base_url = kwargs.get('base_url') or model_config.get('base_url')
+        project = kwargs.get('project') or model_config.project
+        location = kwargs.get('location') or model_config.location or 'asia-south1'
+        base_url = kwargs.get('base_url') or model_config.base_url
 
         if not project:
             raise ValueError(
@@ -152,18 +122,18 @@ class LLMFactory:
         )
 
     @staticmethod
-    def _create_openai_vllm_llm(model_config: Dict[str, Any], **kwargs) -> 'BaseLLM':
+    def _create_openai_vllm_llm(model_config: LLMConfigModel, **kwargs) -> 'BaseLLM':
         """Create OpenAI vLLM instance with base_url handling."""
         from flo_ai.llm import OpenAIVLLM
 
-        model_name = model_config.get('name')
+        model_name = model_config.name
         if not model_name:
             raise ValueError(
                 'openai_vllm provider requires "name" parameter in model configuration'
             )
 
         # Priority: kwargs > model_config > None
-        base_url = kwargs.get('base_url') or model_config.get('base_url')
+        base_url = kwargs.get('base_url') or model_config.base_url
         if not base_url:
             raise ValueError(
                 'openai_vllm provider requires "base_url" parameter. '
@@ -171,7 +141,7 @@ class LLMFactory:
             )
 
         # Optional parameters
-        api_key = kwargs.get('api_key') or model_config.get('api_key')
+        api_key = kwargs.get('api_key') or model_config.api_key
         if not api_key:
             raise ValueError(
                 'openai_vllm provider requires "api_key" parameter. '
@@ -179,7 +149,7 @@ class LLMFactory:
             )
         temperature = kwargs.get(
             'temperature',
-            model_config.get('temperature', 0.7),
+            model_config.temperature if model_config.temperature is not None else 0.7,
         )
 
         return OpenAIVLLM(
@@ -190,11 +160,11 @@ class LLMFactory:
         )
 
     @staticmethod
-    def _create_rootflo_llm(model_config: Dict[str, Any], **kwargs) -> 'BaseLLM':
+    def _create_rootflo_llm(model_config: LLMConfigModel, **kwargs) -> 'BaseLLM':
         """Create RootFlo LLM instance with authentication."""
         from flo_ai.llm import RootFloLLM
 
-        model_id = model_config.get('model_id')
+        model_id = model_config.model_id
         if not model_id:
             raise ValueError(
                 'RootFlo provider requires "model_id" in model configuration'
@@ -203,7 +173,7 @@ class LLMFactory:
         # Gather RootFlo parameters from kwargs or environment
         base_url = (
             kwargs.get('base_url')
-            or model_config.get('base_url')
+            or model_config.base_url
             or os.getenv('ROOTFLO_BASE_URL')
         )
         app_key = kwargs.get('app_key') or os.getenv('ROOTFLO_APP_KEY')
@@ -231,14 +201,14 @@ class LLMFactory:
 
 
 # Convenience function for direct import
-def create_llm_from_config(model_config: Dict[str, Any], **kwargs) -> 'BaseLLM':
+def create_llm_from_config(model_config: LLMConfigModel, **kwargs) -> 'BaseLLM':
     """
     Convenience function to create an LLM instance from configuration.
 
     This is a wrapper around LLMFactory.create_llm() for easier imports.
 
     Args:
-        model_config: Dictionary containing model configuration
+        model_config: LLMConfigModel instance containing model configuration
         **kwargs: Additional parameters that override config and env vars
 
     Returns:

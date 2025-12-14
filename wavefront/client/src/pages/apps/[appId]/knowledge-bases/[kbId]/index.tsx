@@ -53,7 +53,7 @@ const KnowledgeBaseDetailPage: React.FC = () => {
   // Create System Prompt Dialog state
   const [showCreatePromptModal, setShowCreatePromptModal] = useState<boolean>(false);
   const [systemPrompt, setSystemPrompt] = useState<string>('');
-  const [selectedConfigId, setSelectedConfigId] = useState<string | undefined>(undefined);
+  const [selectedConfigId, setSelectedConfigId] = useState<string | null>(null);
   const [creatingPrompt, setCreatingPrompt] = useState<boolean>(false);
 
   // Test Inference Dialog state
@@ -147,7 +147,7 @@ const KnowledgeBaseDetailPage: React.FC = () => {
         queryClient.invalidateQueries({ queryKey: getKnowledgeBaseInferencesKey(appId || '', kbId || '') });
         setShowCreatePromptModal(false);
         setSystemPrompt('');
-        setSelectedConfigId(undefined);
+        setSelectedConfigId(null);
       } else {
         notifyError('Failed to create system prompt.');
       }
@@ -162,7 +162,7 @@ const KnowledgeBaseDetailPage: React.FC = () => {
   const handleCloseCreatePromptModal = () => {
     setShowCreatePromptModal(false);
     setSystemPrompt('');
-    setSelectedConfigId(undefined);
+    setSelectedConfigId(null);
   };
 
   const handleOpenTestInference = (inferenceId: string) => {
@@ -234,7 +234,7 @@ const KnowledgeBaseDetailPage: React.FC = () => {
   };
 
   return (
-    <div className="h-full bg-white px-8 pb-[200px] pt-8">
+    <div className="h-full bg-white px-8 pt-8 pb-[200px]">
       <Breadcrumb className="mb-6">
         <BreadcrumbList>
           <BreadcrumbItem>
@@ -265,7 +265,7 @@ const KnowledgeBaseDetailPage: React.FC = () => {
 
       <div className="flex w-full flex-col gap-6 pb-4">
         <div className="flex items-center justify-between">
-          <p className="text-2xl font-semibold leading-normal text-black">{knowledgeBase?.name || 'N/A'}</p>
+          <p className="text-2xl leading-normal font-semibold text-black">{knowledgeBase?.name || 'N/A'}</p>
         </div>
         <div className="grid w-full grid-cols-1 gap-6 lg:grid-cols-2">
           <div className="flex w-full flex-col gap-6">
@@ -488,7 +488,11 @@ const KnowledgeBaseDetailPage: React.FC = () => {
               <Label htmlFor="llm-config" className="mb-2">
                 Select LLM Model <span className="text-red-500">*</span>
               </Label>
-              <Select value={selectedConfigId} onValueChange={setSelectedConfigId} disabled={llmConfigs.length === 0}>
+              <Select
+                value={selectedConfigId ?? undefined}
+                onValueChange={(value) => setSelectedConfigId(value ?? null)}
+                disabled={llmConfigs.length === 0}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select an LLM configuration" />
                 </SelectTrigger>
@@ -581,7 +585,7 @@ const KnowledgeBaseDetailPage: React.FC = () => {
                         : 'border border-gray-200 bg-white text-gray-900'
                     }`}
                   >
-                    <div className="whitespace-pre-wrap text-sm">{message.content}</div>
+                    <div className="text-sm whitespace-pre-wrap">{message.content}</div>
                     {message.sources && message.sources.length > 0 && message.role === 'assistant' && (
                       <div className="mt-2 border-t border-gray-200 pt-2">
                         <p className="text-xs font-medium text-gray-600">Sources:</p>

@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import Mock, AsyncMock
 from flo_ai.tool.base_tool import Tool
 from flo_ai.tool.tool_config import ToolConfig
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import AgentBuilder
 from flo_ai.llm import OpenAI
 
 

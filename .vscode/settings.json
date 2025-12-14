@@ -1,0 +1,6 @@
+{
+    "files.exclude": {
+        "flo_ai": true,
+        "wavefront": true
+    }
+}

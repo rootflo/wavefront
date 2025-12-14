@@ -1,4 +1,4 @@
-import { IApiResponse } from "@app/lib/axios";
+import { IApiResponse } from '@app/lib/axios';
 import {
   WorkflowData,
   WorkflowInferenceData,
@@ -12,23 +12,19 @@ import {
   WorkflowRunListData,
   WorkflowRunListResponse,
   WorkflowRunResponse,
-} from "@app/types/workflow";
-import { AxiosInstance } from "axios";
+} from '@app/types/workflow';
+import { AxiosInstance } from 'axios';
 
 export class WorkflowService {
   constructor(private http: AxiosInstance) {}
 
-  async createWorkflow(
-    name: string,
-    yamlContent: string,
-    namespace: string = "default"
-  ): Promise<WorkflowResponse> {
+  async createWorkflow(name: string, yamlContent: string, namespace: string = 'default'): Promise<WorkflowResponse> {
     const response: IApiResponse<WorkflowData> = await this.http.post(
       `/v1/:appId/floware/v1/workflow-management/workflows/${name}`,
       yamlContent,
       {
         headers: {
-          "Content-Type": "text/plain",
+          'Content-Type': 'text/plain',
         },
         params: {
           namespace,
@@ -45,16 +41,13 @@ export class WorkflowService {
     return response;
   }
 
-  async updateWorkflow(
-    id: string,
-    yamlContent: string
-  ): Promise<WorkflowResponse> {
+  async updateWorkflow(id: string, yamlContent: string): Promise<WorkflowResponse> {
     const response: IApiResponse<WorkflowData> = await this.http.put(
       `/v1/:appId/floware/v1/workflow-management/workflows/${id}`,
       yamlContent,
       {
         headers: {
-          "Content-Type": "text/plain",
+          'Content-Type': 'text/plain',
         },
       }
     );
@@ -96,10 +89,7 @@ export class WorkflowService {
     return response;
   }
 
-  async createWorkflowPipeline(
-    workflowId: string,
-    name: string
-  ): Promise<WorkflowResponse> {
+  async createWorkflowPipeline(workflowId: string, name: string): Promise<WorkflowResponse> {
     const requestBody: Record<string, string> = {
       name,
       workflow_id: workflowId,
@@ -112,8 +102,9 @@ export class WorkflowService {
   }
 
   async listWorkflowPipelines(): Promise<WorkflowPipelineListResponse> {
-    const response: IApiResponse<WorkflowPipelineListData> =
-      await this.http.get(`/v1/:appId/floware/v1/workflow-pipelines`);
+    const response: IApiResponse<WorkflowPipelineListData> = await this.http.get(
+      `/v1/:appId/floware/v1/workflow-pipelines`
+    );
     return response;
   }
 
@@ -124,21 +115,14 @@ export class WorkflowService {
     return response;
   }
 
-  async getWorkflowRuns(
-    workflowPipelineId: string,
-    offset: number,
-    limit: number
-  ): Promise<WorkflowRunListResponse> {
-    const response: IApiResponse<WorkflowRunListData> = await this.http.get(
-      `/v1/:appId/floware/v1/workflow-runs`,
-      {
-        params: {
-          workflow_pipeline_id: workflowPipelineId,
-          offset,
-          limit,
-        },
-      }
-    );
+  async getWorkflowRuns(workflowPipelineId: string, offset: number, limit: number): Promise<WorkflowRunListResponse> {
+    const response: IApiResponse<WorkflowRunListData> = await this.http.get(`/v1/:appId/floware/v1/workflow-runs`, {
+      params: {
+        workflow_pipeline_id: workflowPipelineId,
+        offset,
+        limit,
+      },
+    });
     return response;
   }
 

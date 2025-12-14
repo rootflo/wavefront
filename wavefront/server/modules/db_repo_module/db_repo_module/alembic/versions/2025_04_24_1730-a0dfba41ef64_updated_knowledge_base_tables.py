@@ -1,7 +1,7 @@
 """Updated knowledge base tables
 
 Revision ID: a0dfba41ef64
-Revises: 96b784074d1c
+Revises: 36703628c7a6
 Create Date: 2025-04-24 17:30:04.147978
 
 """
@@ -14,7 +14,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = 'a0dfba41ef64'
-down_revision: Union[str, None] = '96b784074d1c'
+down_revision: Union[str, None] = '36703628c7a6'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

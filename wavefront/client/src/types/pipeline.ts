@@ -1,7 +1,7 @@
-import { IApiResponse } from "@app/lib/axios";
+import { IApiResponse } from '@app/lib/axios';
 
 // Pipeline Status Types
-export type PipelineStatus = "draft" | "published" | "paused";
+export type PipelineStatus = 'draft' | 'published' | 'paused';
 
 // Pipeline Entity
 export interface Pipeline {
@@ -83,14 +83,7 @@ export type PipelinesListResponse = IApiResponse<PipelinesListData>;
 export type TriggerDagRunResponse = IApiResponse<TriggerDagRunData>;
 
 // Pipeline File Types
-export type FileType =
-  | "model"
-  | "test"
-  | "macro"
-  | "config"
-  | "schema"
-  | "doc"
-  | "other";
+export type FileType = 'model' | 'test' | 'macro' | 'config' | 'schema' | 'doc' | 'other';
 
 export interface PipelineFile {
   path: string;

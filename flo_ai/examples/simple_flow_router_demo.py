@@ -8,7 +8,7 @@ reflection pattern using the new ReflectionRouter.
 import asyncio
 from flo_ai.arium.builder import AriumBuilder
 from flo_ai.arium.memory import MessageMemory
-from flo_ai.models.agent import Agent
+from flo_ai.agent import Agent
 from flo_ai.llm import OpenAI
 from flo_ai.arium.llm_router import create_main_critic_reflection_router
 

@@ -1,18 +1,12 @@
-import { Button } from "@app/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@app/components/ui/select";
-import { Spinner } from "@app/components/ui/spinner";
-import { Textarea } from "@app/components/ui/textarea";
-import { LLMInferenceConfig } from "@app/types/llm-inference-config";
-import clsx from "clsx";
-import { ChevronDown, Plus, X } from "lucide-react";
-import React, { useRef, useState, type RefObject } from "react";
-import Stream from "./Stream";
+import { Button } from '@app/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
+import { Spinner } from '@app/components/ui/spinner';
+import { Textarea } from '@app/components/ui/textarea';
+import { LLMInferenceConfig } from '@app/types/llm-inference-config';
+import clsx from 'clsx';
+import { ChevronDown, Plus, X } from 'lucide-react';
+import React, { useRef, useState, type RefObject } from 'react';
+import Stream from './Stream';
 
 // Helper function to format file size
 const formatFileSize = (bytes: number): string => {
@@ -25,7 +19,7 @@ const formatFileSize = (bytes: number): string => {
 };
 
 interface ChatBotProps {
-  chatHistory: { role: "user" | "assistant"; content: any }[];
+  chatHistory: { role: 'user' | 'assistant'; content: any }[];
   runningInference: boolean;
   selectedLLMConfigId: string;
   setSelectedLLMConfigId: React.Dispatch<React.SetStateAction<string>>;
@@ -42,7 +36,7 @@ interface ChatBotProps {
     base64: string;
     base64Content: string;
     mimeType: string;
-    documentType: "pdf" | "txt";
+    documentType: 'pdf' | 'txt';
   }>;
   handleRemoveImage: (index: number) => void;
   handleRemoveDocument: (index: number) => void;
@@ -108,71 +102,51 @@ const ChatBot = ({
 }: ChatBotProps) => {
   const variablesModalRef = useRef<HTMLDivElement>(null);
   const [showLogic, setShowLogic] = useState(false);
-  const [selectValue, setSelectValue] = useState<string>("");
+  const [selectValue, setSelectValue] = useState<string>('');
 
   return (
     <div className="flex h-full w-full flex-col gap-7">
       <div className="flex flex-col justify-between gap-2">
-        {listenEventsEnabled !== undefined &&
-          setListenEventsEnabled !== undefined && (
-            <div>
-              <div className="flex items-center justify-between">
-                <label className="block text-sm font-medium text-gray-700">
-                  Real-time Events
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setListenEventsEnabled(!listenEventsEnabled)}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                    listenEventsEnabled ? "bg-blue-600" : "bg-gray-200"
+        {listenEventsEnabled !== undefined && setListenEventsEnabled !== undefined && (
+          <div>
+            <div className="flex items-center justify-between">
+              <label className="block text-sm font-medium text-gray-700">Real-time Events</label>
+              <button
+                type="button"
+                onClick={() => setListenEventsEnabled(!listenEventsEnabled)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none ${
+                  listenEventsEnabled ? 'bg-blue-600' : 'bg-gray-200'
+                }`}
+                role="switch"
+                aria-checked={listenEventsEnabled}
+                aria-label="Toggle real-time events"
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    listenEventsEnabled ? 'translate-x-5' : 'translate-x-0'
                   }`}
-                  role="switch"
-                  aria-checked={listenEventsEnabled}
-                  aria-label="Toggle real-time events"
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                      listenEventsEnabled ? "translate-x-5" : "translate-x-0"
-                    }`}
-                  />
-                </button>
-              </div>
-              <p className="mt-1 text-xs text-gray-500">
-                {listenEventsEnabled
-                  ? "Stream real-time workflow execution events"
-                  : "Standard inference response only"}
-              </p>
+                />
+              </button>
             </div>
-          )}
+            <p className="mt-1 text-xs text-gray-500">
+              {listenEventsEnabled ? 'Stream real-time workflow execution events' : 'Standard inference response only'}
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="flex w-full flex-1 flex-col justify-between gap-2 rounded-xl border border-[#EFF0F1] bg-[#FBFBFB] p-2 font-mono text-sm font-normal outline-none">
-        <div
-          id="message-container"
-          className="h-full space-y-4 overflow-auto bg-white p-4"
-        >
+        <div id="message-container" className="h-full space-y-4 overflow-auto bg-white p-4">
           {chatHistory.map((chat, index) => (
-            <div
-              key={index}
-              className={`flex w-full ${
-                chat.role === "user" ? "justify-end" : "justify-start"
-              }`}
-            >
-              <div
-                className={clsx(
-                  "flex max-w-[70%] flex-col",
-                  index % 2 === 0 ? "items-end" : "items-start"
-                )}
-              >
+            <div key={index} className={`flex w-full ${chat.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div className={clsx('flex max-w-[70%] flex-col', index % 2 === 0 ? 'items-end' : 'items-start')}>
                 <div
                   className={clsx(
-                    "wrap-break-word whitespace-pre-wrap break-all rounded-lg p-3",
-                    chat.role === "user"
-                      ? "bg-blue-100 text-blue-900"
-                      : "bg-gray-100 text-gray-900"
+                    'rounded-lg p-3 wrap-break-word break-all whitespace-pre-wrap',
+                    chat.role === 'user' ? 'bg-blue-100 text-blue-900' : 'bg-gray-100 text-gray-900'
                   )}
                 >
-                  {typeof chat.content === "string" ? (
+                  {typeof chat.content === 'string' ? (
                     chat.content
                   ) : chat.content?.image_base64 ? (
                     <div className="flex items-center gap-2">
@@ -188,37 +162,28 @@ const ChatBot = ({
                   ) : chat.content?.document_type ? (
                     <div className="flex items-center gap-2">
                       <span>📄</span>
-                      <span>
-                        {chat.content.metadata?.filename || "Document"}
-                      </span>
+                      <span>{chat.content.metadata?.filename || 'Document'}</span>
                     </div>
                   ) : (
                     JSON.stringify(chat.content, null, 2)
                   )}
                 </div>
-                <p
-                  className={`mt-1 text-[8px] text-gray-500 ${
-                    chat.role === "user" ? "text-right" : "text-left"
-                  }`}
-                >
-                  {chat.role === "user" ? "You" : "Agent"}
+                <p className={`mt-1 text-[8px] text-gray-500 ${chat.role === 'user' ? 'text-right' : 'text-left'}`}>
+                  {chat.role === 'user' ? 'You' : 'Agent'}
                 </p>
               </div>
             </div>
           ))}
           {listenEventsEnabled &&
-            ((streamingEvents && streamingEvents.length > 0) ||
-              (chatHistory && chatHistory.length > 0)) && (
+            ((streamingEvents && streamingEvents.length > 0) || (chatHistory && chatHistory.length > 0)) && (
               <div className="mt-2">
                 <button
                   type="button"
                   onClick={() => setShowLogic(!showLogic)}
                   className="flex w-full items-center justify-between rounded-md bg-gray-200 p-1 text-xs font-medium"
                 >
-                  <p className="text-xs font-medium">
-                    {showLogic ? "Hide events" : "Show events"}
-                  </p>
-                  <div className={clsx(showLogic ? "rotate-180" : "")}>
+                  <p className="text-xs font-medium">{showLogic ? 'Hide events' : 'Show events'}</p>
+                  <div className={clsx(showLogic ? 'rotate-180' : '')}>
                     <ChevronDown />
                   </div>
                 </button>
@@ -272,18 +237,10 @@ const ChatBot = ({
                       key={index}
                       className="group relative flex items-center gap-1 rounded-lg border border-gray-200 bg-white p-1 transition-colors hover:border-gray-300"
                     >
-                      <img
-                        src={image.base64}
-                        alt={image.file.name}
-                        className="h-6 w-6 rounded object-cover"
-                      />
+                      <img src={image.base64} alt={image.file.name} className="h-6 w-6 rounded object-cover" />
                       <div className="flex flex-col">
-                        <p className="max-w-[120px] truncate text-[8px] font-medium text-gray-800">
-                          {image.file.name}
-                        </p>
-                        <p className="text-[8px] text-gray-500">
-                          {formatFileSize(image.file.size)}
-                        </p>
+                        <p className="max-w-[120px] truncate text-[8px] font-medium text-gray-800">{image.file.name}</p>
+                        <p className="text-[8px] text-gray-500">{formatFileSize(image.file.size)}</p>
                       </div>
                       <button
                         onClick={() => handleRemoveImage(index)}
@@ -307,12 +264,8 @@ const ChatBot = ({
                     >
                       <div className="text-gray-600">📄</div>
                       <div className="flex flex-col">
-                        <p className="max-w-[120px] truncate text-[8px] font-medium text-gray-800">
-                          {doc.file.name}
-                        </p>
-                        <p className="text-[8px] text-gray-500">
-                          {formatFileSize(doc.file.size)}
-                        </p>
+                        <p className="max-w-[120px] truncate text-[8px] font-medium text-gray-800">{doc.file.name}</p>
+                        <p className="text-[8px] text-gray-500">{formatFileSize(doc.file.size)}</p>
                       </div>
                       <button
                         onClick={() => handleRemoveDocument(index)}
@@ -354,10 +307,7 @@ const ChatBot = ({
               className="absolute -top-[332px] left-0 z-20 flex w-96 flex-col gap-4 rounded-xl border border-[#EFF0F1] bg-white p-4 shadow-xl"
             >
               <div className="flex items-center justify-between">
-                <label
-                  htmlFor="variables"
-                  className="text-base font-normal leading-normal text-[#282828]"
-                >
+                <label htmlFor="variables" className="text-base leading-normal font-normal text-[#282828]">
                   Variables (JSON)
                 </label>
                 <button
@@ -375,13 +325,12 @@ const ChatBot = ({
                 className="w-full rounded-lg border border-gray-300 bg-white p-3 font-mono text-sm text-[#282828] outline-none focus:text-black"
                 placeholder='{"key": "value"}'
               />
-              <p className="text-sm font-normal leading-normal text-[#878787]">
-                Define your variables in JSON format. Variables will be passed
-                to the agent during inference.
+              <p className="text-sm leading-normal font-normal text-[#878787]">
+                Define your variables in JSON format. Variables will be passed to the agent during inference.
               </p>
               <Button
                 onClick={() => setShowVariablesInput(false)}
-                className="bg-[#101010]! text-white! cursor-pointer rounded-xl px-4 py-3"
+                className="cursor-pointer rounded-xl bg-[#101010]! px-4 py-3 text-white!"
               >
                 Done
               </Button>
@@ -391,20 +340,20 @@ const ChatBot = ({
             <Select
               value={selectValue}
               onValueChange={(value) => {
-                setSelectValue("");
+                setSelectValue('');
                 setShowUploadMenu(false);
-                if (value === "images") {
-                  document.getElementById("imageInput")?.click();
-                } else if (value === "documents") {
-                  document.getElementById("documentInput")?.click();
-                } else if (value === "variables") {
+                if (value === 'images') {
+                  document.getElementById('imageInput')?.click();
+                } else if (value === 'documents') {
+                  document.getElementById('documentInput')?.click();
+                } else if (value === 'variables') {
                   setShowVariablesInput(true);
                 }
               }}
               open={showUploadMenu}
               onOpenChange={setShowUploadMenu}
             >
-              <SelectTrigger className="inline-flex cursor-pointer whitespace-nowrap rounded-md border-0 bg-transparent text-sm font-medium text-gray-900 shadow-none outline-none ring-0 transition-all focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 disabled:pointer-events-none disabled:opacity-50 [&>span]:hidden [&>svg:last-child]:hidden">
+              <SelectTrigger className="inline-flex cursor-pointer rounded-md border-0 bg-transparent text-sm font-medium whitespace-nowrap text-gray-900 shadow-none ring-0 transition-all outline-none focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 [&>span]:hidden [&>svg:last-child]:hidden">
                 <Plus />
               </SelectTrigger>
               <SelectContent>
@@ -421,7 +370,7 @@ const ChatBot = ({
                 value={inferenceInput}
                 onChange={(e) => setInferenceInput(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
+                  if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
                     handleQuestionEntered();
                   }
@@ -435,12 +384,7 @@ const ChatBot = ({
                 onClick={handleQuestionEntered}
                 className="h-max w-max rounded-full bg-blue-600 p-2 text-white hover:bg-blue-700"
               >
-                <svg
-                  className="h-4 w-4 rotate-90"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
+                <svg className="h-4 w-4 rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"

@@ -22,8 +22,11 @@ const Toast = ({
   timeout?: number;
 }) => {
   useEffect(() => {
-    if (visible) setTimeout(reset, timeout);
-  }, [visible]);
+    if (visible) {
+      const timeoutId = setTimeout(reset, timeout);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [visible, timeout, reset]);
 
   if (!visible) return <></>;
 
@@ -34,7 +37,7 @@ const Toast = ({
         role="alert"
       >
         {type && iconMap[type]}
-        <div className="ml-3 break-all text-sm font-normal">{message}</div>
+        <div className="ml-3 text-sm font-normal break-all">{message}</div>
         <button
           type="button"
           className="-mx-1.5 -my-1.5 ml-auto inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-900 focus:ring-2 focus:ring-gray-300 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-white"

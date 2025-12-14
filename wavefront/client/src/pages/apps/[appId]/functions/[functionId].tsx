@@ -142,7 +142,7 @@ const FunctionDetail: React.FC = () => {
   };
 
   return (
-    <div className="h-full bg-white px-8 pb-[200px] pt-8">
+    <div className="h-full bg-white px-8 pt-8 pb-[200px]">
       <Breadcrumb className="mb-6">
         <BreadcrumbList>
           <BreadcrumbItem>
@@ -173,7 +173,7 @@ const FunctionDetail: React.FC = () => {
 
       <div className="flex w-full flex-col gap-10 pb-5">
         <div className="flex items-center justify-between">
-          <p className="text-2xl font-semibold leading-normal text-black">{processor?.name || functionId}</p>
+          <p className="text-2xl leading-normal font-semibold text-black">{processor?.name || functionId}</p>
           <div className="flex gap-4">
             {editing ? (
               <>

@@ -85,7 +85,7 @@ uv add flo-ai
 
 ```python
 import asyncio
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import AgentBuilder
 from flo_ai.llm import OpenAI
 
 async def main():
@@ -108,7 +108,7 @@ asyncio.run(main())
 
 ```python
 import asyncio
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import AgentBuilder
 from flo_ai.tool import flo_tool
 from flo_ai.llm import Anthropic
 
@@ -144,7 +144,7 @@ asyncio.run(main())
 ```python
 import asyncio
 from pydantic import BaseModel, Field
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import AgentBuilder
 from flo_ai.llm import OpenAI
 
 class MathSolution(BaseModel):
@@ -165,52 +165,6 @@ async def main():
     print(f'Structured Response: {response}')
 
 asyncio.run(main())
-```
-
-## 🎨 Flo AI Studio - Visual Workflow Designer
-
-**Create AI workflows visually with our powerful React-based studio!**
-
-<p align="center">
-  <img src="./images/flo-studio-preview.png" alt="Flo AI Studio - Visual Workflow Designer" width="800" />
-</p>
-
-Flo AI Studio is a modern, intuitive visual editor that allows you to design complex multi-agent workflows through a drag-and-drop interface. Build sophisticated AI systems without writing code, then export them as production-ready YAML configurations.
-
-### 🚀 Studio Features
-
-- **🎯 Visual Design**: Drag-and-drop interface for creating agent workflows
-- **🤖 Agent Management**: Configure AI agents with different roles, models, and tools
-- **🔀 Smart Routing**: Visual router configuration for intelligent workflow decisions
-- **📤 YAML Export**: Export workflows as Flo AI-compatible YAML configurations
-- **📥 YAML Import**: Import existing workflows for further editing
-- **✅ Workflow Validation**: Real-time validation and error checking
-- **🔧 Tool Integration**: Connect agents to external tools and APIs
-- **📋 Template System**: Quick start with pre-built agent and router templates
-
-### 🏃‍♂️ Quick Start with Studio
-
-1. **Start the Studio**:
-
-   ```bash
-   cd studio
-   pnpm install
-   pnpm dev
-   ```
-
-2. **Design Your Workflow**:
-
-   - Add agents, routers, and tools to the canvas
-   - Configure their properties and connections
-   - Test with the built-in validation
-
-3. **Export & Run**:
-
-```python
-from flo_ai.arium import AriumBuilder
-
-   builder = AriumBuilder.from_yaml(yaml_file='your_workflow.yaml')
-   result = await builder.build_and_run(['Your input here'])
 ```
 
 ## 🔧 Core Features
@@ -359,7 +313,7 @@ Arium is Flo AI's powerful workflow orchestration engine for creating complex mu
 
 ```python
 from flo_ai.arium import AriumBuilder
-from flo_ai.models.agent import Agent
+from flo_ai.agent import Agent
 from flo_ai.llm import OpenAI
 
 async def simple_chain():

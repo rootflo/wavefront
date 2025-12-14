@@ -1,7 +1,4 @@
-export const scrollToBottom = (
-  id: string,
-  behavior: ScrollBehavior = "smooth"
-) => {
+export const scrollToBottom = (id: string, behavior: ScrollBehavior = 'smooth') => {
   setTimeout(() => {
     const element = document.getElementById(id);
     element?.scrollTo({

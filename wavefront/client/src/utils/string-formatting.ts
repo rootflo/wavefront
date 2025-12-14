@@ -5,8 +5,8 @@
  * @example removeUnderscoreAndSentenceCase('hello_world') => 'Hello world'
  */
 export const removeUnderscoreAndSentenceCase = (val: string): string => {
-  if (!val) return "";
-  const words = val.split("_");
+  if (!val) return '';
+  const words = val.split('_');
   return words
     .map((word, index) => {
       if (index === 0) {
@@ -14,5 +14,5 @@ export const removeUnderscoreAndSentenceCase = (val: string): string => {
       }
       return word.toLowerCase();
     })
-    .join(" ");
+    .join(' ');
 };
