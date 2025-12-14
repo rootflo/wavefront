@@ -32,27 +32,23 @@ def upgrade() -> None:
     if default_app_name and default_app_public_url and default_app_private_url:
         # Check if a default app already exists with the same name
         conn = op.get_bind()
-        # Insert default app
+        # Insert default app using SQLAlchemy Table reflection for better type safety
         app_id = uuid.uuid4()
-        conn.execute(
-            sa.text("""
-                INSERT INTO app (id, app_name, public_url, private_url, deleted, status, config, deployment_type, type, created_at, updated_at)
-                VALUES (:id, :app_name, :public_url, :private_url, :deleted, :status, :config, :deployment_type, :type, :created_at, :updated_at)
-            """),
-            {
-                'id': app_id,
-                'app_name': default_app_name,
-                'public_url': default_app_public_url,
-                'private_url': default_app_private_url,
-                'deleted': False,
-                'status': 'success',
-                'config': '{}',
-                'deployment_type': 'manual',
-                'type': 'custom',
-                'created_at': datetime.now(),
-                'updated_at': datetime.now(),
-            },
+        app_table = sa.Table('app', sa.MetaData(), autoload_with=conn)
+        insert_stmt = app_table.insert().values(
+            id=app_id,
+            app_name=default_app_name,
+            public_url=default_app_public_url,
+            private_url=default_app_private_url,
+            deleted=False,
+            status='success',
+            config='{}',
+            deployment_type='manual',
+            type='custom',
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
         )
+        conn.execute(insert_stmt)
 
 
 def downgrade() -> None:
