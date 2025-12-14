@@ -68,37 +68,10 @@ async def test_installation():
     )
 
     response = await agent.run('Hello, world!')
-    print(f'Agent response: {response}')
+    print(f'Agent response: {response[-1].content}')
 
 asyncio.run(test_installation())
 ```
-
-</Step>
-</Steps>
-
-## Development Tools
-
-### Flo AI Studio
-
-The Flo AI Studio is a visual workflow designer for creating AI agent workflows:
-
-<Steps>
-<Step title="Install Studio dependencies">
-
-```bash
-cd studio
-pnpm install
-```
-
-</Step>
-
-<Step title="Start the development server">
-
-```bash
-pnpm dev
-```
-
-The studio will be available at `http://localhost:5173`.
 
 </Step>
 </Steps>
@@ -125,57 +98,49 @@ Understanding the Flo AI project structure:
 ```
 flo_ai/
 ├── flo_ai/                 # Core package
-│   ├── builder/            # Agent builder components
-│   ├── llm/               # LLM provider integrations
-│   ├── tool/              # Tool framework
-│   ├── arium/             # Workflow orchestration
-│   ├── models/            # Data models
-│   └── telemetry/         # Observability
-├── examples/              # Example implementations
-├── tests/                 # Test suite
-└── studio/               # Visual workflow designer
+│   ├── agent/              # Agent 
+│   ├── arium/              # Workflow orchestration
+│   ├── formatter/          # Format parsers
+│   ├── helpers/            # Helper utilities
+│   ├── llm/                # LLM provider integrations
+│   ├── models/             # Data models
+│   ├── telemetry/          # Observability
+│   ├── tool/               # Tool framework
+│   └── utils/              # Utility functions
+├── docs/                   # Documentation
+├── examples/               # Example implementations
+└── tests/                  # Test suite
+    ├── integration-tests/  # Integration tests
+    └── unit-tests/         # Unit tests
 ```
 
 ## Contributing
 
-<AccordionGroup>
-  <Accordion title="Setting up for development">
+Learn how to set up your development environment and submit changes to the Flo AI project.
 
-    1. Fork the repository
-    2. Clone your fork: `git clone https://github.com/your-username/flo-ai.git`
-    3. Install in development mode: `pip install -e .`
-    4. Install development dependencies: `pip install -e ".[dev]"`
-    5. Run tests: `pytest`
+#### Prerequisites
 
-  </Accordion>
+Before setting up for development, ensure you have the following tools installed:
 
-  <Accordion title="Code style and formatting">
+- **uv**: Fast Python package installer and resolver. [Install uv](https://docs.astral.sh/uv/getting-started/installation/)
+- **pnpm**(optional): Package manager for Node.js. [Install pnpm](https://pnpm.io/installation)
 
-    Flo AI uses pre-commit hooks for code formatting:
+#### Setting up for development
 
-    ```bash
-    # Install pre-commit
-    pip install pre-commit
+1. Fork the wavefront repository
+2. Clone your fork: `git clone https://github.com/your-username/wavefront.git`
+3. Enable workspace mode to start development (Recommended)
+4. Run the `install-dep-local.sh` script in the root directory, or navigate to the `flo_ai` workspace and run `uv sync`
+5. Start a new terminal in the `flo_ai` workspace
+6. Start contributing!
 
-    # Install hooks
-    pre-commit install
+#### Submitting changes
 
-    # Run on all files
-    pre-commit run --all-files
-    ```
-
-  </Accordion>
-
-  <Accordion title="Submitting changes">
-
-    1. Create a feature branch: `git checkout -b feature/your-feature`
-    2. Make your changes and add tests
-    3. Run tests: `pytest`
-    4. Commit with conventional commits: `git commit -m "feat: add new feature"`
-    5. Push and create a pull request
-
-  </Accordion>
-</AccordionGroup>
+1. Create a feature branch: `git checkout -b feature/your-feature`
+2. Make your changes and add tests
+3. Run tests: `pytest`
+4. Commit with conventional commits: `git commit -m "feat: add new feature"`. Ensure the pre-commit hook runs without any errors
+5. Push and create a pull request
 
 ## Troubleshooting
 
@@ -201,19 +166,6 @@ flo_ai/
     ```bash
     echo $OPENAI_API_KEY
     echo $ANTHROPIC_API_KEY
-    ```
-
-  </Accordion>
-
-  <Accordion title="Studio not loading">
-
-    If the studio doesn't load, try:
-
-    ```bash
-    cd studio
-    rm -rf node_modules
-    pnpm install
-    pnpm dev
     ```
 
   </Accordion>

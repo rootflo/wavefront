@@ -27,28 +27,34 @@
           {
             "group": "Getting started",
             "pages": [
-              "flo-ai",
-              "quickstart",
-              "development"
+              "flo-ai/index",
+              "flo-ai/quickstart",
+              "flo-ai/development"
             ]
           },
           {
             "group": "Core Features",
             "pages": [
-              "essentials/agents",
-              "essentials/arium",
-              "essentials/yaml-agents",
-              "essentials/code"
+              "flo-ai/core-features/messages",
+              "flo-ai/core-features/agents",
+              "flo-ai/core-features/arium",
+              "flo-ai/core-features/yaml-agents",
+              "flo-ai/core-features/yaml-workflows"
             ]
           },
           {
             "group": "Advanced",
             "pages": [
-              "essentials/llm-providers",
-              "essentials/tools",
-              "essentials/yaml-workflows",
-              "essentials/routing",
-              "essentials/telemetry"
+              "flo-ai/advanced/llm-providers",
+              "flo-ai/advanced/tools",
+              "flo-ai/advanced/routing",
+              "flo-ai/advanced/telemetry"
+            ]
+          },
+          {
+            "group": "Examples",
+            "pages": [
+              "flo-ai/examples/code"
             ]
           }
         ]

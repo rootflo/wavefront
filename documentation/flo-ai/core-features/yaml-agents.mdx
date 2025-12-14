@@ -1,0 +1,784 @@
+---
+title: "YAML based Agents"
+description: "Create and configure agents using YAML configuration files"
+icon: "file-code"
+---
+
+## YAML Agent Configuration
+
+Flo AI supports creating agents entirely through YAML configuration files, making it easy to version control, share, and manage agent configurations.
+
+## Basic YAML Agent
+
+Create a simple agent using YAML:
+
+```yaml agent.yaml
+metadata:
+  name: "customer-support-agent"
+  version: "1.0.0"
+  description: "Customer support agent for handling inquiries"
+
+agent:
+  name: "Customer Support"
+  prompt: "You are a helpful customer support agent. Provide friendly and accurate assistance."
+  model:
+    provider: "openai"
+    name: "gpt-4o-mini"
+    temperature: 0.7
+    max_tokens: 1000
+  settings:
+    max_retries: 3
+```
+
+```python Load YAML Agent
+from flo_ai.agent import AgentBuilder
+
+# Load agent from YAML file
+agent_builder = AgentBuilder.from_yaml(yaml_file='agent.yaml')
+agent = agent_builder.build()
+response = await agent.run('How can I reset my password?')
+```
+
+## Advanced YAML Configuration
+
+### Agent with Tools
+
+Tools in YAML can be specified as string references (to tools in a tool registry) or as tool configurations with pre-filled parameters:
+
+```yaml tool-agent.yaml
+metadata:
+  name: "calculator-agent"
+  version: "1.0.0"
+
+agent:
+  name: "Calculator Assistant"
+  prompt: "You are a math assistant that can perform calculations."
+  model:
+    provider: "anthropic"
+    name: "claude-3-5-sonnet-20240620"
+    temperature: 0.3
+
+  # Simple string reference (tool must exist in tool_registry)
+  tools:
+    - "calculate"
+    - "get_weather"
+
+  # Or with tool configuration for pre-filled parameters
+  # tools:
+  #   - name: "calculate"
+  #     prefilled_params:
+  #       operation: "add"
+  #   - name: "get_weather"
+  #     name_override: "weather_lookup"
+  #     description_override: "Get current weather conditions"
+```
+
+### Agent with Structured Output
+
+Use the `parser` field to define structured output schemas:
+
+```yaml structured-agent.yaml
+metadata:
+  name: "analysis-agent"
+  version: "1.0.0"
+
+agent:
+  name: "Business Analyst"
+  prompt: "Analyze business data and provide structured insights."
+  model:
+    provider: "openai"
+    name: "gpt-4o"
+    temperature: 0.2
+
+  parser:
+    name: "AnalysisResult"
+    description: "Structured analysis output"
+    fields:
+      - name: "summary"
+        type: "str"
+        description: "Executive summary"
+        required: true
+      - name: "key_findings"
+        type: "array"
+        description: "List of key findings"
+        items:
+          type: "str"
+          description: "A key finding"
+      - name: "recommendations"
+        type: "array"
+        description: "Actionable recommendations"
+        items:
+          type: "str"
+          description: "A recommendation"
+```
+
+### Agent with Role and Reasoning Pattern
+
+```yaml advanced-agent.yaml
+metadata:
+  name: "advanced-agent"
+  version: "1.0.0"
+
+agent:
+  name: "Advanced Assistant"
+  prompt: "You are a helpful assistant."
+  job: "You help users solve problems."  # Alternative to 'prompt'
+  role: "Senior Support Specialist"  # Internal role description
+  act_as: "assistant"  # How agent presents itself in messages
+  base_url: "https://api.example.com"  # Optional base URL override
+  model:
+    provider: "openai"
+    name: "gpt-4o"
+    temperature: 0.7
+    max_tokens: 2000
+    timeout: 60
+  settings:
+    temperature: 0.3  # Can override model temperature
+    max_retries: 5
+    reasoning_pattern: "REACT"  # DIRECT, REACT, or COT
+```
+
+### Agent with Examples
+
+You can provide example input/output pairs to guide the agent:
+
+```yaml example-agent.yaml
+metadata:
+  name: "example-agent"
+  version: "1.0.0"
+
+agent:
+  name: "Example Agent"
+  prompt: "You provide examples based on patterns."
+  model:
+    provider: "openai"
+    name: "gpt-4o-mini"
+  examples:
+    - input: "What is the weather?"
+      output: "I can help you check the weather. Please provide your location."
+    - input: "Tell me a joke"
+      output: "Why don't scientists trust atoms? Because they make up everything!"
+```
+
+## YAML Schema Reference
+
+### Metadata Section
+
+```yaml
+metadata:
+  name: "agent-name" # Required: Unique agent identifier
+  version: "1.0.0" # Required: Semantic version
+  description: "Agent description" # Optional: Human-readable description
+  author: "Your Name" # Optional: Agent author
+  tags: ["tag1", "tag2"] # Optional: Categorization tags
+```
+
+### Agent Configuration
+
+```yaml
+agent:
+  name: "Agent Display Name" # Required: Human-readable name
+  prompt: "System prompt" # Required: Agent's system prompt (or use 'job')
+  job: "System prompt" # Alternative to 'prompt' (job takes precedence)
+  role: "Role description" # Optional: Internal role description
+  act_as: "assistant" # Optional: Message role (default: "assistant")
+  base_url: "https://api.example.com" # Optional: Base URL override
+  
+  model: # Required: LLM configuration
+    provider: "openai" # Required: openai, anthropic, claude, gemini, google, ollama, vertexai, rootflo, openai_vllm
+    name: "gpt-4o-mini" # Required: Model name (for most providers)
+    base_url: "https://api.openai.com/v1" # Optional: Custom base URL
+    temperature: 0.7 # Optional: 0.0 to 2.0
+    max_tokens: 1000 # Optional: Maximum response length
+    timeout: 30 # Optional: Request timeout in seconds
+    # VertexAI specific
+    project: "my-project" # Required for vertexai
+    location: "us-central1" # Required for vertexai
+    # RootFlo specific
+    model_id: "model-123" # Required for rootflo
+    # OpenAI vLLM specific
+    api_key: "sk-..." # Required for openai_vllm
+
+  settings: # Optional: Agent settings
+    temperature: 0.7 # Optional: Override model temperature
+    max_retries: 3 # Optional: Number of retry attempts
+    reasoning_pattern: "DIRECT" # Optional: DIRECT, REACT, or COT
+
+  tools: [] # Optional: List of tools (see tools section)
+  parser: {} # Optional: Parser configuration for structured output (see parser section)
+  examples: [] # Optional: Example input/output pairs (see examples section)
+```
+
+### Tools Configuration
+
+Tools can be specified as simple string references or as tool configuration objects:
+
+```yaml
+# Simple string reference (tool must exist in tool_registry)
+tools:
+  - "tool_name"
+  - "another_tool"
+
+# Or with tool configuration
+tools:
+  - name: "tool_name" # Required: Tool identifier (must exist in tool_registry)
+    prefilled_params: # Optional: Pre-filled parameters
+      param1: "value1"
+      param2: 42
+    name_override: "custom_tool_name" # Optional: Custom name override
+    description_override: "Custom description" # Optional: Custom description override
+```
+
+**Note:** Tools must be registered in a `tool_registry` dictionary when loading the YAML. The registry maps tool names to `Tool` objects.
+
+### Parser Configuration (Structured Output)
+
+Use the `parser` field to define structured output schemas:
+
+```yaml
+parser:
+  name: "ResultModel" # Required: Parser/model name
+  version: "1.0.0" # Optional: Parser version
+  description: "Output structure description" # Optional: Description
+  fields: # Required: List of field definitions
+    - name: "field_name" # Required: Field name
+      type: "str" # Required: Field type (str, int, bool, float, literal, object, array)
+      description: "Field description" # Required: Field description
+      required: true # Optional: Whether field is required
+      # For literal type
+      values: # Required for literal type
+        - value: "option1"
+          description: "First option"
+        - value: "option2"
+          description: "Second option"
+      # For array type
+      items: # Required for array type
+        type: "str"
+        description: "Item description"
+      # For object type
+      fields: # Required for object type
+        - name: "nested_field"
+          type: "str"
+          description: "Nested field"
+      default_value_prompt: "Generate a default value" # Optional: For literal fields
+```
+
+### Examples Configuration
+
+Provide example input/output pairs to guide the agent:
+
+```yaml
+examples:
+  - input: "Example user input" # Required: Example input
+    output: "Example agent output" # Required: Example output (string or dict)
+  - input: "Another example"
+    output:
+      key: "value"
+      nested: {"data": "structure"}
+```
+
+## Loading and Using YAML Agents
+
+### Basic Loading
+
+```python
+from flo_ai.agent import AgentBuilder
+
+# Load from file
+agent_builder = AgentBuilder.from_yaml(yaml_file='agent.yaml')
+agent = agent_builder.build()
+
+# Load from string
+yaml_content = """
+agent:
+  name: "Test Agent"
+  prompt: "You are a test agent."
+  model:
+    provider: "openai"
+    name: "gpt-4o-mini"
+"""
+
+agent_builder = AgentBuilder.from_yaml(yaml_str=yaml_content)
+agent = agent_builder.build()
+
+# Load with tool registry
+from flo_ai.tool import flo_tool
+
+@flo_tool(description="Get weather")
+async def get_weather(city: str) -> str:
+    return f"Weather in {city}: sunny"
+
+tool_registry = {"get_weather": get_weather.tool}
+agent_builder = AgentBuilder.from_yaml(
+    yaml_file='tool-agent.yaml',
+    tool_registry=tool_registry
+)
+agent = agent_builder.build()
+```
+
+### Writing/Saving YAML Configuration
+
+To save an agent configuration to YAML, you can manually construct the YAML structure:
+
+```python
+import yaml
+from flo_ai.agent import AgentBuilder
+from flo_ai.agent.base_agent import ReasoningPattern
+from flo_ai.llm import OpenAI
+
+# Create an agent programmatically
+agent_builder = (
+    AgentBuilder()
+    .with_name('Customer Support')
+    .with_prompt('You are a helpful assistant.')
+    .with_llm(OpenAI(model='gpt-4o-mini', temperature=0.7))
+    .with_retries(3)
+    .with_reasoning(ReasoningPattern.REACT)
+)
+
+# Build the agent
+agent = agent_builder.build()
+
+# Create YAML configuration dictionary
+yaml_config = {
+    'metadata': {
+        'name': 'customer-support-agent',
+        'version': '1.0.0',
+        'description': 'Customer support agent'
+    },
+    'agent': {
+        'name': agent_builder._name,
+        'prompt': str(agent_builder._system_prompt),
+        'model': {
+            'provider': 'openai',
+            'name': 'gpt-4o-mini',
+            'temperature': agent_builder._llm.temperature if agent_builder._llm else 0.7
+        },
+        'settings': {
+            'max_retries': agent_builder._max_retries,
+            'reasoning_pattern': agent_builder._reasoning_pattern.name
+        }
+    }
+}
+
+# Write to file
+with open('exported-agent.yaml', 'w') as f:
+    yaml.dump(yaml_config, f, default_flow_style=False, sort_keys=False)
+
+print("✅ Agent configuration saved to exported-agent.yaml")
+```
+
+### Helper Function for Exporting
+
+Here's a more complete helper function to export agent configurations:
+
+```python
+import yaml
+from typing import Optional
+from flo_ai.agent import AgentBuilder
+from flo_ai.agent.base_agent import ReasoningPattern
+
+def export_agent_to_yaml(
+    agent_builder: AgentBuilder,
+    output_file: str,
+    metadata: Optional[dict] = None
+) -> None:
+    """Export an AgentBuilder configuration to YAML file.
+    
+    Args:
+        agent_builder: The AgentBuilder instance to export
+        output_file: Path to output YAML file
+        metadata: Optional metadata dictionary
+    """
+    config = {}
+    
+    # Add metadata
+    if metadata:
+        config['metadata'] = metadata
+    else:
+        config['metadata'] = {
+            'name': agent_builder._name.lower().replace(' ', '-'),
+            'version': '1.0.0'
+        }
+    
+    # Build agent configuration
+    agent_config = {
+        'name': agent_builder._name,
+    }
+    
+    # Add prompt (prefer job if available, otherwise prompt)
+    if hasattr(agent_builder, '_system_prompt'):
+        agent_config['prompt'] = str(agent_builder._system_prompt)
+    
+    # Add role and act_as if set
+    if agent_builder._role:
+        agent_config['role'] = agent_builder._role
+    if agent_builder._act_as and agent_builder._act_as != 'assistant':
+        agent_config['act_as'] = agent_builder._act_as
+    
+    # Add model configuration
+    if agent_builder._llm:
+        llm_config = {}
+        # Extract provider and model name from LLM
+        # This is a simplified example - you may need to adjust based on your LLM implementation
+        if hasattr(agent_builder._llm, 'model'):
+            llm_config['provider'] = 'openai'  # Adjust based on actual LLM type
+            llm_config['name'] = agent_builder._llm.model
+        if hasattr(agent_builder._llm, 'temperature'):
+            llm_config['temperature'] = agent_builder._llm.temperature
+        if hasattr(agent_builder._llm, 'max_tokens'):
+            llm_config['max_tokens'] = agent_builder._llm.max_tokens
+        
+        if llm_config:
+            agent_config['model'] = llm_config
+    
+    # Add settings
+    settings = {}
+    if agent_builder._max_retries != 3:  # Only include if not default
+        settings['max_retries'] = agent_builder._max_retries
+    if agent_builder._reasoning_pattern != ReasoningPattern.DIRECT:
+        settings['reasoning_pattern'] = agent_builder._reasoning_pattern.name
+    
+    if settings:
+        agent_config['settings'] = settings
+    
+    # Add tools if present
+    if agent_builder._tools:
+        # Note: Tools are exported as references - actual tool definitions
+        # should be in your tool registry
+        agent_config['tools'] = [tool.name for tool in agent_builder._tools]
+    
+    config['agent'] = agent_config
+    
+    # Write to file
+    with open(output_file, 'w') as f:
+        yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+    
+    print(f"✅ Agent configuration exported to {output_file}")
+
+# Usage
+agent_builder = (
+    AgentBuilder()
+    .with_name('My Agent')
+    .with_prompt('You are helpful.')
+    .with_llm(OpenAI(model='gpt-4o-mini'))
+    .with_retries(5)
+)
+
+export_agent_to_yaml(
+    agent_builder,
+    'my-agent.yaml',
+    metadata={'name': 'my-agent', 'version': '1.0.0', 'author': 'Your Name'}
+)
+```
+
+### Using Variables in Prompts
+
+You can use variables in your prompts by using `<variable_name>` syntax. Variables are provided at runtime:
+
+```python
+# Agent YAML with variables in prompt
+# agent:
+#   name: "Personalized Assistant"
+#   prompt: "Hello <user_name>! You are a <user_role> at <company>."
+
+agent_builder = AgentBuilder.from_yaml('variable-agent.yaml')
+agent = agent_builder.build()
+
+# Provide variables at runtime
+variables = {
+    'user_name': 'John',
+    'user_role': 'Data Scientist',
+    'company': 'TechCorp'
+}
+
+response = await agent.run(
+    'What should I focus on today?',
+    variables=variables
+)
+```
+
+### Tool Integration
+
+Tools must be registered in a tool registry when loading YAML:
+
+```python
+from flo_ai.agent import AgentBuilder
+from flo_ai.tool import flo_tool
+
+# Define tool functions
+@flo_tool(description="Perform mathematical calculations")
+async def calculate(operation: str, x: float, y: float) -> float:
+    operations = {
+        'add': lambda: x + y,
+        'subtract': lambda: x - y,
+        'multiply': lambda: x * y,
+        'divide': lambda: x / y if y != 0 else 0,
+    }
+    return operations.get(operation, lambda: 0)()
+
+@flo_tool(description="Get weather information")
+async def get_weather(city: str) -> str:
+    return f"Weather in {city}: sunny, 25°C"
+
+# Create tool registry
+tool_registry = {
+    'calculate': calculate.tool,
+    'get_weather': get_weather.tool
+}
+
+# Load agent with tool registry
+agent_builder = AgentBuilder.from_yaml(
+    yaml_file='tool-agent.yaml',
+    tool_registry=tool_registry
+)
+agent = agent_builder.build()
+
+response = await agent.run('Calculate 5 plus 3')
+```
+
+Alternatively, you can add tools after loading:
+
+```python
+# Load agent without tools
+agent_builder = AgentBuilder.from_yaml('agent.yaml')
+agent_builder.add_tool(calculate.tool)
+agent = agent_builder.build()
+```
+
+## Best Practices
+
+### YAML Structure
+
+1. **Use meaningful names**: Choose descriptive agent and variable names
+2. **Version your configurations**: Always include version numbers
+3. **Document thoroughly**: Add descriptions for all components
+4. **Validate schemas**: Use YAML schema validation tools
+
+### Performance Optimization
+
+```yaml
+# Optimize for performance
+agent:
+  name: "Optimized Agent"
+  prompt: "Concise and effective prompt"
+  model:
+    provider: "openai"
+    name: "gpt-4o-mini" # Use faster model for simple tasks
+    temperature: 0.3 # Lower temperature for consistency
+    max_tokens: 500 # Limit response length
+  settings:
+    max_retries: 2 # Limit retries to avoid costs
+```
+
+### Security Considerations
+
+```yaml
+# Secure configuration
+agent:
+  name: "Secure Agent"
+  prompt: |
+    You are a secure assistant. Never:
+    - Share sensitive information
+    - Execute dangerous commands
+    - Access unauthorized resources
+  model:
+    provider: "openai"
+    name: "gpt-4o"
+    temperature: 0.1 # Lower temperature for consistency
+    max_tokens: 200 # Limit response length
+    timeout: 10 # Short timeout for security
+  settings:
+    max_retries: 1 # Limit retries for security
+```
+
+## Validation and Testing
+
+### Schema Validation
+
+Use the `AgentYamlModel` for proper validation of YAML configurations:
+
+```python
+from flo_ai.agent import AgentBuilder
+from flo_ai.models.agent import AgentYamlModel
+import yaml
+
+# Validate YAML structure using AgentYamlModel
+def validate_agent_yaml(file_path):
+    """Validate YAML configuration using AgentYamlModel.
+    
+    Args:
+        file_path: Path to YAML file to validate
+        
+    Returns:
+        bool: True if valid, False otherwise
+    """
+    try:
+        with open(file_path, 'r') as f:
+            config = yaml.safe_load(f)
+
+        # Use AgentYamlModel for validation
+        # This will validate all fields, types, and constraints
+        validated_config = AgentYamlModel(**config)
+        
+        print("✅ YAML configuration is valid")
+        print(f"   Agent name: {validated_config.agent.name}")
+        if validated_config.metadata:
+            print(f"   Metadata: {validated_config.metadata.name} v{validated_config.metadata.version}")
+        return True
+    except ValueError as e:
+        # AgentBuilder._validate_yaml_config raises ValueError with formatted errors
+        print(f"❌ YAML validation failed: {e}")
+        return False
+    except Exception as e:
+        print(f"❌ YAML validation failed: {e}")
+        return False
+
+# Validate a YAML file
+validate_agent_yaml('agent.yaml')
+```
+
+You can also use `AgentBuilder.from_yaml()` which automatically validates the configuration:
+
+```python
+from flo_ai.agent import AgentBuilder
+
+def validate_and_load_agent(yaml_file):
+    """Validate and load agent from YAML file.
+    
+    Args:
+        yaml_file: Path to YAML file
+        
+    Returns:
+        AgentBuilder or None if validation fails
+    """
+    try:
+        # from_yaml automatically validates using AgentYamlModel
+        agent_builder = AgentBuilder.from_yaml(yaml_file=yaml_file)
+        print("✅ YAML configuration is valid and agent builder created")
+        return agent_builder
+    except ValueError as e:
+        # Validation errors are raised as ValueError with detailed messages
+        print(f"❌ YAML validation failed:\n{e}")
+        return None
+    except Exception as e:
+        print(f"❌ Error loading agent: {e}")
+        return None
+
+# Validate and load
+agent_builder = validate_and_load_agent('agent.yaml')
+if agent_builder:
+    agent = agent_builder.build()
+```
+
+### Testing YAML Agents
+
+```python
+import asyncio
+from flo_ai.agent import AgentBuilder
+
+async def test_yaml_agent():
+    """Test a YAML agent configuration."""
+    try:
+        # Load and validate agent (validation happens automatically)
+        agent_builder = AgentBuilder.from_yaml(yaml_file='agent.yaml')
+        agent = agent_builder.build()
+
+        # Test basic functionality
+        response = await agent.run('Hello!')
+        assert response is not None
+        print(f"✅ Agent responds: {len(response)} message(s)")
+
+        # Test with variables (if prompt contains variables)
+        variables = {'user_name': 'Test User', 'company': 'TestCorp'}
+        response = await agent.run('What can you help me with?', variables=variables)
+        print(f"✅ Agent with variables: {len(response)} message(s)")
+        
+        return True
+    except ValueError as e:
+        print(f"❌ Validation error: {e}")
+        return False
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        return False
+
+# Run tests
+asyncio.run(test_yaml_agent())
+```
+
+## Examples
+
+### Customer Support Agent
+
+```yaml customer-support.yaml
+metadata:
+  name: "customer-support"
+  version: "1.0.0"
+  description: "Handles customer inquiries and support requests"
+
+agent:
+  name: "Customer Support Agent"
+  prompt: |
+    You are a professional customer support agent. Your role is to:
+    1. Listen to customer concerns with empathy
+    2. Provide accurate and helpful information
+    3. Escalate complex issues when necessary
+    4. Maintain a friendly and professional tone
+
+    Always be patient, understanding, and solution-oriented.
+  role: "Senior Support Specialist"
+  model:
+    provider: "openai"
+    name: "gpt-4o-mini"
+    temperature: 0.3
+    max_tokens: 1000
+  settings:
+    max_retries: 2
+    reasoning_pattern: "DIRECT"
+```
+
+### Data Analysis Agent
+
+```yaml data-analyst.yaml
+metadata:
+  name: "data-analyst"
+  version: "1.0.0"
+  description: "Analyzes data and provides insights"
+
+agent:
+  name: "Data Analyst"
+  prompt: |
+    You are an expert data analyst. Analyze the provided data and:
+    1. Identify key patterns and trends
+    2. Provide statistical insights
+    3. Suggest actionable recommendations
+    4. Highlight any anomalies or concerns
+  model:
+    provider: "openai"
+    name: "gpt-4o"
+    temperature: 0.2
+  parser:
+    name: "AnalysisResult"
+    description: "Structured analysis output"
+    fields:
+      - name: "summary"
+        type: "str"
+        description: "Executive summary"
+        required: true
+      - name: "insights"
+        type: "array"
+        description: "Key insights"
+        items:
+          type: "str"
+          description: "An insight"
+      - name: "recommendations"
+        type: "array"
+        description: "Actionable recommendations"
+        items:
+          type: "str"
+          description: "A recommendation"
+  settings:
+    reasoning_pattern: "COT"  # Use Chain of Thought for complex analysis
+```
+
+This YAML-based approach makes agent configuration declarative, versionable, and easily shareable across teams!

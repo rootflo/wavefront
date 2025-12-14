@@ -1,0 +1,997 @@
+---
+title: "YAML based Workflows"
+description: "Create and configure multi-agent workflows using YAML configuration files"
+icon: "file-code"
+---
+
+## YAML Workflow Configuration
+
+Flo AI supports creating entire multi-agent workflows through YAML configuration files, making it easy to version control, share, and manage complex workflow configurations.
+
+## Basic YAML Workflow
+
+Create a simple workflow using YAML:
+
+```yaml workflow.yaml
+metadata:
+  name: "content-analysis-workflow"
+  version: "1.0.0"
+  description: "Multi-agent content analysis pipeline"
+
+arium:
+  agents:
+    - name: "analyzer"
+      role: "Content Analyst"
+      job: "Analyze the input content and extract key insights."
+      model:
+        provider: "openai"
+        name: "gpt-4o-mini"
+        temperature: 0.7
+
+    - name: "summarizer"
+      role: "Content Summarizer"
+      job: "Create a concise summary based on the analysis."
+      model:
+        provider: "anthropic"
+        name: "claude-3-5-sonnet-20240620"
+        temperature: 0.3
+
+  workflow:
+    start: "analyzer"
+    edges:
+      - from: "analyzer"
+        to: ["summarizer"]
+    end: ["summarizer"]
+```
+
+```python Load YAML Workflow
+from flo_ai.arium import AriumBuilder
+
+# Load workflow from YAML
+arium_builder = AriumBuilder.from_yaml(yaml_file='workflow.yaml')
+result = await arium_builder.build_and_run(["Analyze this quarterly business report..."])
+```
+
+## Advanced YAML Configuration
+
+### Workflow with Function Nodes
+
+Function nodes allow you to execute custom Python functions within workflows:
+
+```yaml function-workflow.yaml
+metadata:
+  name: "data-processing-workflow"
+  version: "1.0.0"
+
+arium:
+  agents:
+    - name: "analyzer"
+      job: "Analyze the processed data."
+      model:
+        provider: "openai"
+        name: "gpt-4o-mini"
+
+  function_nodes:
+    - name: "data_processor"
+      function_name: "process_data"  # Must exist in function_registry
+      description: "Processes input data"
+      input_filter: ["node1", "node2"]  # Optional: filter inputs from specific nodes
+      prefilled_params:  # Optional: pre-fill function parameters
+        format: "json"
+
+  workflow:
+    start: "data_processor"
+    edges:
+      - from: "data_processor"
+        to: ["analyzer"]
+    end: ["analyzer"]
+```
+
+### Workflow with Routers
+
+Use routers for intelligent routing decisions:
+
+```yaml router-workflow.yaml
+metadata:
+  name: "routing-workflow"
+  version: "1.0.0"
+
+arium:
+  agents:
+    - name: "classifier"
+      job: "Classify the input content."
+      model:
+        provider: "openai"
+        name: "gpt-4o-mini"
+
+    - name: "technical_writer"
+      job: "Write technical content."
+      model:
+        provider: "openai"
+        name: "gpt-4o"
+
+    - name: "creative_writer"
+      job: "Write creative content."
+      model:
+        provider: "anthropic"
+        name: "claude-3-5-sonnet-20240620"
+
+  routers:
+    - name: "content_type_router"
+      type: "smart"  # Uses LLM for intelligent routing
+      routing_options:
+        technical_writer: "Technical content, documentation, tutorials"
+        creative_writer: "Creative writing, storytelling, fiction"
+      model:
+        provider: "openai"
+        name: "gpt-4o-mini"
+        temperature: 0.3
+
+  workflow:
+    start: "classifier"
+    edges:
+      - from: "classifier"
+        to: ["technical_writer", "creative_writer"]
+        router: "content_type_router"
+    end: ["technical_writer", "creative_writer"]
+```
+
+### Workflow with Nested Arium (Sub-workflows)
+
+Create nested workflows for complex scenarios:
+
+```yaml nested-workflow.yaml
+metadata:
+  name: "nested-workflow"
+  version: "1.0.0"
+
+arium:
+  agents:
+    - name: "coordinator"
+      job: "Coordinate the workflow."
+      model:
+        provider: "openai"
+        name: "gpt-4o-mini"
+
+  ariums:
+    - name: "sub_workflow"
+      inherit_variables: true  # Inherit variables from parent
+      yaml_file: "sub-workflow.yaml"  # Reference external YAML file
+      # Or use inline configuration:
+      # agents:
+      #   - name: "sub_agent"
+      #     job: "Process in sub-workflow."
+      #     model:
+      #       provider: "openai"
+      #       name: "gpt-4o-mini"
+      # workflow:
+      #   start: "sub_agent"
+      #   edges: []
+      #   end: ["sub_agent"]
+
+  workflow:
+    start: "coordinator"
+    edges:
+      - from: "coordinator"
+        to: ["sub_workflow"]
+    end: ["sub_workflow"]
+```
+
+### Workflow with ForEach Nodes
+
+Process items in batches using ForEach nodes:
+
+```yaml foreach-workflow.yaml
+metadata:
+  name: "batch-processing-workflow"
+  version: "1.0.0"
+
+arium:
+  agents:
+    - name: "processor"
+      job: "Process each item in the batch."
+      model:
+        provider: "openai"
+        name: "gpt-4o-mini"
+
+  iterators:  # or use 'foreach_nodes'
+    - name: "batch_processor"
+      execute_node: "processor"  # Node to execute on each item
+
+  workflow:
+    start: "batch_processor"
+    edges:
+      - from: "batch_processor"
+        to: ["end"]  # Special 'end' keyword
+    end: ["end"]
+```
+
+## Agent Configuration in Workflows
+
+Agents in workflows support multiple configuration methods:
+
+### Method 1: Direct Configuration
+
+```yaml
+agents:
+  - name: "agent_name"
+    job: "Agent's system prompt"
+    role: "Agent Role"  # Optional
+    model:
+      provider: "openai"
+      name: "gpt-4o-mini"
+    settings:
+      max_retries: 3
+      reasoning_pattern: "REACT"
+```
+
+### Method 2: Reference Pre-built Agent
+
+```yaml
+agents:
+  - name: "pre_built_agent"  # Only name - agent must be provided in agents dict
+```
+
+### Method 3: Inline YAML Config
+
+```yaml
+agents:
+  - name: "agent_name"
+    yaml_config: |
+      agent:
+        name: "Agent Name"
+        prompt: "Agent prompt"
+        model:
+          provider: "openai"
+          name: "gpt-4o-mini"
+```
+
+### Method 4: External YAML File Reference
+
+```yaml
+agents:
+  - name: "agent_name"
+    yaml_file: "agent-config.yaml"
+```
+
+## Router Types
+
+### Smart Router
+
+Uses LLM to intelligently route based on content:
+
+```yaml
+routers:
+  - name: "smart_router"
+    type: "smart"
+    routing_options:
+      agent1: "Description of when to route to agent1"
+      agent2: "Description of when to route to agent2"
+    model:
+      provider: "openai"
+      name: "gpt-4o-mini"
+    settings:
+      temperature: 0.3
+      fallback_strategy: "first"  # first, random, or all
+```
+
+### Task Classifier Router
+
+Routes based on task categories:
+
+```yaml
+routers:
+  - name: "task_router"
+    type: "task_classifier"
+    task_categories:
+      coding:
+        description: "Programming, debugging, code review tasks"
+        keywords: ["code", "debug", "programming"]
+        examples: ["Fix this bug", "Review this code"]
+      writing:
+        description: "Content writing, documentation tasks"
+        keywords: ["write", "document", "content"]
+        examples: ["Write a blog post", "Document this API"]
+    model:
+      provider: "openai"
+      name: "gpt-4o-mini"
+```
+
+### Conversation Analysis Router
+
+Routes based on conversation analysis:
+
+```yaml
+routers:
+  - name: "conversation_router"
+    type: "conversation_analysis"
+    routing_logic:
+      agent1: "Route to agent1 when conversation indicates X"
+      agent2: "Route to agent2 when conversation indicates Y"
+    model:
+      provider: "openai"
+      name: "gpt-4o-mini"
+```
+
+### Reflection Router
+
+For A→B→A→C feedback patterns:
+
+```yaml
+routers:
+  - name: "reflection_router"
+    type: "reflection"
+    flow_pattern: ["writer", "critic", "writer", "editor"]  # A → B → A → C pattern
+    model:
+      provider: "openai"
+      name: "gpt-4o-mini"
+    settings:
+      allow_early_exit: true  # Allow early exit if criteria met
+```
+
+## YAML Schema Reference
+
+### Metadata Section
+
+```yaml
+metadata:
+  name: "workflow-name" # Required: Unique workflow identifier
+  version: "1.0.0" # Required: Semantic version
+  description: "Workflow description" # Optional: Human-readable description
+  author: "Your Name" # Optional: Workflow author
+  tags: ["tag1", "tag2"] # Optional: Categorization tags
+```
+
+### Arium Configuration
+
+```yaml
+arium:
+  agents: [] # Optional: List of agents (see agent configuration)
+  function_nodes: [] # Optional: List of function nodes (see function node configuration)
+  routers: [] # Optional: List of routers (see router configuration)
+  ariums: [] # Optional: List of nested arium nodes (see arium node configuration)
+  iterators: [] # Optional: List of foreach nodes (alias: foreach_nodes)
+  workflow: # Required: Workflow configuration
+    start: "node_name" # Required: Starting node name
+    edges: [] # Required: List of edges (see edge configuration)
+    end: ["node_name"] # Required: List of end node names
+```
+
+### Agent Configuration
+
+```yaml
+agents:
+  - name: "agent_name" # Required: Agent name
+    job: "System prompt" # Required (if using direct config): Agent's system prompt
+    prompt: "System prompt" # Alternative to 'job'
+    role: "Agent Role" # Optional: Internal role description
+    act_as: "assistant" # Optional: Message role
+    base_url: "https://api.example.com" # Optional: Base URL override
+    input_filter: ["node1", "node2"] # Optional: Filter inputs from specific workflow nodes
+    model: # Optional: LLM configuration (required for direct config)
+      provider: "openai" # Required: LLM provider
+      name: "gpt-4o-mini" # Required: Model name
+      temperature: 0.7 # Optional: Temperature setting
+      max_tokens: 1000 # Optional: Maximum tokens
+    settings: # Optional: Agent settings
+      max_retries: 3 # Optional: Maximum retries
+      reasoning_pattern: "DIRECT" # Optional: DIRECT, REACT, or COT
+    # Alternative: Reference pre-built agent (only name)
+    # - name: "pre_built_agent"
+    # Alternative: Inline YAML config
+    # yaml_config: "agent yaml string"
+    # Alternative: External YAML file
+    # yaml_file: "agent.yaml"
+```
+
+**Note:** `input_filter` for agents specifies which nodes' outputs should be passed as inputs to this agent. Only results from the specified node names will be included. If not specified, all available memory items are passed.
+
+### Function Node Configuration
+
+```yaml
+function_nodes:
+  - name: "function_node_name" # Required: Function node name
+    function_name: "function_name" # Required: Name in function_registry
+    description: "Function description" # Optional: Description
+    input_filter: ["node1", "node2"] # Optional: Filter inputs from specific workflow nodes
+    prefilled_params: # Optional: Pre-filled parameters
+      param1: "value1"
+      param2: 42
+```
+
+**Note:** `input_filter` specifies which nodes' outputs should be passed as inputs to this node. Only results from the specified node names will be included. If not specified, all available memory items are passed.
+
+### Router Configuration
+
+```yaml
+routers:
+  - name: "router_name" # Required: Router name
+    type: "smart" # Required: smart, task_classifier, conversation_analysis, reflection, plan_execute
+    model: # Optional: LLM configuration for router
+      provider: "openai"
+      name: "gpt-4o-mini"
+    settings: # Optional: Router settings
+      temperature: 0.3
+      fallback_strategy: "first" # first, random, or all
+      allow_early_exit: true # For reflection router
+      planner_agent: "planner" # For plan_execute router
+      executor_agent: "executor" # For plan_execute router
+      reviewer_agent: "reviewer" # For plan_execute router
+    # Smart router
+    routing_options: # Required for smart router
+      agent1: "Description for agent1"
+      agent2: "Description for agent2"
+    # Task classifier router
+    task_categories: # Required for task_classifier router
+      category1:
+        description: "Category description"
+        keywords: ["keyword1", "keyword2"]
+        examples: ["example1", "example2"]
+    # Conversation analysis router
+    routing_logic: # Required for conversation_analysis router
+      agent1: "Routing logic for agent1"
+    # Reflection router
+    flow_pattern: ["agent1", "agent2", "agent1"] # Required for reflection router
+    # Plan-execute router
+    agents: # Required for plan_execute router
+      planner: "Planner description"
+      executor: "Executor description"
+```
+
+### Edge Configuration
+
+```yaml
+edges:
+  - from: "source_node" # Required: Source node name
+    to: ["target_node1", "target_node2"] # Required: List of target node names
+    router: "router_name" # Optional: Router name to use for routing
+```
+
+### Arium Node Configuration (Nested Workflows)
+
+```yaml
+ariums:
+  - name: "nested_arium_name" # Required: Nested arium name
+    inherit_variables: true # Optional: Inherit variables from parent (default: true)
+    input_filter: ["node1", "node2"] # Optional: Filter inputs from specific workflow nodes
+    yaml_file: "nested-workflow.yaml" # Optional: External YAML file reference
+    # Or use inline configuration:
+    agents: [] # Optional: List of agents for nested arium
+    function_nodes: [] # Optional: List of function nodes
+    routers: [] # Optional: List of routers
+    ariums: [] # Optional: Nested arium nodes (supports nesting)
+    iterators: [] # Optional: List of foreach nodes
+    workflow: # Required if using inline config
+      start: "node_name"
+      edges: []
+      end: ["node_name"]
+```
+
+**Note:** `input_filter` for nested ariums works the same way - it filters which parent workflow nodes' outputs are passed to the nested workflow.
+
+### ForEach Node Configuration
+
+```yaml
+iterators: # or 'foreach_nodes'
+  - name: "foreach_node_name" # Required: ForEach node name
+    execute_node: "node_name" # Required: Name of node to execute on each item
+    input_filter: ["node1", "node2"] # Optional: Filter inputs from specific workflow nodes
+```
+
+**Note:** `input_filter` for ForEach nodes filters which nodes' outputs are used as the collection to iterate over.
+
+## Loading and Using YAML Workflows
+
+### Basic Loading
+
+```python
+from flo_ai.arium import AriumBuilder
+
+# Load from file
+arium_builder = AriumBuilder.from_yaml(yaml_file='workflow.yaml')
+arium = arium_builder.build()
+
+# Load from string
+yaml_content = """
+arium:
+  agents:
+    - name: "agent1"
+      job: "Process input."
+      model:
+        provider: "openai"
+        name: "gpt-4o-mini"
+  workflow:
+    start: "agent1"
+    edges: []
+    end: ["agent1"]
+"""
+
+arium_builder = AriumBuilder.from_yaml(yaml_str=yaml_content)
+arium = arium_builder.build()
+```
+
+### Loading with Registries
+
+When using function nodes or tool-enabled agents, provide registries:
+
+```python
+from flo_ai.arium import AriumBuilder
+from flo_ai.tool import flo_tool
+
+# Define functions for function nodes
+def process_data(inputs, variables=None, **kwargs):
+    return f"Processed: {inputs}"
+
+# Define tools for agents
+@flo_tool(description="Get weather")
+async def get_weather(city: str) -> str:
+    return f"Weather in {city}: sunny"
+
+# Create registries
+function_registry = {
+    "process_data": process_data
+}
+
+tool_registry = {
+    "get_weather": get_weather.tool
+}
+
+# Load with registries
+arium_builder = AriumBuilder.from_yaml(
+    yaml_file='workflow.yaml',
+    function_registry=function_registry,
+    tool_registry=tool_registry
+)
+arium = arium_builder.build()
+```
+
+### Loading with Pre-built Agents
+
+Reference pre-built agents in YAML:
+
+```python
+from flo_ai.arium import AriumBuilder
+from flo_ai.agent import AgentBuilder
+from flo_ai.llm import OpenAI
+
+# Create pre-built agents
+agent1 = (
+    AgentBuilder()
+    .with_name('pre_built_agent')
+    .with_prompt('You are a helpful assistant.')
+    .with_llm(OpenAI(model='gpt-4o-mini'))
+    .build()
+)
+
+# Provide agents dictionary
+agents_dict = {
+    'pre_built_agent': agent1
+}
+
+# YAML can reference it:
+# agents:
+#   - name: "pre_built_agent"
+
+arium_builder = AriumBuilder.from_yaml(
+    yaml_file='workflow.yaml',
+    agents=agents_dict
+)
+arium = arium_builder.build()
+```
+
+### Loading with Custom Routers
+
+Provide custom router functions:
+
+```python
+from flo_ai.arium import AriumBuilder
+from flo_ai.arium.memory import MessageMemory
+
+def custom_router(memory: MessageMemory) -> str:
+    # Custom routing logic
+    messages = memory.get()
+    if messages and "urgent" in str(messages[-1].result).lower():
+        return "urgent_handler"
+    return "normal_handler"
+
+routers_dict = {
+    'custom_router': custom_router
+}
+
+arium_builder = AriumBuilder.from_yaml(
+    yaml_file='workflow.yaml',
+    routers=routers_dict
+)
+arium = arium_builder.build()
+```
+
+### Running Workflows
+
+```python
+# Build and run in one step
+result = await (
+    AriumBuilder()
+    .from_yaml(yaml_file='workflow.yaml')
+    .build_and_run(["Input message"])
+)
+
+# Or build first, then run
+arium_builder = AriumBuilder.from_yaml(yaml_file='workflow.yaml')
+arium = arium_builder.build()
+result = await arium.run(["Input message"])
+
+# With variables
+variables = {'user_name': 'John', 'company': 'TechCorp'}
+result = await arium.run(["Input message"], variables=variables)
+```
+
+## Writing/Saving YAML Workflow Configuration
+
+To save a workflow configuration to YAML, you can manually construct the YAML structure:
+
+```python
+import yaml
+from flo_ai.arium import AriumBuilder
+
+# Create a workflow programmatically
+arium_builder = (
+    AriumBuilder()
+    .add_agent(agent1)
+    .add_agent(agent2)
+    .start_with(agent1)
+    .connect(agent1, agent2)
+    .end_with(agent2)
+)
+
+# Create YAML configuration dictionary
+yaml_config = {
+    'metadata': {
+        'name': 'my-workflow',
+        'version': '1.0.0',
+        'description': 'My workflow description'
+    },
+    'arium': {
+        'agents': [
+            {
+                'name': 'agent1',
+                'job': 'First agent prompt',
+                'model': {
+                    'provider': 'openai',
+                    'name': 'gpt-4o-mini'
+                }
+            },
+            {
+                'name': 'agent2',
+                'job': 'Second agent prompt',
+                'model': {
+                    'provider': 'openai',
+                    'name': 'gpt-4o-mini'
+                }
+            }
+        ],
+        'workflow': {
+            'start': 'agent1',
+            'edges': [
+                {
+                    'from': 'agent1',
+                    'to': ['agent2']
+                }
+            ],
+            'end': ['agent2']
+        }
+    }
+}
+
+# Write to file
+with open('exported-workflow.yaml', 'w') as f:
+    yaml.dump(yaml_config, f, default_flow_style=False, sort_keys=False)
+
+print("✅ Workflow configuration saved to exported-workflow.yaml")
+```
+
+## Validation and Testing
+
+### Schema Validation
+
+Use the `AriumYamlModel` for proper validation of YAML configurations:
+
+```python
+from flo_ai.arium import AriumBuilder
+from flo_ai.models.arium import AriumYamlModel
+import yaml
+
+# Validate YAML structure using AriumYamlModel
+def validate_workflow_yaml(file_path):
+    """Validate YAML configuration using AriumYamlModel.
+    
+    Args:
+        file_path: Path to YAML file to validate
+        
+    Returns:
+        bool: True if valid, False otherwise
+    """
+    try:
+        with open(file_path, 'r') as f:
+            config = yaml.safe_load(f)
+
+        # Use AriumYamlModel for validation
+        # This will validate all fields, types, and constraints
+        validated_config = AriumYamlModel(**config)
+        
+        print("✅ YAML configuration is valid")
+        print(f"   Workflow start: {validated_config.arium.workflow.start}")
+        print(f"   Number of agents: {len(validated_config.arium.agents or [])}")
+        if validated_config.metadata:
+            print(f"   Metadata: {validated_config.metadata.name} v{validated_config.metadata.version}")
+        return True
+    except ValueError as e:
+        # AriumBuilder._validate_yaml_config raises ValueError with formatted errors
+        print(f"❌ YAML validation failed: {e}")
+        return False
+    except Exception as e:
+        print(f"❌ YAML validation failed: {e}")
+        return False
+
+# Validate a YAML file
+validate_workflow_yaml('workflow.yaml')
+```
+
+You can also use `AriumBuilder.from_yaml()` which automatically validates the configuration:
+
+```python
+from flo_ai.arium import AriumBuilder
+
+def validate_and_load_workflow(yaml_file):
+    """Validate and load workflow from YAML file.
+    
+    Args:
+        yaml_file: Path to YAML file
+        
+    Returns:
+        AriumBuilder or None if validation fails
+    """
+    try:
+        # from_yaml automatically validates using AriumYamlModel
+        arium_builder = AriumBuilder.from_yaml(yaml_file=yaml_file)
+        print("✅ YAML configuration is valid and workflow builder created")
+        return arium_builder
+    except ValueError as e:
+        # Validation errors are raised as ValueError with detailed messages
+        print(f"❌ YAML validation failed:\n{e}")
+        return None
+    except Exception as e:
+        print(f"❌ Error loading workflow: {e}")
+        return None
+
+# Validate and load
+arium_builder = validate_and_load_workflow('workflow.yaml')
+if arium_builder:
+    arium = arium_builder.build()
+```
+
+### Testing YAML Workflows
+
+```python
+import asyncio
+from flo_ai.arium import AriumBuilder
+
+async def test_yaml_workflow():
+    """Test a YAML workflow configuration."""
+    try:
+        # Load and validate workflow (validation happens automatically)
+        arium_builder = AriumBuilder.from_yaml(yaml_file='workflow.yaml')
+        arium = arium_builder.build()
+
+        # Test workflow execution
+        result = await arium.run(["Test input message"])
+        assert result is not None
+        print(f"✅ Workflow executed: {len(result)} message(s)")
+
+        # Test with variables
+        variables = {'user_name': 'Test User', 'company': 'TestCorp'}
+        result = await arium.run(["Test message"], variables=variables)
+        print(f"✅ Workflow with variables: {len(result)} message(s)")
+        
+        return True
+    except ValueError as e:
+        print(f"❌ Validation error: {e}")
+        return False
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        return False
+
+# Run tests
+asyncio.run(test_yaml_workflow())
+```
+
+## Best Practices
+
+### Workflow Structure
+
+1. **Use meaningful names**: Choose descriptive agent, node, and router names
+2. **Version your configurations**: Always include version numbers in metadata
+3. **Document thoroughly**: Add descriptions for all components
+4. **Validate schemas**: Use YAML schema validation tools
+
+### Performance Optimization
+
+```yaml
+# Optimize for performance
+arium:
+  agents:
+    - name: "fast_agent"
+      job: "Quick processing"
+      model:
+        provider: "openai"
+        name: "gpt-4o-mini" # Use faster model
+        temperature: 0.3
+        max_tokens: 500
+      settings:
+        max_retries: 2 # Limit retries
+  workflow:
+    start: "fast_agent"
+    edges: []
+    end: ["fast_agent"]
+```
+
+### Security Considerations
+
+```yaml
+# Secure configuration
+arium:
+  agents:
+    - name: "secure_agent"
+      job: |
+        You are a secure assistant. Never:
+        - Share sensitive information
+        - Execute dangerous commands
+      model:
+        provider: "openai"
+        name: "gpt-4o"
+        temperature: 0.1
+        max_tokens: 200
+        timeout: 10 # Short timeout
+      settings:
+        max_retries: 1
+  workflow:
+    start: "secure_agent"
+    edges: []
+    end: ["secure_agent"]
+```
+
+## Examples
+
+### Content Analysis Workflow
+
+```yaml content-analysis.yaml
+metadata:
+  name: "content-analysis"
+  version: "1.0.0"
+  description: "Analyzes and summarizes content"
+
+arium:
+  agents:
+    - name: "analyzer"
+      role: "Content Analyst"
+      job: |
+        Analyze the input content and:
+        1. Extract key insights
+        2. Identify main themes
+        3. Note important details
+      model:
+        provider: "openai"
+        name: "gpt-4o"
+        temperature: 0.2
+
+    - name: "summarizer"
+      role: "Content Summarizer"
+      job: "Create a concise summary based on the analysis."
+      model:
+        provider: "anthropic"
+        name: "claude-3-5-sonnet-20240620"
+        temperature: 0.3
+
+  workflow:
+    start: "analyzer"
+    edges:
+      - from: "analyzer"
+        to: ["summarizer"]
+    end: ["summarizer"]
+```
+
+### Multi-Agent Routing Workflow
+
+```yaml routing-workflow.yaml
+metadata:
+  name: "routing-workflow"
+  version: "1.0.0"
+  description: "Routes content to specialized agents"
+
+arium:
+  agents:
+    - name: "classifier"
+      job: "Classify the input content type."
+      model:
+        provider: "openai"
+        name: "gpt-4o-mini"
+
+    - name: "technical_writer"
+      job: "Write technical documentation."
+      model:
+        provider: "openai"
+        name: "gpt-4o"
+
+    - name: "creative_writer"
+      job: "Write creative content."
+      model:
+        provider: "anthropic"
+        name: "claude-3-5-sonnet-20240620"
+
+  routers:
+    - name: "content_router"
+      type: "smart"
+      routing_options:
+        technical_writer: "Technical content, documentation, code"
+        creative_writer: "Creative writing, stories, fiction"
+      model:
+        provider: "openai"
+        name: "gpt-4o-mini"
+        temperature: 0.3
+
+  workflow:
+    start: "classifier"
+    edges:
+      - from: "classifier"
+        to: ["technical_writer", "creative_writer"]
+        router: "content_router"
+    end: ["technical_writer", "creative_writer"]
+```
+
+### Reflection Workflow
+
+```yaml reflection-workflow.yaml
+metadata:
+  name: "reflection-workflow"
+  version: "1.0.0"
+  description: "Writer-critic feedback loop"
+
+arium:
+  agents:
+    - name: "writer"
+      job: "Write content based on feedback."
+      model:
+        provider: "openai"
+        name: "gpt-4o"
+
+    - name: "critic"
+      job: "Review and provide constructive feedback."
+      model:
+        provider: "anthropic"
+        name: "claude-3-5-sonnet-20240620"
+
+    - name: "editor"
+      job: "Finalize the content."
+      model:
+        provider: "openai"
+        name: "gpt-4o"
+
+  routers:
+    - name: "reflection_router"
+      type: "reflection"
+      flow_pattern: ["writer", "critic", "writer", "editor"]
+      model:
+        provider: "openai"
+        name: "gpt-4o-mini"
+      settings:
+        allow_early_exit: true
+
+  workflow:
+    start: "writer"
+    edges:
+      - from: "writer"
+        to: ["critic"]
+        router: "reflection_router"
+    end: ["editor"]
+```
+
+This YAML-based approach makes workflow configuration declarative, versionable, and easily shareable across teams!
