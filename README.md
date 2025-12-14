@@ -102,9 +102,10 @@ Deploy diverse AI agents for auditing, underwriting, contact center supervision,
 
 ## Quick Start
 
-**Option 1**: [Contact us](mailto:vishnu@rootflo.ai) for a demo and we help you build immediately. 
+**Option 1**: [Schedule a demo](https://calendly.com/meetings-rootflo/30min) and we help you build immediately. 
 
 **Option 2**: Self-host for maximum control and customization. Please find the self-hosting instructions in the [Wavefront Documentation](https://github.com/rootflo/wavefront/tree/develop/wavefront).
+
 
 ## Platform Components
 
@@ -128,6 +129,11 @@ As part of the project, we are building the following components
 
 See [ROADMAP.md](ROADMAP.md) for detailed feature plans and contribution opportunities.
 
+> [!WARNING]
+> 
+> - This project is under active development and APIs may change without notice. Please checkout the [platform docs](https://wavefront.rootflo.ai) for the latest information.
+> - The platform is not in the GA state, and there are unimplemented feature. Checkout [ROADMAP.md](../ROADMAP.md) for the list of features, and whats missing.
+
 ## ⭐ Show Your Support
 
 If you find Wavefront AI useful, please consider:
@@ -144,7 +150,7 @@ If you find Wavefront AI useful, please consider:
 - [Join our Discord](https://discord.gg/BPXsNwfuRU)
 - [Read our docs](https://wavefront.rootflo.ai/)
 - [Submit an issue](https://github.com/rootflo/wavefront/issues/new/choose)
-- [Talk to us](mailto:sales@rootflo.ai)
+- [Talk to us](https://calendly.com/meetings-rootflo/30min)
 
 Text us! <br>
 [![Twitter Vishnu](https://img.shields.io/twitter/follow/viz_satiz?style=flat-square&logo=X)](https://x.com/viz_satiz)
