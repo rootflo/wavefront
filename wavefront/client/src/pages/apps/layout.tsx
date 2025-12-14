@@ -16,6 +16,7 @@ import { Outlet, useLocation, useNavigate, useParams } from 'react-router';
 
 const navItems = [
   {
+    id: 'agents',
     name: 'Agents',
     icon: AiAgentIcon,
     link: `/apps/:appId/agents`,
@@ -28,42 +29,49 @@ const navItems = [
   //   description: 'Manage authentication provider configurations',
   // },
   {
+    id: 'datasources',
     name: 'Datasources',
     icon: DatasourcesIcon,
     link: `/apps/:appId/datasources`,
     description: 'Manage and configure data sources for this application',
   },
   {
+    id: 'functions',
     name: 'Functions',
     icon: WorkflowIcon,
     link: `/apps/:appId/functions`,
     description: 'Create, manage, and execute functions',
   },
   {
+    id: 'llm-repository',
     name: 'LLM Repository',
     icon: ModelRepositoryIcon,
     link: `/apps/:appId/llm-repository`,
     description: 'Manage and configure LLMs for your application',
   },
   {
+    id: 'model-inference',
     name: 'Model Inference',
     icon: ModelInferenceIcon,
     link: `/apps/:appId/model-inference`,
     description: 'Manage and configure model inference for this application',
   },
   {
+    id: 'knowledge-bases',
     name: 'RAG Service',
     icon: RagIcon,
     link: `/apps/:appId/knowledge-bases`,
     description: 'Manage and configure knowledge bases for this application',
   },
   {
+    id: 'voice-agents',
     name: 'Voice Agents',
     icon: PhoneIcon,
     link: `/apps/:appId/voice-agents`,
     description: 'Manage AI voice agents with LLM, TTS, STT, and telephony',
   },
   {
+    id: 'workflows',
     name: 'Workflows',
     icon: WorkflowIcon,
     link: `/apps/:appId/workflows`,
@@ -80,6 +88,7 @@ const navItems = [
 let finalNavItems = navItems;
 if (appEnv.isApiServicesEnabled) {
   const apiServiceNavItem = {
+    id: 'api-services',
     name: 'API Services',
     icon: ApiIcon,
     link: `/apps/:appId/api-services`,
@@ -98,10 +107,10 @@ const AppLayout: React.FC = () => {
       <div className="flex h-full w-full overflow-auto">
         <div className="flex h-full w-[240px] flex-col gap-3 border-r border-gray-200 p-5">
           {finalNavItems.map((item) => {
-            const isActive = location.pathname.includes(item.link.split('/')[3]);
+            const isActive = item.id === location.pathname.split('/')[3];
             return (
               <div
-                key={item.name}
+                key={item.id}
                 className={clsx(
                   'cursor-pointer rounded-lg border-[0.5px] border-[#EFF0F1] p-3',
                   isActive && 'bg-[#FBFBFB]'

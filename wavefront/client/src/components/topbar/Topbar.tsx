@@ -42,17 +42,13 @@ const Topbar = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
   return (
     <div className="flex h-20 justify-between border-b">
       <a className="flex min-w-[240px] cursor-pointer justify-center border-r px-8 py-5" onClick={handleNavIconClick}>
-        <RootfloIcon />
+        <img src="/wavefront.png" alt="Rootflo Icon" className="object-contain" width={149} />
       </a>
 
       <div className="flex w-full justify-between px-8 py-5">
-        <div id="left_part" className="flex items-center justify-center gap-3">
-          <p className="text-[16.33px] font-bold text-black">AI Middleware</p>
-          {/* <p>|</p> */}
-          {/* <div className="flex items-center justify-center gap-1">
-            <p className="text-[13px] font-normal">Powered by </p>
-            <RootfloIcon />
-          </div> */}
+        <div id="left_part" className="flex items-center justify-center gap-1">
+          <p className="text-[10px] text-black/80">POWERED BY</p>
+          <RootfloIcon height={16} width={42} />
         </div>
         <div id="right_part" className="flex items-center justify-center gap-3">
           {apps && (
