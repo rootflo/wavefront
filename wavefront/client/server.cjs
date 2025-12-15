@@ -5,7 +5,7 @@ const path = require('path');
 
 const PORT = process.env.PORT || 3000;
 const NAMESPACE = process.env.NAMESPACE || 'staging-aws';
-const BASE_URL = process.env.BASE_URL || `https://${NAMESPACE}.rootflo.ai/wavefront`;
+const BASE_URL = process.env.BASE_URL || `https://${NAMESPACE}.rootflo.ai/floconsole`;
 const APP_ENV = process.env.APP_ENV || 'production';
 const FEATURE_API_SERVICES = process.env.FEATURE_API_SERVICES || 'false';
 
@@ -51,6 +51,7 @@ app.get('*', (req, res) => {
   // Generate nonce for CSP
   const nonce = crypto.randomBytes(16).toString('base64');
   const defaultSrc = `'self'`;
+  const connectSrc = `'self' ${new URL(BASE_URL).origin}`;
   const scriptSrc = `'self' 'nonce-${nonce}'`;
   const styleSrc = `'self' 'unsafe-inline'`;
   const mediaSrc = `'self' https://storage.googleapis.com https://*.s3.amazonaws.com`;
@@ -61,7 +62,7 @@ app.get('*', (req, res) => {
     'Cache-Control': 'no-store, no-cache, must-revalidate, private',
     Pragma: 'no-cache',
     Expires: '0',
-    'Content-Security-Policy': `default-src ${defaultSrc}; script-src ${scriptSrc}; style-src ${styleSrc}; frame-ancestors ${frameAncestors}; img-src ${imgSrc}; media-src ${mediaSrc}`,
+    'Content-Security-Policy': `default-src ${defaultSrc}; connect-src ${connectSrc} script-src ${scriptSrc}; style-src ${styleSrc}; frame-ancestors ${frameAncestors}; img-src ${imgSrc}; media-src ${mediaSrc}`,
     'X-Content-Type-Options': 'nosniff',
     'Strict-Transport-Security': 'max-age=63072000; includeSubDomains; preload',
   });
