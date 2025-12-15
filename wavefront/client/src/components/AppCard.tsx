@@ -51,7 +51,9 @@ const AppCard: React.FC<AppCardProps> = ({ app, onClick, onDeleteClick }) => {
         <p className="text-xl font-medium text-[#101010]">{app.app_name}</p>
         <p className="truncate text-base font-normal text-[#878787]">{app.public_url}</p>
       </div>
-      <div className="text-sm font-normal text-[#B8B8B8]">{dayjs(app.updated_at).format('DD MMM YYYY')}</div>
+      <div className="text-sm font-normal text-[#B8B8B8]">
+        Updated on {dayjs(app.updated_at || app.created_at).format('DD/MM/YYYY')}
+      </div>
     </div>
   );
 };

@@ -35,7 +35,8 @@ const Dashboard: React.FC = () => {
 
     setDeleting(true);
     try {
-      await floConsoleService.appService.deleteApp(deleteItem.id);
+      const deleteDeployment = deleteItem.deployment_type === 'auto';
+      await floConsoleService.appService.deleteApp(deleteItem.id, deleteDeployment);
       notifySuccess(`App "${deleteItem.app_name}" deleted successfully`);
 
       // Refresh the apps list

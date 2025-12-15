@@ -34,8 +34,12 @@ export class AppService {
     return response;
   }
 
-  async deleteApp(appId: string): Promise<DeleteAppResponse> {
-    const response: IApiResponse<DeleteAppData> = await this.http.delete(`/v1/apps/${appId}`);
+  async deleteApp(appId: string, deleteDeployment: boolean): Promise<DeleteAppResponse> {
+    const response: IApiResponse<DeleteAppData> = await this.http.delete(`/v1/apps/${appId}`, {
+      params: {
+        delete_deployment: deleteDeployment,
+      },
+    });
     return response;
   }
 
