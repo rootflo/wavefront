@@ -104,18 +104,11 @@ const AgentDetail: React.FC = () => {
           [key]: value !== undefined ? value : `<${key}>`,
         };
       });
-      // Create display name with all prefilled values (only values, not keys)
-      const prefilledValuesString = prefillValues
-        .filter((key) => tool.prefilled_value?.[key])
-        .map((key) => tool.prefilled_value?.[key]) // Only show the value, not the key
-        .join(', ');
 
       return {
         name: tool.name,
         prefilled_values: prefilledValue,
-        display_name: `${tool.resource_name ? tool.resource_name + ' - ' : ''}${
-          tool.name
-        }${prefilledValuesString ? ` (${prefilledValuesString})` : ''}`,
+        display_name: `${tool.resource_name ? tool.resource_name + ' - ' : ''}${tool.name}`,
         description: tool.description,
       };
     });
