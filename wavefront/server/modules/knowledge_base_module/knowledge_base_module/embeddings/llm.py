@@ -2,6 +2,7 @@ from typing import Any, Optional
 from flo_ai.helpers.llm_factory import LLMFactory
 from flo_ai.llm import Gemini
 from db_repo_module.models.llm_inference_config import LlmInferenceConfig
+from flo_ai.models.agent import LLMConfigModel
 
 
 class LLMModelFunc:
@@ -15,7 +16,11 @@ class LLMModelFunc:
         Returns:
             LLM instance
         """
-        return LLMFactory.create_llm({'provider': 'rootflo', 'model_id': config.id})
+        config = LLMConfigModel(
+            provider='rootflo',
+            model_id=config.id,
+        )
+        return LLMFactory.create_llm(config)
 
     async def generate_response(
         self,
