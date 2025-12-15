@@ -320,7 +320,5 @@ async def execute_message_processor(
     except Exception as e:
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content=response_formatter.buildErrorResponse(
-                f'Error executing message processor: {str(e)}'
-            ),
+            content=response_formatter.buildErrorResponse(str(e)),
         )

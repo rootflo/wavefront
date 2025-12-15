@@ -55,6 +55,7 @@ const navItems = [
     icon: ModelInferenceIcon,
     link: `/apps/:appId/model-inference`,
     description: 'Manage and configure model inference for this application',
+    alpha: true,
   },
   {
     id: 'knowledge-bases',
@@ -120,9 +121,13 @@ const AppLayout: React.FC = () => {
                 <div className="flex items-center gap-2">
                   <item.icon color={isActive ? '#000' : '#fff'} />
                   <p
-                    className={clsx(isActive ? 'font-medium text-[#101010]' : 'font-normal text-[#585858]', 'text-sm')}
+                    className={clsx(
+                      isActive ? 'font-medium text-[#101010]' : 'font-normal text-[#585858]',
+                      'flex items-center gap-2 text-sm'
+                    )}
                   >
-                    {item.name}
+                    <span>{item.name}</span>
+                    {item.alpha && <span className="mb-2 text-[10px] text-green-500">alpha</span>}
                   </p>
                 </div>
                 <div

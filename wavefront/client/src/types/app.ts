@@ -4,6 +4,7 @@ import { IApiResponse } from '@app/lib/axios';
 export interface App {
   id: string;
   app_name: string;
+  deployment_type: string;
   created_at: string;
   config: Record<string, string>;
   public_url: string;

@@ -66,8 +66,10 @@ class HermesClient:
                 },
                 timeout=10,
             )
-            resp.raise_for_status()
-            return resp.json()
+            resp_json = resp.json()
+            if resp.status_code != 200:
+                raise Exception(resp_json['details'])
+            return resp_json
 
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, _do_request)

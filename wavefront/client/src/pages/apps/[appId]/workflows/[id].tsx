@@ -428,7 +428,6 @@ const WorkflowDetail: React.FC = () => {
       }
     } catch (error) {
       console.error('Error running inference:', error);
-      notifyError('Failed to run inference. Please try again.');
     } finally {
       if (!listenEventsEnabled) {
         setRunningInference(false);
