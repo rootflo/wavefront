@@ -16,3 +16,4 @@ examples/local/*
 node_modules/
 .vite
 flo_ai/usecases
+.env
