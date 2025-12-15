@@ -18,7 +18,7 @@ type TCreateAppInputSchema = z.infer<typeof createAppSchema>;
 
 const CreateApp: React.FC = () => {
   const navigate = useNavigate();
-  const { notifySuccess, notifyError } = useNotifyStore();
+  const { notifySuccess } = useNotifyStore();
 
   const [creating, setCreating] = useState(false);
   const [pollingAppId, setPollingAppId] = useState<string | null>(null);
@@ -58,10 +58,9 @@ const CreateApp: React.FC = () => {
         }
         setPollingAppId(null);
         setCreating(false);
-        notifyError('Failed to check app status');
       }
     },
-    [notifySuccess, notifyError, navigate]
+    [navigate]
   );
 
   // Effect to handle polling
@@ -116,7 +115,6 @@ const CreateApp: React.FC = () => {
       }
     } catch (error) {
       console.error('Error creating app:', error);
-      notifyError('Failed to create app');
       setCreating(false);
     }
   };

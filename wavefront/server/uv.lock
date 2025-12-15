@@ -90,7 +90,7 @@ dependencies = [
 requires-dist = [
     { name = "api-services-module", editable = "modules/api_services_module" },
     { name = "common-module", editable = "modules/common_module" },
-    { name = "flo-ai", specifier = "==1.1.0rc5" },
+    { name = "flo-ai", specifier = "==1.1.0rc6" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "flo-utils", editable = "packages/flo_utils" },
     { name = "tools-module", editable = "modules/tools_module" },
@@ -1356,7 +1356,7 @@ wheels = [
 
 [[package]]
 name = "flo-ai"
-version = "1.1.0rc5"
+version = "1.1.0rc6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1377,9 +1377,9 @@ dependencies = [
     { name = "pypdf" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c9/1d/3ed8c9e8f140ccf37c3e8b4a2676ffe3da74e2a43ab46c5f501765fd7f4f/flo_ai-1.1.0rc5.tar.gz", hash = "sha256:418d73a1ef7d1a41fa8c039037628985fb3b9cdc3918acb4e84587e8b70c519c", size = 83464, upload-time = "2025-12-02T14:19:35.405Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/28/43/16a20cacc46837d0a754df706d4e7ad91c07414617f35a947a143924538a/flo_ai-1.1.0rc6.tar.gz", hash = "sha256:07eeed7b7ed5ce283c72164df311480f529cdb28f304b16e63dd054d6ee9177b", size = 89942, upload-time = "2025-12-13T12:52:58.197Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/80/d8/07806187b0a3ff8debe08d06881222c39bd5087fd868c151ac2ab8f54099/flo_ai-1.1.0rc5-py3-none-any.whl", hash = "sha256:e7e1929a45333c8c3584bbe6252e138dcd9d3c12036762d1b875f9414852209c", size = 106332, upload-time = "2025-12-02T14:19:33.686Z" },
+    { url = "https://files.pythonhosted.org/packages/f5/1e/3ef796ef1cf45235e68792731b832eb89f58b10e134597296f84001b1a7d/flo_ai-1.1.0rc6-py3-none-any.whl", hash = "sha256:2c47dc341930ea93a0a7a61d7d59a6e30068063742ff4b8052805dc4fb062bb1", size = 114499, upload-time = "2025-12-13T12:52:56.293Z" },
 ]
 
 [[package]]
@@ -2576,7 +2576,7 @@ dev = [
 requires-dist = [
     { name = "boto3", specifier = "<=1.38.40" },
     { name = "datasource", editable = "plugins/datasource" },
-    { name = "flo-ai", specifier = "==1.1.0rc5" },
+    { name = "flo-ai", specifier = "==1.1.0rc6" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "google-cloud-pubsub", specifier = "~=2.30.0" },
     { name = "numpy", specifier = ">=1.24,<2.0" },
@@ -5482,7 +5482,7 @@ dev = [
 requires-dist = [
     { name = "common-module", editable = "modules/common_module" },
     { name = "datasource", editable = "plugins/datasource" },
-    { name = "flo-ai", specifier = "==1.1.0rc5" },
+    { name = "flo-ai", specifier = "==1.1.0rc6" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "knowledge-base-module", editable = "modules/knowledge_base_module" },
     { name = "plugins-module", editable = "modules/plugins_module" },

@@ -485,7 +485,6 @@ const AgentDetail: React.FC = () => {
       setUploadedImages([]);
     } catch (error) {
       console.error('Error running inference:', error);
-      notifyError('Failed to run inference. Please try again.');
     } finally {
       setRunningInference(false);
     }
@@ -516,7 +515,7 @@ const AgentDetail: React.FC = () => {
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
-            <BreadcrumbPage>{agent?.name || id}</BreadcrumbPage>
+            <BreadcrumbPage>{agent?.name}</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
@@ -526,71 +525,73 @@ const AgentDetail: React.FC = () => {
       ) : !agent ? (
         <div className="flex items-center justify-center p-8 text-red-600">Agent not found</div>
       ) : (
-        <div className="flex w-full flex-1 flex-col gap-10">
-          <div className="flex items-start justify-between">
-            <p className="text-2xl leading-normal font-semibold text-black">{agent.name}</p>
-            <div className="flex gap-4">
-              <Button variant="outline" onClick={() => setEditDialogOpen(true)}>
-                Edit
-              </Button>
-              <Button variant="destructive" onClick={handleDeleteClick}>
-                Delete
-              </Button>
+        <>
+          <div className="flex w-full flex-1 flex-col gap-10">
+            <div className="flex items-start justify-between">
+              <p className="text-2xl leading-normal font-semibold text-black">{agent.name}</p>
+              <div className="flex gap-4">
+                <Button variant="outline" onClick={() => setEditDialogOpen(true)}>
+                  Edit
+                </Button>
+                <Button variant="destructive" onClick={handleDeleteClick}>
+                  Delete
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
+
+          <ChatBot
+            chatHistory={chatHistory}
+            runningInference={runningInference}
+            selectedLLMConfigId={selectedLLMConfigId}
+            setSelectedLLMConfigId={setSelectedLLMConfigId}
+            loadingConfigs={loadingConfigs}
+            llmConfigs={llmConfigs}
+            uploadedImages={uploadedImages}
+            uploadedDocuments={uploadedDocuments}
+            handleRemoveImage={handleRemoveImage}
+            handleRemoveDocument={handleRemoveDocument}
+            showUploadMenu={showUploadMenu}
+            setShowUploadMenu={setShowUploadMenu}
+            inferenceInput={inferenceInput}
+            setInferenceInput={setInferenceInput}
+            inferenceVariables={inferenceVariables}
+            setInferenceVariables={setInferenceVariables}
+            showVariablesInput={showVariablesInput}
+            setShowVariablesInput={setShowVariablesInput}
+            handleQuestionEntered={handleQuestionEntered}
+            handleImageUpload={handleImageUpload}
+            handleDocumentUpload={handleDocumentUpload}
+            uploadingImage={uploadingImage}
+            uploadingDocument={uploadingDocument}
+          />
+
+          {/* Edit Agent Dialog */}
+          <EditAgentDialog
+            isOpen={editDialogOpen}
+            onOpenChange={setEditDialogOpen}
+            yamlContent={yamlContent}
+            selectedTools={selectedTools}
+            toolsDetails={toolsDetails}
+            onSave={async (updatedYamlContent, updatedSelectedTools) => {
+              setYamlContent(updatedYamlContent);
+              setSelectedTools(updatedSelectedTools);
+              handleSave(updatedYamlContent);
+            }}
+            saving={saving}
+          />
+
+          {/* Delete Confirmation Dialog */}
+          <DeleteConfirmationDialog
+            isOpen={!!deleteItem}
+            title="Delete Agent"
+            message={`Are you sure you want to delete "${deleteItem?.name}"? This action cannot be undone.`}
+            onConfirm={handleDeleteConfirm}
+            onCancel={() => setDeleteItem(null)}
+            loading={deleteAgentMutation.isPending}
+          />
+        </>
       )}
-
-      <ChatBot
-        chatHistory={chatHistory}
-        runningInference={runningInference}
-        selectedLLMConfigId={selectedLLMConfigId}
-        setSelectedLLMConfigId={setSelectedLLMConfigId}
-        loadingConfigs={loadingConfigs}
-        llmConfigs={llmConfigs}
-        uploadedImages={uploadedImages}
-        uploadedDocuments={uploadedDocuments}
-        handleRemoveImage={handleRemoveImage}
-        handleRemoveDocument={handleRemoveDocument}
-        showUploadMenu={showUploadMenu}
-        setShowUploadMenu={setShowUploadMenu}
-        inferenceInput={inferenceInput}
-        setInferenceInput={setInferenceInput}
-        inferenceVariables={inferenceVariables}
-        setInferenceVariables={setInferenceVariables}
-        showVariablesInput={showVariablesInput}
-        setShowVariablesInput={setShowVariablesInput}
-        handleQuestionEntered={handleQuestionEntered}
-        handleImageUpload={handleImageUpload}
-        handleDocumentUpload={handleDocumentUpload}
-        uploadingImage={uploadingImage}
-        uploadingDocument={uploadingDocument}
-      />
-
-      {/* Edit Agent Dialog */}
-      <EditAgentDialog
-        isOpen={editDialogOpen}
-        onOpenChange={setEditDialogOpen}
-        yamlContent={yamlContent}
-        selectedTools={selectedTools}
-        toolsDetails={toolsDetails}
-        onSave={async (updatedYamlContent, updatedSelectedTools) => {
-          setYamlContent(updatedYamlContent);
-          setSelectedTools(updatedSelectedTools);
-          handleSave(updatedYamlContent);
-        }}
-        saving={saving}
-      />
-
-      {/* Delete Confirmation Dialog */}
-      <DeleteConfirmationDialog
-        isOpen={!!deleteItem}
-        title="Delete Agent"
-        message={`Are you sure you want to delete "${deleteItem?.name}"? This action cannot be undone.`}
-        onConfirm={handleDeleteConfirm}
-        onCancel={() => setDeleteItem(null)}
-        loading={deleteAgentMutation.isPending}
-      />
     </div>
   );
 };
