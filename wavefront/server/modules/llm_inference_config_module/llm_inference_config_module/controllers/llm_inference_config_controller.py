@@ -91,7 +91,6 @@ async def create_llm_inference_config(
 @inject
 async def get_llm_inference_configs(
     request: Request,
-    embedding: int = 0,
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
     ),
@@ -111,14 +110,6 @@ async def get_llm_inference_configs(
 
     try:
         configs_list = await llm_inference_config_service.list_configs()
-
-        # Filter embedding models if embedding=1 query param is present
-        if embedding == 1:
-            configs_list = [
-                config
-                for config in configs_list
-                if config.get('model_type') == 'embedding'
-            ]
 
         return JSONResponse(
             status_code=status.HTTP_200_OK,
