@@ -45,6 +45,9 @@ class FileProcessor:
             finally:
                 os.unlink(temp_file_path)
 
+        # Explicit raise to prevent implicit None return.
+        raise RuntimeError(f"Unsupported or unknown document type: {document_type}")
+
     def extract_document_type(self, file_type: str) -> DocumentType:
         if file_type.startswith('text/plain'):
             return DocumentType.TEXT
