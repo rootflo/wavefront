@@ -1,12 +1,12 @@
-from typing import Any, List, Dict, Tuple, Optional
 import logging
-import numpy as np
 import tiktoken
-from datetime import datetime
 import uuid
-from rag_ingestion.embeddings.embed import EmbeddingFunc
 import httpx
 import time
+import ast
+import numpy as np
+from flo_utils.utils.log import logger
+from datetime import datetime
 from dataclasses import dataclass
 from rag_ingestion.env import FLOWARE_SERVICE_URL, APP_ENV, PASSTHROUGH_SECRET
 from rag_ingestion.constants.auth import RootfloHeaders
@@ -14,8 +14,9 @@ from rag_ingestion.models.knowledge_base_embeddings import (
     KnowledgeBaseEmbeddingObject,
     RetrieveParams,
 )
-from flo_utils.utils.log import logger
-import ast
+from typing import Any, List, Dict, Tuple, Optional
+from rag_ingestion.embeddings.embed import EmbeddingFunc
+from rag_ingestion.processors.file_processor import DocumentType
 
 
 @dataclass
@@ -23,7 +24,7 @@ class EmbeddingsToStore:
     kb_embeddings: List[KnowledgeBaseEmbeddingObject]
     doc_id: str
     kb_id: str
-    file_type: str
+    file_type: DocumentType
 
 
 class KBRagStorage:
