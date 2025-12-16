@@ -42,6 +42,7 @@ class LlmInferenceConfigService:
         type: str,
         base_url: Optional[str] = None,
         parameters: Optional[dict] = None,
+        model_type: Optional[str] = 'llm',
     ) -> dict:
         """
         Create a new LLM inference configuration
@@ -53,11 +54,14 @@ class LlmInferenceConfigService:
             type: Type of inference engine
             base_url: Base URL for the LLM provider (optional)
             parameters: LLM parameters like temperature, max_tokens, etc. (optional)
+            model_type: Type of model: "llm" or "embedding" (defaults to "llm")
 
         Returns:
             Created LLM inference config as dict
         """
-        logger.info(f'Creating LLM inference config - model: {llm_model}, type: {type}')
+        logger.info(
+            f'Creating LLM inference config - model: {llm_model}, type: {type}, model_type: {model_type}'
+        )
 
         config = await self.llm_inference_config_repository.create(
             llm_model=llm_model,
@@ -66,6 +70,7 @@ class LlmInferenceConfigService:
             type=type,
             base_url=base_url,
             parameters=parameters,
+            model_type=model_type,
         )
 
         # Convert to dict

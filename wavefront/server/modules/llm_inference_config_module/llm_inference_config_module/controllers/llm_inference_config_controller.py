@@ -68,6 +68,7 @@ async def create_llm_inference_config(
             type=payload.type.value,
             base_url=payload.base_url,
             parameters=payload.parameters,
+            model_type=payload.model_type,
         )
 
         return JSONResponse(
@@ -90,6 +91,7 @@ async def create_llm_inference_config(
 @inject
 async def get_llm_inference_configs(
     request: Request,
+    embedding: int = 0,
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
     ),
@@ -109,6 +111,14 @@ async def get_llm_inference_configs(
 
     try:
         configs_list = await llm_inference_config_service.list_configs()
+
+        # Filter embedding models if embedding=1 query param is present
+        if embedding == 1:
+            configs_list = [
+                config
+                for config in configs_list
+                if config.get('model_type') == 'embedding'
+            ]
 
         return JSONResponse(
             status_code=status.HTTP_200_OK,
@@ -221,6 +231,22 @@ async def update_llm_inference_config(
                         f'Invalid type value. Must be one of: {valid_values}'
                     ),
                 )
+        if payload.model_type is not UNSET:
+            if payload.model_type is None:
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content=response_formatter.buildErrorResponse(
+                        'model_type cannot be null'
+                    ),
+                )
+            if payload.model_type not in ['llm', 'embedding']:
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content=response_formatter.buildErrorResponse(
+                        'Invalid model_type value. Must be "llm" or "embedding"'
+                    ),
+                )
+            update_data['model_type'] = payload.model_type
         if payload.base_url is not UNSET:
             update_data['base_url'] = payload.base_url
         if payload.parameters is not UNSET:
