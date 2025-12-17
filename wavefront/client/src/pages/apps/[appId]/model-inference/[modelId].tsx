@@ -1,5 +1,5 @@
 import floConsoleService from '@app/api';
-import { InferencePayload, PreprocessingStep } from '@app/api/model-inference-service';
+import { InferencePayload, ModelInferenceResultData, PreprocessingStep } from '@app/api/model-inference-service';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import {
   Breadcrumb,
@@ -60,7 +60,7 @@ const ModelDetail: React.FC = () => {
   // Inference state
   const [inferenceImageFile, setInferenceImageFile] = useState<File | null>(null);
   const [jsonPayload, setJsonPayload] = useState<string>(defaultJsonPayload);
-  const [inferenceResult, setInferenceResult] = useState<unknown>(null);
+  const [inferenceResult, setInferenceResult] = useState<ModelInferenceResultData | null>(null);
   const [runningInference, setRunningInference] = useState(false);
   const [preprocessingSteps, setPreprocessingSteps] = useState<PreprocessingStep[]>([]);
 
@@ -86,13 +86,10 @@ const ModelDetail: React.FC = () => {
         customPayload
       );
 
-      setInferenceResult(response.data.data);
+      setInferenceResult(response.data.data ?? null);
       notifySuccess('Inference successful!');
     } catch (error) {
       console.error('Error running inference:', error);
-      const errorMessage =
-        error && typeof error === 'object' && 'message' in error ? (error as { message?: string }).message : undefined;
-      notifyError(errorMessage || 'Failed to run inference');
     } finally {
       setRunningInference(false);
     }
@@ -120,6 +117,17 @@ const ModelDetail: React.FC = () => {
       const errorMessage = extractErrorMessage(error);
       notifyError(errorMessage || 'Failed to delete model');
     }
+  };
+
+  const formatInferenceResult = (result: ModelInferenceResultData): string => {
+    return JSON.stringify(
+      {
+        ...result,
+        infer_data: typeof result.infer_data === 'number' ? Math.round(result.infer_data * 100) : result.infer_data,
+      },
+      null,
+      2
+    );
   };
 
   return (
@@ -294,19 +302,7 @@ const ModelDetail: React.FC = () => {
                   <div className="flex flex-col items-start gap-4 rounded-md border border-gray-200 bg-gray-50 p-4">
                     <Label>Inference Result</Label>
                     <div className="w-full text-sm text-black">
-                      <pre className="whitespace-pre-wrap">
-                        {JSON.stringify(
-                          {
-                            ...inferenceResult,
-                            infer_data:
-                              typeof inferenceResult.infer_data === 'number'
-                                ? Math.round(inferenceResult.infer_data * 100)
-                                : inferenceResult.infer_data,
-                          },
-                          null,
-                          2
-                        )}
-                      </pre>
+                      <pre className="whitespace-pre-wrap">{formatInferenceResult(inferenceResult)}</pre>
                     </div>
                   </div>
                 )}

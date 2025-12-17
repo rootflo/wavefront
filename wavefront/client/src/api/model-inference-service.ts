@@ -45,7 +45,7 @@ export interface InferencePayload {
   preprocessing_steps?: PreprocessingStep[];
 }
 
-interface ModelInferenceResultData {
+export interface ModelInferenceResultData {
   clarity_score: number;
   infer_data: unknown; // Type not explicitly defined in backend, so using 'unknown'
   data_type: string;

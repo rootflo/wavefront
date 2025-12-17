@@ -109,9 +109,6 @@ const CreateMessageProcessorDialog: React.FC<CreateMessageProcessorDialogProps> 
       }
     } catch (error) {
       console.error('Error creating message processor:', error);
-      const errorMessage =
-        error && typeof error === 'object' && 'message' in error ? (error as { message?: string }).message : undefined;
-      notifyError(errorMessage || 'Failed to create message processor');
     }
   };
 

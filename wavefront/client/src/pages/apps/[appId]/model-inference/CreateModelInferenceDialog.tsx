@@ -91,10 +91,6 @@ const CreateModelInferenceDialog: React.FC<CreateModelInferenceDialogProps> = ({
       }
     } catch (error) {
       console.error('Error creating model:', error);
-      const errorMessage =
-        error && typeof error === 'object' && 'message' in error ? (error as { message?: string }).message : undefined;
-      notifyError(errorMessage || 'Failed to create model');
-      notifyError(errorMessage);
     } finally {
       setCreating(false);
     }
