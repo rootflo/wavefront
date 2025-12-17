@@ -25,6 +25,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Slider } from '@app/components/ui/slider';
 import { Textarea } from '@app/components/ui/textarea';
 import { VOICE_PROVIDERS_CONFIG, getProviderConfig, mergeParameters } from '@app/config/voice-providers';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { SttConfig, UpdateSttConfigRequest } from '@app/types/stt-config';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -52,7 +53,7 @@ interface EditSttConfigDialogProps {
 const EditSttConfigDialog: React.FC<EditSttConfigDialogProps> = ({ isOpen, onOpenChange, config, onSuccess }) => {
   const { notifySuccess, notifyError } = useNotifyStore();
 
-  const [parameters, setParameters] = useState<Record<string, any>>({});
+  const [parameters, setParameters] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(false);
 
   const form = useForm<UpdateSttConfigInput>({
@@ -90,7 +91,7 @@ const EditSttConfigDialog: React.FC<EditSttConfigDialogProps> = ({ isOpen, onOpe
     }
   }, [watchedProvider, isOpen, config.provider]);
 
-  const setParameter = (key: string, value: any) => {
+  const setParameter = (key: string, value: unknown) => {
     setParameters((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -98,7 +99,7 @@ const EditSttConfigDialog: React.FC<EditSttConfigDialogProps> = ({ isOpen, onOpe
     const providerConfig = getProviderConfig('stt', watchedProvider);
     if (!providerConfig) return null;
 
-    const params: Record<string, any> = {};
+    const params: Record<string, unknown> = {};
 
     Object.entries(parameters).forEach(([key, value]) => {
       const paramConfig = providerConfig.parameters[key];
@@ -118,7 +119,7 @@ const EditSttConfigDialog: React.FC<EditSttConfigDialogProps> = ({ isOpen, onOpe
       const updateData: UpdateSttConfigRequest = {
         display_name: data.display_name.trim(),
         description: data.description?.trim() || null,
-        provider: data.provider as any,
+        provider: data.provider,
         language: data.language?.trim() || null,
         parameters: buildParameters(),
       };
@@ -131,8 +132,9 @@ const EditSttConfigDialog: React.FC<EditSttConfigDialogProps> = ({ isOpen, onOpe
       notifySuccess('STT configuration updated successfully');
       onSuccess?.();
       onOpenChange(false);
-    } catch (error: any) {
-      notifyError(error?.response?.data?.error?.message || 'Failed to update STT configuration');
+    } catch (error) {
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to update STT configuration');
     } finally {
       setLoading(false);
     }

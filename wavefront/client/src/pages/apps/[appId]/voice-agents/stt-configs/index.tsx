@@ -6,6 +6,7 @@ import { Input } from '@app/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
 import { useGetSttConfigs } from '@app/hooks';
 import { getSttConfigsKey } from '@app/hooks/data/query-keys';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { SttConfig } from '@app/types/stt-config';
 import { useQueryClient } from '@tanstack/react-query';
@@ -53,8 +54,9 @@ const SttConfigsPage: React.FC = () => {
       notifySuccess('STT configuration deleted successfully');
       queryClient.invalidateQueries({ queryKey: getSttConfigsKey(app || '') });
       setDeleteItem(null);
-    } catch (error: any) {
-      notifyError(error?.response?.data?.error?.message || 'Failed to delete STT configuration');
+    } catch (error) {
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to delete STT configuration');
     } finally {
       setDeleting(false);
     }

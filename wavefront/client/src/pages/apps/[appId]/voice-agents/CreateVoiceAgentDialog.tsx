@@ -25,6 +25,7 @@ import {
   useGetTelephonyConfigs,
   useGetTtsConfigs,
 } from '@app/hooks/data/fetch-hooks';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { CreateVoiceAgentRequest } from '@app/types/voice-agent';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -109,7 +110,7 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
     if (data.conversation_config?.trim() && data.conversation_config.trim() !== '{}') {
       try {
         conversationConfig = JSON.parse(data.conversation_config);
-      } catch (error) {
+      } catch {
         notifyError('Invalid JSON in conversation configuration');
         return;
       }
@@ -146,14 +147,10 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
           navigate(`/apps/${appId}/voice-agents/${response.data.data.voice_agent_id}`);
         }
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error creating voice agent:', error);
-      const errorMessage =
-        error?.response?.data?.error?.message ||
-        error?.response?.data?.meta?.error ||
-        error?.message ||
-        'Failed to create voice agent';
-      notifyError(errorMessage);
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to create voice agent');
     } finally {
       setCreating(false);
     }

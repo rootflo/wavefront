@@ -15,6 +15,7 @@ import { Button } from '@app/components/ui/button';
 import { Input } from '@app/components/ui/input';
 import { useGetKnowledgeBases } from '@app/hooks';
 import { getKnowledgeBasesKey } from '@app/hooks/data/query-keys';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { useQueryClient } from '@tanstack/react-query';
 import React, { useState } from 'react';
@@ -51,17 +52,8 @@ const KnowledgeBasesListPage: React.FC = () => {
       setDeleteItem(null);
     } catch (error) {
       console.error('Error deleting knowledge base:', error);
-      let errorMessage = 'Failed to delete knowledge base';
-
-      if (error && typeof error === 'object' && 'response' in error) {
-        const response = (error as any).response;
-        if (response?.data?.meta?.error) {
-          errorMessage = response.data.meta.error;
-        } else if (response?.data?.message) {
-          errorMessage = response.data.message;
-        }
-      }
-      notifyError(errorMessage);
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to delete knowledge base');
     } finally {
       setDeleting(false);
     }

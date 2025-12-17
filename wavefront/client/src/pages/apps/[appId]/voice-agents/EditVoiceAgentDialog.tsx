@@ -25,6 +25,7 @@ import {
   useGetTelephonyConfigs,
   useGetTtsConfigs,
 } from '@app/hooks/data/fetch-hooks';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { UpdateVoiceAgentRequest, VoiceAgent } from '@app/types/voice-agent';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -114,7 +115,7 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
     if (data.conversation_config?.trim() && data.conversation_config.trim() !== '{}') {
       try {
         conversationConfig = JSON.parse(data.conversation_config);
-      } catch (error) {
+      } catch {
         notifyError('Invalid JSON in conversation configuration');
         return;
       }
@@ -144,14 +145,10 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
       }
 
       onOpenChange(false);
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error updating voice agent:', error);
-      const errorMessage =
-        error?.response?.data?.error?.message ||
-        error?.response?.data?.meta?.error ||
-        error?.message ||
-        'Failed to update voice agent';
-      notifyError(errorMessage);
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to update voice agent');
     } finally {
       setUpdating(false);
     }

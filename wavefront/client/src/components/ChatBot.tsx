@@ -19,7 +19,7 @@ const formatFileSize = (bytes: number): string => {
 };
 
 interface ChatBotProps {
-  chatHistory: { role: 'user' | 'assistant'; content: any }[];
+  chatHistory: { role: 'user' | 'assistant'; content: string }[];
   runningInference: boolean;
   selectedLLMConfigId: string;
   setSelectedLLMConfigId: React.Dispatch<React.SetStateAction<string>>;

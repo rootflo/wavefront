@@ -28,8 +28,14 @@ import {
   isValidE164PhoneNumber,
   requiresSipConfig,
 } from '@app/config/telephony-providers';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
-import { SipTransport, TelephonyConfig, UpdateTelephonyConfigRequest } from '@app/types/telephony-config';
+import {
+  SipTransport,
+  TelephonyConfig,
+  TelephonyProvider,
+  UpdateTelephonyConfigRequest,
+} from '@app/types/telephony-config';
 import { zodResolver } from '@hookform/resolvers/zod';
 import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -156,7 +162,7 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
     }
 
     // Validate SIP config if required
-    if (requiresSipConfig(data.provider as any, data.connection_type)) {
+    if (requiresSipConfig(data.provider as TelephonyProvider, data.connection_type)) {
       if (!data.sip_domain?.trim()) {
         notifyError('SIP domain is required for SIP connection type');
         return;
@@ -170,7 +176,7 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
       const updateData: UpdateTelephonyConfigRequest = {
         display_name: data.display_name.trim(),
         description: data.description?.trim() || null,
-        provider: data.provider as any,
+        provider: data.provider as TelephonyProvider,
         connection_type: data.connection_type,
         phone_numbers: filledPhoneNumbers,
       };
@@ -190,13 +196,13 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
       }
 
       // Add SIP config if required
-      if (requiresSipConfig(data.provider as any, data.connection_type) && data.sip_domain?.trim()) {
+      if (requiresSipConfig(data.provider as TelephonyProvider, data.connection_type) && data.sip_domain?.trim()) {
         updateData.sip_config = {
           sip_domain: data.sip_domain.trim(),
           port: data.sip_port,
           transport: data.sip_transport,
         };
-      } else if (!requiresSipConfig(data.provider as any, data.connection_type)) {
+      } else if (!requiresSipConfig(data.provider as TelephonyProvider, data.connection_type)) {
         updateData.sip_config = null;
       }
 
@@ -204,15 +210,16 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
       notifySuccess('Telephony configuration updated successfully');
       onSuccess?.();
       onOpenChange(false);
-    } catch (error: any) {
-      notifyError(error?.response?.data?.error?.message || 'Failed to update telephony configuration');
+    } catch (error) {
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to update telephony configuration');
     } finally {
       setLoading(false);
     }
   };
 
-  const providerConfig = getTelephonyProviderConfig(watchedProvider as any);
-  const showSipConfig = requiresSipConfig(watchedProvider as any, watchedConnectionType);
+  const providerConfig = getTelephonyProviderConfig(watchedProvider as TelephonyProvider);
+  const showSipConfig = requiresSipConfig(watchedProvider as TelephonyProvider, watchedConnectionType);
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -306,7 +313,7 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {getConnectionTypeOptions(watchedProvider as any).map((ct) => (
+                        {getConnectionTypeOptions(watchedProvider as TelephonyProvider).map((ct) => (
                           <SelectItem key={ct.value} value={ct.value}>
                             {ct.label} - {ct.description}
                           </SelectItem>

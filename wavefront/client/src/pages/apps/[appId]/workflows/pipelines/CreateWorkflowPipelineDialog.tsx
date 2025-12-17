@@ -12,6 +12,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { useGetWorkflows } from '@app/hooks/data/fetch-hooks';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
 import React, { useEffect, useState } from 'react';
@@ -77,9 +78,10 @@ const CreateWorkflowPipelineDialog: React.FC<CreateWorkflowPipelineDialogProps> 
       } else {
         notifyError('Failed to create pipeline');
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error creating pipeline:', error);
-      notifyError(error?.response?.data?.meta?.error || 'Failed to create pipeline');
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to create pipeline');
     } finally {
       setLoading(false);
     }

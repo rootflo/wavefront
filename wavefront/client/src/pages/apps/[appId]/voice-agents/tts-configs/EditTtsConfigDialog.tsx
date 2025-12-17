@@ -25,6 +25,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Slider } from '@app/components/ui/slider';
 import { Textarea } from '@app/components/ui/textarea';
 import { VOICE_PROVIDERS_CONFIG, getProviderConfig, mergeParameters } from '@app/config/voice-providers';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { TtsConfig, UpdateTtsConfigRequest } from '@app/types/tts-config';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -53,7 +54,7 @@ interface EditTtsConfigDialogProps {
 const EditTtsConfigDialog: React.FC<EditTtsConfigDialogProps> = ({ isOpen, onOpenChange, config, onSuccess }) => {
   const { notifySuccess, notifyError } = useNotifyStore();
 
-  const [parameters, setParameters] = useState<Record<string, any>>({});
+  const [parameters, setParameters] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(false);
 
   const form = useForm<UpdateTtsConfigInput>({
@@ -93,7 +94,7 @@ const EditTtsConfigDialog: React.FC<EditTtsConfigDialogProps> = ({ isOpen, onOpe
     }
   }, [watchedProvider, isOpen, config.provider]);
 
-  const setParameter = (key: string, value: any) => {
+  const setParameter = (key: string, value: unknown) => {
     setParameters((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -101,7 +102,7 @@ const EditTtsConfigDialog: React.FC<EditTtsConfigDialogProps> = ({ isOpen, onOpe
     const providerConfig = getProviderConfig('tts', watchedProvider);
     if (!providerConfig) return null;
 
-    const params: Record<string, any> = {};
+    const params: Record<string, unknown> = {};
 
     Object.entries(parameters).forEach(([key, value]) => {
       const paramConfig = providerConfig.parameters[key];
@@ -121,7 +122,7 @@ const EditTtsConfigDialog: React.FC<EditTtsConfigDialogProps> = ({ isOpen, onOpe
       const updateData: UpdateTtsConfigRequest = {
         display_name: data.display_name.trim(),
         description: data.description?.trim() || null,
-        provider: data.provider as any,
+        provider: data.provider,
         voice_id: data.voice_id.trim(),
         language: data.language?.trim() || null,
         parameters: buildParameters(),
@@ -135,8 +136,9 @@ const EditTtsConfigDialog: React.FC<EditTtsConfigDialogProps> = ({ isOpen, onOpe
       notifySuccess('TTS configuration updated successfully');
       onSuccess?.();
       onOpenChange(false);
-    } catch (error: any) {
-      notifyError(error?.response?.data?.error?.message || 'Failed to update TTS configuration');
+    } catch (error) {
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to update TTS configuration');
     } finally {
       setLoading(false);
     }

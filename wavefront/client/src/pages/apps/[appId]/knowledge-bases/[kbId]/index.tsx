@@ -61,7 +61,7 @@ const KnowledgeBaseDetailPage: React.FC = () => {
   const [testInferenceId, setTestInferenceId] = useState<string | null>(null);
   const [testQuery, setTestQuery] = useState<string>('');
   const [chatMessages, setChatMessages] = useState<
-    Array<{ role: 'user' | 'assistant'; content: string; sources?: any[] }>
+    Array<{ role: 'user' | 'assistant'; content: string; sources?: unknown[] }>
   >([]);
   const [loadingRag, setLoadingRag] = useState<boolean>(false);
   const [messagesContainerRef, setMessagesContainerRef] = useState<HTMLDivElement | null>(null);

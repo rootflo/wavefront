@@ -3,7 +3,7 @@ import { AxiosInstance } from 'axios';
 
 export interface PreprocessingStep {
   preprocess_filter: string;
-  values: any[];
+  values: unknown[];
 }
 
 interface ModelUploadResponseData {
@@ -47,7 +47,7 @@ export interface InferencePayload {
 
 interface ModelInferenceResultData {
   clarity_score: number;
-  infer_data: any; // Type not explicitly defined in backend, so using 'any'
+  infer_data: unknown; // Type not explicitly defined in backend, so using 'unknown'
   data_type: string;
 }
 

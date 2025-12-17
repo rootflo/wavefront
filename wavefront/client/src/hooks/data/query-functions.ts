@@ -40,7 +40,12 @@ const getAllDatasourcesQueryFn = async () => {
 const getDatasourceQueryFn = async (datasourceId: string): Promise<Datasource | null> => {
   const response = await floConsoleService.datasourcesService.getDatasource(datasourceId);
   if (response.data?.data) {
-    const responseData = response.data.data as any;
+    const responseData = response.data.data as {
+      name?: string;
+      type?: string;
+      config?: string | Record<string, unknown>;
+      description?: string;
+    };
     return {
       id: datasourceId,
       name: responseData.name || 'Unknown',

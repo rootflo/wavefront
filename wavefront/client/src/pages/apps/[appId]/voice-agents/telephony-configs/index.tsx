@@ -6,6 +6,7 @@ import { Input } from '@app/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
 import { useGetTelephonyConfigs } from '@app/hooks';
 import { getTelephonyConfigsKey } from '@app/hooks/data/query-keys';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { TelephonyConfig } from '@app/types/telephony-config';
 import { useQueryClient } from '@tanstack/react-query';
@@ -53,8 +54,9 @@ const TelephonyConfigsPage: React.FC = () => {
       notifySuccess('Telephony configuration deleted successfully');
       queryClient.invalidateQueries({ queryKey: getTelephonyConfigsKey(app || '') });
       setDeleteItem(null);
-    } catch (error: any) {
-      notifyError(error?.response?.data?.error?.message || 'Failed to delete telephony configuration');
+    } catch (error) {
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to delete telephony configuration');
     } finally {
       setDeleting(false);
     }

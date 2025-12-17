@@ -20,6 +20,7 @@ import {
 } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { langs } from '@uiw/codemirror-extensions-langs';
@@ -106,19 +107,8 @@ const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
       }
     } catch (error) {
       console.error('Error creating agent:', error);
-
-      let errorMessage = 'Failed to create agent';
-
-      if (error && typeof error === 'object' && 'response' in error) {
-        const response = (error as any).response;
-        if (response?.data?.meta?.error) {
-          errorMessage = response.data.meta.error;
-        } else if (response?.data?.message) {
-          errorMessage = response.data.message;
-        }
-      }
-
-      notifyError(errorMessage);
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to create agent');
     }
   };
 

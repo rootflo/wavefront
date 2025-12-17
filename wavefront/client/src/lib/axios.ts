@@ -8,12 +8,12 @@ export interface Meta {
   code: number;
   error?: string;
 }
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   meta: Meta;
   data?: T;
 }
 export type IAxiosError = AxiosError;
-export type IApiResponse<T = any> = AxiosResponse<ApiResponse<T>>;
+export type IApiResponse<T = unknown> = AxiosResponse<ApiResponse<T>>;
 
 const axiosInstance = axios.create({
   baseURL: appEnv.baseURL,

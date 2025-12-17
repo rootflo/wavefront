@@ -42,7 +42,7 @@ const WorkflowDetail: React.FC = () => {
   >([]);
 
   // Chat history and menu states
-  const [chatHistory, setChatHistory] = useState<{ role: 'user' | 'assistant'; content: any }[]>([]);
+  const [chatHistory, setChatHistory] = useState<{ role: 'user' | 'assistant'; content: string }[]>([]);
   const [showUploadMenu, setShowUploadMenu] = useState(false);
   const [showVariablesInput, setShowVariablesInput] = useState(false);
   const [selectedLLMConfigId, setSelectedLLMConfigId] = useState<string>('');
@@ -353,8 +353,7 @@ const WorkflowDetail: React.FC = () => {
       let inputs: string | any[];
 
       // Handle different input combinations
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const messageInputs: any[] = [];
+      const messageInputs: Array<{ role: 'user' | 'assistant'; content: string }> = [];
       chatHistory.forEach((message) => {
         messageInputs.push({
           role: message.role,
@@ -435,7 +434,7 @@ const WorkflowDetail: React.FC = () => {
     }
   };
 
-  const handleSSEInference = async (inputs: string | any[], variables: Record<string, any>) => {
+  const handleSSEInference = async (inputs: string | string[], variables: Record<string, unknown>) => {
     if (!id) return;
 
     try {

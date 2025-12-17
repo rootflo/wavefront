@@ -12,6 +12,7 @@ import {
 } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { Datasource } from '@app/types/datasource';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -74,7 +75,7 @@ const EditDatasourceDialog: React.FC<EditDatasourceDialogProps> = ({
     let parsedConfig;
     try {
       parsedConfig = JSON.parse(data.connectionConfig);
-    } catch (error) {
+    } catch {
       notifyError('Invalid JSON in connection configuration');
       return;
     }
@@ -97,19 +98,8 @@ const EditDatasourceDialog: React.FC<EditDatasourceDialogProps> = ({
       onOpenChange(false);
     } catch (error) {
       console.error('Error updating datasource:', error);
-
-      let errorMessage = 'Failed to update datasource';
-
-      if (error && typeof error === 'object' && 'response' in error) {
-        const response = (error as any).response;
-        if (response?.data?.meta?.error) {
-          errorMessage = response.data.meta.error;
-        } else if (response?.data?.message) {
-          errorMessage = response.data.message;
-        }
-      }
-
-      notifyError(errorMessage);
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to update datasource');
     }
   };
 

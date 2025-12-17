@@ -4,7 +4,7 @@ export interface Datasource {
   id: string;
   name: string;
   type: string;
-  config: Record<string, any>;
+  config: Record<string, unknown>;
   description?: string;
   created_at?: string;
   updated_at?: string;
@@ -80,7 +80,7 @@ export interface DeleteYamlData {
   message: string;
 }
 export interface ExecuteYamlData {
-  results: Record<string, any>[];
+  results: Record<string, unknown>[];
 }
 
 export type TestDatasourceResponse = IApiResponse<TestDatasourceData>;

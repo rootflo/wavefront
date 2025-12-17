@@ -6,6 +6,7 @@ import { Input } from '@app/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
 import { useGetTtsConfigs } from '@app/hooks';
 import { getTtsConfigsKey } from '@app/hooks/data/query-keys';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { TtsConfig } from '@app/types/tts-config';
 import { useQueryClient } from '@tanstack/react-query';
@@ -53,8 +54,9 @@ const TtsConfigsPage: React.FC = () => {
       notifySuccess('TTS configuration deleted successfully');
       queryClient.invalidateQueries({ queryKey: getTtsConfigsKey(app || '') });
       setDeleteItem(null);
-    } catch (error: any) {
-      notifyError(error?.response?.data?.error?.message || 'Failed to delete TTS configuration');
+    } catch (error) {
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to delete TTS configuration');
     } finally {
       setDeleting(false);
     }

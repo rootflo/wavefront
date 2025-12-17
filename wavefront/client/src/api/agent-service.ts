@@ -50,14 +50,21 @@ export class AgentService {
 
   async runInference(
     id: string,
-    variables: Record<string, any> = {},
+    variables: Record<string, unknown> = {},
     inputs: string | string[],
     llmInferenceConfigId?: string,
     toolNames?: string[]
   ): Promise<InferenceResponse> {
-    const requestBody: any = {
+    const requestBody: {
+      variables: Record<string, unknown>;
+      inputs: string | string[];
+      llm_inference_config_id?: string;
+      tool_names?: string[];
+      output_json_enabled: boolean;
+    } = {
       variables,
       inputs,
+      output_json_enabled: false,
     };
 
     if (llmInferenceConfigId) {
@@ -67,8 +74,6 @@ export class AgentService {
     if (toolNames && toolNames.length > 0) {
       requestBody.tool_names = toolNames;
     }
-
-    requestBody.output_json_enabled = false;
 
     const response: IApiResponse<InferenceData> = await this.http.post(
       `/v1/:appId/floware/v2/agents/${id}/inference`,

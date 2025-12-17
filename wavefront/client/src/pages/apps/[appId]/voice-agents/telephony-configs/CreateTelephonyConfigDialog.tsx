@@ -28,8 +28,9 @@ import {
   isValidE164PhoneNumber,
   requiresSipConfig,
 } from '@app/config/telephony-providers';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
-import { SipTransport } from '@app/types/telephony-config';
+import { ConnectionType, SipTransport, TelephonyProvider } from '@app/types/telephony-config';
 import { zodResolver } from '@hookform/resolvers/zod';
 import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -154,7 +155,7 @@ const CreateTelephonyConfigDialog: React.FC<CreateTelephonyConfigDialogProps> = 
     }
 
     // Validate SIP config if required
-    if (requiresSipConfig(data.provider as any, data.connection_type)) {
+    if (requiresSipConfig(data.provider as TelephonyProvider, data.connection_type)) {
       if (!data.sip_domain?.trim()) {
         notifyError('SIP domain is required for SIP connection type');
         return;
@@ -165,10 +166,19 @@ const CreateTelephonyConfigDialog: React.FC<CreateTelephonyConfigDialogProps> = 
 
     setLoading(true);
     try {
-      const requestData: any = {
+      const requestData: {
+        display_name: string;
+        description?: string;
+        provider: TelephonyProvider;
+        connection_type: ConnectionType;
+        credentials: { account_sid: string; auth_token: string };
+        phone_numbers: string[];
+        webhook_config: null;
+        sip_config?: { sip_domain: string; port?: number; transport?: SipTransport };
+      } = {
         display_name: data.display_name.trim(),
         description: data.description?.trim() || undefined,
-        provider: data.provider as any,
+        provider: data.provider as TelephonyProvider,
         connection_type: data.connection_type,
         credentials: {
           account_sid: data.account_sid.trim(),
@@ -179,7 +189,7 @@ const CreateTelephonyConfigDialog: React.FC<CreateTelephonyConfigDialogProps> = 
       };
 
       // Add SIP config if required
-      if (requiresSipConfig(data.provider as any, data.connection_type) && data.sip_domain?.trim()) {
+      if (requiresSipConfig(data.provider as TelephonyProvider, data.connection_type) && data.sip_domain?.trim()) {
         requestData.sip_config = {
           sip_domain: data.sip_domain.trim(),
           port: data.sip_port,
@@ -191,15 +201,16 @@ const CreateTelephonyConfigDialog: React.FC<CreateTelephonyConfigDialogProps> = 
       notifySuccess('Telephony configuration created successfully');
       onSuccess?.();
       onOpenChange(false);
-    } catch (error: any) {
-      notifyError(error?.response?.data?.error?.message || 'Failed to create telephony configuration');
+    } catch (error) {
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to create telephony configuration');
     } finally {
       setLoading(false);
     }
   };
 
-  const providerConfig = getTelephonyProviderConfig(watchedProvider as any);
-  const showSipConfig = requiresSipConfig(watchedProvider as any, watchedConnectionType);
+  const providerConfig = getTelephonyProviderConfig(watchedProvider as TelephonyProvider);
+  const showSipConfig = requiresSipConfig(watchedProvider as TelephonyProvider, watchedConnectionType);
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -293,7 +304,7 @@ const CreateTelephonyConfigDialog: React.FC<CreateTelephonyConfigDialogProps> = 
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {getConnectionTypeOptions(watchedProvider as any).map((ct) => (
+                        {getConnectionTypeOptions(watchedProvider as TelephonyProvider).map((ct) => (
                           <SelectItem key={ct.value} value={ct.value}>
                             {ct.label} - {ct.description}
                           </SelectItem>

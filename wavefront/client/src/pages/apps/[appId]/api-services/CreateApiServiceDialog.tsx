@@ -17,6 +17,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@app/components/ui/form';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { langs } from '@uiw/codemirror-extensions-langs';
@@ -97,19 +98,8 @@ const CreateApiServiceDialog: React.FC<CreateApiServiceDialogProps> = ({ isOpen,
       }
     } catch (error) {
       console.error('Error creating API service:', error);
-
-      let errorMessage = 'Failed to create API service';
-
-      if (error && typeof error === 'object' && 'response' in error) {
-        const response = (error as any).response;
-        if (response?.data?.meta?.error) {
-          errorMessage = response.data.meta.error;
-        } else if (response?.data?.message) {
-          errorMessage = response.data.message;
-        }
-      }
-
-      notifyError(errorMessage);
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to create API service');
     }
   };
 

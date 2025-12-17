@@ -25,6 +25,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Slider } from '@app/components/ui/slider';
 import { Textarea } from '@app/components/ui/textarea';
 import { VOICE_PROVIDERS_CONFIG, getProviderConfig, initializeParameters } from '@app/config/voice-providers';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
 import React, { useEffect, useState } from 'react';
@@ -51,7 +52,7 @@ interface CreateTtsConfigDialogProps {
 const CreateTtsConfigDialog: React.FC<CreateTtsConfigDialogProps> = ({ isOpen, onOpenChange, onSuccess }) => {
   const { notifySuccess, notifyError } = useNotifyStore();
 
-  const [parameters, setParameters] = useState<Record<string, any>>({});
+  const [parameters, setParameters] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(false);
 
   const form = useForm<CreateTtsConfigInput>({
@@ -90,7 +91,7 @@ const CreateTtsConfigDialog: React.FC<CreateTtsConfigDialogProps> = ({ isOpen, o
     }
   }, [isOpen, form]);
 
-  const setParameter = (key: string, value: any) => {
+  const setParameter = (key: string, value: unknown) => {
     setParameters((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -98,7 +99,7 @@ const CreateTtsConfigDialog: React.FC<CreateTtsConfigDialogProps> = ({ isOpen, o
     const config = getProviderConfig('tts', watchedProvider);
     if (!config) return null;
 
-    const params: Record<string, any> = {};
+    const params: Record<string, unknown> = {};
 
     Object.entries(parameters).forEach(([key, value]) => {
       const paramConfig = config.parameters[key];
@@ -130,7 +131,7 @@ const CreateTtsConfigDialog: React.FC<CreateTtsConfigDialogProps> = ({ isOpen, o
       await floConsoleService.ttsConfigService.createTtsConfig({
         display_name: data.display_name.trim(),
         description: data.description?.trim() || null,
-        provider: data.provider as any,
+        provider: data.provider,
         voice_id: data.voice_id.trim(),
         api_key: data.api_key.trim(),
         language: data.language?.trim() || null,
@@ -139,8 +140,9 @@ const CreateTtsConfigDialog: React.FC<CreateTtsConfigDialogProps> = ({ isOpen, o
       notifySuccess('TTS configuration created successfully');
       onSuccess?.();
       onOpenChange(false);
-    } catch (error: any) {
-      notifyError(error?.response?.data?.error?.message || 'Failed to create TTS configuration');
+    } catch (error) {
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to create TTS configuration');
     } finally {
       setLoading(false);
     }

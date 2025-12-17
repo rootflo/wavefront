@@ -13,12 +13,12 @@ repos:
 
   - repo: local
     hooks:
-      # - id: eslint
-      #   name: eslint
-      #   entry: bash -c 'cd wavefront/client && pnpm lint'
-      #   language: system
-      #   files: ^wavefront/client/.*\.(js|jsx|ts|tsx)$
-      #   pass_filenames: false # let eslint use its own ignore & config
+      - id: eslint
+        name: eslint
+        entry: bash -c 'cd wavefront/client && pnpm eslint $(printf "%s\n" "$@" | sed "s|^wavefront/client/||")' --
+        language: system
+        files: ^wavefront/client/.*\.(js|jsx|ts|tsx)$
+        pass_filenames: true
 
       - id: typescript-check
         name: typescript-check
@@ -29,7 +29,7 @@ repos:
 
       - id: prettier
         name: prettier
-        entry: bash -c 'cd wavefront/client && pnpm format'
+        entry: bash -c 'cd wavefront/client && pnpm prettier --write $(printf "%s\n" "$@" | sed "s|^wavefront/client/||")' --
         language: system
-        files: ^wavefront/client/
-        pass_filenames: false
+        files: ^wavefront/client/.*\.(js|jsx|ts|tsx|json|css|md)$
+        pass_filenames: true

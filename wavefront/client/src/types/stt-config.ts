@@ -8,7 +8,7 @@ export interface SttConfig {
   description: string | null;
   provider: SttProvider;
   language: string | null;
-  parameters: Record<string, any> | null;
+  parameters: Record<string, unknown> | null;
   is_deleted: boolean;
   created_at: string;
   updated_at: string;
@@ -20,7 +20,7 @@ export interface CreateSttConfigRequest {
   provider: SttProvider;
   api_key: string;
   language?: string | null;
-  parameters?: Record<string, any> | null;
+  parameters?: Record<string, unknown> | null;
 }
 
 export interface UpdateSttConfigRequest {
@@ -29,7 +29,7 @@ export interface UpdateSttConfigRequest {
   provider?: SttProvider;
   api_key?: string;
   language?: string | null;
-  parameters?: Record<string, any> | null;
+  parameters?: Record<string, unknown> | null;
 }
 
 export interface SttConfigData {

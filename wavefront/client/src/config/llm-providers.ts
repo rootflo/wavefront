@@ -9,7 +9,7 @@ export type ParameterType = 'string' | 'number' | 'boolean' | 'select';
 
 export interface ParameterConfig {
   type: ParameterType;
-  default: any;
+  default: unknown;
   min?: number;
   max?: number;
   step?: number;
@@ -464,11 +464,11 @@ export function getProviderBadge(provider: InferenceEngineType): { bg: string; t
 /**
  * Initialize parameters with defaults for a provider
  */
-export function initializeParameters(provider: InferenceEngineType): Record<string, any> {
+export function initializeParameters(provider: InferenceEngineType): Record<string, unknown> {
   const config = getProviderConfig(provider);
   if (!config) return {};
 
-  const params: Record<string, any> = {};
+  const params: Record<string, unknown> = {};
   Object.entries(config.parameters).forEach(([key, paramConfig]) => {
     // Only include parameters with defined defaults
     if (paramConfig.default !== undefined) {
@@ -485,8 +485,8 @@ export function initializeParameters(provider: InferenceEngineType): Record<stri
  */
 export function mergeParameters(
   provider: InferenceEngineType,
-  savedParams: Record<string, any> | null | undefined
-): Record<string, any> {
+  savedParams: Record<string, unknown> | null | undefined
+): Record<string, unknown> {
   const defaultParams = initializeParameters(provider);
 
   if (!savedParams) return defaultParams;
@@ -505,8 +505,8 @@ export function mergeParameters(
 /**
  * Clean parameters by removing undefined, null, and empty string values
  */
-export function cleanParameters(params: Record<string, any>): Record<string, any> {
-  const cleaned: Record<string, any> = {};
+export function cleanParameters(params: Record<string, unknown>): Record<string, unknown> {
+  const cleaned: Record<string, unknown> = {};
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== '') {
       cleaned[key] = value;

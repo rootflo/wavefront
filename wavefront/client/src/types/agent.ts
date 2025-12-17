@@ -42,7 +42,7 @@ export interface AppConfig {
   id: string;
   name: string;
   description: string;
-  icon: React.ComponentType<any>;
+  icon: React.ComponentType<Record<string, never>>;
   appId: string;
   defaultNamespace: string;
   color: string;
@@ -117,7 +117,7 @@ export interface Agent {
 export interface Tool {
   name: string;
   description: string;
-  parameters?: Record<string, any>;
+  parameters?: Record<string, unknown>;
 }
 
 export interface Router {

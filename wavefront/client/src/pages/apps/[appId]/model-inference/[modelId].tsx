@@ -23,6 +23,7 @@ import { Label } from '@app/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { useGetModel } from '@app/hooks';
 import { getModelsKey } from '@app/hooks/data/query-keys';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { Plus, Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -59,7 +60,7 @@ const ModelDetail: React.FC = () => {
   // Inference state
   const [inferenceImageFile, setInferenceImageFile] = useState<File | null>(null);
   const [jsonPayload, setJsonPayload] = useState<string>(defaultJsonPayload);
-  const [inferenceResult, setInferenceResult] = useState<any>(null);
+  const [inferenceResult, setInferenceResult] = useState<unknown>(null);
   const [runningInference, setRunningInference] = useState(false);
   const [preprocessingSteps, setPreprocessingSteps] = useState<PreprocessingStep[]>([]);
 
@@ -87,9 +88,11 @@ const ModelDetail: React.FC = () => {
 
       setInferenceResult(response.data.data);
       notifySuccess('Inference successful!');
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error running inference:', error);
-      notifyError(error.message || 'Failed to run inference');
+      const errorMessage =
+        error && typeof error === 'object' && 'message' in error ? (error as { message?: string }).message : undefined;
+      notifyError(errorMessage || 'Failed to run inference');
     } finally {
       setRunningInference(false);
     }
@@ -114,17 +117,8 @@ const ModelDetail: React.FC = () => {
       navigate(`/apps/${appId}/model-inference`);
     } catch (error) {
       console.error('Error deleting model:', error);
-      let errorMessage = 'Failed to delete model';
-
-      if (error && typeof error === 'object' && 'response' in error) {
-        const response = (error as any).response;
-        if (response?.data?.meta?.error) {
-          errorMessage = response.data.meta.error;
-        } else if (response?.data?.message) {
-          errorMessage = response.data.message;
-        }
-      }
-      notifyError(errorMessage);
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to delete model');
     }
   };
 

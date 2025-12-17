@@ -9,7 +9,7 @@ export interface Authenticator {
   auth_name: string;
   auth_type: AuthenticatorType;
   auth_desc: string | null;
-  config: Record<string, any> | null;
+  config: Record<string, unknown> | null;
   is_enabled: boolean;
   created_at: string;
   updated_at: string;
@@ -20,13 +20,13 @@ export interface CreateAuthenticatorRequest {
   auth_name: string;
   auth_type: AuthenticatorType;
   auth_desc?: string | null;
-  config: Record<string, any>;
+  config: Record<string, unknown>;
 }
 
 // Update request interface (all fields optional except config)
 export interface UpdateAuthenticatorRequest {
   auth_desc?: string | null;
-  config: Record<string, any>;
+  config: Record<string, unknown>;
 }
 
 // Response data interfaces

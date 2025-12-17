@@ -9,7 +9,7 @@ export type ParameterType = 'string' | 'number' | 'boolean' | 'array';
 
 export interface ParameterConfig {
   type: ParameterType;
-  default: any;
+  default: unknown;
   min?: number;
   max?: number;
   step?: number;
@@ -257,11 +257,11 @@ export function getProviders(type: 'tts' | 'stt'): readonly string[] {
 /**
  * Initialize parameters with defaults for a provider
  */
-export function initializeParameters(type: 'tts' | 'stt', provider: string): Record<string, any> {
+export function initializeParameters(type: 'tts' | 'stt', provider: string): Record<string, unknown> {
   const config = getProviderConfig(type, provider);
   if (!config) return {};
 
-  const params: Record<string, any> = {};
+  const params: Record<string, unknown> = {};
   Object.entries(config.parameters).forEach(([key, paramConfig]) => {
     params[key] = paramConfig.default;
   });
@@ -275,8 +275,8 @@ export function initializeParameters(type: 'tts' | 'stt', provider: string): Rec
 export function mergeParameters(
   type: 'tts' | 'stt',
   provider: string,
-  savedParams: Record<string, any> | null
-): Record<string, any> {
+  savedParams: Record<string, unknown> | null
+): Record<string, unknown> {
   const defaultParams = initializeParameters(type, provider);
 
   if (!savedParams) return defaultParams;
