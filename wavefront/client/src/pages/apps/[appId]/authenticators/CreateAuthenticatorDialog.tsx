@@ -176,7 +176,6 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
       console.error('Error creating authenticator:', error);
       const errorMessage = extractErrorMessage(error);
       notifyError(errorMessage || 'Failed to create authenticator');
-      notifyError(errorMessage);
     } finally {
       setLoading(false);
     }

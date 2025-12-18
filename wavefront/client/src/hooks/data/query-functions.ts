@@ -45,6 +45,8 @@ const getDatasourceQueryFn = async (datasourceId: string): Promise<Datasource | 
       type?: string;
       config?: string | Record<string, unknown>;
       description?: string;
+      created_at?: string;
+      updated_at?: string;
     };
     return {
       id: datasourceId,

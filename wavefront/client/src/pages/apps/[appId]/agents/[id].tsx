@@ -14,6 +14,7 @@ import { useDeleteAgent } from '@app/hooks';
 import { useGetAgent, useGetLLMConfigs, useGetTools } from '@app/hooks/data/fetch-hooks';
 import { getAgentKey } from '@app/hooks/data/query-keys';
 import { useNotifyStore } from '@app/store';
+import { ChatMessage, ChatMessageContent } from '@app/types/chat-message';
 import { scrollToBottom } from '@app/utils/scroll';
 import { useQueryClient } from '@tanstack/react-query';
 import yaml from 'js-yaml';
@@ -67,7 +68,7 @@ const AgentDetail: React.FC = () => {
     }>
   >([]);
   const [uploadingDocument, setUploadingDocument] = useState(false);
-  const [chatHistory, setChatHistory] = useState<{ role: 'user' | 'assistant'; content: string }[]>([]);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
 
   // Datasource and tool selection state
   const [selectedTools, setSelectedTools] = useState<{ id: string; value: string }[]>([]);
@@ -398,7 +399,7 @@ const AgentDetail: React.FC = () => {
       let inputs: string | any[];
       const finalTextInput = inferenceInput.trim();
       // Handle different input combinations
-      const conversationInputs: Array<{ role: string; content: string }> = [];
+      const conversationInputs: Array<{ role: string; content: ChatMessageContent }> = [];
 
       // Add previous chat history
       chatHistory.forEach((message) => {
