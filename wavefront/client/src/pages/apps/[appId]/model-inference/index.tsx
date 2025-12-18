@@ -15,6 +15,7 @@ import { Button } from '@app/components/ui/button';
 import { Input } from '@app/components/ui/input';
 import { useGetModels } from '@app/hooks';
 import { getModelsKey } from '@app/hooks/data/query-keys';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { useQueryClient } from '@tanstack/react-query';
 import React, { useState } from 'react';
@@ -73,23 +74,8 @@ const ModelManagement: React.FC = () => {
       setDeleteItem(null);
     } catch (error) {
       console.error('Error deleting model:', error);
-      let errorMessage = 'Failed to delete model';
-
-      if (error && typeof error === 'object' && 'response' in error) {
-        const response = (
-          error as {
-            response: {
-              data?: { meta?: { error?: string }; message?: string };
-            };
-          }
-        ).response;
-        if (response?.data?.meta?.error) {
-          errorMessage = response.data.meta.error;
-        } else if (response?.data?.message) {
-          errorMessage = response.data.message;
-        }
-      }
-      notifyError(errorMessage);
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to delete model');
     } finally {
       setDeleting(false);
     }

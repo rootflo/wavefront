@@ -106,10 +106,8 @@ const CreateKnowledgeBaseDialog: React.FC<CreateKnowledgeBaseDialogProps> = ({
       } else {
         notifyError('Failed to get knowledge base ID after creation.');
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error creating knowledge base:', error);
-      const errorMessage = error?.message || 'Failed to create knowledge base';
-      notifyError(errorMessage);
     }
   };
 

@@ -53,7 +53,7 @@ const CreateModelInferenceDialog: React.FC<CreateModelInferenceDialogProps> = ({
     resolver: zodResolver(createModelInferenceSchema),
     defaultValues: {
       modelType: '',
-      modelFile: undefined as any,
+      modelFile: undefined as File | undefined,
     },
     mode: 'onChange',
   });
@@ -63,7 +63,7 @@ const CreateModelInferenceDialog: React.FC<CreateModelInferenceDialogProps> = ({
     if (!isOpen) {
       form.reset({
         modelType: '',
-        modelFile: undefined as any,
+        modelFile: undefined as File | undefined,
       });
     }
   }, [isOpen, form]);
@@ -89,10 +89,8 @@ const CreateModelInferenceDialog: React.FC<CreateModelInferenceDialogProps> = ({
       } else {
         notifyError('Failed to get model ID after upload.');
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error creating model:', error);
-      const errorMessage = error?.message || 'Failed to create model';
-      notifyError(errorMessage);
     } finally {
       setCreating(false);
     }

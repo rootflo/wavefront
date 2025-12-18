@@ -50,8 +50,8 @@ const YamlView = ({
   handleYamlEdit: (yamlContent: string) => void;
   handleClose: () => void;
   handleYamlExecute: (params: Record<string, string>) => void;
-  yamlExecuteResult: Record<string, any>[];
-  setYamlExecuteResult: React.Dispatch<React.SetStateAction<Record<string, any>[]>>;
+  yamlExecuteResult: Record<string, unknown>[];
+  setYamlExecuteResult: React.Dispatch<React.SetStateAction<Record<string, unknown>[]>>;
   executing: boolean;
 }) => {
   const [yamlContent, setYamlContent] = useState('');

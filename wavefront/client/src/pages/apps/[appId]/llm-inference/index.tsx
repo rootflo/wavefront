@@ -14,6 +14,7 @@ import { Button } from '@app/components/ui/button';
 import { Input } from '@app/components/ui/input';
 import { useGetLLMConfigs } from '@app/hooks';
 import { getLLMConfigsKey } from '@app/hooks/data/query-keys';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { LLMInferenceConfig } from '@app/types/llm-inference-config';
 import { useQueryClient } from '@tanstack/react-query';
@@ -75,18 +76,8 @@ const LLMInferenceConfigsManagement: React.FC = () => {
       setDeleteItem(null);
     } catch (error) {
       console.error('Error deleting LLM inference config:', error);
-
-      let errorMessage = 'Failed to delete model';
-      if (error && typeof error === 'object' && 'response' in error) {
-        const response = (error as any).response;
-        if (response?.data?.error) {
-          errorMessage = response.data.error;
-        } else if (response?.data?.message) {
-          errorMessage = response.data.message;
-        }
-      }
-
-      notifyError(errorMessage);
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to delete model');
     } finally {
       setDeleting(false);
     }

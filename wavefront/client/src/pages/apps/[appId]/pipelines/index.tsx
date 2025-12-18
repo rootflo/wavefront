@@ -48,7 +48,7 @@ const PipelineManagement: React.FC = () => {
         notifySuccess(`Pipeline "${pipeline.project_name}" unpaused successfully`);
       }
       queryClient.invalidateQueries({ queryKey: ['pipelines', app] });
-    } catch (error) {
+    } catch {
       notifyError('Failed to update pipeline status');
     }
   };
@@ -58,7 +58,7 @@ const PipelineManagement: React.FC = () => {
     try {
       await floConsoleService.dataPipelineService.triggerDagRun('default', pipeline.pipeline_id);
       notifySuccess(`Pipeline "${pipeline.project_name}" triggered successfully`);
-    } catch (error) {
+    } catch {
       notifyError('Failed to trigger pipeline');
     }
   };

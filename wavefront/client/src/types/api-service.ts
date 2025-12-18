@@ -21,7 +21,7 @@ export interface ApiEndpoint {
   backend_path: string;
   method: string;
   additional_headers?: Record<string, string>;
-  backend_query_params?: Record<string, any>;
+  backend_query_params?: Record<string, unknown>;
   output_mapper_enabled: boolean;
   output_mapper?: Record<string, string>;
 }

@@ -44,7 +44,10 @@ export class VoiceAgentService {
     return response;
   }
 
-  async initiateCall(agentId: string, data: { to_number: string; from_number?: string }): Promise<any> {
+  async initiateCall(
+    agentId: string,
+    data: { to_number: string; from_number?: string }
+  ): Promise<IApiResponse<unknown>> {
     const response = await this.http.post(`/v1/:appId/floware/v1/voice-agents/${agentId}/initiate`, data);
     return response;
   }

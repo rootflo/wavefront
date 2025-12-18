@@ -12,6 +12,7 @@ import { Input } from '@app/components/ui/input';
 import { Label } from '@app/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { useGetTelephonyConfig } from '@app/hooks/data/fetch-hooks';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { VoiceAgent } from '@app/types/voice-agent';
 import React, { useState } from 'react';
@@ -63,7 +64,7 @@ const OutboundCallDialog: React.FC<OutboundCallDialogProps> = ({ isOpen, onOpenC
 
     setCallLoading(true);
     try {
-      const callData: any = {
+      const callData: { to_number: string; from_number?: string } = {
         to_number: toNumber.trim(),
       };
 
@@ -82,8 +83,9 @@ const OutboundCallDialog: React.FC<OutboundCallDialogProps> = ({ isOpen, onOpenC
       setToNumber('');
       setFromNumber('');
       onOpenChange(false);
-    } catch (error: any) {
-      notifyError(error?.response?.data?.error?.message || 'Failed to initiate call');
+    } catch (error) {
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to initiate call');
     } finally {
       setCallLoading(false);
     }

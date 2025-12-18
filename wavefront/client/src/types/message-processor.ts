@@ -41,12 +41,12 @@ export interface UpdateMessageProcessorRequest {
 }
 
 export interface ExecuteMessageProcessorRequest {
-  input_data: Record<string, any>;
-  execution_context?: Record<string, any>;
+  input_data: Record<string, unknown>;
+  execution_context?: Record<string, unknown>;
 }
 
 export interface ExecuteMessageProcessorData {
-  result: any;
+  result: unknown;
 }
 
 export type MessageProcessorResponse = IApiResponse<MessageProcessorData>;

@@ -107,9 +107,8 @@ const CreateMessageProcessorDialog: React.FC<CreateMessageProcessorDialogProps> 
       } else {
         notifyError('Failed to create message processor');
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error creating message processor:', error);
-      notifyError(error?.message || 'Failed to create message processor');
     }
   };
 

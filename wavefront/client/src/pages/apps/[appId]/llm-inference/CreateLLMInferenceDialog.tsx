@@ -93,7 +93,7 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
   const navigate = useNavigate();
   const { notifySuccess, notifyError } = useNotifyStore();
   const [type, setType] = useState<InferenceEngineType>('openai');
-  const [parameters, setParameters] = useState<Record<string, any>>({});
+  const [parameters, setParameters] = useState<Record<string, unknown>>({});
   const [creating, setCreating] = useState(false);
   const { selectedApp } = useDashboardStore();
 
@@ -147,7 +147,7 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
     return ['ollama', 'vllm', 'azure_openai', 'openai', 'anthropic', 'gemini', 'groq'].includes(engineType);
   };
 
-  const setParameter = (key: string, value: any) => {
+  const setParameter = (key: string, value: unknown) => {
     setParameters((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -197,18 +197,8 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
       }
     } catch (error) {
       console.error('Error creating LLM inference config:', error);
-
-      let errorMessage = 'Failed to add model to repository';
-      if (error && typeof error === 'object' && 'response' in error) {
-        const response = (error as any).response;
-        if (response?.data?.error) {
-          errorMessage = response.data.error;
-        } else if (response?.data?.message) {
-          errorMessage = response.data.message;
-        }
-      }
-
-      notifyError(errorMessage);
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to add model to repository');
     } finally {
       setCreating(false);
     }

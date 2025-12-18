@@ -14,6 +14,7 @@ import { useDeleteAgent } from '@app/hooks';
 import { useGetAgent, useGetLLMConfigs, useGetTools } from '@app/hooks/data/fetch-hooks';
 import { getAgentKey } from '@app/hooks/data/query-keys';
 import { useNotifyStore } from '@app/store';
+import { ChatMessage, ChatMessageContent } from '@app/types/chat-message';
 import { scrollToBottom } from '@app/utils/scroll';
 import { useQueryClient } from '@tanstack/react-query';
 import yaml from 'js-yaml';
@@ -67,7 +68,7 @@ const AgentDetail: React.FC = () => {
     }>
   >([]);
   const [uploadingDocument, setUploadingDocument] = useState(false);
-  const [chatHistory, setChatHistory] = useState<{ role: 'user' | 'assistant'; content: any }[]>([]);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
 
   // Datasource and tool selection state
   const [selectedTools, setSelectedTools] = useState<{ id: string; value: string }[]>([]);
@@ -129,7 +130,7 @@ const AgentDetail: React.FC = () => {
     if (isUpdatingYamlRef.current || !yamlContent || toolsDetails.length === 0) return;
 
     const tools = toolsDetails.filter((tool) => selectedTools.some((selected) => selected.value === tool.display_name));
-    const parsedYaml = yaml.load(yamlContent) as any;
+    const parsedYaml = yaml.load(yamlContent) as { agent?: { tools?: unknown[] } } | null;
     if (parsedYaml && parsedYaml.agent) {
       if (!parsedYaml.agent.tools) {
         parsedYaml.agent.tools = [];
@@ -161,7 +162,7 @@ const AgentDetail: React.FC = () => {
       const existingTools = parsedYaml.agent.tools || [];
       const toolsChanged =
         existingTools.length !== newTools.length ||
-        existingTools.some((existingTool: any, index: number) => {
+        existingTools.some((existingTool: unknown, index: number) => {
           const newTool = newTools[index];
           if (!newTool) return true;
           return (
@@ -398,8 +399,7 @@ const AgentDetail: React.FC = () => {
       let inputs: string | any[];
       const finalTextInput = inferenceInput.trim();
       // Handle different input combinations
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const conversationInputs: any[] = [];
+      const conversationInputs: Array<{ role: string; content: ChatMessageContent }> = [];
 
       // Add previous chat history
       chatHistory.forEach((message) => {
@@ -472,7 +472,7 @@ const AgentDetail: React.FC = () => {
         selectedLLMConfigId || undefined,
         selectedTools.length > 0 ? selectedTools.map((tool) => tool.value) : undefined
       );
-      const responseData = (result as any).data?.data?.data;
+      const responseData = (result as { data?: { data?: { data?: { result?: string | object } } } }).data?.data?.data;
       const agentResponse =
         typeof responseData?.result === 'string' ? responseData.result : JSON.stringify(responseData?.result, null, 2);
       setChatHistory((prev) => [...prev, { role: 'assistant', content: agentResponse }]);

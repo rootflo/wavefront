@@ -1,5 +1,6 @@
 import floConsoleService from '@app/api';
 import { useGetPipeline, useGetPipelineFiles } from '@app/hooks/data/fetch-hooks';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { FileType, PipelineFile } from '@app/types/pipeline';
 import { useQueryClient } from '@tanstack/react-query';
@@ -54,8 +55,9 @@ const PipelineDetail: React.FC = () => {
       await pipelineService.publishPipeline('default', pipeline.pipeline_id);
       notifySuccess('Pipeline published successfully');
       queryClient.invalidateQueries({ queryKey: ['pipeline', app, pipelineId] });
-    } catch (error: any) {
-      notifyError(error?.response?.data?.error?.message || 'Failed to publish pipeline');
+    } catch (error) {
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to publish pipeline');
     } finally {
       setPublishLoading(false);
     }
@@ -73,7 +75,7 @@ const PipelineDetail: React.FC = () => {
         notifySuccess('Pipeline unpaused successfully');
       }
       queryClient.invalidateQueries({ queryKey: ['pipeline', app, pipelineId] });
-    } catch (error) {
+    } catch {
       notifyError('Failed to update pipeline status');
     } finally {
       setPauseLoading(false);
@@ -86,7 +88,7 @@ const PipelineDetail: React.FC = () => {
     try {
       await pipelineService.triggerDagRun('default', pipeline.pipeline_id);
       notifySuccess('Pipeline triggered successfully');
-    } catch (error) {
+    } catch {
       notifyError('Failed to trigger pipeline');
     } finally {
       setTriggerLoading(false);
@@ -99,7 +101,7 @@ const PipelineDetail: React.FC = () => {
       setSelectedFile(file);
       setFileContent(response.data?.data?.content || '');
       setIsEditing(false);
-    } catch (error) {
+    } catch {
       notifyError('Failed to load file content');
     }
   };
@@ -112,7 +114,7 @@ const PipelineDetail: React.FC = () => {
       notifySuccess('File saved successfully');
       setIsEditing(false);
       queryClient.invalidateQueries({ queryKey: ['pipeline-files', app, pipelineId] });
-    } catch (error) {
+    } catch {
       notifyError('Failed to save file');
     } finally {
       setSaveLoading(false);
@@ -168,10 +170,11 @@ const PipelineDetail: React.FC = () => {
           setIsEditing(false);
         }
       }, 500);
-    } catch (error: any) {
-      const errorMsg = error?.response?.data?.error?.message || 'Failed to create file';
-      notifyError(errorMsg);
-      setFilePathError(errorMsg);
+    } catch (error) {
+      const errorMsg = extractErrorMessage(error);
+      const finalErrorMsg = errorMsg || 'Failed to create file';
+      notifyError(finalErrorMsg);
+      setFilePathError(finalErrorMsg);
     } finally {
       setCreateLoading(false);
     }
@@ -193,7 +196,7 @@ const PipelineDetail: React.FC = () => {
 
       setFileToDelete(null);
       queryClient.invalidateQueries({ queryKey: ['pipeline-files', app, pipelineId] });
-    } catch (error) {
+    } catch {
       notifyError('Failed to delete file');
     }
   };
@@ -213,8 +216,9 @@ const PipelineDetail: React.FC = () => {
       notifySuccess('Schedule updated successfully');
       setShowScheduleModal(false);
       queryClient.invalidateQueries({ queryKey: ['pipeline', app, pipelineId] });
-    } catch (error: any) {
-      notifyError(error?.response?.data?.error?.message || 'Failed to update schedule');
+    } catch (error) {
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to update schedule');
     } finally {
       setScheduleLoading(false);
     }

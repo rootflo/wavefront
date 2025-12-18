@@ -3,6 +3,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Spinner } from '@app/components/ui/spinner';
 import { Textarea } from '@app/components/ui/textarea';
 import { LLMInferenceConfig } from '@app/types/llm-inference-config';
+import { ChatMessageContent, ImageContent, DocumentContent } from '@app/types/chat-message';
 import clsx from 'clsx';
 import { ChevronDown, Plus, X } from 'lucide-react';
 import React, { useRef, useState, type RefObject } from 'react';
@@ -19,7 +20,7 @@ const formatFileSize = (bytes: number): string => {
 };
 
 interface ChatBotProps {
-  chatHistory: { role: 'user' | 'assistant'; content: any }[];
+  chatHistory: { role: 'user' | 'assistant'; content: ChatMessageContent }[];
   runningInference: boolean;
   selectedLLMConfigId: string;
   setSelectedLLMConfigId: React.Dispatch<React.SetStateAction<string>>;
@@ -148,21 +149,21 @@ const ChatBot = ({
                 >
                   {typeof chat.content === 'string' ? (
                     chat.content
-                  ) : chat.content?.image_base64 ? (
+                  ) : typeof chat.content === 'object' && chat.content !== null && 'image_base64' in chat.content ? (
                     <div className="flex items-center gap-2">
                       <img
-                        src={`data:${chat.content.mime_type};base64,${chat.content.image_base64}`}
+                        src={`data:${(chat.content as ImageContent).mime_type || 'image/png'};base64,${(chat.content as ImageContent).image_base64}`}
                         alt="Uploaded"
                         className="h-4 w-4 rounded object-cover"
                       />
                       <p className="max-w-[120px] truncate text-[8px] font-medium text-gray-800">
-                        Image ({chat.content.mime_type})
+                        Image ({(chat.content as ImageContent).mime_type || 'unknown'})
                       </p>
                     </div>
-                  ) : chat.content?.document_type ? (
+                  ) : typeof chat.content === 'object' && chat.content !== null && 'document_type' in chat.content ? (
                     <div className="flex items-center gap-2">
                       <span>📄</span>
-                      <span>{chat.content.metadata?.filename || 'Document'}</span>
+                      <span>{(chat.content as DocumentContent).metadata?.filename || 'Document'}</span>
                     </div>
                   ) : (
                     JSON.stringify(chat.content, null, 2)

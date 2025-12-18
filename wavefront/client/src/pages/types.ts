@@ -68,7 +68,7 @@ export interface ILoanDeepDiveItem {
   item_risk_identified: IRiskCriterion[];
   item_risk_identified_count: number;
   item_risk_flag: string;
-  item_coordinates: Record<string, any> | null;
+  item_coordinates: Record<string, unknown> | null;
 }
 export interface IUser {
   id: string;
@@ -111,11 +111,11 @@ export interface ILoanDeepDiveData {
   image_risk_flag: string;
   clarity_score: number;
   overlap_score: number;
-  metadata_1: Record<string, any> | null;
-  metadata_2: Record<string, any> | null;
-  metadata_3: Record<string, any> | null;
-  metadata_4: Record<string, any> | null;
-  metadata_5: Record<string, any> | null;
+  metadata_1: Record<string, unknown> | null;
+  metadata_2: Record<string, unknown> | null;
+  metadata_3: Record<string, unknown> | null;
+  metadata_4: Record<string, unknown> | null;
+  metadata_5: Record<string, unknown> | null;
   filter_1: string | null;
   filter_2: string | null;
   filter_3: string | null;

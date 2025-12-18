@@ -78,7 +78,7 @@ const DatasourceDetail: React.FC = () => {
   const [yamlContent, setYamlContent] = useState<string>('');
   const [yamlQueries, setYamlQueries] = useState<YamlReadData[]>([]);
   const [yamlName, setYamlName] = useState<string>('');
-  const [yamlExecuteResult, setYamlExecuteResult] = useState<Record<string, any>[]>([]);
+  const [yamlExecuteResult, setYamlExecuteResult] = useState<Record<string, unknown>[]>([]);
 
   // Update yamlQueries and yamlName when yamlData changes
   useEffect(() => {
@@ -105,7 +105,7 @@ const DatasourceDetail: React.FC = () => {
         notifyError('Error while creating yaml');
         return;
       }
-    } catch (error) {
+    } catch {
       notifyError('Error while creating yaml');
     } finally {
       setYamlCreation(false);
@@ -164,11 +164,11 @@ const DatasourceDetail: React.FC = () => {
       const responseCode = response?.data.meta?.code;
       if (responseCode === 1) {
         notifySuccess('Yaml executed successfully');
-        setYamlExecuteResult((response.data.data as unknown as Record<string, any>[]) || []);
+        setYamlExecuteResult((response.data.data as unknown as Record<string, unknown>[]) || []);
       } else {
         notifyError('Error while executing yaml');
       }
-    } catch (error) {
+    } catch {
       notifyError('Error while executing yaml');
     } finally {
       setExecuting(false);
@@ -188,7 +188,7 @@ const DatasourceDetail: React.FC = () => {
       await floConsoleService.datasourcesService.deleteDatasource(datasourceId);
       notifySuccess('Datasource deleted successfully');
       navigate(`/apps/${appId}/datasources`);
-    } catch (error) {
+    } catch {
       console.error('Error deleting datasource');
     } finally {
       setDeleting(false);
@@ -204,14 +204,14 @@ const DatasourceDetail: React.FC = () => {
       const result = await floConsoleService.datasourcesService.testDatasource(datasourceId);
 
       // Based on updated API, test-connection now returns boolean directly
-      const isConnected = (result.data as any) === true;
+      const isConnected = (result.data as unknown) === true;
 
       if (isConnected) {
         notifySuccess('Connection test successful');
       } else {
         notifyError('Connection test failed');
       }
-    } catch (error) {
+    } catch {
       notifyError('Failed to test connection');
     } finally {
       setTestingConnection(false);

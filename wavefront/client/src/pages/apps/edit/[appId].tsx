@@ -24,7 +24,7 @@ const EditApp: React.FC = () => {
   const queryClient = useQueryClient();
   const { mutate: updateApp, isPending: isUpdating } = useUpdateApp(queryClient, notifySuccess, notifyError);
   // Extract app data from response - adjust based on actual API response structure
-  const appData = (response as any)?.data?.data?.app || (response as any)?.data?.app || response;
+  const appData = response;
 
   const form = useForm<TEditAppInputSchema>({
     resolver: zodResolver(createAppSchema),

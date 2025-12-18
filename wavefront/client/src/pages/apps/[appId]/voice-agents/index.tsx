@@ -6,6 +6,7 @@ import { Input } from '@app/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
 import { useGetVoiceAgents } from '@app/hooks';
 import { getVoiceAgentsKey } from '@app/hooks/data/query-keys';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { VoiceAgent } from '@app/types/voice-agent';
 import { useQueryClient } from '@tanstack/react-query';
@@ -60,8 +61,9 @@ const VoiceAgentsPage: React.FC = () => {
       notifySuccess('Voice agent deleted successfully');
       queryClient.invalidateQueries({ queryKey: getVoiceAgentsKey(app || '') });
       setDeleteItem(null);
-    } catch (error: any) {
-      notifyError(error?.response?.data?.error?.message || 'Failed to delete voice agent');
+    } catch (error) {
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to delete voice agent');
     } finally {
       setDeleting(false);
     }

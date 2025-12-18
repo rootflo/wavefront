@@ -4,7 +4,7 @@ export type ParameterType = 'string' | 'number' | 'boolean' | 'select' | 'array'
 
 export interface ParameterConfig {
   type: ParameterType;
-  default: any;
+  default: unknown;
   min?: number;
   max?: number;
   step?: number;
@@ -303,15 +303,15 @@ export function getProviderBadge(authType: AuthenticatorType): { bg: string; tex
 }
 
 // Helper function to initialize parameters with defaults
-export function initializeParameters(authType: AuthenticatorType): Record<string, any> {
+export function initializeParameters(authType: AuthenticatorType): Record<string, unknown> {
   const config = getProviderConfig(authType);
   if (!config) return {};
 
-  const params: Record<string, any> = {};
+  const params: Record<string, unknown> = {};
   Object.entries(config.parameters).forEach(([key, paramConfig]) => {
     if (paramConfig.type === 'object' && paramConfig.fields) {
       // Handle nested object parameters
-      const nestedParams: Record<string, any> = {};
+      const nestedParams: Record<string, unknown> = {};
       Object.entries(paramConfig.fields).forEach(([nestedKey, nestedConfig]) => {
         if (nestedConfig.default !== undefined) {
           nestedParams[nestedKey] = nestedConfig.default;
@@ -328,8 +328,8 @@ export function initializeParameters(authType: AuthenticatorType): Record<string
 // Helper function to merge saved parameters with defaults
 export function mergeParameters(
   authType: AuthenticatorType,
-  savedParams: Record<string, any> | null | undefined
-): Record<string, any> {
+  savedParams: Record<string, unknown> | null | undefined
+): Record<string, unknown> {
   const defaultParams = initializeParameters(authType);
   if (!savedParams) return defaultParams;
 
@@ -348,8 +348,8 @@ export function mergeParameters(
 }
 
 // Helper function to clean parameters (remove empty/undefined values)
-export function cleanParameters(params: Record<string, any>): Record<string, any> {
-  const cleaned: Record<string, any> = {};
+export function cleanParameters(params: Record<string, unknown>): Record<string, unknown> {
+  const cleaned: Record<string, unknown> = {};
   Object.entries(params).forEach(([key, value]) => {
     if (value === undefined || value === null) return;
 

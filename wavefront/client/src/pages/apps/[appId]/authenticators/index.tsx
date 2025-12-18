@@ -14,6 +14,7 @@ import { Button } from '@app/components/ui/button';
 import { Input } from '@app/components/ui/input';
 import { useGetAuthenticators } from '@app/hooks';
 import { getAuthenticatorsKey } from '@app/hooks/data/query-keys';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { Authenticator } from '@app/types/authenticator';
 import { useQueryClient } from '@tanstack/react-query';
@@ -50,8 +51,9 @@ const AuthenticatorsPage: React.FC = () => {
       notifySuccess('Authenticator deleted successfully');
       queryClient.invalidateQueries({ queryKey: getAuthenticatorsKey(app) });
       setDeleteItem(null);
-    } catch (error: any) {
-      notifyError(error?.response?.data?.meta?.error || 'Failed to delete authenticator');
+    } catch (error) {
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to delete authenticator');
     } finally {
       setDeleting(false);
     }

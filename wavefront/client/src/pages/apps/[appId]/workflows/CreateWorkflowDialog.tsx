@@ -18,6 +18,7 @@ import {
   FormMessage,
 } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { langs } from '@uiw/codemirror-extensions-langs';
@@ -156,10 +157,10 @@ const CreateWorkflowDialog: React.FC<CreateWorkflowDialogProps> = ({ isOpen, onO
         onOpenChange(false);
         navigate(`/apps/${appId}/workflows/${createdWorkflowId}`);
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error creating workflow:', error);
-      const errorMessage = error?.response?.data?.meta?.error || error?.message || 'Failed to create workflow';
-      notifyError(errorMessage);
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to create workflow');
     } finally {
       setLoading(false);
     }

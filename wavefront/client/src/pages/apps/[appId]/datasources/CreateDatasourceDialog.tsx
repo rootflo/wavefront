@@ -12,6 +12,7 @@ import {
 } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { langs } from '@uiw/codemirror-extensions-langs';
@@ -92,7 +93,7 @@ const CreateDatasourceDialog: React.FC<CreateDatasourceDialogProps> = ({ isOpen,
     let parsedConfig;
     try {
       parsedConfig = JSON.parse(data.connectionConfig);
-    } catch (error) {
+    } catch {
       notifyError('Invalid JSON in connection configuration');
       return;
     }
@@ -105,7 +106,7 @@ const CreateDatasourceDialog: React.FC<CreateDatasourceDialogProps> = ({ isOpen,
         data.description?.trim() || undefined
       );
 
-      const responseData = response.data?.data as any;
+      const responseData = response.data?.data as { datasource_id?: string } | undefined;
       notifySuccess('Datasource created successfully');
 
       if (onSuccess) {
@@ -119,19 +120,8 @@ const CreateDatasourceDialog: React.FC<CreateDatasourceDialogProps> = ({ isOpen,
       }
     } catch (error) {
       console.error('Error creating datasource:', error);
-
-      let errorMessage = 'Failed to create datasource';
-
-      if (error && typeof error === 'object' && 'response' in error) {
-        const response = (error as any).response;
-        if (response?.data?.meta?.error) {
-          errorMessage = response.data.meta.error;
-        } else if (response?.data?.message) {
-          errorMessage = response.data.message;
-        }
-      }
-
-      notifyError(errorMessage);
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to create datasource');
     }
   };
 

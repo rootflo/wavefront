@@ -21,7 +21,7 @@ export class DatasourcesService {
   async createDatasource(
     name: string,
     type: string,
-    config: Record<string, any>,
+    config: Record<string, unknown>,
     description?: string
   ): Promise<DatasourceResponse> {
     const response: IApiResponse<DatasourceData> = await this.http.post(`/v1/:appId/floware/v1/datasources`, {
@@ -44,7 +44,7 @@ export class DatasourcesService {
     datasourceId: string,
     name: string,
     type: string,
-    config: Record<string, any>,
+    config: Record<string, unknown>,
     description?: string
   ): Promise<DatasourceResponse> {
     const response: IApiResponse<DatasourceData> = await this.http.patch(

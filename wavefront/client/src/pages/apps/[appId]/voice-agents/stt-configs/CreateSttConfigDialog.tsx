@@ -25,6 +25,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Slider } from '@app/components/ui/slider';
 import { Textarea } from '@app/components/ui/textarea';
 import { VOICE_PROVIDERS_CONFIG, getProviderConfig, initializeParameters } from '@app/config/voice-providers';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
 import React, { useEffect, useState } from 'react';
@@ -50,7 +51,7 @@ interface CreateSttConfigDialogProps {
 const CreateSttConfigDialog: React.FC<CreateSttConfigDialogProps> = ({ isOpen, onOpenChange, onSuccess }) => {
   const { notifySuccess, notifyError } = useNotifyStore();
 
-  const [parameters, setParameters] = useState<Record<string, any>>({});
+  const [parameters, setParameters] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(false);
 
   const form = useForm<CreateSttConfigInput>({
@@ -87,7 +88,7 @@ const CreateSttConfigDialog: React.FC<CreateSttConfigDialogProps> = ({ isOpen, o
     }
   }, [isOpen, form]);
 
-  const setParameter = (key: string, value: any) => {
+  const setParameter = (key: string, value: unknown) => {
     setParameters((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -95,7 +96,7 @@ const CreateSttConfigDialog: React.FC<CreateSttConfigDialogProps> = ({ isOpen, o
     const config = getProviderConfig('stt', watchedProvider);
     if (!config) return null;
 
-    const params: Record<string, any> = {};
+    const params: Record<string, unknown> = {};
 
     Object.entries(parameters).forEach(([key, value]) => {
       const paramConfig = config.parameters[key];
@@ -115,7 +116,7 @@ const CreateSttConfigDialog: React.FC<CreateSttConfigDialogProps> = ({ isOpen, o
       await floConsoleService.sttConfigService.createSttConfig({
         display_name: data.display_name.trim(),
         description: data.description?.trim() || null,
-        provider: data.provider as any,
+        provider: data.provider,
         api_key: data.api_key.trim(),
         language: data.language?.trim() || null,
         parameters: buildParameters(),
@@ -123,8 +124,9 @@ const CreateSttConfigDialog: React.FC<CreateSttConfigDialogProps> = ({ isOpen, o
       notifySuccess('STT configuration created successfully');
       onSuccess?.();
       onOpenChange(false);
-    } catch (error: any) {
-      notifyError(error?.response?.data?.error?.message || 'Failed to create STT configuration');
+    } catch (error) {
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to create STT configuration');
     } finally {
       setLoading(false);
     }

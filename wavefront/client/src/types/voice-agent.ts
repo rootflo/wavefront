@@ -13,7 +13,7 @@ export interface VoiceAgent {
   telephony_config_id: string;
   system_prompt: string;
   welcome_message: string;
-  conversation_config: Record<string, any> | null;
+  conversation_config: Record<string, unknown> | null;
   status: 'active' | 'inactive';
   is_deleted: boolean;
   created_at: string;
@@ -32,7 +32,7 @@ export interface CreateVoiceAgentRequest {
   telephony_config_id: string;
   system_prompt: string;
   welcome_message: string;
-  conversation_config?: Record<string, any> | null;
+  conversation_config?: Record<string, unknown> | null;
   status?: 'active' | 'inactive';
 }
 
@@ -49,7 +49,7 @@ export interface UpdateVoiceAgentRequest {
   telephony_config_id?: string;
   system_prompt?: string;
   welcome_message?: string;
-  conversation_config?: Record<string, any> | null;
+  conversation_config?: Record<string, unknown> | null;
   status?: 'active' | 'inactive';
 }
 

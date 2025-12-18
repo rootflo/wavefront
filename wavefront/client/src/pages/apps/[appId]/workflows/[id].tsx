@@ -4,6 +4,7 @@ import { Button } from '@app/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@app/components/ui/dialog';
 import { appEnv } from '@app/config/env';
 import { useNotifyStore } from '@app/store';
+import { ChatMessage, ChatMessageContent } from '@app/types/chat-message';
 import { Workflow, WorkflowEvent } from '@app/types/workflow';
 import { scrollToBottom } from '@app/utils/scroll';
 import { langs } from '@uiw/codemirror-extensions-langs';
@@ -11,6 +12,8 @@ import CodeMirror from '@uiw/react-codemirror';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useParams } from 'react-router';
+
+type MessageInput = { role: 'user' | 'assistant'; content: ChatMessageContent };
 
 const WorkflowDetail: React.FC = () => {
   const { app: appId, id } = useParams<{ app: string; id: string }>();
@@ -42,7 +45,7 @@ const WorkflowDetail: React.FC = () => {
   >([]);
 
   // Chat history and menu states
-  const [chatHistory, setChatHistory] = useState<{ role: 'user' | 'assistant'; content: any }[]>([]);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [showUploadMenu, setShowUploadMenu] = useState(false);
   const [showVariablesInput, setShowVariablesInput] = useState(false);
   const [selectedLLMConfigId, setSelectedLLMConfigId] = useState<string>('');
@@ -348,13 +351,11 @@ const WorkflowDetail: React.FC = () => {
         }
       }
 
-      // Prepare inputs based on what's provided
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let inputs: string | any[];
 
       // Handle different input combinations
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const messageInputs: any[] = [];
+      const messageInputs: MessageInput[] = [];
       chatHistory.forEach((message) => {
         messageInputs.push({
           role: message.role,
@@ -435,7 +436,10 @@ const WorkflowDetail: React.FC = () => {
     }
   };
 
-  const handleSSEInference = async (inputs: string | any[], variables: Record<string, any>) => {
+  const handleSSEInference = async (
+    inputs: string | Array<{ role: 'user' | 'assistant'; content: ChatMessageContent }>,
+    variables: Record<string, unknown>
+  ) => {
     if (!id) return;
 
     try {

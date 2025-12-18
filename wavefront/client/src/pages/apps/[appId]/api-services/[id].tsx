@@ -16,6 +16,7 @@ import { Label } from '@app/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { useGetApiService } from '@app/hooks';
 import { getApiServiceKey } from '@app/hooks/data/query-keys';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { ApiServiceItem } from '@app/types/api-service';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -150,7 +151,7 @@ const ApiServiceDetail: React.FC = () => {
             if (h.key && h.value) apiHeadersObj[h.key] = h.value;
           });
 
-          const backendQueryParamsObj: Record<string, any> = {};
+          const backendQueryParamsObj: Record<string, unknown> = {};
           api.backend_query_params.forEach((p) => {
             if (p.key && p.value) backendQueryParamsObj[p.key] = p.value;
           });
@@ -189,7 +190,7 @@ const ApiServiceDetail: React.FC = () => {
 
   const parseYaml = (yamlStr: string): ApiServiceForm | null => {
     try {
-      const parsed: any = yaml.load(yamlStr);
+      const parsed = yaml.load(yamlStr) as { service?: unknown } | null;
       if (!parsed || !parsed.service) return null;
 
       const s = parsed.service;
@@ -216,37 +217,39 @@ const ApiServiceDetail: React.FC = () => {
           api_key_header: s.auth?.api_key_header || 'X-API-Key',
           additional_headers: auth_additional_headers,
         },
-        apis: (s.apis || []).map((api: any) => {
-          const apiHeaders = api.additional_headers || {};
-          const api_additional_headers = Object.entries(apiHeaders).map(([key, value]) => ({
-            key,
-            value: String(value),
-          }));
+        apis: ((s.apis || []) as Array<{ additional_headers?: Record<string, string>; [key: string]: unknown }>).map(
+          (api) => {
+            const apiHeaders = api.additional_headers || {};
+            const api_additional_headers = Object.entries(apiHeaders).map(([key, value]) => ({
+              key,
+              value: String(value),
+            }));
 
-          const backendQueryParams = api.backend_query_params || {};
-          const backend_query_params = Object.entries(backendQueryParams).map(([key, value]) => ({
-            key,
-            value: String(value),
-          }));
+            const backendQueryParams = api.backend_query_params || {};
+            const backend_query_params = Object.entries(backendQueryParams).map(([key, value]) => ({
+              key,
+              value: String(value),
+            }));
 
-          const outputMapper = api.output_mapper || {};
-          const output_mapper = Object.entries(outputMapper).map(([key, value]) => ({
-            key,
-            value: String(value),
-          }));
+            const outputMapper = api.output_mapper || {};
+            const output_mapper = Object.entries(outputMapper).map(([key, value]) => ({
+              key,
+              value: String(value),
+            }));
 
-          return {
-            id: api.id || '',
-            version: api.version || 'v1',
-            path: api.path || '',
-            backend_path: api.backend_path || '',
-            method: (api.method as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH') || 'GET',
-            additional_headers: api_additional_headers,
-            backend_query_params: backend_query_params,
-            output_mapper_enabled: api.output_mapper_enabled || false,
-            output_mapper: output_mapper,
-          };
-        }),
+            return {
+              id: api.id || '',
+              version: api.version || 'v1',
+              path: api.path || '',
+              backend_path: api.backend_path || '',
+              method: (api.method as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH') || 'GET',
+              additional_headers: api_additional_headers,
+              backend_query_params: backend_query_params,
+              output_mapper_enabled: api.output_mapper_enabled || false,
+              output_mapper: output_mapper,
+            };
+          }
+        ),
       };
     } catch (e) {
       console.error('Error parsing YAML', e);
@@ -388,10 +391,10 @@ const ApiServiceDetail: React.FC = () => {
 
       setEditing(false);
       notifySuccess('API Service updated successfully');
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error updating API service:', error);
-      const errorMessage = error?.response?.data?.meta?.error || error?.message || 'Failed to update API service';
-      notifyError(errorMessage);
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to update API service');
     } finally {
       setSaving(false);
     }
@@ -923,7 +926,7 @@ const ApiServiceDetail: React.FC = () => {
                             </div>
                             <div className="flex w-full flex-col gap-3">
                               {(form.watch(`apis.${index}.additional_headers`) || []).map(
-                                (_header: any, hIndex: number) => (
+                                (_header: unknown, hIndex: number) => (
                                   <div key={hIndex} className="flex w-full gap-3">
                                     <FormField
                                       control={form.control}
@@ -980,7 +983,7 @@ const ApiServiceDetail: React.FC = () => {
                             </div>
                             <div className="flex w-full flex-col gap-3">
                               {(form.watch(`apis.${index}.backend_query_params`) || []).map(
-                                (_param: any, pIndex: number) => (
+                                (_param: unknown, pIndex: number) => (
                                   <div key={pIndex} className="flex w-full gap-3">
                                     <FormField
                                       control={form.control}
@@ -1058,7 +1061,7 @@ const ApiServiceDetail: React.FC = () => {
                             {form.watch(`apis.${index}.output_mapper_enabled`) && (
                               <div className="flex w-full flex-col gap-3">
                                 {(form.watch(`apis.${index}.output_mapper`) || []).map(
-                                  (_mapper: any, mIndex: number) => (
+                                  (_mapper: unknown, mIndex: number) => (
                                     <div key={mIndex} className="flex w-full gap-3">
                                       <FormField
                                         control={form.control}

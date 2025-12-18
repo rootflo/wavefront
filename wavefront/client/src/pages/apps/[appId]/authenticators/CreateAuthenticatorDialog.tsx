@@ -25,7 +25,9 @@ import {
   getAuthenticatorTypeOptions,
   getProviderConfig,
   initializeParameters,
+  ParameterConfig,
 } from '@app/config/authenticators';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { AuthenticatorType } from '@app/types/authenticator';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -59,7 +61,7 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
   const { notifySuccess, notifyError } = useNotifyStore();
   const { selectedApp } = useDashboardStore();
   const [authType, setAuthType] = useState<AuthenticatorType>('google_oauth');
-  const [parameters, setParameters] = useState<Record<string, any>>(() => initializeParameters(authType));
+  const [parameters, setParameters] = useState<Record<string, unknown>>(() => initializeParameters(authType));
   const [loading, setLoading] = useState(false);
 
   const form = useForm<CreateAuthenticatorInput>({
@@ -94,11 +96,11 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
     }
   }, [isOpen, form]);
 
-  const setParameter = (key: string, value: any) => {
+  const setParameter = (key: string, value: unknown) => {
     setParameters((prev) => ({ ...prev, [key]: value }));
   };
 
-  const setNestedParameter = (parentKey: string, childKey: string, value: any) => {
+  const setNestedParameter = (parentKey: string, childKey: string, value: unknown) => {
     setParameters((prev) => ({
       ...prev,
       [parentKey]: {
@@ -170,10 +172,10 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
           navigate(`/apps/${appId}/authenticators/${response.data.data.authenticator.auth_id}`);
         }
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error creating authenticator:', error);
-      const errorMessage = error?.response?.data?.meta?.error || error?.message || 'Failed to create authenticator';
-      notifyError(errorMessage);
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to create authenticator');
     } finally {
       setLoading(false);
     }
@@ -318,7 +320,7 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
     );
   };
 
-  const renderNestedField = (parentKey: string, childKey: string, config: any) => {
+  const renderNestedField = (parentKey: string, childKey: string, config: ParameterConfig) => {
     const value = parameters[parentKey]?.[childKey];
 
     if (config.type === 'boolean') {

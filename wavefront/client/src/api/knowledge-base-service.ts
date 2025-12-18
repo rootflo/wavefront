@@ -52,7 +52,7 @@ export type KnowledgeBaseDocumentsListResponse = IApiResponse<KnowledgeBaseDocum
 // Interface for RAG inference response
 export interface RagInferenceResultData {
   response: string;
-  sources: any[]; // Assuming sources can be any array for now
+  sources: unknown[]; // Assuming sources can be any array for now
 }
 
 export type RagInferenceResponse = IApiResponse<RagInferenceResultData>;
@@ -74,7 +74,7 @@ export interface AllConfigsData {
   display_name: string;
   type: string;
   base_url: string;
-  parameters: any;
+  parameters: Record<string, unknown>;
   is_deleted: boolean;
   created_at: string;
   updated_at: string;
@@ -108,11 +108,11 @@ export class KnowledgeBaseService {
     return response;
   }
 
-  async uploadDocument(kbId: string, file: File): Promise<IApiResponse<any>> {
+  async uploadDocument(kbId: string, file: File): Promise<IApiResponse<unknown>> {
     const formData = new FormData();
     formData.append('file', file);
 
-    const response: IApiResponse<any> = await this.http.post(
+    const response: IApiResponse<unknown> = await this.http.post(
       `/v1/:appId/floware/v1/knowledge-bases/${kbId}/documents`,
       formData,
       {
@@ -192,8 +192,8 @@ export class KnowledgeBaseService {
     return response;
   }
 
-  async deleteSystemPrompt(kbId: string, inferenceId: string): Promise<IApiResponse<any>> {
-    const response: IApiResponse<any> = await this.http.delete(
+  async deleteSystemPrompt(kbId: string, inferenceId: string): Promise<IApiResponse<unknown>> {
+    const response: IApiResponse<unknown> = await this.http.delete(
       `/v1/:appId/floware/v1/knowledge-base/${kbId}/inference/${inferenceId}`
     );
     return response;
@@ -206,13 +206,13 @@ export class KnowledgeBaseService {
     return response;
   }
 
-  async deleteKnowledgeBase(kbId: string): Promise<IApiResponse<any>> {
-    const response: IApiResponse<any> = await this.http.delete(`/v1/:appId/floware/v1/knowledge-bases/${kbId}`);
+  async deleteKnowledgeBase(kbId: string): Promise<IApiResponse<unknown>> {
+    const response: IApiResponse<unknown> = await this.http.delete(`/v1/:appId/floware/v1/knowledge-bases/${kbId}`);
     return response;
   }
 
-  async deleteDocument(kbId: string, documentId: string): Promise<IApiResponse<any>> {
-    const response: IApiResponse<any> = await this.http.delete(
+  async deleteDocument(kbId: string, documentId: string): Promise<IApiResponse<unknown>> {
+    const response: IApiResponse<unknown> = await this.http.delete(
       `/v1/:appId/floware/v1/knowledge-bases/${kbId}/documents/${documentId}`
     );
     return response;

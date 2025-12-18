@@ -8,7 +8,7 @@ export interface LLMInferenceConfig {
   display_name: string;
   type: InferenceEngineType;
   base_url?: string;
-  parameters?: Record<string, any> | null;
+  parameters?: Record<string, unknown> | null;
   is_deleted: boolean;
   created_at: string;
   updated_at: string;
@@ -20,7 +20,7 @@ export interface CreateLLMConfigRequest {
   api_key?: string;
   type: InferenceEngineType;
   base_url?: string;
-  parameters?: Record<string, any> | null;
+  parameters?: Record<string, unknown> | null;
 }
 
 export interface UpdateLLMConfigRequest {
@@ -29,7 +29,7 @@ export interface UpdateLLMConfigRequest {
   api_key?: string | null;
   type?: InferenceEngineType;
   base_url?: string | null;
-  parameters?: Record<string, any> | null;
+  parameters?: Record<string, unknown> | null;
 }
 
 export interface LLMConfigListData {

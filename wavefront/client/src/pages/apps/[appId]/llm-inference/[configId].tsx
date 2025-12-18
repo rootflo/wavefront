@@ -23,8 +23,9 @@ import {
 } from '@app/config/llm-providers';
 import { useGetLLMConfig } from '@app/hooks';
 import { getLLMConfigKey, getLLMConfigsKey } from '@app/hooks/data/query-keys';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
-import { InferenceEngineType } from '@app/types/llm-inference-config';
+import { InferenceEngineType, UpdateLLMConfigRequest } from '@app/types/llm-inference-config';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
@@ -66,7 +67,7 @@ const LLMInferenceConfigDetail: React.FC = () => {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [parameters, setParameters] = useState<Record<string, any>>({});
+  const [parameters, setParameters] = useState<Record<string, unknown>>({});
 
   const form = useForm<LLMConfigForm>({
     resolver: zodResolver(llmConfigFormSchema),
@@ -130,7 +131,7 @@ const LLMInferenceConfigDetail: React.FC = () => {
       const cleanedParams = cleanParameters(parameters);
 
       // Only include fields that have changed or are explicitly set
-      const updateData: any = {
+      const updateData: UpdateLLMConfigRequest = {
         display_name: data.display_name.trim(),
         llm_model: data.llm_model.trim(),
         type: data.type,
@@ -157,18 +158,8 @@ const LLMInferenceConfigDetail: React.FC = () => {
       notifySuccess('Model updated successfully');
     } catch (error) {
       console.error('Error updating LLM inference config:', error);
-
-      let errorMessage = 'Failed to update model';
-      if (error && typeof error === 'object' && 'response' in error) {
-        const response = (error as any).response;
-        if (response?.data?.error) {
-          errorMessage = response.data.error;
-        } else if (response?.data?.message) {
-          errorMessage = response.data.message;
-        }
-      }
-
-      notifyError(errorMessage);
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to update model');
     } finally {
       setSaving(false);
     }

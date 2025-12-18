@@ -36,7 +36,7 @@ export interface UpdateScheduleRequest {
 }
 
 export interface TriggerDagRunRequest {
-  conf?: Record<string, any>;
+  conf?: Record<string, unknown>;
   logical_date?: string;
   note?: string;
 }
@@ -74,7 +74,7 @@ export interface TriggerDagRunData {
   state: string;
   logical_date: string;
   execution_date: string;
-  conf?: Record<string, any>;
+  conf?: Record<string, unknown>;
 }
 
 // Pipeline API Response Types

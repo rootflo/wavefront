@@ -1,6 +1,13 @@
 import floConsoleService from '@app/api';
-import { cleanParameters, getProviderBadge, getProviderConfig, mergeParameters } from '@app/config/authenticators';
+import {
+  cleanParameters,
+  getProviderBadge,
+  getProviderConfig,
+  mergeParameters,
+  ParameterConfig,
+} from '@app/config/authenticators';
 import { useGetAuthenticator } from '@app/hooks/data/fetch-hooks';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
@@ -20,7 +27,7 @@ const AuthenticatorDetailPage: React.FC = () => {
 
   // Form state
   const [authDesc, setAuthDesc] = useState('');
-  const [parameters, setParameters] = useState<Record<string, any>>({});
+  const [parameters, setParameters] = useState<Record<string, unknown>>({});
 
   // Fetch authenticator
   const { data: authenticator, isLoading: authenticatorLoading } = useGetAuthenticator(app, authId);
@@ -33,11 +40,11 @@ const AuthenticatorDetailPage: React.FC = () => {
     }
   }, [authenticator]);
 
-  const setParameter = (key: string, value: any) => {
+  const setParameter = (key: string, value: unknown) => {
     setParameters((prev) => ({ ...prev, [key]: value }));
   };
 
-  const setNestedParameter = (parentKey: string, childKey: string, value: any) => {
+  const setNestedParameter = (parentKey: string, childKey: string, value: unknown) => {
     setParameters((prev) => ({
       ...prev,
       [parentKey]: {
@@ -70,8 +77,9 @@ const AuthenticatorDetailPage: React.FC = () => {
         queryKey: ['authenticator', app, authId],
       });
       queryClient.invalidateQueries({ queryKey: ['authenticators', app] });
-    } catch (error: any) {
-      notifyError(error?.response?.data?.meta?.error || 'Failed to update authenticator');
+    } catch (error) {
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to update authenticator');
     } finally {
       setSaveLoading(false);
     }
@@ -84,8 +92,9 @@ const AuthenticatorDetailPage: React.FC = () => {
       await floConsoleService.authenticatorService.deleteAuthenticator(authId);
       notifySuccess('Authenticator deleted successfully');
       navigate(`/apps/${app}/authenticators`);
-    } catch (error: any) {
-      notifyError(error?.response?.data?.meta?.error || 'Failed to delete authenticator');
+    } catch (error) {
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to delete authenticator');
     }
   };
 
@@ -105,8 +114,9 @@ const AuthenticatorDetailPage: React.FC = () => {
         queryKey: ['authenticator', app, authId],
       });
       queryClient.invalidateQueries({ queryKey: ['authenticators', app] });
-    } catch (error: any) {
-      notifyError(error?.response?.data?.meta?.error || 'Failed to toggle authenticator');
+    } catch (error) {
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to toggle authenticator');
     } finally {
       setTogglingEnabled(false);
     }
@@ -274,7 +284,7 @@ const AuthenticatorDetailPage: React.FC = () => {
     );
   };
 
-  const renderNestedField = (parentKey: string, childKey: string, config: any, disabled: boolean) => {
+  const renderNestedField = (parentKey: string, childKey: string, config: ParameterConfig, disabled: boolean) => {
     const value = parameters[parentKey]?.[childKey];
 
     if (config.type === 'boolean') {

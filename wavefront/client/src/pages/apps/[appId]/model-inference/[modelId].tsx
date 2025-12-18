@@ -1,5 +1,5 @@
 import floConsoleService from '@app/api';
-import { InferencePayload, PreprocessingStep } from '@app/api/model-inference-service';
+import { InferencePayload, ModelInferenceResultData, PreprocessingStep } from '@app/api/model-inference-service';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import {
   Breadcrumb,
@@ -23,6 +23,7 @@ import { Label } from '@app/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { useGetModel } from '@app/hooks';
 import { getModelsKey } from '@app/hooks/data/query-keys';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { Plus, Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -59,7 +60,7 @@ const ModelDetail: React.FC = () => {
   // Inference state
   const [inferenceImageFile, setInferenceImageFile] = useState<File | null>(null);
   const [jsonPayload, setJsonPayload] = useState<string>(defaultJsonPayload);
-  const [inferenceResult, setInferenceResult] = useState<any>(null);
+  const [inferenceResult, setInferenceResult] = useState<ModelInferenceResultData | null>(null);
   const [runningInference, setRunningInference] = useState(false);
   const [preprocessingSteps, setPreprocessingSteps] = useState<PreprocessingStep[]>([]);
 
@@ -85,11 +86,10 @@ const ModelDetail: React.FC = () => {
         customPayload
       );
 
-      setInferenceResult(response.data.data);
+      setInferenceResult(response.data.data ?? null);
       notifySuccess('Inference successful!');
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error running inference:', error);
-      notifyError(error.message || 'Failed to run inference');
     } finally {
       setRunningInference(false);
     }
@@ -114,18 +114,20 @@ const ModelDetail: React.FC = () => {
       navigate(`/apps/${appId}/model-inference`);
     } catch (error) {
       console.error('Error deleting model:', error);
-      let errorMessage = 'Failed to delete model';
-
-      if (error && typeof error === 'object' && 'response' in error) {
-        const response = (error as any).response;
-        if (response?.data?.meta?.error) {
-          errorMessage = response.data.meta.error;
-        } else if (response?.data?.message) {
-          errorMessage = response.data.message;
-        }
-      }
-      notifyError(errorMessage);
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to delete model');
     }
+  };
+
+  const formatInferenceResult = (result: ModelInferenceResultData): string => {
+    return JSON.stringify(
+      {
+        ...result,
+        infer_data: typeof result.infer_data === 'number' ? Math.round(result.infer_data * 100) : result.infer_data,
+      },
+      null,
+      2
+    );
   };
 
   return (
@@ -300,19 +302,7 @@ const ModelDetail: React.FC = () => {
                   <div className="flex flex-col items-start gap-4 rounded-md border border-gray-200 bg-gray-50 p-4">
                     <Label>Inference Result</Label>
                     <div className="w-full text-sm text-black">
-                      <pre className="whitespace-pre-wrap">
-                        {JSON.stringify(
-                          {
-                            ...inferenceResult,
-                            infer_data:
-                              typeof inferenceResult.infer_data === 'number'
-                                ? Math.round(inferenceResult.infer_data * 100)
-                                : inferenceResult.infer_data,
-                          },
-                          null,
-                          2
-                        )}
-                      </pre>
+                      <pre className="whitespace-pre-wrap">{formatInferenceResult(inferenceResult)}</pre>
                     </div>
                   </div>
                 )}
