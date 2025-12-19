@@ -49,6 +49,7 @@ const llmConfigFormSchema = z.object({
   llm_model: z.string().min(1, 'LLM model is required'),
   type: z.enum(['openai', 'anthropic', 'gemini', 'azure_openai', 'ollama', 'vllm', 'groq']),
   api_key: z.string().optional(),
+  model_type: z.enum(['llm', 'embedding']),
   base_url: z.string().optional(),
   parameters: z.record(z.any()).optional(),
 });
@@ -75,6 +76,7 @@ const LLMInferenceConfigDetail: React.FC = () => {
       display_name: '',
       llm_model: '',
       type: 'openai',
+      model_type: 'llm',
       api_key: '',
       base_url: '',
       parameters: {},
@@ -92,6 +94,7 @@ const LLMInferenceConfigDetail: React.FC = () => {
         display_name: config.display_name,
         llm_model: config.llm_model,
         type: config.type,
+        model_type: (config.model_type as 'llm' | 'embedding') || 'llm',
         api_key: '', // API key is never returned for security
         base_url: config.base_url || '',
         parameters: mergedParams,
@@ -135,6 +138,7 @@ const LLMInferenceConfigDetail: React.FC = () => {
         display_name: data.display_name.trim(),
         llm_model: data.llm_model.trim(),
         type: data.type,
+        model_type: data.model_type,
         parameters: Object.keys(cleanedParams).length > 0 ? cleanedParams : null,
       };
 
@@ -235,6 +239,7 @@ const LLMInferenceConfigDetail: React.FC = () => {
                         display_name: config.display_name,
                         llm_model: config.llm_model,
                         type: config.type,
+                        model_type: (config.model_type as 'llm' | 'embedding') || 'llm',
                         api_key: '',
                         base_url: config.base_url || '',
                         parameters: mergedParams,
@@ -360,6 +365,28 @@ const LLMInferenceConfigDetail: React.FC = () => {
                       )}
                     />
                   )}
+
+                  <FormField
+                    control={form.control}
+                    name="model_type"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Model Type</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value} disabled={!editing}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select model type" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="llm">LLM</SelectItem>
+                            <SelectItem value="embedding">Embedding</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
               </form>
             </Form>

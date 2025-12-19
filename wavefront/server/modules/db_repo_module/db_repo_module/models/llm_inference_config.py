@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import String, JSON, func
+from sqlalchemy import String, JSON, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database.base import Base
@@ -18,6 +18,9 @@ class LlmInferenceConfig(Base):
     display_name: Mapped[str] = mapped_column(String(length=255), nullable=False)
     api_key: Mapped[Optional[str]] = mapped_column(String(length=512), nullable=True)
     type: Mapped[str] = mapped_column(String(length=64), nullable=False)
+    model_type: Mapped[str] = mapped_column(
+        String(length=64), nullable=False, default='llm', server_default=text("'llm'")
+    )
     base_url: Mapped[Optional[str]] = mapped_column(String(length=512), nullable=True)
     parameters: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     is_deleted: Mapped[bool] = mapped_column(default=False, nullable=False)

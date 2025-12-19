@@ -71,6 +71,7 @@ const createLLMInferenceSchema = z.object({
   displayName: z.string().min(1, 'Display name is required'),
   llmModel: z.string().min(1, 'LLM model name is required'),
   type: z.enum(['openai', 'anthropic', 'gemini', 'azure_openai', 'ollama', 'vllm', 'groq']),
+  modelType: z.enum(['llm', 'embedding']),
   apiKey: z.string().optional(),
   baseUrl: z.string().optional(),
 });
@@ -103,6 +104,7 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
       displayName: '',
       llmModel: '',
       type: 'openai',
+      modelType: 'llm',
       apiKey: '',
       baseUrl: getDefaultBaseUrl('openai'),
     },
@@ -131,6 +133,7 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
         displayName: '',
         llmModel: '',
         type: defaultType,
+        modelType: 'llm',
         apiKey: '',
         baseUrl: getDefaultBaseUrl(defaultType),
       });
@@ -171,6 +174,7 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
         llm_model: data.llmModel.trim(),
         api_key: data.apiKey?.trim() || undefined,
         type: data.type,
+        model_type: data.modelType,
         base_url: data.baseUrl?.trim() || undefined,
         parameters: Object.keys(cleanedParams).length > 0 ? cleanedParams : undefined,
       });
@@ -352,6 +356,31 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
                       </SelectContent>
                     </Select>
                     <FormDescription>Choose the type of LLM inference engine</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="modelType"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      Model Type<span className="text-red-500">*</span>
+                    </FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select model type" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="llm">LLM</SelectItem>
+                        <SelectItem value="embedding">Embedding</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>Choose whether this is an LLM or embedding model</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}

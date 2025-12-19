@@ -28,6 +28,9 @@ class CreateLlmInferenceConfigPayload(BaseModel):
         None, description='API key for the inference engine (optional)'
     )
     type: InferenceEngineType = Field(..., description='Type of inference engine')
+    model_type: Optional[str] = Field(
+        'llm', description='Type of model: "llm" or "embedding" (defaults to "llm")'
+    )
     base_url: Optional[str] = Field(
         None, description='Base URL for the inference API (optional)'
     )
@@ -48,6 +51,9 @@ class UpdateLlmInferenceConfigPayload(BaseModel):
     )
     type: Union[InferenceEngineType, Any] = Field(
         default=UNSET, description='Type of inference engine'
+    )
+    model_type: Union[str, Any] = Field(
+        default=UNSET, description='Type of model: "llm" or "embedding"'
     )
     base_url: Union[str, None, Any] = Field(
         default=UNSET, description='Base URL for the inference API'

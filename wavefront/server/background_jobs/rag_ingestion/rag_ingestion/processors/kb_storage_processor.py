@@ -1,6 +1,6 @@
 from flo_cloud.cloud_storage import CloudStorageManager
 from dataclasses import dataclass
-from typing import List, Union
+from typing import List
 from flo_utils.utils.log import logger
 from rag_ingestion.service.kb_rag_storage import KBRagStorage
 from rag_ingestion.embeddings.embed import EmbeddingFunc
@@ -8,7 +8,7 @@ from rag_ingestion.models.doc_content import DocContent
 from rag_ingestion.stream.queue_message import QueueMessage
 from flo_cloud.kms import FloKmsService
 from flo_utils.streaming.message_processor import MessageProcessor, ProcessingResult
-from rag_ingestion.processors.file_processor import FileProcessor
+from rag_ingestion.processors.file_processor import FileProcessor, DocumentType
 from rag_ingestion.embeddings.image_embed import ImageEmbedding
 from rag_ingestion.models.knowledge_base_embeddings import KnowledgeBaseEmbeddingObject
 from rag_ingestion.models.rag_message import RagEventMessage
@@ -20,7 +20,7 @@ class KbStorageInsights:
     doc_id: str
     doc_content: DocContent
     kb_id: str
-    file_type: str
+    file_type: DocumentType
 
 
 class KbStorageProcessor(MessageProcessor):
@@ -36,7 +36,7 @@ class KbStorageProcessor(MessageProcessor):
         self.file_processor = FileProcessor()
         self.image_embedding = ImageEmbedding()
 
-    async def _extract_text_from_message(
+    async def _extract_content(
         self, message: QueueMessage, file_content: bytes
     ) -> DocContent:
         """
@@ -49,12 +49,10 @@ class KbStorageProcessor(MessageProcessor):
         Returns:
             A DocContent object with extracted content and parse_type.
         """
-        if message.parse_type != 'kb_insertion':
-            return DocContent(content='', parse_type=message.parse_type)
-        content: Union[str, bytes] = self.file_processor.process_file(
+        (content, document_type) = self.file_processor.process_file(
             file_content, str(message.file_type)
         )
-        return DocContent(content=content, parse_type=message.parse_type)
+        return DocContent(content=content, document_type=document_type)
 
     def __insert_kb_from_message(
         self, insights: List[ProcessingResult[KbStorageInsights]]
@@ -74,27 +72,29 @@ class KbStorageProcessor(MessageProcessor):
             for kb_insight in insights:
                 kb_id = kb_insight.insights.kb_id
                 doc_id = kb_insight.insights.doc_id
-                file_type = kb_insight.insights.file_type
+                document_type = kb_insight.insights.doc_content.document_type
 
                 logger.info('Embeddings storing process is started')
-                if file_type and file_type.lower() in ('pdf', 'application/pdf'):
+                if (
+                    document_type == DocumentType.PDF
+                    or document_type == DocumentType.TEXT
+                ):
                     extracted_docs = [kb_insight.insights.doc_content.content]
                     docs: List[KnowledgeBaseEmbeddingObject] = (
                         self.kb_rag_storage.process_document(extracted_docs)
                     )
-                else:
+                elif document_type == DocumentType.IMAGE:
                     image_data = [kb_insight.insights.doc_content.content]
                     docs: List[KnowledgeBaseEmbeddingObject] = [
                         self.image_embedding.embed_image(image_data)
                         for image_data in image_data
                     ]
-
                 embeddings.append(
                     EmbeddingsToStore(
                         kb_embeddings=docs,
                         doc_id=doc_id,
                         kb_id=kb_id,
-                        file_type=file_type,
+                        file_type=document_type,
                     )
                 )
 
@@ -126,14 +126,14 @@ class KbStorageProcessor(MessageProcessor):
             if self.encryption_service
             else file_content_encrypt
         )
-        doc_content = await self._extract_text_from_message(message, file_content)
+        doc_content = await self._extract_content(message, file_content)
         return ProcessingResult[KbStorageInsights](
             success=True,
             insights=KbStorageInsights(
                 doc_id=message.doc_id,
                 doc_content=doc_content,
                 kb_id=message.kb_id,
-                file_type=message.file_type,
+                file_type=doc_content.document_type,
             ),
         )
 
