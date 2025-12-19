@@ -52,6 +52,16 @@ plugins_container = PluginsContainer(
     cache_manager=db_repo_container.cache_manager,
 )
 
+common_container.wire(
+    modules=[__name__],
+    packages=[
+        'plugins_module.controllers',
+        'plugins_module.services',
+        'user_management_module.controllers',
+        'user_management_module.authorization',
+    ],
+)
+
 plugins_container.wire(
     modules=[__name__],
     packages=[
