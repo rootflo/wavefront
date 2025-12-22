@@ -103,7 +103,7 @@ def main():
         ),
         cache_manager=cache_manager,
         retry_count=3,
-        streaming_batch_size=5,
+        streaming_batch_size=int(config['app_config']['batch_size']),
     )
 
     listener.run_workers(thread_count=int(config['app_config']['thread_count']))
