@@ -115,7 +115,7 @@ class MessageProcessorService:
         if not yaml_dict:
             raise ValueError('YAML content is empty or invalid')
 
-        required_fields = ['function', 'input_schema', 'type']
+        required_fields = ['function', 'input_schema', 'type', 'description']
         missing_fields = [field for field in required_fields if field not in yaml_dict]
         if missing_fields:
             raise ValueError(f'YAML must contain required fields: {missing_fields}')

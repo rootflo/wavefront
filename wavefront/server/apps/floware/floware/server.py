@@ -143,10 +143,20 @@ plugins_container = PluginsContainer(
 
 product_analysis_container = ProductAnalysisContainer()
 
+cloud_provider = os.getenv('CLOUD_PROVIDER', 'aws')
+bucket_name = (
+    os.getenv('AWS_GOLD_ASSET_BUCKET_NAME')
+    if cloud_provider == 'aws'
+    else os.getenv('GCP_ASSET_STORAGE_BUCKET')
+)
+
 tools_container = ToolsContainer(
     datasource_repository=db_repo_container.datasource_repository,
     knowledge_base_repository=db_repo_container.knowledge_base_repository,
     knowledge_base_inference_repository=db_repo_container.knowledge_base_inference_repository,
+    message_processor_repository=plugins_container.message_processor_repository,
+    cloud_manager=common_container.cloud_storage_manager,
+    message_processor_bucket_name=bucket_name,
 )
 
 agents_container = AgentsContainer(
@@ -159,6 +169,8 @@ agents_container = AgentsContainer(
     namespace_repository=db_repo_container.namespace_repository,
     agent_repository=db_repo_container.agent_repository,
     workflow_repository=db_repo_container.workflow_repository,
+    message_processor_repository=plugins_container.message_processor_repository,
+    message_processor_bucket_name=bucket_name,
 )
 
 inference_container = InferenceContainer(

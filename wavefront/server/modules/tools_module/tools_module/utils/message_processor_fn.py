@@ -1,4 +1,3 @@
-from typing import Dict, Any
 import json
 from plugins_module.controllers.message_processor_controller import (
     execute_message_processor,
@@ -6,19 +5,18 @@ from plugins_module.controllers.message_processor_controller import (
 )
 
 
-async def execute_message_processor_fn(
-    message_processor_id: str,
-    input_data: Dict[str, Any],
-) -> str:
-    """Process a message using the message processor function
+async def execute_message_processor_fn(message_processor_id: str, **kwargs) -> str:
+    """Execute a message processor function
 
     Args:
-        message_processor_id: The ID of the message processor to execute
-        input_data: The input data to pass to the message processor (dict of key-value pairs)
+        message_processor_id: UUID of the message processor to execute
+        **kwargs: Dynamic parameters based on processor's input_schema
 
     Returns:
-        The result from the message processor execution as a string
+        Result from message processor execution as string
     """
+    # Remove message_processor_id from kwargs (it's not part of input_data)
+    input_data = {k: v for k, v in kwargs.items() if k != 'message_processor_id'}
 
     payload = ExecuteMessageProcessorPayload(input_data=input_data)
     response = await execute_message_processor(message_processor_id, payload)

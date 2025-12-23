@@ -157,5 +157,15 @@
       "email_body"
     ],
     "category": "email"
+  },
+  "trigger_message_processor": {
+    "name": "trigger_message_processor",
+    "description": "Execute a message processor function. This template gets expanded into individual tools for each message processor.",
+    "parameters": {},
+    "prefill_values": [
+      "message_processor_id"
+    ],
+    "required": [],
+    "category": "message_processor"
   }
 }

@@ -13,6 +13,9 @@ from tools_module.registry.registries.email_registry import EMAIL_REGISTRY
 from tools_module.registry.registries.util_function_registry import (
     UTIL_FUNCTION_REGISTRY,
 )
+from tools_module.registry.registries.message_processor_registry import (
+    MESSAGE_PROCESSOR_REGISTRY,
+)
 
 
 # TODO: Import other category registries as they are implemented
@@ -37,6 +40,7 @@ FUNCTION_REGISTRY = _merge_registries(
     KNOWLEDGE_BASE_REGISTRY,
     EMAIL_REGISTRY,
     UTIL_FUNCTION_REGISTRY,
+    MESSAGE_PROCESSOR_REGISTRY,
 )
 
 
