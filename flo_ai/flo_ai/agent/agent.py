@@ -291,16 +291,6 @@ class Agent(BaseAgent):
                                 'content': assistant_message_content,
                             }
                         )
-                    else:
-                        # Use default text content extraction
-                        assistant_text = self.llm.get_message_content(response)
-                        if assistant_text:
-                            messages.append(
-                                {
-                                    'role': self.act_as,
-                                    'content': assistant_text,
-                                }
-                            )
 
                     # Execute the tool
                     try:

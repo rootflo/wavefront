@@ -8,6 +8,8 @@ and validated before being used to create agents.
 from typing import List, Optional, Dict, Any, Union, Literal
 from pydantic import BaseModel, Field, field_validator
 
+from flo_ai.models import MessageType
+
 
 class MetadataModel(BaseModel):
     """Metadata section for agent YAML configuration."""
@@ -187,7 +189,9 @@ class AgentConfigModel(BaseModel):
     job: Optional[str] = Field(None, description='System prompt/job description')
     prompt: Optional[str] = Field(None, description='System prompt (alias for job)')
     role: Optional[str] = Field(None, description='Agent role')
-    act_as: Optional[str] = Field(None, description='Agent act_as setting')
+    act_as: Optional[str] = Field(
+        MessageType.ASSISTANT, description='Agent act_as setting'
+    )
     model: Optional[LLMConfigModel] = Field(None, description='LLM model configuration')
     base_url: Optional[str] = Field(
         None, description='Base URL (can be at agent or model level)'
