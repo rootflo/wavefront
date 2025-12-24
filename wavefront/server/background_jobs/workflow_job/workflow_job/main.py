@@ -51,7 +51,7 @@ tools_container = ToolsContainer(
     knowledge_base_inference_repository=db_repo_container.knowledge_base_inference_repository,
     message_processor_repository=plugins_container.message_processor_repository,
     cloud_manager=common_container.cloud_storage_manager,
-    bucket_name=bucket_name,
+    message_processor_bucket_name=bucket_name,
 )
 
 agents_container = AgentsContainer(
