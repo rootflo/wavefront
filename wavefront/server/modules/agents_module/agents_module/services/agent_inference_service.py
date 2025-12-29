@@ -14,7 +14,11 @@ from flo_cloud.cloud_storage import CloudStorageManager
 from common_module.log.logger import logger
 from tools_module.registry.tool_loader import ToolLoader
 from tools_module.utils.message_processor_fn import execute_message_processor_fn
+from tools_module.utils.api_service_fn import execute_api_service_fn
+from api_services_module.core.manager import ApiServicesManager
+from api_services_module.config.parser import ServiceDefinitionParser
 import yaml
+import re
 
 
 class AgentInferenceService:
@@ -28,6 +32,7 @@ class AgentInferenceService:
         message_processor_repository: SQLAlchemyRepository[MessageProcessors],
         cloud_storage_manager: CloudStorageManager,
         message_processor_bucket_name: str,
+        api_services_manager: Optional[ApiServicesManager] = None,
     ):
         """
         Initialize the agent inference service
@@ -39,9 +44,11 @@ class AgentInferenceService:
             message_processor_repository: Repository for message processors
             cloud_storage_manager: Cloud storage manager instance
             message_processor_bucket_name: Name of the bucket containing message processor YAML files
+            api_services_manager: API services manager instance (optional)
         """
         self.cache_manager = cache_manager
         self.tool_loader = tool_loader
+        self.api_services_manager = api_services_manager
         self.agent_crud_service = agent_crud_service
         self.message_processor_repository = message_processor_repository
         self.cloud_storage_manager = cloud_storage_manager
@@ -82,6 +89,10 @@ class AgentInferenceService:
                 # If not found, try loading as message processor
                 if tools is None:
                     tools = await self._try_load_message_processor_tool(tool_name)
+
+                # If still not found, try loading as API service
+                if tools is None:
+                    tools = await self._try_load_api_service_tool(tool_name)
 
                 if tools:
                     tool_register[tool_name] = tools
@@ -181,6 +192,132 @@ class AgentInferenceService:
         except Exception as e:
             logger.debug(f'Message processor {tool_name} not found: {str(e)}')
             return None
+
+    async def _try_load_api_service_tool(self, tool_name: str) -> Optional[Tool]:
+        """
+        Attempt to load an API service as a Tool object.
+
+        Args:
+            tool_name: Name of the tool in format "service_id_api_id"
+
+        Returns:
+            Tool object if API service found, None otherwise
+        """
+        try:
+            # Check if api_services_manager is available
+            if not self.api_services_manager:
+                return None
+
+            # Parse tool name to extract service_id and api_id
+            if '_' not in tool_name:
+                return None
+
+            parts = tool_name.split('_', 1)
+            service_id = parts[0]
+            api_id = parts[1]
+
+            # Query API service by id
+            service = await self.api_services_manager.get_api_service(id=service_id)
+
+            if not service or not service.is_active:
+                return None
+
+            # Load YAML content
+            yaml_content = self.api_services_manager.fetch_service_def(service)
+
+            # Parse YAML to ServiceDefinition
+            service_def = ServiceDefinitionParser.parse_yaml_string(yaml_content)
+
+            # Find the specific API config
+            api_config = service_def.get_api_by_id(api_id)
+            if not api_config:
+                return None
+
+            # Build parameters dict for Tool
+            parameters = {
+                'api_service_id': {
+                    'type': 'string',
+                    'description': 'ID of the API service (automatically filled)',
+                },
+                'api_id': {
+                    'type': 'string',
+                    'description': 'ID of the API endpoint (automatically filled)',
+                },
+                'api_version': {
+                    'type': 'string',
+                    'description': 'API version (automatically filled)',
+                },
+            }
+
+            # Extract path parameters from path template
+            path_params = self._extract_path_params(api_config.path)
+            for param_name in path_params:
+                parameters[f'path_{param_name}'] = {
+                    'type': 'string',
+                    'description': f'Path parameter: {param_name}',
+                }
+
+            # Add query parameters from backend_query_params
+            for param_name, default_value in api_config.backend_query_params.items():
+                param_type = self._infer_type(default_value)
+                parameters[f'query_{param_name}'] = {
+                    'type': param_type,
+                    'description': f'Query parameter: {param_name}',
+                }
+
+            # Add payload schema fields
+            if api_config.payload_schema:
+                for field in api_config.payload_schema.fields:
+                    parameters[field.name] = {
+                        'type': field.type,
+                        'description': field.description
+                        or f'Payload field: {field.name}',
+                    }
+
+            # Build description - use API's description if available
+            if api_config.description:
+                description = api_config.description
+            else:
+                # Fallback to default description
+                description = f'Execute {service_def.id} API: {api_config.id}. Method: {api_config.method.value}.'
+                if api_config.payload_schema and api_config.payload_schema.fields:
+                    description += f' Accepts {len(api_config.payload_schema.fields)} parameter(s).'
+
+            # Create Tool object
+            tool = Tool(
+                name=tool_name,
+                description=description,
+                function=execute_api_service_fn,
+                parameters=parameters,
+            )
+
+            logger.info(f'Dynamically loaded API service tool: {tool_name}')
+            return tool
+
+        except Exception as e:
+            logger.debug(f'API service {tool_name} not found: {str(e)}')
+            return None
+
+    def _extract_path_params(self, path: str) -> list:
+        """Extract parameter names from path template."""
+        pattern = r'\{([^}]+)\}'
+        matches = re.findall(pattern, path)
+        return matches
+
+    def _infer_type(self, value) -> str:
+        """Infer JSON schema type from Python value."""
+        if isinstance(value, bool):
+            return 'boolean'
+        elif isinstance(value, int):
+            return 'integer'
+        elif isinstance(value, float):
+            return 'number'
+        elif isinstance(value, list):
+            return 'array'
+        elif isinstance(value, dict):
+            return 'object'
+        else:
+            return 'string'
 
     def _create_llm_instance(self, config: LlmInferenceConfig):
         """

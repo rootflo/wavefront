@@ -50,6 +50,7 @@ tools_container = ToolsContainer(
     knowledge_base_repository=db_repo_container.knowledge_base_repository,
     knowledge_base_inference_repository=db_repo_container.knowledge_base_inference_repository,
     message_processor_repository=plugins_container.message_processor_repository,
+    api_services_manager=api_services_container.api_service_manager,
     cloud_manager=common_container.cloud_storage_manager,
     message_processor_bucket_name=bucket_name,
 )
@@ -65,6 +66,8 @@ agents_container = AgentsContainer(
     agent_repository=db_repo_container.agent_repository,
     workflow_repository=db_repo_container.workflow_repository,
     message_processor_repository=plugins_container.message_processor_repository,
+    message_processor_bucket_name=bucket_name,
+    api_services_manager=api_services_container.api_service_manager,
 )
 
 common_container.wire(

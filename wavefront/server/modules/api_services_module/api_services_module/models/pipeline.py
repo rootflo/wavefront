@@ -14,6 +14,7 @@ class StageType(Enum):
     AUTHENTICATOR = 'authenticator'
     HEADER_INJECTOR = 'header_injector'
     API_PROCESSOR = 'api_processor'
+    PAYLOAD_VALIDATOR = 'payload_validator'
     REQUEST_SENDER = 'request_sender'
     RESPONSE_MAPPER = 'response_mapper'
     COMPOSITE = 'composite'

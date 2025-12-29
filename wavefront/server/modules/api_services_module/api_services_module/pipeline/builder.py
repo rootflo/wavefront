@@ -8,6 +8,7 @@ from .stages import (
     RequestHeadersForwarderStage,
     HeaderInjectorStage,
     ApiProcessorStage,
+    PayloadValidatorStage,
     RequestSenderStage,
     ResponseMapperStage,
 )
@@ -49,7 +50,7 @@ class PipelineBuilder:
         """
         Build API processing pipeline for a specific API.
 
-        Pipeline: [API Processor → Header Injector → Request Sender → Response Mapper]
+        Pipeline: [API Processor → Header Injector → Payload Validator → Request Sender → Response Mapper]
         Note: Skipping preprocessor and postprocessor as requested
         """
         stages: List[PipelineStage] = []
@@ -65,11 +66,15 @@ class PipelineBuilder:
             )
             stages.append(api_header_injector)
 
-        # 3. Request sender stage
+        # 3. Payload validator stage (validates request body before sending)
+        payload_validator = PayloadValidatorStage(api_config)
+        stages.append(payload_validator)
+
+        # 4. Request sender stage
         request_sender = RequestSenderStage()
         stages.append(request_sender)
 
-        # 4. Response mapper stage
+        # 5. Response mapper stage
         response_mapper = ResponseMapperStage(api_config)
         stages.append(response_mapper)
 

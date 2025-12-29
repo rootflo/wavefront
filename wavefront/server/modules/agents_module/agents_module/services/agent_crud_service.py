@@ -1,5 +1,6 @@
 import json
 import yaml
+import re
 from typing import List, Optional
 from uuid import UUID
 
@@ -20,6 +21,8 @@ from agents_module.utils.cache_utils import (
 from agents_module.utils.validation_utils import validate_agent_workflow_name
 from flo_ai import AgentBuilder
 from flo_ai.tool.base_tool import Tool
+from api_services_module.core.manager import ApiServicesManager
+from api_services_module.config.parser import ServiceDefinitionParser
 
 
 class AgentCrudService:
@@ -34,6 +37,7 @@ class AgentCrudService:
         bucket_name: str,
         message_processor_repository: SQLAlchemyRepository[MessageProcessors],
         message_processor_bucket_name: str,
+        api_services_manager: Optional[ApiServicesManager] = None,
     ):
         """
         Initialize the agent CRUD service
@@ -54,6 +58,7 @@ class AgentCrudService:
         self.bucket_name = bucket_name
         self.message_processor_repository = message_processor_repository
         self.message_processor_bucket_name = message_processor_bucket_name
+        self.api_services_manager = api_services_manager
         self.cache_ttl = 3600  # 1 hour for agents
 
     async def _validate_yaml_content(
@@ -102,10 +107,17 @@ class AgentCrudService:
                                 tool_registry[tool_name] = tool_obj
                                 tool_found = True
 
+                        # If still not found, try loading as API service
+                        if not tool_found:
+                            tool_obj = await self._try_load_api_service_tool(tool_name)
+                            if tool_obj:
+                                tool_registry[tool_name] = tool_obj
+                                tool_found = True
+
                         # If still not found, log warning (AgentBuilder will fail with better error)
                         if not tool_found:
                             logger.warning(
-                                f'Tool {tool_name} not found in available tools or message processors'
+                                f'Tool {tool_name} not found in available tools, message processors, or API services'
                             )
 
             AgentBuilder.from_yaml(
@@ -194,6 +206,134 @@ class AgentCrudService:
         except Exception as e:
             logger.debug(f'Message processor {tool_name} not found: {str(e)}')
             return None
+
+    async def _try_load_api_service_tool(self, tool_name: str) -> Optional[Tool]:
+        """
+        Attempt to load an API service as a Tool object.
+
+        Args:
+            tool_name: Name of the tool in format "service_id_api_id"
+
+        Returns:
+            Tool object if API service found, None otherwise
+        """
+        from tools_module.utils.api_service_fn import execute_api_service_fn
+
+        try:
+            # Check if api_services_manager is available
+            if not self.api_services_manager:
+                return None
+
+            # Parse tool name to extract service_id and api_id
+            if '_' not in tool_name:
+                return None
+
+            parts = tool_name.split('_', 1)
+            service_id = parts[0]
+            api_id = parts[1]
+
+            # Query API service by id
+            service = await self.api_services_manager.get_api_service(id=service_id)
+
+            if not service or not service.is_active:
+                return None
+
+            # Load YAML content
+            yaml_content = self.api_services_manager.fetch_service_def(service)
+
+            # Parse YAML to ServiceDefinition
+            service_def = ServiceDefinitionParser.parse_yaml_string(yaml_content)
+
+            # Find the specific API config
+            api_config = service_def.get_api_by_id(api_id)
+            if not api_config:
+                return None
+
+            # Build parameters dict for Tool
+            parameters = {
+                'api_service_id': {
+                    'type': 'string',
+                    'description': 'ID of the API service (automatically filled)',
+                },
+                'api_id': {
+                    'type': 'string',
+                    'description': 'ID of the API endpoint (automatically filled)',
+                },
+                'api_version': {
+                    'type': 'string',
+                    'description': 'API version (automatically filled)',
+                },
+            }
+
+            # Extract path parameters from path template
+            path_params = self._extract_path_params(api_config.path)
+            for param_name in path_params:
+                parameters[f'path_{param_name}'] = {
+                    'type': 'string',
+                    'description': f'Path parameter: {param_name}',
+                }
+
+            # Add query parameters from backend_query_params
+            for param_name, default_value in api_config.backend_query_params.items():
+                param_type = self._infer_type(default_value)
+                parameters[f'query_{param_name}'] = {
+                    'type': param_type,
+                    'description': f'Query parameter: {param_name}',
+                }
+
+            # Add payload schema fields
+            if api_config.payload_schema:
+                for field in api_config.payload_schema.fields:
+                    parameters[field.name] = {
+                        'type': field.type,
+                        'description': field.description
+                        or f'Payload field: {field.name}',
+                    }
+
+            # Build description - use API's description if available
+            if api_config.description:
+                description = api_config.description
+            else:
+                # Fallback to default description
+                description = f'Execute {service_def.id} API: {api_config.id}. Method: {api_config.method.value}.'
+                if api_config.payload_schema and api_config.payload_schema.fields:
+                    description += f' Accepts {len(api_config.payload_schema.fields)} parameter(s).'
+
+            # Create Tool object
+            tool = Tool(
+                name=tool_name,
+                description=description,
+                function=execute_api_service_fn,
+                parameters=parameters,
+            )
+
+            logger.info(f'Dynamically loaded API service tool: {tool_name}')
+            return tool
+
+        except Exception as e:
+            logger.debug(f'API service {tool_name} not found: {str(e)}')
+            return None
+
+    def _extract_path_params(self, path: str) -> list:
+        """Extract parameter names from path template."""
+        pattern = r'\{([^}]+)\}'
+        matches = re.findall(pattern, path)
+        return matches
+
+    def _infer_type(self, value) -> str:
+        """Infer JSON schema type from Python value."""
+        if isinstance(value, bool):
+            return 'boolean'
+        elif isinstance(value, int):
+            return 'integer'
+        elif isinstance(value, float):
+            return 'number'
+        elif isinstance(value, list):
+            return 'array'
+        elif isinstance(value, dict):
+            return 'object'
+        else:
+            return 'string'
 
     async def create_agent(
         self,
