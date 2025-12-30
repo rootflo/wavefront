@@ -45,7 +45,7 @@ class MessageProcessorToolDetailsProvider(ToolDetailsProvider):
         for processor in all_processors:
             try:
                 # Load YAML content from cloud storage
-                yaml_content = await self._load_yaml_content(processor)
+                yaml_content = self._load_yaml_content(processor)
 
                 # Parse YAML to extract schema
                 yaml_dict = yaml.safe_load(yaml_content)
@@ -92,7 +92,7 @@ class MessageProcessorToolDetailsProvider(ToolDetailsProvider):
 
         return tool_details
 
-    async def _load_yaml_content(self, processor: MessageProcessors) -> str:
+    def _load_yaml_content(self, processor: MessageProcessors) -> str:
         """Load YAML content from cloud storage"""
         filepath = f'{self.prefix}/{processor.source}'
         yaml_bytes = self.cloud_manager.read_file(

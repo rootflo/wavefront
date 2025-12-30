@@ -1,7 +1,7 @@
 """YAML service definition parser."""
 
 import yaml
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from ..models.service import (
     ServiceDefinition,
     AuthConfig,
@@ -109,7 +109,7 @@ class ServiceDefinitionParser:
         return auth_config
 
     @staticmethod
-    def _parse_payload_schema(schema_data: Dict[str, Any]) -> PayloadSchema:
+    def _parse_payload_schema(schema_data: Dict[str, Any]) -> Optional[PayloadSchema]:
         """Parse payload schema configuration."""
         if not schema_data or 'fields' not in schema_data:
             return None
