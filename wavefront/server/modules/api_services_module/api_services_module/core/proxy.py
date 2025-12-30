@@ -310,6 +310,7 @@ class ApiProxy:
                     'path': api.path,
                     'method': api.method.value,
                     'backend_path': api.backend_path,
+                    'description': api.description,
                     'additional_headers': api.additional_headers,
                     'backend_query_params': api.backend_query_params,
                     'output_mapper_enabled': api.output_mapper_enabled,

@@ -49,6 +49,7 @@ const apiEndpointSchema = z.object({
   path: z.string(),
   backend_path: z.string(),
   method: z.enum(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']),
+  description: z.string().optional(),
   additional_headers: z.array(keyValuePairSchema),
   backend_query_params: z.array(keyValuePairSchema),
   output_mapper_enabled: z.boolean(),
@@ -181,6 +182,7 @@ const ApiServiceDetail: React.FC = () => {
             path: api.path,
             backend_path: api.backend_path,
             method: api.method,
+            ...(api.description && { description: api.description }),
             ...(Object.keys(apiHeadersObj).length > 0 && {
               additional_headers: apiHeadersObj,
             }),
@@ -284,6 +286,7 @@ const ApiServiceDetail: React.FC = () => {
               path: api.path || '',
               backend_path: api.backend_path || '',
               method: (api.method as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH') || 'GET',
+              description: api.description || '',
               additional_headers: api_additional_headers,
               backend_query_params: backend_query_params,
               output_mapper_enabled: api.output_mapper_enabled || false,
@@ -358,6 +361,7 @@ const ApiServiceDetail: React.FC = () => {
           path: api.path,
           backend_path: api.backend_path || '',
           method: api.method as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH',
+          description: api.description || '',
           additional_headers: api_additional_headers,
           backend_query_params: backend_query_params,
           output_mapper_enabled: api.output_mapper_enabled || false,
@@ -482,6 +486,7 @@ const ApiServiceDetail: React.FC = () => {
       path: '',
       backend_path: '',
       method: 'GET',
+      description: '',
       additional_headers: [],
       backend_query_params: [],
       output_mapper_enabled: false,
@@ -976,6 +981,27 @@ const ApiServiceDetail: React.FC = () => {
                                   <FormLabel>Backend Path</FormLabel>
                                   <FormControl>
                                     <Input placeholder="users/all" disabled={!editing} {...field} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+
+                          {/* API Description */}
+                          <div className="mt-6 w-full">
+                            <FormField
+                              control={form.control}
+                              name={`apis.${index}.description`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Description (Optional)</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      placeholder="e.g., Fetches all users from the system"
+                                      disabled={!editing}
+                                      {...field}
+                                    />
                                   </FormControl>
                                   <FormMessage />
                                 </FormItem>

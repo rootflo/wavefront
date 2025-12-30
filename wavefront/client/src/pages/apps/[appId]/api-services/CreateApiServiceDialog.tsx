@@ -48,6 +48,7 @@ const defaultYamlContent = `service:
       path: /users
       backend_path: /api/users
       method: GET
+      description: get users api
       output_mapper_enabled: false
 `;
 
