@@ -29,7 +29,9 @@ class ConfigService:
         if not storage_config.get('application_bucket') or not config_credentials.get(
             'config_file_name'
         ):
-            raise HTTPException(status_code=500, detail='Incomplete GCP configuration')
+            raise HTTPException(
+                status_code=500, detail='Incomplete GCP or storage configuration'
+            )
         # Merge storage config into credentials dict for backward compatibility
         config_credentials['application_bucket'] = storage_config['application_bucket']
         return config_credentials
