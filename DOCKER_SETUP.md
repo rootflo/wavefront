@@ -161,14 +161,7 @@ Some services require credential files (JSON files for GCP, OAuth, etc.). Follow
 | `AWS_REGION` | AWS region (e.g., ap-south-1) |
 | `AWS_KMS_ARN` | KMS key ARN for encryption |
 | `AWS_QUEUE_URL` | SQS queue URL |
-| `TRANSCRIPT_BUCKET_NAME` | Bucket for audio transcripts |
-| `AUDIO_BUCKET_NAME` | Bucket for audio files |
-| `AWS_GOLD_ASSET_BUCKET_NAME` | Bucket for gold/insights assets |
-| `MODEL_STORAGE_BUCKET` | Bucket for ML models |
-| `AGENT_YAML_BUCKET` | Bucket for agent YAML configs |
-| `VOICE_AGENT_BUCKET` | Bucket for voice agent configs |
-| `IMAGE_SEARCH_REFERENCE_IMAGES_BUCKET` | Bucket for reference images |
-| `APPLICATION_BUCKET` | Bucket for API service applications |
+| `APPLICATION_BUCKET` | S3 bucket for all application data (agents, transcripts, audio, models, etc.) |
 
 #### GCP Configuration (if CLOUD_PROVIDER=gcp)
 
@@ -180,9 +173,8 @@ Some services require credential files (JSON files for GCP, OAuth, etc.). Follow
 | `GCP_KMS_KEY_RING` | KMS key ring name |
 | `GCP_KMS_CRYPTO_KEY` | KMS crypto key name |
 | `GCP_KMS_CRYPTO_KEY_VERSION` | KMS key version (usually 1) |
-| `GCP_ASSET_STORAGE_BUCKET` | Bucket for assets |
 | `WORKFLOW_WORKER_TOPIC` | Workflow Pub/Sub topic |
-| `APPLICATION_BUCKET` | Bucket for API service applications |
+| `APPLICATION_BUCKET` | GCS bucket for all application data (agents, transcripts, audio, models, etc.) |
 
 #### Optional Configurations
 
@@ -316,7 +308,7 @@ Uncomment the `inference_app` service in `docker-compose.yml` to enable.
 |----------|-------------|
 | `APP_ENV` | Application environment |
 | `CLOUD_PROVIDER` | `aws` or `gcp` |
-| `MODEL_STORAGE_BUCKET` | Bucket for ML models |
+| `APPLICATION_BUCKET` | Bucket for ML models and inference data |
 
 **If AWS**:
 
@@ -382,12 +374,9 @@ Uncomment the `inference_app` service in `docker-compose.yml` to enable.
    }
    ```
 
-3. **Create Buckets**:
+3. **Create Bucket**:
    ```bash
-   aws s3 mb s3://your-transcript-bucket --region ap-south-1
-   aws s3 mb s3://your-audio-bucket --region ap-south-1
-   aws s3 mb s3://your-agent-yaml-bucket --region ap-south-1
-   # ... create other buckets as needed
+   aws s3 mb s3://your-application-bucket --region ap-south-1
    ```
 
 ### GCP Setup
@@ -419,11 +408,9 @@ Uncomment the `inference_app` service in `docker-compose.yml` to enable.
      --iam-account=rootflo-backend@YOUR_PROJECT_ID.iam.gserviceaccount.com
    ```
 
-4. **Create Buckets**:
+4. **Create Bucket**:
    ```bash
-   gsutil mb -l asia-south1 gs://your-gcp-assets-bucket
-   gsutil mb -l asia-south1 gs://your-gcp-storage-bucket
-   # ... create other buckets as needed
+   gsutil mb -l asia-south1 gs://your-application-bucket
    ```
 
 5. **Create Pub/Sub Topics**:

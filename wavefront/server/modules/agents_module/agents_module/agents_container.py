@@ -40,7 +40,7 @@ class AgentsContainer(containers.DeclarativeContainer):
         namespace_service=namespace_service,
         cloud_storage_manager=cloud_storage_manager,
         cache_manager=cache_manager,
-        bucket_name=config.agents.agent_yaml_bucket,
+        bucket_name=config.storage.application_bucket,
     )
 
     # Agent inference service
@@ -57,7 +57,7 @@ class AgentsContainer(containers.DeclarativeContainer):
         namespace_service=namespace_service,
         cloud_storage_manager=cloud_storage_manager,
         cache_manager=cache_manager,
-        bucket_name=config.agents.agent_yaml_bucket,
+        bucket_name=config.storage.application_bucket,
         agent_crud_service=agent_crud_service,
         tool_loader=tool_loader,
     )
@@ -66,7 +66,7 @@ class AgentsContainer(containers.DeclarativeContainer):
         WorkflowInferenceService,
         cloud_storage_manager=cloud_storage_manager,
         cache_manager=cache_manager,
-        bucket_name=config.agents.agent_yaml_bucket,
+        bucket_name=config.storage.application_bucket,
         agent_crud_service=agent_crud_service,
         tool_loader=tool_loader,
     )

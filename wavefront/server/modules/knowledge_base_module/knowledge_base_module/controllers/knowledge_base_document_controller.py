@@ -123,11 +123,7 @@ async def upload_document(
 
         # Upload to cloud storage
         logger.info(f'The data filename is {gcs_file_name}')
-        bucket_name = (
-            config['gcp']['gcp_asset_storage_bucket']
-            if config['cloud_config']['cloud_provider'] == 'gcp'
-            else config['aws']['aws_asset_storage_bucket']
-        )
+        bucket_name = config['storage']['application_bucket']
         await asyncio.to_thread(
             cloud_storage.save_small_file,
             file_content=file_bytes,

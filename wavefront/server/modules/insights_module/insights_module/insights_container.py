@@ -63,15 +63,15 @@ class InsightsContainer(containers.DeclarativeContainer):
         cloud_service = providers.Singleton(
             AWSServices,
             insights_service=insights_service,
-            transcript_bucket_name=config.aws.transcript_bucket_name,
-            audio_bucket_name=config.aws.audio_bucket_name,
+            transcript_bucket_name=config.storage.application_bucket,
+            audio_bucket_name=config.storage.application_bucket,
         )
     elif cloud_provider == 'gcp':
         cloud_service = providers.Singleton(
             GCPServices,
             insights_service=insights_service,
-            transcript_bucket_name=config.gcp.transcript_bucket_name,
-            audio_bucket_name=config.gcp.audio_bucket_name,
+            transcript_bucket_name=config.storage.application_bucket,
+            audio_bucket_name=config.storage.application_bucket,
         )
 
     colud_manager = providers.Singleton(

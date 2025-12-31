@@ -86,7 +86,7 @@ class VoiceAgentsContainer(containers.DeclarativeContainer):
         cache_manager=cache_manager,
         tts_generator_service=tts_generator_service,
         cloud_storage_manager=cloud_storage_manager,
-        voice_agent_bucket=config.voice_agents.voice_agent_bucket,
+        voice_agent_bucket=config.storage.application_bucket,
     )
 
     twilio_service = providers.Singleton(
