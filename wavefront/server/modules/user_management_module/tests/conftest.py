@@ -164,12 +164,13 @@ def setup_containers(
     # Mock config
     test_kb_config_dict = {
         'cloud_config': {'cloud_provider': 'gcp'},
+        'storage': {
+            'application_bucket': 'test_bucket',
+        },
         'gcp': {
-            'gcp_asset_storage_bucket': 'test_bucket',
             'email_topic_id': 'test_topic',
         },
         'aws': {
-            'aws_asset_storage_bucket': 'test_bucket',
             'queue_url': 'test_queue_url',
         },
     }

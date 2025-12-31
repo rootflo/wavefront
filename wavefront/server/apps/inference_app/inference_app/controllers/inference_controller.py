@@ -63,12 +63,7 @@ async def generic_inference_handler(
     ),
 ):
     try:
-        provider = config['cloud_config']['cloud_provider']
-        model_storage_bucket = (
-            config['gcp']['model_storage_bucket']
-            if provider.lower() == 'gcp'
-            else config['aws']['model_storage_bucket']
-        )
+        model_storage_bucket = config['storage']['application_bucket']
 
         logger.info(
             f'Loading model from bucket: {model_storage_bucket}, model_info: {payload.model_info}'

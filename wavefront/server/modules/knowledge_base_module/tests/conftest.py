@@ -141,8 +141,7 @@ def setup_containers(test_engine, test_session, test_user_id, test_session_id):
     mock_config_service = Mock()
     mock_config_service.config = {
         'cloud_config': {'cloud_provider': 'gcp'},
-        'gcp': {'gcp_asset_storage_bucket': 'test_bucket'},
-        'aws': {'aws_asset_storage_bucket': 'test_bucket'},
+        'storage': {'application_bucket': 'test_bucket'},
         'model': {'inference_service_url': 'http://mock-inference-url.com'},
     }
     knowledge_base_container.config.override(
@@ -216,12 +215,13 @@ def setup_containers(test_engine, test_session, test_user_id, test_session_id):
     test_config_dict = {
         'model': {'inference_service_url': 'http://mock-inference-url.com'},
         'cloud_config': {'cloud_provider': 'gcp'},
+        'storage': {
+            'application_bucket': 'test_bucket',
+        },
         'gcp': {
-            'gcp_asset_storage_bucket': 'test_bucket',
             'email_topic_id': 'test_topic',
         },
         'aws': {
-            'aws_asset_storage_bucket': 'test_bucket',
             'queue_url': 'test_queue_url',
         },
     }

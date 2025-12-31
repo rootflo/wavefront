@@ -301,12 +301,7 @@ async def get_document_with_id(
             ),
         )
     if signed_url:
-        provider = config['cloud_config']['cloud_provider']
-        bucket = (
-            config['gcp']['gcp_asset_storage_bucket']
-            if provider.lower() == 'gcp'
-            else config['aws']['aws_asset_storage_bucket']
-        )
+        bucket = config['storage']['application_bucket']
         presigned_url = cloude_storage_manager.generate_presigned_url(
             bucket, existing_document.file_path, 'GET'
         )

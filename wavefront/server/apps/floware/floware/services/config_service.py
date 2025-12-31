@@ -19,12 +19,19 @@ class ConfigService:
 
     def _get_gcp_credentials(self) -> dict[str, Any]:
         config_credentials = self.config.get('gcp')
+        storage_config = self.config.get('storage')
         if not isinstance(config_credentials, dict):
             raise HTTPException(status_code=500, detail='GCP configuration is missing')
-        if not config_credentials.get(
-            'gcp_asset_storage_bucket'
-        ) or not config_credentials.get('config_file_name'):
+        if not isinstance(storage_config, dict):
+            raise HTTPException(
+                status_code=500, detail='Storage configuration is missing'
+            )
+        if not storage_config.get('application_bucket') or not config_credentials.get(
+            'config_file_name'
+        ):
             raise HTTPException(status_code=500, detail='Incomplete GCP configuration')
+        # Merge storage config into credentials dict for backward compatibility
+        config_credentials['application_bucket'] = storage_config['application_bucket']
         return config_credentials
 
     async def store_app_config(
@@ -44,7 +51,7 @@ class ConfigService:
         if file_content:
             self.cloud_manager.save_small_file(
                 file_content,
-                config_credentials['gcp_asset_storage_bucket'],
+                config_credentials['application_bucket'],
                 config_credentials['config_file_name'],
             )
         # if atleast one icon or file_content is there then allow the all_config to be saved
@@ -71,7 +78,7 @@ class ConfigService:
         config_credentials = self._get_gcp_credentials()
         # Generate new presigned URL
         url = self.cloud_manager.generate_presigned_url(
-            config_credentials['gcp_asset_storage_bucket'],
+            config_credentials['application_bucket'],
             config_path,
             'get',
         )

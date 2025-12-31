@@ -176,10 +176,12 @@ def mock_config_repository():
 def mock_config():
     """Mock configuration for testing"""
     return {
+        'storage': {
+            'application_bucket': 'test-bucket',
+        },
         'gcp': {
-            'gcp_asset_storage_bucket': 'test-bucket',
             'config_file_name': 'config.png',
-        }
+        },
     }
 
 

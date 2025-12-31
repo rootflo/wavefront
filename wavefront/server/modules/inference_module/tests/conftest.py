@@ -145,8 +145,7 @@ def setup_containers(test_engine, test_session, test_user_id, test_session_id):
     mock_config_service = Mock()
     mock_config_service.config = {
         'cloud_config': {'cloud_provider': 'gcp'},
-        'gcp': {'model_storage_bucket': 'test_bucket'},
-        'aws': {'model_storage_bucket': 'test_bucket'},
+        'storage': {'application_bucket': 'test_bucket'},
     }
     inference_container.config.override(
         providers.Singleton(lambda: mock_config_service.config)
