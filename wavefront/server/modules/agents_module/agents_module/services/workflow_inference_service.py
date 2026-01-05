@@ -106,6 +106,42 @@ class WorkflowInferenceService:
             logger.error(f'Error extracting agent references from YAML: {str(e)}')
             return []
 
+    def _extract_subworkflow_references(self, yaml_content: str) -> List[str]:
+        """
+        Extract subworkflow references (namespace/workflow_name) from workflow YAML
+
+        Args:
+            yaml_content: YAML configuration content
+
+        Returns:
+            List of subworkflow references in format 'namespace/workflow_name'
+        """
+        try:
+            yaml_data = yaml.safe_load(yaml_content)
+            arium_config = yaml_data.get('arium', {})
+            ariums_config = arium_config.get('ariums', [])
+
+            subworkflow_references = []
+            for arium_def in ariums_config:
+                arium_name = arium_def.get('name', '')
+                # If arium name contains '/', it's a reference to cloud storage
+                if '/' in arium_name:
+                    # Check if this is a reference (not an inline definition)
+                    # If it has agents, workflow, etc., it's inline, not a reference
+                    if (
+                        arium_def.get('agents') is None
+                        and arium_def.get('workflow') is None
+                        and arium_def.get('function_nodes') is None
+                        and arium_def.get('yaml_file') is None
+                    ):
+                        subworkflow_references.append(arium_name)
+                        logger.info(f'Found subworkflow reference: {arium_name}')
+
+            return subworkflow_references
+        except Exception as e:
+            logger.error(f'Error extracting subworkflow references from YAML: {str(e)}')
+            return []
+
     async def _build_referenced_agents(
         self,
         agent_references: List[str],
@@ -181,6 +217,78 @@ class WorkflowInferenceService:
 
         return agents_dict
 
+    async def _inline_subworkflow_references(
+        self,
+        yaml_content: str,
+        subworkflow_references: List[str],
+    ) -> str:
+        """
+        Fetch subworkflow YAML and inline them into the parent workflow YAML
+
+        Args:
+            yaml_content: Original YAML configuration content
+            subworkflow_references: List of subworkflow references to inline
+
+        Returns:
+            Modified YAML content with inlined subworkflow definitions
+        """
+        if not subworkflow_references:
+            return yaml_content
+
+        yaml_data = yaml.safe_load(yaml_content)
+        arium_config = yaml_data.get('arium', {})
+        ariums_config = arium_config.get('ariums', [])
+
+        # Build a dict to quickly look up subworkflow configs
+        subworkflow_configs = {}
+        for ref in subworkflow_references:
+            parts = ref.split('/', 1)
+            namespace = parts[0]
+            workflow_name = parts[1]
+
+            logger.info(f'Fetching subworkflow YAML for inlining: {ref}')
+
+            # Fetch the subworkflow YAML using existing fetch method
+            subworkflow_yaml_content = await self.fetch_workflow_yaml(
+                workflow_name, namespace
+            )
+
+            # Parse and extract the arium config
+            subworkflow_data = yaml.safe_load(subworkflow_yaml_content)
+            subworkflow_arium = subworkflow_data.get('arium', {})
+
+            subworkflow_configs[ref] = subworkflow_arium
+
+        # Replace references with inline definitions
+        updated_ariums = []
+        for arium_def in ariums_config:
+            arium_name = arium_def.get('name', '')
+
+            if arium_name in subworkflow_configs:
+                # This is a reference - inline it
+                logger.info(f'Inlining subworkflow: {arium_name}')
+
+                # Get the fetched subworkflow config
+                inline_config = subworkflow_configs[arium_name].copy()
+
+                # Preserve inherit_variables from the reference
+                if 'inherit_variables' in arium_def:
+                    inline_config['inherit_variables'] = arium_def['inherit_variables']
+
+                # Update the name to be local (remove namespace prefix)
+                inline_config['name'] = arium_name.split('/')[-1]
+
+                updated_ariums.append(inline_config)
+            else:
+                # Not a reference - keep as is
+                updated_ariums.append(arium_def)
+
+        # Update the YAML data
+        yaml_data['arium']['ariums'] = updated_ariums
+
+        # Convert back to YAML string
+        return yaml.dump(yaml_data, default_flow_style=False, sort_keys=False)
+
     async def create_workflow_from_yaml(
         self,
         yaml_content: str,
@@ -200,6 +308,16 @@ class WorkflowInferenceService:
         """
         logger.info(f'Creating workflow from YAML for workflow: {workflow_name}')
 
+        # Extract and inline subworkflow references
+        subworkflow_references = self._extract_subworkflow_references(yaml_content)
+        if subworkflow_references:
+            logger.info(
+                f'Inlining {len(subworkflow_references)} referenced subworkflows for workflow {workflow_name}'
+            )
+            yaml_content = await self._inline_subworkflow_references(
+                yaml_content, subworkflow_references
+            )
+
         # Extract and build referenced agents
         agent_references = self._extract_agent_references(yaml_content)
         agents_dict = {}
@@ -212,7 +330,7 @@ class WorkflowInferenceService:
                 agent_references, access_token, app_key
             )
 
-        # Build workflow with pre-built agents
+        # Build workflow with pre-built agents and inlined subworkflows
         workflow_builder = AriumBuilder.from_yaml(
             agents=agents_dict,
             yaml_str=yaml_content,
