@@ -25,6 +25,7 @@ import WorkflowDetail from '@app/pages/apps/[appId]/workflows/[id]';
 import WorkflowsLayout from '@app/pages/apps/[appId]/workflows/layout';
 import WorkflowPipelinesPage from '@app/pages/apps/[appId]/workflows/pipelines';
 import WorkflowPipelineDetail from '@app/pages/apps/[appId]/workflows/pipelines/[workflowPipelineId]';
+import UsersPage from '@app/pages/apps/[appId]/users';
 import CreateApp from '@app/pages/apps/create';
 import EditApp from '@app/pages/apps/edit/[appId]';
 import AppLayout from '@app/pages/apps/layout';
@@ -188,6 +189,10 @@ const routes = {
         {
           path: 'authenticators/:authId',
           element: <AuthenticatorDetailPage />,
+        },
+        {
+          path: 'users',
+          element: <UsersPage />,
         },
       ],
     },

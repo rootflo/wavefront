@@ -1,7 +1,15 @@
 import { QueryClient, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getAgentKey, getAgentsKey, getAppByIdKey } from './query-keys';
-import { deleteAgentMutationFn, updateAgentMutationFn, updateAppFn } from './mutation-functions';
+import { getAgentKey, getAgentsKey, getAppByIdKey, getUserKey, getUsersKey } from './query-keys';
+import {
+  createUserMutationFn,
+  deleteAgentMutationFn,
+  deleteUserMutationFn,
+  updateAgentMutationFn,
+  updateAppFn,
+  updateUserMutationFn,
+} from './mutation-functions';
 import { useNotifyStore } from '@app/store';
+import { extractErrorMessage } from '@app/lib/utils';
 
 /**
  * Hook for deleting an agent
@@ -67,6 +75,72 @@ export const useUpdateApp = (
     },
     onError: () => {
       notifyError('Failed to update app');
+    },
+  });
+};
+
+/**
+ * User mutation hooks
+ */
+export const useCreateUser = (appId: string | undefined) => {
+  const queryClient = useQueryClient();
+  const { notifySuccess, notifyError } = useNotifyStore();
+
+  return useMutation({
+    mutationFn: createUserMutationFn,
+    onSuccess: () => {
+      notifySuccess('User created successfully');
+      if (appId) {
+        queryClient.invalidateQueries({ queryKey: getUsersKey(appId) });
+      }
+    },
+    onError: (error) => {
+      console.error('Error creating user:', error);
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to create user');
+    },
+  });
+};
+
+export const useUpdateUser = (appId: string | undefined, userId: string | undefined) => {
+  const queryClient = useQueryClient();
+  const { notifySuccess, notifyError } = useNotifyStore();
+
+  return useMutation({
+    mutationFn: updateUserMutationFn,
+    onSuccess: () => {
+      notifySuccess('User updated successfully');
+      if (appId) {
+        queryClient.invalidateQueries({ queryKey: getUsersKey(appId) });
+        if (userId) {
+          queryClient.invalidateQueries({ queryKey: getUserKey(appId, userId) });
+        }
+      }
+    },
+    onError: (error) => {
+      console.error('Error updating user:', error);
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to update user');
+    },
+  });
+};
+
+export const useDeleteUser = (appId: string | undefined) => {
+  const queryClient = useQueryClient();
+  const { notifySuccess, notifyError } = useNotifyStore();
+
+  return useMutation({
+    mutationFn: deleteUserMutationFn,
+    onSuccess: () => {
+      notifySuccess('User deleted successfully');
+      if (appId) {
+        queryClient.invalidateQueries({ queryKey: getUsersKey(appId) });
+      }
+    },
+    onError: (error) => {
+      console.error('Error deleting user:', error);
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to delete user');
     },
   });
 };

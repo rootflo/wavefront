@@ -62,6 +62,8 @@ const getPipelinesKey = (appId: string, statusFilter?: string) => {
 const getPipelineKey = (appId: string, pipelineId: string) => ['pipeline', appId, pipelineId];
 const getPipelineFilesKey = (appId: string, pipelineId: string) => ['pipeline-files', appId, pipelineId];
 const getAppByIdKey = (appId: string) => ['app-by-id', appId];
+const getUsersKey = (appId: string) => ['users', appId];
+const getUserKey = (appId: string, userId: string) => ['user', appId, userId];
 
 export {
   getAgentKey,
@@ -104,4 +106,6 @@ export {
   getWorkflowRunsKey,
   getWorkflowsKey,
   getAppByIdKey,
+  getUserKey,
+  getUsersKey,
 };

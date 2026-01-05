@@ -30,7 +30,7 @@ class UserService:
     async def delete_user(self, user_id: UUID) -> Optional[User]:
         """Soft delete user by ID"""
         result = await self.user_repository.find_one_and_update(
-            filters={'id': user_id, 'deleted': False}, deleted=True
+            filters={'id': user_id, 'deleted': False}, refresh=True, deleted=True
         )
         return result
 
