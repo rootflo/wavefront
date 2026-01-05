@@ -17,6 +17,11 @@ import { useNotifyStore } from '@app/store';
 import { VoiceAgent } from '@app/types/voice-agent';
 import React, { useState } from 'react';
 
+interface CallInfo {
+  call_sid?: string;
+  status?: string;
+}
+
 interface OutboundCallDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
@@ -73,7 +78,7 @@ const OutboundCallDialog: React.FC<OutboundCallDialogProps> = ({ isOpen, onOpenC
       }
 
       const response = await floConsoleService.voiceAgentService.initiateCall(agent.id, callData);
-      const callInfo = response?.data?.data?.call;
+      const callInfo = (response?.data?.data as { call?: CallInfo })?.call;
 
       notifySuccess(
         `Call initiated successfully! Call SID: ${callInfo?.call_sid || 'N/A'}, Status: ${callInfo?.status || 'queued'}`

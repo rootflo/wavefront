@@ -29,6 +29,14 @@ import {
 } from '@app/config/authenticators';
 import { extractErrorMessage } from '@app/lib/utils';
 import { useDashboardStore, useNotifyStore } from '@app/store';
+import {
+  getBooleanNestedParameter,
+  getBooleanParameter,
+  getNumberOrStringNestedParameter,
+  getNumberOrStringParameter,
+  getStringNestedParameter,
+  getStringParameter,
+} from '@app/utils/parameter-helpers';
 import { AuthenticatorType } from '@app/types/authenticator';
 import { zodResolver } from '@hookform/resolvers/zod';
 import React, { useEffect, useState } from 'react';
@@ -101,13 +109,17 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
   };
 
   const setNestedParameter = (parentKey: string, childKey: string, value: unknown) => {
-    setParameters((prev) => ({
-      ...prev,
-      [parentKey]: {
-        ...prev[parentKey],
-        [childKey]: value,
-      },
-    }));
+    setParameters((prev) => {
+      const parentValue = prev[parentKey];
+      const isObject = typeof parentValue === 'object' && parentValue !== null && !Array.isArray(parentValue);
+      return {
+        ...prev,
+        [parentKey]: {
+          ...(isObject ? (parentValue as Record<string, unknown>) : {}),
+          [childKey]: value,
+        },
+      };
+    });
   };
 
   const onSubmit = async (data: CreateAuthenticatorInput) => {
@@ -120,18 +132,29 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
         const value = parameters[key];
         if (paramConfig.type === 'object' && paramConfig.fields) {
           // Check nested required fields
-          Object.entries(paramConfig.fields).forEach(([nestedKey, nestedConfig]) => {
-            if (!nestedConfig.required) return;
-            const nestedValue = value?.[nestedKey];
-            const nestedMissing =
-              nestedValue === undefined ||
-              nestedValue === null ||
-              (Array.isArray(nestedValue) && nestedValue.length === 0) ||
-              (typeof nestedValue === 'string' && nestedValue.trim() === '');
-            if (nestedMissing) {
-              missingFields.push(`${key}.${nestedKey}`);
-            }
-          });
+          const parentValue = value;
+          if (typeof parentValue === 'object' && parentValue !== null && !Array.isArray(parentValue)) {
+            const parentObj = parentValue as Record<string, unknown>;
+            Object.entries(paramConfig.fields).forEach(([nestedKey, nestedConfig]) => {
+              if (!nestedConfig.required) return;
+              const nestedValue = parentObj[nestedKey];
+              const nestedMissing =
+                nestedValue === undefined ||
+                nestedValue === null ||
+                (Array.isArray(nestedValue) && nestedValue.length === 0) ||
+                (typeof nestedValue === 'string' && nestedValue.trim() === '');
+              if (nestedMissing) {
+                missingFields.push(`${key}.${nestedKey}`);
+              }
+            });
+          } else {
+            // If parent value is not an object, all nested required fields are missing
+            Object.entries(paramConfig.fields).forEach(([nestedKey, nestedConfig]) => {
+              if (nestedConfig.required) {
+                missingFields.push(`${key}.${nestedKey}`);
+              }
+            });
+          }
         } else {
           const isMissing =
             value === undefined ||
@@ -243,7 +266,10 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
     if (paramConfig.type === 'boolean') {
       return (
         <div className="flex items-center gap-3">
-          <Checkbox checked={parameters[key] || false} onCheckedChange={(checked) => setParameter(key, checked)} />
+          <Checkbox
+            checked={getBooleanParameter(parameters, key)}
+            onCheckedChange={(checked) => setParameter(key, checked)}
+          />
           <div>
             <label className="text-sm font-medium text-gray-700">
               {key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
@@ -266,7 +292,7 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
           {paramConfig.description && <p className="mb-1 text-xs text-gray-500">{paramConfig.description}</p>}
           <Input
             type="number"
-            value={parameters[key] || ''}
+            value={getNumberOrStringParameter(parameters, key)}
             onChange={(e) => setParameter(key, e.target.value ? Number(e.target.value) : '')}
             min={paramConfig.min}
             max={paramConfig.max}
@@ -312,7 +338,7 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
         {paramConfig.description && <p className="mb-1 text-xs text-gray-500">{paramConfig.description}</p>}
         <Input
           type="text"
-          value={parameters[key] || ''}
+          value={getStringParameter(parameters, key)}
           onChange={(e) => setParameter(key, e.target.value)}
           placeholder={paramConfig.placeholder}
         />
@@ -321,12 +347,10 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
   };
 
   const renderNestedField = (parentKey: string, childKey: string, config: ParameterConfig) => {
-    const value = parameters[parentKey]?.[childKey];
-
     if (config.type === 'boolean') {
       return (
         <Checkbox
-          checked={value || false}
+          checked={getBooleanNestedParameter(parameters, parentKey, childKey)}
           onCheckedChange={(checked) => setNestedParameter(parentKey, childKey, checked)}
         />
       );
@@ -336,7 +360,7 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
       return (
         <Input
           type="number"
-          value={value || ''}
+          value={getNumberOrStringNestedParameter(parameters, parentKey, childKey)}
           onChange={(e) => setNestedParameter(parentKey, childKey, e.target.value ? Number(e.target.value) : '')}
           min={config.min}
           max={config.max}
@@ -348,7 +372,7 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
     return (
       <Input
         type="text"
-        value={value || ''}
+        value={getStringNestedParameter(parameters, parentKey, childKey)}
         onChange={(e) => setNestedParameter(parentKey, childKey, e.target.value)}
         placeholder={config.placeholder}
       />

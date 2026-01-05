@@ -25,6 +25,12 @@ import { useGetLLMConfig } from '@app/hooks';
 import { getLLMConfigKey, getLLMConfigsKey } from '@app/hooks/data/query-keys';
 import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
+import {
+  getBooleanParameterWithDefault,
+  getNumberOrStringParameter,
+  getNumberParameterWithDefault,
+  getStringParameter,
+} from '@app/utils/parameter-helpers';
 import { InferenceEngineType, UpdateLLMConfigRequest } from '@app/types/llm-inference-config';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQueryClient } from '@tanstack/react-query';
@@ -421,7 +427,7 @@ const LLMInferenceConfigDetail: React.FC = () => {
                                   <div className="space-y-2">
                                     <Input
                                       type="number"
-                                      value={parameters[paramKey] ?? ''}
+                                      value={getNumberOrStringParameter(parameters, paramKey)}
                                       onChange={(e) => {
                                         const value = e.target.value === '' ? undefined : parseFloat(e.target.value);
                                         setParameters((prev) => ({ ...prev, [paramKey]: value }));
@@ -435,7 +441,14 @@ const LLMInferenceConfigDetail: React.FC = () => {
                                     />
                                     {paramConfig.min !== undefined && paramConfig.max !== undefined && (
                                       <Slider
-                                        value={[parameters[paramKey] ?? paramConfig.default ?? paramConfig.min]}
+                                        value={[
+                                          getNumberParameterWithDefault(
+                                            parameters,
+                                            paramKey,
+                                            paramConfig.default,
+                                            paramConfig.min
+                                          ),
+                                        ]}
                                         onValueChange={(values) => {
                                           const value = values[0];
                                           setParameters((prev) => ({ ...prev, [paramKey]: value }));
@@ -451,7 +464,11 @@ const LLMInferenceConfigDetail: React.FC = () => {
                                 ) : paramConfig.type === 'boolean' ? (
                                   <div className="flex items-center space-x-2">
                                     <Checkbox
-                                      checked={parameters[paramKey] ?? paramConfig.default ?? false}
+                                      checked={getBooleanParameterWithDefault(
+                                        parameters,
+                                        paramKey,
+                                        paramConfig.default
+                                      )}
                                       onCheckedChange={(checked) => {
                                         setParameters((prev) => ({ ...prev, [paramKey]: checked }));
                                         field.onChange(checked);
@@ -464,7 +481,7 @@ const LLMInferenceConfigDetail: React.FC = () => {
                                   </div>
                                 ) : paramConfig.type === 'select' && paramConfig.options ? (
                                   <Select
-                                    value={parameters[paramKey] ? String(parameters[paramKey]) : ''}
+                                    value={getStringParameter(parameters, paramKey) || ''}
                                     onValueChange={(value) => {
                                       const val = value || undefined;
                                       setParameters((prev) => ({ ...prev, [paramKey]: val }));
@@ -488,7 +505,7 @@ const LLMInferenceConfigDetail: React.FC = () => {
                                 ) : (
                                   <Input
                                     type="text"
-                                    value={parameters[paramKey] ?? ''}
+                                    value={getStringParameter(parameters, paramKey)}
                                     onChange={(e) => {
                                       const value = e.target.value || undefined;
                                       setParameters((prev) => ({ ...prev, [paramKey]: value }));

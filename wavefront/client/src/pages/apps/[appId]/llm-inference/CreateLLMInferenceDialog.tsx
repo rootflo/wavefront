@@ -29,7 +29,14 @@ import {
   initializeParameters,
   ParameterConfig,
 } from '@app/config/llm-providers';
+import { extractErrorMessage } from '@app/lib/utils';
 import { useDashboardStore, useNotifyStore } from '@app/store';
+import {
+  getBooleanParameterWithDefault,
+  getNumberOrStringParameter,
+  getNumberParameterWithDefault,
+  getStringParameter,
+} from '@app/utils/parameter-helpers';
 import { InferenceEngineType } from '@app/types/llm-inference-config';
 import { zodResolver } from '@hookform/resolvers/zod';
 import React, { useEffect, useState } from 'react';
@@ -210,12 +217,12 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
 
   const renderParameterField = (paramKey: string, paramConfig: ParameterConfig) => {
     if (paramConfig.type === 'number') {
-      const currentValue = parameters[paramKey] ?? paramConfig.default ?? paramConfig.min ?? 0;
+      const currentValue = getNumberParameterWithDefault(parameters, paramKey, paramConfig.default, paramConfig.min);
       return (
         <div className="space-y-2">
           <Input
             type="number"
-            value={parameters[paramKey] ?? ''}
+            value={getNumberOrStringParameter(parameters, paramKey)}
             onChange={(e) => {
               const value = e.target.value === '' ? undefined : parseFloat(e.target.value);
               setParameter(paramKey, value);
@@ -245,7 +252,7 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
       return (
         <div className="flex items-center gap-3">
           <Checkbox
-            checked={parameters[paramKey] ?? paramConfig.default ?? false}
+            checked={getBooleanParameterWithDefault(parameters, paramKey, paramConfig.default)}
             onCheckedChange={(checked) => setParameter(paramKey, checked)}
           />
           <label className="text-sm text-gray-700">Enable</label>
@@ -257,7 +264,7 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
       return (
         <Input
           type="text"
-          value={parameters[paramKey] ?? ''}
+          value={getStringParameter(parameters, paramKey)}
           onChange={(e) => {
             const value = e.target.value || undefined;
             setParameter(paramKey, value);
