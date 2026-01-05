@@ -25,9 +25,9 @@ metadata:
 arium:
   agents:
     # Method 1: Reference pre-built agents (cleanest approach)
-    - name: content_analyst  # Must exist in agents parameter
-    - name: summarizer       # Must exist in agents parameter
-    
+    - name: content_analyst # Must exist in agents parameter
+    - name: summarizer # Must exist in agents parameter
+
     # Method 2: Direct configuration
     - name: validator
       role: "Quality Validator"
@@ -38,15 +38,15 @@ arium:
       settings:
         temperature: 0.1
         reasoning_pattern: DIRECT
-      
+
   tools:
     - name: tool1
     - name: tool2
-    
+
   # LLM Router definitions (NEW!)
   routers:
     - name: content_router
-      type: smart  # smart, task_classifier, conversation_analysis
+      type: smart # smart, task_classifier, conversation_analysis
       routing_options:
         technical_writer: "Handle technical documentation tasks"
         creative_writer: "Handle creative writing tasks"
@@ -65,7 +65,7 @@ arium:
         to: [summarizer]
       - from: summarizer
         to: [validator, tool1]
-        router: content_router  # References router defined above
+        router: content_router # References router defined above
       - from: validator
         to: [end]
       - from: tool1
@@ -77,10 +77,10 @@ arium:
 
 ```yaml
 metadata:
-  name: workflow-name           # Required: Unique workflow identifier
-  version: 1.0.0               # Optional: Semantic version
-  description: "Description"    # Optional: Human-readable description
-  tags: ["tag1", "tag2"]       # Optional: Classification tags
+  name: workflow-name # Required: Unique workflow identifier
+  version: 1.0.0 # Optional: Semantic version
+  description: "Description" # Optional: Human-readable description
+  tags: ["tag1", "tag2"] # Optional: Classification tags
 ```
 
 ### Arium Section
@@ -101,6 +101,7 @@ builder = AriumBuilder.from_yaml(yaml_str=config, memory=custom_memory)
 ```
 
 **Why memory is handled as a parameter:**
+
 - ✅ **Cleaner YAML**: Focuses on workflow structure, not implementation details
 - ✅ **Runtime Flexibility**: Same workflow can use different memory implementations
 - ✅ **Better Separation**: Memory is an execution concern, not a workflow definition concern
@@ -156,11 +157,13 @@ routers:
 ```
 
 **Router Types:**
+
 - **`smart`**: General-purpose routing based on content analysis
 - **`task_classifier`**: Routes based on task categorization with keywords and examples
 - **`conversation_analysis`**: Routes based on conversation context analysis
 
 **Key benefits of YAML LLM routers:**
+
 - ✅ **Declarative Configuration**: No code needed to create routers
 - ✅ **Easy Modification**: Change routing logic without code changes
 - ✅ **Version Control**: Track router changes in YAML files
@@ -172,28 +175,30 @@ routers:
 You can define agents in four ways:
 
 **1. Reference Pre-built Agents (New):**
+
 ```yaml
 agents:
-  - name: content_analyst  # Must exist in agents parameter
-  - name: summarizer       # Must exist in agents parameter
+  - name: content_analyst # Must exist in agents parameter
+  - name: summarizer # Must exist in agents parameter
 ```
 
 **2. Direct Configuration (Recommended):**
+
 ```yaml
 agents:
   - name: my_agent
-    role: Assistant  # optional
+    role: Assistant # optional
     job: "You are a helpful assistant"
     model:
       provider: openai
       name: gpt-4o-mini
-      base_url: "https://api.openai.com/v1"  # optional
+      base_url: "https://api.openai.com/v1" # optional
     settings:
       temperature: 0.7
       max_retries: 3
-      reasoning_pattern: DIRECT  # DIRECT, REACT, COT
-    tools: ["calculator", "web_search"]  # optional
-    parser:  # optional for structured output
+      reasoning_pattern: DIRECT # DIRECT, REACT, COT
+    tools: ["calculator", "web_search"] # optional
+    parser: # optional for structured output
       name: MyParser
       fields:
         - name: result
@@ -202,6 +207,7 @@ agents:
 ```
 
 **3. Inline YAML Configuration:**
+
 ```yaml
 agents:
   - name: my_agent
@@ -220,6 +226,7 @@ agents:
 ```
 
 **4. External File Reference:**
+
 ```yaml
 agents:
   - name: my_agent
@@ -240,6 +247,7 @@ tools:
 #### Comparison of Agent Configuration Methods
 
 **Reference Pre-built Agents (New):**
+
 - ✅ Maximum reusability across workflows
 - ✅ Programmatic agent building with YAML workflows
 - ✅ Clean separation of agent definition and workflow
@@ -247,6 +255,7 @@ tools:
 - ⚠️ Requires separate agent building step
 
 **Direct Configuration (Recommended):**
+
 - ✅ Clean, flat structure
 - ✅ No nested YAML-in-YAML
 - ✅ IDE syntax highlighting and validation
@@ -254,12 +263,14 @@ tools:
 - ✅ Supports all agent features directly
 
 **Inline YAML Configuration:**
-- ⚠️ Requires nested YAML string
+
+- ⚠️ Requires YAML to be nested as a string
 - ⚠️ Limited IDE support for nested content
 - ✅ Maintains existing workflow compatibility
 - ✅ Good for complex parser configurations
 
 **External File Reference:**
+
 - ✅ Best for reusable agent definitions
 - ✅ Supports modular architecture
 - ✅ Version control friendly
@@ -269,16 +280,16 @@ tools:
 
 ```yaml
 workflow:
-  start: agent1                    # Starting node name
+  start: agent1 # Starting node name
   edges:
-    - from: agent1                 # Source node
-      to: [tool1, agent2]         # Target nodes
-      router: decision_router      # Optional custom router
+    - from: agent1 # Source node
+      to: [tool1, agent2] # Target nodes
+      router: decision_router # Optional custom router
     - from: tool1
-      to: [end]                   # 'end' is a special keyword
+      to: [end] # 'end' is a special keyword
     - from: agent2
       to: [end]
-  end: [tool1, agent2]            # End nodes
+  end: [tool1, agent2] # End nodes
 ```
 
 ## Usage Examples
@@ -292,7 +303,7 @@ from flo_ai.arium.builder import AriumBuilder
 yaml_config = """
 metadata:
   name: simple-workflow
-  
+
 arium:
   agents:
     - name: analyzer
@@ -303,7 +314,7 @@ arium:
         name: gpt-4o-mini
       settings:
         temperature: 0.3
-        
+
     - name: summarizer
       role: Summary Generator
       job: "Create a concise summary based on the analysis"
@@ -312,7 +323,7 @@ arium:
         name: gpt-4o-mini
       settings:
         temperature: 0.2
-            
+
   workflow:
     start: analyzer
     edges:
@@ -332,6 +343,7 @@ asyncio.run(main())
 ```
 
 **Note**: To use custom memory, pass it as a parameter:
+
 ```python
 from flo_ai.arium.memory import MessageMemory
 
@@ -380,7 +392,7 @@ routers = {'smart_router': smart_router}
 yaml_config = """
 metadata:
   name: complex-workflow
-  
+
 arium:
   agents:
     - name: dispatcher
@@ -392,7 +404,7 @@ arium:
       settings:
         temperature: 0.1
         reasoning_pattern: REACT
-        
+
     - name: summarizer
       role: Final Summarizer
       job: "Create final summary from all previous results"
@@ -402,10 +414,10 @@ arium:
       settings:
         temperature: 0.3
       tools: ["calculator"]  # This agent can also use tools
-            
+
   tools:
     - name: calculator
-    
+
   workflow:
     start: dispatcher
     edges:
@@ -425,7 +437,7 @@ async def main():
         tools=tools,
         routers=routers
     )
-    
+
     result = await builder.build_and_run([
         "Please calculate 15 + 25 and then summarize the result"
     ])
@@ -442,7 +454,7 @@ You can also mix different configuration approaches in the same workflow:
 yaml_config = """
 metadata:
   name: mixed-workflow
-  
+
 arium:
   agents:
     # Direct configuration
@@ -454,8 +466,8 @@ arium:
         name: gpt-4o-mini
       settings:
         temperature: 0.1
-        
-    # Inline YAML configuration  
+
+    # Inline YAML configuration
     - name: data_analyzer
       yaml_config: |
         agent:
@@ -468,11 +480,11 @@ arium:
           settings:
             temperature: 0.3
             reasoning_pattern: COT
-            
+
     # External file reference
     - name: report_generator
       yaml_file: "agents/report_generator.yaml"
-      
+
   workflow:
     start: input_processor
     edges:
@@ -493,13 +505,13 @@ You can build agents separately using `AgentBuilder` and then reference them in 
 ```python
 import asyncio
 from flo_ai.arium.builder import AriumBuilder
-from flo_ai.builder.agent_builder import AgentBuilder
+from flo_ai.agent import AgentBuilder
 from flo_ai.llm import OpenAI
 
 # Build agents separately from YAML files
 async def create_agents():
     llm = OpenAI(model="gpt-4o-mini")
-    
+
     # Agent 1: Built from YAML file
     content_analyst_yaml = """
     agent:
@@ -515,9 +527,9 @@ async def create_agents():
         temperature: 0.3
         reasoning_pattern: COT
     """
-    
+
     content_analyst = AgentBuilder.from_yaml(yaml_str=content_analyst_yaml).build()
-    
+
     # Agent 2: Built programmatically
     summarizer = (AgentBuilder()
         .with_name("summarizer")
@@ -526,10 +538,10 @@ async def create_agents():
         .with_llm(llm)
         .with_reasoning(ReasoningPattern.DIRECT)
         .build())
-    
+
     # Agent 3: Built from external file
     # reporter = AgentBuilder.from_yaml(yaml_file="agents/reporter.yaml").build()
-    
+
     return {
         'content_analyst': content_analyst,
         'summarizer': summarizer,
@@ -548,7 +560,7 @@ arium:
     # Reference pre-built agents by name only
     - name: content_analyst
     - name: summarizer
-    
+
     # You can also mix with other configuration methods
     - name: validator
       role: Content Validator
@@ -558,7 +570,7 @@ arium:
         name: gpt-4o-mini
       settings:
         temperature: 0.1
-        
+
   workflow:
     start: content_analyst
     edges:
@@ -574,20 +586,20 @@ arium:
 async def main():
     # Build agents separately
     agents = await create_agents()
-    
+
     # Create workflow with pre-built agents
     builder = AriumBuilder.from_yaml(
         yaml_str=workflow_yaml,
         agents=agents  # Pass pre-built agents
     )
-    
+
     result = await builder.build_and_run([
         "Artificial Intelligence is revolutionizing industries across the globe. "
         "From healthcare diagnostics to financial trading, AI systems are providing "
         "unprecedented capabilities. However, challenges include ethical considerations, "
         "data privacy, and the need for human oversight in critical decisions."
     ])
-    
+
     print(result)
 
 asyncio.run(main())
@@ -630,7 +642,7 @@ def router_function(memory: BaseMemory) -> str:
     """
     Args:
         memory: Current workflow memory containing conversation history
-        
+
     Returns:
         str: Name of the next node to execute
     """
@@ -732,34 +744,44 @@ except Exception as e:
 Common errors and their solutions:
 
 ### Missing Required Sections
+
 ```
 ValueError: YAML must contain an "arium" section
 ```
+
 **Solution**: Ensure your YAML has the required `arium` section.
 
 ### Agent Configuration Errors
+
 ```
 ValueError: Agent {name} must have either yaml_config or yaml_file
 ```
+
 **Solution**: Each agent must specify either inline `yaml_config` or `yaml_file`.
 
 ### Tool Not Found
+
 ```
 ValueError: Tool {name} not found in provided tools dictionary
 ```
+
 **Solution**: Ensure all referenced tools are provided in the `tools` parameter.
 
 ### Router Not Found
+
 ```
 ValueError: Router {name} not found in provided routers dictionary
 ```
+
 **Solution**: Ensure all referenced routers are provided in the `routers` parameter.
 
 ### Invalid Workflow Structure
+
 ```
 ValueError: Workflow must specify a start node
 ValueError: Workflow must specify end nodes
 ```
+
 **Solution**: Ensure `workflow` section has both `start` and `end` specifications.
 
 ## Migration from Programmatic Builder
@@ -767,6 +789,7 @@ ValueError: Workflow must specify end nodes
 To convert existing programmatic builder code to YAML:
 
 **Before:**
+
 ```python
 builder = (AriumBuilder()
     .add_agent(agent1)
@@ -777,6 +800,7 @@ builder = (AriumBuilder()
 ```
 
 **After:**
+
 ```yaml
 arium:
   agents:
@@ -786,7 +810,7 @@ arium:
     - name: agent2
       yaml_config: |
         # agent2 configuration
-        
+
   workflow:
     start: agent1
     edges:
@@ -812,4 +836,4 @@ Planned features for future versions:
 - YAML-based tool definitions using function references
 - Configuration validation schemas
 - Hot-reloading of configurations
-- Workflow debugging and visualization tools 
+- Workflow debugging and visualization tools

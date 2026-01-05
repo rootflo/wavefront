@@ -65,24 +65,6 @@ class RootFloLLM(BaseLLM):
         if not base_url:
             raise ValueError('base_url is required')
 
-        # Validate JWT credentials if access_token is not provided
-        if not access_token:
-            missing = []
-            if not app_key:
-                missing.append('app_key')
-            if not app_secret:
-                missing.append('app_secret')
-            if not issuer:
-                missing.append('issuer')
-            if not audience:
-                missing.append('audience')
-
-            if missing:
-                raise ValueError(
-                    f'Missing required parameters for JWT generation: {", ".join(missing)}. '
-                    f'Either provide these parameters or pass an access_token directly.'
-                )
-
         # Store initialization parameters for lazy initialization
         self._base_url = base_url
         self._model_id = model_id
@@ -117,7 +99,7 @@ class RootFloLLM(BaseLLM):
         self,
         base_url: str,
         model_id: str,
-        api_token: str,
+        api_token: str | None = None,
         app_key: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
@@ -136,9 +118,10 @@ class RootFloLLM(BaseLLM):
             Exception: If API call fails or response is invalid
         """
         config_url = f'{base_url}/v1/llm-inference-configs/{model_id}'
-        headers = {
-            'Authorization': f'Bearer {api_token}',
-        }
+
+        headers = {}
+        if api_token:
+            headers['Authorization'] = f'Bearer {api_token}'
 
         # Only add X-Rootflo-Key header if app_key is provided
         if app_key:
@@ -189,10 +172,11 @@ class RootFloLLM(BaseLLM):
             if self._initialized:
                 return
 
+            api_token = None
             # Generate or use provided access token
             if self._access_token:
                 api_token = self._access_token
-            else:
+            elif self._app_key and self._app_secret:
                 now = datetime.now()
                 payload = {
                     'iss': self._issuer,
@@ -238,7 +222,7 @@ class RootFloLLM(BaseLLM):
                 self._llm = OpenAI(
                     model=llm_model,
                     base_url=full_url,
-                    api_key=api_token,
+                    api_key=api_token or 'no_token',
                     temperature=self._temperature,
                     custom_headers=custom_headers,
                     **self._kwargs,
@@ -247,7 +231,7 @@ class RootFloLLM(BaseLLM):
                 self._llm = Anthropic(
                     model=llm_model,
                     base_url=full_url,
-                    api_key=api_token,
+                    api_key=api_token or 'no_token',
                     temperature=self._temperature,
                     custom_headers=custom_headers,
                     **self._kwargs,
@@ -256,7 +240,7 @@ class RootFloLLM(BaseLLM):
                 # Gemini SDK - pass base_url which will be handled via http_options
                 self._llm = Gemini(
                     model=llm_model,
-                    api_key=api_token,
+                    api_key=api_token or 'no_token',
                     temperature=self._temperature,
                     base_url=full_url,
                     custom_headers=custom_headers,
@@ -267,7 +251,7 @@ class RootFloLLM(BaseLLM):
                 self._llm = OpenAIVLLM(
                     model=llm_model,
                     base_url=full_url,
-                    api_key=api_token,
+                    api_key=api_token or 'no_token',
                     temperature=self._temperature,
                     custom_headers=custom_headers,
                     **self._kwargs,
@@ -287,19 +271,25 @@ class RootFloLLM(BaseLLM):
     ) -> Dict[str, Any]:
         """Generate a response from the LLM"""
         await self._ensure_initialized()
+        if self._llm is None:
+            raise RuntimeError('LLM initialization failed: _llm is None')
         return await self._llm.generate(
             messages, functions=functions, output_schema=output_schema, **kwargs
         )
 
-    async def stream(
+    async def stream(  # type: ignore[override]
         self,
-        messages: List[Dict[str, Any]],
+        messages: List[Dict[str, str]],
         functions: Optional[List[Dict[str, Any]]] = None,
-        **kwargs: Any,
+        output_schema: Optional[Dict[str, Any]] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """Generate a streaming response from the LLM"""
         await self._ensure_initialized()
-        async for chunk in self._llm.stream(messages, functions=functions, **kwargs):
+        if self._llm is None:
+            raise RuntimeError('LLM initialization failed: _llm is None')
+        async for chunk in self._llm.stream(
+            messages, functions=functions, output_schema=output_schema
+        ):
             yield chunk
 
     def get_message_content(self, response: Any) -> str:
@@ -312,12 +302,18 @@ class RootFloLLM(BaseLLM):
 
     def format_tool_for_llm(self, tool: 'Tool') -> Dict[str, Any]:
         """Format a tool for the specific LLM's API"""
+        if self._llm is None:
+            raise RuntimeError('LLM initialization failed: _llm is None')
         return self._llm.format_tool_for_llm(tool)
 
     def format_tools_for_llm(self, tools: List['Tool']) -> List[Dict[str, Any]]:
         """Format a list of tools for the specific LLM's API"""
+        if self._llm is None:
+            raise RuntimeError('LLM initialization failed: _llm is None')
         return self._llm.format_tools_for_llm(tools)
 
-    def format_image_in_message(self, image: ImageMessageContent) -> str:
+    def format_image_in_message(self, image: ImageMessageContent) -> Any:
         """Format a image in the message"""
+        if self._llm is None:
+            raise RuntimeError('LLM initialization failed: _llm is None')
         return self._llm.format_image_in_message(image)

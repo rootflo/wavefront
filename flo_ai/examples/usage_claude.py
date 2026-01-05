@@ -1,7 +1,7 @@
 import asyncio
 import os
-from flo_ai.models.base_agent import ReasoningPattern
-from flo_ai.models.agent import Agent as ToolAgent
+from flo_ai.agent import ReasoningPattern
+from flo_ai.agent import Agent as ToolAgent
 from flo_ai.llm.anthropic_llm import Anthropic
 from flo_ai.tool.base_tool import Tool
 from flo_ai.models.agent_error import AgentError
@@ -34,7 +34,7 @@ async def test_claude_conversational():
 
 async def test_claude_tool_agent():
     # Example weather tool
-    async def get_weather(city: str, country: str = None) -> str:
+    async def get_weather(city: str, country: str | None = None) -> str:
         location = f'{city}, {country}' if country else city
         # This would normally call a weather API
         return f"Currently in {location}, it's sunny and warm with a temperature of 25°C (77°F)."

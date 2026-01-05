@@ -1,0 +1,34 @@
+[project]
+name = "call_processing"
+version = "0.1.0"
+description = "Voice agents call processing backend for rootflo apps"
+authors = [
+    { name = "rootflo engineering", email = "engineering@rootflo.ai" }
+]
+requires-python = ">=3.11"
+
+dependencies = [
+    # FastAPI stack
+    "fastapi>=0.115.2,<1.0.0",
+    "uvicorn>=0.30.5,<1.0.0",
+    "python-multipart>=0.0.9",
+    "python-dotenv>=1.1.0,<2.0.0",
+    "pydantic>=2.0.0",
+    "dependency-injector>=4.46.0,<5.0.0",
+    # HTTP client
+    "httpx>=0.27.0",
+    # Redis and caching
+    "redis>=5.0.0",
+    "tenacity>=8.0.0",
+    # Pipecat and voice processing
+    "pipecat-ai[websocket,cartesia,google,silero,deepgram,groq,runner]==0.0.97",
+    # Twilio
+    "twilio>=8.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["call_processing"]

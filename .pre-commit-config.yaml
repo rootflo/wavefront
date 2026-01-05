@@ -1,12 +1,35 @@
 repos:
-- repo: https://github.com/astral-sh/ruff-pre-commit
-  # Ruff version.
-  rev: v0.7.3
-  hooks:
-    # Run the linter.
-    - id: ruff
-      files: \.py$
-    # Run the formatter.
-    - id: ruff-format
-      files: \.py$
-      args: [--config, format.quote-style = 'single']
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Ruff version.
+    rev: v0.7.3
+    hooks:
+      # Run the linter.
+      - id: ruff
+        files: \.py$
+      # Run the formatter.
+      - id: ruff-format
+        files: \.py$
+        args: [--config, format.quote-style = 'single']
+
+  - repo: local
+    hooks:
+      - id: eslint
+        name: eslint
+        entry: bash -c 'cd wavefront/client && pnpm eslint $(printf "%s\n" "$@" | sed "s|^wavefront/client/||")' --
+        language: system
+        files: ^wavefront/client/.*\.(js|jsx|ts|tsx)$
+        pass_filenames: true
+
+      - id: typescript-check
+        name: typescript-check
+        entry: bash -c 'cd wavefront/client && pnpm typecheck'
+        language: system
+        files: ^wavefront/client/.*\.(ts|tsx)$
+        pass_filenames: false
+
+      - id: prettier
+        name: prettier
+        entry: bash -c 'cd wavefront/client && pnpm prettier --write $(printf "%s\n" "$@" | sed "s|^wavefront/client/||")' --
+        language: system
+        files: ^wavefront/client/.*\.(js|jsx|ts|tsx|json|css|md)$
+        pass_filenames: true

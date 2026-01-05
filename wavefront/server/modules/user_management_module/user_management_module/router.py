@@ -1,0 +1,15 @@
+from fastapi.routing import APIRouter
+from user_management_module.controllers.access_controller import access_router
+from user_management_module.controllers.auth_controller import auth_router
+
+# from user_management_module.controllers.saml_config_controller import saml_router
+from user_management_module.controllers.user_controller import user_router
+from user_management_module.controllers.auth_plugin_controller import auth_plugin_router
+
+user_management_router = APIRouter()
+
+user_management_router.include_router(auth_router)
+# user_management_router.include_router(saml_router)
+user_management_router.include_router(user_router)
+user_management_router.include_router(access_router)
+user_management_router.include_router(auth_plugin_router)

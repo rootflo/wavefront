@@ -18,21 +18,22 @@ class OpenAI(BaseLLM):
     def __init__(
         self,
         model='gpt-4o-mini',
-        api_key: str = None,
+        api_key: Optional[str] = None,
         temperature: float = 0.7,
-        base_url: str = None,
+        base_url: Optional[str] = None,
         custom_headers: Optional[Dict[str, str]] = None,
         **kwargs,
     ):
         super().__init__(
             model=model, api_key=api_key, temperature=temperature, **kwargs
         )
-        # Add custom headers if base_url is provided (proxy scenario)
-        client_kwargs = {'api_key': api_key, 'base_url': base_url}
-        if base_url and custom_headers:
-            client_kwargs['default_headers'] = custom_headers
 
-        self.client = AsyncOpenAI(**client_kwargs)
+        self.client = AsyncOpenAI(
+            api_key=self.api_key,
+            base_url=base_url,
+            default_headers=custom_headers,
+            **kwargs,
+        )
         self.model = model
         self.kwargs = kwargs
 
@@ -41,7 +42,7 @@ class OpenAI(BaseLLM):
         self,
         messages: list[dict],
         functions: Optional[List[Dict[str, Any]]] = None,
-        output_schema: dict = None,
+        output_schema: Optional[Dict[str, Any]] = None,
         **kwargs,
     ) -> Any:
         # Handle structured output vs tool calling
@@ -149,11 +150,11 @@ class OpenAI(BaseLLM):
                     yield {'content': content}
 
     def get_message_content(self, response: Dict[str, Any]) -> str:
-        # Handle both string responses and message objects
         if isinstance(response, str):
             return response
-        # Otherwise return content if available
-        return response.content if hasattr(response, 'content') else str(response)
+        if hasattr(response, 'content') and response.content is not None:
+            return str(response.content)
+        return str(response)
 
     def format_tool_for_llm(self, tool: 'Tool') -> Dict[str, Any]:
         """Format a single tool for OpenAI's API"""

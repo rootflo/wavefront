@@ -177,10 +177,12 @@ async def example_workflow(llm):
 
     # Compile and set name for telemetry
     workflow = builder.build()
-    workflow.name = 'research_workflow'  # This name will appear in telemetry
+    workflow.name = (  # type: ignore[assignment]
+        'research_workflow'  # This name will appear in telemetry
+    )
 
     # Run workflow - all node executions are tracked
-    result = await workflow.run(inputs=['What are the key benefits of OpenTelemetry?'])
+    result = await workflow.run(inputs='What are the key benefits of OpenTelemetry?')
 
     print(f'Workflow result: {result}')
     return result

@@ -1,11 +1,11 @@
-import setuptools
+import setuptools  # type: ignore[import-untyped]
 
 with open('README.md', 'r') as fh:
     long_description = fh.read()
 
 setuptools.setup(
     name='flo-ai',
-    version='1.1.0-rc4',
+    version='1.1.0-rc1',
     author='Rootflo',
     description='Create composable AI agents',
     long_description=long_description,

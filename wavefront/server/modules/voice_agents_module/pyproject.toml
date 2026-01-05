@@ -1,0 +1,34 @@
+[project]
+name = "voice-agents-module"
+version = "0.1.0"
+description = "Voice agents module for configuration management"
+authors = [
+    { name = "rootflo engineering", email = "engineering@rootflo.ai" }
+]
+requires-python = ">=3.11"
+
+dependencies = [
+    "common-module",
+    "db-repo-module",
+    "flo-cloud",
+    "twilio",
+    "httpx>=0.27.0,<1.0.0",
+]
+
+[tool.uv.sources]
+common-module = { workspace = true }
+db-repo-module = { workspace = true }
+flo-cloud = { workspace = true }
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[tool.uv]
+package = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["voice_agents_module"]

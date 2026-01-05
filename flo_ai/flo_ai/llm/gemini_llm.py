@@ -22,13 +22,13 @@ class Gemini(BaseLLM):
         model: str = 'gemini-2.5-flash',
         temperature: float = 0.7,
         api_key: Optional[str] = None,
-        base_url: str = None,
+        base_url: Optional[str] = None,
         custom_headers: Optional[Dict[str, str]] = None,
         **kwargs,
     ):
         super().__init__(model, api_key, temperature, **kwargs)
         # Configure http_options for proxy or custom base_url
-        http_options = {'base_url': base_url} if base_url else {}
+        http_options: types.HttpOptionsDict = {'base_url': base_url} if base_url else {}
         if base_url and self.api_key:
             # For custom base_url (proxy), set Authorization header explicitly
             http_options['headers'] = {'Authorization': f'Bearer {self.api_key}'}
@@ -48,7 +48,7 @@ class Gemini(BaseLLM):
     async def generate(
         self,
         messages: List[Dict[str, str]],
-        functions: Optional[List[Dict[str, Any]]] = None,
+        functions: Optional[List[types.FunctionDeclaration]] = None,
         output_schema: Optional[Dict[str, Any]] = None,
         **kwargs,
     ) -> Dict[str, Any]:
@@ -151,7 +151,7 @@ class Gemini(BaseLLM):
     async def stream(
         self,
         messages: List[Dict[str, str]],
-        functions: Optional[List[Dict[str, Any]]] = None,
+        functions: Optional[List[types.FunctionDeclaration]] = None,
         **kwargs,
     ) -> AsyncIterator[Dict[str, Any]]:
         """Stream partial responses from Gemini as they are generated"""
@@ -242,10 +242,13 @@ class Gemini(BaseLLM):
         """Format tools for Gemini's function declarations"""
         return [self.format_tool_for_llm(tool) for tool in tools]
 
-    def format_image_in_message(self, image: ImageMessageContent) -> str:
+    def format_image_in_message(self, image: ImageMessageContent) -> types.Part:
         """Format a image in the message"""
 
         if image.base64:
+            if image.mime_type is None:
+                raise ValueError('Image mime type is required')
+
             return types.Part.from_bytes(
                 data=base64.b64decode(image.base64),
                 mime_type=image.mime_type,

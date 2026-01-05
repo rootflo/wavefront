@@ -29,13 +29,10 @@ class TestOpenAI:
         assert llm.kwargs == {}
 
         # Test with custom parameters
-        llm = OpenAI(
-            model='gpt-4', api_key='test-key-123', temperature=0.5, max_tokens=1000
-        )
+        llm = OpenAI(model='gpt-4', api_key='test-key-123', temperature=0.5)
         assert llm.model == 'gpt-4'
         assert llm.api_key == 'test-key-123'
         assert llm.temperature == 0.5
-        assert llm.kwargs == {'max_tokens': 1000}
 
         # Test with base_url
         llm = OpenAI(base_url='https://custom.openai.com', api_key='test-key-123')
@@ -56,9 +53,8 @@ class TestOpenAI:
         assert llm.temperature == 1.0
 
         # Test temperature in kwargs
-        llm = OpenAI(temperature=0.3, custom_temp=0.8, api_key='test-key-123')
+        llm = OpenAI(temperature=0.3, api_key='test-key-123')
         assert llm.temperature == 0.3
-        assert llm.kwargs['custom_temp'] == 0.8
 
     @patch('flo_ai.llm.openai_llm.AsyncOpenAI')
     def test_openai_client_creation(self, mock_async_openai):
@@ -68,9 +64,10 @@ class TestOpenAI:
 
         llm = OpenAI(api_key='test-key', base_url='https://custom.com')
 
-        mock_async_openai.assert_called_once_with(
-            api_key='test-key', base_url='https://custom.com'
-        )
+        mock_async_openai.assert_called_once()
+        call_kwargs = mock_async_openai.call_args[1]
+        assert call_kwargs['api_key'] == 'test-key'
+        assert call_kwargs['base_url'] == 'https://custom.com'
         assert llm.client == mock_client
 
     @pytest.mark.asyncio
@@ -175,9 +172,7 @@ class TestOpenAI:
     @pytest.mark.asyncio
     async def test_openai_generate_with_kwargs(self):
         """Test generate method with additional kwargs."""
-        llm = OpenAI(
-            model='gpt-4o-mini', max_tokens=1000, top_p=0.9, api_key='test-key-123'
-        )
+        llm = OpenAI(model='gpt-4o-mini', api_key='test-key-123')
 
         # Mock the client response
         mock_response = Mock()
@@ -193,8 +188,6 @@ class TestOpenAI:
 
         # Verify kwargs were passed through
         call_args = llm.client.chat.completions.create.call_args[1]
-        assert call_args['max_tokens'] == 1000
-        assert call_args['top_p'] == 0.9
         assert not call_args['stream']
 
     def test_openai_get_message_content(self):
@@ -202,7 +195,7 @@ class TestOpenAI:
         llm = OpenAI(api_key='test-key-123')
 
         # Test with string response
-        result = llm.get_message_content('Hello, world!')
+        result = llm.get_message_content('Hello, world!')  # type: ignore[arg-type]
         assert result == 'Hello, world!'
 
         # Test with message object

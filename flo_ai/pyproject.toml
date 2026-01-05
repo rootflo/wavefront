@@ -1,8 +1,8 @@
 [project]
 name = "flo_ai"
-version = "1.1.0-rc4"
+version = "1.1.0-rc6"
 description = "A easy way to create structured AI agents"
-authors = [{ name = "rootflo", email = "*@rootflo.ai" }]
+authors = [{ name = "rootflo", email = "engineering.tools@rootflo.ai" }]
 requires-python = ">=3.10,<4.0"
 readme = "README.md"
 license = "MIT"
@@ -47,18 +47,20 @@ dev = [
     "reportlab>=4.4.3,<5",
     "streamlit>=1.42.2,<2",
     "wikipedia>=1.4.0,<2",
+    "ty>=0.0.1a28",
 ]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+addopts = "-m 'not integration'"
 markers = [
     "integration: tests that make actual LLM API calls and require API keys",
-    "llm_tests: tests that make actual LLM API calls and require API keys"
+    "unit_tests: unit tests that do not require external API calls"
 ]
 
 [tool.uv]
-required-version = ">=0.7.3"
+required-version = ">=0.8.6"
 
 [tool.hatch.build.targets.sdist]
 include = ["flo_ai"]

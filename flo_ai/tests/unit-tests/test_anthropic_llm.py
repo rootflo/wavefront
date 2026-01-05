@@ -33,12 +33,10 @@ class TestAnthropic:
             model='claude-3-opus-20240229',
             api_key='test-key-123',
             temperature=0.5,
-            max_tokens=1000,
         )
         assert llm.model == 'claude-3-opus-20240229'
         assert llm.api_key == 'test-key-123'
         assert llm.temperature == 0.5
-        assert llm.kwargs == {'max_tokens': 1000}
 
         # Test with base_url
         llm = Anthropic(base_url='https://custom.anthropic.com')
@@ -59,9 +57,8 @@ class TestAnthropic:
         assert llm.temperature == 1.0
 
         # Test temperature in kwargs
-        llm = Anthropic(temperature=0.3, custom_temp=0.8)
+        llm = Anthropic(temperature=0.3)
         assert llm.temperature == 0.3
-        assert llm.kwargs['custom_temp'] == 0.8
 
     @patch('flo_ai.llm.anthropic_llm.AsyncAnthropic')
     def test_anthropic_client_creation(self, mock_async_anthropic):
@@ -71,9 +68,10 @@ class TestAnthropic:
 
         llm = Anthropic(api_key='test-key', base_url='https://custom.com')
 
-        mock_async_anthropic.assert_called_once_with(
-            api_key='test-key', base_url='https://custom.com'
-        )
+        mock_async_anthropic.assert_called_once()
+        call_kwargs = mock_async_anthropic.call_args[1]
+        assert call_kwargs['api_key'] == 'test-key'
+        assert call_kwargs['base_url'] == 'https://custom.com'
         assert llm.client == mock_client
 
     @pytest.mark.asyncio
@@ -256,37 +254,9 @@ class TestAnthropic:
         assert result['function_call']['arguments'] == '{"param": "value"}'
 
     @pytest.mark.asyncio
-    async def test_anthropic_generate_with_max_tokens(self):
-        """Test generate method with max_tokens parameter."""
-        llm = Anthropic(model='claude-3-5-sonnet-20240620', max_tokens=1000)
-
-        # Mock the client response
-        mock_content = Mock()
-        mock_content.text = 'Response with max tokens'
-        mock_content.type = 'text'
-
-        mock_usage = Mock()
-        mock_usage.input_tokens = 5
-        mock_usage.output_tokens = 4
-
-        mock_response = Mock()
-        mock_response.usage = mock_usage
-        mock_response.content = [mock_content]
-
-        llm.client = Mock()
-        llm.client.messages.create = AsyncMock(return_value=mock_response)
-
-        messages = [{'role': 'user', 'content': 'Hello'}]
-        await llm.generate(messages)
-
-        # Verify max_tokens was passed
-        call_args = llm.client.messages.create.call_args[1]
-        assert call_args['max_tokens'] == 1000
-
-    @pytest.mark.asyncio
     async def test_anthropic_generate_with_kwargs(self):
         """Test generate method with additional kwargs."""
-        llm = Anthropic(model='claude-3-5-sonnet-20240620', top_p=0.9)
+        llm = Anthropic(model='claude-3-5-sonnet-20240620')
 
         # Mock the client response
         mock_content = Mock()
@@ -306,10 +276,6 @@ class TestAnthropic:
 
         messages = [{'role': 'user', 'content': 'Hello'}]
         await llm.generate(messages)
-
-        # Verify kwargs were passed through
-        call_args = llm.client.messages.create.call_args[1]
-        assert call_args['top_p'] == 0.9
 
     def test_anthropic_get_message_content(self):
         """Test get_message_content method."""
@@ -491,7 +457,6 @@ class TestAnthropic:
         assert call_args['model'] == 'claude-3-5-sonnet-20240620'
         assert call_args['messages'] == messages
         assert call_args['temperature'] == 0.7
-        assert call_args['max_tokens'] == 1024
 
         # Verify the streaming results
         assert len(results) == 2

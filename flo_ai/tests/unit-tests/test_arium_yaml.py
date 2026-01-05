@@ -1,5 +1,11 @@
 """
-Tests for YAML-based Arium workflow construction.
+Integration tests for YAML-based Arium workflow construction.
+
+This module tests the actual building and integration of arium workflows from YAML,
+including function nodes, routers, pre-built agents, and complex workflows.
+
+Note: YAML structure validation is tested in test_arium_yaml_validation.py.
+This file focuses on integration and runtime behavior.
 """
 
 import pytest
@@ -7,7 +13,7 @@ from unittest.mock import Mock, patch
 
 from flo_ai.arium.builder import AriumBuilder
 from flo_ai.arium.memory import MessageMemory, BaseMemory
-from flo_ai.models.agent import Agent
+from flo_ai.agent import Agent
 from flo_ai.llm import OpenAI
 
 
@@ -27,15 +33,6 @@ class TestAriumYamlBuilder:
             ValueError, match='Only one of yaml_str or yaml_file should be provided'
         ):
             AriumBuilder.from_yaml(yaml_str='test', yaml_file='test.yaml')
-
-    def test_from_yaml_validation_missing_arium_section(self):
-        """Test that from_yaml fails when YAML doesn't contain arium section."""
-        yaml_config = """
-        metadata:
-          name: test
-        """
-        with pytest.raises(ValueError, match='YAML must contain an "arium" section'):
-            AriumBuilder.from_yaml(yaml_str=yaml_config)
 
     def test_from_yaml_simple_configuration(self):
         """Test basic YAML configuration parsing."""
@@ -405,76 +402,6 @@ class TestAriumYamlBuilder:
                 match='Router missing_router not found',
             ):
                 AriumBuilder.from_yaml(yaml_str=yaml_config, routers={})
-
-    def test_from_yaml_missing_start_node_error(self):
-        """Test error when workflow doesn't specify start node."""
-        yaml_config = """
-        arium:
-          agents:
-            - name: test_agent
-              yaml_config: |
-                agent:
-                  name: test_agent
-                  job: "Test agent"
-                  model:
-                    provider: openai
-                    name: gpt-4o-mini
-                    
-          workflow:
-            edges: []
-            end: [test_agent]
-        """
-
-        with patch('flo_ai.arium.builder.AgentBuilder'):
-            with pytest.raises(ValueError, match='Workflow must specify a start node'):
-                AriumBuilder.from_yaml(yaml_str=yaml_config)
-
-    def test_from_yaml_missing_end_nodes_error(self):
-        """Test error when workflow doesn't specify end nodes."""
-        yaml_config = """
-        arium:
-          agents:
-            - name: test_agent
-              yaml_config: |
-                agent:
-                  name: test_agent
-                  job: "Test agent"
-                  model:
-                    provider: openai
-                    name: gpt-4o-mini
-                    
-          workflow:
-            start: test_agent
-            edges:
-              - from: test_agent
-                to: [end]
-        """
-
-        with patch('flo_ai.arium.builder.AgentBuilder'):
-            with pytest.raises(ValueError, match='Workflow must specify end nodes'):
-                AriumBuilder.from_yaml(yaml_str=yaml_config)
-
-    def test_from_yaml_invalid_agent_config_error(self):
-        """Test error when agent doesn't have yaml_config or yaml_file."""
-        yaml_config = """
-        arium:
-          agents:
-            - name: invalid_agent
-              # Missing yaml_config or yaml_file
-                    
-          workflow:
-            start: invalid_agent
-            edges:
-              - from: invalid_agent
-                to: [end]
-            end: [invalid_agent]
-        """
-
-        with pytest.raises(
-            ValueError,
-            match='Agent invalid_agent not found in provided agents dictionary',
-        ):
-            AriumBuilder.from_yaml(yaml_str=yaml_config)
 
     def test_from_yaml_external_file_reference(self):
         """Test YAML configuration with external agent file reference."""
@@ -933,51 +860,9 @@ class TestAriumYamlBuilder:
                 assert any(a.name == 'yaml_agent' for a in builder._agents)
                 assert any(a.name == 'file_agent' for a in builder._agents)
 
-    def test_from_yaml_direct_config_validation_errors(self):
-        """Test validation errors for direct agent configuration."""
-
-        # Test missing required field
-        yaml_config_missing_job = """
-        arium:
-          agents:
-            - name: test_agent
-              role: Test Agent
-              # missing job field
-              model:
-                provider: openai
-                name: gpt-4o-mini
-          workflow:
-            start: test_agent
-            edges: []
-            end: [test_agent]
-        """
-
-        with pytest.raises(ValueError, match='Agent test_agent must have either'):
-            AriumBuilder.from_yaml(yaml_str=yaml_config_missing_job)
-
-        # Test invalid reasoning pattern
-        yaml_config_invalid_pattern = """
-        arium:
-          agents:
-            - name: test_agent
-              job: "Test agent"
-              model:
-                provider: openai
-                name: gpt-4o-mini
-              settings:
-                reasoning_pattern: INVALID_PATTERN
-          workflow:
-            start: test_agent
-            edges: []
-            end: [test_agent]
-        """
-
-        with patch('flo_ai.llm.OpenAI'):
-            with pytest.raises(ValueError, match='Invalid reasoning pattern'):
-                AriumBuilder.from_yaml(yaml_str=yaml_config_invalid_pattern)
-
-        # Test missing model when no base_llm provided
-        yaml_config_missing_model = """
+    def test_from_yaml_direct_config_missing_model_error(self):
+        """Test error when agent is missing model and no base_llm is provided."""
+        yaml_config = """
         arium:
           agents:
             - name: test_agent
@@ -990,7 +875,7 @@ class TestAriumYamlBuilder:
         """
 
         with pytest.raises(ValueError, match='Model must be specified'):
-            AriumBuilder.from_yaml(yaml_str=yaml_config_missing_model)
+            AriumBuilder.from_yaml(yaml_str=yaml_config)
 
     def test_from_yaml_direct_config_with_base_llm(self):
         """Test direct agent configuration with base LLM override."""
@@ -1174,27 +1059,6 @@ class TestAriumYamlBuilder:
 
                 # Check YAML agent was added
                 assert mock_yaml_agent in builder._agents
-
-    def test_from_yaml_prebuilt_agents_parameter_validation(self):
-        """Test parameter validation for pre-built agents."""
-        yaml_config = """
-        arium:
-          agents:
-            - name: test_agent
-              # Has additional fields, so not a pure reference
-              role: "Some Role"
-              
-          workflow:
-            start: test_agent
-            edges: []
-            end: [test_agent]
-        """
-
-        # This should not be treated as a pre-built agent reference
-        # because it has additional fields beyond just 'name'
-        with patch('flo_ai.llm.OpenAI'):
-            with pytest.raises(ValueError, match='Agent test_agent must have either'):
-                AriumBuilder.from_yaml(yaml_str=yaml_config)
 
     def test_from_yaml_prebuilt_agents_with_function_nodes_and_routers(self):
         """Test pre-built agents working together with function nodes and routers."""

@@ -1,0 +1,161 @@
+{
+  "bigquery_test_connection": {
+    "name": "bigquery_test_connection",
+    "description": "Test BigQuery connection using the configured datasource. Returns a descriptive string indicating success or failure with connection details.",
+    "parameters": {
+      "datasource_id": {
+        "type": "string",
+        "description": "UUID of the configured BigQuery datasource"
+      }
+    },
+    "prefill_values": [
+      "datasource_id"
+    ],
+    "category": "datasource"
+  },
+  "bigquery_get_schema": {
+    "name": "bigquery_get_schema",
+    "description": "Get BigQuery dataset schema information including table structures. Returns formatted text showing tables and their column details.",
+    "parameters": {
+      "datasource_id": {
+        "type": "string",
+        "description": "UUID of the configured BigQuery datasource"
+      },
+      "table_id": {
+        "type": "string",
+        "description": "Table id of the table"
+      }
+    },
+    "prefill_values": [
+      "datasource_id"
+    ],
+    "required": [
+      "table_id"
+    ],
+    "category": "datasource"
+  },
+  "bigquery_get_table_names": {
+    "name": "bigquery_get_table_names",
+    "description": "Get list of table names from BigQuery dataset. Returns formatted text with numbered list of tables and count.",
+    "parameters": {
+      "datasource_id": {
+        "type": "string",
+        "description": "UUID of the configured BigQuery datasource"
+      }
+    },
+    "prefill_values": [
+      "datasource_id"
+    ],
+    "category": "datasource"
+  },
+  "bigquery_insert_rows": {
+    "name": "bigquery_insert_rows",
+    "description": "Insert rows of data into a BigQuery table. Returns descriptive string confirming insertion success or detailing any errors.",
+    "parameters": {
+      "datasource_id": {
+        "type": "string",
+        "description": "UUID of the configured BigQuery datasource"
+      },
+      "table_name": {
+        "type": "string",
+        "description": "Name of the table to insert data into"
+      },
+      "data": {
+        "type": "array",
+        "description": "Array of objects representing rows to insert",
+        "items": {
+          "type": "TYPE_UNSPECIFIED"
+        }
+      }
+    },
+    "prefill_values": [
+      "datasource_id"
+    ],
+    "required": [
+      "table_name",
+      "data"
+    ],
+    "category": "datasource"
+  },
+  "bigquery_execute_query": {
+    "name": "bigquery_execute_query",
+    "description": "Execute a custom BigQuery SQL query using the configured datasource. Supports both dry runs for validation and actual execution. Returns descriptive string with execution status and job details.",
+    "parameters": {
+      "datasource_id": {
+        "type": "string",
+        "description": "UUID of the configured BigQuery datasource"
+      },
+      "query": {
+        "type": "string",
+        "description": "SQL query to execute"
+      },
+      "use_legacy_sql": {
+        "type": "boolean",
+        "description": "Whether to use legacy SQL syntax (default: false)"
+      },
+      "dry_run": {
+        "type": "boolean",
+        "description": "Whether to perform a dry run for query validation without execution (default: false)"
+      }
+    },
+    "prefill_values": [
+      "datasource_id"
+    ],
+    "required": [
+      "query"
+    ],
+    "category": "datasource"
+  },
+  "querying_knowlegebase": {
+    "name": "querying_knowlegebase",
+    "description": "Query the knowlegebase using the configured datasource. Returns a descriptive string indicating success or failure with connection details.",
+    "parameters": {
+      "kb_id": {
+        "type": "string",
+        "description": "UUID of the configured BigQuery datasource"
+      },
+      "inference_id": {
+        "type": "string",
+        "description": "UUID of the configured BigQuery datasource"
+      },
+      "question": {
+        "type": "string",
+        "description": "Question to query the knowlegebase"
+      }
+    },
+    "prefill_values": [
+      "kb_id",
+      "inference_id"
+    ],
+    "required": [
+      "question"
+    ],
+    "category": "knowlegebase"
+  },
+  "send_email": {
+    "name": "send_email",
+    "description": "Send an email to the specified recipient. Returns a descriptive string indicating success or failure of the email delivery process.",
+    "parameters": {
+      "email_id": {
+        "type": "string",
+        "description": "Email address of the recipient to whom the message will be sent"
+      },
+      "email_subject": {
+        "type": "string",
+        "description": "Subject of the email"
+      },
+      "email_body": {
+        "type": "string",
+        "description": "Body of the email"
+      }
+    },
+    "prefill_values": [
+      "email_id"
+    ],
+    "required": [
+      "email_subject",
+      "email_body"
+    ],
+    "category": "email"
+  }
+}

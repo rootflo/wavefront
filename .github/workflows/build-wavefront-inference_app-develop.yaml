@@ -1,0 +1,66 @@
+name: (Develop) Build and Push Wavefront Inference app to AWS and GCP
+
+on:
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: aesy-330511
+  GCP_REGION: asia-south1
+  GAR_LOCATION: asia-south1-docker.pkg.dev/aesy-330511/root-hub
+  IMAGE_NAME: wavefront-inference_app
+
+jobs:
+  build-push-artifact:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: "Checkout"
+        uses: "actions/checkout@v3"
+
+      - name: Get commit hash
+        id: get-commit-hash
+        run: echo "::set-output name=commit-hash::$(git rev-parse --short HEAD)"
+
+      - name: Get timestamp
+        id: get-timestamp
+        run: echo "::set-output name=timestamp::$(date +'%Y-%m-%d-%H-%M')"
+
+      - name: Cache Docker layers
+        id: cache-docker-layers
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-docker-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-docker-
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker Image
+        id: build-image
+        run: |
+          docker build -f wavefront/server/docker/inference_app.Dockerfile -t rootflo:${{ steps.get-commit-hash.outputs.commit-hash }}-${{ steps.get-timestamp.outputs.timestamp }} .
+          echo "IMAGE_TAG=${{ steps.get-commit-hash.outputs.commit-hash }}-${{ steps.get-timestamp.outputs.timestamp }}" >> $GITHUB_ENV
+
+      - id: "Auth-to-GCP"
+        uses: "google-github-actions/auth@v1"
+        with:
+          credentials_json: "${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}"
+
+      - name: "Set up Cloud SDK"
+        uses: "google-github-actions/setup-gcloud@v1"
+
+      - name: "Docker auth for GCP"
+        run: |-
+          gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Tag and push image to GCP Artifact Registry
+        run: |
+          docker tag rootflo:${{ env.IMAGE_TAG }} ${{ env.GAR_LOCATION }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          docker push ${{ env.GAR_LOCATION }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+
+      - name: Cleanup Docker images
+        run: |
+          docker rmi rootflo:${{ env.IMAGE_TAG }} || true
+          docker rmi ${{ env.GAR_LOCATION }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} || true

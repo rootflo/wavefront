@@ -104,18 +104,16 @@ async def main():
         builder = AriumBuilder.from_yaml(yaml_str=workflow_yaml, tools=tools)
 
         # Example input for the workflow
-        user_input = [
-            """I need to understand the current trends in artificial intelligence and machine learning. 
-            Specifically, I'm interested in:
-            1. Latest developments in large language models
-            2. Applications in healthcare and finance
-            3. Ethical considerations and regulations
-            
-            Please provide a comprehensive analysis and summary."""
-        ]
+        user_input = """I need to understand the current trends in artificial intelligence and machine learning. 
+        Specifically, I'm interested in:
+        1. Latest developments in large language models
+        2. Applications in healthcare and finance
+        3. Ethical considerations and regulations
+        
+        Please provide a comprehensive analysis and summary."""
 
         print('📝 Input:')
-        print(user_input[0])
+        print(user_input)
         print('\n' + '=' * 50)
         print('🔄 Processing workflow...')
         print('=' * 50 + '\n')
@@ -127,7 +125,7 @@ async def main():
         print('-' * 30)
         if isinstance(result, list):
             for i, message in enumerate(result):
-                print(f'{i+1}. {message}')
+                print(f'{i+1}. {message.result.content}')
         else:
             print(result)
 

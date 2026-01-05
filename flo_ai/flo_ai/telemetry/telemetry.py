@@ -139,8 +139,8 @@ _global_telemetry = FloTelemetry()
 def configure_telemetry(
     service_name: str = 'flo_ai',
     service_version: str = '1.0.0',
-    environment: str = None,
-    otlp_endpoint: str = None,
+    environment: Optional[str] = None,
+    otlp_endpoint: Optional[str] = None,
     console_export: bool = False,
     additional_attributes: Optional[Dict[str, Any]] = None,
 ) -> None:
