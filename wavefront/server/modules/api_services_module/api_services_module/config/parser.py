@@ -1,13 +1,15 @@
 """YAML service definition parser."""
 
 import yaml
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from ..models.service import (
     ServiceDefinition,
     AuthConfig,
     ApiConfig,
     AuthType,
     HttpMethod,
+    PayloadFieldSchema,
+    PayloadSchema,
 )
 
 
@@ -107,6 +109,44 @@ class ServiceDefinitionParser:
         return auth_config
 
     @staticmethod
+    def _parse_payload_schema(schema_data: Dict[str, Any]) -> Optional[PayloadSchema]:
+        """Parse payload schema configuration."""
+        if not schema_data or 'fields' not in schema_data:
+            return None
+
+        fields = []
+        for field_data in schema_data['fields']:
+            # Validate required fields
+            field_name = field_data.get('name')
+            field_type = field_data.get('type')
+
+            if not field_name:
+                raise ValueError('Payload field missing required attribute: name')
+            if not field_type:
+                raise ValueError(
+                    f"Payload field '{field_name}' missing required attribute: type"
+                )
+
+            # Validate field type
+            valid_types = ['string', 'integer', 'number', 'boolean', 'array', 'object']
+            if field_type not in valid_types:
+                raise ValueError(
+                    f"Invalid payload field type '{field_type}' for field '{field_name}'. "
+                    f"Must be one of: {', '.join(valid_types)}"
+                )
+
+            # Create field schema
+            field_schema = PayloadFieldSchema(
+                name=field_name,
+                type=field_type,
+                required=field_data.get('required', False),
+                description=field_data.get('description', ''),
+            )
+            fields.append(field_schema)
+
+        return PayloadSchema(fields=fields)
+
+    @staticmethod
     def _parse_api_configs(apis_data: List[Dict[str, Any]]) -> List[ApiConfig]:
         """Parse API configurations."""
         api_configs = []
@@ -136,17 +176,25 @@ class ServiceDefinitionParser:
                     f'Invalid HTTP method: {method_str}. Must be one of: {[m.value for m in HttpMethod]}'
                 )
 
+            # Parse payload schema if present
+            payload_schema = ServiceDefinitionParser._parse_payload_schema(
+                api_data.get('payload_schema', {})
+            )
+
             api_config = ApiConfig(
                 id=api_id,
                 path=path,
                 backend_path=backend_path,
                 method=method,
                 version=api_data.get('version', 'v1'),
+                description=api_data.get('description', ''),
                 additional_headers=api_data.get('additional_headers', {}),
+                backend_query_params=api_data.get('backend_query_params', {}),
                 output_mapper_enabled=api_data.get('output_mapper', {}).get(
                     'enabled', False
                 ),
                 output_mapper=api_data.get('output_mapper', {}).get('mapper', {}),
+                payload_schema=payload_schema,
             )
 
             api_configs.append(api_config)

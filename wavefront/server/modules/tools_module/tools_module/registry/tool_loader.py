@@ -8,7 +8,10 @@ from tools_module.registry.function_registry import FUNCTION_REGISTRY
 class ToolLoader:
     """Handles loading and management of tools from the registry"""
 
-    def __init__(self, tools_json_path: Optional[str] = None):
+    def __init__(
+        self,
+        tools_json_path: Optional[str] = None,
+    ):
         """
         Initialize tool loader
 

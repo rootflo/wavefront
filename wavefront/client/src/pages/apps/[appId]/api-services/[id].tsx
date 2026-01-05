@@ -36,16 +36,29 @@ const keyValuePairSchema = z.object({
   value: z.string(),
 });
 
+const payloadFieldSchema = z.object({
+  name: z.string(),
+  type: z.enum(['string', 'integer', 'number', 'boolean', 'array', 'object']),
+  required: z.boolean(),
+  description: z.string(),
+});
+
 const apiEndpointSchema = z.object({
   id: z.string(),
   version: z.string(),
   path: z.string(),
   backend_path: z.string(),
   method: z.enum(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']),
+  description: z.string().optional(),
   additional_headers: z.array(keyValuePairSchema),
   backend_query_params: z.array(keyValuePairSchema),
   output_mapper_enabled: z.boolean(),
   output_mapper: z.array(keyValuePairSchema),
+  payload_schema: z
+    .object({
+      fields: z.array(payloadFieldSchema),
+    })
+    .optional(),
 });
 
 const apiServiceFormSchema = z.object({
@@ -93,10 +106,19 @@ type ParsedYamlService = {
     path?: string;
     backend_path?: string;
     method?: string;
+    description?: string;
     additional_headers?: Record<string, string>;
     backend_query_params?: Record<string, unknown>;
     output_mapper_enabled?: boolean;
     output_mapper?: Record<string, string>;
+    payload_schema?: {
+      fields: Array<{
+        name: string;
+        type: 'string' | 'integer' | 'number' | 'boolean' | 'array' | 'object';
+        required: boolean;
+        description: string;
+      }>;
+    };
     [key: string]: unknown;
   }>;
 };
@@ -195,12 +217,13 @@ const ApiServiceDetail: React.FC = () => {
             });
           }
 
-          return {
+          const result: Record<string, unknown> = {
             id: api.id,
             version: api.version,
             path: api.path,
             backend_path: api.backend_path,
             method: api.method,
+            ...(api.description && { description: api.description }),
             ...(Object.keys(apiHeadersObj).length > 0 && {
               additional_headers: apiHeadersObj,
             }),
@@ -213,6 +236,24 @@ const ApiServiceDetail: React.FC = () => {
                 output_mapper: outputMapperObj,
               }),
           };
+
+          // Add payload_schema for POST, PUT, PATCH methods
+          if (
+            ['POST', 'PUT', 'PATCH'].includes(api.method) &&
+            api.payload_schema?.fields &&
+            api.payload_schema.fields.length > 0
+          ) {
+            result.payload_schema = {
+              fields: api.payload_schema.fields.map((field) => ({
+                name: field.name,
+                type: field.type,
+                required: field.required,
+                ...(field.description && { description: field.description }),
+              })),
+            };
+          }
+
+          return result;
         }),
       },
     };
@@ -268,16 +309,29 @@ const ApiServiceDetail: React.FC = () => {
             value: String(value),
           }));
 
+          const payload_schema = api.payload_schema?.fields
+            ? {
+                fields: api.payload_schema.fields.map((field) => ({
+                  name: field.name,
+                  type: field.type,
+                  required: field.required,
+                  description: field.description,
+                })),
+              }
+            : { fields: [] };
+
           return {
             id: api.id || '',
             version: api.version || 'v1',
             path: api.path || '',
             backend_path: api.backend_path || '',
             method: (api.method as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH') || 'GET',
+            description: api.description || '',
             additional_headers: api_additional_headers,
             backend_query_params: backend_query_params,
             output_mapper_enabled: api.output_mapper_enabled || false,
             output_mapper: output_mapper,
+            payload_schema: payload_schema,
           };
         }),
       };
@@ -329,16 +383,29 @@ const ApiServiceDetail: React.FC = () => {
           value: String(value),
         }));
 
+        const payload_schema = api.payload_schema?.fields
+          ? {
+              fields: api.payload_schema.fields.map((field) => ({
+                name: field.name,
+                type: field.type,
+                required: field.required,
+                description: field.description,
+              })),
+            }
+          : { fields: [] };
+
         return {
           id: api.id,
           version: api.version,
           path: api.path,
           backend_path: api.backend_path || '',
           method: api.method as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH',
+          description: api.description || '',
           additional_headers: api_additional_headers,
           backend_query_params: backend_query_params,
           output_mapper_enabled: api.output_mapper_enabled || false,
           output_mapper: output_mapper,
+          payload_schema: payload_schema,
         };
       }),
     };
@@ -458,10 +525,14 @@ const ApiServiceDetail: React.FC = () => {
       path: '',
       backend_path: '',
       method: 'GET',
+      description: '',
       additional_headers: [],
       backend_query_params: [],
       output_mapper_enabled: false,
       output_mapper: [],
+      payload_schema: {
+        fields: [],
+      },
     });
   };
 
@@ -505,6 +576,22 @@ const ApiServiceDetail: React.FC = () => {
     form.setValue(
       `apis.${apiIndex}.output_mapper`,
       currentMappers.filter((_, i) => i !== mapperIndex)
+    );
+  };
+
+  const handleAddPayloadField = (apiIndex: number) => {
+    const currentFields = form.getValues(`apis.${apiIndex}.payload_schema.fields`) || [];
+    form.setValue(`apis.${apiIndex}.payload_schema.fields`, [
+      ...currentFields,
+      { name: '', type: 'string', required: false, description: '' },
+    ]);
+  };
+
+  const handleRemovePayloadField = (apiIndex: number, fieldIndex: number) => {
+    const currentFields = form.getValues(`apis.${apiIndex}.payload_schema.fields`) || [];
+    form.setValue(
+      `apis.${apiIndex}.payload_schema.fields`,
+      currentFields.filter((_, i) => i !== fieldIndex)
     );
   };
 
@@ -940,6 +1027,27 @@ const ApiServiceDetail: React.FC = () => {
                             />
                           </div>
 
+                          {/* API Description */}
+                          <div className="mt-6 w-full">
+                            <FormField
+                              control={form.control}
+                              name={`apis.${index}.description`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Description (Optional)</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      placeholder="e.g., Fetches all users from the system"
+                                      disabled={!editing}
+                                      {...field}
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+
                           {/* API Additional Headers */}
                           <div className="mt-6 w-full">
                             <div className="mb-4 flex items-center justify-between">
@@ -1053,6 +1161,109 @@ const ApiServiceDetail: React.FC = () => {
                               )}
                             </div>
                           </div>
+
+                          {/* Payload Schema - Only for POST, PUT, PATCH */}
+                          {['POST', 'PUT', 'PATCH'].includes(form.watch(`apis.${index}.method`)) && (
+                            <div className="mt-6 w-full">
+                              <div className="mb-4 flex items-center justify-between">
+                                <Label className="text-sm font-medium">Payload Schema</Label>
+                                <Button
+                                  type="button"
+                                  onClick={() => handleAddPayloadField(index)}
+                                  variant="outline"
+                                  size="icon"
+                                  disabled={!editing}
+                                >
+                                  <Plus />
+                                </Button>
+                              </div>
+                              <div className="flex w-full flex-col gap-3">
+                                {(form.watch(`apis.${index}.payload_schema.fields`) || []).map(
+                                  (_field: unknown, fIndex: number) => (
+                                    <div key={fIndex} className="flex w-full gap-3">
+                                      <FormField
+                                        control={form.control}
+                                        name={`apis.${index}.payload_schema.fields.${fIndex}.name`}
+                                        render={({ field }) => (
+                                          <FormItem className="flex-1">
+                                            <FormControl>
+                                              <Input placeholder="Field Name" disabled={!editing} {...field} />
+                                            </FormControl>
+                                            <FormMessage />
+                                          </FormItem>
+                                        )}
+                                      />
+                                      <FormField
+                                        control={form.control}
+                                        name={`apis.${index}.payload_schema.fields.${fIndex}.type`}
+                                        render={({ field }) => (
+                                          <FormItem className="flex-1">
+                                            <Select
+                                              onValueChange={field.onChange}
+                                              value={field.value}
+                                              disabled={!editing}
+                                            >
+                                              <FormControl>
+                                                <SelectTrigger>
+                                                  <SelectValue placeholder="Type" />
+                                                </SelectTrigger>
+                                              </FormControl>
+                                              <SelectContent>
+                                                <SelectItem value="string">String</SelectItem>
+                                                <SelectItem value="integer">Integer</SelectItem>
+                                                <SelectItem value="number">Number</SelectItem>
+                                                <SelectItem value="boolean">Boolean</SelectItem>
+                                                <SelectItem value="array">Array</SelectItem>
+                                                <SelectItem value="object">Object</SelectItem>
+                                              </SelectContent>
+                                            </Select>
+                                            <FormMessage />
+                                          </FormItem>
+                                        )}
+                                      />
+                                      <FormField
+                                        control={form.control}
+                                        name={`apis.${index}.payload_schema.fields.${fIndex}.required`}
+                                        render={({ field }) => (
+                                          <FormItem className="flex flex-row items-center space-y-0 space-x-2 pt-2">
+                                            <FormControl>
+                                              <Checkbox
+                                                checked={field.value}
+                                                onCheckedChange={field.onChange}
+                                                disabled={!editing}
+                                              />
+                                            </FormControl>
+                                            <FormLabel className="mb-0 text-xs">Required</FormLabel>
+                                          </FormItem>
+                                        )}
+                                      />
+                                      <FormField
+                                        control={form.control}
+                                        name={`apis.${index}.payload_schema.fields.${fIndex}.description`}
+                                        render={({ field }) => (
+                                          <FormItem className="flex-1">
+                                            <FormControl>
+                                              <Input placeholder="Description" disabled={!editing} {...field} />
+                                            </FormControl>
+                                            <FormMessage />
+                                          </FormItem>
+                                        )}
+                                      />
+                                      <Button
+                                        type="button"
+                                        onClick={() => handleRemovePayloadField(index, fIndex)}
+                                        variant="outline"
+                                        size="icon"
+                                        disabled={!editing}
+                                      >
+                                        <Trash2 color="#DD5252" />
+                                      </Button>
+                                    </div>
+                                  )
+                                )}
+                              </div>
+                            </div>
+                          )}
 
                           {/* Output Mapper */}
                           <div className="mt-6 w-full border-t border-gray-200 pt-6">

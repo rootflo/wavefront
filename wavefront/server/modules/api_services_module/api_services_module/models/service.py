@@ -24,6 +24,23 @@ class HttpMethod(Enum):
 
 
 @dataclass
+class PayloadFieldSchema:
+    """Schema definition for a single payload field."""
+
+    name: str
+    type: str  # string, integer, number, boolean, array, object
+    required: bool = False
+    description: str = ''
+
+
+@dataclass
+class PayloadSchema:
+    """Complete payload schema definition."""
+
+    fields: List['PayloadFieldSchema'] = field(default_factory=list)
+
+
+@dataclass
 class AuthConfig:
     """Authentication configuration."""
 
@@ -53,6 +70,7 @@ class ApiConfig:
     backend_path: str
     method: HttpMethod
     version: str = 'v1'
+    description: str = ''
     additional_headers: Dict[str, str] = field(default_factory=dict)
     # Backend query parameters to be sent with the request
     backend_query_params: Dict[str, Any] = field(default_factory=dict)
@@ -60,6 +78,9 @@ class ApiConfig:
     # Output mapping configuration (simplified for Phase 1)
     output_mapper_enabled: bool = False
     output_mapper: Dict[str, str] = field(default_factory=dict)
+
+    # Payload validation schema (for POST/PUT/PATCH requests)
+    payload_schema: Optional['PayloadSchema'] = None
 
 
 @dataclass

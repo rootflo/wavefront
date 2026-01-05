@@ -2,7 +2,7 @@
 
 import asyncio
 import httpx
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from urllib.parse import urljoin
 
 from ..models.pipeline import (
@@ -445,3 +445,182 @@ class ResponseMapperStage(PipelineStage):
     def get_name(self) -> str:
         """Return stage name."""
         return f'response_mapper_{self.api_config.id}'
+
+
+class PayloadValidatorStage(PipelineStage):
+    """Pipeline stage for validating request payload against schema."""
+
+    def __init__(self, api_config: ApiConfig):
+        self.api_config = api_config
+
+    async def execute(self, context: PipelineContext) -> PipelineContext:
+        """Validate request payload against schema."""
+        context.add_trace(self.get_name(), 'Starting payload validation')
+
+        try:
+            # Skip validation if no schema defined
+            if not self.api_config.payload_schema:
+                context.add_trace(
+                    self.get_name(), 'No payload schema defined, skipping validation'
+                )
+                return context
+
+            # Skip validation if method is not POST/PUT/PATCH
+            method = context.method.upper()
+            if method not in ['POST', 'PUT', 'PATCH']:
+                context.add_trace(
+                    self.get_name(),
+                    f'Method {method} does not require payload validation, skipping',
+                )
+                return context
+
+            # Skip validation if no body provided
+            if context.body is None:
+                context.add_trace(self.get_name(), 'No request body provided')
+                # Check if there are required fields
+                required_fields = [
+                    f.name for f in self.api_config.payload_schema.fields if f.required
+                ]
+                if required_fields:
+                    error_msg = f"Missing required fields: {', '.join(required_fields)}"
+                    context.add_trace(
+                        self.get_name(), f'Validation failed: {error_msg}'
+                    )
+                    raise PipelineException(
+                        f'Payload validation failed: {error_msg}',
+                        self.get_name(),
+                        context,
+                    )
+                return context
+
+            # Validate payload
+            validation_errors = self._validate_payload(
+                context.body, self.api_config.payload_schema
+            )
+
+            if validation_errors:
+                error_msg = '; '.join(validation_errors)
+                context.add_trace(self.get_name(), f'Validation failed: {error_msg}')
+                raise PipelineException(
+                    f'Payload validation failed: {error_msg}', self.get_name(), context
+                )
+
+            context.add_trace(
+                self.get_name(),
+                f'Payload validation completed successfully ({len(self.api_config.payload_schema.fields)} fields checked)',
+            )
+            return context
+
+        except PipelineException:
+            # Re-raise pipeline exceptions
+            raise
+        except Exception as e:
+            context.add_trace(self.get_name(), f'Payload validation error: {str(e)}')
+            raise PipelineException(
+                f'Payload validation error: {str(e)}', self.get_name(), context
+            )
+
+    def _validate_payload(self, payload: Any, schema) -> list:
+        """
+        Validate payload against schema.
+
+        Args:
+            payload: Request payload (should be dict)
+            schema: PayloadSchema object
+
+        Returns:
+            List of validation error messages (empty if valid)
+        """
+        errors = []
+
+        # Payload must be a dictionary
+        if not isinstance(payload, dict):
+            errors.append(
+                f'Payload must be an object/dictionary, got {type(payload).__name__}'
+            )
+            return errors
+
+        # Check each field in schema
+        for field_schema in schema.fields:
+            field_name = field_schema.name
+            field_type = field_schema.type
+            required = field_schema.required
+
+            # Check if field exists
+            if field_name not in payload or payload[field_name] is None:
+                if required:
+                    errors.append(f"Missing required field '{field_name}'")
+                continue
+
+            # Validate field type
+            value = payload[field_name]
+            type_error = self._validate_field_type(value, field_type, field_name)
+            if type_error:
+                errors.append(type_error)
+
+        return errors
+
+    def _validate_field_type(
+        self, value: Any, expected_type: str, field_name: str
+    ) -> Optional[str]:
+        """
+        Validate individual field type.
+
+        Args:
+            value: Field value to validate
+            expected_type: Expected type (string, integer, number, boolean, array, object)
+            field_name: Name of the field (for error messages)
+
+        Returns:
+            Error message if invalid, None if valid
+        """
+        actual_type = type(value).__name__
+
+        if expected_type == 'string':
+            if not isinstance(value, str):
+                return (
+                    f"Field '{field_name}' expected type string but got {actual_type}"
+                )
+
+        elif expected_type == 'integer':
+            # Must be int, not float (even if float is a whole number)
+            if not isinstance(value, int) or isinstance(value, bool):
+                return (
+                    f"Field '{field_name}' expected type integer but got {actual_type}"
+                )
+
+        elif expected_type == 'number':
+            # Can be int or float
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                return (
+                    f"Field '{field_name}' expected type number but got {actual_type}"
+                )
+
+        elif expected_type == 'boolean':
+            if not isinstance(value, bool):
+                return (
+                    f"Field '{field_name}' expected type boolean but got {actual_type}"
+                )
+
+        elif expected_type == 'array':
+            if not isinstance(value, list):
+                return f"Field '{field_name}' expected type array but got {actual_type}"
+
+        elif expected_type == 'object':
+            if not isinstance(value, dict):
+                return (
+                    f"Field '{field_name}' expected type object but got {actual_type}"
+                )
+
+        else:
+            return f"Field '{field_name}' has unknown type '{expected_type}'"
+
+        return None
+
+    def get_stage_type(self) -> StageType:
+        """Return payload validator stage type."""
+        return StageType.PAYLOAD_VALIDATOR
+
+    def get_name(self) -> str:
+        """Return stage name."""
+        return f'payload_validator_{self.api_config.id}'

@@ -3,7 +3,7 @@ name = "tools_module"
 version = "0.1.0"
 description = "Tools module for Flo AI agent system"
 dependencies = [
-    "flo-ai==1.1.0-rc6",
+    "flo-ai==1.1.0-rc7",
     "flo_cloud",
 
     "datasource",

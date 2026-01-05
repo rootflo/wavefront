@@ -28,6 +28,12 @@ class AgentsContainer(containers.DeclarativeContainer):
 
     workflow_repository = providers.Dependency()
 
+    message_processor_repository = providers.Dependency()
+
+    message_processor_bucket_name = providers.Dependency()
+
+    api_services_manager = providers.Dependency()
+
     namespace_service = providers.Singleton(
         NamespaceService,
         namespace_repository=namespace_repository,
@@ -41,6 +47,9 @@ class AgentsContainer(containers.DeclarativeContainer):
         cloud_storage_manager=cloud_storage_manager,
         cache_manager=cache_manager,
         bucket_name=config.agents.agent_yaml_bucket,
+        message_processor_repository=message_processor_repository,
+        message_processor_bucket_name=message_processor_bucket_name,
+        api_services_manager=api_services_manager,
     )
 
     # Agent inference service
@@ -49,6 +58,10 @@ class AgentsContainer(containers.DeclarativeContainer):
         cache_manager=cache_manager,
         tool_loader=tool_loader,
         agent_crud_service=agent_crud_service,
+        message_processor_repository=message_processor_repository,
+        cloud_storage_manager=cloud_storage_manager,
+        message_processor_bucket_name=message_processor_bucket_name,
+        api_services_manager=api_services_manager,
     )
 
     workflow_crud_service = providers.Singleton(

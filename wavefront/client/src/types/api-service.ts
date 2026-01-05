@@ -14,16 +14,29 @@ export interface ApiAuth {
   api_key_header?: string;
 }
 
+export interface PayloadField {
+  name: string;
+  type: 'string' | 'integer' | 'number' | 'boolean' | 'array' | 'object';
+  required: boolean;
+  description: string;
+}
+
+export interface PayloadSchema {
+  fields: PayloadField[];
+}
+
 export interface ApiEndpoint {
   id: string;
   version: string;
   path: string;
   backend_path: string;
   method: string;
+  description?: string;
   additional_headers?: Record<string, string>;
   backend_query_params?: Record<string, unknown>;
   output_mapper_enabled: boolean;
   output_mapper?: Record<string, string>;
+  payload_schema?: PayloadSchema;
 }
 
 export interface ApiServiceItem {

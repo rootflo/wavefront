@@ -35,6 +35,7 @@ const createMessageProcessorSchema = z.object({
 type CreateMessageProcessorInput = z.infer<typeof createMessageProcessorSchema>;
 
 const defaultYamlContent = `type: javascript
+description: double the number
 function:
   code: |
     export default function(input) {

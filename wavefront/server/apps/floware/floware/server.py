@@ -143,10 +143,30 @@ plugins_container = PluginsContainer(
 
 product_analysis_container = ProductAnalysisContainer()
 
+# API Services Container (must be created before tools_container)
+api_services_container: ApiServicesContainer = create_api_services_container(
+    api_service_repository=db_repo_container.api_services_repository,
+    cloud_storage_manager=common_container.cloud_storage_manager,
+    db_client=db_repo_container.db_client,
+    cache_manager=db_repo_container.cache_manager,
+    response_formatter=common_container.response_formatter,
+)
+
+cloud_provider = os.getenv('CLOUD_PROVIDER', 'aws')
+bucket_name = (
+    os.getenv('AWS_GOLD_ASSET_BUCKET_NAME')
+    if cloud_provider == 'aws'
+    else os.getenv('GCP_ASSET_STORAGE_BUCKET')
+)
+
 tools_container = ToolsContainer(
     datasource_repository=db_repo_container.datasource_repository,
     knowledge_base_repository=db_repo_container.knowledge_base_repository,
     knowledge_base_inference_repository=db_repo_container.knowledge_base_inference_repository,
+    message_processor_repository=plugins_container.message_processor_repository,
+    api_services_manager=api_services_container.api_service_manager,
+    cloud_manager=common_container.cloud_storage_manager,
+    message_processor_bucket_name=bucket_name,
 )
 
 agents_container = AgentsContainer(
@@ -159,6 +179,9 @@ agents_container = AgentsContainer(
     namespace_repository=db_repo_container.namespace_repository,
     agent_repository=db_repo_container.agent_repository,
     workflow_repository=db_repo_container.workflow_repository,
+    message_processor_repository=plugins_container.message_processor_repository,
+    message_processor_bucket_name=bucket_name,
+    api_services_manager=api_services_container.api_service_manager,
 )
 
 inference_container = InferenceContainer(
@@ -169,15 +192,6 @@ inference_container = InferenceContainer(
 llm_inference_config_container = LlmInferenceConfigContainer(
     db_client=db_repo_container.db_client,
     cache_manager=db_repo_container.cache_manager,
-)
-
-# API Services Container
-api_services_container: ApiServicesContainer = create_api_services_container(
-    api_service_repository=db_repo_container.api_services_repository,
-    cloud_storage_manager=common_container.cloud_storage_manager,
-    db_client=db_repo_container.db_client,
-    cache_manager=db_repo_container.cache_manager,
-    response_formatter=common_container.response_formatter,
 )
 
 voice_agents_container = VoiceAgentsContainer(

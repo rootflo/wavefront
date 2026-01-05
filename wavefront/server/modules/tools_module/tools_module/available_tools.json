@@ -157,5 +157,27 @@
       "email_body"
     ],
     "category": "email"
+  },
+  "trigger_message_processor": {
+    "name": "trigger_message_processor",
+    "description": "Execute a message processor function. This template gets expanded into individual tools for each message processor.",
+    "parameters": {},
+    "prefill_values": [
+      "message_processor_id"
+    ],
+    "required": [],
+    "category": "message_processor"
+  },
+  "trigger_api_service": {
+    "name": "trigger_api_service",
+    "description": "Execute an API service. This template gets expanded into individual tools for each API.",
+    "parameters": {},
+    "prefill_values": [
+      "api_service_id",
+      "api_id",
+      "api_version"
+    ],
+    "required": [],
+    "category": "api_service"
   }
 }

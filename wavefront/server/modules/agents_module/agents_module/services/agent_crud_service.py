@@ -5,6 +5,7 @@ from uuid import UUID
 
 from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.models.agent import Agent
+from db_repo_module.models.message_processors import MessageProcessors
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from flo_cloud.cloud_storage import CloudStorageManager
 from flo_cloud.exceptions import CloudStorageFileNotFoundError
@@ -19,6 +20,8 @@ from agents_module.utils.cache_utils import (
 from agents_module.utils.validation_utils import validate_agent_workflow_name
 from flo_ai import AgentBuilder
 from flo_ai.tool.base_tool import Tool
+from tools_module.utils.api_service_tool_loader import load_api_service_tool
+from api_services_module.core.manager import ApiServicesManager
 
 
 class AgentCrudService:
@@ -31,6 +34,9 @@ class AgentCrudService:
         cloud_storage_manager: CloudStorageManager,
         cache_manager: CacheManager,
         bucket_name: str,
+        message_processor_repository: SQLAlchemyRepository[MessageProcessors],
+        message_processor_bucket_name: str,
+        api_services_manager: Optional[ApiServicesManager] = None,
     ):
         """
         Initialize the agent CRUD service
@@ -41,15 +47,20 @@ class AgentCrudService:
             cloud_storage_manager: Cloud storage manager instance
             cache_manager: Cache manager instance
             bucket_name: Name of the bucket containing agent YAML files
+            message_processor_repository: Repository for message processors
+            message_processor_bucket_name: Name of the bucket containing message processor YAML files
         """
         self.agent_repository = agent_repository
         self.namespace_service = namespace_service
         self.cloud_storage_manager = cloud_storage_manager
         self.cache_manager = cache_manager
         self.bucket_name = bucket_name
+        self.message_processor_repository = message_processor_repository
+        self.message_processor_bucket_name = message_processor_bucket_name
+        self.api_services_manager = api_services_manager
         self.cache_ttl = 3600  # 1 hour for agents
 
-    def _validate_yaml_content(
+    async def _validate_yaml_content(
         self,
         yaml_content: str,
         namespace: str,
@@ -78,11 +89,35 @@ class AgentCrudService:
                 for tool in yaml_tools:
                     tool_name = tool.get('name', None)
                     if tool_name:
-                        # Find the corresponding Tool object from tool_available list
+                        # First, try to find in tool_available list
+                        tool_found = False
                         for tool_obj in tool_available:
                             if tool_obj.name == tool_name:
                                 tool_registry[tool_name] = tool_obj
+                                tool_found = True
                                 break
+
+                        # If not found, check if it's a message processor
+                        if not tool_found:
+                            tool_obj = await self._try_load_message_processor_tool(
+                                tool_name
+                            )
+                            if tool_obj:
+                                tool_registry[tool_name] = tool_obj
+                                tool_found = True
+
+                        # If still not found, try loading as API service
+                        if not tool_found:
+                            tool_obj = await self._try_load_api_service_tool(tool_name)
+                            if tool_obj:
+                                tool_registry[tool_name] = tool_obj
+                                tool_found = True
+
+                        # If still not found, log warning (AgentBuilder will fail with better error)
+                        if not tool_found:
+                            logger.warning(
+                                f'Tool {tool_name} not found in available tools, message processors, or API services'
+                            )
 
             AgentBuilder.from_yaml(
                 yaml_str=yaml_content,
@@ -98,6 +133,90 @@ class AgentCrudService:
                 f'YAML validation failed for namespace: {namespace}, agent: {agent_name}: {str(e)}'
             )
             raise ValueError(f'Invalid agent YAML configuration: {str(e)}')
+
+    async def _try_load_message_processor_tool(self, tool_name: str) -> Optional[Tool]:
+        """
+        Attempt to load a message processor as a Tool object.
+
+        Args:
+            tool_name: Name of the tool (should match message processor name)
+
+        Returns:
+            Tool object if message processor found, None otherwise
+        """
+        from tools_module.utils.message_processor_fn import execute_message_processor_fn
+
+        try:
+            # Query message processor by name
+            processor = await self.message_processor_repository.find_one(name=tool_name)
+
+            if not processor:
+                return None
+
+            # Load YAML to get input_schema
+            yaml_key = f'message_processors/v1/{processor.source}'
+            try:
+                yaml_bytes = self.cloud_storage_manager.read_file(
+                    self.message_processor_bucket_name, yaml_key
+                )
+                yaml_content = yaml_bytes.decode('utf-8')
+                yaml_dict = yaml.safe_load(yaml_content)
+
+                # Extract parameters from input_schema
+                input_schema = yaml_dict.get('input_schema', {})
+                properties = input_schema.get('properties', {})
+
+                # Build parameters dict for Tool
+                parameters = {
+                    'message_processor_id': {
+                        'type': 'string',
+                        'description': 'UUID of the message processor',
+                    }
+                }
+
+                for param_name, param_spec in properties.items():
+                    parameters[param_name] = {
+                        'type': param_spec.get('type', 'string'),
+                        'description': param_spec.get('description', ''),
+                    }
+
+                # Create Tool object
+                description = yaml_dict.get(
+                    'description',
+                    processor.description or 'Message processor function',
+                )
+
+                tool = Tool(
+                    name=tool_name,
+                    description=description,
+                    function=execute_message_processor_fn,
+                    parameters=parameters,
+                )
+
+                logger.info(f'Dynamically loaded message processor tool: {tool_name}')
+                return tool
+
+            except Exception as e:
+                logger.warning(
+                    f'Failed to load YAML for message processor {tool_name}: {str(e)}'
+                )
+                return None
+
+        except Exception as e:
+            logger.debug(f'Message processor {tool_name} not found: {str(e)}')
+            return None
+
+    async def _try_load_api_service_tool(self, tool_name: str) -> Optional[Tool]:
+        """
+        Attempt to load an API service as a Tool object.
+
+        Args:
+            tool_name: Name of the tool in format "service_id_api_id"
+
+        Returns:
+            Tool object if API service found, None otherwise
+        """
+        return await load_api_service_tool(tool_name, self.api_services_manager)
 
     async def create_agent(
         self,
@@ -129,7 +248,7 @@ class AgentCrudService:
         validate_agent_workflow_name(name, type='agent')
 
         # Validate YAML content before proceeding
-        self._validate_yaml_content(
+        await self._validate_yaml_content(
             yaml_content, namespace, name, tool_available, access_token, app_key
         )
 
@@ -338,7 +457,7 @@ class AgentCrudService:
             raise ValueError(f'Agent not found with ID: {agent_id}')
 
         # Validate YAML content
-        self._validate_yaml_content(
+        await self._validate_yaml_content(
             yaml_content,
             agent.namespace,
             agent.name,

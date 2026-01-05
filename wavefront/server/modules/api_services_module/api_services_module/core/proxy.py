@@ -159,6 +159,17 @@ class ApiProxy:
         except PipelineException as e:
             logger.error(f'PipelineException: {str(e)}', exc_info=True)
             context.add_trace('proxy', f'Pipeline error: {str(e)}')
+
+            # Special handling for payload validation errors
+            if 'payload_validator' in e.stage_name:
+                return ProxyResponse.error(
+                    message=e.message,
+                    trace=context.execution_trace,
+                    status='validation_error',
+                    http_status_code=400,  # Bad Request for validation errors
+                )
+
+            # Default pipeline error handling
             return ProxyResponse.error(
                 message=f'Pipeline error: {e.message}',
                 trace=context.execution_trace,
@@ -250,6 +261,28 @@ class ApiProxy:
         self.pipeline_cache.invalidate_service(service_id)
         logger.info(f'Invalidated pipelines for service: {service_id}')
 
+    def _serialize_payload_schema(self, payload_schema) -> Dict[str, Any]:
+        """
+        Serialize PayloadSchema object to dictionary.
+
+        Args:
+            payload_schema: PayloadSchema object
+
+        Returns:
+            Dictionary representation of the schema
+        """
+        return {
+            'fields': [
+                {
+                    'name': field.name,
+                    'type': field.type,
+                    'required': field.required,
+                    'description': field.description,
+                }
+                for field in payload_schema.fields
+            ]
+        }
+
     def get_service_info(self, service_id: str) -> Dict[str, Any]:
         """
         Get information about a service.
@@ -277,10 +310,14 @@ class ApiProxy:
                     'path': api.path,
                     'method': api.method.value,
                     'backend_path': api.backend_path,
+                    'description': api.description,
                     'additional_headers': api.additional_headers,
                     'backend_query_params': api.backend_query_params,
                     'output_mapper_enabled': api.output_mapper_enabled,
                     'output_mapper': api.output_mapper,
+                    'payload_schema': self._serialize_payload_schema(api.payload_schema)
+                    if api.payload_schema
+                    else None,
                 }
                 for api in service_definition.apis
             ],

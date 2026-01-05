@@ -17,7 +17,7 @@ dependencies = [
     "pandas~=2.2.3",
     "ollama~=0.4.8",
     "textract~=1.6.5",
-    "flo-ai==1.1.0-rc6",
+    "flo-ai==1.1.0-rc7",
     "google-cloud-pubsub~=2.30.0",
     "boto3<=1.38.40",
     "pyyaml>=6.0.3,<7",
