@@ -165,9 +165,10 @@ const AgentDetail: React.FC = () => {
         existingTools.some((existingTool: unknown, index: number) => {
           const newTool = newTools[index];
           if (!newTool) return true;
+          const existing = existingTool as { name?: string; prefilled_params?: Record<string, string> };
           return (
-            existingTool.name !== newTool.name ||
-            JSON.stringify(existingTool.prefilled_params || {}) !== JSON.stringify(newTool.prefilled_params || {})
+            existing.name !== newTool.name ||
+            JSON.stringify(existing.prefilled_params || {}) !== JSON.stringify(newTool.prefilled_params || {})
           );
         });
 

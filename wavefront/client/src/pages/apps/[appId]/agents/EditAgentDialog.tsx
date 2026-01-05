@@ -95,9 +95,9 @@ const EditAgentDialog: React.FC<EditAgentDialogProps> = ({
       localSelectedTools.some((selected) => selected.value === tool.display_name)
     );
 
-    let parsedYaml: unknown;
+    let parsedYaml: { agent?: { tools?: unknown[] } } | null | undefined;
     try {
-      parsedYaml = yaml.load(localYamlContent);
+      parsedYaml = yaml.load(localYamlContent) as { agent?: { tools?: unknown[] } } | null;
     } catch (error) {
       console.error('Failed to parse YAML:', error);
       notifyError('Invalid YAML format. Please fix the YAML syntax before adding tools.');

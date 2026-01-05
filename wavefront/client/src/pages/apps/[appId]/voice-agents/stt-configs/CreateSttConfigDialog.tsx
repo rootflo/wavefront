@@ -27,6 +27,12 @@ import { Textarea } from '@app/components/ui/textarea';
 import { VOICE_PROVIDERS_CONFIG, getProviderConfig, initializeParameters } from '@app/config/voice-providers';
 import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
+import {
+  getBooleanParameterWithDefault,
+  getNumberOrStringParameter,
+  getNumberParameterWithDefault,
+  getStringParameter,
+} from '@app/utils/parameter-helpers';
 import { zodResolver } from '@hookform/resolvers/zod';
 import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -35,7 +41,7 @@ import { z } from 'zod';
 const createSttConfigSchema = z.object({
   display_name: z.string().min(1, 'Display name is required').max(100, 'Display name must be 100 characters or less'),
   description: z.string().max(500, 'Description must be 500 characters or less').optional(),
-  provider: z.string().min(1, 'Provider is required'),
+  provider: z.enum(['deepgram'] as [string, ...string[]]),
   api_key: z.string().min(1, 'API key is required'),
   language: z.string().optional(),
 });
@@ -116,7 +122,7 @@ const CreateSttConfigDialog: React.FC<CreateSttConfigDialogProps> = ({ isOpen, o
       await floConsoleService.sttConfigService.createSttConfig({
         display_name: data.display_name.trim(),
         description: data.description?.trim() || null,
-        provider: data.provider,
+        provider: data.provider as 'deepgram',
         api_key: data.api_key.trim(),
         language: data.language?.trim() || null,
         parameters: buildParameters(),
@@ -139,14 +145,16 @@ const CreateSttConfigDialog: React.FC<CreateSttConfigDialogProps> = ({ isOpen, o
     const paramConfig = config.parameters[key];
     if (!paramConfig) return null;
 
-    const value = parameters[key];
-
     switch (paramConfig.type) {
       case 'boolean':
         return (
           <div key={key} className="col-span-2">
             <div className="flex items-center space-x-2">
-              <Checkbox id={key} checked={value || false} onCheckedChange={(checked) => setParameter(key, checked)} />
+              <Checkbox
+                id={key}
+                checked={getBooleanParameterWithDefault(parameters, key, paramConfig.default)}
+                onCheckedChange={(checked) => setParameter(key, checked)}
+              />
               <Label htmlFor={key} className="cursor-pointer">
                 {paramConfig.description || key}
               </Label>
@@ -156,13 +164,14 @@ const CreateSttConfigDialog: React.FC<CreateSttConfigDialogProps> = ({ isOpen, o
 
       case 'number':
         if (paramConfig.options && paramConfig.options.length > 0) {
+          const numValue = getNumberParameterWithDefault(parameters, key, paramConfig.default);
           return (
             <div key={key} className="space-y-2">
               <Label>{paramConfig.description || key}</Label>
               <Select
                 value={
-                  value !== undefined && value !== null
-                    ? String(value)
+                  numValue !== undefined && numValue !== null
+                    ? String(numValue)
                     : paramConfig.default !== undefined
                       ? String(paramConfig.default)
                       : ''
@@ -185,16 +194,17 @@ const CreateSttConfigDialog: React.FC<CreateSttConfigDialogProps> = ({ isOpen, o
         }
 
         if (paramConfig.min !== undefined && paramConfig.max !== undefined) {
+          const sliderValue = getNumberParameterWithDefault(parameters, key, paramConfig.default, paramConfig.min);
           return (
             <div key={key} className="col-span-2 space-y-2">
               <Label>
-                {paramConfig.description || key}: {value ?? paramConfig.default}
+                {paramConfig.description || key}: {sliderValue}
               </Label>
               <Slider
                 min={paramConfig.min}
                 max={paramConfig.max}
                 step={paramConfig.step || 1}
-                value={[value ?? paramConfig.default]}
+                value={[sliderValue]}
                 onValueChange={(values: number[]) => setParameter(key, values[0])}
               />
               {paramConfig.description && (
@@ -209,7 +219,7 @@ const CreateSttConfigDialog: React.FC<CreateSttConfigDialogProps> = ({ isOpen, o
             <Label>{paramConfig.description || key}</Label>
             <Input
               type="number"
-              value={value ?? ''}
+              value={getNumberOrStringParameter(parameters, key)}
               onChange={(e) => setParameter(key, e.target.value ? parseInt(e.target.value) : undefined)}
               placeholder={paramConfig.placeholder}
             />
@@ -224,10 +234,12 @@ const CreateSttConfigDialog: React.FC<CreateSttConfigDialogProps> = ({ isOpen, o
         if (key === 'language') return null;
 
         if (paramConfig.options && paramConfig.options.length > 0) {
+          const selectValue =
+            getStringParameter(parameters, key) || (paramConfig.default ? String(paramConfig.default) : '') || '';
           return (
             <div key={key} className="space-y-2">
               <Label>{paramConfig.description || key}</Label>
-              <Select value={value || paramConfig.default || ''} onValueChange={(val) => setParameter(key, val)}>
+              <Select value={selectValue} onValueChange={(val) => setParameter(key, val)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select..." />
                 </SelectTrigger>
@@ -248,7 +260,7 @@ const CreateSttConfigDialog: React.FC<CreateSttConfigDialogProps> = ({ isOpen, o
             <Label>{paramConfig.description || key}</Label>
             <Input
               type="text"
-              value={value || ''}
+              value={getStringParameter(parameters, key)}
               onChange={(e) => setParameter(key, e.target.value)}
               placeholder={paramConfig.placeholder}
             />
