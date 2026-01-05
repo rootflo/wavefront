@@ -364,7 +364,7 @@ export function cleanParameters(params: Record<string, unknown>): Record<string,
 
     // Handle nested objects
     if (typeof value === 'object') {
-      const nestedCleaned = cleanParameters(value);
+      const nestedCleaned = cleanParameters(value as Record<string, unknown>);
       if (Object.keys(nestedCleaned).length > 0) {
         cleaned[key] = nestedCleaned;
       }

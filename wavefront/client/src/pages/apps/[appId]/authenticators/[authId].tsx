@@ -9,6 +9,14 @@ import {
 import { useGetAuthenticator } from '@app/hooks/data/fetch-hooks';
 import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
+import {
+  getBooleanNestedParameter,
+  getBooleanParameter,
+  getNumberOrStringNestedParameter,
+  getNumberOrStringParameter,
+  getStringNestedParameter,
+  getStringParameter,
+} from '@app/utils/parameter-helpers';
 import { useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import React, { useEffect, useState } from 'react';
@@ -45,13 +53,17 @@ const AuthenticatorDetailPage: React.FC = () => {
   };
 
   const setNestedParameter = (parentKey: string, childKey: string, value: unknown) => {
-    setParameters((prev) => ({
-      ...prev,
-      [parentKey]: {
-        ...prev[parentKey],
-        [childKey]: value,
-      },
-    }));
+    setParameters((prev) => {
+      const parentValue = prev[parentKey];
+      const isObject = typeof parentValue === 'object' && parentValue !== null && !Array.isArray(parentValue);
+      return {
+        ...prev,
+        [parentKey]: {
+          ...(isObject ? (parentValue as Record<string, unknown>) : {}),
+          [childKey]: value,
+        },
+      };
+    });
   };
 
   const handleCancel = () => {
@@ -191,7 +203,7 @@ const AuthenticatorDetailPage: React.FC = () => {
         <div className="flex items-center gap-3">
           <input
             type="checkbox"
-            checked={parameters[key] || false}
+            checked={getBooleanParameter(parameters, key)}
             onChange={(e) => setParameter(key, e.target.checked)}
             disabled={disabled}
             className={clsx(
@@ -219,7 +231,7 @@ const AuthenticatorDetailPage: React.FC = () => {
           {paramConfig.description && <p className="mb-1 text-xs text-gray-500">{paramConfig.description}</p>}
           <input
             type="number"
-            value={parameters[key] ?? ''}
+            value={getNumberOrStringParameter(parameters, key)}
             onChange={(e) => setParameter(key, e.target.value ? Number(e.target.value) : '')}
             disabled={disabled}
             min={paramConfig.min}
@@ -244,7 +256,7 @@ const AuthenticatorDetailPage: React.FC = () => {
           </label>
           {paramConfig.description && <p className="mb-1 text-xs text-gray-500">{paramConfig.description}</p>}
           <select
-            value={parameters[key] || ''}
+            value={getStringParameter(parameters, key)}
             onChange={(e) => setParameter(key, e.target.value)}
             disabled={disabled}
             className={clsx(
@@ -271,7 +283,7 @@ const AuthenticatorDetailPage: React.FC = () => {
         {paramConfig.description && <p className="mb-1 text-xs text-gray-500">{paramConfig.description}</p>}
         <input
           type="text"
-          value={parameters[key] || ''}
+          value={getStringParameter(parameters, key)}
           onChange={(e) => setParameter(key, e.target.value)}
           disabled={disabled}
           placeholder={paramConfig.placeholder}
@@ -285,13 +297,11 @@ const AuthenticatorDetailPage: React.FC = () => {
   };
 
   const renderNestedField = (parentKey: string, childKey: string, config: ParameterConfig, disabled: boolean) => {
-    const value = parameters[parentKey]?.[childKey];
-
     if (config.type === 'boolean') {
       return (
         <input
           type="checkbox"
-          checked={value || false}
+          checked={getBooleanNestedParameter(parameters, parentKey, childKey)}
           onChange={(e) => setNestedParameter(parentKey, childKey, e.target.checked)}
           disabled={disabled}
           className={clsx(
@@ -306,7 +316,7 @@ const AuthenticatorDetailPage: React.FC = () => {
       return (
         <input
           type="number"
-          value={value ?? ''}
+          value={getNumberOrStringNestedParameter(parameters, parentKey, childKey)}
           onChange={(e) => setNestedParameter(parentKey, childKey, e.target.value ? Number(e.target.value) : '')}
           disabled={disabled}
           min={config.min}
@@ -323,7 +333,7 @@ const AuthenticatorDetailPage: React.FC = () => {
     return (
       <input
         type="text"
-        value={value || ''}
+        value={getStringNestedParameter(parameters, parentKey, childKey)}
         onChange={(e) => setNestedParameter(parentKey, childKey, e.target.value)}
         disabled={disabled}
         placeholder={config.placeholder}

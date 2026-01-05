@@ -69,6 +69,38 @@ const apiServiceFormSchema = z.object({
 
 type ApiServiceForm = z.infer<typeof apiServiceFormSchema>;
 
+type ParsedYamlAuth = {
+  id?: string;
+  version?: string;
+  type?: 'basic' | 'bearer' | 'api_key' | 'none';
+  base_url?: string;
+  path?: string;
+  username?: string;
+  password?: string;
+  token?: string;
+  api_key?: string;
+  api_key_header?: string;
+  additional_headers?: Record<string, string>;
+};
+
+type ParsedYamlService = {
+  id?: string;
+  base_url?: string;
+  auth?: ParsedYamlAuth;
+  apis?: Array<{
+    id?: string;
+    version?: string;
+    path?: string;
+    backend_path?: string;
+    method?: string;
+    additional_headers?: Record<string, string>;
+    backend_query_params?: Record<string, unknown>;
+    output_mapper_enabled?: boolean;
+    output_mapper?: Record<string, string>;
+    [key: string]: unknown;
+  }>;
+};
+
 const initialFormState: ApiServiceForm = {
   id: '',
   base_url: '',
@@ -190,7 +222,7 @@ const ApiServiceDetail: React.FC = () => {
 
   const parseYaml = (yamlStr: string): ApiServiceForm | null => {
     try {
-      const parsed = yaml.load(yamlStr) as { service?: unknown } | null;
+      const parsed = yaml.load(yamlStr) as { service?: ParsedYamlService } | null;
       if (!parsed || !parsed.service) return null;
 
       const s = parsed.service;
@@ -217,39 +249,37 @@ const ApiServiceDetail: React.FC = () => {
           api_key_header: s.auth?.api_key_header || 'X-API-Key',
           additional_headers: auth_additional_headers,
         },
-        apis: ((s.apis || []) as Array<{ additional_headers?: Record<string, string>; [key: string]: unknown }>).map(
-          (api) => {
-            const apiHeaders = api.additional_headers || {};
-            const api_additional_headers = Object.entries(apiHeaders).map(([key, value]) => ({
-              key,
-              value: String(value),
-            }));
+        apis: (s.apis || []).map((api) => {
+          const apiHeaders = api.additional_headers || {};
+          const api_additional_headers = Object.entries(apiHeaders).map(([key, value]) => ({
+            key,
+            value: String(value),
+          }));
 
-            const backendQueryParams = api.backend_query_params || {};
-            const backend_query_params = Object.entries(backendQueryParams).map(([key, value]) => ({
-              key,
-              value: String(value),
-            }));
+          const backendQueryParams = api.backend_query_params || {};
+          const backend_query_params = Object.entries(backendQueryParams).map(([key, value]) => ({
+            key,
+            value: String(value),
+          }));
 
-            const outputMapper = api.output_mapper || {};
-            const output_mapper = Object.entries(outputMapper).map(([key, value]) => ({
-              key,
-              value: String(value),
-            }));
+          const outputMapper = api.output_mapper || {};
+          const output_mapper = Object.entries(outputMapper).map(([key, value]) => ({
+            key,
+            value: String(value),
+          }));
 
-            return {
-              id: api.id || '',
-              version: api.version || 'v1',
-              path: api.path || '',
-              backend_path: api.backend_path || '',
-              method: (api.method as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH') || 'GET',
-              additional_headers: api_additional_headers,
-              backend_query_params: backend_query_params,
-              output_mapper_enabled: api.output_mapper_enabled || false,
-              output_mapper: output_mapper,
-            };
-          }
-        ),
+          return {
+            id: api.id || '',
+            version: api.version || 'v1',
+            path: api.path || '',
+            backend_path: api.backend_path || '',
+            method: (api.method as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH') || 'GET',
+            additional_headers: api_additional_headers,
+            backend_query_params: backend_query_params,
+            output_mapper_enabled: api.output_mapper_enabled || false,
+            output_mapper: output_mapper,
+          };
+        }),
       };
     } catch (e) {
       console.error('Error parsing YAML', e);
