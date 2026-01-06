@@ -38,7 +38,6 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({ isOpen, onOpenChange, u
   const form = useForm<UpdateUserInput>({
     resolver: zodResolver(updateUserSchema),
     defaultValues: {
-      email: user.email,
       password: '',
       first_name: user.first_name,
       last_name: user.last_name,
@@ -49,7 +48,6 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({ isOpen, onOpenChange, u
   useEffect(() => {
     if (isOpen && user) {
       form.reset({
-        email: user.email,
         password: '',
         first_name: user.first_name,
         last_name: user.last_name,
@@ -61,15 +59,11 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({ isOpen, onOpenChange, u
     try {
       // Filter out empty values
       const updateData: {
-        email?: string;
         password?: string;
         first_name?: string;
         last_name?: string;
       } = {};
 
-      if (data.email && data.email !== user.email) {
-        updateData.email = data.email;
-      }
       if (data.password && data.password.trim()) {
         updateData.password = data.password;
       }
@@ -105,20 +99,6 @@ const EditUserDialog: React.FC<EditUserDialogProps> = ({ isOpen, onOpenChange, u
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="email"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Email</FormLabel>
-                  <FormControl>
-                    <Input type="email" placeholder="user@example.com" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
             <FormField
               control={form.control}
               name="password"

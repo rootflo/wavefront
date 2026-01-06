@@ -3,6 +3,7 @@ import { AxiosInstance } from 'axios';
 import { AgentService } from './agent-service';
 import { ApiServiceService } from './api-service-service';
 import { AppService } from './app-service';
+import { AppUserService } from './app-user-service';
 import { AuthenticatorService } from './authenticator-service';
 import { ConsoleAuthService } from './console-auth-service';
 import { DataPipelineService } from './data-pipeline-service';
@@ -37,6 +38,10 @@ class FloConsoleService {
 
   get appService() {
     return new AppService(this.http);
+  }
+
+  get appUserService() {
+    return new AppUserService(this.http);
   }
 
   get authenticatorService() {

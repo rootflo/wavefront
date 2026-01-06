@@ -33,6 +33,7 @@ export class UserService {
     password: string;
     first_name: string;
     last_name: string;
+    role?: string;
   }): Promise<IApiResponse<{ user: IUser }>> {
     return this.http.post('/v1/users', data);
   }
@@ -40,7 +41,6 @@ export class UserService {
   async updateUser(
     userId: string,
     data: {
-      email?: string;
       password?: string;
       first_name?: string;
       last_name?: string;
