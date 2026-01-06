@@ -4,7 +4,6 @@ import {
   DatasourcesIcon,
   ModelInferenceIcon,
   ModelRepositoryIcon,
-  PermissionIcon,
   PhoneIcon,
   RagIcon,
   WorkflowIcon,
@@ -77,13 +76,6 @@ const navItems = [
     icon: WorkflowIcon,
     link: `/apps/:appId/workflows`,
     description: 'Manage and configure workflows for this application',
-  },
-  {
-    id: 'users',
-    name: 'Users',
-    icon: PermissionIcon,
-    link: `/apps/:appId/users`,
-    description: 'Manage user accounts and permissions',
   },
   // {
   //   name: 'Pipelines',

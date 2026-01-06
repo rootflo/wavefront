@@ -82,7 +82,7 @@ export const useUpdateApp = (
 /**
  * User mutation hooks
  */
-export const useCreateUser = (appId: string | undefined) => {
+export const useCreateUser = () => {
   const queryClient = useQueryClient();
   const { notifySuccess, notifyError } = useNotifyStore();
 
@@ -90,9 +90,7 @@ export const useCreateUser = (appId: string | undefined) => {
     mutationFn: createUserMutationFn,
     onSuccess: () => {
       notifySuccess('User created successfully');
-      if (appId) {
-        queryClient.invalidateQueries({ queryKey: getUsersKey(appId) });
-      }
+      queryClient.invalidateQueries({ queryKey: getUsersKey() });
     },
     onError: (error) => {
       console.error('Error creating user:', error);
@@ -102,7 +100,7 @@ export const useCreateUser = (appId: string | undefined) => {
   });
 };
 
-export const useUpdateUser = (appId: string | undefined, userId: string | undefined) => {
+export const useUpdateUser = (userId: string | undefined) => {
   const queryClient = useQueryClient();
   const { notifySuccess, notifyError } = useNotifyStore();
 
@@ -110,11 +108,9 @@ export const useUpdateUser = (appId: string | undefined, userId: string | undefi
     mutationFn: updateUserMutationFn,
     onSuccess: () => {
       notifySuccess('User updated successfully');
-      if (appId) {
-        queryClient.invalidateQueries({ queryKey: getUsersKey(appId) });
-        if (userId) {
-          queryClient.invalidateQueries({ queryKey: getUserKey(appId, userId) });
-        }
+      queryClient.invalidateQueries({ queryKey: getUsersKey() });
+      if (userId) {
+        queryClient.invalidateQueries({ queryKey: getUserKey(userId) });
       }
     },
     onError: (error) => {
@@ -125,7 +121,7 @@ export const useUpdateUser = (appId: string | undefined, userId: string | undefi
   });
 };
 
-export const useDeleteUser = (appId: string | undefined) => {
+export const useDeleteUser = () => {
   const queryClient = useQueryClient();
   const { notifySuccess, notifyError } = useNotifyStore();
 
@@ -133,9 +129,7 @@ export const useDeleteUser = (appId: string | undefined) => {
     mutationFn: deleteUserMutationFn,
     onSuccess: () => {
       notifySuccess('User deleted successfully');
-      if (appId) {
-        queryClient.invalidateQueries({ queryKey: getUsersKey(appId) });
-      }
+      queryClient.invalidateQueries({ queryKey: getUsersKey() });
     },
     onError: (error) => {
       console.error('Error deleting user:', error);

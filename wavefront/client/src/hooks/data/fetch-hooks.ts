@@ -411,6 +411,6 @@ export const useGetAppById = (appId: string, enabled: boolean = true): UseQueryR
   return useQueryInit<App | undefined>(getAppByIdKey(appId), () => getAppByIdFn(appId), enabled);
 };
 
-export const useGetUsers = (appId: string | undefined): UseQueryResult<IUser[], Error> => {
-  return useQueryInit(getUsersKey(appId || ''), getUsersQueryFn, !!appId);
+export const useGetUsers = (): UseQueryResult<IUser[], Error> => {
+  return useQueryInit(getUsersKey(), getUsersQueryFn, true);
 };

@@ -12,12 +12,10 @@ import { IUser } from '@app/types/user';
 import { useQueryClient } from '@tanstack/react-query';
 import { Pencil, Trash2 } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
-import { useParams } from 'react-router';
 import CreateUserDialog from './CreateUserDialog';
 import EditUserDialog from './EditUserDialog';
 
 const UsersPage: React.FC = () => {
-  const { app } = useParams<{ app: string }>();
   const queryClient = useQueryClient();
   const { notifySuccess, notifyError } = useNotifyStore();
 
@@ -28,7 +26,7 @@ const UsersPage: React.FC = () => {
   const [editItem, setEditItem] = useState<IUser | null>(null);
 
   // Fetch users and current user
-  const { data: users = [], isLoading: usersLoading } = useGetUsers(app);
+  const { data: users = [], isLoading: usersLoading } = useGetUsers();
   const { data: currentUser } = useGetCurrentUser(true);
 
   // Determine permissions - placeholder for super admin check
@@ -63,7 +61,7 @@ const UsersPage: React.FC = () => {
   };
 
   const handleEditSuccess = () => {
-    queryClient.invalidateQueries({ queryKey: getUsersKey(app || '') });
+    queryClient.invalidateQueries({ queryKey: getUsersKey() });
     setEditItem(null);
   };
 
@@ -74,7 +72,7 @@ const UsersPage: React.FC = () => {
     try {
       await floConsoleService.userService.deleteUser(deleteItem.id);
       notifySuccess('User deleted successfully');
-      queryClient.invalidateQueries({ queryKey: getUsersKey(app || '') });
+      queryClient.invalidateQueries({ queryKey: getUsersKey() });
       setDeleteItem(null);
     } catch (error) {
       const errorMessage = extractErrorMessage(error);
@@ -93,7 +91,7 @@ const UsersPage: React.FC = () => {
   };
 
   const handleCreateSuccess = () => {
-    queryClient.invalidateQueries({ queryKey: getUsersKey(app || '') });
+    queryClient.invalidateQueries({ queryKey: getUsersKey() });
     setCreateDialogOpen(false);
   };
 
