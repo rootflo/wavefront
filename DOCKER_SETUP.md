@@ -275,7 +275,6 @@ Some services require credential files (JSON files for GCP, OAuth, etc.). Follow
 | `CONSOLE_JWT_ISSUER` | JWT issuer URL for console |
 | `CONSOLE_JWT_AUDIENCE` | JWT audience URL for console |
 | `CONSOLE_TOKEN_PREFIX` | Token prefix for console tokens (default: `fc_`) |
-| `SUPER_ADMIN_EMAIL` | Super admin email (usually same as `CONSOLE_EMAIL`) |
 | `TOKEN_EXPIRY` | Token expiration in seconds (default: `3600`) |
 | `TEMPORARY_TOKEN_EXPIRY` | Temporary token expiration (default: `600`) |
 | `PRIVATE_KEY` | Base64-encoded RSA private key (can be different from floware) |

@@ -5,6 +5,7 @@ from typing import Optional
 from sqlalchemy import JSON
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
+from sqlalchemy.orm import relationship
 
 from ..base import Base
 
@@ -26,6 +27,11 @@ class App(Base):
     created_at: Mapped[datetime] = mapped_column(default=datetime.now)
     updated_at: Mapped[Optional[datetime]] = mapped_column(
         nullable=True, default=datetime.now
+    )
+
+    # Add relationship for app access
+    app_users = relationship(
+        'AppUser', back_populates='app', cascade='all, delete-orphan'
     )
 
     def to_dict(self):

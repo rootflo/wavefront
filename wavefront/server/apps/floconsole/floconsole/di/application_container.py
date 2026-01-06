@@ -10,10 +10,12 @@ from floconsole.db import (
     App,
     SQLAlchemyRepository,
 )
+from floconsole.db.models.app_user import AppUser
 from floconsole.services.token_service import TokenService
 from floconsole.services.floware_proxy_service import FlowareProxyService
 from floconsole.services.app_service import AppService
 from floconsole.services.user_service import UserService
+from floconsole.services.app_user_service import AppUserService
 
 
 class ApplicationContainer(containers.DeclarativeContainer):
@@ -47,12 +49,21 @@ class ApplicationContainer(containers.DeclarativeContainer):
         SQLAlchemyRepository[App], model=App, db_client=db_client
     )
 
+    app_user_repository = providers.Singleton(
+        SQLAlchemyRepository[AppUser], model=AppUser, db_client=db_client
+    )
+
     # services
     app_service = providers.Singleton(AppService, app_repository=app_repository)
 
     user_service = providers.Factory(
         UserService,
         user_repository=user_repository,
+    )
+
+    app_user_service = providers.Singleton(
+        AppUserService,
+        app_user_repository=app_user_repository,
     )
 
     kms_service = providers.Selector(
@@ -81,6 +92,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
         FlowareProxyService,
         token_service=token_service,
         app_service=app_service,
+        user_service=user_service,
         service_issuer=config.jwt_token.issuer,
         app_env=config.env_config.app_env,
         token_prefix=config.jwt_token.token_prefix,
