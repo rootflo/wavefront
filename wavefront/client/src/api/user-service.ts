@@ -23,4 +23,33 @@ export class UserService {
       },
     });
   }
+
+  async listUsers(): Promise<IApiResponse<{ users: IUser[] }>> {
+    return this.http.get('/v1/users');
+  }
+
+  async createUser(data: {
+    email: string;
+    password: string;
+    first_name: string;
+    last_name: string;
+  }): Promise<IApiResponse<{ user: IUser }>> {
+    return this.http.post('/v1/users', data);
+  }
+
+  async updateUser(
+    userId: string,
+    data: {
+      email?: string;
+      password?: string;
+      first_name?: string;
+      last_name?: string;
+    }
+  ): Promise<IApiResponse<{ user: IUser }>> {
+    return this.http.patch(`/v1/users/${userId}`, data);
+  }
+
+  async deleteUser(userId: string): Promise<IApiResponse<{ message: string }>> {
+    return this.http.delete(`/v1/users/${userId}`);
+  }
 }

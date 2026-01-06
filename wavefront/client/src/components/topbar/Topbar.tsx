@@ -12,7 +12,7 @@ import { IUser } from '@app/pages/types';
 import { useAuthStore } from '@app/store';
 import { useDashboardStore } from '@app/store/dashboard-store';
 import { App } from '@app/types/app';
-import { UserIcon } from 'lucide-react';
+import { UserIcon, Settings } from 'lucide-react';
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router';
 
@@ -75,6 +75,13 @@ const Topbar = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
               </SelectContent>
             </Select>
           )}{' '}
+          <button
+            onClick={() => navigate('/apps/users')}
+            className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-gray-300 hover:bg-gray-50"
+            title="User Management"
+          >
+            <Settings className="h-5 w-5 text-gray-700" />
+          </button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <div className="border-heading flex w-[180px] cursor-pointer items-center gap-1 rounded-full border p-1.5 capitalize">

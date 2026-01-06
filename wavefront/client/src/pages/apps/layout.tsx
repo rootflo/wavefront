@@ -4,7 +4,6 @@ import {
   DatasourcesIcon,
   ModelInferenceIcon,
   ModelRepositoryIcon,
-  // PermissionIcon,
   PhoneIcon,
   RagIcon,
   WorkflowIcon,

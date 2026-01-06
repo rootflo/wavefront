@@ -13,6 +13,7 @@ import { SttConfig } from '@app/types/stt-config';
 import { TelephonyConfig } from '@app/types/telephony-config';
 import { ToolDetails } from '@app/types/tool';
 import { TtsConfig } from '@app/types/tts-config';
+import { IUser } from '@app/types/user';
 import { VoiceAgent } from '@app/types/voice-agent';
 import { WorkflowListItem, WorkflowPipelineListItem, WorkflowRunListData } from '@app/types/workflow';
 
@@ -370,6 +371,14 @@ const getAppByIdFn = async (appId: string) => {
   return data?.app;
 };
 
+const getUsersQueryFn = async (): Promise<IUser[]> => {
+  const response = await floConsoleService.userService.listUsers();
+  if (response.data?.data?.users && Array.isArray(response.data.data.users)) {
+    return response.data.data.users;
+  }
+  return [];
+};
+
 export {
   getAgentQueryFn,
   getAgentsQueryFn,
@@ -410,5 +419,6 @@ export {
   getWorkflowPipelinesQueryFn,
   getWorkflowRunsQueryFn,
   getWorkflowsQueryFn,
+  getUsersQueryFn,
   readYamlQueryFn,
 };

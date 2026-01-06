@@ -59,6 +59,7 @@ import {
   getWorkflowPipelinesQueryFn,
   getWorkflowRunsQueryFn,
   getWorkflowsQueryFn,
+  getUsersQueryFn,
   readYamlQueryFn,
 } from './query-functions';
 import {
@@ -101,6 +102,7 @@ import {
   getWorkflowPipelinesKey,
   getWorkflowRunsKey,
   getWorkflowsKey,
+  getUsersKey,
   readYamlKey,
 } from './query-keys';
 
@@ -407,4 +409,8 @@ export const useGetPipelineFiles = (
 
 export const useGetAppById = (appId: string, enabled: boolean = true): UseQueryResult<App | undefined, Error> => {
   return useQueryInit<App | undefined>(getAppByIdKey(appId), () => getAppByIdFn(appId), enabled);
+};
+
+export const useGetUsers = (): UseQueryResult<IUser[], Error> => {
+  return useQueryInit(getUsersKey(), getUsersQueryFn, true);
 };
