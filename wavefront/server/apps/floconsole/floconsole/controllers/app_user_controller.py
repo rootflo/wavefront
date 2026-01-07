@@ -168,6 +168,9 @@ async def list_app_users(
     app_user_service: AppUserService = Depends(
         Provide[ApplicationContainer.app_user_service]
     ),
+    app_repository: SQLAlchemyRepository[App] = Depends(
+        Provide[ApplicationContainer.app_repository]
+    ),
     user_repository: SQLAlchemyRepository[User] = Depends(
         Provide[ApplicationContainer.user_repository]
     ),
@@ -183,6 +186,14 @@ async def list_app_users(
             content=response_formatter.buildErrorResponse(
                 'Only owners can view app users'
             ),
+        )
+
+    # Verify app exists
+    app = await app_repository.find_one(id=app_id, deleted=False)
+    if not app:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse('App not found'),
         )
 
     # Get app users
@@ -239,6 +250,13 @@ async def list_user_apps(
             content=response_formatter.buildErrorResponse(
                 'Only owners can view user apps'
             ),
+        )
+    # Verify user exists
+    user = await user_repository.find_one(id=user_id, deleted=False)
+    if not user:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse('User not found'),
         )
 
     # Get user apps

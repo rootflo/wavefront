@@ -77,8 +77,13 @@ class FlowareProxyService:
             ) from e
 
         # Step 2: Check if user has access to app (RBAC)
+        try:
+            app_uuid = UUID(app_id)
+        except ValueError as e:
+            raise ValueError(f'Invalid app_id format: {app_id}') from e
+
         has_access = await self.user_service.check_user_has_app_access(
-            user_id=user_id, app_id=UUID(app_id)
+            user_id=user_id, app_id=app_uuid
         )
 
         if not has_access:
@@ -86,13 +91,13 @@ class FlowareProxyService:
 
         # Step 3: Fetch app details from database
         try:
-            app = await self.app_service.get_app_by_id(app_id)
+            app = await self.app_service.get_app_by_id(app_uuid)
             if not app:
                 raise ValueError(f'App not found for ID: {app_id}')
         except ValueError as e:
             if 'App not found' in str(e):
                 raise e
-            raise ValueError(f'Invalid app_id format: {app_id}')
+            raise ValueError(f'Invalid app_id format: {app_id}') from e
 
         # if app.deployment_type == AppDeploymentType.MANUAL.value:
         #     app_base_url = await self._get_app_base_url(app.private_url, app_id)
