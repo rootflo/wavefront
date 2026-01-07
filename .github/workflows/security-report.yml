@@ -39,7 +39,7 @@ jobs:
         run: echo "date=$(date +'%Y-%m-%d-%H-%M-%S')" >> $GITHUB_OUTPUT
 
       - name: Generate Security Report
-        uses: zestsecurity/gh-security-report-action@v1
+        uses: peter-murray/github-security-report-action@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           # Explicitly set if files aren't found in root
