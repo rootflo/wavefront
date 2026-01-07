@@ -13,7 +13,7 @@ jobs:
     permissions:
       actions: read
       contents: read
-      security-events: write # Required to fetch CodeQL/Dependabot alerts
+      security-events: write 
 
     steps:
       - name: Checkout repository
@@ -28,32 +28,22 @@ jobs:
         uses: github/codeql-action/analyze@v3
         with:
           category: "/language:python,javascript"
-          upload: false # Disable upload to avoid conflict with default setup
+          upload: false # Keep local for the generator to find
 
-      # Required for some PDF renderers used in these actions
-      - name: Install browser for PDF generation
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgbm-dev
-          npx puppeteer browsers install chrome
-          echo 'const {join} = require("path"); module.exports = {args: ["--no-sandbox", "--disable-setuid-sandbox"]};' > .puppeteerrc.cjs
+      # Specific setup for PCStefan action
+      - name: "Install browser via puppeteer"
+        run: npx puppeteer@23.1.1 browsers install chrome
 
-      - name: Get current date
-        id: date
-        run: echo "date=$(date +'%Y-%m-%d-%H-%M-%S')" >> $GITHUB_OUTPUT
-
-      - name: Generate Security Report
-        uses: peter-murray/github-security-report-action@v2
+      - name: "Generate Security Report"
+        uses: PCStefan/github-security-report-action@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          # Explicitly set if files aren't found in root
-          # sarifReportDir: ../results 
+          # sarifReportDir defaults to ../results which is where CodeQL outputs
+          outputFilename: summary.pdf
 
       - name: Upload Security Report
         uses: actions/upload-artifact@v4
         with:
-          name: security-report-${{ steps.date.outputs.date }}
-          path: |
-            summary.pdf
-            summary.html
-          if-no-files-found: error # Fast-fail if the report wasn't generated
+          name: security-report
+          path: summary.pdf
+          if-no-files-found: error
