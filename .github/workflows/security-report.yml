@@ -28,7 +28,7 @@ jobs:
         uses: github/codeql-action/analyze@v3
         with:
           category: "/language:python,javascript"
-          upload: true # Ensure results are uploaded to be accessible by the report tool
+          upload: false # Disable upload to avoid conflict with default setup
 
       # Required for some PDF renderers used in these actions
       - name: Install browser for PDF generation
