@@ -2,6 +2,9 @@ name: Security Report
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - 'feat_git_report_workflow'
 
 jobs:
   generate-report:
