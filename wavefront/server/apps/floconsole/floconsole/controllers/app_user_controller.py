@@ -78,13 +78,11 @@ async def grant_app_access(
                 {'message': 'App access granted successfully'}
             ),
         )
-    except Exception as e:
-        logger.error(f'Failed to grant app access: {str(e)}')
+    except Exception:
+        logger.exception('Failed to grant app access')
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content=response_formatter.buildErrorResponse(
-                f'Failed to grant app access: {str(e)}'
-            ),
+            content=response_formatter.buildErrorResponse('Failed to grant app access'),
         )
 
 
@@ -147,12 +145,12 @@ async def revoke_app_access(
                 {'message': 'App access revoked successfully'}
             ),
         )
-    except Exception as e:
-        logger.error(f'Failed to revoke app access: {str(e)}')
+    except Exception:
+        logger.exception('Failed to revoke app access')
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content=response_formatter.buildErrorResponse(
-                f'Failed to revoke app access: {str(e)}'
+                'Failed to revoke app access'
             ),
         )
 
@@ -214,13 +212,11 @@ async def list_app_users(
             status_code=status.HTTP_200_OK,
             content=response_formatter.buildSuccessResponse({'users': users_data}),
         )
-    except Exception as e:
-        logger.error(f'Failed to list app users: {str(e)}')
+    except Exception:
+        logger.exception('Failed to list app users')
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content=response_formatter.buildErrorResponse(
-                f'Failed to list app users: {str(e)}'
-            ),
+            content=response_formatter.buildErrorResponse('Failed to list app users'),
         )
 
 
@@ -270,11 +266,9 @@ async def list_user_apps(
             status_code=status.HTTP_200_OK,
             content=response_formatter.buildSuccessResponse({'app_ids': app_ids}),
         )
-    except Exception as e:
-        logger.error(f'Failed to list user apps: {str(e)}')
+    except Exception:
+        logger.exception('Failed to list user apps')
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content=response_formatter.buildErrorResponse(
-                f'Failed to list user apps: {str(e)}'
-            ),
+            content=response_formatter.buildErrorResponse('Failed to list user apps'),
         )
