@@ -44,6 +44,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           # Explicitly set if files aren't found in root
           # sarifReportDir: ../results 
+          puppeteerLaunchArgs: "--no-sandbox --disable-setuid-sandbox" 
 
       - name: Upload Security Report
         uses: actions/upload-artifact@v4
