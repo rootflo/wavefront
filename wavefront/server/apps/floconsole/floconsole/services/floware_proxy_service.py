@@ -68,18 +68,21 @@ class FlowareProxyService:
         """
         # Step 1: Get user session from middleware (already validated)
         session = request.state.session
-        user_id = UUID(session.user_id)
+        # Parse user_id with explicit error handling
+        try:
+            user_id = UUID(session.user_id)
+        except (ValueError, AttributeError) as e:
+            raise ValueError(
+                f'Invalid user_id format in session: {session.user_id}'
+            ) from e
 
         # Step 2: Check if user has access to app (RBAC)
-        try:
-            has_access = await self.user_service.check_user_has_app_access(
-                user_id=user_id, app_id=UUID(app_id)
-            )
+        has_access = await self.user_service.check_user_has_app_access(
+            user_id=user_id, app_id=UUID(app_id)
+        )
 
-            if not has_access:
-                raise ValueError('User does not have access to this app')
-        except ValueError as e:
-            raise e
+        if not has_access:
+            raise ValueError('User does not have access to this app')
 
         # Step 3: Fetch app details from database
         try:

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import JSONResponse
 
 from floconsole.constants.user import UserRole
+from floconsole.db.models.app import App
 from floconsole.db.models.user import User
 from floconsole.db.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from floconsole.di.application_container import ApplicationContainer
@@ -30,6 +31,9 @@ async def grant_app_access(
     app_user_service: AppUserService = Depends(
         Provide[ApplicationContainer.app_user_service]
     ),
+    app_repository: SQLAlchemyRepository[App] = Depends(
+        Provide[ApplicationContainer.app_repository]
+    ),
     user_repository: SQLAlchemyRepository[User] = Depends(
         Provide[ApplicationContainer.user_repository]
     ),
@@ -45,6 +49,14 @@ async def grant_app_access(
             content=response_formatter.buildErrorResponse(
                 'Only owners can grant app access'
             ),
+        )
+
+    # Verify app exists
+    app = await app_repository.find_one(id=app_id, deleted=False)
+    if not app:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse('App not found'),
         )
 
     # Verify target user exists
@@ -88,6 +100,9 @@ async def revoke_app_access(
     app_user_service: AppUserService = Depends(
         Provide[ApplicationContainer.app_user_service]
     ),
+    app_repository: SQLAlchemyRepository[App] = Depends(
+        Provide[ApplicationContainer.app_repository]
+    ),
     user_repository: SQLAlchemyRepository[User] = Depends(
         Provide[ApplicationContainer.user_repository]
     ),
@@ -103,6 +118,22 @@ async def revoke_app_access(
             content=response_formatter.buildErrorResponse(
                 'Only owners can revoke app access'
             ),
+        )
+
+    # Verify app exists
+    app = await app_repository.find_one(id=app_id, deleted=False)
+    if not app:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse('App not found'),
+        )
+
+    # Verify target user exists
+    target_user = await user_repository.find_one(id=user_id, deleted=False)
+    if not target_user:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse('User not found'),
         )
 
     # Revoke access
@@ -161,10 +192,8 @@ async def list_app_users(
         # Fetch full user details
         if app_users:
             user_ids = [app_user.user_id for app_user in app_users]
-            users = await user_repository.find(deleted=False)
-            # Filter users to only include those in user_ids
-            filtered_users = [u for u in users if u.id in user_ids]
-            users_data = [user.to_dict() for user in filtered_users]
+            users = await user_repository.find(id=user_ids, deleted=False)
+            users_data = [user.to_dict() for user in users]
         else:
             users_data = []
 
