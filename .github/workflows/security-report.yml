@@ -36,6 +36,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgbm-dev
           npx puppeteer browsers install chrome
+          echo 'const {join} = require("path"); module.exports = {args: ["--no-sandbox", "--disable-setuid-sandbox"]};' > .puppeteerrc.cjs
 
       - name: Get current date
         id: date
