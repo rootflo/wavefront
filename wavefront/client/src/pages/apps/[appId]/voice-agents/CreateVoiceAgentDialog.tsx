@@ -19,6 +19,7 @@ import {
 } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
+import { Checkbox } from '@app/components/ui/checkbox';
 import {
   useGetLLMConfigs,
   useGetSttConfigs,
@@ -28,6 +29,7 @@ import {
 import { extractErrorMessage } from '@app/lib/utils';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { CreateVoiceAgentRequest } from '@app/types/voice-agent';
+import { SUPPORTED_LANGUAGES, getLanguageDisplayName } from '@app/constants/languages';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeMirror from '@uiw/react-codemirror';
@@ -35,6 +37,8 @@ import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
 import { z } from 'zod';
+
+const E164_REGEX = /^\+[1-9]\d{1,14}$/;
 
 const createVoiceAgentSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100, 'Name must be 100 characters or less'),
@@ -47,6 +51,10 @@ const createVoiceAgentSchema = z.object({
   welcome_message: z.string().min(1, 'Welcome message is required'),
   conversation_config: z.string().optional(),
   status: z.enum(['active', 'inactive']),
+  inbound_numbers: z.string().optional(),
+  outbound_numbers: z.string().optional(),
+  supported_languages: z.array(z.string()).min(1, 'At least one language is required'),
+  default_language: z.string().min(1, 'Default language is required'),
 });
 
 type CreateVoiceAgentInput = z.infer<typeof createVoiceAgentSchema>;
@@ -83,6 +91,10 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
       welcome_message: '',
       conversation_config: '{}',
       status: 'inactive',
+      inbound_numbers: '',
+      outbound_numbers: '',
+      supported_languages: ['en'],
+      default_language: 'en',
     },
   });
 
@@ -100,6 +112,10 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
         welcome_message: '',
         conversation_config: '{}',
         status: 'inactive',
+        inbound_numbers: '',
+        outbound_numbers: '',
+        supported_languages: ['en'],
+        default_language: 'en',
       });
     }
   }, [isOpen, form]);
@@ -116,6 +132,38 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
       }
     }
 
+    // Parse phone numbers (comma-separated)
+    const parsePhoneNumbers = (input: string): string[] => {
+      if (!input.trim()) return [];
+      return input
+        .split(',')
+        .map((num) => num.trim())
+        .filter((num) => num);
+    };
+
+    const inboundNumbers = parsePhoneNumbers(data.inbound_numbers || '');
+    const outboundNumbers = parsePhoneNumbers(data.outbound_numbers || '');
+
+    // Validate E.164 format
+    const invalidInbound = inboundNumbers.filter((num) => !E164_REGEX.test(num));
+    const invalidOutbound = outboundNumbers.filter((num) => !E164_REGEX.test(num));
+
+    if (invalidInbound.length > 0) {
+      notifyError(`Invalid inbound phone numbers (must be E.164 format): ${invalidInbound.join(', ')}`);
+      return;
+    }
+
+    if (invalidOutbound.length > 0) {
+      notifyError(`Invalid outbound phone numbers (must be E.164 format): ${invalidOutbound.join(', ')}`);
+      return;
+    }
+
+    // Validate default language is in supported languages
+    if (!data.supported_languages.includes(data.default_language)) {
+      notifyError('Default language must be one of the supported languages');
+      return;
+    }
+
     setCreating(true);
     try {
       const requestData: CreateVoiceAgentRequest = {
@@ -129,6 +177,10 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
         welcome_message: data.welcome_message.trim(),
         conversation_config: conversationConfig,
         status: data.status,
+        inbound_numbers: inboundNumbers.length > 0 ? inboundNumbers : undefined,
+        outbound_numbers: outboundNumbers.length > 0 ? outboundNumbers : undefined,
+        supported_languages: data.supported_languages,
+        default_language: data.default_language,
       };
 
       const response = await floConsoleService.voiceAgentService.createVoiceAgent(requestData);
@@ -366,6 +418,122 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                     )}
                   />
                 </div>
+              </div>
+
+              {/* Phone Numbers */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold">Phone Numbers</h3>
+                <div className="grid grid-cols-1 gap-6">
+                  <FormField
+                    control={form.control}
+                    name="inbound_numbers"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Inbound Phone Numbers</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g., +1234567890, +9876543210" {...field} />
+                        </FormControl>
+                        <FormDescription>
+                          Phone numbers for receiving inbound calls (E.164 format, comma-separated, globally unique)
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="outbound_numbers"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Outbound Phone Numbers</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g., +1234567890, +9876543210" {...field} />
+                        </FormControl>
+                        <FormDescription>
+                          Phone numbers for making outbound calls (E.164 format, comma-separated)
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
+
+              {/* Language Configuration */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold">Language Configuration</h3>
+                <FormField
+                  control={form.control}
+                  name="supported_languages"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        Supported Languages<span className="text-red-500">*</span>
+                      </FormLabel>
+                      <div className="max-h-64 overflow-y-auto rounded-md border p-4">
+                        <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+                          {SUPPORTED_LANGUAGES.map((lang) => (
+                            <div key={lang.code} className="flex items-center space-x-2">
+                              <Checkbox
+                                checked={field.value?.includes(lang.code)}
+                                onCheckedChange={(checked) => {
+                                  const current = field.value || [];
+                                  if (checked) {
+                                    field.onChange([...current, lang.code]);
+                                  } else {
+                                    field.onChange(current.filter((l) => l !== lang.code));
+                                  }
+                                }}
+                              />
+                              <label className="text-sm leading-none font-normal peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                {getLanguageDisplayName(lang.code)}
+                              </label>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <FormDescription>
+                        Select languages this agent can converse in. If multiple languages are selected, the agent will
+                        detect the caller's language.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="default_language"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        Default Language<span className="text-red-500">*</span>
+                      </FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select default language" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {SUPPORTED_LANGUAGES.filter((lang) =>
+                            form.watch('supported_languages')?.includes(lang.code)
+                          ).map((lang) => (
+                            <SelectItem key={lang.code} value={lang.code}>
+                              {getLanguageDisplayName(lang.code)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormDescription>
+                        Language used if detection fails or for single-language agents. Must be one of the supported
+                        languages.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
 
               {/* Behavior */}

@@ -81,8 +81,7 @@ const TelephonyConfigsPage: React.FC = () => {
       config.display_name.toLowerCase().includes(query) ||
       (config.description && config.description.toLowerCase().includes(query)) ||
       config.provider.toLowerCase().includes(query) ||
-      config.connection_type.toLowerCase().includes(query) ||
-      config.phone_numbers.some((phone) => phone.toLowerCase().includes(query))
+      config.connection_type.toLowerCase().includes(query)
     );
   });
 
@@ -131,7 +130,6 @@ const TelephonyConfigsPage: React.FC = () => {
                   <TableHead>Display Name</TableHead>
                   <TableHead>Provider</TableHead>
                   <TableHead>Connection Type</TableHead>
-                  <TableHead>Phone Numbers</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead>Created</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -143,9 +141,6 @@ const TelephonyConfigsPage: React.FC = () => {
                     <TableCell className="font-medium">{config.display_name}</TableCell>
                     <TableCell>{config.provider}</TableCell>
                     <TableCell>{config.connection_type}</TableCell>
-                    <TableCell>
-                      {config.phone_numbers.length} number{config.phone_numbers.length !== 1 ? 's' : ''}
-                    </TableCell>
                     <TableCell className="max-w-md truncate">{config.description || '-'}</TableCell>
                     <TableCell>{new Date(config.created_at).toLocaleDateString()}</TableCell>
                     <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>

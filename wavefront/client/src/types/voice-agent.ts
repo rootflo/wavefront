@@ -15,6 +15,10 @@ export interface VoiceAgent {
   welcome_message: string;
   conversation_config: Record<string, unknown> | null;
   status: 'active' | 'inactive';
+  inbound_numbers: string[];
+  outbound_numbers: string[];
+  supported_languages: string[];
+  default_language: string;
   is_deleted: boolean;
   created_at: string;
   updated_at: string;
@@ -34,6 +38,10 @@ export interface CreateVoiceAgentRequest {
   welcome_message: string;
   conversation_config?: Record<string, unknown> | null;
   status?: 'active' | 'inactive';
+  inbound_numbers?: string[];
+  outbound_numbers?: string[];
+  supported_languages?: string[];
+  default_language?: string;
 }
 
 /**
@@ -51,6 +59,10 @@ export interface UpdateVoiceAgentRequest {
   welcome_message?: string;
   conversation_config?: Record<string, unknown> | null;
   status?: 'active' | 'inactive';
+  inbound_numbers?: string[];
+  outbound_numbers?: string[];
+  supported_languages?: string[];
+  default_language?: string;
 }
 
 /**
