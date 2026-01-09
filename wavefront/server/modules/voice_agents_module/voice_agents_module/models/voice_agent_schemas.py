@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, Union, Any, Dict
+from typing import Optional, Union, Any, Dict, List
 from enum import Enum
 from datetime import datetime
 import uuid
@@ -34,6 +34,22 @@ class CreateVoiceAgentPayload(BaseModel):
         default=VoiceAgentStatus.INACTIVE,
         description='Agent status (active or inactive)',
     )
+    inbound_numbers: Optional[List[str]] = Field(
+        None,
+        description='Phone numbers for receiving inbound calls (E.164 format, globally unique)',
+    )
+    outbound_numbers: Optional[List[str]] = Field(
+        None,
+        description='Phone numbers for making outbound calls (E.164 format)',
+    )
+    supported_languages: Optional[List[str]] = Field(
+        None,
+        description='List of supported language codes (ISO 639-1, e.g., ["en", "hi", "te"])',
+    )
+    default_language: str = Field(
+        'en',
+        description='Default language if detection fails (must be in supported_languages)',
+    )
 
 
 class UpdateVoiceAgentPayload(BaseModel):
@@ -47,6 +63,10 @@ class UpdateVoiceAgentPayload(BaseModel):
     conversation_config: Union[Dict[str, Any], None, Any] = Field(default=UNSET)
     welcome_message: Union[str, Any] = Field(default=UNSET)
     status: Union[VoiceAgentStatus, Any] = Field(default=UNSET)
+    inbound_numbers: Union[List[str], Any] = Field(default=UNSET)
+    outbound_numbers: Union[List[str], Any] = Field(default=UNSET)
+    supported_languages: Union[List[str], Any] = Field(default=UNSET)
+    default_language: Union[str, Any] = Field(default=UNSET)
 
 
 class VoiceAgentResponse(BaseModel):
@@ -61,6 +81,10 @@ class VoiceAgentResponse(BaseModel):
     conversation_config: Optional[Dict[str, Any]]
     welcome_message: str
     status: str
+    inbound_numbers: List[str]
+    outbound_numbers: List[str]
+    supported_languages: List[str]
+    default_language: str
     is_deleted: bool
     created_at: datetime
     updated_at: datetime

@@ -22,7 +22,6 @@ class TelephonyConfig(Base):
     provider: Mapped[str] = mapped_column(String(length=64), nullable=False)
     connection_type: Mapped[str] = mapped_column(String(length=64), nullable=False)
     credentials: Mapped[str] = mapped_column(Text, nullable=False)
-    phone_numbers: Mapped[str] = mapped_column(Text, nullable=False)
     webhook_config: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     sip_config: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_deleted: Mapped[bool] = mapped_column(default=False, nullable=False)
@@ -48,9 +47,7 @@ class TelephonyConfig(Base):
             elif isinstance(value, datetime):
                 result[column.name] = value.isoformat()
             elif (
-                column.name
-                in ['credentials', 'phone_numbers', 'webhook_config', 'sip_config']
-                and value
+                column.name in ['credentials', 'webhook_config', 'sip_config'] and value
             ):
                 # Parse JSON fields
                 try:

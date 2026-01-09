@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, Union, Any, Dict, List, Literal
+from typing import Optional, Union, Any, Dict, Literal
 from enum import Enum
 from datetime import datetime
 import uuid
@@ -78,11 +78,6 @@ class CreateTelephonyConfigPayload(BaseModel):
         ...,
         description='Provider credentials as JSON object (e.g., {account_sid, auth_token})',
     )
-    phone_numbers: List[str] = Field(
-        ...,
-        description='List of phone numbers available for outbound calls',
-        example=['+1234567890', '+0987654321'],
-    )
     webhook_config: Optional[WebhookConfig] = Field(
         None,
         description='Webhook configuration for status callbacks (optional for both connection types)',
@@ -103,7 +98,6 @@ class UpdateTelephonyConfigPayload(BaseModel):
     provider: Union[TelephonyProvider, Any] = Field(default=UNSET)
     connection_type: Union[ConnectionType, Any] = Field(default=UNSET)
     credentials: Union[Dict[str, Any], Any] = Field(default=UNSET)
-    phone_numbers: Union[List[str], Any] = Field(default=UNSET)
     webhook_config: Union[WebhookConfig, None, Any] = Field(default=UNSET)
     sip_config: Union[SipConfig, None, Any] = Field(default=UNSET)
 
@@ -114,7 +108,6 @@ class TelephonyConfigResponse(BaseModel):
     description: Optional[str]
     provider: str
     connection_type: str
-    phone_numbers: List[str]
     webhook_config: Optional[WebhookConfig]
     sip_config: Optional[SipConfig]
     is_deleted: bool
