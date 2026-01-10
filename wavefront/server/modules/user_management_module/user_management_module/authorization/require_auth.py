@@ -423,7 +423,7 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
 
                 # Check for mTLS authentication if no token is present
                 mtls_header = request.headers.get('X-Forwarded-Client-Cert')
-                if mtls_header:
+                if mtls_header and not token:
                     logger.info(f'mTLS authentication by {mtls_header}')
                     if await validate_mtls_auth(request):
                         return await call_next(request)
