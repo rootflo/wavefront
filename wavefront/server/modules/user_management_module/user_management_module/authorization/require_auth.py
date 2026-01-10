@@ -264,11 +264,15 @@ async def validate_mtls_auth(request: Request) -> bool:
         if not xfcc:
             return False
 
-        # Extract SPIFFE ID from URI field
-        # Format: Hash=...;URI=spiffe://...;...
+        # Extract SPIFFE ID from URI field or use the whole header if it's a SPIFFE ID
+        principal = None
         match = re.search(r'URI=(spiffe://[^;,]+)', xfcc)
         if match:
             principal = match.group(1)
+        elif xfcc.startswith('spiffe://'):
+            principal = xfcc
+
+        if principal:
             if not principal.startswith(
                 'spiffe://cluster.local/ns/client-applications'
             ) and not principal.startswith('spiffe://cluster.local/ns/gpu-processing'):
@@ -290,7 +294,7 @@ async def validate_mtls_auth(request: Request) -> bool:
 
         request_id = getattr(request.state, 'request_id', get_current_request_id())
         logger.warning(
-            f'mTLS header present but no valid URI found: {xfcc} [Request ID: {request_id}]'
+            f'mTLS header present but no valid principal found: {xfcc} [Request ID: {request_id}]'
         )
         return False
 
