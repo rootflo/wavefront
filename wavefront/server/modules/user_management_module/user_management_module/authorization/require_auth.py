@@ -271,7 +271,7 @@ async def validate_mtls_auth(request: Request) -> bool:
             principal = match.group(1)
             if not principal.startswith(
                 'spiffe://cluster.local/ns/client-applications'
-            ):
+            ) and not principal.startswith('spiffe://cluster.local/ns/gpu-processing'):
                 logger.error(f'Invalid mTLS authentication. Principal: {principal}')
                 return False
 
@@ -418,9 +418,21 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                     return await call_next(request)
 
                 # Check for mTLS authentication if no token is present
-                if request.headers.get('X-Forwarded-Client-Cert'):
+                mtls_header = request.headers.get('X-Forwarded-Client-Cert')
+                if mtls_header:
+                    logger.info(f'mTLS authentication by {mtls_header}')
                     if await validate_mtls_auth(request):
                         return await call_next(request)
+                    else:
+                        logger.error(
+                            f'Invalid mTLS authentication for {request.url.path}'
+                        )
+                        return JSONResponse(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            content=response_formatter.buildErrorResponse(
+                                error='Invalid mTLS authentication'
+                            ),
+                        )
 
                 if not token:
                     request_id = getattr(
