@@ -41,11 +41,11 @@ class ImageMetadata(BaseModel):
 
     items: List[Item] = None
 
-    metadata_1: str = None
-    metadata_2: str = None
-    metadata_3: str = None
-    metadata_4: str = None
-    metadata_5: str = None
+    metadata_1: dict = None
+    metadata_2: dict = None
+    metadata_3: dict = None
+    metadata_4: dict = None
+    metadata_5: dict = None
 
     filter_1: str = None
     filter_2: str = None
