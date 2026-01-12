@@ -149,15 +149,20 @@ class PipecatService:
         Args:
             transport: Pipecat transport (e.g., WebSocket transport from Twilio)
             agent_config: Voice agent configuration including system_prompt,
-                          supported_languages, and default_language
+                          supported_languages, default_language, tts_voice_id, tts_parameters, stt_parameters
             llm_config: LLM provider configuration
-            tts_config: TTS provider configuration
-            stt_config: STT provider configuration
+            tts_config: TTS provider configuration (credentials only)
+            stt_config: STT provider configuration (credentials only)
         """
         # Extract language configuration from agent_config
         supported_languages = agent_config.get('supported_languages', ['en'])
         default_language = agent_config.get('default_language', 'en')
         is_multi_language = len(supported_languages) > 1
+
+        # Extract TTS/STT parameters from agent
+        tts_voice_id = agent_config.get('tts_voice_id')
+        tts_parameters = agent_config.get('tts_parameters', {})
+        stt_parameters = agent_config.get('stt_parameters', {})
 
         logger.info(f"Starting conversation for agent: {agent_config['name']}")
         logger.info(
@@ -167,6 +172,21 @@ class PipecatService:
 
         # Create LLM service (language-agnostic)
         llm = LLMServiceFactory.create_llm_service(llm_config)
+
+        # Merge TTS config credentials with agent's voice and parameters
+        tts_config_with_params = {
+            'provider': tts_config['provider'],
+            'api_key': tts_config['api_key'],
+            'voice_id': tts_voice_id,
+            'parameters': tts_parameters or {},
+        }
+
+        # Merge STT config credentials with agent's parameters
+        stt_config_with_params = {
+            'provider': stt_config['provider'],
+            'api_key': stt_config['api_key'],
+            'parameters': stt_parameters or {},
+        }
 
         # Create STT/TTS services with multi-language support if needed
         stt_services = {}
@@ -180,8 +200,8 @@ class PipecatService:
             # Create STT/TTS services for each supported language
             for lang_code in supported_languages:
                 # Deep clone configs to avoid mutating original configs
-                stt_config_lang = deepcopy(stt_config)
-                tts_config_lang = deepcopy(tts_config)
+                stt_config_lang = deepcopy(stt_config_with_params)
+                tts_config_lang = deepcopy(tts_config_with_params)
 
                 # Update language in parameters
                 if 'parameters' not in stt_config_lang:
@@ -229,9 +249,9 @@ class PipecatService:
         else:
             logger.info('Single language mode - no language detection needed')
 
-            # Create single STT/TTS services
-            stt = STTServiceFactory.create_stt_service(stt_config)
-            tts = TTSServiceFactory.create_tts_service(tts_config)
+            # Create single STT/TTS services using merged configs
+            stt = STTServiceFactory.create_stt_service(stt_config_with_params)
+            tts = TTSServiceFactory.create_tts_service(tts_config_with_params)
 
         # Create initial messages with system prompt
         messages = [
@@ -289,7 +309,7 @@ class PipecatService:
                 enable_metrics=True,
                 # enable_usage_metrics=True,
                 allow_interruptions=True,
-                interruption_strategies=[MinWordsInterruptionStrategy(min_words=2)],
+                interruption_strategies=[MinWordsInterruptionStrategy(min_words=3)],
                 # report_only_initial_ttfb=True
             ),
             idle_timeout_secs=20,  # Safety net - allows UserIdleProcessor to complete 3 retries (4s each = 12s total)
