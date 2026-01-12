@@ -20,6 +20,8 @@ import {
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Checkbox } from '@app/components/ui/checkbox';
+import { Label } from '@app/components/ui/label';
+import { Slider } from '@app/components/ui/slider';
 import {
   useGetLLMConfigs,
   useGetSttConfigs,
@@ -30,6 +32,13 @@ import { extractErrorMessage } from '@app/lib/utils';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { CreateVoiceAgentRequest } from '@app/types/voice-agent';
 import { SUPPORTED_LANGUAGES, getLanguageDisplayName } from '@app/constants/languages';
+import { getProviderConfig, initializeParameters } from '@app/config/voice-providers';
+import {
+  getBooleanParameterWithDefault,
+  getNumberOrStringParameter,
+  getNumberParameterWithDefault,
+  getStringParameter,
+} from '@app/utils/parameter-helpers';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeMirror from '@uiw/react-codemirror';
@@ -47,6 +56,7 @@ const createVoiceAgentSchema = z.object({
   tts_config_id: z.string().min(1, 'TTS configuration is required'),
   stt_config_id: z.string().min(1, 'STT configuration is required'),
   telephony_config_id: z.string().min(1, 'Telephony configuration is required'),
+  tts_voice_id: z.string().min(1, 'TTS Voice ID is required'),
   system_prompt: z.string().min(1, 'System prompt is required'),
   welcome_message: z.string().min(1, 'Welcome message is required'),
   conversation_config: z.string().optional(),
@@ -71,6 +81,8 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
   const { notifySuccess, notifyError } = useNotifyStore();
   const { selectedApp } = useDashboardStore();
   const [creating, setCreating] = useState(false);
+  const [ttsParameters, setTtsParameters] = useState<Record<string, unknown>>({});
+  const [sttParameters, setSttParameters] = useState<Record<string, unknown>>({});
 
   // Fetch configs for dropdowns
   const { data: llmConfigs = [] } = useGetLLMConfigs(appId);
@@ -87,6 +99,7 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
       tts_config_id: '',
       stt_config_id: '',
       telephony_config_id: '',
+      tts_voice_id: '',
       system_prompt: '',
       welcome_message: '',
       conversation_config: '{}',
@@ -98,6 +111,27 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
     },
   });
 
+  // Watch config selections to determine providers
+  const watchedTtsConfigId = form.watch('tts_config_id');
+  const watchedSttConfigId = form.watch('stt_config_id');
+
+  // Get selected providers
+  const selectedTtsProvider = ttsConfigs.find((c) => c.id === watchedTtsConfigId)?.provider;
+  const selectedSttProvider = sttConfigs.find((c) => c.id === watchedSttConfigId)?.provider;
+
+  // Initialize parameters when provider changes
+  useEffect(() => {
+    if (isOpen && selectedTtsProvider) {
+      setTtsParameters(initializeParameters('tts', selectedTtsProvider));
+    }
+  }, [selectedTtsProvider, isOpen]);
+
+  useEffect(() => {
+    if (isOpen && selectedSttProvider) {
+      setSttParameters(initializeParameters('stt', selectedSttProvider));
+    }
+  }, [selectedSttProvider, isOpen]);
+
   // Reset form when dialog closes
   useEffect(() => {
     if (!isOpen) {
@@ -108,6 +142,7 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
         tts_config_id: '',
         stt_config_id: '',
         telephony_config_id: '',
+        tts_voice_id: '',
         system_prompt: '',
         welcome_message: '',
         conversation_config: '{}',
@@ -117,6 +152,8 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
         supported_languages: ['en'],
         default_language: 'en',
       });
+      setTtsParameters({});
+      setSttParameters({});
     }
   }, [isOpen, form]);
 
@@ -131,6 +168,22 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
         return;
       }
     }
+
+    // Build TTS parameters (filter out empty values)
+    const builtTtsParameters: Record<string, unknown> = {};
+    Object.entries(ttsParameters).forEach(([key, value]) => {
+      if (value !== '' && value !== undefined && value !== null) {
+        builtTtsParameters[key] = value;
+      }
+    });
+
+    // Build STT parameters (filter out empty values)
+    const builtSttParameters: Record<string, unknown> = {};
+    Object.entries(sttParameters).forEach(([key, value]) => {
+      if (value !== '' && value !== undefined && value !== null) {
+        builtSttParameters[key] = value;
+      }
+    });
 
     // Parse phone numbers (comma-separated)
     const parsePhoneNumbers = (input: string): string[] => {
@@ -173,6 +226,9 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
         tts_config_id: data.tts_config_id.trim(),
         stt_config_id: data.stt_config_id.trim(),
         telephony_config_id: data.telephony_config_id.trim(),
+        tts_voice_id: data.tts_voice_id.trim(),
+        tts_parameters: Object.keys(builtTtsParameters).length > 0 ? builtTtsParameters : null,
+        stt_parameters: Object.keys(builtSttParameters).length > 0 ? builtSttParameters : null,
         system_prompt: data.system_prompt.trim(),
         welcome_message: data.welcome_message.trim(),
         conversation_config: conversationConfig,
@@ -207,6 +263,231 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
       setCreating(false);
     }
   };
+
+  // Helper functions for parameter management
+  const setTtsParameter = (key: string, value: unknown) => {
+    setTtsParameters((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const setSttParameter = (key: string, value: unknown) => {
+    setSttParameters((prev) => ({ ...prev, [key]: value }));
+  };
+
+  // Render TTS parameter field
+  const renderTtsParameterField = (key: string) => {
+    if (!selectedTtsProvider) return null;
+    const config = getProviderConfig('tts', selectedTtsProvider);
+    if (!config) return null;
+
+    const paramConfig = config.parameters[key];
+    if (!paramConfig) return null;
+
+    switch (paramConfig.type) {
+      case 'boolean':
+        return (
+          <div key={key} className="col-span-2">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id={`tts-${key}`}
+                checked={getBooleanParameterWithDefault(ttsParameters, key, paramConfig.default)}
+                onCheckedChange={(checked) => setTtsParameter(key, checked)}
+              />
+              <Label htmlFor={`tts-${key}`} className="cursor-pointer">
+                {paramConfig.description || key}
+              </Label>
+            </div>
+          </div>
+        );
+
+      case 'number':
+        if (paramConfig.min !== undefined && paramConfig.max !== undefined) {
+          const sliderValue = getNumberParameterWithDefault(ttsParameters, key, paramConfig.default, paramConfig.min);
+          return (
+            <div key={key} className="col-span-2 space-y-2">
+              <Label>
+                {paramConfig.description || key}: {sliderValue.toFixed(2)}
+              </Label>
+              <Slider
+                min={paramConfig.min}
+                max={paramConfig.max}
+                step={paramConfig.step || 1}
+                value={[sliderValue]}
+                onValueChange={(values: number[]) => setTtsParameter(key, values[0])}
+              />
+              <p className="text-muted-foreground text-[0.8rem]">
+                {paramConfig.min} - {paramConfig.max}
+              </p>
+            </div>
+          );
+        }
+
+        return (
+          <div key={key} className="space-y-2">
+            <Label>{paramConfig.description || key}</Label>
+            <Input
+              type="number"
+              value={getNumberOrStringParameter(ttsParameters, key)}
+              onChange={(e) => setTtsParameter(key, e.target.value ? parseFloat(e.target.value) : undefined)}
+              placeholder={paramConfig.placeholder}
+              step={paramConfig.step}
+            />
+            {paramConfig.placeholder && (
+              <p className="text-muted-foreground text-[0.8rem]">e.g., {paramConfig.placeholder}</p>
+            )}
+          </div>
+        );
+
+      case 'string':
+      default:
+        if (key === 'language') return null;
+
+        if (paramConfig.options && paramConfig.options.length > 0) {
+          const selectValue =
+            getStringParameter(ttsParameters, key) || (paramConfig.default ? String(paramConfig.default) : '') || '';
+          return (
+            <div key={key} className="space-y-2">
+              <Label>{paramConfig.description || key}</Label>
+              <Select value={selectValue} onValueChange={(val) => setTtsParameter(key, val)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {paramConfig.options.map((option) => (
+                    <SelectItem key={String(option)} value={String(option)}>
+                      {String(option)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          );
+        }
+
+        return (
+          <div key={key} className="space-y-2">
+            <Label>{paramConfig.description || key}</Label>
+            <Input
+              type="text"
+              value={getStringParameter(ttsParameters, key)}
+              onChange={(e) => setTtsParameter(key, e.target.value)}
+              placeholder={paramConfig.placeholder}
+            />
+            {paramConfig.placeholder && (
+              <p className="text-muted-foreground text-[0.8rem]">Default: {paramConfig.placeholder}</p>
+            )}
+          </div>
+        );
+    }
+  };
+
+  // Render STT parameter field
+  const renderSttParameterField = (key: string) => {
+    if (!selectedSttProvider) return null;
+    const config = getProviderConfig('stt', selectedSttProvider);
+    if (!config) return null;
+
+    const paramConfig = config.parameters[key];
+    if (!paramConfig) return null;
+
+    switch (paramConfig.type) {
+      case 'boolean':
+        return (
+          <div key={key} className="col-span-2">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id={`stt-${key}`}
+                checked={getBooleanParameterWithDefault(sttParameters, key, paramConfig.default)}
+                onCheckedChange={(checked) => setSttParameter(key, checked)}
+              />
+              <Label htmlFor={`stt-${key}`} className="cursor-pointer">
+                {paramConfig.description || key}
+              </Label>
+            </div>
+          </div>
+        );
+
+      case 'number':
+        if (paramConfig.min !== undefined && paramConfig.max !== undefined) {
+          const sliderValue = getNumberParameterWithDefault(sttParameters, key, paramConfig.default, paramConfig.min);
+          return (
+            <div key={key} className="col-span-2 space-y-2">
+              <Label>
+                {paramConfig.description || key}: {sliderValue}
+              </Label>
+              <Slider
+                min={paramConfig.min}
+                max={paramConfig.max}
+                step={paramConfig.step || 1}
+                value={[sliderValue]}
+                onValueChange={(values: number[]) => setSttParameter(key, values[0])}
+              />
+              <p className="text-muted-foreground text-[0.8rem]">
+                {paramConfig.min} - {paramConfig.max}
+              </p>
+            </div>
+          );
+        }
+
+        return (
+          <div key={key} className="space-y-2">
+            <Label>{paramConfig.description || key}</Label>
+            <Input
+              type="number"
+              value={getNumberOrStringParameter(sttParameters, key)}
+              onChange={(e) => setSttParameter(key, e.target.value ? parseInt(e.target.value) : undefined)}
+              placeholder={paramConfig.placeholder}
+            />
+            {paramConfig.placeholder && (
+              <p className="text-muted-foreground text-[0.8rem]">e.g., {paramConfig.placeholder}</p>
+            )}
+          </div>
+        );
+
+      case 'string':
+      default:
+        if (key === 'language') return null;
+
+        if (paramConfig.options && paramConfig.options.length > 0) {
+          const selectValue =
+            getStringParameter(sttParameters, key) || (paramConfig.default ? String(paramConfig.default) : '') || '';
+          return (
+            <div key={key} className="space-y-2">
+              <Label>{paramConfig.description || key}</Label>
+              <Select value={selectValue} onValueChange={(val) => setSttParameter(key, val)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {paramConfig.options.map((option) => (
+                    <SelectItem key={String(option)} value={String(option)}>
+                      {String(option)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          );
+        }
+
+        return (
+          <div key={key} className="space-y-2">
+            <Label>{paramConfig.description || key}</Label>
+            <Input
+              type="text"
+              value={getStringParameter(sttParameters, key)}
+              onChange={(e) => setSttParameter(key, e.target.value)}
+              placeholder={paramConfig.placeholder}
+            />
+            {paramConfig.placeholder && (
+              <p className="text-muted-foreground text-[0.8rem]">Default: {paramConfig.placeholder}</p>
+            )}
+          </div>
+        );
+    }
+  };
+
+  const ttsProviderConfig = selectedTtsProvider ? getProviderConfig('tts', selectedTtsProvider) : null;
+  const sttProviderConfig = selectedSttProvider ? getProviderConfig('stt', selectedSttProvider) : null;
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -417,6 +698,52 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                       </FormItem>
                     )}
                   />
+                </div>
+
+                <div className="space-y-4">
+                  <h4 className="text-sm font-medium">TTS Voice Settings</h4>
+                  <FormField
+                    control={form.control}
+                    name="tts_voice_id"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          TTS Voice ID<span className="text-red-500">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g., alloy, echo, fable (OpenAI) or voice ID (ElevenLabs)" {...field} />
+                        </FormControl>
+                        <FormDescription>
+                          Provider-specific voice identifier (e.g., for Deepgram: aura-2-helena-en)
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {ttsProviderConfig &&
+                    Object.keys(ttsProviderConfig.parameters).filter((key) => key !== 'language').length > 0 && (
+                      <div className="col-span-2 space-y-4">
+                        <h4 className="text-sm font-medium">TTS Parameters</h4>
+                        <div className="grid grid-cols-2 gap-6">
+                          {Object.keys(ttsProviderConfig.parameters)
+                            .filter((key) => key !== 'language')
+                            .map((key) => renderTtsParameterField(key))}
+                        </div>
+                      </div>
+                    )}
+
+                  {sttProviderConfig &&
+                    Object.keys(sttProviderConfig.parameters).filter((key) => key !== 'language').length > 0 && (
+                      <div className="col-span-2 space-y-4">
+                        <h4 className="text-sm font-medium">STT Parameters</h4>
+                        <div className="grid grid-cols-2 gap-6">
+                          {Object.keys(sttProviderConfig.parameters)
+                            .filter((key) => key !== 'language')
+                            .map((key) => renderSttParameterField(key))}
+                        </div>
+                      </div>
+                    )}
                 </div>
               </div>
 

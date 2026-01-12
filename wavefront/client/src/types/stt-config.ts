@@ -7,8 +7,6 @@ export interface SttConfig {
   display_name: string;
   description: string | null;
   provider: SttProvider;
-  language: string | null;
-  parameters: Record<string, unknown> | null;
   is_deleted: boolean;
   created_at: string;
   updated_at: string;
@@ -19,17 +17,12 @@ export interface CreateSttConfigRequest {
   description?: string | null;
   provider: SttProvider;
   api_key: string;
-  language?: string | null;
-  parameters?: Record<string, unknown> | null;
 }
 
 export interface UpdateSttConfigRequest {
   display_name?: string;
   description?: string | null;
-  provider?: SttProvider;
   api_key?: string;
-  language?: string | null;
-  parameters?: Record<string, unknown> | null;
 }
 
 export interface SttConfigData {

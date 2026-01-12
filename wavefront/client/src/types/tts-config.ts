@@ -7,9 +7,6 @@ export interface TtsConfig {
   display_name: string;
   description: string | null;
   provider: TtsProvider;
-  voice_id: string;
-  language: string | null;
-  parameters: Record<string, unknown> | null;
   is_deleted: boolean;
   created_at: string;
   updated_at: string;
@@ -19,20 +16,13 @@ export interface CreateTtsConfigRequest {
   display_name: string;
   description?: string | null;
   provider: TtsProvider;
-  voice_id: string;
   api_key: string;
-  language?: string | null;
-  parameters?: Record<string, unknown> | null;
 }
 
 export interface UpdateTtsConfigRequest {
   display_name?: string;
   description?: string | null;
-  provider?: TtsProvider;
-  voice_id?: string;
   api_key?: string;
-  language?: string | null;
-  parameters?: Record<string, unknown> | null;
 }
 
 export interface TtsConfigData {
