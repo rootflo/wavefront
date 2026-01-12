@@ -120,6 +120,37 @@ class VoiceAgentService:
 
         return True, None
 
+    def _validate_tts_stt_parameters(
+        self,
+        tts_voice_id: str,
+        tts_parameters: Optional[dict] = None,
+        stt_parameters: Optional[dict] = None,
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Validate TTS/STT parameters.
+
+        Args:
+            tts_voice_id: TTS voice identifier
+            tts_parameters: Provider-specific TTS parameters
+            stt_parameters: Provider-specific STT parameters
+
+        Returns:
+            Tuple of (is_valid, error_message). error_message is None if valid.
+        """
+        # Validate TTS voice_id is not empty
+        if not tts_voice_id or not tts_voice_id.strip():
+            return False, 'TTS voice_id is required and cannot be empty'
+
+        # Validate TTS parameters is a dict if provided
+        if tts_parameters is not None and not isinstance(tts_parameters, dict):
+            return False, 'TTS parameters must be a dictionary'
+
+        # Validate STT parameters is a dict if provided
+        if stt_parameters is not None and not isinstance(stt_parameters, dict):
+            return False, 'STT parameters must be a dictionary'
+
+        return True, None
+
     async def _validate_language_and_phone_config(
         self,
         inbound_numbers: List[str],
@@ -197,6 +228,8 @@ class VoiceAgentService:
         self,
         welcome_message: str,
         tts_config_id: UUID,
+        tts_voice_id: str,
+        tts_parameters: Optional[dict],
         agent_id: UUID,
         supported_languages: List[str],
         default_language: str,
@@ -208,6 +241,8 @@ class VoiceAgentService:
         Args:
             welcome_message: Text of the welcome message
             tts_config_id: TTS config ID to use for generation
+            tts_voice_id: Voice ID for TTS
+            tts_parameters: Provider-specific TTS parameters
             agent_id: Voice agent ID (used for generating storage key)
             supported_languages: List of supported language codes
             default_language: Default language code for audio generation
@@ -217,7 +252,7 @@ class VoiceAgentService:
         """
         logger.info(f'Generating welcome message audio for agent {agent_id}')
 
-        # Fetch TTS config
+        # Fetch TTS config (credentials only)
         tts_config = await self.tts_config_service.get_config(tts_config_id)
         if not tts_config:
             raise ValueError(f'TTS config {tts_config_id} not found')
@@ -235,16 +270,21 @@ class VoiceAgentService:
 
         logger.info(f'Welcome audio text: {audio_text}')
 
-        # Update TTS config to use default language
-        tts_config_with_lang = {**tts_config}
-        if 'parameters' not in tts_config_with_lang:
-            tts_config_with_lang['parameters'] = {}
-        tts_config_with_lang['parameters']['language'] = default_language
+        # Merge config credentials with agent's voice and parameters
+        tts_config_with_params = {
+            'provider': tts_config['provider'],
+            'api_key': tts_config['api_key'],
+            'voice_id': tts_voice_id,
+            'parameters': tts_parameters or {},
+        }
+
+        # Add language to parameters for TTS generation
+        tts_config_with_params['parameters']['language'] = default_language
 
         # Generate audio using TTS service
         try:
             audio_bytes = await self.tts_generator_service.generate_audio(
-                audio_text, tts_config_with_lang
+                audio_text, tts_config_with_params
             )
             logger.info(f'Generated audio: {len(audio_bytes)} bytes')
         except Exception as e:
@@ -278,6 +318,7 @@ class VoiceAgentService:
         telephony_config_id: UUID,
         system_prompt: str,
         welcome_message: str,
+        tts_voice_id: str,
         description: Optional[str] = None,
         conversation_config: Optional[dict] = None,
         status: str = 'inactive',
@@ -285,6 +326,8 @@ class VoiceAgentService:
         outbound_numbers: Optional[List[str]] = None,
         supported_languages: Optional[List[str]] = None,
         default_language: str = 'en',
+        tts_parameters: Optional[dict] = None,
+        stt_parameters: Optional[dict] = None,
     ) -> dict:
         """
         Create a new voice agent with inbound/outbound numbers and language support
@@ -297,6 +340,7 @@ class VoiceAgentService:
             telephony_config_id: Telephony config ID
             system_prompt: System prompt for the agent
             welcome_message: Welcome message text (will be converted to audio)
+            tts_voice_id: TTS voice identifier
             description: Description of the agent (optional)
             conversation_config: Conversation configuration (optional)
             status: Agent status (default: inactive)
@@ -304,6 +348,8 @@ class VoiceAgentService:
             outbound_numbers: Phone numbers for making outbound calls (E.164 format)
             supported_languages: List of supported language codes (e.g., ["en", "es", "hi"])
             default_language: Default language code (must be in supported_languages)
+            tts_parameters: Provider-specific TTS parameters (optional)
+            stt_parameters: Provider-specific STT parameters (optional)
 
         Returns:
             Created voice agent as dict
@@ -327,6 +373,14 @@ class VoiceAgentService:
             logger.error(f'FK validation failed: {error_message}')
             raise ValueError(error_message)
 
+        # Validate TTS/STT parameters
+        is_valid, error_message = self._validate_tts_stt_parameters(
+            tts_voice_id, tts_parameters, stt_parameters
+        )
+        if not is_valid:
+            logger.error(f'TTS/STT validation failed: {error_message}')
+            raise ValueError(error_message)
+
         # Validate language and phone configuration
         is_valid, error_message = await self._validate_language_and_phone_config(
             inbound_numbers,
@@ -348,6 +402,8 @@ class VoiceAgentService:
         await self._generate_and_upload_welcome_audio(
             welcome_message,
             tts_config_id,
+            tts_voice_id,
+            tts_parameters,
             agent_id,
             supported_languages,
             default_language,
@@ -368,6 +424,9 @@ class VoiceAgentService:
             else None,
             welcome_message=welcome_message,
             status=status,
+            tts_voice_id=tts_voice_id,
+            tts_parameters=tts_parameters,
+            stt_parameters=stt_parameters,
             inbound_numbers=inbound_numbers,
             outbound_numbers=outbound_numbers,
             supported_languages=supported_languages,
@@ -527,6 +586,24 @@ class VoiceAgentService:
                 logger.error(f'Language/phone validation failed: {error_message}')
                 raise ValueError(error_message)
 
+        # Validate TTS/STT parameters if being updated
+        tts_stt_fields = ['tts_voice_id', 'tts_parameters', 'stt_parameters']
+        if any(key in update_data for key in tts_stt_fields):
+            tts_voice_id = update_data.get('tts_voice_id', existing_agent.tts_voice_id)
+            tts_parameters = update_data.get(
+                'tts_parameters', existing_dict.get('tts_parameters')
+            )
+            stt_parameters = update_data.get(
+                'stt_parameters', existing_dict.get('stt_parameters')
+            )
+
+            is_valid, error_message = self._validate_tts_stt_parameters(
+                tts_voice_id, tts_parameters, stt_parameters
+            )
+            if not is_valid:
+                logger.error(f'TTS/STT validation failed: {error_message}')
+                raise ValueError(error_message)
+
         # Check if welcome_message or language config changed (requires audio regeneration)
         audio_regeneration_needed = False
         if (
@@ -541,6 +618,19 @@ class VoiceAgentService:
         if 'default_language' in update_data and update_data[
             'default_language'
         ] != existing_dict.get('default_language'):
+            audio_regeneration_needed = True
+        if (
+            'tts_voice_id' in update_data
+            and update_data['tts_voice_id'] != existing_agent.tts_voice_id
+        ):
+            audio_regeneration_needed = True
+        if 'tts_parameters' in update_data and update_data[
+            'tts_parameters'
+        ] != existing_dict.get('tts_parameters'):
+            audio_regeneration_needed = True
+        if 'tts_config_id' in update_data and update_data[
+            'tts_config_id'
+        ] != existing_dict.get('tts_config_id'):
             audio_regeneration_needed = True
 
         # If any FK fields are being updated, validate them
@@ -587,6 +677,12 @@ class VoiceAgentService:
                 tts_config_id = update_data.get(
                     'tts_config_id', existing_agent.tts_config_id
                 )
+                tts_voice_id = update_data.get(
+                    'tts_voice_id', existing_agent.tts_voice_id
+                )
+                tts_parameters = update_data.get(
+                    'tts_parameters', existing_dict.get('tts_parameters')
+                )
                 supported_languages = update_data.get(
                     'supported_languages',
                     existing_dict.get('supported_languages', ['en']),
@@ -598,6 +694,8 @@ class VoiceAgentService:
                 await self._generate_and_upload_welcome_audio(
                     welcome_message,
                     tts_config_id,
+                    tts_voice_id,
+                    tts_parameters,
                     agent_id,
                     supported_languages,
                     default_language,

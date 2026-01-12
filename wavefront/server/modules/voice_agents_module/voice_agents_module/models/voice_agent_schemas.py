@@ -30,6 +30,13 @@ class CreateVoiceAgentPayload(BaseModel):
         ...,
         description='Welcome message to play at call start (will be converted to audio)',
     )
+    tts_voice_id: str = Field(..., description='TTS voice identifier')
+    tts_parameters: Optional[Dict[str, Any]] = Field(
+        None, description='Provider-specific TTS parameters (model, stability, etc.)'
+    )
+    stt_parameters: Optional[Dict[str, Any]] = Field(
+        None, description='Provider-specific STT parameters (model, endpointing, etc.)'
+    )
     status: VoiceAgentStatus = Field(
         default=VoiceAgentStatus.INACTIVE,
         description='Agent status (active or inactive)',
@@ -62,6 +69,9 @@ class UpdateVoiceAgentPayload(BaseModel):
     system_prompt: Union[str, Any] = Field(default=UNSET)
     conversation_config: Union[Dict[str, Any], None, Any] = Field(default=UNSET)
     welcome_message: Union[str, Any] = Field(default=UNSET)
+    tts_voice_id: Union[str, Any] = Field(default=UNSET)
+    tts_parameters: Union[Dict[str, Any], None, Any] = Field(default=UNSET)
+    stt_parameters: Union[Dict[str, Any], None, Any] = Field(default=UNSET)
     status: Union[VoiceAgentStatus, Any] = Field(default=UNSET)
     inbound_numbers: Union[List[str], Any] = Field(default=UNSET)
     outbound_numbers: Union[List[str], Any] = Field(default=UNSET)
@@ -80,6 +90,9 @@ class VoiceAgentResponse(BaseModel):
     system_prompt: str
     conversation_config: Optional[Dict[str, Any]]
     welcome_message: str
+    tts_voice_id: str
+    tts_parameters: Optional[Dict[str, Any]]
+    stt_parameters: Optional[Dict[str, Any]]
     status: str
     inbound_numbers: List[str]
     outbound_numbers: List[str]

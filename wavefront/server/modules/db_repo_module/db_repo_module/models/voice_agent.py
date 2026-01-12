@@ -35,6 +35,11 @@ class VoiceAgent(Base):
     welcome_message: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(length=64), nullable=False)
 
+    # TTS/STT configuration
+    tts_voice_id: Mapped[str] = mapped_column(String(length=255), nullable=False)
+    tts_parameters: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    stt_parameters: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+
     # Multi-language and phone number support
     inbound_numbers: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     outbound_numbers: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
@@ -68,6 +73,8 @@ class VoiceAgent(Base):
                 'inbound_numbers',
                 'outbound_numbers',
                 'supported_languages',
+                'tts_parameters',
+                'stt_parameters',
             ]:
                 # Parse JSON/JSONB fields
                 if value:

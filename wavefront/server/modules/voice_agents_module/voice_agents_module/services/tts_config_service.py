@@ -39,10 +39,7 @@ class TtsConfigService:
         display_name: str,
         description: Optional[str] = None,
         provider: str = None,
-        voice_id: str = None,
         api_key: str = None,
-        language: Optional[str] = None,
-        parameters: Optional[dict] = None,
     ) -> dict:
         """
         Create a new TTS configuration
@@ -51,26 +48,20 @@ class TtsConfigService:
             display_name: Display name for the configuration
             description: Optional description
             provider: TTS provider
-            voice_id: Provider-specific voice identifier
             api_key: API key for the TTS provider
-            language: ISO 639-1 language code (optional)
-            parameters: Provider-specific parameters (optional)
 
         Returns:
             Created TTS config as dict
         """
         logger.info(
-            f'Creating TTS config - display_name: {display_name}, provider: {provider}, voice_id: {voice_id}'
+            f'Creating TTS config - display_name: {display_name}, provider: {provider}'
         )
 
         config = await self.tts_config_repository.create(
             display_name=display_name,
             description=description,
             provider=provider,
-            voice_id=voice_id,
             api_key=api_key,
-            language=language,
-            parameters=json.dumps(parameters) if parameters else None,
         )
 
         # Convert to dict
