@@ -8,6 +8,8 @@ from sqlalchemy import pool
 from floconsole.db.base import Base
 from floconsole.db.models.user import User
 from floconsole.db.models.session import Session
+from floconsole.db.models.app import App
+from floconsole.db.models.app_user import AppUser
 
 # Load environment variables
 load_dotenv()
@@ -20,6 +22,8 @@ config = context.config
 models = [
     User,
     Session,
+    App,
+    AppUser,
 ]
 
 target_metadata = Base.metadata

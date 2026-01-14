@@ -17,6 +17,7 @@ from starlette.middleware import _MiddlewareFactory
 from floconsole.authorization.require_auth import RequireAuthMiddleware
 from floconsole.di.application_container import ApplicationContainer
 from floconsole.controllers.app_controller import app_router
+from floconsole.controllers.app_user_controller import app_user_router
 from floconsole.controllers.auth_controller import auth_router
 from floconsole.controllers.floware_proxy_controller import floware_proxy_router
 from floconsole.controllers.user_controller import user_router
@@ -120,6 +121,7 @@ app.include_router(auth_router, prefix='/floconsole')
 app.include_router(floware_proxy_router, prefix='/floconsole')
 app.include_router(user_router, prefix='/floconsole')
 app.include_router(app_router, prefix='/floconsole')
+app.include_router(app_user_router, prefix='/floconsole')
 
 
 @app.exception_handler(Exception)

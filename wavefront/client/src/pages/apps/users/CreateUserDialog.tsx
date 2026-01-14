@@ -8,8 +8,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@app/components/ui/dialog';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { CreateUserInput, createUserSchema } from '@app/types/user';
@@ -33,6 +42,7 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({ isOpen, onOpenChang
       password: '',
       first_name: '',
       last_name: '',
+      role: 'app_admin',
     },
   });
 
@@ -124,6 +134,29 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({ isOpen, onOpenChang
                   <FormControl>
                     <Input placeholder="Doe" {...field} />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="role"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Role</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a role" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="app_admin">App Admin</SelectItem>
+                      <SelectItem value="owner">Owner</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>Default role is App Admin</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

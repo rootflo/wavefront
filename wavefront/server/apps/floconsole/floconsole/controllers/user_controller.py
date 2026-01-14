@@ -13,6 +13,7 @@ from fastapi import status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from floconsole.constants.user import UserRole
 from floconsole.db.models.user import User
 from floconsole.db.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from floconsole.di.application_container import ApplicationContainer
@@ -29,10 +30,10 @@ class CreateUserRequest(BaseModel):
     password: str
     first_name: str
     last_name: str
+    role: Optional[str] = UserRole.APP_ADMIN.value
 
 
 class UpdateUserRequest(BaseModel):
-    email: Optional[str] = None
     password: Optional[str] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
@@ -42,6 +43,7 @@ class UpdateUserRequest(BaseModel):
 @inject
 async def create_user(
     user_data: CreateUserRequest,
+    request: Request,
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
     ),
@@ -49,6 +51,24 @@ async def create_user(
         Provide[ApplicationContainer.user_repository]
     ),
 ):
+    # Get current user
+    _, current_user_id, _ = get_current_user(request)
+
+    current_user = await user_repository.find_one(id=current_user_id)
+    is_owner = current_user and current_user.role == UserRole.OWNER.value
+
+    # Only owners can create users
+    if not is_owner:
+        logger.warning(
+            f'User {current_user_id} attempted to create user without permission'
+        )
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=response_formatter.buildErrorResponse(
+                'You are not authorized to create users'
+            ),
+        )
+
     existing_user = await user_repository.find_one(email=user_data.email)
 
     if existing_user:
@@ -67,6 +87,7 @@ async def create_user(
         password=hashed_password,
         first_name=user_data.first_name,
         last_name=user_data.last_name,
+        role=user_data.role,
     )
 
     logger.info(f'User created successfully: {created_user.email}')
@@ -140,17 +161,15 @@ async def update_user(
     user_repository: SQLAlchemyRepository[User] = Depends(
         Provide[ApplicationContainer.user_repository]
     ),
-    config: dict = Depends(Provide[ApplicationContainer.config]),
 ):
     # Get current user
     _, current_user_id, _ = get_current_user(request)
-    super_admin_emails = config['super_admin']['email'].split(',')
 
     current_user = await user_repository.find_one(id=current_user_id)
-    is_super_admin = current_user and current_user.email in super_admin_emails
+    is_owner = current_user and current_user.role == UserRole.OWNER.value
 
-    # Authorization: users can only edit themselves, super admins can edit anyone
-    if str(user_id) != str(current_user_id) and not is_super_admin:
+    # Authorization: users can only edit themselves, owners can edit anyone
+    if str(user_id) != str(current_user_id) and not is_owner:
         logger.warning(
             f'User {current_user_id} attempted to edit user {user_id} without permission'
         )
@@ -169,18 +188,6 @@ async def update_user(
             status_code=status.HTTP_400_BAD_REQUEST,
             content=response_formatter.buildErrorResponse('No fields to update'),
         )
-
-    # Check email uniqueness if email is being updated
-    if 'email' in update_data:
-        existing_user = await user_repository.find_one(email=update_data['email'])
-        if existing_user and str(existing_user.id) != str(user_id):
-            logger.warning(
-                f'Update failed - email already exists: {update_data["email"]}'
-            )
-            return JSONResponse(
-                status_code=status.HTTP_409_CONFLICT,
-                content=response_formatter.buildErrorResponse('Email already exists'),
-            )
 
     try:
         updated_user = await user_service.update_user(user_id, **update_data)
@@ -221,14 +228,12 @@ async def delete_user(
     user_repository: SQLAlchemyRepository[User] = Depends(
         Provide[ApplicationContainer.user_repository]
     ),
-    config: dict = Depends(Provide[ApplicationContainer.config]),
 ):
     # Get current user
     _, current_user_id, _ = get_current_user(request)
-    super_admin_emails = config['super_admin']['email'].split(',')
 
     current_user = await user_repository.find_one(id=current_user_id)
-    is_super_admin = current_user and current_user.email in super_admin_emails
+    is_owner = current_user and current_user.role == UserRole.OWNER.value
 
     # Get target user
     target_user = await user_repository.find_one(id=user_id, deleted=False)
@@ -239,29 +244,37 @@ async def delete_user(
             content=response_formatter.buildErrorResponse('User not found'),
         )
 
-    target_is_super_admin = target_user.email in super_admin_emails
-
-    # Authorization: normal users cannot delete super admins
-    if target_is_super_admin and not is_super_admin:
-        logger.warning(
-            f'User {current_user_id} attempted to delete super admin {user_id}'
-        )
+    # Prevent self-deletion
+    if str(user_id) == str(current_user_id):
+        logger.warning(f'User {current_user_id} attempted to delete themselves')
         return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
+            status_code=status.HTTP_400_BAD_REQUEST,
             content=response_formatter.buildErrorResponse(
-                'You are not authorized to delete super admin users'
+                'You cannot delete your own account'
             ),
         )
 
-    # Check minimum super admin constraint
-    if target_is_super_admin:
-        super_admin_count = await user_service.count_super_admins(super_admin_emails)
-        if super_admin_count <= 1:
-            logger.warning('Cannot delete last super admin user')
+    target_is_owner = target_user.role == UserRole.OWNER.value
+
+    # Authorization: normal users cannot delete owners
+    if target_is_owner and not is_owner:
+        logger.warning(f'User {current_user_id} attempted to delete owner {user_id}')
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=response_formatter.buildErrorResponse(
+                'You are not authorized to delete owner users'
+            ),
+        )
+
+    # Check minimum owner constraint
+    if target_is_owner:
+        owner_count = await user_service.count_owners()
+        if owner_count <= 1:
+            logger.warning('Cannot delete last owner user')
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content=response_formatter.buildErrorResponse(
-                    'Cannot delete the last super admin user'
+                    'Cannot delete the last owner user'
                 ),
             )
 

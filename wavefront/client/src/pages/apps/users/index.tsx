@@ -10,10 +10,11 @@ import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { IUser } from '@app/types/user';
 import { useQueryClient } from '@tanstack/react-query';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Trash2, Shield } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import CreateUserDialog from './CreateUserDialog';
 import EditUserDialog from './EditUserDialog';
+import ManageAppAccessDialog from './ManageAppAccessDialog';
 
 const UsersPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -24,30 +25,28 @@ const UsersPage: React.FC = () => {
   const [deleting, setDeleting] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editItem, setEditItem] = useState<IUser | null>(null);
+  const [manageAppAccessItem, setManageAppAccessItem] = useState<IUser | null>(null);
 
   // Fetch users and current user
   const { data: users = [], isLoading: usersLoading } = useGetUsers();
   const { data: currentUser } = useGetCurrentUser(true);
 
-  // Determine permissions - placeholder for super admin check
-  // In a real implementation, this should come from the backend
-  const isSuperAdmin = useMemo(() => {
-    // Placeholder: assume all users with access to this page are super admins
-    // In production, add a dedicated endpoint or include this in whoami response
-    return true;
+  // Check if current user is owner
+  const isOwner = useMemo(() => {
+    return currentUser?.role === 'owner';
   }, [currentUser]);
 
   const canEditUser = (user: IUser): boolean => {
     if (!currentUser) return false;
-    // User can edit themselves, or super admin can edit anyone
-    return user.id === currentUser.id || isSuperAdmin;
+    // User can edit themselves, or owner can edit anyone
+    return user.id === currentUser.id || isOwner;
   };
 
   const canDeleteUser = (user: IUser): boolean => {
     if (!currentUser) return false;
-    // Only super admin can delete users
+    // Only owners can delete users
     // Cannot delete self
-    return isSuperAdmin && user.id !== currentUser.id;
+    return isOwner && user.id !== currentUser.id;
   };
 
   const handleDeleteClick = (e: React.MouseEvent, user: IUser) => {
@@ -58,6 +57,11 @@ const UsersPage: React.FC = () => {
   const handleEditClick = (e: React.MouseEvent, user: IUser) => {
     e.stopPropagation();
     setEditItem(user);
+  };
+
+  const handleManageAppsClick = (e: React.MouseEvent, user: IUser) => {
+    e.stopPropagation();
+    setManageAppAccessItem(user);
   };
 
   const handleEditSuccess = () => {
@@ -119,7 +123,7 @@ const UsersPage: React.FC = () => {
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-[220px]"
           />
-          {isSuperAdmin && (
+          {isOwner && (
             <Button onClick={handleCreateUser}>
               <p className="text-sm">Create User</p>
             </Button>
@@ -133,7 +137,7 @@ const UsersPage: React.FC = () => {
         </div>
       ) : filteredUsers.length === 0 ? (
         <div className="mt-10 flex justify-center">
-          {isSuperAdmin ? (
+          {isOwner ? (
             <EmptyStateCard
               title="No users found"
               description={searchQuery ? 'No users match your search.' : 'Get started by creating your first user'}
@@ -157,6 +161,7 @@ const UsersPage: React.FC = () => {
                 <TableHead>Email</TableHead>
                 <TableHead>First Name</TableHead>
                 <TableHead>Last Name</TableHead>
+                <TableHead>Role</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -166,8 +171,27 @@ const UsersPage: React.FC = () => {
                   <TableCell className="font-medium">{user.email}</TableCell>
                   <TableCell>{user.first_name}</TableCell>
                   <TableCell>{user.last_name}</TableCell>
+                  <TableCell>
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
+                        user.role === 'owner' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
+                      }`}
+                    >
+                      {user.role}
+                    </span>
+                  </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
+                      {isOwner && user.role === 'app_admin' && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => handleManageAppsClick(e, user)}
+                          title="Manage App Access"
+                        >
+                          <Shield className="h-4 w-4 text-blue-600" />
+                        </Button>
+                      )}
                       {canEditUser(user) && (
                         <Button variant="ghost" size="sm" onClick={(e) => handleEditClick(e, user)} title="Edit">
                           <Pencil className="h-4 w-4" />
@@ -207,6 +231,16 @@ const UsersPage: React.FC = () => {
           onOpenChange={(open) => !open && setEditItem(null)}
           user={editItem}
           onSuccess={handleEditSuccess}
+        />
+      )}
+
+      {/* Manage App Access Dialog */}
+      {manageAppAccessItem && (
+        <ManageAppAccessDialog
+          isOpen={!!manageAppAccessItem}
+          onOpenChange={(open) => !open && setManageAppAccessItem(null)}
+          user={manageAppAccessItem}
+          onSuccess={() => setManageAppAccessItem(null)}
         />
       )}
     </div>

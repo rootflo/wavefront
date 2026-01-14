@@ -21,6 +21,7 @@ from floconsole.authorization.require_auth import UserSession
 from floconsole.db.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from floconsole.db.models.user import User
 from floconsole.constants.app import AppDeploymentType, AppStatus
+from floconsole.constants.user import UserRole
 
 app_router = APIRouter(prefix='/v1')
 
@@ -91,13 +92,31 @@ async def get_apps(
 @inject
 async def create_app(
     app_data: CreateAppRequest,
+    request: Request,
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
     ),
     app_service: AppService = Depends(Provide[ApplicationContainer.app_service]),
     config: dict = Depends(Provide[ApplicationContainer.config]),
+    user_repository: SQLAlchemyRepository[User] = Depends(
+        Provide[ApplicationContainer.user_repository]
+    ),
 ):
     try:
+        session: UserSession = request.state.session
+        user_id = session.user_id
+
+        user = await user_repository.find_one(id=user_id)
+
+        # Only owners can create apps
+        if not user or user.role != UserRole.OWNER.value:
+            return JSONResponse(
+                status_code=status.HTTP_403_FORBIDDEN,
+                content=response_formatter.buildErrorResponse(
+                    'You are not authorized to create apps'
+                ),
+            )
+
         app = await app_service.get_app_by_name(app_data.app_name)
         if app:
             return JSONResponse(
@@ -214,20 +233,38 @@ async def get_app(
 async def update_app(
     app_id: UUID,
     app_data: UpdateAppRequest,
+    request: Request,
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
     ),
     app_service: AppService = Depends(Provide[ApplicationContainer.app_service]),
+    user_repository: SQLAlchemyRepository[User] = Depends(
+        Provide[ApplicationContainer.user_repository]
+    ),
 ):
-    # Prepare update data, filtering out None values
-    update_data = {k: v for k, v in app_data.model_dump().items() if v is not None}
-    if not update_data:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse('No fields to update'),
-        )
-
     try:
+        session: UserSession = request.state.session
+        user_id = session.user_id
+
+        user = await user_repository.find_one(id=user_id)
+
+        # Only owners can update apps
+        if not user or user.role != UserRole.OWNER.value:
+            return JSONResponse(
+                status_code=status.HTTP_403_FORBIDDEN,
+                content=response_formatter.buildErrorResponse(
+                    'You are not authorized to update apps'
+                ),
+            )
+
+        # Prepare update data, filtering out None values
+        update_data = {k: v for k, v in app_data.model_dump().items() if v is not None}
+        if not update_data:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content=response_formatter.buildErrorResponse('No fields to update'),
+            )
+
         app = await app_service.update_app(app_id, **update_data)
 
         if not app:
@@ -275,11 +312,11 @@ async def delete_app(
     try:
         session: UserSession = request.state.session
         user_id = session.user_id
-        super_admin_emails = config['super_admin']['email'].split(',')
 
         user = await user_repository.find_one(id=user_id)
 
-        if not user or user.email not in super_admin_emails:
+        # Only owners can delete apps
+        if not user or user.role != UserRole.OWNER.value:
             return JSONResponse(
                 status_code=status.HTTP_403_FORBIDDEN,
                 content=response_formatter.buildErrorResponse(

@@ -3,6 +3,7 @@ export interface IUser {
   email: string;
   first_name: string;
   last_name: string;
+  role: string;
 }
 
 import { emailRegex, passwordRegex } from '@app/utils/regex';
@@ -16,10 +17,10 @@ export const createUserSchema = z.object({
     .regex(passwordRegex, 'Password must contain uppercase, lowercase, number, and special character'),
   first_name: z.string().min(1, 'First name is required').max(100, 'First name must be 100 characters or less'),
   last_name: z.string().min(1, 'Last name is required').max(100, 'Last name must be 100 characters or less'),
+  role: z.string().optional(),
 });
 
 export const updateUserSchema = z.object({
-  email: z.string().regex(emailRegex, 'Invalid email format').optional().or(z.literal('')),
   password: z
     .string()
     .min(8, 'Password must be at least 8 characters')
