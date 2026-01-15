@@ -335,8 +335,9 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
             if request.method == 'OPTIONS':
                 return await call_next(request)
 
+            authorization = request.headers.get('Authorization')
             # Check if this endpoint requires HMAC validation (skip JWT validation then)
-            if request.url.path in required_hmac_apis:
+            if request.url.path in required_hmac_apis and not authorization:
                 if not await validate_hmac_signature(request, auth_secrets_repository):
                     request_id = getattr(
                         request.state, 'request_id', get_current_request_id()
@@ -367,9 +368,8 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                             'Invalid service authentication'
                         ),
                     )
-            else:  # Do the JWT validation or passthrough
-                authorization = request.headers.get('Authorization')
-
+            else:
+                # Normal auth token flow
                 token = None
                 if authorization and authorization.startswith('Bearer '):
                     token = authorization.split(' ')[1]
