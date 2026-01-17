@@ -89,6 +89,7 @@ from voice_agents_module.controllers.telephony_config_controller import (
 from voice_agents_module.controllers.tts_config_controller import tts_config_router
 from voice_agents_module.controllers.stt_config_controller import stt_config_router
 from voice_agents_module.controllers.voice_agent_controller import voice_agent_router
+from voice_agents_module.controllers.tool_controller import tool_router
 from plugins_module.controllers.message_processor_controller import (
     message_processor_router,
 )
@@ -383,6 +384,7 @@ app.include_router(telephony_config_router, prefix='/floware')
 app.include_router(tts_config_router, prefix='/floware')
 app.include_router(stt_config_router, prefix='/floware')
 app.include_router(voice_agent_router, prefix='/floware')
+app.include_router(tool_router, prefix='/floware')
 app.include_router(message_processor_router, prefix='/floware')
 
 

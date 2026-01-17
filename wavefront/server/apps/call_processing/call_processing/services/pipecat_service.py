@@ -7,9 +7,11 @@ Creates and runs the voice conversation pipeline using configured STT/LLM/TTS se
 from typing import Dict, Any, List
 from copy import deepcopy
 from call_processing.log.logger import logger
+from call_processing.services.tool_wrapper_service import ToolWrapperFactory
 
 # Pipecat core imports
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
+from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.audio.interruptions.min_words_interruption_strategy import (
     MinWordsInterruptionStrategy,
 )
@@ -142,6 +144,7 @@ class PipecatService:
         llm_config: Dict[str, Any],
         tts_config: Dict[str, Any],
         stt_config: Dict[str, Any],
+        tools: List[Dict[str, Any]],
     ):
         """
         Create and run the Pipecat pipeline for a voice conversation
@@ -153,6 +156,7 @@ class PipecatService:
             llm_config: LLM provider configuration
             tts_config: TTS provider configuration (credentials only)
             stt_config: STT provider configuration (credentials only)
+            tools: List of tool dicts with association details
         """
         # Extract language configuration from agent_config
         supported_languages = agent_config.get('supported_languages', ['en'])
@@ -261,14 +265,53 @@ class PipecatService:
             }
         ]
 
-        # ADD: Register function handler with LLM service
+        # Load and register tools for this agent
+        function_schemas = []
+        agent_id = agent_config.get('id')
+
+        if tools:
+            try:
+                logger.info(f'Loaded {len(tools)} tools for agent {agent_id}')
+
+                # Create FunctionSchema objects and callable functions for all tools
+                (
+                    function_schemas,
+                    tool_registrations,
+                ) = ToolWrapperFactory.create_all_tool_functions(tools)
+
+                # Register each tool with LLM
+                for tool_name, tool_func in tool_registrations:
+                    llm.register_function(tool_name, tool_func)
+                    logger.info(f"Registered tool '{tool_name}' with LLM")
+
+            except Exception as e:
+                logger.error(
+                    f'Error loading tools for agent {agent_id}: {str(e)}',
+                    exc_info=True,
+                )
+                # Continue without tools rather than failing the call
+        else:
+            logger.info(f'No tools configured for agent {agent_id}')
+
+        # Register built-in function handler with LLM service
         llm.register_function(
             'check_conversation_complete', check_conversation_complete
         )
 
-        tools = ToolsSchema(standard_tools=[check_conversation_complete])
+        # Create FunctionSchema for check_conversation_complete
+        check_complete_schema = FunctionSchema(
+            name='check_conversation_complete',
+            description='Check if conversation should end based on goodbye detection',
+            properties={},  # No parameters needed
+            required=[],
+        )
+
+        # Combine all FunctionSchema objects for ToolsSchema
+        all_function_schemas = [check_complete_schema] + function_schemas
+        tools_schema = ToolsSchema(standard_tools=all_function_schemas)
+
         # Create LLM context and aggregator
-        context = LLMContext(messages, tools=tools)
+        context = LLMContext(messages, tools=tools_schema)
         context_aggregator = LLMContextAggregatorPair(context)
 
         # Create transcript processor for language detection

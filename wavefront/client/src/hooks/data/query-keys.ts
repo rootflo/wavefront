@@ -64,10 +64,14 @@ const getPipelineFilesKey = (appId: string, pipelineId: string) => ['pipeline-fi
 const getAppByIdKey = (appId: string) => ['app-by-id', appId];
 const getUsersKey = () => ['users'];
 const getUserKey = (userId: string) => ['user', userId];
+const getVoiceAgentToolsKey = (appId: string) => ['voice-agent-tools', appId];
+const getVoiceAgentToolKey = (appId: string, toolId: string) => ['voice-agent-tool', appId, toolId];
+const getAgentToolsKey = (appId: string, agentId: string) => ['agent-tools', appId, agentId];
 
 export {
   getAgentKey,
   getAgentsKey,
+  getAgentToolsKey,
   getAllAppsKey,
   getAllDatasourcesKey,
   getApiServiceKey,
@@ -100,12 +104,14 @@ export {
   getToolsKey,
   getTtsConfigKey,
   getTtsConfigsKey,
+  getUserKey,
+  getUsersKey,
   getVoiceAgentKey,
+  getVoiceAgentToolKey,
+  getVoiceAgentToolsKey,
   getVoiceAgentsKey,
   getWorkflowPipelinesKey,
   getWorkflowRunsKey,
   getWorkflowsKey,
   getAppByIdKey,
-  getUserKey,
-  getUsersKey,
 };

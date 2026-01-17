@@ -15,6 +15,7 @@ from call_processing.cache.cache_utils import (
     get_tts_config_cache_key,
     get_stt_config_cache_key,
     get_telephony_config_cache_key,
+    get_tools_config_cache_key,
 )
 from call_processing.constants.api_endpoints import VALID_CONFIG_TYPES
 from call_processing.di.application_container import ApplicationContainer
@@ -171,6 +172,15 @@ async def invalidate_cache(
     else:
         logger.warning(f'{config_type} {config_id} was not in cache')
 
+    # If invalidating voice_agent, also invalidate its tools cache
+    if config_type == 'voice_agent':
+        tools_cache_key = get_tools_config_cache_key(config_id)
+        tools_removed = voice_agent_cache_service.cache_manager.remove(tools_cache_key)
+        if tools_removed:
+            logger.info(f'Removed tools cache for voice agent {config_id}')
+        else:
+            logger.warning(f'Tools cache for voice agent {config_id} was not in cache')
+
     # Step 4: Fetch fresh config from floware API
     try:
         if not voice_agent_cache_service.floware_http_client:
@@ -222,6 +232,36 @@ async def invalidate_cache(
             )
 
         logger.info(f'Successfully refreshed cache for {config_type} {config_id}')
+
+        # If voice_agent, also refresh the tools cache
+        if config_type == 'voice_agent':
+            try:
+                tools = (
+                    await voice_agent_cache_service.floware_http_client.get_agent_tools(
+                        config_id
+                    )
+                )
+                tools_cache_key = get_tools_config_cache_key(config_id)
+                if tools:
+                    voice_agent_cache_service.cache_manager.set_json(
+                        tools_cache_key,
+                        tools,
+                        expiry=voice_agent_cache_service.cache_ttl,
+                    )
+                    logger.info(
+                        f'Successfully refreshed tools cache for voice agent {config_id} ({len(tools)} tools)'
+                    )
+                else:
+                    # Cache empty list
+                    voice_agent_cache_service.cache_manager.set_json(
+                        tools_cache_key, [], expiry=voice_agent_cache_service.cache_ttl
+                    )
+                    logger.info(f'Cached empty tools list for voice agent {config_id}')
+            except Exception as e:
+                # Don't fail the whole invalidation if tools refresh fails
+                logger.warning(
+                    f'Failed to refresh tools cache for voice agent {config_id}: {e}'
+                )
 
         return JSONResponse(
             status_code=status.HTTP_200_OK,

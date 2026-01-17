@@ -26,3 +26,8 @@ def get_stt_config_cache_key(config_id: UUID) -> str:
 def get_telephony_config_cache_key(config_id: UUID) -> str:
     """Generate cache key for a telephony config"""
     return f'telephony_config:{config_id}'
+
+
+def get_tools_config_cache_key(agent_id: UUID) -> str:
+    """Generate cache key for voice agent tools"""
+    return f'voice_agent:{agent_id}:tools'

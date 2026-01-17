@@ -6,6 +6,7 @@ LLM_INFERENCE_CONFIG_ENDPOINT = '/floware/v1/llm-inference-configs/{config_id}'
 TTS_CONFIG_ENDPOINT = '/floware/v1/tts-configs/{config_id}'
 STT_CONFIG_ENDPOINT = '/floware/v1/stt-configs/{config_id}'
 TELEPHONY_CONFIG_ENDPOINT = '/floware/v1/telephony-configs/{config_id}'
+TOOLS_ENDPOINT = '/floware/v1/voice-agents/{agent_id}/tools'
 
 # Config type mapping for cache invalidation
 CONFIG_TYPE_ENDPOINTS = {

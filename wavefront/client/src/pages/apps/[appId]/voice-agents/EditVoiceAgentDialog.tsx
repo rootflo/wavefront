@@ -8,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@app/components/ui/dialog';
+import VoiceAgentToolsManager from './VoiceAgentToolsManager';
 import {
   Form,
   FormControl,
@@ -988,6 +989,12 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                     </FormItem>
                   )}
                 />
+              </div>
+
+              {/* Tools Section */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold">Tools & Function Calling</h3>
+                <VoiceAgentToolsManager appId={appId} agentId={agent.id} />
               </div>
             </div>
 

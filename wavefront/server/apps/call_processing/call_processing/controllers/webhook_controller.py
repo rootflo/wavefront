@@ -276,6 +276,7 @@ async def websocket_endpoint(
             llm_config=configs['llm_config'],
             tts_config=configs['tts_config'],
             stt_config=configs['stt_config'],
+            tools=configs['tools'],
         )
 
     except Exception as e:

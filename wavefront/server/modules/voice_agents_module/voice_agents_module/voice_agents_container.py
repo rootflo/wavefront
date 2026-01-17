@@ -5,6 +5,8 @@ from db_repo_module.models.tts_config import TtsConfig
 from db_repo_module.models.stt_config import SttConfig
 from db_repo_module.models.voice_agent import VoiceAgent
 from db_repo_module.models.llm_inference_config import LlmInferenceConfig
+from db_repo_module.models.voice_agent_tool import VoiceAgentTool
+from db_repo_module.models.voice_agent_tool_association import VoiceAgentToolAssociation
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from voice_agents_module.services.telephony_config_service import TelephonyConfigService
 from voice_agents_module.services.tts_config_service import TtsConfigService
@@ -12,6 +14,7 @@ from voice_agents_module.services.stt_config_service import SttConfigService
 from voice_agents_module.services.voice_agent_service import VoiceAgentService
 from voice_agents_module.services.twilio_service import TwilioService
 from voice_agents_module.services.tts_generator_service import TTSGeneratorService
+from voice_agents_module.services.tool_service import ToolService
 
 
 class VoiceAgentsContainer(containers.DeclarativeContainer):
@@ -50,6 +53,18 @@ class VoiceAgentsContainer(containers.DeclarativeContainer):
     voice_agent_repository = providers.Singleton(
         SQLAlchemyRepository[VoiceAgent],
         model=VoiceAgent,
+        db_client=db_client,
+    )
+
+    tool_repository = providers.Singleton(
+        SQLAlchemyRepository[VoiceAgentTool],
+        model=VoiceAgentTool,
+        db_client=db_client,
+    )
+
+    tool_association_repository = providers.Singleton(
+        SQLAlchemyRepository[VoiceAgentToolAssociation],
+        model=VoiceAgentToolAssociation,
         db_client=db_client,
     )
 
@@ -92,4 +107,11 @@ class VoiceAgentsContainer(containers.DeclarativeContainer):
     twilio_service = providers.Singleton(
         TwilioService,
         call_processing_base_url=config.voice_agents.call_processing_base_url,
+    )
+
+    tool_service = providers.Singleton(
+        ToolService,
+        tool_repository=tool_repository,
+        tool_association_repository=tool_association_repository,
+        cache_manager=cache_manager,
     )

@@ -214,3 +214,49 @@ class FlowareHttpClient:
                     f'Request error fetching welcome message URL for agent {agent_id}: {e}'
                 )
                 raise
+
+    async def get_agent_tools(self, agent_id: UUID) -> list:
+        """
+        Get all tools for a voice agent (with real credentials for execution).
+
+        Args:
+            agent_id: Voice agent UUID
+
+        Returns:
+            List of tool dicts with association details and real credentials, or empty list if none found
+
+        Raises:
+            httpx.HTTPStatusError: If API returns 4xx/5xx error (except 404)
+            httpx.RequestError: If request fails (network error, timeout, etc.)
+        """
+        url = f'{self.base_url}/floware/v1/voice-agents/{agent_id}/tools?include_credentials=true'
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            try:
+                response = await client.get(url, headers=self._get_headers())
+                response.raise_for_status()
+
+                # Extract tools from response
+                data = response.json()
+                if 'data' in data:
+                    # Handle response_formatter wrapped response
+                    tools_data = data['data']
+                    if isinstance(tools_data, dict) and 'tools' in tools_data:
+                        return tools_data['tools']
+                    elif isinstance(tools_data, list):
+                        return tools_data
+                    return []
+                return data.get('tools', []) if isinstance(data, dict) else []
+
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404:
+                    logger.info(f'No tools found for agent: {agent_id}')
+                    return []
+                logger.error(
+                    f'HTTP error fetching tools for agent {agent_id}: '
+                    f'status={e.response.status_code}'
+                )
+                raise
+            except httpx.RequestError as e:
+                logger.error(f'Request error fetching tools for agent {agent_id}: {e}')
+                raise
