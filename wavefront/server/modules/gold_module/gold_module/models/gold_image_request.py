@@ -28,14 +28,14 @@ class ImageMetadata(BaseModel):
     item_id: str = None  # Unique indentifier for gold image
 
     timestamp: datetime = None
-    loan_date: datetime = None
+    loan_date: datetime
     gold_loan_category: str = None
     loan_tenure: int = None
     loan_amount: float = None
 
-    gross_weight: float = None
-    stone_weight: float = None
-    net_weight: float = None
+    gross_weight: float
+    stone_weight: float
+    net_weight: float
     jewellery_items_count: int = None
     gold_purity: float = None
 
@@ -85,6 +85,4 @@ class ImageMetadata(BaseModel):
 
 class ImageAnalysisRequest(BaseModel):
     image: str  # data URL (base64 with MIME) or direct URL
-    metadata: ImageMetadata = (
-        ImageMetadata()
-    )  # Ensure metadata is always an ImageMetadata instance
+    metadata: ImageMetadata
