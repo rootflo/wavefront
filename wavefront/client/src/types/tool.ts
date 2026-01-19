@@ -97,12 +97,12 @@ export interface ApiToolConfig {
  * Python Tool Configuration (Phase 2)
  */
 export interface PythonToolConfig {
-  code_storage_key?: string;
-  cloud_run_url?: string;
+  code_storage_key: string;
+  cloud_run_url: string;
+  timeout?: number;
   resource_limits?: {
     cpu?: string;
     memory?: string;
-    timeout?: number;
   };
 }
 

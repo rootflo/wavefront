@@ -325,8 +325,34 @@ class ToolWrapperFactory:
 
                 # Apply config overrides if present
                 config_overrides = tool.get('association', {}).get('config_overrides')
-                if config_overrides and hasattr(wrapper, 'config'):
-                    wrapper.config.update(config_overrides)
+                if config_overrides:
+                    if isinstance(wrapper, ApiToolWrapper):
+                        # For ApiToolWrapper, set attributes directly
+                        allowed_attrs = {
+                            'url',
+                            'method',
+                            'headers',
+                            'auth_type',
+                            'auth_credentials',
+                            'timeout',
+                        }
+                        for key, value in config_overrides.items():
+                            if key in allowed_attrs:
+                                if hasattr(wrapper, key):
+                                    setattr(wrapper, key, value)
+                                    logger.debug(
+                                        f"Applied config override for tool '{tool['name']}': {key}={value}"
+                                    )
+                            else:
+                                logger.debug(
+                                    f"Ignoring unknown config override key for tool '{tool['name']}': {key}"
+                                )
+                    elif hasattr(wrapper, 'config'):
+                        # For wrappers with config dict (e.g., PythonToolWrapper)
+                        wrapper.config.update(config_overrides)
+                        logger.debug(
+                            f"Applied config overrides for tool '{tool['name']}': {config_overrides}"
+                        )
 
                 # Create Pipecat FunctionSchema and callable function
                 function_schema, callable_func = (

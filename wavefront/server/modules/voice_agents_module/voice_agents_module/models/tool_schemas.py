@@ -4,6 +4,8 @@ from enum import Enum
 from datetime import datetime
 import uuid
 import re
+import ipaddress
+from urllib.parse import urlparse
 
 # Sentinel value for partial updates
 UNSET = object()
@@ -50,23 +52,27 @@ class ApiToolConfig(BaseModel):
     @field_validator('url')
     @classmethod
     def validate_url(cls, v):
-        # Basic URL validation
-        if not v.startswith(('http://', 'https://')):
+        parsed = urlparse(v)
+        if parsed.scheme not in {'http', 'https'}:
             raise ValueError('URL must start with http:// or https://')
-        # Reject localhost and internal IPs
-        if any(
-            host in v.lower()
-            for host in [
-                'localhost',
-                '127.0.0.1',
-                '0.0.0.0',
-                '::1',
-                '10.',
-                '192.168.',
-                '172.16.',
-            ]
-        ):
+        host = parsed.hostname
+        if not host:
+            raise ValueError('URL must include a hostname')
+        if host in {'localhost'}:
             raise ValueError('Cannot use localhost or internal IP addresses')
+        try:
+            ip = ipaddress.ip_address(host)
+            if (
+                ip.is_private
+                or ip.is_loopback
+                or ip.is_link_local
+                or ip.is_reserved
+                or ip.is_multicast
+            ):
+                raise ValueError('Cannot use localhost or internal IP addresses')
+        except ValueError:
+            # Non-IP hostnames are allowed (optionally add DNS-based checks)
+            pass
         return v
 
     @field_validator('auth_type')
@@ -204,6 +210,43 @@ class UpdateToolPayload(BaseModel):
             raise ValueError(
                 'Name must follow Python function naming: lowercase letters, numbers, underscores only'
             )
+        return v
+
+    @field_validator('config')
+    @classmethod
+    def validate_config(cls, v, info):
+        """
+        Validate config structure when both config and tool_type are provided.
+        Note: Service-level validation handles cases where only config is updated.
+        """
+        if v is UNSET:
+            return v
+
+        # Only validate if tool_type is also provided in this update
+        tool_type = info.data.get('tool_type')
+        if tool_type is UNSET or tool_type is None:
+            # Config will be validated at service layer against existing tool_type
+            return v
+
+        # Handle both enum and string values
+        tool_type_value = (
+            tool_type
+            if isinstance(tool_type, str)
+            else (tool_type.value if tool_type else None)
+        )
+
+        if tool_type_value == 'api':
+            # Validate as ApiToolConfig
+            try:
+                ApiToolConfig(**v)
+            except Exception as e:
+                raise ValueError(f'Invalid API tool config: {str(e)}')
+        elif tool_type_value == 'python':
+            # Validate as PythonToolConfig
+            try:
+                PythonToolConfig(**v)
+            except Exception as e:
+                raise ValueError(f'Invalid Python tool config: {str(e)}')
         return v
 
     @field_validator('parameter_schema')

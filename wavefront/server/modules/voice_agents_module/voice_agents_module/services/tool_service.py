@@ -13,6 +13,9 @@ from voice_agents_module.models.tool_schemas import (
     UpdateToolPayload,
     AttachToolToAgentPayload,
     UpdateAgentToolPayload,
+    ToolType,
+    ApiToolConfig,
+    PythonToolConfig,
     UNSET,
 )
 from voice_agents_module.utils.cache_invalidation import (
@@ -69,9 +72,7 @@ class ToolService:
         """
         try:
             # Check if tool with same name exists
-            existing = await self.tool_repository.find_one(
-                name=payload.name, is_deleted=False
-            )
+            existing = await self.tool_repository.find_one(name=payload.name)
             if existing:
                 raise ValueError(f'Tool with name "{payload.name}" already exists')
 
@@ -225,6 +226,41 @@ class ToolService:
             for field, value in payload.model_dump().items():
                 if value is not UNSET:
                     update_data[field] = value
+
+            # Validate and normalize tool_type if provided
+            if 'tool_type' in update_data:
+                tool_type_value = update_data['tool_type']
+                # Convert enum to string value if needed
+                if hasattr(tool_type_value, 'value'):
+                    tool_type_value = tool_type_value.value
+                tool_type_value = str(tool_type_value).lower()
+                # Validate against ToolType enum
+                valid_types = {t.value for t in ToolType}
+                if tool_type_value not in valid_types:
+                    raise ValueError(
+                        f'Invalid tool_type: {tool_type_value}. Must be one of {valid_types}'
+                    )
+                update_data['tool_type'] = tool_type_value
+
+            # Validate config against the appropriate schema
+            if 'config' in update_data and isinstance(update_data['config'], dict):
+                tool_type_value = update_data.get('tool_type')
+                if not tool_type_value:
+                    tool_type_value = tool.tool_type
+                tool_type_value = (
+                    tool_type_value.value
+                    if hasattr(tool_type_value, 'value')
+                    else str(tool_type_value).lower()
+                )
+                try:
+                    if tool_type_value == 'api':
+                        ApiToolConfig(**update_data['config'])
+                    elif tool_type_value == 'python':
+                        PythonToolConfig(**update_data['config'])
+                except Exception as e:
+                    raise ValueError(
+                        f'Invalid config for tool type {tool_type_value}: {str(e)}'
+                    )
 
             # Handle credentials in config updates
             if 'config' in update_data and isinstance(update_data['config'], dict):

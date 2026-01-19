@@ -169,18 +169,24 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
       }
     }
 
-    // Build TTS parameters (filter out empty values)
+    // Build TTS parameters (filter out empty values + unsupported keys)
+    const allowedTtsKeys = new Set(
+      Object.keys(ttsProviderConfig?.parameters ?? {}).filter((key) => key !== 'language')
+    );
     const builtTtsParameters: Record<string, unknown> = {};
     Object.entries(ttsParameters).forEach(([key, value]) => {
-      if (value !== '' && value !== undefined && value !== null) {
+      if (allowedTtsKeys.has(key) && value !== '' && value !== undefined && value !== null) {
         builtTtsParameters[key] = value;
       }
     });
 
-    // Build STT parameters (filter out empty values)
+    // Build STT parameters (filter out empty values + unsupported keys)
+    const allowedSttKeys = new Set(
+      Object.keys(sttProviderConfig?.parameters ?? {}).filter((key) => key !== 'language')
+    );
     const builtSttParameters: Record<string, unknown> = {};
     Object.entries(sttParameters).forEach(([key, value]) => {
-      if (value !== '' && value !== undefined && value !== null) {
+      if (allowedSttKeys.has(key) && value !== '' && value !== undefined && value !== null) {
         builtSttParameters[key] = value;
       }
     });

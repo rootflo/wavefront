@@ -150,7 +150,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Restore phone_numbers column to telephony_configs table
+    # Restore phone_numbers column to telephony_configs table (won't restore data)
     op.add_column(
         'telephony_configs', sa.Column('phone_numbers', sa.Text(), nullable=True)
     )

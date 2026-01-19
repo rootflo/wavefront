@@ -54,7 +54,12 @@ async def inbound_webhook(
         To: Called phone number (E.164 format, the inbound number)
         CallSid: Twilio call identifier
     """
-    logger.info(f'Inbound call received: From={From}, To={To}, CallSid={CallSid}')
+    # Mask phone numbers for privacy (show last 4 digits only)
+    masked_from = f'***{From[-4:]}' if len(From) > 4 else '****'
+    masked_to = f'***{To[-4:]}' if len(To) > 4 else '****'
+    logger.info(
+        f'Inbound call received: From={masked_from}, To={masked_to}, CallSid={CallSid}'
+    )
 
     # Look up agent by inbound number
     agent = await voice_agent_cache_service.get_agent_by_inbound_number(To)

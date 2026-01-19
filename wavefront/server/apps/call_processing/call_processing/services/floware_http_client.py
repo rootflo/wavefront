@@ -156,11 +156,16 @@ class FlowareHttpClient:
                 return data
 
             except httpx.HTTPStatusError as e:
+                redacted = (
+                    f'{phone_number[:2]}****{phone_number[-2:]}'
+                    if phone_number
+                    else 'unknown'
+                )
                 if e.response.status_code == 404:
-                    logger.info(f'No agent found for inbound number: {phone_number}')
+                    logger.info(f'No agent found for inbound number: {redacted}')
                     return None
                 logger.error(
-                    f'HTTP error fetching agent by inbound number {phone_number}: '
+                    f'HTTP error fetching agent by inbound number {redacted}: '
                     f'status={e.response.status_code}'
                 )
                 raise

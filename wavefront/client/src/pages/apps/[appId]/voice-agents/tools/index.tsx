@@ -29,7 +29,7 @@ const ToolsPage: React.FC = () => {
   const [editItem, setEditItem] = useState<VoiceAgentTool | null>(null);
 
   // Fetch tools
-  const { data: tools = [], isLoading: toolsLoading } = useGetVoiceAgentTools(app);
+  const { data: tools = [], isLoading: toolsLoading, isError, error } = useGetVoiceAgentTools(app);
 
   const handleDeleteClick = (e: React.MouseEvent, tool: VoiceAgentTool) => {
     e.stopPropagation();
@@ -124,7 +124,16 @@ const ToolsPage: React.FC = () => {
           </div>
         </div>
 
-        {toolsLoading ? (
+        {isError ? (
+          <div className="mt-10 flex justify-center">
+            <EmptyStateCard
+              title="Error loading tools"
+              description={extractErrorMessage(error) || 'Failed to fetch voice agent tools. Please try again.'}
+              actionText="Retry"
+              onActionClick={() => queryClient.invalidateQueries({ queryKey: getVoiceAgentToolsKey(app || '') })}
+            />
+          </div>
+        ) : toolsLoading ? (
           <div className="flex justify-center py-10">
             <div className="text-gray-500">Loading tools...</div>
           </div>
