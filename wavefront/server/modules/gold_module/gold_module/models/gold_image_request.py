@@ -10,6 +10,7 @@ class Item(BaseModel):
     item_description: str = None
     item_gross_weight: float = None
     item_stone_weight: float = None
+    item_net_weight: float = None
     item_purity: float = None
     model_config = ConfigDict(extra='ignore')
 
@@ -33,9 +34,9 @@ class ImageMetadata(BaseModel):
     loan_tenure: int = None
     loan_amount: float = None
 
-    gross_weight: float
-    stone_weight: float
-    net_weight: float
+    gross_weight: float = None
+    stone_weight: float = None
+    net_weight: float = None
     jewellery_items_count: int = None
     gold_purity: float = None
 
