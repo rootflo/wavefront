@@ -260,6 +260,8 @@ class BigQueryClient:
             if params:
                 job_config.query_parameters = self._get_query_params(params)
 
+            logger.debug(f'Executing query: {query}')
+            logger.debug(f'Job config: {job_config}')
             query_job = self.client.query(query, job_config=job_config)
             results = query_job.result(timeout=self.timeout)
 
