@@ -9,7 +9,7 @@ import base64
 from typing import Dict, Any, List, Tuple, Callable, Optional
 import httpx
 
-from common_module.log.logger import logger
+from call_processing.log.logger import logger
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 
 
