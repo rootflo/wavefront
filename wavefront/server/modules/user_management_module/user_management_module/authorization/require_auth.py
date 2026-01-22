@@ -264,14 +264,18 @@ async def validate_mtls_auth(request: Request) -> bool:
         if not xfcc:
             return False
 
-        # Extract SPIFFE ID from URI field
-        # Format: Hash=...;URI=spiffe://...;...
+        # Extract SPIFFE ID from URI field or use the whole header if it's a SPIFFE ID
+        principal = None
         match = re.search(r'URI=(spiffe://[^;,]+)', xfcc)
         if match:
             principal = match.group(1)
+        elif xfcc.startswith('spiffe://'):
+            principal = xfcc
+
+        if principal:
             if not principal.startswith(
                 'spiffe://cluster.local/ns/client-applications'
-            ):
+            ) and not principal.startswith('spiffe://cluster.local/ns/gpu-processing'):
                 logger.error(f'Invalid mTLS authentication. Principal: {principal}')
                 return False
 
@@ -290,7 +294,7 @@ async def validate_mtls_auth(request: Request) -> bool:
 
         request_id = getattr(request.state, 'request_id', get_current_request_id())
         logger.warning(
-            f'mTLS header present but no valid URI found: {xfcc} [Request ID: {request_id}]'
+            f'mTLS header present but no valid principal found: {xfcc} [Request ID: {request_id}]'
         )
         return False
 
@@ -331,8 +335,9 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
             if request.method == 'OPTIONS':
                 return await call_next(request)
 
+            authorization = request.headers.get('Authorization')
             # Check if this endpoint requires HMAC validation (skip JWT validation then)
-            if request.url.path in required_hmac_apis:
+            if request.url.path in required_hmac_apis and not authorization:
                 if not await validate_hmac_signature(request, auth_secrets_repository):
                     request_id = getattr(
                         request.state, 'request_id', get_current_request_id()
@@ -363,9 +368,8 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                             'Invalid service authentication'
                         ),
                     )
-            else:  # Do the JWT validation or passthrough
-                authorization = request.headers.get('Authorization')
-
+            else:
+                # Normal auth token flow
                 token = None
                 if authorization and authorization.startswith('Bearer '):
                     token = authorization.split(' ')[1]
@@ -418,9 +422,21 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                     return await call_next(request)
 
                 # Check for mTLS authentication if no token is present
-                if request.headers.get('X-Forwarded-Client-Cert'):
+                mtls_header = request.headers.get('X-Forwarded-Client-Cert')
+                if mtls_header and not token:
+                    logger.info(f'mTLS authentication by {mtls_header}')
                     if await validate_mtls_auth(request):
                         return await call_next(request)
+                    else:
+                        logger.error(
+                            f'Invalid mTLS authentication for {request.url.path}'
+                        )
+                        return JSONResponse(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            content=response_formatter.buildErrorResponse(
+                                error='Invalid mTLS authentication'
+                            ),
+                        )
 
                 if not token:
                     request_id = getattr(

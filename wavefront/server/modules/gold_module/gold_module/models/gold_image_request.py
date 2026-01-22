@@ -10,6 +10,7 @@ class Item(BaseModel):
     item_description: str = None
     item_gross_weight: float = None
     item_stone_weight: float = None
+    item_net_weight: float = None
     item_purity: float = None
     model_config = ConfigDict(extra='ignore')
 
@@ -28,7 +29,7 @@ class ImageMetadata(BaseModel):
     item_id: str = None  # Unique indentifier for gold image
 
     timestamp: datetime = None
-    loan_date: datetime = None
+    loan_date: datetime
     gold_loan_category: str = None
     loan_tenure: int = None
     loan_amount: float = None
@@ -41,11 +42,11 @@ class ImageMetadata(BaseModel):
 
     items: List[Item] = None
 
-    metadata_1: str = None
-    metadata_2: str = None
-    metadata_3: str = None
-    metadata_4: str = None
-    metadata_5: str = None
+    metadata_1: dict = None
+    metadata_2: dict = None
+    metadata_3: dict = None
+    metadata_4: dict = None
+    metadata_5: dict = None
 
     filter_1: str = None
     filter_2: str = None
@@ -85,6 +86,4 @@ class ImageMetadata(BaseModel):
 
 class ImageAnalysisRequest(BaseModel):
     image: str  # data URL (base64 with MIME) or direct URL
-    metadata: ImageMetadata = (
-        ImageMetadata()
-    )  # Ensure metadata is always an ImageMetadata instance
+    metadata: ImageMetadata

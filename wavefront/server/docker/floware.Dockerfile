@@ -39,6 +39,12 @@ COPY wavefront/server/apps/floware /app/apps/floware
 
 RUN uv sync --package floware --frozen --no-dev
 
+# Create a non-root user and change ownership of the /app directory
+RUN useradd -m -u 1000 floware && \
+    chown -R floware:floware /app
+
+USER floware
+
 WORKDIR /app/apps/floware/floware
 
 CMD ["uv", "run", "server.py"]

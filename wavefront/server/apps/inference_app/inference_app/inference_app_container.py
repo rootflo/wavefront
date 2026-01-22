@@ -20,12 +20,12 @@ class InferenceAppContainer(containers.DeclarativeContainer):
         cloud_storage_manager=cloud_storage_manager,
     )
 
-    model_inference = providers.Factory(ModelInferenceService)
+    model_inference = providers.Singleton(ModelInferenceService)
 
-    image_analyser = providers.Factory(
+    image_analyser = providers.Singleton(
         ImageClarityService,
     )
 
-    image_embedding = providers.Factory(
+    image_embedding = providers.Singleton(
         ImageEmbedding,
     )
