@@ -6,7 +6,7 @@ Handles TwiML generation and WebSocket audio streaming
 
 import os
 from uuid import UUID
-from fastapi import APIRouter, WebSocket, Query, Depends
+from fastapi import APIRouter, WebSocket, Query, Depends, Form
 from fastapi.responses import Response
 from twilio.twiml.voice_response import VoiceResponse, Connect, Stream
 from call_processing.log.logger import logger
@@ -33,6 +33,105 @@ from call_processing.di.application_container import ApplicationContainer
 webhook_router = APIRouter()
 
 
+@webhook_router.post('/inbound')
+@inject
+async def inbound_webhook(
+    From: str = Form(...),
+    To: str = Form(...),
+    CallSid: str = Form(...),
+    voice_agent_cache_service: VoiceAgentCacheService = Depends(
+        Provide[ApplicationContainer.voice_agent_cache_service]
+    ),
+):
+    """
+    Twilio inbound webhook endpoint
+
+    Called by Twilio when an inbound call is received.
+    Looks up the voice agent by inbound phone number and redirects to TwiML endpoint.
+
+    Form params (from Twilio):
+        From: Caller's phone number (E.164 format)
+        To: Called phone number (E.164 format, the inbound number)
+        CallSid: Twilio call identifier
+    """
+    # Mask phone numbers for privacy (show last 4 digits only)
+    masked_from = f'***{From[-4:]}' if len(From) > 4 else '****'
+    masked_to = f'***{To[-4:]}' if len(To) > 4 else '****'
+    logger.info(
+        f'Inbound call received: From={masked_from}, To={masked_to}, CallSid={CallSid}'
+    )
+
+    # Look up agent by inbound number
+    agent = await voice_agent_cache_service.get_agent_by_inbound_number(To)
+
+    if not agent:
+        logger.error(f'No voice agent found for inbound number: {To}')
+        # Return TwiML with error message
+        response = VoiceResponse()
+        response.say('Sorry, this number is not configured for voice services.')
+        response.hangup()
+        return Response(content=str(response), media_type='application/xml')
+
+    agent_id = agent['id']
+    logger.info(f'Agent found for inbound number {To}: {agent_id} ({agent["name"]})')
+
+    # Generate welcome message audio URL
+    welcome_message_audio_url = ''
+    if agent.get('welcome_message'):
+        try:
+            # Note: This assumes voice_agent_cache_service has this method
+            # We'll implement it in the next step
+            welcome_message_audio_url = (
+                await voice_agent_cache_service.get_welcome_message_audio_url(agent_id)
+            )
+        except Exception as e:
+            logger.error(f'Failed to get welcome message URL: {e}')
+            # Continue without welcome message
+
+    # Build WebSocket URL
+    base_url = os.getenv('CALL_PROCESSING_BASE_URL', 'http://localhost:8003')
+
+    # Convert https:// to wss:// (or http:// to ws://)
+    if base_url.startswith('https://'):
+        websocket_url = base_url.replace('https://', 'wss://')
+    elif base_url.startswith('http://'):
+        websocket_url = base_url.replace('http://', 'ws://')
+    else:
+        websocket_url = f'wss://{base_url}'
+
+    websocket_url = f'{websocket_url}/webhooks/ws'
+
+    logger.info(f'WebSocket URL: {websocket_url}')
+
+    # Generate TwiML response
+    response = VoiceResponse()
+
+    # Play welcome message audio if URL is provided
+    if welcome_message_audio_url:
+        response.play(welcome_message_audio_url)
+    else:
+        logger.warning(
+            'No welcome message audio URL provided, skipping welcome message'
+        )
+
+    connect = Connect()
+    stream = Stream(url=websocket_url)
+
+    # Pass parameters to WebSocket stream
+    stream.parameter(name='voice_agent_id', value=agent_id)
+
+    connect.append(stream)
+    response.append(connect)
+
+    # Pause for 60 seconds before auto-hangup (adjust as needed)
+    response.pause(length=60)
+
+    twiml_xml = str(response)
+    logger.info(f'Returning TwiML: {twiml_xml}')
+
+    return Response(content=twiml_xml, media_type='application/xml')
+
+
 @webhook_router.post('/twiml')
 async def twiml_endpoint(
     voice_agent_id: str = Query(...),
@@ -41,7 +140,7 @@ async def twiml_endpoint(
     """
     Twilio TwiML endpoint
 
-    Called by Twilio when call connects.
+    Called by Twilio when call connects (directly or via inbound webhook redirect).
     Returns TwiML XML with WebSocket connection instructions.
 
     Query params:
@@ -80,7 +179,7 @@ async def twiml_endpoint(
     connect = Connect()
     stream = Stream(url=websocket_url)
 
-    # Pass voice_agent_id as stream parameter
+    # Pass parameters to WebSocket stream
     stream.parameter(name='voice_agent_id', value=voice_agent_id)
 
     connect.append(stream)
@@ -121,7 +220,7 @@ async def websocket_endpoint(
         logger.info(f'Auto-detected transport: {transport_type}')
         logger.info(f'Call data: {call_data}')
 
-        # Extract voice_agent_id from stream parameters
+        # Extract parameters from stream
         body_data = call_data.get('body', {})
         voice_agent_id = body_data.get('voice_agent_id')
 
@@ -182,6 +281,7 @@ async def websocket_endpoint(
             llm_config=configs['llm_config'],
             tts_config=configs['tts_config'],
             stt_config=configs['stt_config'],
+            tools=configs['tools'],
         )
 
     except Exception as e:

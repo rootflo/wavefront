@@ -11,7 +11,7 @@ import { MessageProcessor, MessageProcessorListItem } from '@app/types/message-p
 import { Pipeline, PipelineFile, PipelineStatus } from '@app/types/pipeline';
 import { SttConfig } from '@app/types/stt-config';
 import { TelephonyConfig } from '@app/types/telephony-config';
-import { ToolDetails } from '@app/types/tool';
+import { ToolDetails, VoiceAgentTool, VoiceAgentToolWithAssociation } from '@app/types/tool';
 import { TtsConfig } from '@app/types/tts-config';
 import { IUser } from '@app/types/user';
 import { VoiceAgent } from '@app/types/voice-agent';
@@ -371,6 +371,31 @@ const getAppByIdFn = async (appId: string) => {
   return data?.app;
 };
 
+// Voice Agent Tools Query Functions
+const getVoiceAgentToolsQueryFn = async (): Promise<VoiceAgentTool[]> => {
+  const response = await floConsoleService.toolService.listTools();
+  if (response.data?.meta?.status === 'success' && response.data.data?.tools) {
+    return response.data.data.tools;
+  }
+  return [];
+};
+
+const getVoiceAgentToolQueryFn = async (toolId: string): Promise<VoiceAgentTool | null> => {
+  const response = await floConsoleService.toolService.getTool(toolId);
+  if (response.data?.meta?.status === 'success' && response.data.data) {
+    return response.data.data;
+  }
+  return null;
+};
+
+const getAgentToolsQueryFn = async (agentId: string): Promise<VoiceAgentToolWithAssociation[]> => {
+  const response = await floConsoleService.toolService.getAgentTools(agentId);
+  if (response.data?.meta?.status === 'success' && response.data.data?.tools) {
+    return response.data.data.tools;
+  }
+  return [];
+};
+
 const getUsersQueryFn = async (): Promise<IUser[]> => {
   const response = await floConsoleService.userService.listUsers();
   if (response.data?.data?.users && Array.isArray(response.data.data.users)) {
@@ -382,6 +407,7 @@ const getUsersQueryFn = async (): Promise<IUser[]> => {
 export {
   getAgentQueryFn,
   getAgentsQueryFn,
+  getAgentToolsQueryFn,
   getAllAppsQueryFn,
   getAllDatasourcesQueryFn,
   getAllYamlsQueryFn,
@@ -414,11 +440,13 @@ export {
   getToolsQueryFn,
   getTtsConfigQueryFn,
   getTtsConfigsQueryFn,
+  getUsersQueryFn,
   getVoiceAgentQueryFn,
+  getVoiceAgentToolQueryFn,
+  getVoiceAgentToolsQueryFn,
   getVoiceAgentsQueryFn,
   getWorkflowPipelinesQueryFn,
   getWorkflowRunsQueryFn,
   getWorkflowsQueryFn,
-  getUsersQueryFn,
   readYamlQueryFn,
 };

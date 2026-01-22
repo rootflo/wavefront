@@ -42,7 +42,6 @@ class TelephonyConfigService:
         provider: str = None,
         connection_type: str = None,
         credentials: dict = None,
-        phone_numbers: list = None,
         webhook_config: Optional[WebhookConfig] = None,
         sip_config: Optional[SipConfig] = None,
     ) -> dict:
@@ -54,8 +53,7 @@ class TelephonyConfigService:
             description: Optional description
             provider: Telephony provider
             connection_type: Connection type (websocket/sip)
-            credentials: Provider credentials
-            phone_numbers: List of phone numbers available for outbound calls
+            credentials: Provider credentials (e.g., Twilio account_sid, auth_token)
             webhook_config: Webhook configuration Pydantic model (optional)
             sip_config: SIP configuration Pydantic model (optional)
 
@@ -72,7 +70,6 @@ class TelephonyConfigService:
             provider=provider,
             connection_type=connection_type,
             credentials=json.dumps(credentials),
-            phone_numbers=json.dumps(phone_numbers),
             webhook_config=(
                 json.dumps(webhook_config.model_dump()) if webhook_config else None
             ),

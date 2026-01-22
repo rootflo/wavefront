@@ -9,6 +9,7 @@ import { getVoiceAgentsKey } from '@app/hooks/data/query-keys';
 import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { VoiceAgent } from '@app/types/voice-agent';
+import { getLanguageName } from '@app/constants/languages';
 import { useQueryClient } from '@tanstack/react-query';
 import { Pencil, Phone, Trash2 } from 'lucide-react';
 import React, { useState } from 'react';
@@ -133,6 +134,9 @@ const VoiceAgentsPage: React.FC = () => {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Description</TableHead>
+                  <TableHead>Inbound #s</TableHead>
+                  <TableHead>Outbound #s</TableHead>
+                  <TableHead>Languages</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Created</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -143,6 +147,20 @@ const VoiceAgentsPage: React.FC = () => {
                   <TableRow key={agent.id}>
                     <TableCell className="font-medium">{agent.name}</TableCell>
                     <TableCell className="max-w-md truncate">{agent.description || '-'}</TableCell>
+                    <TableCell>
+                      <span className="text-sm text-gray-600">{agent.inbound_numbers?.length || 0}</span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-sm text-gray-600">{agent.outbound_numbers?.length || 0}</span>
+                    </TableCell>
+                    <TableCell>
+                      <span
+                        className="text-sm text-gray-600"
+                        title={agent.supported_languages?.map(getLanguageName).join(', ')}
+                      >
+                        {agent.supported_languages?.length || 1} ({agent.default_language || 'en'})
+                      </span>
+                    </TableCell>
                     <TableCell>
                       <span
                         className={`rounded-full px-2 py-1 text-xs font-medium ${
@@ -216,7 +234,6 @@ const VoiceAgentsPage: React.FC = () => {
           <OutboundCallDialog
             isOpen={!!callItem}
             onOpenChange={(open) => !open && setCallItem(null)}
-            appId={app}
             agent={callItem}
           />
         )}

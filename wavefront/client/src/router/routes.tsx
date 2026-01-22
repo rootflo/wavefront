@@ -19,6 +19,7 @@ import VoiceAgentsPage from '@app/pages/apps/[appId]/voice-agents';
 import VoiceAgentsLayout from '@app/pages/apps/[appId]/voice-agents/layout';
 import SttConfigsPage from '@app/pages/apps/[appId]/voice-agents/stt-configs';
 import TelephonyConfigsPage from '@app/pages/apps/[appId]/voice-agents/telephony-configs';
+import ToolsPage from '@app/pages/apps/[appId]/voice-agents/tools';
 import TtsConfigsPage from '@app/pages/apps/[appId]/voice-agents/tts-configs';
 import WorkflowManagement from '@app/pages/apps/[appId]/workflows';
 import WorkflowDetail from '@app/pages/apps/[appId]/workflows/[id]';
@@ -171,6 +172,10 @@ const routes = {
             {
               index: true,
               element: <VoiceAgentsPage />,
+            },
+            {
+              path: 'tools',
+              element: <ToolsPage />,
             },
             {
               path: 'tts-configs',

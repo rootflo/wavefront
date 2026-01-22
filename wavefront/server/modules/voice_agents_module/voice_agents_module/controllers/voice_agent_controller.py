@@ -55,8 +55,15 @@ async def create_voice_agent(
         telephony_config_id=payload.telephony_config_id,
         system_prompt=payload.system_prompt,
         welcome_message=payload.welcome_message,
+        tts_voice_id=payload.tts_voice_id,
+        tts_parameters=payload.tts_parameters,
+        stt_parameters=payload.stt_parameters,
         conversation_config=payload.conversation_config,
         status=payload.status.value,
+        inbound_numbers=payload.inbound_numbers,
+        outbound_numbers=payload.outbound_numbers,
+        supported_languages=payload.supported_languages,
+        default_language=payload.default_language,
     )
 
     return JSONResponse(
@@ -174,6 +181,12 @@ async def update_voice_agent(
         update_data['system_prompt'] = payload.system_prompt
     if payload.welcome_message is not UNSET:
         update_data['welcome_message'] = payload.welcome_message
+    if payload.tts_voice_id is not UNSET:
+        update_data['tts_voice_id'] = payload.tts_voice_id
+    if payload.tts_parameters is not UNSET:
+        update_data['tts_parameters'] = payload.tts_parameters
+    if payload.stt_parameters is not UNSET:
+        update_data['stt_parameters'] = payload.stt_parameters
     if payload.conversation_config is not UNSET:
         update_data['conversation_config'] = (
             json.dumps(payload.conversation_config)
@@ -198,6 +211,14 @@ async def update_voice_agent(
                     f'Invalid status value. Must be one of: {valid_values}'
                 ),
             )
+    if payload.inbound_numbers is not UNSET:
+        update_data['inbound_numbers'] = payload.inbound_numbers
+    if payload.outbound_numbers is not UNSET:
+        update_data['outbound_numbers'] = payload.outbound_numbers
+    if payload.supported_languages is not UNSET:
+        update_data['supported_languages'] = payload.supported_languages
+    if payload.default_language is not UNSET:
+        update_data['default_language'] = payload.default_language
 
     if not update_data:
         return JSONResponse(
@@ -317,7 +338,36 @@ async def initiate_call(
             ),
         )
 
-    # Fetch telephony config
+    # Get outbound numbers from agent
+    outbound_numbers = agent_dict.get('outbound_numbers', [])
+    if (
+        not outbound_numbers
+        or not isinstance(outbound_numbers, list)
+        or len(outbound_numbers) == 0
+    ):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                'No outbound phone numbers configured for this agent'
+            ),
+        )
+
+    # Select from_number
+    from_number = payload.from_number
+    if from_number:
+        # Validate that provided from_number is in the agent's outbound numbers
+        if from_number not in outbound_numbers:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content=response_formatter.buildErrorResponse(
+                    f"from_number {from_number} is not in the agent's outbound numbers: {outbound_numbers}"
+                ),
+            )
+    else:
+        # Default to first outbound number
+        from_number = outbound_numbers[0]
+
+    # Fetch telephony config for Twilio credentials
     telephony_config_id = agent_dict.get('telephony_config_id')
     telephony_config = await voice_agent_service.telephony_config_service.get_config(
         telephony_config_id
@@ -330,35 +380,6 @@ async def initiate_call(
                 f'Telephony config not found with id: {telephony_config_id}'
             ),
         )
-
-    # Parse phone_numbers from telephony config
-    phone_numbers = telephony_config.get('phone_numbers')
-    if (
-        not phone_numbers
-        or not isinstance(phone_numbers, list)
-        or len(phone_numbers) == 0
-    ):
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(
-                'No phone numbers configured in telephony config'
-            ),
-        )
-
-    # Select from_number
-    from_number = payload.from_number
-    if from_number:
-        # Validate that provided from_number is in the configured numbers
-        if from_number not in phone_numbers:
-            return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content=response_formatter.buildErrorResponse(
-                    f'from_number {from_number} is not in the configured phone numbers: {phone_numbers}'
-                ),
-            )
-    else:
-        # Default to first configured number
-        from_number = phone_numbers[0]
 
     # Extract Twilio credentials from telephony config
     credentials = telephony_config.get('credentials', {})
@@ -413,3 +434,83 @@ async def initiate_call(
             }
         ),
     )
+
+
+@voice_agent_router.get('/v1/voice-agents/by-inbound-number/{phone_number}')
+@inject
+async def get_voice_agent_by_inbound_number(
+    phone_number: str = Path(..., description='Inbound phone number (E.164 format)'),
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+    voice_agent_service: VoiceAgentService = Depends(
+        Provide[VoiceAgentsContainer.voice_agent_service]
+    ),
+):
+    """
+    Get voice agent by inbound phone number.
+
+    This endpoint is used by call_processing to lookup which agent handles
+    a specific inbound phone number.
+
+    Args:
+        phone_number: Inbound phone number in E.164 format
+
+    Returns:
+        JSONResponse: Voice agent details or 404 if not found
+    """
+    agent = await voice_agent_service.get_agent_by_inbound_number(phone_number)
+
+    if not agent:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse(
+                f'No voice agent found for inbound number: {phone_number}'
+            ),
+        )
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(agent),
+    )
+
+
+@voice_agent_router.get('/v1/voice-agents/{agent_id}/welcome-audio-url')
+@inject
+async def get_welcome_audio_url(
+    agent_id: UUID = Path(..., description='The ID of the voice agent'),
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+    voice_agent_service: VoiceAgentService = Depends(
+        Provide[VoiceAgentsContainer.voice_agent_service]
+    ),
+):
+    """
+    Get welcome message audio presigned URL for a voice agent.
+
+    Returns a presigned URL (2-hour expiration) for accessing the agent's
+    welcome message audio file from cloud storage.
+
+    Args:
+        agent_id: UUID of the voice agent
+
+    Returns:
+        JSONResponse: Object with 'url' field containing presigned URL
+    """
+    try:
+        url = await voice_agent_service.get_welcome_message_audio_url(agent_id)
+
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content=response_formatter.buildSuccessResponse({'url': url}),
+        )
+
+    except Exception as e:
+        logger.error(f'Failed to get welcome audio URL for agent {agent_id}: {str(e)}')
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content=response_formatter.buildErrorResponse(
+                f'Failed to generate welcome message URL: {str(e)}'
+            ),
+        )

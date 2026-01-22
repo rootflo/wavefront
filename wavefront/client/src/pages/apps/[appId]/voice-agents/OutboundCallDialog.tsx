@@ -11,7 +11,6 @@ import {
 import { Input } from '@app/components/ui/input';
 import { Label } from '@app/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
-import { useGetTelephonyConfig } from '@app/hooks/data/fetch-hooks';
 import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { VoiceAgent } from '@app/types/voice-agent';
@@ -25,19 +24,17 @@ interface CallInfo {
 interface OutboundCallDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-  appId: string;
   agent: VoiceAgent;
 }
 
-const OutboundCallDialog: React.FC<OutboundCallDialogProps> = ({ isOpen, onOpenChange, appId, agent }) => {
+const OutboundCallDialog: React.FC<OutboundCallDialogProps> = ({ isOpen, onOpenChange, agent }) => {
   const { notifySuccess, notifyError } = useNotifyStore();
   const [toNumber, setToNumber] = useState('');
   const [fromNumber, setFromNumber] = useState('');
   const [callLoading, setCallLoading] = useState(false);
 
-  // Fetch the specific telephony config to get phone numbers for call initiation
-  const { data: currentTelephonyConfig } = useGetTelephonyConfig(appId, agent.telephony_config_id);
-  const availablePhoneNumbers = currentTelephonyConfig?.phone_numbers || [];
+  // Get outbound phone numbers from the voice agent (not telephony config)
+  const availablePhoneNumbers = agent.outbound_numbers || [];
 
   // E.164 phone number validation
   const isValidE164PhoneNumber = (phoneNumber: string): boolean => {

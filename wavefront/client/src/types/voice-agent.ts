@@ -13,8 +13,15 @@ export interface VoiceAgent {
   telephony_config_id: string;
   system_prompt: string;
   welcome_message: string;
+  tts_voice_id: string;
+  tts_parameters: Record<string, unknown> | null;
+  stt_parameters: Record<string, unknown> | null;
   conversation_config: Record<string, unknown> | null;
   status: 'active' | 'inactive';
+  inbound_numbers: string[];
+  outbound_numbers: string[];
+  supported_languages: string[];
+  default_language: string;
   is_deleted: boolean;
   created_at: string;
   updated_at: string;
@@ -32,8 +39,15 @@ export interface CreateVoiceAgentRequest {
   telephony_config_id: string;
   system_prompt: string;
   welcome_message: string;
+  tts_voice_id: string;
+  tts_parameters?: Record<string, unknown> | null;
+  stt_parameters?: Record<string, unknown> | null;
   conversation_config?: Record<string, unknown> | null;
   status?: 'active' | 'inactive';
+  inbound_numbers?: string[];
+  outbound_numbers?: string[];
+  supported_languages?: string[];
+  default_language?: string;
 }
 
 /**
@@ -49,8 +63,15 @@ export interface UpdateVoiceAgentRequest {
   telephony_config_id?: string;
   system_prompt?: string;
   welcome_message?: string;
+  tts_voice_id?: string;
+  tts_parameters?: Record<string, unknown> | null;
+  stt_parameters?: Record<string, unknown> | null;
   conversation_config?: Record<string, unknown> | null;
   status?: 'active' | 'inactive';
+  inbound_numbers?: string[];
+  outbound_numbers?: string[];
+  supported_languages?: string[];
+  default_language?: string;
 }
 
 /**

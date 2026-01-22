@@ -8,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@app/components/ui/dialog';
+import VoiceAgentToolsManager from './VoiceAgentToolsManager';
 import {
   Form,
   FormControl,
@@ -18,7 +19,10 @@ import {
   FormMessage,
 } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
+import { Label } from '@app/components/ui/label';
+import { Slider } from '@app/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
+import { Checkbox } from '@app/components/ui/checkbox';
 import {
   useGetLLMConfigs,
   useGetSttConfigs,
@@ -28,12 +32,17 @@ import {
 import { extractErrorMessage } from '@app/lib/utils';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { UpdateVoiceAgentRequest, VoiceAgent } from '@app/types/voice-agent';
+import { SUPPORTED_LANGUAGES, getLanguageDisplayName } from '@app/constants/languages';
+import { getProviderConfig } from '@app/config/voice-providers';
+import { getBooleanParameterWithDefault, getNumberParameterWithDefault } from '@app/utils/parameter-helpers';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeMirror from '@uiw/react-codemirror';
 import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
+
+const E164_REGEX = /^\+[1-9]\d{1,14}$/;
 
 const updateVoiceAgentSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100, 'Name must be 100 characters or less'),
@@ -42,10 +51,15 @@ const updateVoiceAgentSchema = z.object({
   tts_config_id: z.string().min(1, 'TTS configuration is required'),
   stt_config_id: z.string().min(1, 'STT configuration is required'),
   telephony_config_id: z.string().min(1, 'Telephony configuration is required'),
+  tts_voice_id: z.string().min(1, 'TTS Voice ID is required'),
   system_prompt: z.string().min(1, 'System prompt is required'),
   welcome_message: z.string().min(1, 'Welcome message is required'),
   conversation_config: z.string().optional(),
   status: z.enum(['active', 'inactive']),
+  inbound_numbers: z.string().optional(),
+  outbound_numbers: z.string().optional(),
+  supported_languages: z.array(z.string()).min(1, 'At least one language is required'),
+  default_language: z.string().min(1, 'Default language is required'),
 });
 
 type UpdateVoiceAgentInput = z.infer<typeof updateVoiceAgentSchema>;
@@ -75,6 +89,10 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
   const { data: sttConfigs = [] } = useGetSttConfigs(appId);
   const { data: telephonyConfigs = [] } = useGetTelephonyConfigs(appId);
 
+  // State for TTS/STT parameters (managed separately from form)
+  const [ttsParameters, setTtsParameters] = useState<Record<string, unknown>>({});
+  const [sttParameters, setSttParameters] = useState<Record<string, unknown>>({});
+
   const form = useForm<UpdateVoiceAgentInput>({
     resolver: zodResolver(updateVoiceAgentSchema),
     defaultValues: {
@@ -84,12 +102,27 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
       tts_config_id: agent.tts_config_id,
       stt_config_id: agent.stt_config_id,
       telephony_config_id: agent.telephony_config_id,
+      tts_voice_id: agent.tts_voice_id,
       system_prompt: agent.system_prompt,
       welcome_message: agent.welcome_message,
       conversation_config: agent.conversation_config ? JSON.stringify(agent.conversation_config, null, 2) : '{}',
       status: agent.status,
+      inbound_numbers: agent.inbound_numbers?.join(', ') || '',
+      outbound_numbers: agent.outbound_numbers?.join(', ') || '',
+      supported_languages: agent.supported_languages || ['en'],
+      default_language: agent.default_language || 'en',
     },
   });
+
+  // Watch for config changes to determine providers
+  const watchedTtsConfigId = form.watch('tts_config_id');
+  const watchedSttConfigId = form.watch('stt_config_id');
+
+  const selectedTtsProvider = ttsConfigs.find((c) => c.id === watchedTtsConfigId)?.provider;
+  const selectedSttProvider = sttConfigs.find((c) => c.id === watchedSttConfigId)?.provider;
+
+  const ttsProviderConfig = selectedTtsProvider ? getProviderConfig('tts', selectedTtsProvider) : null;
+  const sttProviderConfig = selectedSttProvider ? getProviderConfig('stt', selectedSttProvider) : null;
 
   // Reset form when dialog opens with agent data
   useEffect(() => {
@@ -101,13 +134,41 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
         tts_config_id: agent.tts_config_id,
         stt_config_id: agent.stt_config_id,
         telephony_config_id: agent.telephony_config_id,
+        tts_voice_id: agent.tts_voice_id,
         system_prompt: agent.system_prompt,
         welcome_message: agent.welcome_message,
         conversation_config: agent.conversation_config ? JSON.stringify(agent.conversation_config, null, 2) : '{}',
         status: agent.status,
+        inbound_numbers: agent.inbound_numbers?.join(', ') || '',
+        outbound_numbers: agent.outbound_numbers?.join(', ') || '',
+        supported_languages: agent.supported_languages || ['en'],
+        default_language: agent.default_language || 'en',
       });
     }
   }, [isOpen, agent, form]);
+
+  // Initialize TTS parameters when dialog opens - use only existing values, not merged with defaults
+  useEffect(() => {
+    if (isOpen) {
+      setTtsParameters(agent.tts_parameters || {});
+    }
+  }, [isOpen, agent.tts_parameters]);
+
+  // Initialize STT parameters when dialog opens - use only existing values, not merged with defaults
+  useEffect(() => {
+    if (isOpen) {
+      setSttParameters(agent.stt_parameters || {});
+    }
+  }, [isOpen, agent.stt_parameters]);
+
+  // Helper functions to update parameters
+  const setTtsParameter = (key: string, value: unknown) => {
+    setTtsParameters((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const setSttParameter = (key: string, value: unknown) => {
+    setSttParameters((prev) => ({ ...prev, [key]: value }));
+  };
 
   const onSubmit = async (data: UpdateVoiceAgentInput) => {
     // Validate JSON if provided
@@ -121,20 +182,147 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
       }
     }
 
+    // Build TTS parameters (filter out empty values + unsupported keys)
+    const allowedTtsKeys = new Set(
+      Object.keys(ttsProviderConfig?.parameters ?? {}).filter((key) => key !== 'language')
+    );
+    const builtTtsParameters: Record<string, unknown> = {};
+    Object.entries(ttsParameters).forEach(([key, value]) => {
+      if (allowedTtsKeys.has(key) && value !== '' && value !== undefined && value !== null) {
+        builtTtsParameters[key] = value;
+      }
+    });
+
+    // Build STT parameters (filter out empty values + unsupported keys)
+    const allowedSttKeys = new Set(
+      Object.keys(sttProviderConfig?.parameters ?? {}).filter((key) => key !== 'language')
+    );
+    const builtSttParameters: Record<string, unknown> = {};
+    Object.entries(sttParameters).forEach(([key, value]) => {
+      if (allowedSttKeys.has(key) && value !== '' && value !== undefined && value !== null) {
+        builtSttParameters[key] = value;
+      }
+    });
+
+    // Parse phone numbers (comma-separated)
+    const parsePhoneNumbers = (input: string): string[] => {
+      if (!input.trim()) return [];
+      return input
+        .split(',')
+        .map((num) => num.trim())
+        .filter((num) => num);
+    };
+
+    const inboundNumbers = parsePhoneNumbers(data.inbound_numbers || '');
+    const outboundNumbers = parsePhoneNumbers(data.outbound_numbers || '');
+
+    // Validate E.164 format
+    const invalidInbound = inboundNumbers.filter((num) => !E164_REGEX.test(num));
+    const invalidOutbound = outboundNumbers.filter((num) => !E164_REGEX.test(num));
+
+    if (invalidInbound.length > 0) {
+      notifyError(`Invalid inbound phone numbers (must be E.164 format): ${invalidInbound.join(', ')}`);
+      return;
+    }
+
+    if (invalidOutbound.length > 0) {
+      notifyError(`Invalid outbound phone numbers (must be E.164 format): ${invalidOutbound.join(', ')}`);
+      return;
+    }
+
+    // Validate default language is in supported languages
+    if (!data.supported_languages.includes(data.default_language)) {
+      notifyError('Default language must be one of the supported languages');
+      return;
+    }
+
     setUpdating(true);
     try {
-      const requestData: UpdateVoiceAgentRequest = {
-        name: data.name.trim(),
-        description: data.description?.trim() || null,
-        llm_config_id: data.llm_config_id.trim(),
-        tts_config_id: data.tts_config_id.trim(),
-        stt_config_id: data.stt_config_id.trim(),
-        telephony_config_id: data.telephony_config_id.trim(),
-        system_prompt: data.system_prompt.trim(),
-        welcome_message: data.welcome_message.trim(),
-        conversation_config: conversationConfig,
-        status: data.status,
-      };
+      // Build partial update - only include changed fields
+      const requestData: Partial<UpdateVoiceAgentRequest> = {};
+
+      if (data.name.trim() !== agent.name) {
+        requestData.name = data.name.trim();
+      }
+
+      const newDescription = data.description?.trim() || null;
+      if (newDescription !== (agent.description || null)) {
+        requestData.description = newDescription;
+      }
+
+      if (data.llm_config_id !== agent.llm_config_id) {
+        requestData.llm_config_id = data.llm_config_id;
+      }
+
+      if (data.tts_config_id !== agent.tts_config_id) {
+        requestData.tts_config_id = data.tts_config_id;
+      }
+
+      if (data.stt_config_id !== agent.stt_config_id) {
+        requestData.stt_config_id = data.stt_config_id;
+      }
+
+      if (data.telephony_config_id !== agent.telephony_config_id) {
+        requestData.telephony_config_id = data.telephony_config_id;
+      }
+
+      if (data.tts_voice_id.trim() !== agent.tts_voice_id) {
+        requestData.tts_voice_id = data.tts_voice_id.trim();
+      }
+
+      // Check if TTS parameters changed
+      const newTtsParams = Object.keys(builtTtsParameters).length > 0 ? builtTtsParameters : null;
+      if (JSON.stringify(newTtsParams) !== JSON.stringify(agent.tts_parameters || null)) {
+        requestData.tts_parameters = newTtsParams;
+      }
+
+      // Check if STT parameters changed
+      const newSttParams = Object.keys(builtSttParameters).length > 0 ? builtSttParameters : null;
+      if (JSON.stringify(newSttParams) !== JSON.stringify(agent.stt_parameters || null)) {
+        requestData.stt_parameters = newSttParams;
+      }
+
+      if (data.system_prompt.trim() !== agent.system_prompt) {
+        requestData.system_prompt = data.system_prompt.trim();
+      }
+
+      if (data.welcome_message.trim() !== agent.welcome_message) {
+        requestData.welcome_message = data.welcome_message.trim();
+      }
+
+      // Check if conversation config changed
+      if (JSON.stringify(conversationConfig) !== JSON.stringify(agent.conversation_config || null)) {
+        requestData.conversation_config = conversationConfig;
+      }
+
+      if (data.status !== agent.status) {
+        requestData.status = data.status;
+      }
+
+      // Check if phone numbers changed
+      if (JSON.stringify(inboundNumbers) !== JSON.stringify(agent.inbound_numbers || [])) {
+        requestData.inbound_numbers = inboundNumbers;
+      }
+
+      if (JSON.stringify(outboundNumbers) !== JSON.stringify(agent.outbound_numbers || [])) {
+        requestData.outbound_numbers = outboundNumbers;
+      }
+
+      // Check if languages changed
+      if (JSON.stringify(data.supported_languages) !== JSON.stringify(agent.supported_languages || ['en'])) {
+        requestData.supported_languages = data.supported_languages;
+      }
+
+      if (data.default_language !== agent.default_language) {
+        requestData.default_language = data.default_language;
+      }
+
+      // Only send request if there are changes
+      if (Object.keys(requestData).length === 0) {
+        notifySuccess('No changes to update');
+        onOpenChange(false);
+        return;
+      }
 
       await floConsoleService.voiceAgentService.updateVoiceAgent(agent.id, requestData);
 
@@ -151,6 +339,206 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
       notifyError(errorMessage || 'Failed to update voice agent');
     } finally {
       setUpdating(false);
+    }
+  };
+
+  // Render TTS parameter field based on type
+  const renderTtsParameterField = (key: string) => {
+    if (!selectedTtsProvider) return null;
+    const config = getProviderConfig('tts', selectedTtsProvider);
+    if (!config) return null;
+
+    const paramConfig = config.parameters[key];
+    if (!paramConfig) return null;
+
+    switch (paramConfig.type) {
+      case 'boolean':
+        return (
+          <div key={key} className="col-span-2">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id={`tts-${key}`}
+                checked={getBooleanParameterWithDefault(ttsParameters, key, paramConfig.default)}
+                onCheckedChange={(checked) => setTtsParameter(key, checked)}
+              />
+              <Label htmlFor={`tts-${key}`} className="cursor-pointer">
+                {paramConfig.description || key}
+              </Label>
+            </div>
+          </div>
+        );
+
+      case 'number':
+        if (paramConfig.min !== undefined && paramConfig.max !== undefined) {
+          const sliderValue = getNumberParameterWithDefault(ttsParameters, key, paramConfig.default, paramConfig.min);
+          return (
+            <div key={key} className="col-span-2 space-y-2">
+              <Label>
+                {paramConfig.description || key}: {sliderValue.toFixed(2)}
+              </Label>
+              <Slider
+                min={paramConfig.min}
+                max={paramConfig.max}
+                step={paramConfig.step || 1}
+                value={[sliderValue]}
+                onValueChange={(values: number[]) => setTtsParameter(key, values[0])}
+              />
+              <p className="text-muted-foreground text-[0.8rem]">
+                {paramConfig.min} - {paramConfig.max}
+              </p>
+            </div>
+          );
+        }
+        // Number without range - use input
+        return (
+          <div key={key} className="col-span-2 space-y-2">
+            <Label htmlFor={`tts-${key}`}>{paramConfig.description || key}</Label>
+            <Input
+              id={`tts-${key}`}
+              type="number"
+              value={(ttsParameters[key] ?? paramConfig.default ?? 0) as number}
+              onChange={(e) => setTtsParameter(key, parseFloat(e.target.value) || 0)}
+            />
+          </div>
+        );
+
+      case 'string':
+        if (paramConfig.options && paramConfig.options.length > 0) {
+          // Dropdown for predefined options
+          const currentValue = String(ttsParameters[key] ?? paramConfig.default ?? '');
+          return (
+            <div key={key} className="col-span-2 space-y-2">
+              <Label htmlFor={`tts-${key}`}>{paramConfig.description || key}</Label>
+              <Select value={currentValue} onValueChange={(value) => setTtsParameter(key, value)}>
+                <SelectTrigger id={`tts-${key}`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {paramConfig.options.map((opt) => (
+                    <SelectItem key={String(opt)} value={String(opt)}>
+                      {opt}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          );
+        }
+        // Text input for free-form strings
+        return (
+          <div key={key} className="col-span-2 space-y-2">
+            <Label htmlFor={`tts-${key}`}>{paramConfig.description || key}</Label>
+            <Input
+              id={`tts-${key}`}
+              type="text"
+              value={String(ttsParameters[key] ?? paramConfig.default ?? '')}
+              onChange={(e) => setTtsParameter(key, e.target.value)}
+            />
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  // Render STT parameter field based on type
+  const renderSttParameterField = (key: string) => {
+    if (!selectedSttProvider) return null;
+    const config = getProviderConfig('stt', selectedSttProvider);
+    if (!config) return null;
+
+    const paramConfig = config.parameters[key];
+    if (!paramConfig) return null;
+
+    switch (paramConfig.type) {
+      case 'boolean':
+        return (
+          <div key={key} className="col-span-2">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id={`stt-${key}`}
+                checked={getBooleanParameterWithDefault(sttParameters, key, paramConfig.default)}
+                onCheckedChange={(checked) => setSttParameter(key, checked)}
+              />
+              <Label htmlFor={`stt-${key}`} className="cursor-pointer">
+                {paramConfig.description || key}
+              </Label>
+            </div>
+          </div>
+        );
+
+      case 'number':
+        if (paramConfig.min !== undefined && paramConfig.max !== undefined) {
+          const sliderValue = getNumberParameterWithDefault(sttParameters, key, paramConfig.default, paramConfig.min);
+          return (
+            <div key={key} className="col-span-2 space-y-2">
+              <Label>
+                {paramConfig.description || key}: {sliderValue.toFixed(2)}
+              </Label>
+              <Slider
+                min={paramConfig.min}
+                max={paramConfig.max}
+                step={paramConfig.step || 1}
+                value={[sliderValue]}
+                onValueChange={(values: number[]) => setSttParameter(key, values[0])}
+              />
+              <p className="text-muted-foreground text-[0.8rem]">
+                {paramConfig.min} - {paramConfig.max}
+              </p>
+            </div>
+          );
+        }
+        // Number without range - use input
+        return (
+          <div key={key} className="col-span-2 space-y-2">
+            <Label htmlFor={`stt-${key}`}>{paramConfig.description || key}</Label>
+            <Input
+              id={`stt-${key}`}
+              type="number"
+              value={(sttParameters[key] ?? paramConfig.default ?? 0) as number}
+              onChange={(e) => setSttParameter(key, parseFloat(e.target.value) || 0)}
+            />
+          </div>
+        );
+
+      case 'string':
+        if (paramConfig.options && paramConfig.options.length > 0) {
+          // Dropdown for predefined options
+          const currentValue = String(sttParameters[key] ?? paramConfig.default ?? '');
+          return (
+            <div key={key} className="col-span-2 space-y-2">
+              <Label htmlFor={`stt-${key}`}>{paramConfig.description || key}</Label>
+              <Select value={currentValue} onValueChange={(value) => setSttParameter(key, value)}>
+                <SelectTrigger id={`stt-${key}`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {paramConfig.options.map((opt) => (
+                    <SelectItem key={String(opt)} value={String(opt)}>
+                      {opt}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          );
+        }
+        // Text input for free-form strings
+        return (
+          <div key={key} className="col-span-2 space-y-2">
+            <Label htmlFor={`stt-${key}`}>{paramConfig.description || key}</Label>
+            <Input
+              id={`stt-${key}`}
+              type="text"
+              value={String(sttParameters[key] ?? paramConfig.default ?? '')}
+              onChange={(e) => setSttParameter(key, e.target.value)}
+            />
+          </div>
+        );
+
+      default:
+        return null;
     }
   };
 
@@ -364,6 +752,168 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                     )}
                   />
                 </div>
+
+                <div className="space-y-4">
+                  <h4 className="text-sm font-medium">TTS Voice Settings</h4>
+                  <FormField
+                    control={form.control}
+                    name="tts_voice_id"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          TTS Voice ID<span className="text-red-500">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g., alloy, echo, fable (OpenAI) or voice ID (ElevenLabs)" {...field} />
+                        </FormControl>
+                        <FormDescription>
+                          Provider-specific voice identifier (e.g., for Deepgram: aura-2-helena-en)
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {ttsProviderConfig &&
+                    Object.keys(ttsProviderConfig.parameters).filter((key) => key !== 'language').length > 0 && (
+                      <div className="col-span-2 space-y-4">
+                        <h4 className="text-sm font-medium">TTS Parameters</h4>
+                        <div className="grid grid-cols-2 gap-6">
+                          {Object.keys(ttsProviderConfig.parameters)
+                            .filter((key) => key !== 'language')
+                            .map((key) => renderTtsParameterField(key))}
+                        </div>
+                      </div>
+                    )}
+
+                  {sttProviderConfig &&
+                    Object.keys(sttProviderConfig.parameters).filter((key) => key !== 'language').length > 0 && (
+                      <div className="col-span-2 space-y-4">
+                        <h4 className="text-sm font-medium">STT Parameters</h4>
+                        <div className="grid grid-cols-2 gap-6">
+                          {Object.keys(sttProviderConfig.parameters)
+                            .filter((key) => key !== 'language')
+                            .map((key) => renderSttParameterField(key))}
+                        </div>
+                      </div>
+                    )}
+                </div>
+              </div>
+
+              {/* Phone Numbers */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold">Phone Numbers</h3>
+                <div className="grid grid-cols-1 gap-6">
+                  <FormField
+                    control={form.control}
+                    name="inbound_numbers"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Inbound Phone Numbers</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g., +1234567890, +9876543210" {...field} />
+                        </FormControl>
+                        <FormDescription>
+                          Phone numbers for receiving inbound calls (E.164 format, comma-separated, globally unique)
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="outbound_numbers"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Outbound Phone Numbers</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g., +1234567890, +9876543210" {...field} />
+                        </FormControl>
+                        <FormDescription>
+                          Phone numbers for making outbound calls (E.164 format, comma-separated)
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
+
+              {/* Language Configuration */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold">Language Configuration</h3>
+                <FormField
+                  control={form.control}
+                  name="supported_languages"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        Supported Languages<span className="text-red-500">*</span>
+                      </FormLabel>
+                      <div className="max-h-64 overflow-y-auto rounded-md border p-4">
+                        <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+                          {SUPPORTED_LANGUAGES.map((lang) => (
+                            <div key={lang.code} className="flex items-center space-x-2">
+                              <Checkbox
+                                checked={field.value?.includes(lang.code)}
+                                onCheckedChange={(checked) => {
+                                  const current = field.value || [];
+                                  if (checked) {
+                                    field.onChange([...current, lang.code]);
+                                  } else {
+                                    field.onChange(current.filter((l) => l !== lang.code));
+                                  }
+                                }}
+                              />
+                              <label className="text-sm leading-none font-normal peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                {getLanguageDisplayName(lang.code)}
+                              </label>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <FormDescription>
+                        Select languages this agent can converse in. If multiple languages are selected, the agent will
+                        detect the caller's language.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="default_language"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        Default Language<span className="text-red-500">*</span>
+                      </FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select default language" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {SUPPORTED_LANGUAGES.filter((lang) =>
+                            form.watch('supported_languages')?.includes(lang.code)
+                          ).map((lang) => (
+                            <SelectItem key={lang.code} value={lang.code}>
+                              {getLanguageDisplayName(lang.code)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormDescription>
+                        Language used if detection fails or for single-language agents. Must be one of the supported
+                        languages.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
 
               {/* Behavior */}
@@ -445,6 +995,12 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                     </FormItem>
                   )}
                 />
+              </div>
+
+              {/* Tools Section */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold">Tools & Function Calling</h3>
+                <VoiceAgentToolsManager appId={appId} agentId={agent.id} />
               </div>
             </div>
 

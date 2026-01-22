@@ -1,9 +1,8 @@
-import json
 import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import String, Text, func
+from sqlalchemy import String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database.base import Base
@@ -21,8 +20,6 @@ class SttConfig(Base):
     )
     provider: Mapped[str] = mapped_column(String(length=64), nullable=False)
     api_key: Mapped[str] = mapped_column(String(length=512), nullable=False)
-    language: Mapped[Optional[str]] = mapped_column(String(length=64), nullable=True)
-    parameters: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_deleted: Mapped[bool] = mapped_column(default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -45,12 +42,6 @@ class SttConfig(Base):
                 result[column.name] = str(value)
             elif isinstance(value, datetime):
                 result[column.name] = value.isoformat()
-            elif column.name == 'parameters' and value:
-                # Parse JSON field
-                try:
-                    result[column.name] = json.loads(value)
-                except (json.JSONDecodeError, TypeError):
-                    result[column.name] = value
             else:
                 result[column.name] = value
         return result

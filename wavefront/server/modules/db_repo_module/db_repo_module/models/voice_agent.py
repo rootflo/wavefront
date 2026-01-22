@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import ForeignKey, String, Text, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database.base import Base
@@ -33,6 +34,22 @@ class VoiceAgent(Base):
     conversation_config: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     welcome_message: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(length=64), nullable=False)
+
+    # TTS/STT configuration
+    tts_voice_id: Mapped[str] = mapped_column(String(length=255), nullable=False)
+    tts_parameters: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    stt_parameters: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+
+    # Multi-language and phone number support
+    inbound_numbers: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    outbound_numbers: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    supported_languages: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=lambda: ['en']
+    )
+    default_language: Mapped[str] = mapped_column(
+        String(length=10), nullable=False, default='en'
+    )
+
     is_deleted: Mapped[bool] = mapped_column(default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -51,12 +68,36 @@ class VoiceAgent(Base):
                 result[column.name] = str(value)
             elif isinstance(value, datetime):
                 result[column.name] = value.isoformat()
-            elif column.name == 'conversation_config' and value:
-                # Parse JSON field
-                try:
-                    result[column.name] = json.loads(value)
-                except (json.JSONDecodeError, TypeError):
-                    result[column.name] = value
+            elif column.name in [
+                'conversation_config',
+                'inbound_numbers',
+                'outbound_numbers',
+                'supported_languages',
+                'tts_parameters',
+                'stt_parameters',
+            ]:
+                # Parse JSON/JSONB fields
+                if value:
+                    try:
+                        # JSONB fields are already deserialized by SQLAlchemy
+                        if isinstance(value, str):
+                            result[column.name] = json.loads(value)
+                        else:
+                            result[column.name] = value
+                    except (json.JSONDecodeError, TypeError):
+                        result[column.name] = value
+                else:
+                    # Return empty list for JSONB array fields, None for others
+                    result[column.name] = (
+                        []
+                        if column.name
+                        in [
+                            'inbound_numbers',
+                            'outbound_numbers',
+                            'supported_languages',
+                        ]
+                        else None
+                    )
             else:
                 result[column.name] = value
         return result

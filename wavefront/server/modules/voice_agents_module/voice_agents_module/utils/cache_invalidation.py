@@ -8,15 +8,15 @@ from common_module.log.logger import logger
 
 async def invalidate_call_processing_cache(
     config_type: str,
-    config_id: UUID,
+    config_id: UUID | str,
     operation: str = 'update',
 ) -> bool:
     """
     Invalidate cache in call_processing app
 
     Args:
-        config_type: Type of config (voice_agent, tts_config, stt_config, telephony_config)
-        config_id: UUID of the config
+        config_type: Type of config (voice_agent, tts_config, stt_config, telephony_config, inbound_number)
+        config_id: UUID of the config or string identifier (e.g., phone number for inbound_number type)
         operation: Operation type (create, update, or delete)
 
     Returns:
@@ -38,7 +38,9 @@ async def invalidate_call_processing_cache(
         'Content-Type': 'application/json',
         'X-Passthrough': passthrough_secret,
     }
-    payload = {'config_type': config_type, 'config_id': str(config_id)}
+    # Convert UUID to string, keep strings as-is
+    resource_id = str(config_id) if isinstance(config_id, UUID) else config_id
+    payload = {'config_type': config_type, 'config_id': resource_id}
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:

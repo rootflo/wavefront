@@ -80,9 +80,7 @@ const TtsConfigsPage: React.FC = () => {
     return (
       config.display_name.toLowerCase().includes(query) ||
       (config.description && config.description.toLowerCase().includes(query)) ||
-      config.provider.toLowerCase().includes(query) ||
-      config.voice_id.toLowerCase().includes(query) ||
-      (config.language && config.language.toLowerCase().includes(query))
+      config.provider.toLowerCase().includes(query)
     );
   });
 
@@ -130,9 +128,7 @@ const TtsConfigsPage: React.FC = () => {
                 <TableRow>
                   <TableHead>Display Name</TableHead>
                   <TableHead>Provider</TableHead>
-                  <TableHead>Voice ID</TableHead>
                   <TableHead>Description</TableHead>
-                  <TableHead>Language</TableHead>
                   <TableHead>Created</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -142,9 +138,7 @@ const TtsConfigsPage: React.FC = () => {
                   <TableRow key={config.id}>
                     <TableCell className="font-medium">{config.display_name}</TableCell>
                     <TableCell>{config.provider}</TableCell>
-                    <TableCell>{config.voice_id}</TableCell>
                     <TableCell className="max-w-md truncate">{config.description || '-'}</TableCell>
-                    <TableCell>{config.language || '-'}</TableCell>
                     <TableCell>{new Date(config.created_at).toLocaleDateString()}</TableCell>
                     <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-2">

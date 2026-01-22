@@ -35,7 +35,6 @@ export interface TelephonyConfig {
   provider: TelephonyProvider;
   connection_type: ConnectionType;
   credentials: TelephonyCredentials;
-  phone_numbers: string[];
   webhook_config?: WebhookConfig | null;
   sip_config?: SipConfig | null;
   is_deleted: boolean;
@@ -50,7 +49,6 @@ export interface CreateTelephonyConfigRequest {
   provider: TelephonyProvider;
   connection_type: ConnectionType;
   credentials: TelephonyCredentials;
-  phone_numbers: string[];
   webhook_config?: WebhookConfig | null;
   sip_config?: SipConfig | null;
 }
@@ -62,7 +60,6 @@ export interface UpdateTelephonyConfigRequest {
   provider?: TelephonyProvider;
   connection_type?: ConnectionType;
   credentials?: TelephonyCredentials;
-  phone_numbers?: string[];
   webhook_config?: WebhookConfig | null;
   sip_config?: SipConfig | null;
 }

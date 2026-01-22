@@ -18,14 +18,12 @@ import {
   FormMessage,
 } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
-import { Label } from '@app/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Textarea } from '@app/components/ui/textarea';
 import {
   getConnectionTypeOptions,
   getTelephonyProviderConfig,
   getTelephonyProviderOptions,
-  isValidE164PhoneNumber,
   requiresSipConfig,
 } from '@app/config/telephony-providers';
 import { extractErrorMessage } from '@app/lib/utils';
@@ -63,7 +61,6 @@ const CreateTelephonyConfigDialog: React.FC<CreateTelephonyConfigDialogProps> = 
 }) => {
   const { notifySuccess, notifyError } = useNotifyStore();
 
-  const [phoneNumbers, setPhoneNumbers] = useState<string[]>(['']);
   const [loading, setLoading] = useState(false);
 
   const form = useForm<CreateTelephonyConfigInput>({
@@ -107,53 +104,10 @@ const CreateTelephonyConfigDialog: React.FC<CreateTelephonyConfigDialogProps> = 
         sip_port: undefined,
         sip_transport: undefined,
       });
-      setPhoneNumbers(['']);
     }
   }, [isOpen, form]);
 
-  const handleAddPhoneNumber = () => {
-    setPhoneNumbers([...phoneNumbers, '']);
-  };
-
-  const handleRemovePhoneNumber = (index: number) => {
-    if (phoneNumbers.length === 1) {
-      notifyError('At least one phone number is required');
-      return;
-    }
-    setPhoneNumbers(phoneNumbers.filter((_, i) => i !== index));
-  };
-
-  const handlePhoneNumberChange = (index: number, value: string) => {
-    const newPhoneNumbers = [...phoneNumbers];
-    newPhoneNumbers[index] = value;
-    setPhoneNumbers(newPhoneNumbers);
-  };
-
-  const validatePhoneNumbers = (): boolean => {
-    const filledPhoneNumbers = phoneNumbers.filter((p) => p.trim());
-
-    if (filledPhoneNumbers.length === 0) {
-      notifyError('At least one phone number is required');
-      return false;
-    }
-
-    for (const phone of filledPhoneNumbers) {
-      if (!isValidE164PhoneNumber(phone.trim())) {
-        notifyError(
-          `Invalid phone number format: ${phone}. Phone numbers must be in E.164 format (e.g., +14155551234)`
-        );
-        return false;
-      }
-    }
-
-    return true;
-  };
-
   const onSubmit = async (data: CreateTelephonyConfigInput) => {
-    if (!validatePhoneNumbers()) {
-      return;
-    }
-
     // Validate SIP config if required
     if (requiresSipConfig(data.provider as TelephonyProvider, data.connection_type)) {
       if (!data.sip_domain?.trim()) {
@@ -161,8 +115,6 @@ const CreateTelephonyConfigDialog: React.FC<CreateTelephonyConfigDialogProps> = 
         return;
       }
     }
-
-    const filledPhoneNumbers = phoneNumbers.filter((p) => p.trim()).map((p) => p.trim());
 
     setLoading(true);
     try {
@@ -172,7 +124,6 @@ const CreateTelephonyConfigDialog: React.FC<CreateTelephonyConfigDialogProps> = 
         provider: TelephonyProvider;
         connection_type: ConnectionType;
         credentials: { account_sid: string; auth_token: string };
-        phone_numbers: string[];
         webhook_config: null;
         sip_config?: { sip_domain: string; port?: number; transport?: SipTransport };
       } = {
@@ -184,7 +135,6 @@ const CreateTelephonyConfigDialog: React.FC<CreateTelephonyConfigDialogProps> = 
           account_sid: data.account_sid.trim(),
           auth_token: data.auth_token.trim(),
         },
-        phone_numbers: filledPhoneNumbers,
         webhook_config: null,
       };
 
@@ -349,46 +299,6 @@ const CreateTelephonyConfigDialog: React.FC<CreateTelephonyConfigDialogProps> = 
                   </FormItem>
                 )}
               />
-            </div>
-
-            <div className="rounded-lg border border-gray-200 p-4">
-              <div className="mb-4 flex items-center justify-between">
-                <Label>
-                  Phone Numbers <span className="text-red-500">*</span>
-                </Label>
-                <Button type="button" variant="outline" size="sm" onClick={handleAddPhoneNumber}>
-                  + Add Number
-                </Button>
-              </div>
-
-              <div className="space-y-3">
-                {phoneNumbers.map((phone, index) => (
-                  <div key={index} className="flex gap-2">
-                    <Input
-                      type="text"
-                      value={phone}
-                      onChange={(e) => handlePhoneNumberChange(index, e.target.value)}
-                      placeholder="+14155551234"
-                      className="flex-1"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      onClick={() => handleRemovePhoneNumber(index)}
-                      disabled={phoneNumbers.length === 1}
-                    >
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </Button>
-                  </div>
-                ))}
-              </div>
-
-              <p className="text-muted-foreground mt-2 text-[0.8rem]">
-                Phone numbers must be in E.164 format (e.g., +14155551234). Include country code with + prefix.
-              </p>
             </div>
 
             {showSipConfig && (

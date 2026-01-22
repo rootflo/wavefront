@@ -123,3 +123,145 @@ class FlowareHttpClient:
             except httpx.RequestError as e:
                 logger.error(f'Request error fetching {config_type} {config_id}: {e}')
                 raise
+
+    async def get_agent_by_inbound_number(
+        self, phone_number: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get voice agent by inbound phone number.
+
+        Args:
+            phone_number: E.164 formatted phone number
+
+        Returns:
+            Voice agent dict if found, None otherwise
+
+        Raises:
+            httpx.HTTPStatusError: If API returns 4xx/5xx error (except 404)
+            httpx.RequestError: If request fails (network error, timeout, etc.)
+        """
+        url = (
+            f'{self.base_url}/floware/v1/voice-agents/by-inbound-number/{phone_number}'
+        )
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            try:
+                response = await client.get(url, headers=self._get_headers())
+                response.raise_for_status()
+
+                # Extract agent from response
+                data = response.json()
+                if 'data' in data:
+                    return data['data']
+                return data
+
+            except httpx.HTTPStatusError as e:
+                redacted = (
+                    f'{phone_number[:2]}****{phone_number[-2:]}'
+                    if phone_number
+                    else 'unknown'
+                )
+                if e.response.status_code == 404:
+                    logger.info(f'No agent found for inbound number: {redacted}')
+                    return None
+                logger.error(
+                    f'HTTP error fetching agent by inbound number {redacted}: '
+                    f'status={e.response.status_code}'
+                )
+                raise
+            except httpx.RequestError as e:
+                logger.error(
+                    f'Request error fetching agent by inbound number {phone_number}: {e}'
+                )
+                raise
+
+    async def get_welcome_message_audio_url(self, agent_id: str) -> str:
+        """
+        Get welcome message audio presigned URL for a voice agent.
+
+        Args:
+            agent_id: Voice agent UUID (string)
+
+        Returns:
+            Presigned URL for welcome message audio, or empty string if not available
+
+        Raises:
+            httpx.HTTPStatusError: If API returns 4xx/5xx error (except 404)
+            httpx.RequestError: If request fails (network error, timeout, etc.)
+        """
+        url = f'{self.base_url}/floware/v1/voice-agents/{agent_id}/welcome-audio-url'
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            try:
+                response = await client.get(url, headers=self._get_headers())
+                response.raise_for_status()
+
+                # Extract URL from response
+                data = response.json()
+                if 'data' in data:
+                    # Handle response_formatter wrapped response
+                    if isinstance(data['data'], dict):
+                        return data['data'].get('url', '')
+                    return data['data'] if isinstance(data['data'], str) else ''
+                return data.get('url', '') if isinstance(data, dict) else ''
+
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404:
+                    logger.info(f'Welcome message URL not found for agent: {agent_id}')
+                    return ''
+                logger.error(
+                    f'HTTP error fetching welcome message URL for agent {agent_id}: '
+                    f'status={e.response.status_code}'
+                )
+                raise
+            except httpx.RequestError as e:
+                logger.error(
+                    f'Request error fetching welcome message URL for agent {agent_id}: {e}'
+                )
+                raise
+
+    async def get_agent_tools(self, agent_id: UUID) -> list:
+        """
+        Get all tools for a voice agent (with real credentials for execution).
+
+        Args:
+            agent_id: Voice agent UUID
+
+        Returns:
+            List of tool dicts with association details and real credentials, or empty list if none found
+
+        Raises:
+            httpx.HTTPStatusError: If API returns 4xx/5xx error (except 404)
+            httpx.RequestError: If request fails (network error, timeout, etc.)
+        """
+        url = f'{self.base_url}/floware/v1/voice-agents/{agent_id}/tools?include_credentials=true'
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            try:
+                response = await client.get(url, headers=self._get_headers())
+                response.raise_for_status()
+
+                # Extract tools from response
+                data = response.json()
+                if 'data' in data:
+                    # Handle response_formatter wrapped response
+                    tools_data = data['data']
+                    if isinstance(tools_data, dict) and 'tools' in tools_data:
+                        return tools_data['tools']
+                    elif isinstance(tools_data, list):
+                        return tools_data
+                    return []
+                return data.get('tools', []) if isinstance(data, dict) else []
+
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404:
+                    logger.info(f'No tools found for agent: {agent_id}')
+                    return []
+                logger.error(
+                    f'HTTP error fetching tools for agent {agent_id}: '
+                    f'status={e.response.status_code}'
+                )
+                raise
+            except httpx.RequestError as e:
+                logger.error(f'Request error fetching tools for agent {agent_id}: {e}')
+                raise

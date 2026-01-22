@@ -1,4 +1,3 @@
-import json
 from uuid import UUID
 
 from dependency_injector.wiring import Provide, inject
@@ -10,7 +9,6 @@ from common_module.response_formatter import ResponseFormatter
 from voice_agents_module.models.stt_schemas import (
     CreateSttConfigPayload,
     UpdateSttConfigPayload,
-    SttProvider,
     UNSET,
 )
 from voice_agents_module.services.stt_config_service import SttConfigService
@@ -34,10 +32,10 @@ async def create_stt_config(
     """
     Create a new STT configuration
 
-    Creates a Speech-to-Text provider configuration.
+    Creates a Speech-to-Text provider configuration with credentials only.
 
     Args:
-        payload: Configuration details including provider, api_key, etc.
+        payload: Configuration details including provider and api_key
 
     Returns:
         JSONResponse: Created configuration (api_key excluded)
@@ -47,8 +45,6 @@ async def create_stt_config(
         description=payload.description,
         provider=payload.provider.value,
         api_key=payload.api_key,
-        language=payload.language,
-        parameters=payload.parameters,
     )
 
     return JSONResponse(
@@ -153,32 +149,8 @@ async def update_stt_config(
         update_data['display_name'] = payload.display_name
     if payload.description is not UNSET:
         update_data['description'] = payload.description
-    if payload.provider is not UNSET:
-        if hasattr(payload.provider, 'value'):
-            # It's an enum object
-            update_data['provider'] = payload.provider.value
-        elif isinstance(payload.provider, str) and payload.provider in [
-            e.value for e in SttProvider
-        ]:
-            # It's a valid enum value string
-            update_data['provider'] = payload.provider
-        else:
-            # Invalid value
-            valid_values = [e.value for e in SttProvider]
-            return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content=response_formatter.buildErrorResponse(
-                    f'Invalid provider value. Must be one of: {valid_values}'
-                ),
-            )
     if payload.api_key is not UNSET:
         update_data['api_key'] = payload.api_key
-    if payload.language is not UNSET:
-        update_data['language'] = payload.language
-    if payload.parameters is not UNSET:
-        update_data['parameters'] = (
-            json.dumps(payload.parameters) if payload.parameters else None
-        )
 
     if not update_data:
         return JSONResponse(
