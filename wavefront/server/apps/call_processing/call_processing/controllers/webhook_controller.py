@@ -119,6 +119,8 @@ async def inbound_webhook(
 
     # Pass parameters to WebSocket stream
     stream.parameter(name='voice_agent_id', value=agent_id)
+    stream.parameter(name='customer_number', value=From)
+    stream.parameter(name='agent_number', value=To)
 
     connect.append(stream)
     response.append(connect)
@@ -134,6 +136,8 @@ async def inbound_webhook(
 
 @webhook_router.post('/twiml')
 async def twiml_endpoint(
+    From: str = Form(...),
+    To: str = Form(...),
     voice_agent_id: str = Query(...),
     welcome_message_audio_url: str = Query(default=''),
 ):
@@ -181,6 +185,8 @@ async def twiml_endpoint(
 
     # Pass parameters to WebSocket stream
     stream.parameter(name='voice_agent_id', value=voice_agent_id)
+    stream.parameter(name='customer_number', value=To)
+    stream.parameter(name='agent_number', value=From)
 
     connect.append(stream)
     response.append(connect)
@@ -223,6 +229,8 @@ async def websocket_endpoint(
         # Extract parameters from stream
         body_data = call_data.get('body', {})
         voice_agent_id = body_data.get('voice_agent_id')
+        customer_number = body_data.get('customer_number')
+        # agent_number = body_data.get('agent_number')
 
         if not voice_agent_id:
             logger.error('voice_agent_id not found in stream parameters')
@@ -282,6 +290,7 @@ async def websocket_endpoint(
             tts_config=configs['tts_config'],
             stt_config=configs['stt_config'],
             tools=configs['tools'],
+            customer_number=customer_number,
         )
 
     except Exception as e:

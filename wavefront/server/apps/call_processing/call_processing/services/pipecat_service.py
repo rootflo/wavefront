@@ -145,6 +145,7 @@ class PipecatService:
         tts_config: Dict[str, Any],
         stt_config: Dict[str, Any],
         tools: List[Dict[str, Any]],
+        customer_number: str,
     ):
         """
         Create and run the Pipecat pipeline for a voice conversation
@@ -261,7 +262,8 @@ class PipecatService:
         messages = [
             {
                 'role': 'system',
-                'content': agent_config['system_prompt'],
+                'content': f'Customer phone number: {customer_number}\n'
+                + agent_config['system_prompt'],
             }
         ]
 
