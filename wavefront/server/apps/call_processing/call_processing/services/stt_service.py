@@ -75,8 +75,8 @@ class STTServiceFactory:
             options_dict['encoding'] = parameters['encoding']
         if 'sample_rate' in parameters:
             options_dict['sample_rate'] = parameters['sample_rate']
-        if 'endpointing' in parameters:
-            options_dict['endpointing'] = parameters['endpointing']
+        # if 'endpointing' in parameters:   # using pipecat VAD + smart turn detection
+        #     options_dict['endpointing'] = parameters['endpointing']
         if 'channels' in parameters:
             options_dict['channels'] = parameters['channels']
         if 'smart_format' in parameters:
@@ -85,14 +85,14 @@ class STTServiceFactory:
             options_dict['punctuate'] = parameters['punctuate']
         if 'profanity_filter' in parameters:
             options_dict['profanity_filter'] = parameters['profanity_filter']
-        if 'vad_events' in parameters:
-            options_dict['vad_events'] = parameters['vad_events']
+        # if 'vad_events' in parameters:    # depreceated in pipecat 0.99+
+        #     options_dict['vad_events'] = parameters['vad_events']
 
         # Set smart defaults if not provided
         options_dict.setdefault(
             'interim_results', True
         )  # Always enable for faster feedback
-        options_dict.setdefault('endpointing', 300)  # 300ms = faster cutoff
+        # options_dict.setdefault('endpointing', 300)  # 300ms = faster cutoff
         options_dict.setdefault('encoding', 'linear16')
         options_dict.setdefault('sample_rate', 8000)
         options_dict.setdefault('model', 'nova-2')

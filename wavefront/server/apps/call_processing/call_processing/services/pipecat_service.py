@@ -12,9 +12,7 @@ from call_processing.services.tool_wrapper_service import ToolWrapperFactory
 # Pipecat core imports
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.adapters.schemas.function_schema import FunctionSchema
-from pipecat.audio.interruptions.min_words_interruption_strategy import (
-    MinWordsInterruptionStrategy,
-)
+from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
 from pipecat.frames.frames import (
     TTSSpeakFrame,
     EndTaskFrame,
@@ -27,6 +25,7 @@ from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
+    LLMUserAggregatorParams,
 )
 from pipecat.processors.frame_processor import FrameProcessor, FrameDirection
 from pipecat.processors.user_idle_processor import UserIdleProcessor
@@ -39,6 +38,19 @@ from pipecat.pipeline.service_switcher import (
     ServiceSwitcherStrategyManual,
 )
 from pipecat.transports.base_transport import BaseTransport
+from pipecat.turns.user_mute import (
+    FunctionCallUserMuteStrategy,
+    # MuteUntilFirstBotCompleteUserMuteStrategy,
+)
+from pipecat.turns.user_turn_strategies import UserTurnStrategies
+from pipecat.turns.user_start import (
+    VADUserTurnStartStrategy,
+    MinWordsUserTurnStartStrategy,
+)
+from pipecat.turns.user_stop import (
+    TurnAnalyzerUserTurnStopStrategy,
+    #  TranscriptionUserTurnStopStrategy
+)
 from pipecat.services.llm_service import FunctionCallParams
 from call_processing.services.stt_service import STTServiceFactory
 from call_processing.services.tts_service import TTSServiceFactory
@@ -333,7 +345,27 @@ class PipecatService:
 
         # Create LLM context and aggregator
         context = LLMContext(messages, tools=tools_schema)
-        context_aggregator = LLMContextAggregatorPair(context)
+        context_aggregator = LLMContextAggregatorPair(
+            context,
+            user_params=LLMUserAggregatorParams(
+                user_turn_strategies=UserTurnStrategies(
+                    start=[
+                        VADUserTurnStartStrategy(),
+                        MinWordsUserTurnStartStrategy(min_words=3),
+                    ],  # List of start strategies
+                    stop=[
+                        TurnAnalyzerUserTurnStopStrategy(
+                            turn_analyzer=LocalSmartTurnAnalyzerV3()
+                        ),
+                        # TranscriptionUserTurnStopStrategy() # Not needed
+                    ],  # List of stop strategies
+                ),
+                user_mute_strategies=[
+                    # MuteUntilFirstBotCompleteUserMuteStrategy(), # Not needed since first message is pre-recorded audio
+                    FunctionCallUserMuteStrategy(),
+                ],
+            ),
+        )
 
         # Create transcript processor for language detection
         transcript = TranscriptProcessor()
@@ -372,8 +404,6 @@ class PipecatService:
                 audio_out_sample_rate=8000,
                 enable_metrics=True,
                 # enable_usage_metrics=True,
-                allow_interruptions=True,
-                interruption_strategies=[MinWordsInterruptionStrategy(min_words=3)],
                 # report_only_initial_ttfb=True
             ),
             idle_timeout_secs=20,  # Safety net - allows UserIdleProcessor to complete 3 retries (4s each = 12s total)

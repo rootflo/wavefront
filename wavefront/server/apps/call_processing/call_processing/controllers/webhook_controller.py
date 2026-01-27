@@ -16,8 +16,6 @@ from dependency_injector.wiring import inject, Provide
 from pipecat.runner.types import WebSocketRunnerArguments
 from pipecat.runner.utils import parse_telephony_websocket
 
-# from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
-# from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
 from pipecat.serializers.twilio import TwilioFrameSerializer
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
@@ -271,13 +269,12 @@ async def websocket_endpoint(
                 vad_analyzer=SileroVADAnalyzer(
                     params=VADParams(
                         confidence=0.7,  # Default is 0.7, can lower to 0.4-0.5 for faster detection
-                        start_secs=0.15,  # Default is 0.2, keep it
-                        stop_secs=0.8,  # KEY: Lower from default 0.8 for faster cutoff (should be 0.2 for smart turn detection)
+                        start_secs=0.2,  # Default is 0.2, keep it
+                        stop_secs=0.2,  # KEY: Lower from default 0.8 for faster cutoff (should be 0.2 for smart turn detection)
                         min_volume=0.6,  # Default is 0.6, adjust based on your audio quality
                     ),
                 ),  # Voice Activity Detection
                 serializer=serializer,
-                # turn_analyzer=LocalSmartTurnAnalyzerV3(params=SmartTurnParams()),
             ),
         )
 
