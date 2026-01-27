@@ -69,6 +69,7 @@ wheels = [
 name = "aenum"
 version = "3.1.16"
 source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/09/7a/61ed58e8be9e30c3fe518899cc78c284896d246d51381bab59b5db11e1f3/aenum-3.1.16.tar.gz", hash = "sha256:bfaf9589bdb418ee3a986d85750c7318d9d2839c1b1a1d6fe8fc53ec201cf140", size = 137693, upload-time = "2026-01-12T22:34:38.819Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e3/52/6ad8f63ec8da1bf40f96996d25d5b650fdd38f5975f8c813732c47388f18/aenum-3.1.16-py3-none-any.whl", hash = "sha256:9035092855a98e41b66e3d0998bd7b96280e85ceb3a04cc035636138a1943eaf", size = 165627, upload-time = "2025-04-25T03:17:58.89Z" },
 ]
@@ -477,6 +478,19 @@ wheels = [
 ]
 
 [[package]]
+name = "azure-cognitiveservices-speech"
+version = "1.42.0"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/86/1d/07fc84ab9590fae9cc66a789d1971a0e3494e605e1787879c3581c5a385a/azure_cognitiveservices_speech-1.42.0-py3-none-macosx_10_14_x86_64.whl", hash = "sha256:ad45a18ad6973a4fa2dbd4d71ded3a1a02c4dbbf13696b08f7a16f4156dddce7", size = 7420332, upload-time = "2025-01-13T22:10:18.831Z" },
+    { url = "https://files.pythonhosted.org/packages/a1/72/7ebe03784b220b9adece692adc31ec6e4a1bac96c3e9d3fef511b5ca08aa/azure_cognitiveservices_speech-1.42.0-py3-none-macosx_11_0_arm64.whl", hash = "sha256:9105a64a9d83044790f4f8c9358b6ea66a7c042cbd67173db303501782e62d3f", size = 7277345, upload-time = "2025-01-13T22:10:24.23Z" },
+    { url = "https://files.pythonhosted.org/packages/83/f7/9241ad7154e554730ea56271e14ad1115c278b26a81eb892eac16fabb480/azure_cognitiveservices_speech-1.42.0-py3-none-manylinux1_x86_64.whl", hash = "sha256:90890a147499239f37b0b1a5112c51820b90fa2b5adafa0df4da6cc0c211887f", size = 39727186, upload-time = "2025-01-13T22:10:01.628Z" },
+    { url = "https://files.pythonhosted.org/packages/fc/fd/af607bdfa95306b13fcdeadcd48d28b80b27cc5e3b99e2bde96f6212cd3a/azure_cognitiveservices_speech-1.42.0-py3-none-manylinux2014_aarch64.whl", hash = "sha256:106fbdb165a215cada47d7e95851e0b9d2755a3f2355369bab4915ad001efe89", size = 39508123, upload-time = "2025-01-13T22:10:13.719Z" },
+    { url = "https://files.pythonhosted.org/packages/17/fb/1c998efbfcb1e44f9dc4dbb8b182ea3e5287fdc167aa352aef4685e29435/azure_cognitiveservices_speech-1.42.0-py3-none-win32.whl", hash = "sha256:7d57218beec24360a8b7ce89755c2c133259e3411c233ef0a659b951e4c4c904", size = 2109807, upload-time = "2025-01-13T22:09:50.516Z" },
+    { url = "https://files.pythonhosted.org/packages/52/bb/ef7a29f5717cca646be6698d80e542446a6a442be897c8f67bf93551c672/azure_cognitiveservices_speech-1.42.0-py3-none-win_amd64.whl", hash = "sha256:32076ee03b3b402a2e8841f2c21e5cd54dc3ffbf5af183426344727298c8bbd4", size = 2377971, upload-time = "2025-01-13T22:09:44.706Z" },
+]
+
+[[package]]
 name = "azure-core"
 version = "1.35.1"
 source = { registry = "https://pypi.org/simple" }
@@ -617,7 +631,7 @@ dependencies = [
     { name = "dependency-injector" },
     { name = "fastapi" },
     { name = "httpx" },
-    { name = "pipecat-ai", extra = ["cartesia", "deepgram", "google", "groq", "runner", "silero", "websocket"] },
+    { name = "pipecat-ai", extra = ["azure", "cartesia", "deepgram", "google", "groq", "runner", "silero", "websocket"] },
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "python-multipart" },
@@ -632,7 +646,7 @@ requires-dist = [
     { name = "dependency-injector", specifier = ">=4.46.0,<5.0.0" },
     { name = "fastapi", specifier = ">=0.115.2,<1.0.0" },
     { name = "httpx", specifier = ">=0.27.0" },
-    { name = "pipecat-ai", extras = ["websocket", "cartesia", "google", "silero", "deepgram", "groq", "runner"], specifier = "==0.0.97" },
+    { name = "pipecat-ai", extras = ["websocket", "cartesia", "google", "silero", "deepgram", "groq", "runner", "azure"], specifier = "==0.0.97" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "python-dotenv", specifier = ">=1.1.0,<2.0.0" },
     { name = "python-multipart", specifier = ">=0.0.9" },
@@ -3909,6 +3923,9 @@ wheels = [
 ]
 
 [package.optional-dependencies]
+azure = [
+    { name = "azure-cognitiveservices-speech" },
+]
 cartesia = [
     { name = "cartesia" },
     { name = "websockets" },
