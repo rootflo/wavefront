@@ -165,7 +165,9 @@ class PipecatService:
         is_multi_language = len(supported_languages) > 1
 
         # Extract TTS/STT parameters from agent
-        tts_voice_id = agent_config.get('tts_voice_id')
+        tts_voice_ids_dict = agent_config.get(
+            'tts_voice_ids', {}
+        )  # Dict of language -> voice_id
         tts_parameters = agent_config.get('tts_parameters', {})
         stt_parameters = agent_config.get('stt_parameters', {})
 
@@ -178,11 +180,14 @@ class PipecatService:
         # Create LLM service (language-agnostic)
         llm = LLMServiceFactory.create_llm_service(llm_config)
 
+        # Get voice ID for default language
+        default_voice_id = tts_voice_ids_dict.get(default_language, 'default')
+
         # Merge TTS config credentials with agent's voice and parameters
         tts_config_with_params = {
             'provider': tts_config['provider'],
             'api_key': tts_config['api_key'],
-            'voice_id': tts_voice_id,
+            'voice_id': default_voice_id,  # Will be overridden per language in multi-lang mode
             'parameters': tts_parameters or {},
         }
 
@@ -204,6 +209,14 @@ class PipecatService:
 
             # Create STT/TTS services for each supported language
             for lang_code in supported_languages:
+                # Get voice ID for this language
+                voice_id_for_lang = tts_voice_ids_dict.get(lang_code)
+                if not voice_id_for_lang:
+                    logger.warning(
+                        f'No voice ID for language {lang_code}, using default'
+                    )
+                    voice_id_for_lang = default_voice_id
+
                 # Deep clone configs to avoid mutating original configs
                 stt_config_lang = deepcopy(stt_config_with_params)
                 tts_config_lang = deepcopy(tts_config_with_params)
@@ -217,6 +230,9 @@ class PipecatService:
                     tts_config_lang['parameters'] = {}
                 tts_config_lang['parameters']['language'] = lang_code
 
+                # Set language-specific voice ID
+                tts_config_lang['voice_id'] = voice_id_for_lang
+
                 # Create services
                 stt_services[lang_code] = STTServiceFactory.create_stt_service(
                     stt_config_lang
@@ -225,7 +241,10 @@ class PipecatService:
                     tts_config_lang
                 )
 
-                logger.info(f'Created STT/TTS services for language: {lang_code}')
+                logger.info(
+                    f'Created STT/TTS services for language: {lang_code} '
+                    f'with voice: {voice_id_for_lang}'
+                )
 
             # Create service switchers with manual strategy
             # Order services list with default language first (ServiceSwitcher uses first as initial)

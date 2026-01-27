@@ -55,7 +55,7 @@ async def create_voice_agent(
         telephony_config_id=payload.telephony_config_id,
         system_prompt=payload.system_prompt,
         welcome_message=payload.welcome_message,
-        tts_voice_id=payload.tts_voice_id,
+        tts_voice_ids=payload.tts_voice_ids,
         tts_parameters=payload.tts_parameters,
         stt_parameters=payload.stt_parameters,
         conversation_config=payload.conversation_config,
@@ -181,8 +181,8 @@ async def update_voice_agent(
         update_data['system_prompt'] = payload.system_prompt
     if payload.welcome_message is not UNSET:
         update_data['welcome_message'] = payload.welcome_message
-    if payload.tts_voice_id is not UNSET:
-        update_data['tts_voice_id'] = payload.tts_voice_id
+    if payload.tts_voice_ids is not UNSET:
+        update_data['tts_voice_ids'] = payload.tts_voice_ids
     if payload.tts_parameters is not UNSET:
         update_data['tts_parameters'] = payload.tts_parameters
     if payload.stt_parameters is not UNSET:
