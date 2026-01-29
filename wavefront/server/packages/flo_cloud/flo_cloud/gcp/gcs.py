@@ -8,8 +8,8 @@ from .._types import CloudStorageHandler
 from ..exceptions import CloudStorageFileNotFoundError
 import re
 from re import Match
+from google.auth.transport import requests as google_requests
 import google.auth
-import requests
 
 
 class GCSStorage(CloudStorageHandler):
@@ -147,7 +147,7 @@ class GCSStorage(CloudStorageHandler):
             service_account_email = None
             token = None
             if self.credential_path is None:
-                r = requests.Request()
+                r = google_requests.Request()
                 self.credentials.refresh(r)
 
                 if hasattr(self.credentials, 'service_account_email'):
