@@ -8,9 +8,8 @@ from .._types import CloudStorageHandler
 from ..exceptions import CloudStorageFileNotFoundError
 import re
 from re import Match
-from google.auth import iam
-from google.auth.transport import requests as google_requests
 import google.auth
+import requests
 
 
 class GCSStorage(CloudStorageHandler):
@@ -24,31 +23,14 @@ class GCSStorage(CloudStorageHandler):
             credentials_path: Path to GCP credentials JSON file (optional)
         """
         self.signing_credentials = None
+        self.credential_path = credentials_path
+
         if credentials_path:
             self.client = storage.Client.from_service_account_json(credentials_path)
         else:
             self.credentials, self.project_id = google.auth.default()
 
-            if hasattr(self.credentials, 'service_account_email'):
-                self.service_account_email = self.credentials.service_account_email
-            else:
-                # Fallback: get from metadata service or environment
-                import requests
-
-                metadata_url = 'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email'
-                headers = {'Metadata-Flavor': 'Google'}
-                response = requests.get(metadata_url, headers=headers)
-                self.service_account_email = response.text
-
-            self.client = storage.Client(
-                credentials=self.credentials, project=self.project_id
-            )
-
-            self.signing_credentials = iam.Signer(
-                request=google_requests.Request(),
-                credentials=self.credentials,
-                service_account_email=self.service_account_email,
-            )
+            self.client = storage.Client()
 
     def get_file(self, bucket_name: str, file_path: str) -> bytes:
         """
@@ -162,15 +144,29 @@ class GCSStorage(CloudStorageHandler):
             if not type:
                 raise ValueError('type cannot be None or empty')
 
+            service_account_email = None
+            token = None
+            if self.credential_path is None:
+                r = requests.Request()
+                self.credentials.refresh(r)
+
+                if hasattr(self.credentials, 'service_account_email'):
+                    service_account_email = self.credentials.service_account_email
+                    print(f'service_account_email: {service_account_email}')
+                if hasattr(self.credentials, 'token'):
+                    token = self.credentials.token
+                    print(f'token: {token}')
+
             bucket = self.client.bucket(bucket_name)
             blob = bucket.blob(key)
             presigned_url = blob.generate_signed_url(
                 version='v4',
                 expiration=datetime.now(UTC) + timedelta(seconds=expiresIn),
                 method=type,
-                credentials=self.signing_credentials
-                if self.signing_credentials
+                service_account_email=service_account_email
+                if service_account_email
                 else None,
+                token=token if token else None,
             )
             return presigned_url
         except Exception as e:
