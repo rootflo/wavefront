@@ -8,6 +8,9 @@ from .._types import CloudStorageHandler
 from ..exceptions import CloudStorageFileNotFoundError
 import re
 from re import Match
+from google.auth import iam
+from google.auth.transport import requests as google_requests
+import google.auth
 
 
 class GCSStorage(CloudStorageHandler):
@@ -20,10 +23,32 @@ class GCSStorage(CloudStorageHandler):
         Args:
             credentials_path: Path to GCP credentials JSON file (optional)
         """
+        self.signing_credentials = None
         if credentials_path:
             self.client = storage.Client.from_service_account_json(credentials_path)
         else:
-            self.client = storage.Client()
+            self.credentials, self.project_id = google.auth.default()
+
+            if hasattr(self.credentials, 'service_account_email'):
+                self.service_account_email = self.credentials.service_account_email
+            else:
+                # Fallback: get from metadata service or environment
+                import requests
+
+                metadata_url = 'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email'
+                headers = {'Metadata-Flavor': 'Google'}
+                response = requests.get(metadata_url, headers=headers)
+                self.service_account_email = response.text
+
+            self.client = storage.Client(
+                credentials=self.credentials, project=self.project_id
+            )
+
+            self.signing_credentials = iam.Signer(
+                request=google_requests.Request(),
+                credentials=self.credentials,
+                service_account_email=self.service_account_email,
+            )
 
     def get_file(self, bucket_name: str, file_path: str) -> bytes:
         """
@@ -143,6 +168,9 @@ class GCSStorage(CloudStorageHandler):
                 version='v4',
                 expiration=datetime.now(UTC) + timedelta(seconds=expiresIn),
                 method=type,
+                credentials=self.signing_credentials
+                if self.signing_credentials
+                else None,
             )
             return presigned_url
         except Exception as e:
