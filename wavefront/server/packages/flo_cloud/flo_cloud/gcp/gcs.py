@@ -166,7 +166,7 @@ class GCSStorage(CloudStorageHandler):
                 service_account_email=service_account_email
                 if service_account_email
                 else None,
-                token=token if token else None,
+                access_token=token if token else None,
             )
             return presigned_url
         except Exception as e:
