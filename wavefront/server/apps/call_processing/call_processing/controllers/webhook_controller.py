@@ -16,8 +16,6 @@ from dependency_injector.wiring import inject, Provide
 from pipecat.runner.types import WebSocketRunnerArguments
 from pipecat.runner.utils import parse_telephony_websocket
 
-# from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
-# from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
 from pipecat.serializers.twilio import TwilioFrameSerializer
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
@@ -119,6 +117,8 @@ async def inbound_webhook(
 
     # Pass parameters to WebSocket stream
     stream.parameter(name='voice_agent_id', value=agent_id)
+    stream.parameter(name='customer_number', value=From)
+    stream.parameter(name='agent_number', value=To)
 
     connect.append(stream)
     response.append(connect)
@@ -134,6 +134,8 @@ async def inbound_webhook(
 
 @webhook_router.post('/twiml')
 async def twiml_endpoint(
+    From: str = Form(...),
+    To: str = Form(...),
     voice_agent_id: str = Query(...),
     welcome_message_audio_url: str = Query(default=''),
 ):
@@ -181,6 +183,8 @@ async def twiml_endpoint(
 
     # Pass parameters to WebSocket stream
     stream.parameter(name='voice_agent_id', value=voice_agent_id)
+    stream.parameter(name='customer_number', value=To)
+    stream.parameter(name='agent_number', value=From)
 
     connect.append(stream)
     response.append(connect)
@@ -223,6 +227,8 @@ async def websocket_endpoint(
         # Extract parameters from stream
         body_data = call_data.get('body', {})
         voice_agent_id = body_data.get('voice_agent_id')
+        customer_number = body_data.get('customer_number')
+        # agent_number = body_data.get('agent_number')
 
         if not voice_agent_id:
             logger.error('voice_agent_id not found in stream parameters')
@@ -263,13 +269,12 @@ async def websocket_endpoint(
                 vad_analyzer=SileroVADAnalyzer(
                     params=VADParams(
                         confidence=0.7,  # Default is 0.7, can lower to 0.4-0.5 for faster detection
-                        start_secs=0.15,  # Default is 0.2, keep it
-                        stop_secs=0.8,  # KEY: Lower from default 0.8 for faster cutoff (should be 0.2 for smart turn detection)
+                        start_secs=0.2,  # Default is 0.2, keep it
+                        stop_secs=0.2,  # KEY: Lower from default 0.8 for faster cutoff (should be 0.2 for smart turn detection)
                         min_volume=0.6,  # Default is 0.6, adjust based on your audio quality
                     ),
                 ),  # Voice Activity Detection
                 serializer=serializer,
-                # turn_analyzer=LocalSmartTurnAnalyzerV3(params=SmartTurnParams()),
             ),
         )
 
@@ -282,6 +287,7 @@ async def websocket_endpoint(
             tts_config=configs['tts_config'],
             stt_config=configs['stt_config'],
             tools=configs['tools'],
+            customer_number=customer_number,
         )
 
     except Exception as e:

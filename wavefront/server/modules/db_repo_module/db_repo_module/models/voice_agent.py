@@ -36,7 +36,7 @@ class VoiceAgent(Base):
     status: Mapped[str] = mapped_column(String(length=64), nullable=False)
 
     # TTS/STT configuration
-    tts_voice_id: Mapped[str] = mapped_column(String(length=255), nullable=False)
+    tts_voice_ids: Mapped[dict] = mapped_column(JSONB, nullable=False)
     tts_parameters: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     stt_parameters: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
@@ -75,6 +75,7 @@ class VoiceAgent(Base):
                 'supported_languages',
                 'tts_parameters',
                 'stt_parameters',
+                'tts_voice_ids',
             ]:
                 # Parse JSON/JSONB fields
                 if value:

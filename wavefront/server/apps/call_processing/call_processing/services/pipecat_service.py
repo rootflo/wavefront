@@ -12,9 +12,7 @@ from call_processing.services.tool_wrapper_service import ToolWrapperFactory
 # Pipecat core imports
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.adapters.schemas.function_schema import FunctionSchema
-from pipecat.audio.interruptions.min_words_interruption_strategy import (
-    MinWordsInterruptionStrategy,
-)
+from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
 from pipecat.frames.frames import (
     TTSSpeakFrame,
     EndTaskFrame,
@@ -27,6 +25,7 @@ from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
+    LLMUserAggregatorParams,
 )
 from pipecat.processors.frame_processor import FrameProcessor, FrameDirection
 from pipecat.processors.user_idle_processor import UserIdleProcessor
@@ -39,6 +38,19 @@ from pipecat.pipeline.service_switcher import (
     ServiceSwitcherStrategyManual,
 )
 from pipecat.transports.base_transport import BaseTransport
+from pipecat.turns.user_mute import (
+    FunctionCallUserMuteStrategy,
+    # MuteUntilFirstBotCompleteUserMuteStrategy,
+)
+from pipecat.turns.user_turn_strategies import UserTurnStrategies
+from pipecat.turns.user_start import (
+    VADUserTurnStartStrategy,
+    MinWordsUserTurnStartStrategy,
+)
+from pipecat.turns.user_stop import (
+    TurnAnalyzerUserTurnStopStrategy,
+    #  TranscriptionUserTurnStopStrategy
+)
 from pipecat.services.llm_service import FunctionCallParams
 from call_processing.services.stt_service import STTServiceFactory
 from call_processing.services.tts_service import TTSServiceFactory
@@ -145,6 +157,7 @@ class PipecatService:
         tts_config: Dict[str, Any],
         stt_config: Dict[str, Any],
         tools: List[Dict[str, Any]],
+        customer_number: str,
     ):
         """
         Create and run the Pipecat pipeline for a voice conversation
@@ -164,7 +177,9 @@ class PipecatService:
         is_multi_language = len(supported_languages) > 1
 
         # Extract TTS/STT parameters from agent
-        tts_voice_id = agent_config.get('tts_voice_id')
+        tts_voice_ids_dict = agent_config.get(
+            'tts_voice_ids', {}
+        )  # Dict of language -> voice_id
         tts_parameters = agent_config.get('tts_parameters', {})
         stt_parameters = agent_config.get('stt_parameters', {})
 
@@ -177,11 +192,14 @@ class PipecatService:
         # Create LLM service (language-agnostic)
         llm = LLMServiceFactory.create_llm_service(llm_config)
 
+        # Get voice ID for default language
+        default_voice_id = tts_voice_ids_dict.get(default_language, 'default')
+
         # Merge TTS config credentials with agent's voice and parameters
         tts_config_with_params = {
             'provider': tts_config['provider'],
             'api_key': tts_config['api_key'],
-            'voice_id': tts_voice_id,
+            'voice_id': default_voice_id,  # Will be overridden per language in multi-lang mode
             'parameters': tts_parameters or {},
         }
 
@@ -203,6 +221,14 @@ class PipecatService:
 
             # Create STT/TTS services for each supported language
             for lang_code in supported_languages:
+                # Get voice ID for this language
+                voice_id_for_lang = tts_voice_ids_dict.get(lang_code)
+                if not voice_id_for_lang:
+                    logger.warning(
+                        f'No voice ID for language {lang_code}, using default'
+                    )
+                    voice_id_for_lang = default_voice_id
+
                 # Deep clone configs to avoid mutating original configs
                 stt_config_lang = deepcopy(stt_config_with_params)
                 tts_config_lang = deepcopy(tts_config_with_params)
@@ -216,6 +242,9 @@ class PipecatService:
                     tts_config_lang['parameters'] = {}
                 tts_config_lang['parameters']['language'] = lang_code
 
+                # Set language-specific voice ID
+                tts_config_lang['voice_id'] = voice_id_for_lang
+
                 # Create services
                 stt_services[lang_code] = STTServiceFactory.create_stt_service(
                     stt_config_lang
@@ -224,7 +253,10 @@ class PipecatService:
                     tts_config_lang
                 )
 
-                logger.info(f'Created STT/TTS services for language: {lang_code}')
+                logger.info(
+                    f'Created STT/TTS services for language: {lang_code} '
+                    f'with voice: {voice_id_for_lang}'
+                )
 
             # Create service switchers with manual strategy
             # Order services list with default language first (ServiceSwitcher uses first as initial)
@@ -261,7 +293,8 @@ class PipecatService:
         messages = [
             {
                 'role': 'system',
-                'content': agent_config['system_prompt'],
+                'content': f'Customer phone number: {customer_number}\n'
+                + agent_config['system_prompt'],
             }
         ]
 
@@ -312,7 +345,27 @@ class PipecatService:
 
         # Create LLM context and aggregator
         context = LLMContext(messages, tools=tools_schema)
-        context_aggregator = LLMContextAggregatorPair(context)
+        context_aggregator = LLMContextAggregatorPair(
+            context,
+            user_params=LLMUserAggregatorParams(
+                user_turn_strategies=UserTurnStrategies(
+                    start=[
+                        VADUserTurnStartStrategy(),
+                        MinWordsUserTurnStartStrategy(min_words=3),
+                    ],  # List of start strategies
+                    stop=[
+                        TurnAnalyzerUserTurnStopStrategy(
+                            turn_analyzer=LocalSmartTurnAnalyzerV3()
+                        ),
+                        # TranscriptionUserTurnStopStrategy() # Not needed
+                    ],  # List of stop strategies
+                ),
+                user_mute_strategies=[
+                    # MuteUntilFirstBotCompleteUserMuteStrategy(), # Not needed since first message is pre-recorded audio
+                    FunctionCallUserMuteStrategy(),
+                ],
+            ),
+        )
 
         # Create transcript processor for language detection
         transcript = TranscriptProcessor()
@@ -351,8 +404,6 @@ class PipecatService:
                 audio_out_sample_rate=8000,
                 enable_metrics=True,
                 # enable_usage_metrics=True,
-                allow_interruptions=True,
-                interruption_strategies=[MinWordsInterruptionStrategy(min_words=3)],
                 # report_only_initial_ttfb=True
             ),
             idle_timeout_secs=20,  # Safety net - allows UserIdleProcessor to complete 3 retries (4s each = 12s total)
