@@ -13,6 +13,8 @@ from call_processing.services.tool_wrapper_service import ToolWrapperFactory
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
+from pipecat.frames.frames import Frame
+from pipecat.pipeline.parallel_pipeline import ParallelPipeline
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -21,13 +23,15 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
     LLMUserAggregatorParams,
 )
+from pipecat.processors.filters.function_filter import FunctionFilter
 from pipecat.processors.transcript_processor import (
     TranscriptProcessor,
 )
-from pipecat.pipeline.service_switcher import (
-    ServiceSwitcher,
-    ServiceSwitcherStrategyManual,
-)
+
+# from pipecat.pipeline.service_switcher import (
+#     ServiceSwitcher,
+#     ServiceSwitcherStrategyManual,
+# )
 from pipecat.transports.base_transport import BaseTransport
 from pipecat.turns.user_mute import (
     FunctionCallUserMuteStrategy,
@@ -36,7 +40,7 @@ from pipecat.turns.user_mute import (
 from pipecat.turns.user_turn_strategies import UserTurnStrategies
 from pipecat.turns.user_start import (
     VADUserTurnStartStrategy,
-    MinWordsUserTurnStartStrategy,
+    # MinWordsUserTurnStartStrategy,
 )
 from pipecat.turns.user_stop import (
     TurnAnalyzerUserTurnStopStrategy,
@@ -51,6 +55,99 @@ from call_processing.services.conversation_completion_tool import (
 from call_processing.constants.language_config import (
     LANGUAGE_INSTRUCTIONS,
 )
+
+
+class STTLanguageSwitcher(ParallelPipeline):
+    """
+    ParallelPipeline that routes STT to different language-specific services
+    based on current language state. Same pattern as LanguageSwitcher for TTS.
+    """
+
+    def __init__(
+        self,
+        stt_services: Dict[str, Any],
+        supported_languages: List[str],
+        default_language: str,
+    ):
+        self._current_language = default_language
+        self._stt_services = stt_services
+        self._supported_languages = supported_languages
+
+        # Build parallel routes: one per language
+        routes = []
+        for lang_code in supported_languages:
+            filter_func = self._create_language_filter(lang_code)
+            stt_service = stt_services[lang_code]
+            routes.append([FunctionFilter(filter_func), stt_service])
+
+        super().__init__(*routes)
+
+    def _create_language_filter(self, lang_code: str):
+        """Create filter function for specific language"""
+
+        async def language_filter(_: Frame) -> bool:
+            return self._current_language == lang_code
+
+        return language_filter
+
+    @property
+    def current_language(self):
+        return self._current_language
+
+    def set_language(self, language_code: str):
+        """Update current language (called by language detection tool)"""
+        if language_code in self._supported_languages:
+            self._current_language = language_code
+            logger.info(f'STTLanguageSwitcher: Language set to {language_code}')
+        else:
+            logger.warning(f'STTLanguageSwitcher: Invalid language {language_code}')
+
+
+class LanguageSwitcher(ParallelPipeline):
+    """
+    ParallelPipeline that routes TTS to different language-specific services
+    based on current language state.
+    """
+
+    def __init__(
+        self,
+        tts_services: Dict[str, Any],
+        supported_languages: List[str],
+        default_language: str,
+    ):
+        self._current_language = default_language
+        self._tts_services = tts_services
+        self._supported_languages = supported_languages
+
+        # Build parallel routes: one per language
+        # Each route: [FunctionFilter, TTS service]
+        routes = []
+        for lang_code in supported_languages:
+            filter_func = self._create_language_filter(lang_code)
+            tts_service = tts_services[lang_code]
+            routes.append([FunctionFilter(filter_func), tts_service])
+
+        super().__init__(*routes)
+
+    def _create_language_filter(self, lang_code: str):
+        """Create filter function for specific language"""
+
+        async def language_filter(_: Frame) -> bool:
+            return self._current_language == lang_code
+
+        return language_filter
+
+    @property
+    def current_language(self):
+        return self._current_language
+
+    def set_language(self, language_code: str):
+        """Update current language (called by language detection tool)"""
+        if language_code in self._supported_languages:
+            self._current_language = language_code
+            logger.info(f'LanguageSwitcher: Language set to {language_code}')
+        else:
+            logger.warning(f'LanguageSwitcher: Invalid language {language_code}')
 
 
 class PipecatService:
@@ -124,8 +221,7 @@ class PipecatService:
             'parameters': stt_parameters or {},
         }
 
-        # Create STT/TTS services with multi-language support if needed
-        stt_services = {}
+        # Create TTS services (one per language for multi-language mode)
         tts_services = {}
 
         if is_multi_language:
@@ -133,7 +229,7 @@ class PipecatService:
                 f'Multi-language mode enabled for languages: {supported_languages}'
             )
 
-            # Create STT/TTS services for each supported language
+            # Create TTS services for each supported language
             for lang_code in supported_languages:
                 # Get voice ID for this language
                 voice_id_for_lang = tts_voice_ids_dict.get(lang_code)
@@ -143,59 +239,57 @@ class PipecatService:
                     )
                     voice_id_for_lang = default_voice_id
 
-                # Deep clone configs to avoid mutating original configs
-                stt_config_lang = deepcopy(stt_config_with_params)
+                # Deep clone config to avoid mutating original
                 tts_config_lang = deepcopy(tts_config_with_params)
 
-                # Update language in parameters
+                # Update language parameters
+                if 'parameters' not in tts_config_lang:
+                    tts_config_lang['parameters'] = {}
+                tts_config_lang['parameters']['language'] = lang_code
+                tts_config_lang['voice_id'] = voice_id_for_lang
+
+                # Create TTS service
+                tts_services[lang_code] = TTSServiceFactory.create_tts_service(
+                    tts_config_lang
+                )
+                logger.info(
+                    f'Created TTS service for language: {lang_code} '
+                    f'with voice: {voice_id_for_lang}'
+                )
+
+            # Create per-language STT services (same pattern as TTS)
+            stt_services = {}
+            for lang_code in supported_languages:
+                stt_config_lang = deepcopy(stt_config_with_params)
                 if 'parameters' not in stt_config_lang:
                     stt_config_lang['parameters'] = {}
                 stt_config_lang['parameters']['language'] = lang_code
 
-                if 'parameters' not in tts_config_lang:
-                    tts_config_lang['parameters'] = {}
-                tts_config_lang['parameters']['language'] = lang_code
-
-                # Set language-specific voice ID
-                tts_config_lang['voice_id'] = voice_id_for_lang
-
-                # Create services
                 stt_services[lang_code] = STTServiceFactory.create_stt_service(
                     stt_config_lang
                 )
-                tts_services[lang_code] = TTSServiceFactory.create_tts_service(
-                    tts_config_lang
-                )
+                logger.info(f'Created STT service for language: {lang_code}')
 
-                logger.info(
-                    f'Created STT/TTS services for language: {lang_code} '
-                    f'with voice: {voice_id_for_lang}'
-                )
-
-            # Create service switchers with manual strategy
-            # Order services list with default language first (ServiceSwitcher uses first as initial)
-            stt_services_list = []
-            tts_services_list = []
-
-            # Add default language service first
-            if default_language in stt_services:
-                stt_services_list.append(stt_services[default_language])
-                tts_services_list.append(tts_services[default_language])
-
-            # Add remaining services
-            for lang_code in supported_languages:
-                if lang_code != default_language:
-                    stt_services_list.append(stt_services[lang_code])
-                    tts_services_list.append(tts_services[lang_code])
-
-            stt = ServiceSwitcher(
-                services=stt_services_list, strategy_type=ServiceSwitcherStrategyManual
+            # Create STTLanguageSwitcher for STT routing
+            stt = STTLanguageSwitcher(
+                stt_services=stt_services,
+                supported_languages=supported_languages,
+                default_language=default_language,
             )
-            tts = ServiceSwitcher(
-                services=tts_services_list, strategy_type=ServiceSwitcherStrategyManual
+            logger.info(
+                f'Initialized STTLanguageSwitcher with default language: {default_language}'
             )
 
-            logger.info(f'Initialized with default language: {default_language}')
+            # Create LanguageSwitcher for TTS routing
+            tts = LanguageSwitcher(
+                tts_services=tts_services,
+                supported_languages=supported_languages,
+                default_language=default_language,
+            )
+            logger.info(
+                f'Initialized LanguageSwitcher with default language: {default_language}'
+            )
+
         else:
             logger.info('Single language mode - no language detection needed')
 
@@ -268,8 +362,8 @@ class PipecatService:
             language_detection_func = (
                 LanguageDetectionToolFactory.create_language_detection_tool(
                     task_container=task_container,
-                    stt_services=stt_services,
-                    tts_services=tts_services,
+                    language_switcher=tts,  # Pass the TTS LanguageSwitcher instance
+                    stt_language_switcher=stt,  # Pass the STT LanguageSwitcher instance
                     context_container=context_container,
                     supported_languages=supported_languages,
                     default_language=default_language,
@@ -356,7 +450,7 @@ class PipecatService:
                 user_turn_strategies=UserTurnStrategies(
                     start=[
                         VADUserTurnStartStrategy(),
-                        MinWordsUserTurnStartStrategy(min_words=3),
+                        # MinWordsUserTurnStartStrategy(min_words=3),
                     ],  # List of start strategies
                     stop=[
                         TurnAnalyzerUserTurnStopStrategy(

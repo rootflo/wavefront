@@ -6,7 +6,7 @@ Provides LLM-callable language detection and switching capabilities
 
 from typing import Dict, Any, List, Callable
 from pipecat.services.llm_service import FunctionCallParams
-from pipecat.frames.frames import ManuallySwitchServiceFrame, LLMMessagesUpdateFrame
+from pipecat.frames.frames import LLMMessagesUpdateFrame
 from call_processing.log.logger import logger
 from call_processing.constants.language_config import LANGUAGE_INSTRUCTIONS
 
@@ -17,8 +17,8 @@ class LanguageDetectionToolFactory:
     @staticmethod
     def create_language_detection_tool(
         task_container: Dict[str, Any],
-        stt_services: Dict[str, Any],
-        tts_services: Dict[str, Any],
+        language_switcher: Any,
+        stt_language_switcher: Any,
         context_container: Dict[str, Any],
         supported_languages: List[str],
         default_language: str,
@@ -30,8 +30,8 @@ class LanguageDetectionToolFactory:
         Args:
             task_container: Dictionary containing PipelineTask (populated after task creation)
                            Format: {'task': PipelineTask | None}
-            stt_services: Dictionary mapping language codes to STT services
-            tts_services: Dictionary mapping language codes to TTS services
+            language_switcher: LanguageSwitcher instance that manages TTS routing
+            stt_language_switcher: STTLanguageSwitcher instance that manages STT routing
             context_container: Dictionary containing LLMContext (populated after context creation)
                               Format: {'context': LLMContext | None}
             supported_languages: List of supported language codes
@@ -118,39 +118,16 @@ class LanguageDetectionToolFactory:
                     )
                     return
 
-                # Validation 3: Check if services exist for target language
-                if (
-                    target_language not in stt_services
-                    or target_language not in tts_services
-                ):
-                    error_msg = (
-                        f'Services not configured for language: {target_language}'
-                    )
-                    logger.error(error_msg)
-                    await params.result_callback(
-                        {
-                            'success': False,
-                            'error': error_msg,
-                            'current_language': current_language,
-                        }
-                    )
-                    return
-
                 # Perform language switch
                 try:
-                    target_stt = stt_services[target_language]
-                    target_tts = tts_services[target_language]
+                    # Update TTS language switcher state
+                    language_switcher.set_language(target_language)
 
-                    # Queue service switch frames
-                    await task.queue_frames(
-                        [
-                            ManuallySwitchServiceFrame(service=target_stt),
-                            ManuallySwitchServiceFrame(service=target_tts),
-                        ]
-                    )
+                    # Update STT language switcher state
+                    stt_language_switcher.set_language(target_language)
 
                     logger.info(
-                        f'Switched STT/TTS services from {current_language} to {target_language}'
+                        f'Switched TTS and STT language from {current_language} to {target_language}'
                     )
 
                     # Update system prompt with language instruction
