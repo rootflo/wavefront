@@ -56,9 +56,11 @@ const createVoiceAgentSchema = z.object({
   tts_config_id: z.string().min(1, 'TTS configuration is required'),
   stt_config_id: z.string().min(1, 'STT configuration is required'),
   telephony_config_id: z.string().min(1, 'Telephony configuration is required'),
-  tts_voice_ids: z.record(z.string(), z.string()).refine((val) => Object.keys(val).length > 0, {
-    message: 'At least one voice ID is required',
-  }),
+  tts_voice_ids: z
+    .record(z.string(), z.string().min(1, 'Voice ID must not be empty'))
+    .refine((val) => Object.keys(val).length > 0, {
+      message: 'At least one voice ID is required',
+    }),
   system_prompt: z.string().min(1, 'System prompt is required'),
   welcome_message: z.string().min(1, 'Welcome message is required'),
   conversation_config: z.string().optional(),
@@ -145,6 +147,7 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
         watchedSupportedLanguages.forEach((lang) => {
           newState[lang] = prev[lang] || '';
         });
+        form.setValue('tts_voice_ids', newState);
         return newState;
       });
     }

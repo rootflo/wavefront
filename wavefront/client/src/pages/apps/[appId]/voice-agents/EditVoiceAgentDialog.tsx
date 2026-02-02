@@ -173,6 +173,7 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
         watchedSupportedLanguages.forEach((lang) => {
           newState[lang] = prev[lang] || '';
         });
+        form.setValue('tts_voice_ids', newState);
         return newState;
       });
     }
