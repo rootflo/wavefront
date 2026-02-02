@@ -1,7 +1,5 @@
 from abc import ABC
 from abc import abstractmethod
-from datetime import datetime
-from datetime import timedelta
 import json
 import re
 
@@ -9,6 +7,7 @@ import boto3
 from common_module.utils.odata_parser import prepare_odata_filter
 from google.cloud import storage
 from insights_module.service.insights_service import InsightsService
+from flo_cloud.gcp.gcs import GCSStorage
 
 
 class PdoService(ABC):
@@ -112,6 +111,7 @@ class GCPServices(PdoService):
         self._transcript_bucket_name = transcript_bucket_name
         self._audio_bucket_name = audio_bucket_name
         self.client = storage.Client()
+        self.storage = GCSStorage()
 
     def get_bucket_key(self, value: str):
         match = re.match(r'gs://([^/]+)/(.+)', value)
@@ -131,13 +131,12 @@ class GCPServices(PdoService):
 
     def fetch_audio(self, url):
         audio_bucket_name, key = self.get_bucket_key(url)
-        expiration = timedelta(minutes=30)
 
-        bucket = self.client.bucket(audio_bucket_name)
-        blob = bucket.blob(key)
-
-        presigned_url = blob.generate_signed_url(
-            version='v4', expiration=datetime.utcnow() + expiration, method='GET'
+        presigned_url = self.storage.generate_presigned_url(
+            bucket_name=audio_bucket_name,
+            key=key,
+            type='GET',
+            expiresIn=300,
         )
 
         return presigned_url
