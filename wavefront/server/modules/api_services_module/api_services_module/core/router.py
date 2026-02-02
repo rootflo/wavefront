@@ -285,7 +285,11 @@ class ProxyRouter:
                 else:
                     body_bytes = await request.body()
                     if body_bytes:
-                        body = body_bytes.decode('utf-8')
+                        body = body_bytes
+
+                trace = False
+                if query_params:
+                    trace = query_params.get('trace', '0') == '1'
 
                 # Process request through proxy
                 # Client always uses POST, but backend will use api_method from config
@@ -299,6 +303,7 @@ class ProxyRouter:
                     query_params=query_params,
                     headers=headers,
                     body=body,
+                    trace=trace,
                 )
 
                 # Set response status code

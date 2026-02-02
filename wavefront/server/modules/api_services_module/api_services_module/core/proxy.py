@@ -65,6 +65,7 @@ class ApiProxy:
         query_params: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, str]] = None,
         body: Optional[Any] = None,
+        trace: bool = False,
     ) -> Union[ProxyResponse, Response]:
         """
         Process an API request through the proxy pipeline.
@@ -144,7 +145,7 @@ class ApiProxy:
             # Create successful response for JSON/text content
             response = ProxyResponse.success(
                 data=context.response_body,
-                trace=context.execution_trace,
+                trace=context.execution_trace if trace else None,
                 message='Request processed successfully',
                 http_status_code=context.response_status,
             )
