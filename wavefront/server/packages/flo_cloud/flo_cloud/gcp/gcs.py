@@ -155,7 +155,6 @@ class GCSStorage(CloudStorageHandler):
                     print(f'service_account_email: {service_account_email}')
                 if hasattr(self.credentials, 'token'):
                     token = self.credentials.token
-                    print(f'token: {token}')
 
             bucket = self.client.bucket(bucket_name)
             blob = bucket.blob(key)

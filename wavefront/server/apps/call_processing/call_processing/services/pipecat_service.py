@@ -501,8 +501,7 @@ class PipecatService:
         )
 
         # Populate task container for language detection tool (if multi-language)
-        if is_multi_language:
-            task_container['task'] = task
+        task_container['task'] = task
 
         # Register event handlers
         @transport.event_handler('on_client_connected')

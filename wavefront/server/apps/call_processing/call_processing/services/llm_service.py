@@ -52,7 +52,11 @@ class LLMServiceFactory:
         if llm_type == 'openai':
             return LLMServiceFactory._create_openai_llm(api_key, model, parameters)
         elif llm_type == 'azure_openai':
-            base_url = llm_config['base_url']
+            base_url = llm_config.get('base_url')
+            if not base_url:
+                raise ValueError(
+                    'Azure OpenAI requires base_url (endpoint) to be configured'
+                )
             return LLMServiceFactory._create_azure_llm(
                 api_key, model, parameters, base_url
             )

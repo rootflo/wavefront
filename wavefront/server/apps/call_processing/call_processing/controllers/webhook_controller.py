@@ -142,7 +142,7 @@ async def twiml_endpoint(
     """
     Twilio TwiML endpoint
 
-    Called by Twilio when call connects (directly or via inbound webhook redirect).
+    Called by Twilio when call connects (directly or via outbound webhook redirect).
     Returns TwiML XML with WebSocket connection instructions.
 
     Query params:
@@ -234,6 +234,12 @@ async def websocket_endpoint(
             logger.error('voice_agent_id not found in stream parameters')
             await websocket.close(code=1008, reason='Missing voice_agent_id')
             return
+
+        if not customer_number:
+            logger.warning(
+                'customer_number not found in stream parameters, using empty string'
+            )
+            customer_number = ''
 
         logger.info(f'Voice agent ID: {voice_agent_id}')
 
