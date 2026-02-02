@@ -410,9 +410,11 @@ class PipecatService:
             language_detection_schema = FunctionSchema(
                 name='detect_and_switch_language',
                 description=(
-                    f"Detect and switch the conversation language when the user explicitly "
-                    f"requests to speak in a different language. Call this when the user says "
-                    f"something like 'switch to Spanish', 'I want to speak Hindi', 'let's talk in English', etc. "
+                    f"Detect and switch the conversation language. Call this whenever the user "
+                    f"indicates a language preference, including: responding with a language name "
+                    f"(e.g., 'Hindi', 'Spanish', 'English'), requesting a switch (e.g., 'switch to Hindi', "
+                    f"'I want to speak in Spanish'), or selecting a language when asked for their preference. "
+                    f"Even a single word like 'Hindi' or 'Spanish' should trigger this tool if it refers to a language choice. "
                     f"Supported languages: {', '.join(supported_languages)}. "
                     f"Current language: {language_state['current_language']}."
                 ),
