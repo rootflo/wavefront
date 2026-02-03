@@ -13,7 +13,7 @@ export interface VoiceAgent {
   telephony_config_id: string;
   system_prompt: string;
   welcome_message: string;
-  tts_voice_id: string;
+  tts_voice_ids: Record<string, string>;
   tts_parameters: Record<string, unknown> | null;
   stt_parameters: Record<string, unknown> | null;
   conversation_config: Record<string, unknown> | null;
@@ -39,7 +39,7 @@ export interface CreateVoiceAgentRequest {
   telephony_config_id: string;
   system_prompt: string;
   welcome_message: string;
-  tts_voice_id: string;
+  tts_voice_ids: Record<string, string>;
   tts_parameters?: Record<string, unknown> | null;
   stt_parameters?: Record<string, unknown> | null;
   conversation_config?: Record<string, unknown> | null;
@@ -63,7 +63,7 @@ export interface UpdateVoiceAgentRequest {
   telephony_config_id?: string;
   system_prompt?: string;
   welcome_message?: string;
-  tts_voice_id?: string;
+  tts_voice_ids?: Record<string, string>;
   tts_parameters?: Record<string, unknown> | null;
   stt_parameters?: Record<string, unknown> | null;
   conversation_config?: Record<string, unknown> | null;

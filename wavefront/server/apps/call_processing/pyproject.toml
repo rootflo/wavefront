@@ -21,7 +21,7 @@ dependencies = [
     "redis>=5.0.0",
     "tenacity>=8.0.0",
     # Pipecat and voice processing
-    "pipecat-ai[websocket,cartesia,google,silero,deepgram,groq,runner]==0.0.97",
+    "pipecat-ai[websocket,cartesia,google,silero,deepgram,groq,runner,azure,local-smart-turn-v3]==0.0.100",
     # Twilio
     "twilio>=8.0.0",
 ]

@@ -32,7 +32,7 @@ class ApiToolConfig(BaseModel):
         default=None, description='HTTP headers to include'
     )
     timeout: int = Field(
-        default=30, ge=1, le=300, description='Request timeout in seconds'
+        default=6, ge=1, le=300, description='Request timeout in seconds'
     )
     auth_type: Optional[str] = Field(
         default='none', description='Authentication type (none, bearer, api_key)'
@@ -89,7 +89,7 @@ class PythonToolConfig(BaseModel):
     code_storage_key: str = Field(..., description='Cloud Storage key for Python code')
     cloud_run_url: str = Field(..., description='Cloud Run service URL')
     timeout: int = Field(
-        default=60, ge=1, le=300, description='Execution timeout in seconds'
+        default=6, ge=1, le=300, description='Execution timeout in seconds'
     )
     resource_limits: Optional[Dict[str, Any]] = Field(
         default=None, description='CPU and memory limits'

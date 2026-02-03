@@ -23,7 +23,7 @@ class ApiToolWrapper:
         headers: Optional[Dict[str, str]] = None,
         auth_type: Optional[str] = None,
         auth_credentials: Optional[Dict[str, str]] = None,
-        timeout: int = 30,
+        timeout: int = 6,
     ):
         """
         Initialize API tool wrapper
@@ -197,7 +197,7 @@ class ToolWrapperFactory:
                 headers=config.get('headers', {}),
                 auth_type=config.get('auth_type', 'none'),
                 auth_credentials=config.get('auth_credentials', {}),
-                timeout=config.get('timeout', 30),
+                timeout=config.get('timeout', 6),
             )
         elif tool_type == 'python':
             return PythonToolWrapper(config)

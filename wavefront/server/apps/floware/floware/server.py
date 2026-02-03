@@ -551,14 +551,17 @@ environment = os.getenv('APP_ENV', 'dev')
 
 # Running with Uvicorn (for local development)
 if __name__ == '__main__':
+    worker_count = os.getenv('FLOWARE_WORKER_COUNT', 4)
+    uvicorn_log_level = os.getenv('UVICORN_LOG_LEVEL', 'critical')
+
     print(f'Starting application in environment: {environment}')
     if environment == 'production':
         uvicorn.run(
             'server:app',
             host='0.0.0.0',
             port=8001,
-            workers=4,
-            log_level='critical',
+            workers=worker_count,
+            log_level=uvicorn_log_level,
             forwarded_allow_ips='*',
         )
     else:

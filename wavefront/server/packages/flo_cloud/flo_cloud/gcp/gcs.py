@@ -8,6 +8,8 @@ from .._types import CloudStorageHandler
 from ..exceptions import CloudStorageFileNotFoundError
 import re
 from re import Match
+from google.auth.transport import requests as google_requests
+import google.auth
 
 
 class GCSStorage(CloudStorageHandler):
@@ -20,9 +22,14 @@ class GCSStorage(CloudStorageHandler):
         Args:
             credentials_path: Path to GCP credentials JSON file (optional)
         """
+        self.signing_credentials = None
+        self.credential_path = credentials_path
+
         if credentials_path:
             self.client = storage.Client.from_service_account_json(credentials_path)
         else:
+            self.credentials, self.project_id = google.auth.default()
+
             self.client = storage.Client()
 
     def get_file(self, bucket_name: str, file_path: str) -> bytes:
@@ -137,12 +144,28 @@ class GCSStorage(CloudStorageHandler):
             if not type:
                 raise ValueError('type cannot be None or empty')
 
+            service_account_email = None
+            token = None
+            if self.credential_path is None:
+                r = google_requests.Request()
+                self.credentials.refresh(r)
+
+                if hasattr(self.credentials, 'service_account_email'):
+                    service_account_email = self.credentials.service_account_email
+                    print(f'service_account_email: {service_account_email}')
+                if hasattr(self.credentials, 'token'):
+                    token = self.credentials.token
+
             bucket = self.client.bucket(bucket_name)
             blob = bucket.blob(key)
             presigned_url = blob.generate_signed_url(
                 version='v4',
                 expiration=datetime.now(UTC) + timedelta(seconds=expiresIn),
                 method=type,
+                service_account_email=service_account_email
+                if service_account_email
+                else None,
+                access_token=token if token else None,
             )
             return presigned_url
         except Exception as e:

@@ -56,7 +56,11 @@ const createVoiceAgentSchema = z.object({
   tts_config_id: z.string().min(1, 'TTS configuration is required'),
   stt_config_id: z.string().min(1, 'STT configuration is required'),
   telephony_config_id: z.string().min(1, 'Telephony configuration is required'),
-  tts_voice_id: z.string().min(1, 'TTS Voice ID is required'),
+  tts_voice_ids: z
+    .record(z.string(), z.string().min(1, 'Voice ID must not be empty'))
+    .refine((val) => Object.keys(val).length > 0, {
+      message: 'At least one voice ID is required',
+    }),
   system_prompt: z.string().min(1, 'System prompt is required'),
   welcome_message: z.string().min(1, 'Welcome message is required'),
   conversation_config: z.string().optional(),
@@ -83,6 +87,7 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
   const [creating, setCreating] = useState(false);
   const [ttsParameters, setTtsParameters] = useState<Record<string, unknown>>({});
   const [sttParameters, setSttParameters] = useState<Record<string, unknown>>({});
+  const [voiceIdState, setVoiceIdState] = useState<Record<string, string>>({ en: '' });
 
   // Fetch configs for dropdowns
   const { data: llmConfigs = [] } = useGetLLMConfigs(appId);
@@ -99,7 +104,7 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
       tts_config_id: '',
       stt_config_id: '',
       telephony_config_id: '',
-      tts_voice_id: '',
+      tts_voice_ids: { en: '' },
       system_prompt: '',
       welcome_message: '',
       conversation_config: '{}',
@@ -114,6 +119,7 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
   // Watch config selections to determine providers
   const watchedTtsConfigId = form.watch('tts_config_id');
   const watchedSttConfigId = form.watch('stt_config_id');
+  const watchedSupportedLanguages = form.watch('supported_languages');
 
   // Get selected providers
   const selectedTtsProvider = ttsConfigs.find((c) => c.id === watchedTtsConfigId)?.provider;
@@ -132,6 +138,21 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
     }
   }, [selectedSttProvider, isOpen]);
 
+  // Sync voice ID state with language changes
+  useEffect(() => {
+    if (isOpen && watchedSupportedLanguages) {
+      setVoiceIdState((prev) => {
+        const newState: Record<string, string> = {};
+        // Preserve existing voice IDs for languages still selected
+        watchedSupportedLanguages.forEach((lang) => {
+          newState[lang] = prev[lang] || '';
+        });
+        form.setValue('tts_voice_ids', newState);
+        return newState;
+      });
+    }
+  }, [watchedSupportedLanguages, isOpen]);
+
   // Reset form when dialog closes
   useEffect(() => {
     if (!isOpen) {
@@ -142,7 +163,7 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
         tts_config_id: '',
         stt_config_id: '',
         telephony_config_id: '',
-        tts_voice_id: '',
+        tts_voice_ids: { en: '' },
         system_prompt: '',
         welcome_message: '',
         conversation_config: '{}',
@@ -154,6 +175,7 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
       });
       setTtsParameters({});
       setSttParameters({});
+      setVoiceIdState({ en: '' });
     }
   }, [isOpen, form]);
 
@@ -232,7 +254,7 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
         tts_config_id: data.tts_config_id.trim(),
         stt_config_id: data.stt_config_id.trim(),
         telephony_config_id: data.telephony_config_id.trim(),
-        tts_voice_id: data.tts_voice_id.trim(),
+        tts_voice_ids: data.tts_voice_ids,
         tts_parameters: Object.keys(builtTtsParameters).length > 0 ? builtTtsParameters : null,
         stt_parameters: Object.keys(builtSttParameters).length > 0 ? builtSttParameters : null,
         system_prompt: data.system_prompt.trim(),
@@ -710,17 +732,31 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                   <h4 className="text-sm font-medium">TTS Voice Settings</h4>
                   <FormField
                     control={form.control}
-                    name="tts_voice_id"
+                    name="tts_voice_ids"
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>
-                          TTS Voice ID<span className="text-red-500">*</span>
+                          TTS Voice IDs<span className="text-red-500">*</span>
                         </FormLabel>
-                        <FormControl>
-                          <Input placeholder="e.g., alloy, echo, fable (OpenAI) or voice ID (ElevenLabs)" {...field} />
-                        </FormControl>
+                        <div className="space-y-3">
+                          {watchedSupportedLanguages.map((langCode) => (
+                            <div key={langCode} className="flex items-center gap-3">
+                              <Label className="w-24 text-sm font-medium">{getLanguageDisplayName(langCode)}:</Label>
+                              <Input
+                                placeholder={`Voice ID for ${getLanguageDisplayName(langCode)}`}
+                                value={voiceIdState[langCode] || ''}
+                                onChange={(e) => {
+                                  const newState = { ...voiceIdState, [langCode]: e.target.value };
+                                  setVoiceIdState(newState);
+                                  field.onChange(newState);
+                                }}
+                                className="flex-1"
+                              />
+                            </div>
+                          ))}
+                        </div>
                         <FormDescription>
-                          Provider-specific voice identifier (e.g., for Deepgram: aura-2-helena-en)
+                          Provider-specific voice identifiers per language (e.g., "aura-2-helena-en" for Deepgram)
                         </FormDescription>
                         <FormMessage />
                       </FormItem>

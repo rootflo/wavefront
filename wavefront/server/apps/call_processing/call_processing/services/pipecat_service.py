@@ -12,126 +12,142 @@ from call_processing.services.tool_wrapper_service import ToolWrapperFactory
 # Pipecat core imports
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.adapters.schemas.function_schema import FunctionSchema
-from pipecat.audio.interruptions.min_words_interruption_strategy import (
-    MinWordsInterruptionStrategy,
-)
-from pipecat.frames.frames import (
-    TTSSpeakFrame,
-    EndTaskFrame,
-    ManuallySwitchServiceFrame,
-    LLMMessagesUpdateFrame,
-)
+from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
+from pipecat.frames.frames import Frame
+from pipecat.pipeline.parallel_pipeline import ParallelPipeline
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
+    LLMUserAggregatorParams,
 )
-from pipecat.processors.frame_processor import FrameProcessor, FrameDirection
-from pipecat.processors.user_idle_processor import UserIdleProcessor
+from pipecat.processors.filters.function_filter import FunctionFilter
 from pipecat.processors.transcript_processor import (
     TranscriptProcessor,
-    TranscriptionMessage,
 )
-from pipecat.pipeline.service_switcher import (
-    ServiceSwitcher,
-    ServiceSwitcherStrategyManual,
-)
+
+# from pipecat.pipeline.service_switcher import (
+#     ServiceSwitcher,
+#     ServiceSwitcherStrategyManual,
+# )
 from pipecat.transports.base_transport import BaseTransport
-from pipecat.services.llm_service import FunctionCallParams
+from pipecat.turns.user_mute import (
+    FunctionCallUserMuteStrategy,
+    # MuteUntilFirstBotCompleteUserMuteStrategy,
+)
+from pipecat.turns.user_turn_strategies import UserTurnStrategies
+from pipecat.turns.user_start import (
+    VADUserTurnStartStrategy,
+    # MinWordsUserTurnStartStrategy,
+)
+from pipecat.turns.user_stop import (
+    TurnAnalyzerUserTurnStopStrategy,
+    #  TranscriptionUserTurnStopStrategy
+)
 from call_processing.services.stt_service import STTServiceFactory
 from call_processing.services.tts_service import TTSServiceFactory
 from call_processing.services.llm_service import LLMServiceFactory
+from call_processing.services.conversation_completion_tool import (
+    ConversationCompletionToolFactory,
+)
 from call_processing.constants.language_config import (
-    LANGUAGE_KEYWORDS,
     LANGUAGE_INSTRUCTIONS,
 )
 
 
-# Advanced handler with retry logic
-async def handle_user_idle(processor: FrameProcessor, retry_count):
-    if retry_count == 1:
-        # First attempt - gentle reminder
-        await processor.push_frame(TTSSpeakFrame('Are you still there?'))
-        return True  # Continue monitoring
-    elif retry_count == 2:
-        # Second attempt - more direct prompt
-        await processor.push_frame(
-            TTSSpeakFrame('Would you like to continue our conversation?')
-        )
-        return True  # Continue monitoring
-    else:
-        # Third attempt - end conversation
-        await processor.push_frame(
-            TTSSpeakFrame("I'll leave you for now. Have a nice day!")
-        )
-        await processor.push_frame(EndTaskFrame(), FrameDirection.UPSTREAM)
-        return False  # Stop monitoring
-
-
-async def evaluate_completion_criteria(params: FunctionCallParams):
+class STTLanguageSwitcher(ParallelPipeline):
     """
-    Check if the last user message contains goodbye-related phrases.
-    Returns True if goodbye detected, False otherwise.
+    ParallelPipeline that routes STT to different language-specific services
+    based on current language state. Same pattern as LanguageSwitcher for TTS.
     """
-    context = params.context
 
-    # Get the conversation messages
-    messages = context.get_messages()
+    def __init__(
+        self,
+        stt_services: Dict[str, Any],
+        supported_languages: List[str],
+        default_language: str,
+    ):
+        self._current_language = default_language
+        self._stt_services = stt_services
+        self._supported_languages = supported_languages
 
-    # Find the last user message
-    last_user_message = None
-    for message in reversed(messages):
-        if message.get('role') == 'user':
-            last_user_message = message.get('content', '').lower()
-            break
+        # Build parallel routes: one per language
+        routes = []
+        for lang_code in supported_languages:
+            filter_func = self._create_language_filter(lang_code)
+            stt_service = stt_services[lang_code]
+            routes.append([FunctionFilter(filter_func), stt_service])
 
-    # If no user message found, conversation is not complete
-    if not last_user_message:
-        return False
+        super().__init__(*routes)
 
-    # List of goodbye phrases to check
-    goodbye_phrases = [
-        'goodbye',
-        'bye',
-        'good bye',
-        'see you',
-        'talk to you later',
-        'ttyl',
-        'have a good day',
-        'take care',
-        'farewell',
-        'later',
-        'peace out',
-    ]
+    def _create_language_filter(self, lang_code: str):
+        """Create filter function for specific language"""
 
-    # Check if any goodbye phrase is in the message
-    return any(phrase in last_user_message for phrase in goodbye_phrases)
+        async def language_filter(_: Frame) -> bool:
+            return self._current_language == lang_code
+
+        return language_filter
+
+    @property
+    def current_language(self):
+        return self._current_language
+
+    def set_language(self, language_code: str):
+        """Update current language (called by language detection tool)"""
+        if language_code in self._supported_languages:
+            self._current_language = language_code
+            logger.info(f'STTLanguageSwitcher: Language set to {language_code}')
+        else:
+            logger.warning(f'STTLanguageSwitcher: Invalid language {language_code}')
 
 
-async def check_conversation_complete(params: FunctionCallParams):
+class LanguageSwitcher(ParallelPipeline):
     """
-    Function to check if conversation should end based on goodbye detection.
+    ParallelPipeline that routes TTS to different language-specific services
+    based on current language state.
     """
-    # Check if goodbye is present
-    conversation_complete = await evaluate_completion_criteria(params)
 
-    if conversation_complete:
-        # Send farewell message
-        await params.llm.push_frame(
-            TTSSpeakFrame('Thank you for using our service! Goodbye!')
-        )
-        # End the conversation
-        await params.llm.push_frame(EndTaskFrame(), FrameDirection.UPSTREAM)
+    def __init__(
+        self,
+        tts_services: Dict[str, Any],
+        supported_languages: List[str],
+        default_language: str,
+    ):
+        self._current_language = default_language
+        self._tts_services = tts_services
+        self._supported_languages = supported_languages
 
-    # Return result to LLM
-    await params.result_callback(
-        {
-            'status': 'complete' if conversation_complete else 'continuing',
-            'goodbye_detected': conversation_complete,
-        }
-    )
+        # Build parallel routes: one per language
+        # Each route: [FunctionFilter, TTS service]
+        routes = []
+        for lang_code in supported_languages:
+            filter_func = self._create_language_filter(lang_code)
+            tts_service = tts_services[lang_code]
+            routes.append([FunctionFilter(filter_func), tts_service])
+
+        super().__init__(*routes)
+
+    def _create_language_filter(self, lang_code: str):
+        """Create filter function for specific language"""
+
+        async def language_filter(_: Frame) -> bool:
+            return self._current_language == lang_code
+
+        return language_filter
+
+    @property
+    def current_language(self):
+        return self._current_language
+
+    def set_language(self, language_code: str):
+        """Update current language (called by language detection tool)"""
+        if language_code in self._supported_languages:
+            self._current_language = language_code
+            logger.info(f'LanguageSwitcher: Language set to {language_code}')
+        else:
+            logger.warning(f'LanguageSwitcher: Invalid language {language_code}')
 
 
 class PipecatService:
@@ -145,6 +161,7 @@ class PipecatService:
         tts_config: Dict[str, Any],
         stt_config: Dict[str, Any],
         tools: List[Dict[str, Any]],
+        customer_number: str,
     ):
         """
         Create and run the Pipecat pipeline for a voice conversation
@@ -164,7 +181,9 @@ class PipecatService:
         is_multi_language = len(supported_languages) > 1
 
         # Extract TTS/STT parameters from agent
-        tts_voice_id = agent_config.get('tts_voice_id')
+        tts_voice_ids_dict = agent_config.get(
+            'tts_voice_ids', {}
+        )  # Dict of language -> voice_id
         tts_parameters = agent_config.get('tts_parameters', {})
         stt_parameters = agent_config.get('stt_parameters', {})
 
@@ -174,14 +193,24 @@ class PipecatService:
             f'default: {default_language}, multi-language: {is_multi_language}'
         )
 
+        # Track language state for multi-language conversations
+        language_state = {
+            'current_language': default_language,
+            'switch_count': 0,
+            'original_system_prompt': '',
+        }
+
         # Create LLM service (language-agnostic)
         llm = LLMServiceFactory.create_llm_service(llm_config)
+
+        # Get voice ID for default language
+        default_voice_id = tts_voice_ids_dict.get(default_language, 'default')
 
         # Merge TTS config credentials with agent's voice and parameters
         tts_config_with_params = {
             'provider': tts_config['provider'],
             'api_key': tts_config['api_key'],
-            'voice_id': tts_voice_id,
+            'voice_id': default_voice_id,  # Will be overridden per language in multi-lang mode
             'parameters': tts_parameters or {},
         }
 
@@ -192,8 +221,7 @@ class PipecatService:
             'parameters': stt_parameters or {},
         }
 
-        # Create STT/TTS services with multi-language support if needed
-        stt_services = {}
+        # Create TTS services (one per language for multi-language mode)
         tts_services = {}
 
         if is_multi_language:
@@ -201,55 +229,67 @@ class PipecatService:
                 f'Multi-language mode enabled for languages: {supported_languages}'
             )
 
-            # Create STT/TTS services for each supported language
+            # Create TTS services for each supported language
             for lang_code in supported_languages:
-                # Deep clone configs to avoid mutating original configs
-                stt_config_lang = deepcopy(stt_config_with_params)
+                # Get voice ID for this language
+                voice_id_for_lang = tts_voice_ids_dict.get(lang_code)
+                if not voice_id_for_lang:
+                    logger.warning(
+                        f'No voice ID for language {lang_code}, using default'
+                    )
+                    voice_id_for_lang = default_voice_id
+
+                # Deep clone config to avoid mutating original
                 tts_config_lang = deepcopy(tts_config_with_params)
 
-                # Update language in parameters
+                # Update language parameters
+                if 'parameters' not in tts_config_lang:
+                    tts_config_lang['parameters'] = {}
+                tts_config_lang['parameters']['language'] = lang_code
+                tts_config_lang['voice_id'] = voice_id_for_lang
+
+                # Create TTS service
+                tts_services[lang_code] = TTSServiceFactory.create_tts_service(
+                    tts_config_lang
+                )
+                logger.info(
+                    f'Created TTS service for language: {lang_code} '
+                    f'with voice: {voice_id_for_lang}'
+                )
+
+            # Create per-language STT services (same pattern as TTS)
+            stt_services = {}
+            for lang_code in supported_languages:
+                stt_config_lang = deepcopy(stt_config_with_params)
                 if 'parameters' not in stt_config_lang:
                     stt_config_lang['parameters'] = {}
                 stt_config_lang['parameters']['language'] = lang_code
 
-                if 'parameters' not in tts_config_lang:
-                    tts_config_lang['parameters'] = {}
-                tts_config_lang['parameters']['language'] = lang_code
-
-                # Create services
                 stt_services[lang_code] = STTServiceFactory.create_stt_service(
                     stt_config_lang
                 )
-                tts_services[lang_code] = TTSServiceFactory.create_tts_service(
-                    tts_config_lang
-                )
+                logger.info(f'Created STT service for language: {lang_code}')
 
-                logger.info(f'Created STT/TTS services for language: {lang_code}')
-
-            # Create service switchers with manual strategy
-            # Order services list with default language first (ServiceSwitcher uses first as initial)
-            stt_services_list = []
-            tts_services_list = []
-
-            # Add default language service first
-            if default_language in stt_services:
-                stt_services_list.append(stt_services[default_language])
-                tts_services_list.append(tts_services[default_language])
-
-            # Add remaining services
-            for lang_code in supported_languages:
-                if lang_code != default_language:
-                    stt_services_list.append(stt_services[lang_code])
-                    tts_services_list.append(tts_services[lang_code])
-
-            stt = ServiceSwitcher(
-                services=stt_services_list, strategy_type=ServiceSwitcherStrategyManual
+            # Create STTLanguageSwitcher for STT routing
+            stt = STTLanguageSwitcher(
+                stt_services=stt_services,
+                supported_languages=supported_languages,
+                default_language=default_language,
             )
-            tts = ServiceSwitcher(
-                services=tts_services_list, strategy_type=ServiceSwitcherStrategyManual
+            logger.info(
+                f'Initialized STTLanguageSwitcher with default language: {default_language}'
             )
 
-            logger.info(f'Initialized with default language: {default_language}')
+            # Create LanguageSwitcher for TTS routing
+            tts = LanguageSwitcher(
+                tts_services=tts_services,
+                supported_languages=supported_languages,
+                default_language=default_language,
+            )
+            logger.info(
+                f'Initialized LanguageSwitcher with default language: {default_language}'
+            )
+
         else:
             logger.info('Single language mode - no language detection needed')
 
@@ -258,10 +298,26 @@ class PipecatService:
             tts = TTSServiceFactory.create_tts_service(tts_config_with_params)
 
         # Create initial messages with system prompt
+        base_system_prompt = (
+            f'Customer phone number: {customer_number}\n'
+            + agent_config['system_prompt']
+        )
+
+        # Add language instruction for default language if multi-language
+        if is_multi_language:
+            initial_language_instruction = LANGUAGE_INSTRUCTIONS.get(
+                default_language, LANGUAGE_INSTRUCTIONS.get('en', 'Respond in English.')
+            )
+            system_content = f'{base_system_prompt}\n\n{initial_language_instruction}'
+            # Store base prompt without language instruction for switching
+            language_state['original_system_prompt'] = base_system_prompt
+        else:
+            system_content = base_system_prompt
+
         messages = [
             {
                 'role': 'system',
-                'content': agent_config['system_prompt'],
+                'content': system_content,
             }
         ]
 
@@ -293,45 +349,133 @@ class PipecatService:
         else:
             logger.info(f'No tools configured for agent {agent_id}')
 
-        # Register built-in function handler with LLM service
-        llm.register_function(
-            'check_conversation_complete', check_conversation_complete
-        )
+        # Create containers for late binding (populated after creation)
+        task_container = {'task': None}
+        context_container = {'context': None}
 
-        # Create FunctionSchema for check_conversation_complete
-        check_complete_schema = FunctionSchema(
-            name='check_conversation_complete',
-            description='Check if conversation should end based on goodbye detection',
-            properties={},  # No parameters needed
+        # Register language detection tool if multi-language enabled
+        if is_multi_language:
+            from call_processing.services.language_detection_tool import (
+                LanguageDetectionToolFactory,
+            )
+
+            language_detection_func = (
+                LanguageDetectionToolFactory.create_language_detection_tool(
+                    task_container=task_container,
+                    language_switcher=tts,  # Pass the TTS LanguageSwitcher instance
+                    stt_language_switcher=stt,  # Pass the STT LanguageSwitcher instance
+                    context_container=context_container,
+                    supported_languages=supported_languages,
+                    default_language=default_language,
+                    language_state=language_state,
+                )
+            )
+
+            llm.register_function('detect_and_switch_language', language_detection_func)
+            logger.info('Registered language detection tool with LLM')
+
+        # Register conversation completion tool
+        conversation_completion_func = (
+            ConversationCompletionToolFactory.create_conversation_completion_tool(
+                task_container=task_container
+            )
+        )
+        llm.register_function('end_conversation', conversation_completion_func)
+        logger.info('Registered conversation completion tool with LLM')
+
+        # Create FunctionSchema for conversation completion
+        end_conversation_schema = FunctionSchema(
+            name='end_conversation',
+            description=(
+                'Call this function when the user indicates they want to end the conversation. '
+                'This includes goodbye phrases, expressions of completion, or any indication '
+                'that the user wants to hang up or finish the call. Examples: "goodbye", "bye", '
+                '"thank you", "that\'s all", "I\'m done", etc.'
+            ),
+            properties={
+                'farewell_message': {
+                    'type': 'string',
+                    'description': (
+                        'Optional custom farewell message to say to the user before ending. '
+                        'If not provided, uses default: "Thank you for using our service! Goodbye!"'
+                    ),
+                }
+            },
             required=[],
         )
 
+        # Create FunctionSchema for language detection (if multi-language)
+        language_detection_schemas = []
+        if is_multi_language:
+            language_detection_schema = FunctionSchema(
+                name='detect_and_switch_language',
+                description=(
+                    f"Detect and switch the conversation language. Call this whenever the user "
+                    f"indicates a language preference, including: responding with a language name "
+                    f"(e.g., 'Hindi', 'Spanish', 'English'), requesting a switch (e.g., 'switch to Hindi', "
+                    f"'I want to speak in Spanish'), or selecting a language when asked for their preference. "
+                    f"Even a single word like 'Hindi' or 'Spanish' should trigger this tool if it refers to a language choice. "
+                    f"Supported languages: {', '.join(supported_languages)}. "
+                    f"Current language: {language_state['current_language']}."
+                ),
+                properties={
+                    'target_language': {
+                        'type': 'string',
+                        'description': f"Target language code. Must be one of: {', '.join(supported_languages)}",
+                        'enum': supported_languages,
+                    },
+                    'user_intent': {
+                        'type': 'string',
+                        'description': "The user's statement indicating language preference (for logging)",
+                    },
+                },
+                required=['target_language', 'user_intent'],
+            )
+            language_detection_schemas.append(language_detection_schema)
+
         # Combine all FunctionSchema objects for ToolsSchema
-        all_function_schemas = [check_complete_schema] + function_schemas
+        all_function_schemas = (
+            [end_conversation_schema] + language_detection_schemas + function_schemas
+        )
         tools_schema = ToolsSchema(standard_tools=all_function_schemas)
 
         # Create LLM context and aggregator
         context = LLMContext(messages, tools=tools_schema)
-        context_aggregator = LLMContextAggregatorPair(context)
+
+        # Populate context container for language detection tool (if multi-language)
+        if is_multi_language:
+            context_container['context'] = context
+
+        context_aggregator = LLMContextAggregatorPair(
+            context,
+            user_params=LLMUserAggregatorParams(
+                user_turn_strategies=UserTurnStrategies(
+                    start=[
+                        VADUserTurnStartStrategy(),
+                        # MinWordsUserTurnStartStrategy(min_words=3),
+                    ],  # List of start strategies
+                    stop=[
+                        TurnAnalyzerUserTurnStopStrategy(
+                            turn_analyzer=LocalSmartTurnAnalyzerV3()
+                        ),
+                        # TranscriptionUserTurnStopStrategy() # Not needed
+                    ],  # List of stop strategies
+                ),
+                user_mute_strategies=[
+                    # MuteUntilFirstBotCompleteUserMuteStrategy(), # Not needed since first message is pre-recorded audio
+                    FunctionCallUserMuteStrategy(),
+                ],
+            ),
+        )
 
         # Create transcript processor for language detection
         transcript = TranscriptProcessor()
-
-        # Track current language detection state (only for multi-language)
-        language_detected = {'detected': False, 'current_language': default_language}
-
-        # Create user idle processor (fresh instance for each conversation)
-        user_idle = UserIdleProcessor(
-            callback=handle_user_idle,
-            timeout=4.0,
-        )
 
         # Build pipeline components list
         pipeline_components = [
             transport.input(),  # Audio input from Twilio
             stt,  # Speech-to-Text (ServiceSwitcher for multi-lang, direct for single)
             transcript.user(),  # Transcript processor for user messages
-            user_idle,  # User idle detection
             context_aggregator.user(),  # Add user message to context
             llm,  # LLM processing
             tts,  # Text-to-Speech (ServiceSwitcher for multi-lang, direct for single)
@@ -351,136 +495,13 @@ class PipecatService:
                 audio_out_sample_rate=8000,
                 enable_metrics=True,
                 # enable_usage_metrics=True,
-                allow_interruptions=True,
-                interruption_strategies=[MinWordsInterruptionStrategy(min_words=3)],
                 # report_only_initial_ttfb=True
             ),
-            idle_timeout_secs=20,  # Safety net - allows UserIdleProcessor to complete 3 retries (4s each = 12s total)
+            idle_timeout_secs=20,
         )
 
-        # Multi-language detection event handler
-        if is_multi_language:
-
-            @transcript.event_handler('on_transcript_update')
-            async def handle_language_detection(processor, frame):
-                """Detect language from first user message and switch services"""
-
-                # Only detect once
-                if language_detected['detected']:
-                    return
-
-                messages: List[TranscriptionMessage] = frame.messages
-
-                # Look for user messages
-                for message in messages:
-                    if message.role == 'user':
-                        message_content = message.content.lower().strip()
-
-                        # Skip empty messages
-                        if not message_content:
-                            continue
-
-                        logger.info(
-                            f"Analyzing message for language detection: '{message_content}'"
-                        )
-
-                        # Check for language keywords
-                        detected_lang = None
-                        for lang_code in supported_languages:
-                            keywords = LANGUAGE_KEYWORDS.get(lang_code, [])
-                            for keyword in keywords:
-                                if keyword.lower() in message_content:
-                                    detected_lang = lang_code
-                                    logger.info(
-                                        f'Language detected: {detected_lang} '
-                                        f"(matched keyword: '{keyword}')"
-                                    )
-                                    break
-                            if detected_lang:
-                                break
-
-                        # Use detected language or fallback to default
-                        target_language = detected_lang or default_language
-
-                        if not detected_lang:
-                            logger.info(
-                                f'No language detected, using default: {default_language}'
-                            )
-
-                        # Mark detection as complete
-                        language_detected['detected'] = True
-                        language_detected['current_language'] = target_language
-
-                        # Only switch services if target language is different from default
-                        if target_language != default_language:
-                            if (
-                                target_language in stt_services
-                                and target_language in tts_services
-                            ):
-                                target_stt = stt_services[target_language]
-                                target_tts = tts_services[target_language]
-
-                                try:
-                                    await task.queue_frames(
-                                        [
-                                            ManuallySwitchServiceFrame(
-                                                service=target_stt
-                                            ),
-                                            ManuallySwitchServiceFrame(
-                                                service=target_tts
-                                            ),
-                                        ]
-                                    )
-                                    logger.info(
-                                        f'Switched STT/TTS services to language: {target_language}'
-                                    )
-                                except Exception as e:
-                                    logger.error(
-                                        f'Error switching services: {e}', exc_info=True
-                                    )
-                        else:
-                            logger.info(
-                                f'Language {target_language} is default, no service switch needed'
-                            )
-
-                        # Update LLM system prompt with language instruction
-                        language_instruction = LANGUAGE_INSTRUCTIONS.get(
-                            target_language,
-                            LANGUAGE_INSTRUCTIONS.get('en', 'Respond in English.'),
-                        )
-
-                        # Get current system prompt and append language instruction
-                        current_messages = context.get_messages()
-                        if current_messages and len(current_messages) > 0:
-                            system_message = current_messages[0]
-                        else:
-                            system_message = {
-                                'role': 'system',
-                                'content': agent_config['system_prompt'],
-                            }
-
-                        updated_content = (
-                            f"{system_message['content']}\n\n{language_instruction}"
-                        )
-                        updated_system_message = {
-                            'role': 'system',
-                            'content': updated_content,
-                        }
-
-                        # Update context with new system message
-                        new_messages = [updated_system_message] + current_messages[1:]
-                        await task.queue_frame(
-                            LLMMessagesUpdateFrame(new_messages, run_llm=False)
-                        )
-
-                        logger.info(
-                            f'Updated LLM context with language instruction for {target_language}'
-                        )
-
-                        # Exit after first detection
-                        break
-
-            logger.info('Language detection event handler registered')
+        # Populate task container for language detection tool (if multi-language)
+        task_container['task'] = task
 
         # Register event handlers
         @transport.event_handler('on_client_connected')
