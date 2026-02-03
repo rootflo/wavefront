@@ -40,7 +40,7 @@ class AgentInferenceRequest(BaseModel):
 class AgentInferenceResponse(BaseModel):
     """Response model for agent inference"""
 
-    result: str = Field(..., description='The inference result from the agent')
+    result: str | dict = Field(..., description='The inference result from the agent')
     agent_id: str = Field(
         ..., description='The ID of the agent that performed the inference'
     )
