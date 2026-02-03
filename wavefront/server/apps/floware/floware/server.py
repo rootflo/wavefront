@@ -560,7 +560,7 @@ if __name__ == '__main__':
             'server:app',
             host='0.0.0.0',
             port=8001,
-            workers=worker_count,
+            workers=int(worker_count),
             log_level=uvicorn_log_level,
             forwarded_allow_ips='*',
         )
