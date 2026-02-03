@@ -7,7 +7,7 @@ from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.models.llm_inference_config import LlmInferenceConfig
 from db_repo_module.models.message_processors import MessageProcessors
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
-from flo_ai import AgentBuilder, Agent, BaseMessage, FloUtils
+from flo_ai import AgentBuilder, Agent, BaseMessage
 from flo_ai.llm import OpenAI, Anthropic, Gemini, OllamaLLM, OpenAIVLLM
 from flo_ai.tool.base_tool import Tool
 from flo_cloud.cloud_storage import CloudStorageManager
@@ -237,7 +237,7 @@ class AgentInferenceService:
         variables: Dict[str, Any],
         agent_name: str,
         output_json_enabled: bool = True,
-    ) -> tuple[str, float]:
+    ) -> tuple[List[BaseMessage], float]:
         """
         Run agent inference with provided variables
 
@@ -257,13 +257,7 @@ class AgentInferenceService:
         start_time = time.time()
 
         # Use a generic prompt that allows the agent to use the variables
-        result_str = await agent.run(inputs, variables=variables)
-
-        # Conditionally extract JSON based on output_json_enabled flag
-        if output_json_enabled:
-            result = FloUtils.extract_jsons_from_string(result_str)
-        else:
-            result = result_str
+        result: List[BaseMessage] = await agent.run(inputs, variables=variables)
 
         execution_time = time.time() - start_time
         logger.info(
@@ -324,7 +318,7 @@ class AgentInferenceService:
         output_json_enabled: bool = True,
         access_token: Optional[str] = None,
         app_key: Optional[str] = None,
-    ) -> tuple[str, float, str]:
+    ) -> tuple[List[BaseMessage], float, str]:
         """
         Complete inference workflow (v2): fetch agent from DB + cloud storage, run inference
 
