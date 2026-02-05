@@ -99,6 +99,7 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
 
   const watchedProvider = form.watch('provider');
   const watchedConnectionType = form.watch('connection_type');
+  const providerChanged = watchedProvider !== config.provider;
 
   // Initialize form when dialog opens
   useEffect(() => {
@@ -151,45 +152,41 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
       };
 
       // Handle credentials based on provider
+      const providerChanged = provider !== config.provider;
+
       if (provider === 'twilio') {
-        if (data.account_sid?.trim() || data.auth_token?.trim()) {
+        const nextAccountSid = data.account_sid?.trim();
+        const nextAuthToken = data.auth_token?.trim();
+        if (providerChanged && (!nextAccountSid || !nextAuthToken)) {
+          notifyError('Twilio Account SID and Auth Token are required when switching provider');
+          setLoading(false);
+          return;
+        }
+        if (providerChanged || nextAccountSid || nextAuthToken) {
+          const base = !providerChanged ? (config.credentials as any) : {};
           updateData.credentials = {
-            account_sid: (config.credentials as any).account_sid ?? '',
-            auth_token: (config.credentials as any).auth_token ?? '',
+            account_sid: nextAccountSid ?? base.account_sid ?? '',
+            auth_token: nextAuthToken ?? base.auth_token ?? '',
           };
-          if (data.account_sid?.trim()) {
-            updateData.credentials.account_sid = data.account_sid.trim();
-          }
-          if (data.auth_token?.trim()) {
-            updateData.credentials.auth_token = data.auth_token.trim();
-          }
         }
       } else if (provider === 'exotel') {
-        // Check if any Exotel credential field was updated
-        if (
-          data.api_key?.trim() ||
-          data.api_token?.trim() ||
-          data.exotel_account_sid?.trim() ||
-          data.subdomain?.trim()
-        ) {
+        const nextApiKey = data.api_key?.trim();
+        const nextApiToken = data.api_token?.trim();
+        const nextAccountSid = data.exotel_account_sid?.trim();
+        const nextSubdomain = data.subdomain?.trim();
+        if (providerChanged && (!nextApiKey || !nextApiToken || !nextAccountSid || !nextSubdomain)) {
+          notifyError('All Exotel credentials are required when switching provider');
+          setLoading(false);
+          return;
+        }
+        if (providerChanged || nextApiKey || nextApiToken || nextAccountSid || nextSubdomain) {
+          const base = !providerChanged ? (config.credentials as any) : {};
           updateData.credentials = {
-            api_key: (config.credentials as any).api_key,
-            api_token: (config.credentials as any).api_token,
-            account_sid: (config.credentials as any).account_sid,
-            subdomain: (config.credentials as any).subdomain,
+            api_key: nextApiKey ?? base.api_key ?? '',
+            api_token: nextApiToken ?? base.api_token ?? '',
+            account_sid: nextAccountSid ?? base.account_sid ?? '',
+            subdomain: nextSubdomain ?? base.subdomain ?? '',
           };
-          if (data.api_key?.trim()) {
-            updateData.credentials.api_key = data.api_key.trim();
-          }
-          if (data.api_token?.trim()) {
-            updateData.credentials.api_token = data.api_token.trim();
-          }
-          if (data.exotel_account_sid?.trim()) {
-            updateData.credentials.account_sid = data.exotel_account_sid.trim();
-          }
-          if (data.subdomain?.trim()) {
-            updateData.credentials.subdomain = data.subdomain.trim();
-          }
         }
       }
 
@@ -332,7 +329,14 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
                   name="account_sid"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Account SID (Optional - leave empty to keep existing)</FormLabel>
+                      <FormLabel>
+                        Account SID{' '}
+                        {providerChanged ? (
+                          <span className="text-red-500">*</span>
+                        ) : (
+                          '(Optional - leave empty to keep existing)'
+                        )}
+                      </FormLabel>
                       <FormControl>
                         <Input placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" {...field} />
                       </FormControl>
@@ -346,7 +350,14 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
                   name="auth_token"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Auth Token (Optional - leave empty to keep existing)</FormLabel>
+                      <FormLabel>
+                        Auth Token{' '}
+                        {providerChanged ? (
+                          <span className="text-red-500">*</span>
+                        ) : (
+                          '(Optional - leave empty to keep existing)'
+                        )}
+                      </FormLabel>
                       <FormControl>
                         <Input type="password" placeholder="Enter new auth token to update" {...field} />
                       </FormControl>
@@ -365,7 +376,14 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
                     name="api_key"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>API Key (Optional - leave empty to keep existing)</FormLabel>
+                        <FormLabel>
+                          API Key{' '}
+                          {providerChanged ? (
+                            <span className="text-red-500">*</span>
+                          ) : (
+                            '(Optional - leave empty to keep existing)'
+                          )}
+                        </FormLabel>
                         <FormControl>
                           <Input placeholder="Enter new API key to update" {...field} />
                         </FormControl>
@@ -379,7 +397,14 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
                     name="api_token"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>API Token (Optional - leave empty to keep existing)</FormLabel>
+                        <FormLabel>
+                          API Token{' '}
+                          {providerChanged ? (
+                            <span className="text-red-500">*</span>
+                          ) : (
+                            '(Optional - leave empty to keep existing)'
+                          )}
+                        </FormLabel>
                         <FormControl>
                           <Input type="password" placeholder="Enter new API token to update" {...field} />
                         </FormControl>
@@ -395,7 +420,14 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
                     name="exotel_account_sid"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Account SID (Optional - leave empty to keep existing)</FormLabel>
+                        <FormLabel>
+                          Account SID{' '}
+                          {providerChanged ? (
+                            <span className="text-red-500">*</span>
+                          ) : (
+                            '(Optional - leave empty to keep existing)'
+                          )}
+                        </FormLabel>
                         <FormControl>
                           <Input placeholder="Enter new account SID to update" {...field} />
                         </FormControl>
@@ -409,7 +441,14 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
                     name="subdomain"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Subdomain (Optional - leave empty to keep existing)</FormLabel>
+                        <FormLabel>
+                          Subdomain{' '}
+                          {providerChanged ? (
+                            <span className="text-red-500">*</span>
+                          ) : (
+                            '(Optional - leave empty to keep existing)'
+                          )}
+                        </FormLabel>
                         <FormControl>
                           <Input placeholder="ccm-api.exotel.com or ccm-api.in.exotel.com" {...field} />
                         </FormControl>
