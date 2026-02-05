@@ -13,6 +13,7 @@ from voice_agents_module.services.tts_config_service import TtsConfigService
 from voice_agents_module.services.stt_config_service import SttConfigService
 from voice_agents_module.services.voice_agent_service import VoiceAgentService
 from voice_agents_module.services.twilio_service import TwilioService
+from voice_agents_module.services.exotel_service import ExotelService
 from voice_agents_module.services.tts_generator_service import TTSGeneratorService
 from voice_agents_module.services.tool_service import ToolService
 
@@ -106,6 +107,11 @@ class VoiceAgentsContainer(containers.DeclarativeContainer):
 
     twilio_service = providers.Singleton(
         TwilioService,
+        call_processing_base_url=config.voice_agents.call_processing_base_url,
+    )
+
+    exotel_service = providers.Singleton(
+        ExotelService,
         call_processing_base_url=config.voice_agents.call_processing_base_url,
     )
 

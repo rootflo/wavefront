@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import floConsoleService from '@app/api';
 import { Button } from '@app/components/ui/button';
 import {
@@ -44,8 +45,15 @@ const updateTelephonyConfigSchema = z.object({
   description: z.string().max(500, 'Description must be 500 characters or less').optional(),
   provider: z.string().min(1, 'Provider is required'),
   connection_type: z.enum(['websocket', 'sip']),
+  // Twilio credentials
   account_sid: z.string().optional(),
   auth_token: z.string().optional(),
+  // Exotel credentials
+  api_key: z.string().optional(),
+  api_token: z.string().optional(),
+  exotel_account_sid: z.string().optional(),
+  subdomain: z.string().optional(),
+  // SIP config
   sip_domain: z.string().optional(),
   sip_port: z.number().optional(),
   sip_transport: z.enum(['udp', 'tcp', 'tls']).optional(),
@@ -79,6 +87,10 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
       connection_type: config.connection_type,
       account_sid: '',
       auth_token: '',
+      api_key: '',
+      api_token: '',
+      exotel_account_sid: '',
+      subdomain: '',
       sip_domain: config.sip_config?.sip_domain || '',
       sip_port: config.sip_config?.port,
       sip_transport: config.sip_config?.transport,
@@ -98,6 +110,10 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
         connection_type: config.connection_type,
         account_sid: '',
         auth_token: '',
+        api_key: '',
+        api_token: '',
+        exotel_account_sid: '',
+        subdomain: '',
         sip_domain: config.sip_config?.sip_domain || '',
         sip_port: config.sip_config?.port,
         sip_transport: config.sip_config?.transport,
@@ -115,8 +131,10 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
   }, [watchedConnectionType, form]);
 
   const onSubmit = async (data: UpdateTelephonyConfigInput) => {
+    const provider = data.provider as TelephonyProvider;
+
     // Validate SIP config if required
-    if (requiresSipConfig(data.provider as TelephonyProvider, data.connection_type)) {
+    if (requiresSipConfig(provider, data.connection_type)) {
       if (!data.sip_domain?.trim()) {
         notifyError('SIP domain is required for SIP connection type');
         return;
@@ -128,32 +146,61 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
       const updateData: UpdateTelephonyConfigRequest = {
         display_name: data.display_name.trim(),
         description: data.description?.trim() || null,
-        provider: data.provider as TelephonyProvider,
+        provider: provider,
         connection_type: data.connection_type,
       };
 
-      // Only include credentials if they were changed
-      if (data.account_sid?.trim() || data.auth_token?.trim()) {
-        updateData.credentials = {
-          account_sid: config.credentials.account_sid,
-          auth_token: config.credentials.auth_token,
-        };
-        if (data.account_sid?.trim()) {
-          updateData.credentials.account_sid = data.account_sid.trim();
+      // Handle credentials based on provider
+      if (provider === 'twilio') {
+        if (data.account_sid?.trim() || data.auth_token?.trim()) {
+          updateData.credentials = {
+            account_sid: (config.credentials as any).account_sid,
+            auth_token: (config.credentials as any).auth_token,
+          };
+          if (data.account_sid?.trim()) {
+            updateData.credentials.account_sid = data.account_sid.trim();
+          }
+          if (data.auth_token?.trim()) {
+            updateData.credentials.auth_token = data.auth_token.trim();
+          }
         }
-        if (data.auth_token?.trim()) {
-          updateData.credentials.auth_token = data.auth_token.trim();
+      } else if (provider === 'exotel') {
+        // Check if any Exotel credential field was updated
+        if (
+          data.api_key?.trim() ||
+          data.api_token?.trim() ||
+          data.exotel_account_sid?.trim() ||
+          data.subdomain?.trim()
+        ) {
+          updateData.credentials = {
+            api_key: (config.credentials as any).api_key,
+            api_token: (config.credentials as any).api_token,
+            account_sid: (config.credentials as any).account_sid,
+            subdomain: (config.credentials as any).subdomain,
+          };
+          if (data.api_key?.trim()) {
+            updateData.credentials.api_key = data.api_key.trim();
+          }
+          if (data.api_token?.trim()) {
+            updateData.credentials.api_token = data.api_token.trim();
+          }
+          if (data.exotel_account_sid?.trim()) {
+            updateData.credentials.account_sid = data.exotel_account_sid.trim();
+          }
+          if (data.subdomain?.trim()) {
+            updateData.credentials.subdomain = data.subdomain.trim();
+          }
         }
       }
 
       // Add SIP config if required
-      if (requiresSipConfig(data.provider as TelephonyProvider, data.connection_type) && data.sip_domain?.trim()) {
+      if (requiresSipConfig(provider, data.connection_type) && data.sip_domain?.trim()) {
         updateData.sip_config = {
           sip_domain: data.sip_domain.trim(),
           port: data.sip_port,
           transport: data.sip_transport,
         };
-      } else if (!requiresSipConfig(data.provider as TelephonyProvider, data.connection_type)) {
+      } else if (!requiresSipConfig(provider, data.connection_type)) {
         updateData.sip_config = null;
       }
 
@@ -277,35 +324,105 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-6">
-              <FormField
-                control={form.control}
-                name="account_sid"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Account SID (Optional - leave empty to keep existing)</FormLabel>
-                    <FormControl>
-                      <Input placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            {/* Provider-specific credential fields */}
+            {watchedProvider === 'twilio' && (
+              <div className="grid grid-cols-2 gap-6">
+                <FormField
+                  control={form.control}
+                  name="account_sid"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Account SID (Optional - leave empty to keep existing)</FormLabel>
+                      <FormControl>
+                        <Input placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              <FormField
-                control={form.control}
-                name="auth_token"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Auth Token (Optional - leave empty to keep existing)</FormLabel>
-                    <FormControl>
-                      <Input type="password" placeholder="Enter new auth token to update" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+                <FormField
+                  control={form.control}
+                  name="auth_token"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Auth Token (Optional - leave empty to keep existing)</FormLabel>
+                      <FormControl>
+                        <Input type="password" placeholder="Enter new auth token to update" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            )}
+
+            {watchedProvider === 'exotel' && (
+              <div className="space-y-6">
+                <div className="grid grid-cols-2 gap-6">
+                  <FormField
+                    control={form.control}
+                    name="api_key"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>API Key (Optional - leave empty to keep existing)</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Enter new API key to update" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="api_token"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>API Token (Optional - leave empty to keep existing)</FormLabel>
+                        <FormControl>
+                          <Input type="password" placeholder="Enter new API token to update" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-6">
+                  <FormField
+                    control={form.control}
+                    name="exotel_account_sid"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Account SID (Optional - leave empty to keep existing)</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Enter new account SID to update" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="subdomain"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Subdomain (Optional - leave empty to keep existing)</FormLabel>
+                        <FormControl>
+                          <Input placeholder="ccm-api.exotel.com or ccm-api.in.exotel.com" {...field} />
+                        </FormControl>
+                        <FormDescription>
+                          Regional API endpoint (Singapore: ccm-api.exotel.com, India: ccm-api.in.exotel.com)
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
+            )}
 
             {showSipConfig && (
               <div className="rounded-lg border border-gray-200 p-4">
