@@ -10,6 +10,7 @@ UNSET = object()
 
 class TelephonyProvider(str, Enum):
     TWILIO = 'twilio'
+    EXOTEL = 'exotel'
 
 
 class ConnectionType(str, Enum):
@@ -76,7 +77,11 @@ class CreateTelephonyConfigPayload(BaseModel):
     )
     credentials: Dict[str, Any] = Field(
         ...,
-        description='Provider credentials as JSON object (e.g., {account_sid, auth_token})',
+        description="""Provider credentials as JSON object.
+
+        Twilio: {"account_sid": "...", "auth_token": "..."}
+        Exotel: {"api_key": "...", "api_token": "...", "account_sid": "...", "subdomain": "ccm-api.exotel.com or ccm-api.in.exotel.com"}
+        """,
     )
     webhook_config: Optional[WebhookConfig] = Field(
         None,

@@ -1,7 +1,7 @@
 import { IApiResponse } from '@app/lib/axios';
 
 // Telephony provider types
-export type TelephonyProvider = 'twilio';
+export type TelephonyProvider = 'twilio' | 'exotel';
 
 // Connection types
 export type ConnectionType = 'websocket' | 'sip';
@@ -10,10 +10,21 @@ export type ConnectionType = 'websocket' | 'sip';
 export type SipTransport = 'udp' | 'tcp' | 'tls';
 
 // Credentials interface for Twilio
-export interface TelephonyCredentials {
+export interface TwilioCredentials {
   account_sid: string;
   auth_token: string;
 }
+
+// Credentials interface for Exotel
+export interface ExotelCredentials {
+  api_key: string;
+  api_token: string;
+  account_sid: string;
+  subdomain: string;
+}
+
+// Union type for all provider credentials
+export type TelephonyCredentials = TwilioCredentials | ExotelCredentials;
 
 // Webhook configuration (currently not implemented, always null)
 export interface WebhookConfig {

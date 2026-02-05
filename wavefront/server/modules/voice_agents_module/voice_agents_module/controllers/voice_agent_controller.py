@@ -18,6 +18,8 @@ from voice_agents_module.models.voice_agent_schemas import (
 )
 from voice_agents_module.services.voice_agent_service import VoiceAgentService
 from voice_agents_module.services.twilio_service import TwilioService
+from voice_agents_module.services.exotel_service import ExotelService
+from voice_agents_module.models.telephony_schemas import TelephonyProvider
 from voice_agents_module.voice_agents_container import VoiceAgentsContainer
 
 voice_agent_router = APIRouter()
@@ -304,6 +306,9 @@ async def initiate_call(
     twilio_service: TwilioService = Depends(
         Provide[VoiceAgentsContainer.twilio_service]
     ),
+    exotel_service: ExotelService = Depends(
+        Provide[VoiceAgentsContainer.exotel_service]
+    ),
 ):
     """
     Initiate an outbound call for a voice agent
@@ -367,7 +372,7 @@ async def initiate_call(
         # Default to first outbound number
         from_number = outbound_numbers[0]
 
-    # Fetch telephony config for Twilio credentials
+    # Fetch telephony config
     telephony_config_id = agent_dict.get('telephony_config_id')
     telephony_config = await voice_agent_service.telephony_config_service.get_config(
         telephony_config_id
@@ -381,18 +386,9 @@ async def initiate_call(
             ),
         )
 
-    # Extract Twilio credentials from telephony config
+    # Extract provider and credentials
+    provider = telephony_config.get('provider')
     credentials = telephony_config.get('credentials', {})
-    account_sid = credentials.get('account_sid')
-    auth_token = credentials.get('auth_token')
-
-    if not account_sid or not auth_token:
-        return JSONResponse(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content=response_formatter.buildErrorResponse(
-                'Twilio credentials (account_sid, auth_token) not found in telephony config'
-            ),
-        )
 
     # Generate presigned URL for welcome message audio
     welcome_message_audio_url = ''
@@ -405,23 +401,69 @@ async def initiate_call(
             logger.error(f'Failed to generate welcome message audio URL: {str(e)}')
             # Continue with empty URL - call will proceed without welcome message
 
-    # Initiate the call using Twilio
-    call_details = twilio_service.initiate_call(
-        to_number=payload.to_number,
-        from_number=from_number,
-        voice_agent_id=str(agent_id),
-        welcome_message_audio_url=welcome_message_audio_url,
-        account_sid=account_sid,
-        auth_token=auth_token,
-    )
+    # Route to appropriate provider service
+    if provider == TelephonyProvider.TWILIO.value:
+        account_sid = credentials.get('account_sid')
+        auth_token = credentials.get('auth_token')
 
-    # Build response
+        if not account_sid or not auth_token:
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content=response_formatter.buildErrorResponse(
+                    'Twilio credentials (account_sid, auth_token) missing'
+                ),
+            )
+
+        call_details = twilio_service.initiate_call(
+            to_number=payload.to_number,
+            from_number=from_number,
+            voice_agent_id=str(agent_id),
+            welcome_message_audio_url=welcome_message_audio_url,
+            account_sid=account_sid,
+            auth_token=auth_token,
+        )
+
+    elif provider == TelephonyProvider.EXOTEL.value:
+        api_key = credentials.get('api_key')
+        api_token = credentials.get('api_token')
+        account_sid = credentials.get('account_sid')
+        subdomain = credentials.get('subdomain')
+
+        if not all([api_key, api_token, account_sid, subdomain]):
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content=response_formatter.buildErrorResponse(
+                    'Exotel credentials (api_key, api_token, account_sid, subdomain) missing'
+                ),
+            )
+
+        call_details = await exotel_service.initiate_call(
+            to_number=payload.to_number,
+            from_number=from_number,
+            voice_agent_id=str(agent_id),
+            welcome_message_audio_url=welcome_message_audio_url,
+            api_key=api_key,
+            api_token=api_token,
+            account_sid=account_sid,
+            subdomain=subdomain,
+        )
+
+    else:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                f'Unsupported telephony provider: {provider}'
+            ),
+        )
+
+    # Build unified response
     response_data = {
         'call_sid': call_details['call_sid'],
         'status': call_details['status'],
         'to_number': call_details['to_number'],
         'from_number': call_details['from_number'],
         'voice_agent_id': str(agent_id),
+        'provider': provider,
         'initiated_at': datetime.utcnow().isoformat(),
     }
 
