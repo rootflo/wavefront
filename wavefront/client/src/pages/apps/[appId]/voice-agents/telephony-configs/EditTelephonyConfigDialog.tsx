@@ -154,8 +154,8 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
       if (provider === 'twilio') {
         if (data.account_sid?.trim() || data.auth_token?.trim()) {
           updateData.credentials = {
-            account_sid: (config.credentials as any).account_sid,
-            auth_token: (config.credentials as any).auth_token,
+            account_sid: (config.credentials as any).account_sid ?? '',
+            auth_token: (config.credentials as any).auth_token ?? '',
           };
           if (data.account_sid?.trim()) {
             updateData.credentials.account_sid = data.account_sid.trim();

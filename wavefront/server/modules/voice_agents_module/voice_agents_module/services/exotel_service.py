@@ -45,7 +45,11 @@ class ExotelService:
             # status_callback_url = f'{self.call_processing_base_url}/webhooks/exotel/status'
 
             # Construct Exotel v1 API endpoint (append .json for JSON response)
-            endpoint = f'https://{api_key}:{api_token}@{subdomain}/v1/Accounts/{account_sid}/Calls/connect.json'
+            endpoint = (
+                f'https://{subdomain}/v1/Accounts/{account_sid}/Calls/connect.json'
+            )
+            auth = aiohttp.BasicAuth(api_key, api_token)
+            timeout = aiohttp.ClientTimeout(total=15)
 
             app_id = os.getenv('EXOTEL_APP_ID')
             if not app_id:
@@ -68,12 +72,14 @@ class ExotelService:
                 'CustomField': json.dumps({'voice_agent_id': voice_agent_id}),
             }
 
+            masked_from = f'***{from_number[-4:]}'
+            masked_to = f'***{to_number[-4:]}'
             logger.info(
-                f'Initiating Exotel call from {from_number} to {to_number} for agent {voice_agent_id}'
+                f'Initiating Exotel call from {masked_from} to {masked_to} for agent {voice_agent_id}'
             )
 
             # Make async API request
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(timeout=timeout, auth=auth) as session:
                 async with session.post(
                     endpoint,
                     data=payload,
