@@ -8,6 +8,7 @@ from typing import Dict, Any, List
 from copy import deepcopy
 from call_processing.log.logger import logger
 from call_processing.services.tool_wrapper_service import ToolWrapperFactory
+from call_processing.utils import get_current_ist_time_str
 
 # Pipecat core imports
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
@@ -300,7 +301,7 @@ class PipecatService:
         # Create initial messages with system prompt
         base_system_prompt = (
             f'Customer phone number: {customer_number}\n'
-            + agent_config['system_prompt']
+            f'{get_current_ist_time_str()}\n' + agent_config['system_prompt']
         )
 
         # Add language instruction for default language if multi-language
