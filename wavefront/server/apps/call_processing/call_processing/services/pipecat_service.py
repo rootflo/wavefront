@@ -520,6 +520,14 @@ class PipecatService:
 
         # Run pipeline
         runner = PipelineRunner(handle_sigint=False)
-        await runner.run(task)
-
-        logger.info(f"Conversation ended for agent: {agent_config['name']}")
+        try:
+            await runner.run(task)
+        except Exception as e:
+            logger.error(
+                f"Pipeline error for agent {agent_config['name']}: {e}",
+                exc_info=True,
+            )
+            raise
+        finally:
+            await task.cancel()
+            logger.info(f"Conversation ended for agent: {agent_config['name']}")
