@@ -131,6 +131,20 @@ CARTESIA_LANGUAGES: Set[str] = {
 }
 
 # Deepgram STT supports 40+ languages
+SARVAM_LANGUAGES: Set[str] = {
+    'bn',
+    'en',
+    'gu',
+    'hi',
+    'kn',
+    'ml',
+    'mr',
+    'or',
+    'pa',
+    'ta',
+    'te',
+}
+
 DEEPGRAM_STT_LANGUAGES: Set[str] = {
     'ar',
     'bg',
@@ -194,6 +208,8 @@ def get_tts_supported_languages(provider: str) -> Set[str]:
         # Deepgram TTS: language is implicit in voice_id, no explicit language param
         # Return empty set to indicate validation should be skipped
         return set()
+    elif provider == 'sarvam':
+        return SARVAM_LANGUAGES
     elif provider in ['azure', 'google', 'aws']:
         # For providers not yet fully implemented, skip validation
         return set()
@@ -218,6 +234,8 @@ def get_stt_supported_languages(provider: str) -> Set[str]:
 
     if provider == 'deepgram':
         return DEEPGRAM_STT_LANGUAGES
+    elif provider == 'sarvam':
+        return SARVAM_LANGUAGES
     elif provider in ['assemblyai', 'whisper', 'google', 'azure']:
         # For providers not yet fully implemented, skip validation
         return set()

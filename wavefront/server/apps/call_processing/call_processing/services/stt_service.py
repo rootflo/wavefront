@@ -9,6 +9,10 @@ from call_processing.log.logger import logger
 
 # Pipecat STT services
 from pipecat.services.deepgram.stt import DeepgramSTTService
+from pipecat.services.sarvam.stt import SarvamSTTService
+
+# Pipecat language enum
+from pipecat.transcriptions.language import Language
 
 # Deepgram options
 from deepgram import LiveOptions
@@ -51,6 +55,8 @@ class STTServiceFactory:
 
         if provider == 'deepgram':
             return STTServiceFactory._create_deepgram_stt(api_key, parameters)
+        elif provider == 'sarvam':
+            return STTServiceFactory._create_sarvam_stt(api_key, parameters)
         elif provider == 'assemblyai':
             return STTServiceFactory._create_assemblyai_stt(api_key, parameters)
         elif provider == 'whisper':
@@ -105,6 +111,56 @@ class STTServiceFactory:
         )
 
         return DeepgramSTTService(api_key=api_key, live_options=live_options)
+
+    # Mapping of short language codes to pipecat Language enum for Sarvam
+    SARVAM_LANGUAGE_MAP = {
+        'bn': Language.BN_IN,
+        'en': Language.EN_IN,
+        'gu': Language.GU_IN,
+        'hi': Language.HI_IN,
+        'kn': Language.KN_IN,
+        'ml': Language.ML_IN,
+        'mr': Language.MR_IN,
+        'or': Language.OR_IN,
+        'pa': Language.PA_IN,
+        'ta': Language.TA_IN,
+        'te': Language.TE_IN,
+    }
+
+    @staticmethod
+    def _create_sarvam_stt(api_key: str, parameters: Dict[str, Any]):
+        """Create Sarvam STT service"""
+        params_dict = {}
+
+        # Map language code to pipecat Language enum
+        if 'language' in parameters and parameters['language']:
+            lang_code = parameters['language']
+            lang_enum = STTServiceFactory.SARVAM_LANGUAGE_MAP.get(lang_code)
+            if lang_enum:
+                params_dict['language'] = lang_enum
+            else:
+                logger.warning(f"Unknown Sarvam language '{lang_code}', skipping")
+
+        if 'vad_signals' in parameters:
+            params_dict['vad_signals'] = parameters['vad_signals']
+        if 'high_vad_sensitivity' in parameters:
+            params_dict['high_vad_sensitivity'] = parameters['high_vad_sensitivity']
+
+        model = parameters.get('model', 'saarika:v2.5')
+        sample_rate = parameters.get('sample_rate', 8000)
+
+        input_params = (
+            SarvamSTTService.InputParams(**params_dict) if params_dict else None
+        )
+
+        logger.info(f'Sarvam STT config: model={model}, sample_rate={sample_rate}')
+
+        return SarvamSTTService(
+            api_key=api_key,
+            model=model,
+            sample_rate=sample_rate,
+            params=input_params,
+        )
 
     @staticmethod
     def _create_assemblyai_stt(api_key: str, parameters: Dict[str, Any]):

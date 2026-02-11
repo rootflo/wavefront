@@ -32,7 +32,7 @@ import { z } from 'zod';
 const createSttConfigSchema = z.object({
   display_name: z.string().min(1, 'Display name is required').max(100, 'Display name must be 100 characters or less'),
   description: z.string().max(500, 'Description must be 500 characters or less').optional(),
-  provider: z.enum(['deepgram'] as [string, ...string[]]),
+  provider: z.enum(['deepgram', 'sarvam'] as [string, ...string[]]),
   api_key: z.string().min(1, 'API key is required'),
 });
 

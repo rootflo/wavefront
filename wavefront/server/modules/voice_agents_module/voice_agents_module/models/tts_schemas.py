@@ -15,6 +15,7 @@ class TtsProvider(str, Enum):
     AZURE = 'azure'
     GOOGLE = 'google'
     AWS = 'aws'
+    SARVAM = 'sarvam'
 
 
 class CreateTtsConfigPayload(BaseModel):

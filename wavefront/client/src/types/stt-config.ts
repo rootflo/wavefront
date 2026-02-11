@@ -1,6 +1,6 @@
 import { IApiResponse } from '@app/lib/axios';
 
-export type SttProvider = 'deepgram';
+export type SttProvider = 'deepgram' | 'sarvam';
 
 export interface SttConfig {
   id: string;
@@ -51,4 +51,12 @@ export interface DeepgramSttParameters {
   punctuate?: boolean;
   profanity_filter?: boolean;
   vad_events?: boolean;
+}
+
+// Sarvam STT specific parameters
+export interface SarvamSttParameters {
+  model?: string; // default: 'saarika:v2.5'
+  language?: string;
+  vad_signals?: boolean;
+  high_vad_sensitivity?: boolean;
 }
