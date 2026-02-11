@@ -50,9 +50,10 @@ from pipecat.turns.user_stop import (
 from call_processing.services.stt_service import STTServiceFactory
 from call_processing.services.tts_service import TTSServiceFactory
 from call_processing.services.llm_service import LLMServiceFactory
-from call_processing.services.conversation_completion_tool import (
-    ConversationCompletionToolFactory,
-)
+
+# from call_processing.services.conversation_completion_tool import (
+#     ConversationCompletionToolFactory,
+# )
 from call_processing.constants.language_config import (
     LANGUAGE_INSTRUCTIONS,
 )
@@ -376,34 +377,34 @@ class PipecatService:
             logger.info('Registered language detection tool with LLM')
 
         # Register conversation completion tool
-        conversation_completion_func = (
-            ConversationCompletionToolFactory.create_conversation_completion_tool(
-                task_container=task_container
-            )
-        )
-        llm.register_function('end_conversation', conversation_completion_func)
+        # conversation_completion_func = (
+        #     ConversationCompletionToolFactory.create_conversation_completion_tool(
+        #         task_container=task_container
+        #     )
+        # )
+        # llm.register_function('end_conversation', conversation_completion_func)
         logger.info('Registered conversation completion tool with LLM')
 
         # Create FunctionSchema for conversation completion
-        end_conversation_schema = FunctionSchema(
-            name='end_conversation',
-            description=(
-                'Call this function when the user indicates they want to end the conversation. '
-                'This includes goodbye phrases, expressions of completion, or any indication '
-                'that the user wants to hang up or finish the call. Examples: "goodbye", "bye", '
-                '"thank you", "that\'s all", "I\'m done", etc.'
-            ),
-            properties={
-                'farewell_message': {
-                    'type': 'string',
-                    'description': (
-                        'Optional custom farewell message to say to the user before ending. '
-                        'If not provided, uses default: "Thank you for using our service! Goodbye!"'
-                    ),
-                }
-            },
-            required=[],
-        )
+        # end_conversation_schema = FunctionSchema(
+        #     name='end_conversation',
+        #     description=(
+        #         'Call this function when the user indicates they want to end the conversation. '
+        #         'This includes goodbye phrases, expressions of completion, or any indication '
+        #         'that the user wants to hang up or finish the call. Examples: "goodbye", "bye", '
+        #         '"thank you", "that\'s all", "I\'m done", etc.'
+        #     ),
+        #     properties={
+        #         'farewell_message': {
+        #             'type': 'string',
+        #             'description': (
+        #                 'Optional custom farewell message to say to the user before ending. '
+        #                 'If not provided, uses default: "Thank you for using our service! Goodbye!"'
+        #             ),
+        #         }
+        #     },
+        #     required=[],
+        # )
 
         # Create FunctionSchema for language detection (if multi-language)
         language_detection_schemas = []
@@ -436,7 +437,8 @@ class PipecatService:
 
         # Combine all FunctionSchema objects for ToolsSchema
         all_function_schemas = (
-            [end_conversation_schema] + language_detection_schemas + function_schemas
+            # [end_conversation_schema] +
+            language_detection_schemas + function_schemas
         )
         tools_schema = ToolsSchema(standard_tools=all_function_schemas)
 
