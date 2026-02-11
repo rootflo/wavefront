@@ -290,7 +290,10 @@ class TTSGeneratorService:
 
                 # Sarvam returns JSON with audios[] array of base64-encoded audio
                 data = response.json()
-                audio_b64 = data['audios'][0]
+                audios = data.get('audios')
+                if not audios:
+                    raise ValueError(f'Sarvam API returned no audio data: {data}')
+                audio_b64 = audios[0]
                 audio_bytes = base64.b64decode(audio_b64)
 
                 logger.info(
