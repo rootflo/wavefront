@@ -33,7 +33,7 @@ import { z } from 'zod';
 const updateTtsConfigSchema = z.object({
   display_name: z.string().min(1, 'Display name is required').max(100, 'Display name must be 100 characters or less'),
   description: z.string().max(500, 'Description must be 500 characters or less').optional(),
-  provider: z.enum(['elevenlabs', 'deepgram', 'cartesia'] as [string, ...string[]]),
+  provider: z.enum(['elevenlabs', 'deepgram', 'cartesia', 'sarvam'] as [string, ...string[]]),
   api_key: z.string().optional(),
 });
 

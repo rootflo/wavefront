@@ -44,7 +44,7 @@ export interface VoiceProvidersConfig {
  */
 export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
   tts: {
-    providers: ['elevenlabs', 'deepgram', 'cartesia'] as const,
+    providers: ['elevenlabs', 'deepgram', 'cartesia', 'sarvam'] as const,
     configs: {
       elevenlabs: {
         name: 'ElevenLabs',
@@ -159,10 +159,68 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
           },
         },
       },
+      sarvam: {
+        name: 'Sarvam',
+        badge: {
+          bg: 'bg-orange-100',
+          text: 'text-orange-800',
+        },
+        parameters: {
+          model: {
+            type: 'string',
+            default: 'bulbul:v2',
+            options: ['bulbul:v2', 'bulbul:v3'],
+            description: 'Sarvam TTS model',
+          },
+          language: {
+            type: 'string',
+            default: '',
+            description: 'Language code',
+            placeholder: 'hi',
+          },
+          pitch: {
+            type: 'number',
+            default: 0.0,
+            min: -0.75,
+            max: 0.75,
+            step: 0.05,
+            description: 'Voice pitch (-0.75 to 0.75)',
+          },
+          pace: {
+            type: 'number',
+            default: 1.0,
+            min: 0.3,
+            max: 3.0,
+            step: 0.1,
+            description: 'Speech pace (0.3-3.0)',
+          },
+          loudness: {
+            type: 'number',
+            default: 1.0,
+            min: 0.1,
+            max: 3.0,
+            step: 0.1,
+            description: 'Volume (0.1-3.0)',
+          },
+          enable_preprocessing: {
+            type: 'boolean',
+            default: false,
+            description: 'Enable text preprocessing',
+          },
+          temperature: {
+            type: 'number',
+            default: 0.6,
+            min: 0.01,
+            max: 1.0,
+            step: 0.05,
+            description: 'Randomness for bulbul v3 (0.01-1.0)',
+          },
+        },
+      },
     },
   },
   stt: {
-    providers: ['deepgram'] as const,
+    providers: ['deepgram', 'sarvam'] as const,
     configs: {
       deepgram: {
         name: 'Deepgram',
@@ -233,6 +291,37 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
             type: 'boolean',
             default: false,
             description: 'Enable voice activity detection events',
+          },
+        },
+      },
+      sarvam: {
+        name: 'Sarvam',
+        badge: {
+          bg: 'bg-orange-100',
+          text: 'text-orange-800',
+        },
+        parameters: {
+          model: {
+            type: 'string',
+            default: 'saarika:v2.5',
+            options: ['saarika:v2.5', 'saaras:v2'],
+            description: 'Sarvam STT model',
+          },
+          language: {
+            type: 'string',
+            default: '',
+            description: 'Language code',
+            placeholder: 'hi',
+          },
+          vad_signals: {
+            type: 'boolean',
+            default: true,
+            description: 'Enable VAD signals',
+          },
+          high_vad_sensitivity: {
+            type: 'boolean',
+            default: false,
+            description: 'High VAD sensitivity',
           },
         },
       },

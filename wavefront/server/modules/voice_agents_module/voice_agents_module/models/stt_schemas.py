@@ -14,6 +14,7 @@ class SttProvider(str, Enum):
     WHISPER = 'whisper'
     GOOGLE = 'google'
     AZURE = 'azure'
+    SARVAM = 'sarvam'
 
 
 class CreateSttConfigPayload(BaseModel):
