@@ -304,7 +304,7 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
           model: {
             type: 'string',
             default: 'saarika:v2.5',
-            options: ['saarika:v2.5', 'saaras:v2'],
+            options: ['saarika:v2.5', 'saaras:v2.5', 'saaras:v3'],
             description: 'Sarvam STT model',
           },
           language: {
