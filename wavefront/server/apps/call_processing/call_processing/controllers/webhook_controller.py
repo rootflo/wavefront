@@ -76,19 +76,6 @@ async def inbound_webhook(
     agent_id = agent['id']
     logger.info(f'Agent found for inbound number {To}: {agent_id} ({agent["name"]})')
 
-    # Generate welcome message audio URL
-    welcome_message_audio_url = ''
-    if agent.get('welcome_message'):
-        try:
-            # Note: This assumes voice_agent_cache_service has this method
-            # We'll implement it in the next step
-            welcome_message_audio_url = (
-                await voice_agent_cache_service.get_welcome_message_audio_url(agent_id)
-            )
-        except Exception as e:
-            logger.error(f'Failed to get welcome message URL: {e}')
-            # Continue without welcome message
-
     # Build WebSocket URL
     base_url = os.getenv('CALL_PROCESSING_BASE_URL', 'http://localhost:8003')
 
@@ -106,14 +93,6 @@ async def inbound_webhook(
 
     # Generate TwiML response
     response = VoiceResponse()
-
-    # Play welcome message audio if URL is provided
-    if welcome_message_audio_url:
-        response.play(welcome_message_audio_url)
-    else:
-        logger.warning(
-            'No welcome message audio URL provided, skipping welcome message'
-        )
 
     connect = Connect()
     stream = Stream(url=websocket_url)
@@ -219,7 +198,6 @@ async def twiml_endpoint(
     From: str = Form(...),
     To: str = Form(...),
     voice_agent_id: str = Query(...),
-    welcome_message_audio_url: str = Query(default=''),
 ):
     """
     Twilio TwiML endpoint
@@ -229,10 +207,8 @@ async def twiml_endpoint(
 
     Query params:
         voice_agent_id: UUID of the voice agent configuration
-        welcome_message_audio_url: URL of the welcome message audio file
     """
     logger.info(f'TwiML requested for voice_agent_id: {voice_agent_id}')
-    logger.info(f'Welcome message audio URL: {welcome_message_audio_url}')
 
     # Build WebSocket URL
     base_url = os.getenv('CALL_PROCESSING_BASE_URL', 'http://localhost:8003')
@@ -251,14 +227,6 @@ async def twiml_endpoint(
 
     # Generate TwiML response
     response = VoiceResponse()
-
-    # Play welcome message audio if URL is provided
-    if welcome_message_audio_url:
-        response.play(welcome_message_audio_url)
-    else:
-        logger.warning(
-            'No welcome message audio URL provided, skipping welcome message'
-        )
 
     connect = Connect()
     stream = Stream(url=websocket_url)

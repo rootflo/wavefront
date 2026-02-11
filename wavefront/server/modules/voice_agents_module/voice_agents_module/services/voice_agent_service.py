@@ -429,19 +429,20 @@ class VoiceAgentService:
         # Generate agent ID first
         agent_id = uuid.uuid4()
 
-        # Generate and upload welcome message audio BEFORE creating agent
-        # If this fails, no agent record is created
-        await self._generate_and_upload_welcome_audio(
-            welcome_message,
-            tts_config_id,
-            tts_voice_ids,
-            tts_parameters,
-            agent_id,
-            supported_languages,
-            default_language,
-        )
+        # Welcome audio generation disabled - pipecat now plays welcome message
+        # via TTSSpeakFrame in real-time when the WebSocket client connects.
+        # Keeping _generate_and_upload_welcome_audio() method for future reuse.
+        # await self._generate_and_upload_welcome_audio(
+        #     welcome_message,
+        #     tts_config_id,
+        #     tts_voice_ids,
+        #     tts_parameters,
+        #     agent_id,
+        #     supported_languages,
+        #     default_language,
+        # )
 
-        # Create agent only if audio generation succeeded
+        # Create agent
         agent = await self.voice_agent_repository.create(
             id=agent_id,
             name=name,
@@ -649,33 +650,34 @@ class VoiceAgentService:
                 logger.error(f'TTS/STT validation failed: {error_message}')
                 raise ValueError(error_message)
 
-        # Check if welcome_message or language config changed (requires audio regeneration)
-        audio_regeneration_needed = False
-        if (
-            'welcome_message' in update_data
-            and update_data['welcome_message'] != existing_agent.welcome_message
-        ):
-            audio_regeneration_needed = True
-        if 'supported_languages' in update_data and update_data[
-            'supported_languages'
-        ] != existing_dict.get('supported_languages'):
-            audio_regeneration_needed = True
-        if 'default_language' in update_data and update_data[
-            'default_language'
-        ] != existing_dict.get('default_language'):
-            audio_regeneration_needed = True
-        if 'tts_voice_ids' in update_data and update_data[
-            'tts_voice_ids'
-        ] != existing_dict.get('tts_voice_ids'):
-            audio_regeneration_needed = True
-        if 'tts_parameters' in update_data and update_data[
-            'tts_parameters'
-        ] != existing_dict.get('tts_parameters'):
-            audio_regeneration_needed = True
-        if 'tts_config_id' in update_data and update_data[
-            'tts_config_id'
-        ] != existing_dict.get('tts_config_id'):
-            audio_regeneration_needed = True
+        # Welcome audio regeneration disabled - pipecat now plays welcome message
+        # via TTSSpeakFrame in real-time when the WebSocket client connects.
+        # audio_regeneration_needed = False
+        # if (
+        #     'welcome_message' in update_data
+        #     and update_data['welcome_message'] != existing_agent.welcome_message
+        # ):
+        #     audio_regeneration_needed = True
+        # if 'supported_languages' in update_data and update_data[
+        #     'supported_languages'
+        # ] != existing_dict.get('supported_languages'):
+        #     audio_regeneration_needed = True
+        # if 'default_language' in update_data and update_data[
+        #     'default_language'
+        # ] != existing_dict.get('default_language'):
+        #     audio_regeneration_needed = True
+        # if 'tts_voice_ids' in update_data and update_data[
+        #     'tts_voice_ids'
+        # ] != existing_dict.get('tts_voice_ids'):
+        #     audio_regeneration_needed = True
+        # if 'tts_parameters' in update_data and update_data[
+        #     'tts_parameters'
+        # ] != existing_dict.get('tts_parameters'):
+        #     audio_regeneration_needed = True
+        # if 'tts_config_id' in update_data and update_data[
+        #     'tts_config_id'
+        # ] != existing_dict.get('tts_config_id'):
+        #     audio_regeneration_needed = True
 
         # If any FK fields are being updated, validate them
         if any(
@@ -708,45 +710,44 @@ class VoiceAgentService:
                 logger.error(f'FK validation failed: {error_message}')
                 raise ValueError(error_message)
 
-        # Regenerate welcome audio if needed
-        if audio_regeneration_needed:
-            logger.info(
-                'Welcome message or language config changed, regenerating audio'
-            )
-            try:
-                # Use updated values if provided, otherwise use existing
-                welcome_message = update_data.get(
-                    'welcome_message', existing_agent.welcome_message
-                )
-                tts_config_id = update_data.get(
-                    'tts_config_id', existing_agent.tts_config_id
-                )
-                tts_voice_ids = update_data.get(
-                    'tts_voice_ids', existing_agent.tts_voice_ids
-                )
-                tts_parameters = update_data.get(
-                    'tts_parameters', existing_dict.get('tts_parameters')
-                )
-                supported_languages = update_data.get(
-                    'supported_languages',
-                    existing_dict.get('supported_languages', ['en']),
-                )
-                default_language = update_data.get(
-                    'default_language', existing_dict.get('default_language', 'en')
-                )
-
-                await self._generate_and_upload_welcome_audio(
-                    welcome_message,
-                    tts_config_id,
-                    tts_voice_ids,
-                    tts_parameters,
-                    agent_id,
-                    supported_languages,
-                    default_language,
-                )
-            except Exception as e:
-                logger.error(f'Failed to regenerate welcome audio: {str(e)}')
-                raise e
+        # Welcome audio regeneration disabled - pipecat handles welcome message now.
+        # if audio_regeneration_needed:
+        #     logger.info(
+        #         'Welcome message or language config changed, regenerating audio'
+        #     )
+        #     try:
+        #         welcome_message = update_data.get(
+        #             'welcome_message', existing_agent.welcome_message
+        #         )
+        #         tts_config_id = update_data.get(
+        #             'tts_config_id', existing_agent.tts_config_id
+        #         )
+        #         tts_voice_ids = update_data.get(
+        #             'tts_voice_ids', existing_agent.tts_voice_ids
+        #         )
+        #         tts_parameters = update_data.get(
+        #             'tts_parameters', existing_dict.get('tts_parameters')
+        #         )
+        #         supported_languages = update_data.get(
+        #             'supported_languages',
+        #             existing_dict.get('supported_languages', ['en']),
+        #         )
+        #         default_language = update_data.get(
+        #             'default_language', existing_dict.get('default_language', 'en')
+        #         )
+        #
+        #         await self._generate_and_upload_welcome_audio(
+        #             welcome_message,
+        #             tts_config_id,
+        #             tts_voice_ids,
+        #             tts_parameters,
+        #             agent_id,
+        #             supported_languages,
+        #             default_language,
+        #         )
+        #     except Exception as e:
+        #         logger.error(f'Failed to regenerate welcome audio: {str(e)}')
+        #         raise e
 
         updated_agent = await self.voice_agent_repository.find_one_and_update(
             {'id': agent_id}, refresh=True, **update_data
