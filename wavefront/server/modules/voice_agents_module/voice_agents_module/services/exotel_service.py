@@ -19,7 +19,6 @@ class ExotelService:
         to_number: str,
         from_number: str,
         voice_agent_id: str,
-        welcome_message_audio_url: str,
         api_key: str,
         api_token: str,
         account_sid: str,
@@ -32,7 +31,6 @@ class ExotelService:
             to_number: Destination phone number (E.164 format)
             from_number: Exotel virtual number (ExoPhone)
             voice_agent_id: ID of the voice agent
-            welcome_message_audio_url: URL of the welcome message audio file
             api_key: Exotel API key
             api_token: Exotel API token
             account_sid: Exotel account SID

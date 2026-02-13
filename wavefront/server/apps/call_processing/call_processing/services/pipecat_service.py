@@ -14,7 +14,7 @@ from call_processing.utils import get_current_ist_time_str
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
-from pipecat.frames.frames import Frame
+from pipecat.frames.frames import Frame, TTSSpeakFrame
 from pipecat.pipeline.parallel_pipeline import ParallelPipeline
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
@@ -36,7 +36,7 @@ from pipecat.processors.transcript_processor import (
 from pipecat.transports.base_transport import BaseTransport
 from pipecat.turns.user_mute import (
     FunctionCallUserMuteStrategy,
-    # MuteUntilFirstBotCompleteUserMuteStrategy,
+    MuteUntilFirstBotCompleteUserMuteStrategy,
 )
 from pipecat.turns.user_turn_strategies import UserTurnStrategies
 from pipecat.turns.user_start import (
@@ -320,7 +320,8 @@ class PipecatService:
             {
                 'role': 'system',
                 'content': system_content,
-            }
+            },
+            {'role': 'assistant', 'content': agent_config['welcome_message']},
         ]
 
         # Load and register tools for this agent
@@ -465,7 +466,7 @@ class PipecatService:
                     ],  # List of stop strategies
                 ),
                 user_mute_strategies=[
-                    # MuteUntilFirstBotCompleteUserMuteStrategy(), # Not needed since first message is pre-recorded audio
+                    MuteUntilFirstBotCompleteUserMuteStrategy(),
                     FunctionCallUserMuteStrategy(),
                 ],
             ),
@@ -510,7 +511,7 @@ class PipecatService:
         @transport.event_handler('on_client_connected')
         async def on_client_connected(transport, client):
             logger.info(f"Client connected for agent: {agent_config['name']}")
-            # Bot waits for user to speak first (can be changed to greet first)
+            await task.queue_frame(TTSSpeakFrame(agent_config['welcome_message']))
 
         @transport.event_handler('on_client_disconnected')
         async def on_client_disconnected(transport, client):
@@ -519,6 +520,14 @@ class PipecatService:
 
         # Run pipeline
         runner = PipelineRunner(handle_sigint=False)
-        await runner.run(task)
-
-        logger.info(f"Conversation ended for agent: {agent_config['name']}")
+        try:
+            await runner.run(task)
+        except Exception as e:
+            logger.error(
+                f"Pipeline error for agent {agent_config['name']}: {e}",
+                exc_info=True,
+            )
+            raise
+        finally:
+            await task.cancel()
+            logger.info(f"Conversation ended for agent: {agent_config['name']}")

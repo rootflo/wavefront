@@ -390,17 +390,6 @@ async def initiate_call(
     provider = telephony_config.get('provider')
     credentials = telephony_config.get('credentials', {})
 
-    # Generate presigned URL for welcome message audio
-    welcome_message_audio_url = ''
-    if agent_dict.get('welcome_message'):
-        try:
-            welcome_message_audio_url = (
-                await voice_agent_service.get_welcome_message_audio_url(agent_id)
-            )
-        except Exception as e:
-            logger.error(f'Failed to generate welcome message audio URL: {str(e)}')
-            # Continue with empty URL - call will proceed without welcome message
-
     # Route to appropriate provider service
     if provider == TelephonyProvider.TWILIO.value:
         account_sid = credentials.get('account_sid')
@@ -418,7 +407,6 @@ async def initiate_call(
             to_number=payload.to_number,
             from_number=from_number,
             voice_agent_id=str(agent_id),
-            welcome_message_audio_url=welcome_message_audio_url,
             account_sid=account_sid,
             auth_token=auth_token,
         )
@@ -441,7 +429,6 @@ async def initiate_call(
             to_number=payload.to_number,
             from_number=from_number,
             voice_agent_id=str(agent_id),
-            welcome_message_audio_url=welcome_message_audio_url,
             api_key=api_key,
             api_token=api_token,
             account_sid=account_sid,
