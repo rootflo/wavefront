@@ -13,6 +13,13 @@ class ImageService:
     def __init__(self, cloud_service: CloudImageService):
         self.cloud_service = cloud_service
 
+    async def save_image(self, image_data: bytes, image_name: str):
+        validated_image_data = await self._validate_image(image_data)
+
+        bucket_name, file_path = await self.cloud_service.upload_image(
+            validated_image_data, f'historical_data/{image_name}'
+        )
+
     async def process_image(
         self, image_data: bytes, metadata: Dict[str, Any]
     ) -> Dict[str, Any]:
@@ -61,7 +68,6 @@ class ImageService:
                 img_format = img.format if img.format else 'JPEG'
                 img.save(buffer, format=img_format, quality=85)
                 return buffer.getvalue()
-
         except Exception as e:
             logger.error(f'Error validating image: {str(e)}')
             raise ValueError(f'Invalid image data: {str(e)}')
