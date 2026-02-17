@@ -202,32 +202,39 @@ async def validate_hmac_signature(
             )
             return False
 
-        body = await request.body()
+        if request.headers.get('X-Rootflo-Nonce'):
+            nonce = request.headers.get('X-Rootflo-Nonce')
+        else:
+            body = await request.body()
 
-        # Parse JSON body to extract nonce
-        try:
-            parsed_body = json.loads(body.decode('utf-8'))
-            nonce = parsed_body.get('nonce')
-            if not nonce:
+            # Parse JSON body to extract nonce
+            try:
+                parsed_body = json.loads(body.decode('utf-8'))
+                nonce = parsed_body.get('nonce')
+                if not nonce:
+                    request_id = getattr(
+                        request.state, 'request_id', get_current_request_id()
+                    )
+                    logger.warning(
+                        f"Missing 'nonce' field in request body [Request ID: {request_id}]"
+                    )
+                    return False
+                if len(nonce) < 32:
+                    request_id = getattr(
+                        request.state, 'request_id', get_current_request_id()
+                    )
+                    logger.warning(
+                        f"Minimum 'nonce' length required is 32 [Request ID: {request_id}]"
+                    )
+                    return False
+            except (json.JSONDecodeError, UnicodeDecodeError):
                 request_id = getattr(
                     request.state, 'request_id', get_current_request_id()
                 )
                 logger.warning(
-                    f"Missing 'nonce' field in request body [Request ID: {request_id}]"
+                    f'Invalid JSON in request body [Request ID: {request_id}]'
                 )
                 return False
-            if len(nonce) < 32:
-                request_id = getattr(
-                    request.state, 'request_id', get_current_request_id()
-                )
-                logger.warning(
-                    f"Minimum 'nonce' length required is 32 [Request ID: {request_id}]"
-                )
-                return False
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            request_id = getattr(request.state, 'request_id', get_current_request_id())
-            logger.warning(f'Invalid JSON in request body [Request ID: {request_id}]')
-            return False
 
         # Create the message to sign: nonce:timestamp
         message_to_sign = f'{nonce}:{timestamp}'
