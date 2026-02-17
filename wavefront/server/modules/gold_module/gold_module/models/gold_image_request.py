@@ -87,3 +87,8 @@ class ImageMetadata(BaseModel):
 class ImageAnalysisRequest(BaseModel):
     image: str  # data URL (base64 with MIME) or direct URL
     metadata: ImageMetadata
+
+
+class AdhocImageUploadRequest(BaseModel):
+    image: str
+    loan_id: str

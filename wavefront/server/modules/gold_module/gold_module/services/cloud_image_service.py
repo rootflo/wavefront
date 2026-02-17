@@ -20,7 +20,7 @@ class CloudImageService(ABC):
 
     @abstractmethod
     async def upload_image_metadata(
-        self, image_metadata: bytes, object_key: str
+        self, image_metadata: bytes | str, object_key: str
     ) -> Tuple[str, str]:
         """Upload image metadata to the cloud storage"""
         pass
