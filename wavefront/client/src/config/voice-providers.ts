@@ -336,7 +336,7 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
             type: 'string',
             default: 'scribe_v2_realtime',
             description: 'ElevenLabs STT model',
-            options: ['scribe_v2_realtime', 'scribe_v1'],
+            options: ['scribe_v2_realtime'],
           },
           language: {
             type: 'string',
