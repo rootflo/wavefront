@@ -220,7 +220,7 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
     },
   },
   stt: {
-    providers: ['deepgram', 'sarvam'] as const,
+    providers: ['deepgram', 'sarvam', 'elevenlabs'] as const,
     configs: {
       deepgram: {
         name: 'Deepgram',
@@ -322,6 +322,33 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
             type: 'boolean',
             default: false,
             description: 'High VAD sensitivity',
+          },
+        },
+      },
+      elevenlabs: {
+        name: 'ElevenLabs',
+        badge: {
+          bg: 'bg-purple-100',
+          text: 'text-purple-800',
+        },
+        parameters: {
+          model: {
+            type: 'string',
+            default: 'scribe_v2_realtime',
+            description: 'ElevenLabs STT model',
+            options: ['scribe_v2_realtime'],
+          },
+          language: {
+            type: 'string',
+            default: '',
+            description: 'Language code (ISO-639-1, e.g., en, hi)',
+            placeholder: 'en',
+          },
+          sample_rate: {
+            type: 'number',
+            default: 8000,
+            description: 'Audio sample rate in Hz',
+            placeholder: '8000',
           },
         },
       },

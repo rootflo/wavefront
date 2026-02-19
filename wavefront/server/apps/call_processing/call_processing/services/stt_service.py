@@ -1,7 +1,7 @@
 """
 STT (Speech-to-Text) service factory
 
-Supports multiple providers: Deepgram, AssemblyAI, Whisper, Google, Azure
+Supports multiple providers: Deepgram, Sarvam, ElevenLabs
 """
 
 from typing import Dict, Any
@@ -10,6 +10,7 @@ from call_processing.log.logger import logger
 # Pipecat STT services
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.sarvam.stt import SarvamSTTService
+from pipecat.services.elevenlabs.stt import ElevenLabsRealtimeSTTService
 
 # Pipecat language enum
 from pipecat.transcriptions.language import Language
@@ -57,6 +58,8 @@ class STTServiceFactory:
             return STTServiceFactory._create_deepgram_stt(api_key, parameters)
         elif provider == 'sarvam':
             return STTServiceFactory._create_sarvam_stt(api_key, parameters)
+        elif provider == 'elevenlabs':
+            return STTServiceFactory._create_elevenlabs_stt(api_key, parameters)
         elif provider == 'assemblyai':
             return STTServiceFactory._create_assemblyai_stt(api_key, parameters)
         elif provider == 'whisper':
@@ -156,6 +159,55 @@ class STTServiceFactory:
         logger.info(f'Sarvam STT config: model={model}, sample_rate={sample_rate}')
 
         return SarvamSTTService(
+            api_key=api_key,
+            model=model,
+            sample_rate=sample_rate,
+            params=input_params,
+        )
+
+    # Mapping of short language codes to ElevenLabs ISO-639-3 language codes
+    ELEVENLABS_LANGUAGE_MAP = {
+        'en': 'eng',
+        'hi': 'hin',
+        'ta': 'tam',
+        'te': 'tel',
+        'kn': 'kan',
+        'ml': 'mal',
+        'gu': 'guj',
+        'bn': 'ben',
+        'mr': 'mar',
+        'pa': 'pan',
+        'or': 'ori',
+    }
+
+    @staticmethod
+    def _create_elevenlabs_stt(api_key: str, parameters: Dict[str, Any]):
+        """Create ElevenLabs Realtime STT service (WebSocket streaming, scribe_v2_realtime)"""
+        params_dict = {}
+
+        # Map language code to ElevenLabs ISO-639-3 code
+        if 'language' in parameters and parameters['language']:
+            lang_code = parameters['language']
+            elevenlabs_lang = STTServiceFactory.ELEVENLABS_LANGUAGE_MAP.get(lang_code)
+            if elevenlabs_lang:
+                params_dict['language_code'] = elevenlabs_lang
+            else:
+                logger.warning(
+                    f"Unknown ElevenLabs language '{lang_code}', skipping (auto-detect will be used)"
+                )
+
+        model = parameters.get('model', 'scribe_v2_realtime')
+        sample_rate = parameters.get('sample_rate', 8000)
+
+        input_params = (
+            ElevenLabsRealtimeSTTService.InputParams(**params_dict)
+            if params_dict
+            else None
+        )
+
+        logger.info(f'ElevenLabs STT config: model={model}, sample_rate={sample_rate}')
+
+        return ElevenLabsRealtimeSTTService(
             api_key=api_key,
             model=model,
             sample_rate=sample_rate,

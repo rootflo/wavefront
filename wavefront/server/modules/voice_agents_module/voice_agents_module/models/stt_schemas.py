@@ -15,6 +15,7 @@ class SttProvider(str, Enum):
     GOOGLE = 'google'
     AZURE = 'azure'
     SARVAM = 'sarvam'
+    ELEVENLABS = 'elevenlabs'
 
 
 class CreateSttConfigPayload(BaseModel):
