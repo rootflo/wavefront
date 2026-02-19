@@ -22,6 +22,7 @@ import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Textarea } from '@app/components/ui/textarea';
 import { VOICE_PROVIDERS_CONFIG, getProviderConfig } from '@app/config/voice-providers';
+import { SttProvider } from '@app/types/stt-config';
 import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -32,7 +33,7 @@ import { z } from 'zod';
 const createSttConfigSchema = z.object({
   display_name: z.string().min(1, 'Display name is required').max(100, 'Display name must be 100 characters or less'),
   description: z.string().max(500, 'Description must be 500 characters or less').optional(),
-  provider: z.enum(['deepgram', 'sarvam'] as [string, ...string[]]),
+  provider: z.enum(['deepgram', 'sarvam', 'elevenlabs'] as [string, ...string[]]),
   api_key: z.string().min(1, 'API key is required'),
 });
 
@@ -76,7 +77,7 @@ const CreateSttConfigDialog: React.FC<CreateSttConfigDialogProps> = ({ isOpen, o
       await floConsoleService.sttConfigService.createSttConfig({
         display_name: data.display_name.trim(),
         description: data.description?.trim() || null,
-        provider: data.provider as 'deepgram',
+        provider: data.provider as SttProvider,
         api_key: data.api_key.trim(),
       });
       notifySuccess('STT configuration created successfully');

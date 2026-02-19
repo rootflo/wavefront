@@ -1,6 +1,6 @@
 import { IApiResponse } from '@app/lib/axios';
 
-export type SttProvider = 'deepgram' | 'sarvam';
+export type SttProvider = 'deepgram' | 'sarvam' | 'elevenlabs';
 
 export interface SttConfig {
   id: string;
@@ -59,4 +59,11 @@ export interface SarvamSttParameters {
   language?: string;
   vad_signals?: boolean;
   high_vad_sensitivity?: boolean;
+}
+
+// ElevenLabs STT specific parameters
+export interface ElevenLabsSttParameters {
+  model?: string; // default: 'scribe_v2_realtime'
+  language?: string; // ISO-639-1 code e.g. 'en', 'hi'
+  sample_rate?: number; // default: 8000
 }
