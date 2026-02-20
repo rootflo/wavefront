@@ -62,13 +62,16 @@ ELEVENLABS_LANGUAGES: Set[str] = {
     'fi',
     'fil',
     'fr',
+    'gu',
     'hi',
     'hr',
     'hu',
     'id',
     'it',
     'ja',
+    'kn',
     'ko',
+    'ml',
     'ms',
     'nl',
     'no',
@@ -79,6 +82,7 @@ ELEVENLABS_LANGUAGES: Set[str] = {
     'sk',
     'sv',
     'ta',
+    'te',
     'tr',
     'uk',
     'vi',
@@ -236,6 +240,8 @@ def get_stt_supported_languages(provider: str) -> Set[str]:
         return DEEPGRAM_STT_LANGUAGES
     elif provider == 'sarvam':
         return SARVAM_LANGUAGES
+    elif provider == 'elevenlabs':
+        return ELEVENLABS_LANGUAGES
     elif provider in ['assemblyai', 'whisper', 'google', 'azure']:
         # For providers not yet fully implemented, skip validation
         return set()
