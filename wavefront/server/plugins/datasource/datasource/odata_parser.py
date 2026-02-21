@@ -353,9 +353,9 @@ class SQLFilterParser:
             return f'{field} {sql_op} {self.dynamic_var_char}{param_key}'
 
         elif operator == 'in':
-            # Parse array values
+            # Parse array values, lowercase for case-insensitive matching
             items = value.strip('[]').split(',')
-            parsed_values = [v.strip().strip('\'"') for v in items]
+            parsed_values = [v.strip().strip('\'"').lower() for v in items]
 
             placeholder_keys = []
             for idx, val in enumerate(parsed_values):
@@ -363,7 +363,7 @@ class SQLFilterParser:
                 self.params[item_key] = val
                 placeholder_keys.append(f'{self.dynamic_var_char}{item_key}')
 
-            return f"{field} IN ({', '.join(placeholder_keys)})"
+            return f"LOWER({field}) IN ({', '.join(placeholder_keys)})"
 
         else:
             parsed_value = self.parse_value(value)
