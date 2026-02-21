@@ -350,7 +350,7 @@ class SQLFilterParser:
         if operator == 'contains':
             parsed_value = self.parse_value(value)
             self.params[param_key] = f'%{parsed_value}%'
-            return f'{field} {sql_op} {self.dynamic_var_char}{param_key}'
+            return f'LOWER({field}) {sql_op} LOWER({self.dynamic_var_char}{param_key})'
 
         elif operator == 'in':
             # Parse array values
