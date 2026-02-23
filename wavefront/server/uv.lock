@@ -16,6 +16,9 @@ resolution-markers = [
     "(python_full_version < '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'linux')",
 ]
 
+[options]
+prerelease-mode = "allow"
+
 [manifest]
 members = [
     "agents-module",
@@ -640,7 +643,7 @@ requires-dist = [
     { name = "dependency-injector", specifier = ">=4.46.0,<5.0.0" },
     { name = "fastapi", specifier = ">=0.115.2,<1.0.0" },
     { name = "httpx", specifier = ">=0.27.0" },
-    { name = "pipecat-ai", extras = ["websocket", "cartesia", "google", "silero", "deepgram", "groq", "runner", "azure", "local-smart-turn-v3", "sarvam"], specifier = "==0.0.102" },
+    { name = "pipecat-ai", extras = ["websocket", "cartesia", "google", "silero", "deepgram", "groq", "runner", "azure", "local-smart-turn-v3", "sarvam"], specifier = "==0.0.103" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "python-dotenv", specifier = ">=1.1.0,<2.0.0" },
     { name = "python-multipart", specifier = ">=0.0.9" },
@@ -3897,7 +3900,7 @@ wheels = [
 
 [[package]]
 name = "pipecat-ai"
-version = "0.0.102"
+version = "0.0.103"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
@@ -3920,9 +3923,9 @@ dependencies = [
     { name = "transformers" },
     { name = "wait-for2", marker = "python_full_version < '3.12'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b1/61/60a6f7ff2424f9ea6e70c127ece28da241baf3e40b0b5bd6f196bd63a623/pipecat_ai-0.0.102.tar.gz", hash = "sha256:c999d2f0668ab11520396c445605d4eefa1e9bb1965362a52d3dcf3635890519", size = 10957064, upload-time = "2026-02-11T02:33:07.303Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/88/cd/5b5fbbe64edb7825cb5b1604480484dda760cb2d2a6655b9f3e4f33c87b1/pipecat_ai-0.0.103.tar.gz", hash = "sha256:9d08b8032a5a045a69202c83ce643f1ab6108aa6610122f566c152966171ad3c", size = 10974618, upload-time = "2026-02-21T00:44:09.557Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c0/72/2222f4208dc7eca15cdb174c9fe6303c795d60938f3122b15cfb25397d69/pipecat_ai-0.0.102-py3-none-any.whl", hash = "sha256:b533854d8b720860f8ddeb8a6557a1846a46d4226c0d2f42cb631f7dcf457a8b", size = 10611114, upload-time = "2026-02-11T02:33:04.652Z" },
+    { url = "https://files.pythonhosted.org/packages/20/ef/bd6c2022f16b6453bbe2348b254741ce221bec3e2729aed376503376bf07/pipecat_ai-0.0.103-py3-none-any.whl", hash = "sha256:cd05259cc2772a3fff38233a33f9fafad3a10a8ac1f371094ace97285b7ecc73", size = 10620793, upload-time = "2026-02-21T00:44:07.05Z" },
 ]
 
 [package.optional-dependencies]
@@ -3970,14 +3973,14 @@ websocket = [
 
 [[package]]
 name = "pipecat-ai-small-webrtc-prebuilt"
-version = "2.1.0"
+version = "2.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastapi", extra = ["all"] },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4a/8b/c945a27503560d50c56f497e43209f43c81616ede5d3d2b38eeb4044dbbc/pipecat_ai_small_webrtc_prebuilt-2.1.0.tar.gz", hash = "sha256:c883304a159dee01eec74b162e51352b32c362ca19d281226a71d92b5ba1c600", size = 596971, upload-time = "2026-02-05T17:01:08.074Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9a/9f/b06cc0e2eaeda811959c216dade3ed38c30d20e6327a2b22f80125072c5a/pipecat_ai_small_webrtc_prebuilt-2.2.0.tar.gz", hash = "sha256:5d73fe619225b97e383863a901060d1c986f088f4de004477856b085aaba76c4", size = 466005, upload-time = "2026-02-13T19:28:54.626Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8e/f6/5754d86d513822fb4466549eb6bca05c7246676f1b5b199c9646a5475182/pipecat_ai_small_webrtc_prebuilt-2.1.0-py3-none-any.whl", hash = "sha256:0882d147f69d8cc07397ee68b75c554f4d2d75d8023207e7fb86760616bc58aa", size = 597535, upload-time = "2026-02-05T17:01:06.622Z" },
+    { url = "https://files.pythonhosted.org/packages/26/71/20a015cea25dc57129ed6426fdf37a09aefe37f4dd60e3a42ba2d9e3bd1b/pipecat_ai_small_webrtc_prebuilt-2.2.0-py3-none-any.whl", hash = "sha256:e7917d23f51e5418667541a3e241b2de28a43eea35a5a9486721be3da04e719d", size = 466257, upload-time = "2026-02-13T19:28:53.188Z" },
 ]
 
 [[package]]
@@ -5077,7 +5080,7 @@ wheels = [
 
 [[package]]
 name = "sarvamai"
-version = "0.1.21"
+version = "0.1.26a2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
@@ -5086,9 +5089,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e9/08/e5efcb30818ed220b818319255c22fd91e379489ebaa93efd6f444fb4987/sarvamai-0.1.21.tar.gz", hash = "sha256:865065635b2b99d40f5519308832954015627938e06a6333b5f62ae9c36278bb", size = 87386, upload-time = "2025-10-07T07:37:47.085Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7a/6c/80ab26743586532a3e9d68385549b0992e5318b5499db815889c8527cce5/sarvamai-0.1.26a2.tar.gz", hash = "sha256:0cbd1a95d13c1f8f0d1bf8fbeb37e86d3c2dc75a7ac402743bf0e571378f79e4", size = 112445, upload-time = "2026-02-16T13:16:28.392Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2e/4e/b9933f72681b7aed91b86913337dd3981fad97027881fbc66c3c5eb03568/sarvamai-0.1.21-py3-none-any.whl", hash = "sha256:daa4e5d16635fe434f5f270cee416849249285369141d77132a17f0bf670f120", size = 175204, upload-time = "2025-10-07T07:37:46.024Z" },
+    { url = "https://files.pythonhosted.org/packages/1f/3e/76c8ea81e790a5dab2ec9cd9fdb02cd600f90b1dfd9c895bea2fb5e6aa7f/sarvamai-0.1.26a2-py3-none-any.whl", hash = "sha256:2b0549a18e093ea382725240035a0bea18fff2a0d5207ad6c95ff7189e03264a", size = 227413, upload-time = "2026-02-16T13:16:27.045Z" },
 ]
 
 [[package]]
