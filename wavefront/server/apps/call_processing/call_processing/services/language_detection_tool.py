@@ -90,15 +90,18 @@ class LanguageDetectionToolFactory:
 
                 # Validation 1: Check if target language is supported
                 if target_language not in supported_languages:
-                    error_msg = (
-                        f"Language '{target_language}' is not supported. "
-                        f"Supported languages: {', '.join(supported_languages)}"
+                    logger.warning(
+                        f"Language switch attempted for unsupported language: '{target_language}'"
                     )
-                    logger.warning(error_msg)
                     await params.result_callback(
                         {
                             'success': False,
-                            'error': error_msg,
+                            'error': (
+                                f"'{target_language}' is not a supported language. "
+                                f"Tell the user you're sorry but this language is not supported, "
+                                f"and that you can only converse in: {', '.join(supported_languages)}. "
+                                f"Do not attempt any language switch."
+                            ),
                             'current_language': current_language,
                             'supported_languages': supported_languages,
                         }

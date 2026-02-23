@@ -167,6 +167,7 @@ DEEPGRAM_STT_LANGUAGES: Set[str] = {
     'id',
     'it',
     'ja',
+    'kn',
     'ko',
     'lt',
     'lv',

@@ -310,9 +310,19 @@ class PipecatService:
             initial_language_instruction = LANGUAGE_INSTRUCTIONS.get(
                 default_language, LANGUAGE_INSTRUCTIONS.get('en', 'Respond in English.')
             )
-            system_content = f'{base_system_prompt}\n\n{initial_language_instruction}'
-            # Store base prompt without language instruction for switching
-            language_state['original_system_prompt'] = base_system_prompt
+            language_switching_rules = (
+                f'\n\nLANGUAGE SWITCHING RULES:\n'
+                f'- You support these languages only: {", ".join(supported_languages)}.\n'
+                f'- Call detect_and_switch_language only when the user clearly intends to choose or change language. '
+                f'A single word is a valid choice if it directly answers a language preference question.\n'
+                f'- Do NOT switch based on a greeting (e.g. "Namaste") or incidental use of another language.\n'
+                f'- If the user requests a language not in the supported list, apologise and tell them which languages are available. Do not call the switch tool.'
+            )
+            system_content = f'{base_system_prompt}\n\n{initial_language_instruction}{language_switching_rules}'
+            # Store base prompt without language instruction for switching (rules persist across switches)
+            language_state['original_system_prompt'] = (
+                base_system_prompt + language_switching_rules
+            )
         else:
             system_content = base_system_prompt
 
@@ -413,12 +423,13 @@ class PipecatService:
             language_detection_schema = FunctionSchema(
                 name='detect_and_switch_language',
                 description=(
-                    f"Detect and switch the conversation language. Call this whenever the user "
-                    f"indicates a language preference, including: responding with a language name "
-                    f"(e.g., 'Hindi', 'Spanish', 'English'), requesting a switch (e.g., 'switch to Hindi', "
-                    f"'I want to speak in Spanish'), or selecting a language when asked for their preference. "
-                    f"Even a single word like 'Hindi' or 'Spanish' should trigger this tool if it refers to a language choice. "
-                    f"Supported languages: {', '.join(supported_languages)}. "
+                    f"Switch the conversation language when the user clearly intends to choose or change language. "
+                    f"Use conversational context to judge intent — a single word like 'Hindi' or 'Tamil' counts as an "
+                    f"explicit choice when it directly answers a question about language preference. "
+                    f"Also trigger on explicit requests like 'switch to Hindi', 'speak in Tamil', 'Hindi mein baat karo'. "
+                    f"Do NOT trigger on greetings in another language (e.g. 'Namaste') without a clear intent to switch. "
+                    f"Only switch to languages in the supported list: {', '.join(supported_languages)}. "
+                    f"If the user asks for an unsupported language, do NOT call this tool — inform them directly in the current language. "
                     f"Current language: {language_state['current_language']}."
                 ),
                 properties={
