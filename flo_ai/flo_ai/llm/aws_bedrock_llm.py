@@ -13,10 +13,11 @@ from flo_ai.telemetry.instrumentation import (
     add_span_attributes,
 )
 from flo_ai.telemetry import get_tracer
+from flo_ai.utils.logger import logger
 from opentelemetry import trace
 
 
-class AWSBedrock(BaseLLM):
+class AWSBedrock(BaseLLM):  # Only openai compatible for now
     def __init__(
         self,
         model: str = 'openai.gpt-oss-20b-1:0',
@@ -160,39 +161,46 @@ class AWSBedrock(BaseLLM):
             body=json.dumps(request_body),
         )
 
-        buffer = ''
+        queue: asyncio.Queue = asyncio.Queue()
+        loop = asyncio.get_event_loop()
 
-        for event in response['body']:
-            chunk_bytes = event.get('chunk', {}).get('bytes', b'')
-            if not chunk_bytes:
-                continue
+        def _iter_events():
+            try:
+                for event in response['body']:
+                    chunk_bytes = event.get('chunk', {}).get('bytes', b'')
+                    if chunk_bytes:
+                        loop.call_soon_threadsafe(queue.put_nowait, chunk_bytes)
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, None)  # sentinel
+
+        loop.run_in_executor(None, _iter_events)
+
+        while True:
+            chunk_bytes = await queue.get()
+            if chunk_bytes is None:
+                break
             text = chunk_bytes.decode('utf-8').strip()
-            # Try direct JSON first (some Bedrock models skip SSE envelope)
+            content = None
             try:
                 data = json.loads(text)
                 content = data.get('choices', [{}])[0].get('delta', {}).get('content')
-                if content:
-                    buffer += content
-                continue
             except json.JSONDecodeError:
-                pass
-            # Fall back to SSE format: "data: {...}"
-            for line in text.split('\n'):
-                line = line.strip()
-                if line.startswith('data: ') and line != 'data: [DONE]':
-                    try:
-                        data = json.loads(line[6:])
-                        content = (
-                            data.get('choices', [{}])[0].get('delta', {}).get('content')
-                        )
-                        if content:
-                            buffer += content
-                    except json.JSONDecodeError:
-                        pass
-
-        clean = self._strip_reasoning(buffer)
-        if clean:
-            yield {'content': clean}
+                for line in text.split('\n'):
+                    line = line.strip()
+                    if line.startswith('data: ') and line != 'data: [DONE]':
+                        try:
+                            data = json.loads(line[6:])
+                            content = (
+                                data.get('choices', [{}])[0]
+                                .get('delta', {})
+                                .get('content')
+                            )
+                        except json.JSONDecodeError:
+                            logger.debug('Skipping malformed SSE line: %s', line)
+            if content:
+                clean = self._strip_reasoning(content)
+                if clean:
+                    yield {'content': clean}
 
     def get_message_content(self, response: Dict[str, Any]) -> str:
         content = (

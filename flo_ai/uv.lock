@@ -902,6 +902,7 @@ source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
     { name = "anthropic" },
+    { name = "boto3" },
     { name = "chardet" },
     { name = "cryptography" },
     { name = "google-cloud-aiplatform" },
@@ -928,8 +929,6 @@ vizualize = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "boto3" },
-    { name = "botocore" },
     { name = "db-sqlite3" },
     { name = "ipykernel" },
     { name = "peewee" },
@@ -947,6 +946,7 @@ dev = [
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.12.14,<4" },
     { name = "anthropic", specifier = ">=0.57.1,<0.58" },
+    { name = "boto3", specifier = ">=1.36.1,<2" },
     { name = "chardet", specifier = ">=3.dev0,<4.dev0" },
     { name = "cryptography", specifier = ">=46.0.3" },
     { name = "google-cloud-aiplatform", specifier = ">=1.109.0,<2" },
@@ -969,8 +969,6 @@ provides-extras = ["vizualize"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "boto3", specifier = ">=1.36.1,<2" },
-    { name = "botocore", specifier = ">=1.36.1,<2" },
     { name = "db-sqlite3", specifier = ">=0.0.1,<0.0.2" },
     { name = "ipykernel", specifier = ">=6.29.5,<7" },
     { name = "peewee", specifier = ">=3.17.6,<4" },
