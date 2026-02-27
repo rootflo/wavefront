@@ -71,13 +71,14 @@ class AWSBedrock(BaseLLM):  # Only openai compatible for now
     ) -> Any:
         converted = self._convert_messages(messages, output_schema)
 
+        request_options = {**self.kwargs, **kwargs}
         request_body: Dict[str, Any] = {
             'model': self.model,
             'messages': converted,
             'temperature': self.temperature,
         }
-        if 'max_tokens' in self.kwargs:
-            request_body['max_completion_tokens'] = self.kwargs['max_tokens']
+        if 'max_tokens' in request_options:
+            request_body['max_completion_tokens'] = request_options['max_tokens']
         if functions:
             request_body['tools'] = functions
 
@@ -144,14 +145,15 @@ class AWSBedrock(BaseLLM):  # Only openai compatible for now
     ) -> AsyncIterator[Dict[str, Any]]:
         converted = self._convert_messages(messages)
 
+        request_options = {**self.kwargs, **kwargs}
         request_body: Dict[str, Any] = {
             'model': self.model,
             'messages': converted,
             'temperature': self.temperature,
             'stream': True,
         }
-        if 'max_tokens' in self.kwargs:
-            request_body['max_completion_tokens'] = self.kwargs['max_tokens']
+        if 'max_tokens' in request_options:
+            request_body['max_completion_tokens'] = request_options['max_tokens']
         if functions:
             request_body['tools'] = functions
 
@@ -170,6 +172,8 @@ class AWSBedrock(BaseLLM):  # Only openai compatible for now
                     chunk_bytes = event.get('chunk', {}).get('bytes', b'')
                     if chunk_bytes:
                         loop.call_soon_threadsafe(queue.put_nowait, chunk_bytes)
+            except Exception as exc:
+                loop.call_soon_threadsafe(queue.put_nowait, exc)
             finally:
                 loop.call_soon_threadsafe(queue.put_nowait, None)  # sentinel
 
@@ -177,6 +181,8 @@ class AWSBedrock(BaseLLM):  # Only openai compatible for now
 
         while True:
             chunk_bytes = await queue.get()
+            if isinstance(chunk_bytes, Exception):
+                raise chunk_bytes
             if chunk_bytes is None:
                 break
             text = chunk_bytes.decode('utf-8').strip()
@@ -196,6 +202,11 @@ class AWSBedrock(BaseLLM):  # Only openai compatible for now
                                 .get('delta', {})
                                 .get('content')
                             )
+                            if content:
+                                clean = self._strip_reasoning(content)
+                                if clean:
+                                    yield {'content': clean}
+                                content = None
                         except json.JSONDecodeError:
                             logger.debug('Skipping malformed SSE line: %s', line)
             if content:
