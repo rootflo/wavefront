@@ -34,7 +34,7 @@ class AWSBedrock(BaseLLM):  # Only openai compatible for now
         return re.sub(r'<reasoning>.*?</reasoning>', '', text, flags=re.DOTALL).strip()
 
     def _convert_messages(
-        self, messages: list[dict], output_schema: dict = None
+        self, messages: list[dict], output_schema: dict | None = None
     ) -> list[dict]:
         result = []
 
@@ -162,7 +162,7 @@ class AWSBedrock(BaseLLM):  # Only openai compatible for now
         )
 
         queue: asyncio.Queue = asyncio.Queue()
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         def _iter_events():
             try:
@@ -185,6 +185,7 @@ class AWSBedrock(BaseLLM):  # Only openai compatible for now
                 data = json.loads(text)
                 content = data.get('choices', [{}])[0].get('delta', {}).get('content')
             except json.JSONDecodeError:
+                # Not valid JSON, try SSE format below
                 for line in text.split('\n'):
                     line = line.strip()
                     if line.startswith('data: ') and line != 'data: [DONE]':
