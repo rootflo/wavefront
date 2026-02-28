@@ -523,10 +523,15 @@ class PipecatService:
         # Register event handlers
         @llm.event_handler('on_function_calls_started')
         async def on_function_calls_started(service, function_calls):
+            # Skip filler phrase when language is switching — the TTS service's language
+            # may change before the queued frame is processed, causing a language mismatch error.
+            call_names = [fc.function_name for fc in function_calls]
+            if 'detect_and_switch_language' in call_names:
+                return
             current_lang = language_state.get('current_language', 'en')
-            phrases = FILLER_PHRASES.get(
-                current_lang, FILLER_PHRASES.get('en', ['Please wait a moment'])
-            )
+            phrases = FILLER_PHRASES.get(current_lang)
+            if not phrases:
+                return
             phrase = random.choice(phrases)
             await task.queue_frame(TTSSpeakFrame(phrase))
 
