@@ -6,6 +6,7 @@ Creates and runs the voice conversation pipeline using configured STT/LLM/TTS se
 
 from typing import Dict, Any, List
 from copy import deepcopy
+import os
 import random
 from call_processing.log.logger import logger
 from call_processing.services.tool_wrapper_service import ToolWrapperFactory
@@ -523,6 +524,11 @@ class PipecatService:
         # Register event handlers
         @llm.event_handler('on_function_calls_started')
         async def on_function_calls_started(service, function_calls):
+            if (
+                os.getenv('ENABLE_FILLER_PHRASES_BEFORE_TOOL_CALL', '').lower()
+                != 'true'
+            ):
+                return
             # Skip filler phrase when language is switching — the TTS service's language
             # may change before the queued frame is processed, causing a language mismatch error.
             call_names = [fc.function_name for fc in function_calls]
