@@ -819,6 +819,7 @@ async def export_dynamic_query_csv(
         limit=limit,
         offset=offset,
         params=dynamic_query_params.params if dynamic_query_params else None,
+        rls_filter_str=rls_filter_str,
     )
     filename = f'export_{query_id}_{export_hash}.csv'
     file_key = f'dynamic_query_exports/{filename}'

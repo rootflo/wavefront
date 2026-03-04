@@ -58,13 +58,15 @@ def generate_export_filename_hash(
     limit: int = None,
     offset: int = None,
     params: dict[str, str] = None,
+    rls_filter_str: str = None,
 ) -> str:
-    """Generate a short hash for export filename from $filter, limit, offset, and dynamic_query params."""
+    """Generate a short hash for export filename from $filter, limit, offset, dynamic_query params, and RLS scope."""
     key_dict = {
         'filter': filter,
         'limit': limit,
         'offset': offset,
         'params': params or {},
+        'rls': rls_filter_str,
     }
     key_json = json.dumps(key_dict, sort_keys=True, separators=(',', ':'))
     return hashlib.md5(key_json.encode()).hexdigest()
