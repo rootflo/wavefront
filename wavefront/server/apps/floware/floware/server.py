@@ -499,6 +499,7 @@ plugins_container.wire(
     packages=[
         'plugins_module.controllers',
         'plugins_module.services',
+        'floware.controllers',
         'user_management_module.controllers',
         'user_management_module.authorization',
         'tools_module.datasources',
