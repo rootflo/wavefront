@@ -39,7 +39,11 @@ from fastapi import HTTPException
 from user_management_module.utils.user_utils import get_current_user
 from plugins_module.services.dynamic_query_service import DynamicQueryService
 from db_repo_module.cache.cache_manager import CacheManager
-from ..utils.helper import generate_cache_key, validate_yaml_query
+from ..utils.helper import (
+    generate_cache_key,
+    generate_export_filename_hash,
+    validate_yaml_query,
+)
 import csv
 import io
 import yaml
@@ -765,9 +769,8 @@ async def export_dynamic_query_csv(
     cloud_manager: CloudStorageManager = Depends(
         Provide[PluginsContainer.cloud_manager]
     ),
-    config: PluginsContainer.config.provided = Depends(
-        Provide[PluginsContainer.config]
-    ),
+    config: dict = Depends(Provide[PluginsContainer.config]),
+    force_fetch: int = Query(0),
 ):
     """Execute the dynamic query and return results as a downloadable CSV file."""
     role_id, user_id, _ = get_current_user(request)
@@ -804,6 +807,41 @@ async def export_dynamic_query_csv(
         rls_filters = fetch_data_filters(rls_filters)
         rls_filter_str = f"{ ' $and '.join(rls_filters)}"
 
+    # Bucket and filename: hash of $filter, limit, offset, dynamic_query_params
+    provider = config['cloud_config']['cloud_provider']
+    bucket_name = (
+        config['aws']['aws_asset_storage_bucket']
+        if provider == 'aws'
+        else config['gcp']['gcp_asset_storage_bucket']
+    )
+    export_hash = generate_export_filename_hash(
+        filter=filter,
+        limit=limit,
+        offset=offset,
+        params=dynamic_query_params.params if dynamic_query_params else None,
+    )
+    filename = f'export_{query_id}_{export_hash}.csv'
+    file_key = f'dynamic_query_exports/{filename}'
+
+    # If not force_fetch, return existing file from bucket if present
+    if not force_fetch:
+        existing_keys, _ = cloud_manager.list_files(
+            bucket_name=bucket_name,
+            prefix=file_key,
+            page_size=1,
+            page_number=1,
+        )
+        if existing_keys and existing_keys[0] == file_key:
+            signed_url = cloud_manager.generate_presigned_url(
+                bucket_name=bucket_name, key=file_key, type='GET'
+            )
+            return JSONResponse(
+                status_code=status.HTTP_200_OK,
+                content=response_formatter.buildSuccessResponse(
+                    {'export_url': signed_url}
+                ),
+            )
+
     datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
     res: Dict[str, Any] = await datasource_plugin.execute_dynamic_query(
         yaml_query,
@@ -833,22 +871,8 @@ async def export_dynamic_query_csv(
 
     serialized_res = serialize_values(res[first_key]['result'])
 
-    # Convert rows to CSV bytes
+    # Convert rows to CSV bytes and store in bucket
     csv_bytes = _serialized_rows_to_csv(serialized_res)
-    filename = f'export_{query_id}.csv'
-
-    # Store CSV in main application bucket under dynamic_query_updates folder
-    # and return a signed URL to the file
-    provider = config.cloud_config.cloud_provider
-    bucket_name = (
-        config.aws.aws_asset_storage_bucket
-        if provider == 'aws'
-        else config.gcp.gcp_asset_storage_bucket
-    )
-
-    file_key = f'dynamic_query_updates/{filename}'
-
-    # Save the CSV to cloud storage
     cloud_manager.save_small_file(
         file_content=csv_bytes,
         bucket_name=bucket_name,
@@ -856,7 +880,6 @@ async def export_dynamic_query_csv(
         content_type='text/csv',
     )
 
-    # Generate a signed URL for downloading the file
     signed_url = cloud_manager.generate_presigned_url(
         bucket_name=bucket_name, key=file_key, type='GET'
     )
