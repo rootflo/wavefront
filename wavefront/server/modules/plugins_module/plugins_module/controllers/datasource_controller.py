@@ -1,3 +1,4 @@
+from typing import Dict, Any
 from datasource.bigquery.config import BigQueryConfig
 from datasource.redshift.config import RedshiftConfig
 from dependency_injector.wiring import inject
@@ -761,8 +762,6 @@ async def export_dynamic_query_csv(
         Provide[PluginsContainer.dynamic_query_service]
     ),
     user_service: UserService = Depends(Provide[UserContainer.user_service]),
-    cache_manager: CacheManager = Depends(Provide[PluginsContainer.cache_manager]),
-    force_fetch: int = Query(0),
 ):
     """Execute the dynamic query and return results as a downloadable CSV file."""
     role_id, user_id, _ = get_current_user(request)
@@ -800,40 +799,25 @@ async def export_dynamic_query_csv(
         rls_filter_str = f"{ ' $and '.join(rls_filters)}"
 
     datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
-    cache_key = generate_cache_key(
-        query_id,
-        filter,
+    res: Dict[str, Any] = await datasource_plugin.execute_dynamic_query(
+        yaml_query,
         rls_filter_str,
-        limit,
+        filter,
         offset,
+        limit,
         dynamic_query_params.params if dynamic_query_params else None,
     )
-    if not force_fetch:
-        cached_result = cache_manager.get_str(cache_key)
-        if cached_result:
-            serialized_res = json.loads(cached_result)
-        else:
-            res = await datasource_plugin.execute_dynamic_query(
-                yaml_query,
-                rls_filter_str,
-                filter,
-                offset,
-                limit,
-                dynamic_query_params.params if dynamic_query_params else None,
-            )
-            serialized_res = serialize_values(res)
-            cache_manager.add(cache_key, json.dumps(serialized_res), expiry=60 * 2)
-    else:
-        res = await datasource_plugin.execute_dynamic_query(
-            yaml_query,
-            rls_filter_str,
-            filter,
-            offset,
-            limit,
-            dynamic_query_params.params if dynamic_query_params else None,
+
+    if len(res.keys()) < 1 or res[res.keys()[0]]['status'] != 'success':
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content=response_formatter.buildErrorResponse(
+                f'Unexpected dynamic query result format for query_id {query_id}, no results'
+            ),
         )
-        serialized_res = serialize_values(res)
-        cache_manager.add(cache_key, json.dumps(serialized_res), expiry=60 * 2)
+
+    first_key = res.keys()[0]
+    serialized_res = serialize_values(res[first_key]['result'])
 
     csv_bytes = _serialized_rows_to_csv(serialized_res)
     filename = f'export_{query_id}.csv'

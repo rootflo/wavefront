@@ -80,7 +80,7 @@ class BigQueryPlugin(DataSourceABC):
         odata_data_filter: Optional[str] = None,
         odata_data_params: Optional[Dict[str, Any]] = None,
         params: Optional[Dict[str, Any]] = None,
-    ):
+    ) -> Dict[str, Any]:
         results = {}
         tasks = []
 
