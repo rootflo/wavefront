@@ -19,7 +19,7 @@ class ToolsContainer(containers.DeclarativeContainer):
     knowledge_base_inference_repository = providers.Dependency()
     message_processor_repository = providers.Dependency()
     api_services_manager = providers.Dependency()
-    cloud_manager = providers.Dependency()
+    cloud_storage_manager = providers.Dependency()
     message_processor_bucket_name = providers.Dependency()
     # Tool loader
     tool_loader = providers.Singleton(
@@ -41,7 +41,7 @@ class ToolsContainer(containers.DeclarativeContainer):
     message_processor_tool_provider = providers.Singleton(
         MessageProcessorToolDetailsProvider,
         message_processor_repository=message_processor_repository,
-        cloud_manager=cloud_manager,
+        cloud_storage_manager=cloud_storage_manager,
         message_processor_bucket_name=message_processor_bucket_name,
     )
 

@@ -33,7 +33,7 @@ api_services_container: ApiServicesContainer = create_api_services_container(
 
 plugins_container = PluginsContainer(
     db_client=db_repo_container.db_client,
-    cloud_manager=common_container.cloud_storage_manager,
+    cloud_storage_manager=common_container.cloud_storage_manager,
     dynamic_query_repository=db_repo_container.dynamic_query_repository,
     cache_manager=db_repo_container.cache_manager,
 )
@@ -51,7 +51,7 @@ tools_container = ToolsContainer(
     knowledge_base_inference_repository=db_repo_container.knowledge_base_inference_repository,
     message_processor_repository=plugins_container.message_processor_repository,
     api_services_manager=api_services_container.api_service_manager,
-    cloud_manager=common_container.cloud_storage_manager,
+    cloud_storage_manager=common_container.cloud_storage_manager,
     message_processor_bucket_name=bucket_name,
 )
 

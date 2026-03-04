@@ -22,13 +22,13 @@ async def get_resource_presigned_url(
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
     ),
-    cloud_manager: CloudStorageManager = Depends(
-        Provide[PluginsContainer.cloud_manager]
+    cloud_storage_manager: CloudStorageManager = Depends(
+        Provide[PluginsContainer.cloud_storage_manager]
     ),
 ):
     try:
-        bucket_name, key = cloud_manager.get_bucket_key(resource_url)
-        presigned_url = cloud_manager.generate_presigned_url(
+        bucket_name, key = cloud_storage_manager.get_bucket_key(resource_url)
+        presigned_url = cloud_storage_manager.generate_presigned_url(
             bucket_name=bucket_name,
             key=key,
             type='GET',
