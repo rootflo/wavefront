@@ -808,7 +808,7 @@ async def export_dynamic_query_csv(
         dynamic_query_params.params if dynamic_query_params else None,
     )
 
-    if len(res.keys()) < 1 or res[res.keys()[0]]['status'] != 'success':
+    if not res:
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content=response_formatter.buildErrorResponse(
@@ -816,7 +816,15 @@ async def export_dynamic_query_csv(
             ),
         )
 
-    first_key = res.keys()[0]
+    first_key = next(iter(res))
+    if res[first_key].get('status') != 'success':
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content=response_formatter.buildErrorResponse(
+                f'Unexpected dynamic query result format for query_id {query_id}, no results'
+            ),
+        )
+
     serialized_res = serialize_values(res[first_key]['result'])
 
     csv_bytes = _serialized_rows_to_csv(serialized_res)
