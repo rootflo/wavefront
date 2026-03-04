@@ -9,7 +9,6 @@ from fastapi import Query
 from fastapi import Request
 from fastapi import status
 from fastapi.responses import JSONResponse
-from fastapi.responses import StreamingResponse
 from fastapi.routing import APIRouter
 
 from common_module.common_container import CommonContainer
@@ -35,6 +34,7 @@ from plugins_module.utils.helper import (
 from plugins_module.plugins_container import PluginsContainer
 from user_management_module.user_container import UserContainer
 from user_management_module.services.user_service import UserService
+from flo_cloud.cloud_storage import CloudStorageManager
 from fastapi import HTTPException
 from user_management_module.utils.user_utils import get_current_user
 from plugins_module.services.dynamic_query_service import DynamicQueryService
@@ -762,6 +762,12 @@ async def export_dynamic_query_csv(
         Provide[PluginsContainer.dynamic_query_service]
     ),
     user_service: UserService = Depends(Provide[UserContainer.user_service]),
+    cloud_manager: CloudStorageManager = Depends(
+        Provide[PluginsContainer.cloud_manager]
+    ),
+    config: PluginsContainer.config.provided = Depends(
+        Provide[PluginsContainer.config]
+    ),
 ):
     """Execute the dynamic query and return results as a downloadable CSV file."""
     role_id, user_id, _ = get_current_user(request)
@@ -827,14 +833,37 @@ async def export_dynamic_query_csv(
 
     serialized_res = serialize_values(res[first_key]['result'])
 
+    # Convert rows to CSV bytes
     csv_bytes = _serialized_rows_to_csv(serialized_res)
     filename = f'export_{query_id}.csv'
-    return StreamingResponse(
-        iter([csv_bytes]),
-        media_type='text/csv',
-        headers={
-            'Content-Disposition': f'attachment; filename="{filename}"',
-        },
+
+    # Store CSV in main application bucket under dynamic_query_updates folder
+    # and return a signed URL to the file
+    provider = config.cloud_config.cloud_provider
+    bucket_name = (
+        config.aws.aws_asset_storage_bucket
+        if provider == 'aws'
+        else config.gcp.gcp_asset_storage_bucket
+    )
+
+    file_key = f'dynamic_query_updates/{filename}'
+
+    # Save the CSV to cloud storage
+    cloud_manager.save_small_file(
+        file_content=csv_bytes,
+        bucket_name=bucket_name,
+        key=file_key,
+        content_type='text/csv',
+    )
+
+    # Generate a signed URL for downloading the file
+    signed_url = cloud_manager.generate_presigned_url(
+        bucket_name=bucket_name, key=file_key, type='GET'
+    )
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse({'export_url': signed_url}),
     )
 
 
