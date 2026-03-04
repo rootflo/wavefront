@@ -17,8 +17,9 @@ COPY wavefront/server/packages/flo_cloud /app/packages/flo_cloud
 
 COPY wavefront/server/apps/floconsole /app/apps/floconsole
 
+COPY wavefront/server/scripts/console-server-init.sh /app/scripts/console-server-init.sh
+RUN chmod +x /app/scripts/console-server-init.sh
+
 RUN uv sync --package floconsole --frozen --no-dev
 
-WORKDIR /app/apps/floconsole/floconsole
-
-CMD ["uv", "run", "server.py"]
+ENTRYPOINT ["/app/scripts/console-server-init.sh"]

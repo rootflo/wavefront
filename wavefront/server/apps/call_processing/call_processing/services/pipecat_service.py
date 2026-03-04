@@ -6,6 +6,8 @@ Creates and runs the voice conversation pipeline using configured STT/LLM/TTS se
 
 from typing import Dict, Any, List
 from copy import deepcopy
+import os
+import random
 from call_processing.log.logger import logger
 from call_processing.services.tool_wrapper_service import ToolWrapperFactory
 from call_processing.utils import get_current_ist_time_str
@@ -57,6 +59,7 @@ from call_processing.services.llm_service import LLMServiceFactory
 from call_processing.constants.language_config import (
     LANGUAGE_INSTRUCTIONS,
 )
+from call_processing.constants.filler_phrases import FILLER_PHRASES
 
 
 class STTLanguageSwitcher(ParallelPipeline):
@@ -519,6 +522,25 @@ class PipecatService:
         task_container['task'] = task
 
         # Register event handlers
+        @llm.event_handler('on_function_calls_started')
+        async def on_function_calls_started(service, function_calls):
+            if (
+                os.getenv('ENABLE_FILLER_PHRASES_BEFORE_TOOL_CALL', '').lower()
+                != 'true'
+            ):
+                return
+            # Skip filler phrase when language is switching — the TTS service's language
+            # may change before the queued frame is processed, causing a language mismatch error.
+            call_names = [fc.function_name for fc in function_calls]
+            if 'detect_and_switch_language' in call_names:
+                return
+            current_lang = language_state.get('current_language', 'en')
+            phrases = FILLER_PHRASES.get(current_lang)
+            if not phrases:
+                return
+            phrase = random.choice(phrases)
+            await task.queue_frame(TTSSpeakFrame(phrase))
+
         @transport.event_handler('on_client_connected')
         async def on_client_connected(transport, client):
             logger.info(f"Client connected for agent: {agent_config['name']}")

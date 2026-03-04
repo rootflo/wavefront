@@ -1,6 +1,6 @@
 [project]
 name = "flo_ai"
-version = "1.1.0-rc7"
+version = "1.1.0"
 description = "A easy way to create structured AI agents"
 authors = [{ name = "rootflo", email = "engineering.tools@rootflo.ai" }]
 requires-python = ">=3.10,<4.0"
@@ -10,6 +10,7 @@ license = "MIT"
 dependencies = [
     "aiohttp>=3.12.14,<4",
     "anthropic>=0.57.1,<0.58",
+    "boto3>=1.36.1,<2",
     "chardet>=3.dev0,<4.dev0",
     "cryptography>=46.0.3",
     "google-cloud-aiplatform>=1.109.0,<2",
@@ -35,8 +36,6 @@ vizualize = [
 
 [dependency-groups]
 dev = [
-    "boto3>=1.36.1,<2",
-    "botocore>=1.36.1,<2",
     "db-sqlite3>=0.0.1,<0.0.2",
     "ipykernel>=6.29.5,<7",
     "peewee>=3.17.6,<4",
