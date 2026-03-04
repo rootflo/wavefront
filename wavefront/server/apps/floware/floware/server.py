@@ -93,6 +93,7 @@ from voice_agents_module.controllers.tool_controller import tool_router
 from plugins_module.controllers.message_processor_controller import (
     message_processor_router,
 )
+from plugins_module.controllers.cloud_storage_controller import cloud_storage_router
 
 # API Services Module
 from api_services_module.api_services_container import create_api_services_container
@@ -386,6 +387,7 @@ app.include_router(stt_config_router, prefix='/floware')
 app.include_router(voice_agent_router, prefix='/floware')
 app.include_router(tool_router, prefix='/floware')
 app.include_router(message_processor_router, prefix='/floware')
+app.include_router(cloud_storage_router, prefix='/floware')
 
 
 @app.exception_handler(Exception)
