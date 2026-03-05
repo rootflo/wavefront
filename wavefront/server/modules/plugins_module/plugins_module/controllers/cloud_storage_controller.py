@@ -1,3 +1,7 @@
+import json
+from enum import Enum
+from typing import Optional
+
 from dependency_injector.wiring import inject, Provide
 from fastapi import Depends, Query, status
 from fastapi.responses import JSONResponse
@@ -10,6 +14,10 @@ from plugins_module.plugins_container import PluginsContainer
 
 
 cloud_storage_router = APIRouter()
+
+
+class StorageFileType(str, Enum):
+    json = 'json'
 
 
 @cloud_storage_router.get('/v1/storage/signed-url')
@@ -44,4 +52,51 @@ async def get_resource_presigned_url(
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content=response_formatter.buildErrorResponse(str(e)),
+        )
+
+
+@cloud_storage_router.get('/v1/storage/read')
+@inject
+async def read_storage_file(
+    resource_url: str = Query(..., description='The cloud storage URL of the resource'),
+    type: StorageFileType = Query(StorageFileType.json, description='File type'),
+    projection: Optional[str] = Query(
+        None,
+        description='Comma-separated list of top-level fields to return from the parsed data',
+    ),
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+    cloud_storage_manager: CloudStorageManager = Depends(
+        Provide[PluginsContainer.cloud_storage_manager]
+    ),
+):
+    try:
+        bucket_name, key = cloud_storage_manager.get_bucket_key(resource_url)
+        file_buffer = cloud_storage_manager.read_file(bucket_name, key)
+
+        if type == StorageFileType.json:
+            data = json.loads(file_buffer.read())
+            if projection:
+                fields = {f.strip() for f in projection.split(',') if f.strip()}
+                if isinstance(data, dict):
+                    data = {k: v for k, v in data.items() if k in fields}
+                elif isinstance(data, list):
+                    data = [
+                        {k: v for k, v in item.items() if k in fields}
+                        if isinstance(item, dict)
+                        else item
+                        for item in data
+                    ]
+
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content=response_formatter.buildSuccessResponse({'data': data}),
+        )
+    except (json.JSONDecodeError, ValueError) as e:
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content=response_formatter.buildErrorResponse(
+                f'Failed to parse file as {type.value}: {str(e)}'
+            ),
         )
