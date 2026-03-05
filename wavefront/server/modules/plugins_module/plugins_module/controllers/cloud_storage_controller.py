@@ -73,10 +73,10 @@ async def read_storage_file(
 ):
     try:
         bucket_name, key = cloud_storage_manager.get_bucket_key(resource_url)
-        file_buffer = cloud_storage_manager.read_file(bucket_name, key)
+        file_content = cloud_storage_manager.read_file(bucket_name, key)
 
         if type == StorageFileType.json:
-            data = json.loads(file_buffer.read())
+            data = json.loads(file_content)
             if projection:
                 fields = {f.strip() for f in projection.split(',') if f.strip()}
                 if isinstance(data, dict):

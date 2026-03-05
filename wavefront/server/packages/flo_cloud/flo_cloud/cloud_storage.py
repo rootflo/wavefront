@@ -1,4 +1,3 @@
-from io import BytesIO
 from typing import Union, List, Tuple, Optional
 from .aws.s3 import S3Storage
 from .gcp.gcs import GCSStorage
@@ -83,7 +82,7 @@ class CloudStorageManager:
                 return 'POST'
         raise ValueError(f"Unsupported type '{type}' for provider '{self.provider}'")
 
-    def read_file(self, bucket_name: str, file_path: str) -> BytesIO:
+    def read_file(self, bucket_name: str, file_path: str) -> bytes:
         """
         Read file from cloud storage
 
