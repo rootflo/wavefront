@@ -313,14 +313,17 @@ class PipecatService:
             initial_language_instruction = LANGUAGE_INSTRUCTIONS.get(
                 default_language, LANGUAGE_INSTRUCTIONS.get('en', 'Respond in English.')
             )
-            language_switching_rules = (
-                f'\n\nLANGUAGE SWITCHING RULES:\n'
-                f'- You support these languages only: {", ".join(supported_languages)}.\n'
-                f'- Call detect_and_switch_language only when the user clearly intends to choose or change language. '
-                f'A single word is a valid choice if it directly answers a language preference question.\n'
-                f'- Do NOT switch based on a greeting (e.g. "Namaste") or incidental use of another language.\n'
-                f'- If the user requests a language not in the supported list, apologise and tell them which languages are available. Do not call the switch tool.'
-            )
+            language_switching_rules = f"""
+                LANGUAGE SWITCHING RULES (IMPORTANT):
+                - You support these languages only: {", ".join(supported_languages)}.
+                - (CRITICAL) If the customer has already chosen a language at the beginning of the call and then switches midway to another language, respond with the following message: -> 
+                  "I noticed you are trying to speak in another language. I'm only able to continue in {language_state['current_language']} for this 
+                  conversation — would you like to choose a different language, or shall we continue as we are?" This message needs to be spoken in the chosen language.
+                - Call detect_and_switch_language only when the user clearly intends to choose or change language. 
+                - A single word is a valid choice if it directly answers a language preference question.
+                - Do NOT switch based on a greeting (e.g. "Namaste") or incidental use of another language.
+                - If the user requests a language not in the supported list, apologise and tell them which languages are available. Do not call the switch tool.
+                """
             system_content = f'{initial_language_instruction}\n\n{base_system_prompt}{language_switching_rules}'
             # Store base prompt without language instruction for switching (rules persist across switches)
             language_state['original_system_prompt'] = (
