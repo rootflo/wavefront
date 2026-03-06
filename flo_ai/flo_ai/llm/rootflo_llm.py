@@ -20,6 +20,7 @@ class LLMProvider(Enum):
     GEMINI = 'gemini'
     ANTHROPIC = 'anthropic'
     VLLM = 'vllm'
+    AZURE_OPENAI = 'azure_openai'
 
 
 class RootFloLLM(BaseLLM):
@@ -218,7 +219,7 @@ class RootFloLLM(BaseLLM):
             custom_headers = {'X-Rootflo-Key': self._app_key} if self._app_key else {}
 
             # Instantiate appropriate SDK wrapper based on llm_provider
-            if llm_provider == LLMProvider.OPENAI:
+            if llm_provider in (LLMProvider.OPENAI, LLMProvider.AZURE_OPENAI):
                 self._llm = OpenAI(
                     model=llm_model,
                     base_url=full_url,
