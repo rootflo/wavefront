@@ -1,5 +1,7 @@
 from typing import Dict, Any, List, AsyncIterator, Optional
-from openai import AsyncOpenAI
+
+from openai import AsyncAzureOpenAI
+
 from .base_llm import BaseLLM
 from flo_ai.models.chat_message import ImageMessageContent
 from flo_ai.tool.base_tool import Tool
@@ -13,41 +15,52 @@ from flo_ai.telemetry import get_tracer
 from opentelemetry import trace
 
 
-class OpenAI(BaseLLM):
+class AzureOpenAI(BaseLLM):
     def __init__(
         self,
-        model='gpt-4o-mini',
-        api_key: Optional[str] = None,
+        model: str,
+        api_key: Optional[str],
+        azure_endpoint: str,
+        api_version: str = '2024-12-01-preview',
         temperature: float = 0.7,
-        base_url: Optional[str] = None,
         custom_headers: Optional[Dict[str, str]] = None,
         **kwargs,
     ):
+        """
+        Azure OpenAI LLM implementation using the AsyncAzureOpenAI client.
+
+        Args:
+            model: Azure deployment name (passed as `model` to chat.completions.create)
+            api_key: Azure OpenAI API key
+            azure_endpoint: Azure endpoint URL, e.g. https://<resource>.cognitiveservices.azure.com/
+            api_version: Azure OpenAI API version
+            temperature: Sampling temperature
+            custom_headers: Optional additional headers to send with each request
+            **kwargs: Extra parameters forwarded to the SDK client / calls
+        """
         super().__init__(
             model=model, api_key=api_key, temperature=temperature, **kwargs
         )
-
-        self.client = AsyncOpenAI(
+        self.client = AsyncAzureOpenAI(
             api_key=self.api_key,
-            base_url=base_url,
+            azure_endpoint=azure_endpoint,
+            api_version=api_version,
             default_headers=custom_headers,
             **kwargs,
         )
         self.model = model
         self.kwargs = kwargs
 
-    @trace_llm_call(provider='openai')
+    @trace_llm_call(provider='azureopenai')
     async def generate(
         self,
-        messages: list[dict],
+        messages: List[Dict[str, Any]],
         functions: Optional[List[Dict[str, Any]]] = None,
         output_schema: Optional[Dict[str, Any]] = None,
         **kwargs,
     ) -> Any:
         # Handle structured output vs tool calling
-        # Priority: output_schema takes precedence over functions for structured output
         if output_schema:
-            # Convert output_schema to OpenAI format for structured output
             kwargs['response_format'] = {'type': 'json_object'}
             kwargs['functions'] = [
                 {
@@ -57,7 +70,6 @@ class OpenAI(BaseLLM):
             ]
             kwargs['function_call'] = {'name': output_schema.get('title', 'default')}
 
-            # Add JSON format instruction to the system prompt
             if messages and messages[0]['role'] == 'system':
                 messages[0]['content'] = (
                     messages[0]['content']
@@ -72,11 +84,9 @@ class OpenAI(BaseLLM):
                     },
                 )
         elif functions:
-            # Use functions for tool calling when output_schema is not provided
             kwargs['functions'] = functions
 
-        # Prepare OpenAI API parameters
-        openai_kwargs = {
+        azure_kwargs = {
             'model': self.model,
             'messages': messages,
             'temperature': self.temperature,
@@ -84,11 +94,9 @@ class OpenAI(BaseLLM):
             **kwargs,
         }
 
-        # Make the API call
-        response = await self.client.chat.completions.create(**openai_kwargs)
+        response = await self.client.chat.completions.create(**azure_kwargs)
         message = response.choices[0].message
 
-        # Record token usage if available
         if hasattr(response, 'usage') and response.usage:
             usage = response.usage
             llm_metrics.record_tokens(
@@ -96,10 +104,9 @@ class OpenAI(BaseLLM):
                 prompt_tokens=usage.prompt_tokens,
                 completion_tokens=usage.completion_tokens,
                 model=self.model,
-                provider='openai',
+                provider='azureopenai',
             )
 
-            # Add token info to current span
             tracer = get_tracer()
             if tracer:
                 current_span = trace.get_current_span()
@@ -112,19 +119,17 @@ class OpenAI(BaseLLM):
                     },
                 )
 
-        # Return the full message object instead of just the content
         return message
 
-    @trace_llm_stream(provider='openai')
+    @trace_llm_stream(provider='azureopenai')
     async def stream(
         self,
         messages: List[Dict[str, Any]],
         functions: Optional[List[Dict[str, Any]]] = None,
         **kwargs: Any,
     ) -> AsyncIterator[Dict[str, Any]]:
-        """Stream partial responses from OpenAI Chat Completions API."""
-        # Prepare OpenAI API parameters
-        openai_kwargs = {
+        """Stream partial responses from Azure OpenAI Chat Completions API."""
+        azure_kwargs = {
             'model': self.model,
             'messages': messages,
             'temperature': self.temperature,
@@ -134,10 +139,9 @@ class OpenAI(BaseLLM):
         }
 
         if functions:
-            openai_kwargs['functions'] = functions
+            azure_kwargs['functions'] = functions
 
-        # Stream the API call and yield content deltas
-        response = await self.client.chat.completions.create(**openai_kwargs)
+        response = await self.client.chat.completions.create(**azure_kwargs)
         async for chunk in response:
             choices = getattr(chunk, 'choices', []) or []
             for choice in choices:
@@ -156,7 +160,7 @@ class OpenAI(BaseLLM):
         return str(response)
 
     def format_tool_for_llm(self, tool: 'Tool') -> Dict[str, Any]:
-        """Format a single tool for OpenAI's API"""
+        """Format a single tool for Azure OpenAI's API (OpenAI-compatible)."""
         return {
             'name': tool.name,
             'description': tool.description,
@@ -179,13 +183,22 @@ class OpenAI(BaseLLM):
         }
 
     def format_tools_for_llm(self, tools: List['Tool']) -> List[Dict[str, Any]]:
-        """Format tools for OpenAI's API"""
+        """Format tools for Azure OpenAI's API (OpenAI-compatible)."""
         return [self.format_tool_for_llm(tool) for tool in tools]
 
     def format_image_in_message(self, image: ImageMessageContent) -> list[dict]:
-        """Format a image in the message"""
-        # OpenAI Chat Completions multimodal format:
-        # {"type":"image_url","image_url":{"url":"https://..."}} or data URLs.
+        """
+        Format an image in the message for Azure OpenAI.
+
+        Azure vision models expect the OpenAI-style `"image_url"` block, for example:
+        {
+            "type": "image_url",
+            "image_url": { "url": "data:image/png;base64,..." }
+        }
+        """
+        import base64
+
+        # Remote URL
         if image.url:
             return [
                 {
@@ -196,13 +209,12 @@ class OpenAI(BaseLLM):
                 }
             ]
 
+        # Raw base64 string or bytes – construct a data URL
         if image.base64 or image.bytes:
             if not image.mime_type:
                 raise ValueError(
-                    'Image mime type is required for OpenAI image messages'
+                    'Image mime type is required for Azure OpenAI image messages'
                 )
-
-            import base64
 
             if image.base64:
                 b64 = image.base64
@@ -210,6 +222,7 @@ class OpenAI(BaseLLM):
                 b64 = base64.b64encode(image.bytes or b'').decode('utf-8')
 
             data_url = f'data:{image.mime_type};base64,{b64}'
+
             return [
                 {
                     'type': 'image_url',
@@ -220,6 +233,6 @@ class OpenAI(BaseLLM):
             ]
 
         raise NotImplementedError(
-            f'Image formatting for OpenAI LLM requires either url, base64 data, or bytes. '
+            f'Image formatting for AzureOpenAI LLM requires either url, base64 data, or bytes. '
             f'Received: url={image.url}, base64={bool(image.base64)}, bytes={bool(image.bytes)}'
         )
