@@ -1,7 +1,8 @@
 from itertools import islice
 import boto3
 import io
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, IO, ContextManager
+from contextlib import contextmanager
 from botocore.exceptions import ClientError
 from .._types import CloudStorageHandler
 from ..exceptions import CloudStorageFileNotFoundError
@@ -201,3 +202,27 @@ class S3Storage(CloudStorageHandler):
             self.s3_client.delete_object(Bucket=bucket_name, Key=file_path)
         except Exception as e:
             raise Exception(f'Error deleting file from S3: {str(e)}')
+
+    def open_text_writer(
+        self, bucket_name: str, key: str, content_type: Optional[str] = None
+    ) -> ContextManager[IO[str]]:
+        """
+        Open a text-mode writer for S3 uploads.
+
+        Since boto3 does not provide a native streaming text writer API like
+        GCS, this implementation buffers content in memory and uploads it on
+        context exit. This keeps a consistent interface with GCS, while still
+        allowing incremental CSV writing logic to be shared.
+        """
+
+        @contextmanager
+        def _writer() -> IO[str]:
+            buffer = io.StringIO()
+            try:
+                yield buffer
+                data = buffer.getvalue().encode('utf-8')
+                self.save_large_file(data, bucket_name, key, content_type)
+            finally:
+                buffer.close()
+
+        return _writer()

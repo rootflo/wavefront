@@ -749,6 +749,9 @@ async def execute_dynamic_query(
     )
 
 
+EXPORT_RATE_LIMIT_SECONDS = 120  # 2 minutes between exports per user
+
+
 @datasource_router.post('/v1/{datasource_id}/dynamic-queries/{query_id}/export')
 @inject
 async def export_dynamic_query_csv(
@@ -770,10 +773,23 @@ async def export_dynamic_query_csv(
         Provide[PluginsContainer.cloud_manager]
     ),
     config: dict = Depends(Provide[PluginsContainer.config]),
+    cache_manager: CacheManager = Depends(Provide[PluginsContainer.cache_manager]),
     force_fetch: int = Query(0),
 ):
     """Execute the dynamic query and return results as a downloadable CSV file."""
     role_id, user_id, _ = get_current_user(request)
+
+    # Block multiple exports per user within a 2-minute window (Redis)
+    export_rate_key = f'dynamic_query_export_rate:{user_id}'
+    if not cache_manager.add(
+        export_rate_key, '1', expiry=EXPORT_RATE_LIMIT_SECONDS, nx=True
+    ):
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            content=response_formatter.buildErrorResponse(
+                f'Export rate limit: one export per user every {EXPORT_RATE_LIMIT_SECONDS // 60} minutes. Please try again later.'
+            ),
+        )
     datasource_type, datasource_config = await get_datasource_config(datasource_id)
     if not datasource_config:
         return JSONResponse(
@@ -872,14 +888,38 @@ async def export_dynamic_query_csv(
 
     serialized_res = serialize_values(res[first_key]['result'])
 
-    # Convert rows to CSV bytes and store in bucket
-    csv_bytes = _serialized_rows_to_csv(serialized_res)
-    cloud_manager.save_small_file(
-        file_content=csv_bytes,
-        bucket_name=bucket_name,
-        key=file_key,
-        content_type='text/csv',
-    )
+    # Stream rows to CSV directly in GCS/S3 to avoid building the full CSV in memory
+    rows = serialized_res or []
+    if not isinstance(rows, list):
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content=response_formatter.buildErrorResponse(
+                f'Unexpected dynamic query result format for query_id {query_id}, invalid rows'
+            ),
+        )
+
+    if rows:
+        fieldnames = list(rows[0].keys())
+        for row in rows[1:]:
+            for k in row:
+                if k not in fieldnames:
+                    fieldnames.append(k)
+    else:
+        fieldnames = []
+
+    def _cell_value(v):
+        if isinstance(v, (dict, list)):
+            return json.dumps(v)
+        return v if v is None or isinstance(v, str) else str(v)
+
+    with cloud_manager.open_text_writer(
+        bucket_name=bucket_name, key=file_key, content_type='text/csv'
+    ) as f:
+        if fieldnames:
+            writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({k: _cell_value(row.get(k)) for k in fieldnames})
 
     signed_url = cloud_manager.generate_presigned_url(
         bucket_name=bucket_name, key=file_key, type='GET'
