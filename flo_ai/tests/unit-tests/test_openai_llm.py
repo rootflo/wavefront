@@ -270,8 +270,9 @@ class TestOpenAI:
         result = llm.format_image_in_message(image)
 
         assert result is not None
-        assert result['type'] == 'input_image'
-        assert result['image']['url'] == 'https://example.com/image.jpg'
+        assert len(result) == 1
+        assert result[0]['type'] == 'image_url'
+        assert result[0]['image_url']['url'] == 'https://example.com/image.jpg'
 
     @pytest.mark.asyncio
     async def test_openai_generate_error_handling(self):
