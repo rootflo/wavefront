@@ -104,12 +104,12 @@ class DatasourcePlugin(DataSourceABC):
         offset: Optional[int] = 0,
         limit: Optional[int] = 100,
         params: Optional[Dict[str, Any]] = None,
-    ):
+    ) -> Dict[str, Any]:
         odata_filter, odata_params = self.odata_parser.prepare_odata_filter(filter)
         odata_data_filter, odata_data_params = self.odata_parser.prepare_odata_filter(
             rls_filter
         )
-        result_by_query = await self.datasource.execute_dynamic_query(
+        result_by_query: Dict[str, Any] = await self.datasource.execute_dynamic_query(
             query,
             offset,
             limit,
