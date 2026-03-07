@@ -8,6 +8,9 @@ from common_module.common_container import CommonContainer
 from fastapi.params import Depends
 from dependency_injector.wiring import inject
 from dependency_injector.wiring import Provide
+from db_repo_module.models.datasource import Datasource
+from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
+from plugins_module.plugins_container import PluginsContainer
 from floware.services.config_service import ConfigService
 from user_management_module.utils.user_utils import get_current_user, check_is_admin
 from fastapi import HTTPException
@@ -74,6 +77,10 @@ async def get_config(
         ConfigService,
         Depends(Provide[ApplicationContainer.config_service]),
     ],
+    datasource_repository: Annotated[
+        SQLAlchemyRepository[Datasource],
+        Depends(Provide[PluginsContainer.datasource_repository]),
+    ],
     response_formatter: Annotated[
         ResponseFormatter,
         Depends(Provide[CommonContainer.response_formatter]),
@@ -84,16 +91,16 @@ async def get_config(
     such as logo, table to query, etc.
     """
     url, app_config = await config_service.get_app_config()
-    if not url:
-        return JSONResponse(
-            status_code=status.HTTP_200_OK,
-            content=response_formatter.buildSuccessResponse(
-                {'message': 'No config found'}
-            ),
-        )
+    datasources = await datasource_repository.find()
+    datasource_ids = [str(datasource.id) for datasource in datasources]
+
     return JSONResponse(
         status_code=status.HTTP_200_OK,
         content=response_formatter.buildSuccessResponse(
-            {'app_icon': url, 'app_config': app_config}
+            {
+                'app_icon': url,
+                'app_config': app_config,
+                'datasources': datasource_ids,
+            }
         ),
     )

@@ -80,12 +80,12 @@ class MessageProcessorService:
 
     def __init__(
         self,
-        cloud_manager: CloudStorageManager,
+        cloud_storage_manager: CloudStorageManager,
         message_processor_repository: SQLAlchemyRepository[MessageProcessors],
-        bucket_name: str,
         hermes_url: str,
+        bucket_name: Optional[str] = None,
     ):
-        self.cloud_manager = cloud_manager
+        self.cloud_storage_manager = cloud_storage_manager
         self.message_processor_repository = message_processor_repository
         self.bucket_name = bucket_name
         self.prefix = 'message_processors/v1'
@@ -126,7 +126,7 @@ class MessageProcessorService:
 
         # Store YAML file in bucket
         yaml_bytes = yaml_content.encode('utf-8')
-        self.cloud_manager.save_small_file(
+        self.cloud_storage_manager.save_small_file(
             file_content=yaml_bytes, bucket_name=self.bucket_name, key=file_path
         )
         logger.info(f'Stored YAML file at {self.bucket_name}/{file_path}')
@@ -138,7 +138,7 @@ class MessageProcessorService:
         self, processor: MessageProcessors
     ) -> str:
         filepath = f'{self.prefix}/{processor.source}'
-        yaml_bytes = self.cloud_manager.read_file(self.bucket_name, filepath)
+        yaml_bytes = self.cloud_storage_manager.read_file(self.bucket_name, filepath)
         return yaml_bytes.decode('utf-8')
 
     async def list_message_processors(self) -> List[MessageProcessors]:
@@ -171,7 +171,7 @@ class MessageProcessorService:
             return False
 
         file_path = f'{self.prefix}/{processor.source}'
-        self.cloud_manager.delete_file(self.bucket_name, file_path)
+        self.cloud_storage_manager.delete_file(self.bucket_name, file_path)
         logger.info(f'Deleted YAML file at {self.bucket_name}/{file_path}')
 
         await self.message_processor_repository.delete_all(id=processor_id)

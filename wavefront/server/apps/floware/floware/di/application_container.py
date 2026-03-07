@@ -2,7 +2,6 @@ from dependency_injector import containers
 from dependency_injector import providers
 
 from floware.services.notification_service import NotificationService
-from flo_cloud.cloud_storage import CloudStorageManager
 from floware.services.config_service import ConfigService
 
 
@@ -22,20 +21,16 @@ class ApplicationContainer(containers.DeclarativeContainer):
     notification_repository = providers.Dependency()
     notification_user_repository = providers.Dependency()
     config_repository = providers.Dependency()
+    cloud_storage_manager = providers.Dependency()
 
     # services
     notification_service = providers.Singleton(
         NotificationService, notification_repository, notification_user_repository
     )
 
-    cloud_manager = providers.Singleton(
-        CloudStorageManager,
-        provider=config.cloud_config.cloud_provider,
-    )
-
     config_service = providers.Singleton(
         ConfigService,
         config_repository=config_repository,
-        cloud_manager=cloud_manager,
+        cloud_storage_manager=cloud_storage_manager,
         config=config,
     )
