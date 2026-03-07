@@ -47,17 +47,13 @@ class PluginsContainer(containers.DeclarativeContainer):
         DynamicQueryService,
         cloud_manager=cloud_manager,
         dynamic_query_repo=dynamic_query_repository,
-        bucket_name=config.aws.aws_asset_storage_bucket
-        if cloud_provider == 'aws'
-        else config.gcp.gcp_asset_storage_bucket,
+        bucket_name=config.floware.asset_storage_bucket,
     )
 
     message_processor_service = providers.Singleton(
         MessageProcessorService,
         cloud_manager=cloud_manager,
         message_processor_repository=message_processor_repository,
-        bucket_name=config.aws.aws_asset_storage_bucket
-        if cloud_provider == 'aws'
-        else config.gcp.gcp_asset_storage_bucket,
+        bucket_name=config.floware.asset_storage_bucket,
         hermes_url=config.hermes.url,
     )

@@ -107,6 +107,7 @@ auth_container = AuthContainer(
     db_client=db_repo_container.db_client, cache_manager=db_repo_container.cache_manager
 )
 common_container = CommonContainer(cache_manager=db_repo_container.cache_manager)
+config = common_container.config()
 user_module_container = UserContainer(
     db_client=db_repo_container.db_client, cache_manager=db_repo_container.cache_manager
 )
@@ -153,12 +154,7 @@ api_services_container: ApiServicesContainer = create_api_services_container(
     response_formatter=common_container.response_formatter,
 )
 
-cloud_provider = os.getenv('CLOUD_PROVIDER', 'aws')
-bucket_name = (
-    os.getenv('AWS_GOLD_ASSET_BUCKET_NAME')
-    if cloud_provider == 'aws'
-    else os.getenv('GCP_ASSET_STORAGE_BUCKET')
-)
+bucket_name = config['floware']['asset_storage_bucket']
 
 tools_container = ToolsContainer(
     datasource_repository=db_repo_container.datasource_repository,
