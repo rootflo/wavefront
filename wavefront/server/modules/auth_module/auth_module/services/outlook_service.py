@@ -252,11 +252,7 @@ class OutlookService:
                 f'kb_{existing_kb.id}/{message.id}/{message.conversation_id}'
             )
             # Get bucket name from config
-            bucket_name = (
-                config['gcp']['gcp_asset_storage_bucket']
-                if config['cloud_config']['cloud_provider'] == 'gcp'
-                else config['aws']['aws_asset_storage_bucket']
-            )
+            bucket_name = config['floware']['asset_storage_bucket']
 
             # Get topic/queue URL from config
             topic_id = (

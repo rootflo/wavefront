@@ -824,12 +824,7 @@ async def export_dynamic_query_csv(
         rls_filter_str = f"{ ' $and '.join(rls_filters)}"
 
     # Bucket and filename: hash of $filter, limit, offset, dynamic_query_params
-    provider = config['cloud_config']['cloud_provider']
-    bucket_name = (
-        config['aws']['aws_asset_storage_bucket']
-        if provider == 'aws'
-        else config['gcp']['gcp_asset_storage_bucket']
-    )
+    bucket_name = config['floware']['asset_storage_bucket']
     export_hash = generate_export_filename_hash(
         filter=filter,
         limit=limit,
