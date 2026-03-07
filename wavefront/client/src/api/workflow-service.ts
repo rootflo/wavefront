@@ -57,12 +57,13 @@ export class WorkflowService {
   async runInference(
     id: string,
     inputs: string | unknown[],
-    variables: Record<string, unknown> = {}
+    variables: Record<string, unknown> = {},
+    outputJsonEnabled: boolean = false
   ): Promise<WorkflowInferenceResponse> {
     const requestBody: Record<string, unknown> = {
       inputs,
       variables,
-      output_json_enabled: false,
+      output_json_enabled: outputJsonEnabled,
     };
 
     const response: IApiResponse<WorkflowInferenceData> = await this.http.post(
