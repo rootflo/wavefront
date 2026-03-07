@@ -291,7 +291,7 @@ async def workflow_inference_v2(
     workflow_name = workflow_data['name']
 
     resolved_inputs = process_inference_inputs(request_body.inputs)
-    logger.info(f'Inputs to workflow: {resolved_inputs}')
+    logger.debug(f'Inputs to workflow: {resolved_inputs}')
 
     # Prepare event streaming if requested
     event_callback = None
