@@ -10,11 +10,11 @@ class ConfigService:
     def __init__(
         self,
         config_repository: SQLAlchemyRepository[Config],
-        cloud_manager: CloudStorageManager,
+        cloud_storage_manager: CloudStorageManager,
         config: dict[str, Any],
     ) -> None:
         self.config_repository = config_repository
-        self.cloud_manager = cloud_manager
+        self.cloud_storage_manager = cloud_storage_manager
         self.config = config
 
     def _get_floware_credentials(self) -> dict[str, Any]:
@@ -46,7 +46,7 @@ class ConfigService:
 
         file_content = await file.read() if file else None
         if file_content:
-            self.cloud_manager.save_small_file(
+            self.cloud_storage_manager.save_small_file(
                 file_content,
                 config_credentials['asset_storage_bucket'],
                 config_credentials['config_file_name'],
@@ -74,7 +74,7 @@ class ConfigService:
         config_path = config_record[0].value.get('app_icon')
         config_credentials = self._get_floware_credentials()
         # Generate new presigned URL
-        url = self.cloud_manager.generate_presigned_url(
+        url = self.cloud_storage_manager.generate_presigned_url(
             config_credentials['asset_storage_bucket'],
             config_path,
             'get',

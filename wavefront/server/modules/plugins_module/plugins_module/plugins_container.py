@@ -39,21 +39,21 @@ class PluginsContainer(containers.DeclarativeContainer):
     # dynamic query service
     cloud_provider = config.cloud_config.cloud_provider
 
-    cloud_manager = providers.Singleton(
+    cloud_storage_manager = providers.Singleton(
         CloudStorageManager, provider=config.cloud_config.cloud_provider
     )
 
     dynamic_query_service = providers.Singleton(
         DynamicQueryService,
-        cloud_manager=cloud_manager,
+        cloud_storage_manager=cloud_storage_manager,
         dynamic_query_repo=dynamic_query_repository,
         bucket_name=config.floware.asset_storage_bucket,
     )
 
     message_processor_service = providers.Singleton(
         MessageProcessorService,
-        cloud_manager=cloud_manager,
+        cloud_storage_manager=cloud_storage_manager,
         message_processor_repository=message_processor_repository,
-        bucket_name=config.floware.asset_storage_bucket,
         hermes_url=config.hermes.url,
+        bucket_name=config.floware.asset_storage_bucket,
     )

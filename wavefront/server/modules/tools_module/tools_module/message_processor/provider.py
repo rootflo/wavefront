@@ -14,11 +14,11 @@ class MessageProcessorToolDetailsProvider(ToolDetailsProvider):
     def __init__(
         self,
         message_processor_repository: SQLAlchemyRepository[MessageProcessors],
-        cloud_manager: CloudStorageManager,
+        cloud_storage_manager: CloudStorageManager,
         message_processor_bucket_name: str,
     ):
         self.message_processor_repository = message_processor_repository
-        self.cloud_manager = cloud_manager
+        self.cloud_storage_manager = cloud_storage_manager
         self.message_processor_bucket_name = message_processor_bucket_name
         self.prefix = 'message_processors/v1'
 
@@ -95,7 +95,7 @@ class MessageProcessorToolDetailsProvider(ToolDetailsProvider):
     def _load_yaml_content(self, processor: MessageProcessors) -> str:
         """Load YAML content from cloud storage"""
         filepath = f'{self.prefix}/{processor.source}'
-        yaml_bytes = self.cloud_manager.read_file(
+        yaml_bytes = self.cloud_storage_manager.read_file(
             self.message_processor_bucket_name, filepath
         )
         return yaml_bytes.decode('utf-8')
