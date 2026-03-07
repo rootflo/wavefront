@@ -53,6 +53,7 @@ def check_is_valid_resource(resource_id: str) -> bool:
         'rf_parsed_data_object',
         'rf_gold_data_object',
         'rf_gold_item_details',
+        'rf_gold_auditor_data',
     ]:
         return True
     return False

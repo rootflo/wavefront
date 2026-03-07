@@ -50,7 +50,13 @@ class LLMServiceFactory:
         logger.info(f'Creating LLM service: {llm_type} / {model}')
 
         if llm_type == 'openai':
-            return LLMServiceFactory._create_openai_llm(api_key, model, parameters)
+            base_url = llm_config.get('base_url')
+            if not base_url or base_url == 'https://api.openai.com/v1':
+                return LLMServiceFactory._create_openai_llm(api_key, model, parameters)
+            else:
+                return LLMServiceFactory._create_openai_compatible_llm(
+                    api_key, model, parameters, base_url
+                )
         elif llm_type == 'azure_openai':
             base_url = llm_config.get('base_url')
             if not base_url:
@@ -96,6 +102,36 @@ class LLMServiceFactory:
         )
 
         return OpenAILLMService(api_key=api_key, model=model, params=input_params)
+
+    @staticmethod
+    def _create_openai_compatible_llm(
+        api_key: str, model: str, parameters: Dict[str, Any], base_url: str
+    ):
+        """Create a BaseOpenAILLMService for OpenAI-compatible endpoints"""
+        params_dict = {}
+
+        if 'temperature' in parameters:
+            params_dict['temperature'] = parameters['temperature']
+        if 'max_completion_tokens' in parameters:
+            params_dict['max_completion_tokens'] = parameters['max_completion_tokens']
+        if 'top_p' in parameters:
+            params_dict['top_p'] = parameters['top_p']
+        if 'frequency_penalty' in parameters:
+            params_dict['frequency_penalty'] = parameters['frequency_penalty']
+        if 'presence_penalty' in parameters:
+            params_dict['presence_penalty'] = parameters['presence_penalty']
+        if 'seed' in parameters:
+            params_dict['seed'] = parameters['seed']
+
+        input_params = BaseOpenAILLMService.InputParams(**params_dict)
+
+        logger.info(
+            f"OpenAI-compatible LLM config: model={model}, base_url={base_url}, temp={params_dict.get('temperature', 'default')}"
+        )
+
+        return BaseOpenAILLMService(
+            api_key=api_key, model=model, base_url=base_url, params=input_params
+        )
 
     @staticmethod
     def _create_google_llm(api_key: str, model: str, parameters: Dict[str, Any]):

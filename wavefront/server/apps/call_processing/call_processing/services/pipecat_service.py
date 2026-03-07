@@ -321,7 +321,7 @@ class PipecatService:
                 f'- Do NOT switch based on a greeting (e.g. "Namaste") or incidental use of another language.\n'
                 f'- If the user requests a language not in the supported list, apologise and tell them which languages are available. Do not call the switch tool.'
             )
-            system_content = f'{base_system_prompt}\n\n{initial_language_instruction}{language_switching_rules}'
+            system_content = f'{initial_language_instruction}\n\n{base_system_prompt}{language_switching_rules}'
             # Store base prompt without language instruction for switching (rules persist across switches)
             language_state['original_system_prompt'] = (
                 base_system_prompt + language_switching_rules

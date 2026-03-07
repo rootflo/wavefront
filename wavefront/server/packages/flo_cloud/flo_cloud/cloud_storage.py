@@ -1,4 +1,4 @@
-from typing import Union, List, Tuple, Optional
+from typing import Union, List, Tuple, Optional, IO, ContextManager
 from .aws.s3 import S3Storage
 from .gcp.gcs import GCSStorage
 from ._types import CloudStorageHandler, CloudProvider
@@ -186,3 +186,14 @@ class CloudStorageManager:
             file_path: Path to the file in bucket
         """
         return self.handler.delete_file(bucket_name, file_path)
+
+    def open_text_writer(
+        self, bucket_name: str, key: str, content_type: Optional[str] = None
+    ) -> ContextManager[IO[str]]:
+        """
+        Open a text-mode writer to cloud storage for incremental writes.
+
+        For GCS, this uses the native streaming blob.open API.
+        For S3, this buffers content in memory and uploads on close.
+        """
+        return self.handler.open_text_writer(bucket_name, key, content_type)

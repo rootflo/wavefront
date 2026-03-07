@@ -16,14 +16,14 @@ class GoldContainer(containers.DeclarativeContainer):
 
     aws_image_service = providers.Singleton(
         AWSImageService,
-        bucket_name=config.aws.aws_asset_storage_bucket,
+        bucket_name=config.floware.asset_storage_bucket,
         queue_url=config.aws.queue_url,
         region=config.aws.region,
     )
 
     gcp_image_service = providers.Singleton(
         GCPImageService,
-        bucket_name=config.gcp.gcp_asset_storage_bucket,
+        bucket_name=config.floware.asset_storage_bucket,
         project_id=config.gcp.gcp_project_id,
         topic_id=config.gcp.gold_topic_id,
     )

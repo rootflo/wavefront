@@ -25,6 +25,7 @@ class LLMFactory:
         'vertexai',
         'rootflo',
         'openai_vllm',
+        'azure_openai',
     }
 
     @staticmethod
@@ -57,6 +58,8 @@ class LLMFactory:
             return LLMFactory._create_vertexai_llm(model_config, **kwargs)
         elif provider == 'openai_vllm':
             return LLMFactory._create_openai_vllm_llm(model_config, **kwargs)
+        elif provider == 'azure_openai':
+            return LLMFactory._create_azure_openai_llm(model_config, **kwargs)
         else:
             return LLMFactory._create_standard_llm(provider, model_config, **kwargs)
 
@@ -156,6 +159,60 @@ class LLMFactory:
             model=model_name,
             base_url=str(base_url),
             api_key=str(api_key),
+            temperature=temperature,
+        )
+
+    @staticmethod
+    def _create_azure_openai_llm(model_config: LLMConfigModel, **kwargs) -> 'BaseLLM':
+        """Create Azure OpenAI LLM instance with endpoint and API version."""
+        from flo_ai.llm import AzureOpenAI
+
+        model_name = model_config.name
+        if not model_name:
+            raise ValueError('azure_openai provider requires "name" parameter')
+
+        # Endpoint and API version
+        azure_endpoint = (
+            kwargs.get('azure_endpoint')
+            or model_config.azure_endpoint
+            or os.getenv('AZURE_OPENAI_ENDPOINT')
+        )
+        if not azure_endpoint:
+            raise ValueError(
+                'azure_openai configuration incomplete. Missing required parameter: '
+                'azure_endpoint. Provide it in model_config, as a kwarg, or via '
+                'AZURE_OPENAI_ENDPOINT environment variable.'
+            )
+
+        api_key = (
+            kwargs.get('api_key')
+            or model_config.api_key
+            or os.getenv('AZURE_OPENAI_API_KEY')
+        )
+        if not api_key:
+            raise ValueError(
+                'azure_openai configuration incomplete. Missing required parameter: '
+                'api_key. Provide it in model_config, as a kwarg, or via '
+                'AZURE_OPENAI_API_KEY environment variable.'
+            )
+
+        api_version = (
+            kwargs.get('azure_api_version')
+            or model_config.azure_api_version
+            or os.getenv('AZURE_OPENAI_API_VERSION')
+            or '2024-12-01-preview'
+        )
+
+        temperature = kwargs.get(
+            'temperature',
+            model_config.temperature if model_config.temperature is not None else 0.7,
+        )
+
+        return AzureOpenAI(
+            model=model_name,
+            api_key=str(api_key),
+            azure_endpoint=str(azure_endpoint),
+            api_version=str(api_version),
             temperature=temperature,
         )
 

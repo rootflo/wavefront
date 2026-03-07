@@ -150,7 +150,7 @@ class LanguageDetectionToolFactory:
                         return
 
                     # Append new language instruction to clean base prompt
-                    updated_content = f'{base_prompt}\n\n{language_instruction}'
+                    updated_content = f'{language_instruction}\n\n{base_prompt}'
                     updated_system_message = {
                         'role': 'system',
                         'content': updated_content,

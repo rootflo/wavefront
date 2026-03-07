@@ -98,6 +98,7 @@ class LLMConfigModel(BaseModel):
         'vertexai',
         'rootflo',
         'openai_vllm',
+        'azure_openai',
     ] = Field(..., description='LLM provider')
     name: Optional[str] = Field(
         None, description='Model name (required for most providers)'
@@ -115,6 +116,13 @@ class LLMConfigModel(BaseModel):
     model_id: Optional[str] = Field(None, description='Model ID (for RootFlo)')
     # OpenAI vLLM specific
     api_key: Optional[str] = Field(None, description='API key (for openai_vllm)')
+    # Azure OpenAI specific
+    azure_endpoint: Optional[str] = Field(
+        None, description='Azure OpenAI endpoint (for azure_openai)'
+    )
+    azure_api_version: Optional[str] = Field(
+        None, description='Azure OpenAI API version (for azure_openai)'
+    )
 
     def model_post_init(self, __context):
         """Validate provider-specific requirements."""
@@ -151,6 +159,11 @@ class LLMConfigModel(BaseModel):
                 raise ValueError('openai_vllm provider requires "base_url" parameter')
             if not self.api_key:
                 raise ValueError('openai_vllm provider requires "api_key" parameter')
+
+        # Azure OpenAI requires name (azure_endpoint can come from env/kwargs at runtime)
+        if provider == 'azure_openai':
+            if not self.name:
+                raise ValueError('azure_openai provider requires "name" parameter')
 
 
 class SettingsModel(BaseModel):
