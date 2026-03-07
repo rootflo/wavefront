@@ -17,14 +17,18 @@ class ConfigService:
         self.cloud_manager = cloud_manager
         self.config = config
 
-    def _get_gcp_credentials(self) -> dict[str, Any]:
-        config_credentials = self.config.get('gcp')
+    def _get_floware_credentials(self) -> dict[str, Any]:
+        config_credentials = self.config.get('floware')
         if not isinstance(config_credentials, dict):
-            raise HTTPException(status_code=500, detail='GCP configuration is missing')
+            raise HTTPException(
+                status_code=500, detail='Floware configuration is missing'
+            )
         if not config_credentials.get(
-            'gcp_asset_storage_bucket'
+            'asset_storage_bucket'
         ) or not config_credentials.get('config_file_name'):
-            raise HTTPException(status_code=500, detail='Incomplete GCP configuration')
+            raise HTTPException(
+                status_code=500, detail='Incomplete Floware configuration'
+            )
         return config_credentials
 
     async def store_app_config(
@@ -33,7 +37,7 @@ class ConfigService:
         app_config: dict[str, Any] | None = None,
     ):
         file = file or File(None)
-        config_credentials = self._get_gcp_credentials()
+        config_credentials = self._get_floware_credentials()
         if file and file.content_type not in ['image/png', 'image/jpeg', 'image/jpg']:
             raise HTTPException(status_code=400, detail='Invalid file type')
         file_size = getattr(file, 'size', None)
@@ -44,7 +48,7 @@ class ConfigService:
         if file_content:
             self.cloud_manager.save_small_file(
                 file_content,
-                config_credentials['gcp_asset_storage_bucket'],
+                config_credentials['asset_storage_bucket'],
                 config_credentials['config_file_name'],
             )
         # if atleast one icon or file_content is there then allow the all_config to be saved
@@ -68,10 +72,10 @@ class ConfigService:
         if not config_record:
             return None, None
         config_path = config_record[0].value.get('app_icon')
-        config_credentials = self._get_gcp_credentials()
+        config_credentials = self._get_floware_credentials()
         # Generate new presigned URL
         url = self.cloud_manager.generate_presigned_url(
-            config_credentials['gcp_asset_storage_bucket'],
+            config_credentials['asset_storage_bucket'],
             config_path,
             'get',
         )

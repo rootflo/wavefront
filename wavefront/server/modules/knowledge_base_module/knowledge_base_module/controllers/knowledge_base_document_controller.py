@@ -122,11 +122,7 @@ async def upload_document(
 
         # Upload to cloud storage
         logger.info(f'The data filename is {gcs_file_name}')
-        bucket_name = (
-            config['gcp']['gcp_asset_storage_bucket']
-            if config['cloud_config']['cloud_provider'] == 'gcp'
-            else config['aws']['aws_asset_storage_bucket']
-        )
+        bucket_name = config['floware']['asset_storage_bucket']
         await asyncio.to_thread(
             cloud_storage.save_small_file,
             file_content=file_bytes,
@@ -309,12 +305,7 @@ async def get_document_with_id(
             ),
         )
     if signed_url:
-        provider = config['cloud_config']['cloud_provider']
-        bucket = (
-            config['gcp']['gcp_asset_storage_bucket']
-            if provider.lower() == 'gcp'
-            else config['aws']['aws_asset_storage_bucket']
-        )
+        bucket = config['floware']['asset_storage_bucket']
         presigned_url = cloude_storage_manager.generate_presigned_url(
             bucket, existing_document.file_path, 'GET'
         )

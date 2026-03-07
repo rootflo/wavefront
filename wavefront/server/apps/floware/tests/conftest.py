@@ -176,8 +176,8 @@ def mock_config_repository():
 def mock_config():
     """Mock configuration for testing"""
     return {
-        'gcp': {
-            'gcp_asset_storage_bucket': 'test-bucket',
+        'floware': {
+            'asset_storage_bucket': 'test-bucket',
             'config_file_name': 'config.png',
         }
     }
