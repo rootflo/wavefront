@@ -53,6 +53,11 @@ LANGUAGE_KEYWORDS: Dict[str, List[str]] = {
     'vi': ['vietnamese', 'tiếng việt', 'tieng viet'],
 }
 
+# Human-readable language display names (first keyword, capitalized)
+LANGUAGE_DISPLAY_NAMES: Dict[str, str] = {
+    code: keywords[0].capitalize() for code, keywords in LANGUAGE_KEYWORDS.items()
+}
+
 # Language-specific LLM instructions
 LANGUAGE_INSTRUCTIONS: Dict[str, str] = {
     'en': 'Respond in English.',
