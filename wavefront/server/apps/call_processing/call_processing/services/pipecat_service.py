@@ -58,6 +58,7 @@ from call_processing.services.llm_service import LLMServiceFactory
 # )
 from call_processing.constants.language_config import (
     LANGUAGE_INSTRUCTIONS,
+    LANGUAGE_DISPLAY_NAMES,
 )
 from call_processing.constants.filler_phrases import FILLER_PHRASES
 
@@ -83,7 +84,9 @@ class STTLanguageSwitcher(ParallelPipeline):
         for lang_code in supported_languages:
             filter_func = self._create_language_filter(lang_code)
             stt_service = stt_services[lang_code]
-            routes.append([FunctionFilter(filter_func), stt_service])
+            routes.append(
+                [FunctionFilter(filter_func, filter_system_frames=True), stt_service]
+            )
 
         super().__init__(*routes)
 
@@ -130,7 +133,9 @@ class LanguageSwitcher(ParallelPipeline):
         for lang_code in supported_languages:
             filter_func = self._create_language_filter(lang_code)
             tts_service = tts_services[lang_code]
-            routes.append([FunctionFilter(filter_func), tts_service])
+            routes.append(
+                [FunctionFilter(filter_func, filter_system_frames=True), tts_service]
+            )
 
         super().__init__(*routes)
 
@@ -313,13 +318,45 @@ class PipecatService:
             initial_language_instruction = LANGUAGE_INSTRUCTIONS.get(
                 default_language, LANGUAGE_INSTRUCTIONS.get('en', 'Respond in English.')
             )
+            supported_language_names = [
+                LANGUAGE_DISPLAY_NAMES.get(code, code) for code in supported_languages
+            ]
             language_switching_rules = (
-                f'\n\nLANGUAGE SWITCHING RULES:\n'
-                f'- You support these languages only: {", ".join(supported_languages)}.\n'
-                f'- Call detect_and_switch_language only when the user clearly intends to choose or change language. '
-                f'A single word is a valid choice if it directly answers a language preference question.\n'
-                f'- Do NOT switch based on a greeting (e.g. "Namaste") or incidental use of another language.\n'
-                f'- If the user requests a language not in the supported list, apologise and tell them which languages are available. Do not call the switch tool.'
+                f'\n\nLANGUAGE SWITCHING RULES (follow exactly, no exceptions):\n'
+                f'Supported languages: {", ".join(supported_language_names)}.\n'
+                f'Current language: {LANGUAGE_DISPLAY_NAMES.get(default_language, default_language)}.\n\n'
+                f'CASE 1 — USER WANTS THE ASSISTANT TO USE A DIFFERENT LANGUAGE:\n'
+                f'The user is asking or implying that they want the conversation to happen in a specific supported language. Triggers include:\n'
+                f'  - Saying a supported language name alone (e.g. "Hindi", "English", "Tamil")\n'
+                f'  - Asking if you can speak/use a language (e.g. "Can you speak in English?", "क्या आप हिंदी में बात कर सकते हैं?")\n'
+                f'  - Requesting a switch (e.g. "switch to Hindi", "speak in Tamil", "Hindi mein baat karo", "change language")\n'
+                f'  - Saying "speaking [language]" implying they want the assistant to speak it (e.g. "Speaking Hindi")\n'
+                f'  - Responding with a language name after being asked which language they want\n'
+                f'  - A word that phonetically resembles a supported language name — STT often mishears language names '
+                f'(e.g. "Hindi" → "Indy" or "Indie", "Kannada" → "Canada", "Telugu" → "Tell you"). '
+                f'Use phonetic judgment: if the word sounds like a supported language name in context, treat it as CASE 1.\n'
+                f'BIAS RULE: When in doubt between CASE 1 and CASE 2, if a supported language name (or phonetic match) '
+                f'appears in the message, default to CASE 1.\n'
+                f'ACTION: Call detect_and_switch_language immediately. Do NOT ask for confirmation. Do NOT say anything before calling the tool.\n\n'
+                f'CASE 2 — USER SPEAKS IN A DIFFERENT LANGUAGE (no language name mentioned, no switch request):\n'
+                f'The user sends a full message in a language different from the current language, '
+                f'with NO mention of a language name and NO request to switch. They are just talking.\n'
+                f'NOTE: STT may transcribe foreign speech phonetically in the current language script — '
+                f'e.g. if current language is English and the user speaks Hindi, STT may output romanized Hindi '
+                f'like "Ha muje naye loan ke baare mai batao". Recognize this as Hindi input, not English.\n'
+                f'ACTION: Do NOT call detect_and_switch_language. Do NOT answer their query. '
+                f'Respond in the CURRENT language (the language you are currently configured to speak) with this meaning: '
+                f'"Are you trying to switch the language? If yes, please say one of: {", ".join(supported_language_names)}"\n\n'
+                f'CASE 3 — UNSUPPORTED LANGUAGE REQUESTED:\n'
+                f'The user requests a language not in the supported list.\n'
+                f'ACTION: Do NOT call detect_and_switch_language. Inform the user that only these languages are supported: '
+                f'{", ".join(supported_language_names)}.\n\n'
+                f'CRITICAL RULES:\n'
+                f'- Never call detect_and_switch_language for Case 2 or Case 3.\n'
+                f'- Never answer a query in the wrong language before switching.\n'
+                f'- Never ask for confirmation before switching in Case 1.\n'
+                f'- Never respond with your own words before or instead of calling the tool in Case 1.\n'
+                f'- Never invent responses outside these three cases.'
             )
             system_content = f'{initial_language_instruction}\n\n{base_system_prompt}{language_switching_rules}'
             # Store base prompt without language instruction for switching (rules persist across switches)
@@ -426,13 +463,16 @@ class PipecatService:
             language_detection_schema = FunctionSchema(
                 name='detect_and_switch_language',
                 description=(
-                    f"Switch the conversation language when the user clearly intends to choose or change language. "
-                    f"Use conversational context to judge intent — a single word like 'Hindi' or 'Tamil' counts as an "
-                    f"explicit choice when it directly answers a question about language preference. "
-                    f"Also trigger on explicit requests like 'switch to Hindi', 'speak in Tamil', 'Hindi mein baat karo'. "
-                    f"Do NOT trigger on greetings in another language (e.g. 'Namaste') without a clear intent to switch. "
-                    f"Only switch to languages in the supported list: {', '.join(supported_languages)}. "
-                    f"If the user asks for an unsupported language, do NOT call this tool — inform them directly in the current language. "
+                    f"Switch the conversation language. "
+                    f"Call this when the user wants the assistant to use a specific language — "
+                    f"this includes: saying a language name directly ('Hindi', 'Tamil'), "
+                    f"asking 'can you speak in X?', saying 'speaking [language]', "
+                    f"or phrases like 'switch to Hindi', 'speak in Tamil', 'Hindi mein baat karo'. "
+                    f"STT may mishear language names (e.g. 'Hindi' → 'Indy', 'Kannada' → 'Canada') — use phonetic judgment. "
+                    f"When in doubt and a language name is present, call this tool. "
+                    f"Do NOT call this tool when the user simply starts speaking in another language with no language name and no switch request — "
+                    f"in that case respond in the current language asking if they want to switch. "
+                    f"Only switch to supported languages: {', '.join(supported_language_names)}. "
                     f"Current language: {language_state['current_language']}."
                 ),
                 properties={
