@@ -149,6 +149,7 @@ class STTServiceFactory:
         if 'high_vad_sensitivity' in parameters:
             params_dict['high_vad_sensitivity'] = parameters['high_vad_sensitivity']
 
+        params_dict['mode'] = 'transcribe'
         model = parameters.get('model', 'saarika:v2.5')
         sample_rate = parameters.get('sample_rate', 8000)
 
