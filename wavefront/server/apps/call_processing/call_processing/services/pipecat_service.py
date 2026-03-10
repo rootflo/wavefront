@@ -83,7 +83,9 @@ class STTLanguageSwitcher(ParallelPipeline):
         for lang_code in supported_languages:
             filter_func = self._create_language_filter(lang_code)
             stt_service = stt_services[lang_code]
-            routes.append([FunctionFilter(filter_func), stt_service])
+            routes.append(
+                [FunctionFilter(filter_func, filter_system_frames=True), stt_service]
+            )
 
         super().__init__(*routes)
 
@@ -130,7 +132,9 @@ class LanguageSwitcher(ParallelPipeline):
         for lang_code in supported_languages:
             filter_func = self._create_language_filter(lang_code)
             tts_service = tts_services[lang_code]
-            routes.append([FunctionFilter(filter_func), tts_service])
+            routes.append(
+                [FunctionFilter(filter_func, filter_system_frames=True), tts_service]
+            )
 
         super().__init__(*routes)
 
