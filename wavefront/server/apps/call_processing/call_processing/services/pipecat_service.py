@@ -64,22 +64,25 @@ from call_processing.constants.language_config import (
 )
 from call_processing.constants.filler_phrases import FILLER_PHRASES
 
-# Step 1: Initialize OpenTelemetry with your chosen exporter
-exporter = OTLPSpanExporter(
-    endpoint=os.getenv('CALL_PROCESSING_OTLP_ENDPOINT', 'http://localhost:4317'),
-    insecure=True,
-)
-
-setup_tracing(
-    service_name=os.getenv('CALL_PROCESSING_TRACING_SERVICE_NAME', 'call-processing'),
-    exporter=exporter,
-    console_export=False,  # Set to True for debug output
-)
-
 ENABLE_TRACING = os.getenv('CALL_PROCESSING_ENABLE_TRACING', 'true').lower() == 'true'
 ENABLE_TURN_TRACKING = (
     os.getenv('CALL_PROCESSING_ENABLE_TURN_TRACKING', 'true').lower() == 'true'
 )
+
+OTLP_ENDPOINT = os.getenv('CALL_PROCESSING_OTLP_ENDPOINT')
+
+if ENABLE_TRACING and OTLP_ENDPOINT:
+    exporter = OTLPSpanExporter(
+        endpoint=OTLP_ENDPOINT,
+        insecure=True,
+    )
+    setup_tracing(
+        service_name=os.getenv(
+            'CALL_PROCESSING_TRACING_SERVICE_NAME', 'call-processing'
+        ),
+        exporter=exporter,
+        console_export=False,
+    )
 
 
 class STTLanguageSwitcher(ParallelPipeline):
