@@ -13,6 +13,8 @@ from call_processing.services.tool_wrapper_service import ToolWrapperFactory
 from call_processing.utils import get_current_ist_time_str
 
 # Pipecat core imports
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from pipecat.utils.tracing.setup import setup_tracing
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
@@ -61,6 +63,23 @@ from call_processing.constants.language_config import (
     LANGUAGE_DISPLAY_NAMES,
 )
 from call_processing.constants.filler_phrases import FILLER_PHRASES
+
+# Step 1: Initialize OpenTelemetry with your chosen exporter
+exporter = OTLPSpanExporter(
+    endpoint=os.getenv('CALL_PROCESSING_OTLP_ENDPOINT', 'http://localhost:4317'),
+    insecure=True,
+)
+
+setup_tracing(
+    service_name=os.getenv('CALL_PROCESSING_TRACING_SERVICE_NAME', 'call-processing'),
+    exporter=exporter,
+    console_export=False,  # Set to True for debug output
+)
+
+ENABLE_TRACING = os.getenv('CALL_PROCESSING_ENABLE_TRACING', 'true').lower() == 'true'
+ENABLE_TURN_TRACKING = (
+    os.getenv('CALL_PROCESSING_ENABLE_TURN_TRACKING', 'true').lower() == 'true'
+)
 
 
 class STTLanguageSwitcher(ParallelPipeline):
@@ -545,6 +564,13 @@ class PipecatService:
         # Create pipeline
         pipeline = Pipeline(pipeline_components)
 
+        # Mask customer number: keep last 4 digits
+        masked_customer_number = (
+            '*' * (len(customer_number) - 4) + customer_number[-4:]
+            if customer_number and len(customer_number) > 4
+            else customer_number
+        )
+
         # Create pipeline task with Twilio-specific parameters
         task = PipelineTask(
             pipeline,
@@ -556,6 +582,14 @@ class PipecatService:
                 # report_only_initial_ttfb=True
             ),
             idle_timeout_secs=20,
+            enable_tracing=ENABLE_TRACING,
+            enable_turn_tracking=ENABLE_TURN_TRACKING,
+            conversation_id=None,
+            additional_span_attributes={
+                'customer.phone_number': masked_customer_number,
+                'voice_agent.id': str(agent_id) if agent_id else '',
+                'voice_agent.name': agent_config.get('name', ''),
+            },
         )
 
         # Populate task container for language detection tool (if multi-language)
