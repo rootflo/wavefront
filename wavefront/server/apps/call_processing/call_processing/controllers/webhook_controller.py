@@ -201,6 +201,7 @@ async def websocket_endpoint(
             body_data = call_data.get('body', {})
             voice_agent_id = body_data.get('voice_agent_id')
             customer_number = body_data.get('customer_number')
+            agent_number = body_data.get('agent_number', '')
         elif transport_type == 'exotel':
             custom_parameters = call_data.get('custom_parameters', {})
             logger.info(f'Exotel custom_parameters: {custom_parameters}')
@@ -217,6 +218,7 @@ async def websocket_endpoint(
                     continue
 
             customer_number = call_data.get('from', '')
+            agent_number = call_data.get('to', '')
         else:
             logger.error(f'Unknown transport type: {transport_type}')
             await websocket.close(
@@ -301,6 +303,10 @@ async def websocket_endpoint(
             stt_config=configs['stt_config'],
             tools=configs['tools'],
             customer_number=customer_number,
+            call_id=call_data.get('call_id', ''),
+            agent_number=agent_number,
+            provider=transport_type,
+            call_direction='outbound',
         )
 
     except Exception as e:
@@ -447,6 +453,10 @@ async def exotel_inbound_websocket(
             stt_config=configs['stt_config'],
             tools=configs['tools'],
             customer_number=normalized_from_number,
+            call_id=call_sid,
+            agent_number=normalized_to_number,
+            provider=transport_type,
+            call_direction='inbound',
         )
 
     except Exception as e:

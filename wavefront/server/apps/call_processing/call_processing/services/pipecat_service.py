@@ -194,6 +194,10 @@ class PipecatService:
         stt_config: Dict[str, Any],
         tools: List[Dict[str, Any]],
         customer_number: str,
+        call_id: str,
+        agent_number: str,
+        provider: str,
+        call_direction: str,
     ):
         """
         Create and run the Pipecat pipeline for a voice conversation
@@ -592,6 +596,10 @@ class PipecatService:
                 'customer.phone_number': masked_customer_number,
                 'voice_agent.id': str(agent_id) if agent_id else '',
                 'voice_agent.name': agent_config.get('name', ''),
+                'call.direction': call_direction,
+                'call.id': call_id,
+                'telephony.provider': provider,
+                'telephony.agent_number': agent_number,
             },
         )
 
