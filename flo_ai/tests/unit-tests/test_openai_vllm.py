@@ -296,7 +296,7 @@ class TestOpenAIVLLM:
         # Test with dict response (should return str representation)
         response = str({'content': 'Hello, world!'})
         result = llm.get_message_content(response)
-        assert result == '{"content": "Hello, world!"}'
+        assert result == response
 
         # Test with string response
         result = llm.get_message_content('Direct string')  # type: ignore[arg-type]
