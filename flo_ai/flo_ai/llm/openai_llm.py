@@ -148,12 +148,12 @@ class OpenAI(BaseLLM):
                 if content:
                     yield {'content': content}
 
-    def get_message_content(self, response: Dict[str, Any]) -> str:
+    def get_message_content(self, response: Dict[str, Any]) -> Optional[str]:
         if isinstance(response, str):
             return response
         if hasattr(response, 'content') and response.content is not None:
             return str(response.content)
-        return str(response)
+        return None
 
     def format_tool_for_llm(self, tool: 'Tool') -> Dict[str, Any]:
         """Format a single tool for OpenAI's API"""

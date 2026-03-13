@@ -126,6 +126,28 @@ class Agent(BaseAgent):
         # Otherwise, run as tool agent
         return await self._run_with_tools(retry_count, variables)
 
+    async def _handle_response_with_parser(
+        self, assistant_message: Optional[str], role: str, response: Dict[str, Any]
+    ) -> None:
+        if assistant_message:
+            self.add_to_history(AssistantMessage(role=role, content=assistant_message))
+        else:
+            possible_tool_message = await self.llm.get_function_call(response)
+            if possible_tool_message:
+                self.add_to_history(
+                    AssistantMessage(
+                        role=role, content=possible_tool_message['arguments']
+                    )
+                )
+            else:
+                logger.debug('Warning: No message content found in response')
+                self.add_to_history(
+                    AssistantMessage(
+                        role=role,
+                        content='No message content found in response',
+                    )
+                )
+
     async def _run_conversational(
         self, retry_count: int, variables: Optional[Dict[str, Any]] = None
     ) -> List[BaseMessage]:
@@ -151,26 +173,9 @@ class Agent(BaseAgent):
                 # Ensure act_as is not None (default to 'assistant' if missing)
                 role = self.act_as if self.act_as is not None else MessageType.ASSISTANT
 
-                if assistant_message:
-                    self.add_to_history(
-                        AssistantMessage(role=role, content=assistant_message)
-                    )
-                else:
-                    possible_tool_message = await self.llm.get_function_call(response)
-                    if possible_tool_message:
-                        self.add_to_history(
-                            AssistantMessage(
-                                role=role, content=possible_tool_message['arguments']
-                            )
-                        )
-                    else:
-                        logger.debug('Warning: No message content found in response')
-                        self.add_to_history(
-                            AssistantMessage(
-                                role=role,
-                                content='No message content found in response',
-                            )
-                        )
+                await self._handle_response_with_parser(
+                    assistant_message, role, response
+                )
 
                 return self.conversation_history
 
@@ -400,32 +405,12 @@ class Agent(BaseAgent):
                 )
 
                 assistant_message = self.llm.get_message_content(final_response)
-                if assistant_message:
-                    # Ensure act_as is not None (default to 'assistant' if missing)
-                    role = (
-                        self.act_as
-                        if self.act_as is not None
-                        else MessageType.ASSISTANT
-                    )
-                    self.add_to_history(
-                        AssistantMessage(role=role, content=assistant_message)
-                    )
-                    return self.conversation_history
+                role = self.act_as if self.act_as is not None else MessageType.ASSISTANT
+                await self._handle_response_with_parser(
+                    assistant_message, role, final_response
+                )
 
-                # Fallback: return function message only if we have valid tool execution data
-                if function_response is not None and function_name is not None:
-                    return [
-                        FunctionMessage(
-                            content=str(
-                                'The final result based on the tool executions is: \n'
-                                + str(function_response)
-                            ),
-                            name=function_name,
-                        )
-                    ]
-                else:
-                    # No tools were executed and no assistant message, return safe fallback
-                    return self.conversation_history
+                return self.conversation_history
 
             except Exception as e:
                 retry_count += 1
