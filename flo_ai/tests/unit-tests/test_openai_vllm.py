@@ -305,7 +305,7 @@ class TestOpenAIVLLM:
         # Test with empty content
         response = {'content': ''}
         result = llm.get_message_content(response)
-        assert result == "{'content': ''}"
+        assert result == ''
 
         # Test with message object that has content attribute
         mock_message = Mock()
