@@ -136,7 +136,7 @@ class Agent(BaseAgent):
             if possible_tool_message:
                 self.add_to_history(
                     AssistantMessage(
-                        role=role, content=possible_tool_message['arguments']
+                        role=role, content=str(possible_tool_message['arguments'])
                     )
                 )
             else:
