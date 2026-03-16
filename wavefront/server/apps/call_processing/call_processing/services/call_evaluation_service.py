@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional
 
 import aiohttp
 from call_processing.log.logger import logger
-from opentelemetry import trace
+from opentelemetry import context as otel_context, trace
 
 tracer = trace.get_tracer(__name__)
 
@@ -50,6 +50,7 @@ class CallEvaluationService:
         call_outcome: str,
         transcript_log: List[Dict[str, Any]],
         stats: Dict[str, Any],
+        parent_context: Optional[otel_context.Context] = None,
     ) -> None:
         """
         Record call evaluation metrics as an OTel span.
@@ -89,6 +90,7 @@ class CallEvaluationService:
 
             with tracer.start_as_current_span(
                 'call.evaluation',
+                context=parent_context,
                 attributes={
                     'call.id': call_id,
                     'voice_agent.id': agent_id,
@@ -109,14 +111,13 @@ class CallEvaluationService:
                     'call.total_words_assistant': total_words_assistant,
                 },
             ) as span:
-                # Add one span event per turn for searchable transcript
+                # Add one span event per turn — no raw content to avoid PII in OTel
                 for entry in transcript_log:
                     content = entry.get('content', '')
                     span.add_event(
                         'turn',
                         {
                             'role': entry.get('role', ''),
-                            'content': content,
                             'timestamp': entry.get('timestamp', ''),
                             'word_count': len(content.split()) if content else 0,
                         },

@@ -15,6 +15,7 @@ from call_processing.services.tool_wrapper_service import ToolWrapperFactory
 from call_processing.utils import get_current_ist_time_str
 
 # Pipecat core imports
+from opentelemetry import context as otel_context
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from pipecat.utils.tracing.setup import setup_tracing
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
@@ -702,6 +703,10 @@ class PipecatService:
             # Pull language switch count from language_state (already tracked there)
             call_stats['language_switch_count'] = language_state.get('switch_count', 0)
             if ENABLE_TRACING and OTLP_ENDPOINT:
+                # Capture the current OTel context now, while the pipecat span is still
+                # active. The background task will use this as the parent so call.evaluation
+                # appears under the same trace rather than as a new root trace.
+                parent_ctx = otel_context.get_current()
                 t = asyncio.create_task(
                     CallEvaluationService.record_call_metrics(
                         call_id=call_id,
@@ -709,6 +714,7 @@ class PipecatService:
                         call_outcome=outcome,
                         transcript_log=transcript_log,
                         stats=call_stats,
+                        parent_context=parent_ctx,
                     )
                 )
                 call_evaluation_tasks.append(t)
