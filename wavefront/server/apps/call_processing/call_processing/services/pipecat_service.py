@@ -6,9 +6,11 @@ Creates and runs the voice conversation pipeline using configured STT/LLM/TTS se
 
 from typing import Dict, Any, List
 from copy import deepcopy
+import asyncio
 import os
 import random
 from call_processing.log.logger import logger
+from call_processing.services.call_evaluation_service import CallEvaluationService
 from call_processing.services.tool_wrapper_service import ToolWrapperFactory
 from call_processing.utils import get_current_ist_time_str
 
@@ -18,15 +20,24 @@ from pipecat.utils.tracing.setup import setup_tracing
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
-from pipecat.frames.frames import Frame, TTSSpeakFrame
+from pipecat.frames.frames import (
+    CancelFrame,
+    EndFrame,
+    ErrorFrame,
+    Frame,
+    StopFrame,
+    TTSSpeakFrame,
+)
 from pipecat.pipeline.parallel_pipeline import ParallelPipeline
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import (
+    AssistantTurnStoppedMessage,
     LLMContextAggregatorPair,
     LLMUserAggregatorParams,
+    UserTurnStoppedMessage,
 )
 from pipecat.processors.filters.function_filter import FunctionFilter
 from pipecat.processors.transcript_processor import (
@@ -555,6 +566,53 @@ class PipecatService:
         # Create transcript processor for language detection
         transcript = TranscriptProcessor()
 
+        # --- Call evaluation: transcript log and stats ---
+        transcript_log: List[Dict[str, Any]] = []
+        call_stats: Dict[str, Any] = {
+            'user_turns': 0,
+            'assistant_turns': 0,
+            'interruption_count': 0,
+            'tool_calls_count': 0,
+            'language_switch_count': 0,
+            '_bot_speaking': False,
+        }
+
+        @context_aggregator.user().event_handler('on_user_turn_started')
+        async def on_user_turn_started(aggregator, strategy):
+            if call_stats['_bot_speaking']:
+                call_stats['interruption_count'] += 1
+
+        @context_aggregator.user().event_handler('on_user_turn_stopped')
+        async def on_user_turn_stopped(
+            aggregator, strategy, message: UserTurnStoppedMessage
+        ):
+            call_stats['user_turns'] += 1
+            transcript_log.append(
+                {
+                    'role': 'user',
+                    'content': message.content,
+                    'timestamp': message.timestamp,
+                }
+            )
+
+        @context_aggregator.assistant().event_handler('on_assistant_turn_started')
+        async def on_assistant_turn_started(aggregator):
+            call_stats['_bot_speaking'] = True
+
+        @context_aggregator.assistant().event_handler('on_assistant_turn_stopped')
+        async def on_assistant_turn_stopped(
+            aggregator, message: AssistantTurnStoppedMessage
+        ):
+            call_stats['_bot_speaking'] = False
+            call_stats['assistant_turns'] += 1
+            transcript_log.append(
+                {
+                    'role': 'assistant',
+                    'content': message.content,
+                    'timestamp': message.timestamp,
+                }
+            )
+
         # Build pipeline components list
         pipeline_components = [
             transport.input(),  # Audio input from Twilio
@@ -619,12 +677,38 @@ class PipecatService:
             call_names = [fc.function_name for fc in function_calls]
             if 'detect_and_switch_language' in call_names:
                 return
+            # Count non-language-switch tool invocations
+            call_stats['tool_calls_count'] += len(function_calls)
             current_lang = language_state.get('current_language', 'en')
             phrases = FILLER_PHRASES.get(current_lang)
             if not phrases:
                 return
             phrase = random.choice(phrases)
             await task.queue_frame(TTSSpeakFrame(phrase))
+
+        @task.event_handler('on_pipeline_finished')
+        async def on_pipeline_finished(task, frame):
+            if isinstance(frame, EndFrame):
+                outcome = 'completed'
+            elif isinstance(frame, CancelFrame):
+                outcome = 'cancelled'
+            elif isinstance(frame, ErrorFrame):
+                outcome = 'error'
+            elif isinstance(frame, StopFrame):
+                outcome = 'stopped'
+            else:
+                outcome = 'unknown'
+            # Pull language switch count from language_state (already tracked there)
+            call_stats['language_switch_count'] = language_state.get('switch_count', 0)
+            asyncio.create_task(
+                CallEvaluationService.record_call_metrics(
+                    call_id=call_id,
+                    agent_config=agent_config,
+                    call_outcome=outcome,
+                    transcript_log=transcript_log,
+                    stats=call_stats,
+                )
+            )
 
         @transport.event_handler('on_client_connected')
         async def on_client_connected(transport, client):
