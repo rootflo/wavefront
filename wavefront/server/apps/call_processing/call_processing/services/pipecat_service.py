@@ -568,6 +568,7 @@ class PipecatService:
 
         # --- Call evaluation: transcript log and stats ---
         transcript_log: List[Dict[str, Any]] = []
+        call_evaluation_tasks: List[asyncio.Task] = []
         call_stats: Dict[str, Any] = {
             'user_turns': 0,
             'assistant_turns': 0,
@@ -700,15 +701,17 @@ class PipecatService:
                 outcome = 'unknown'
             # Pull language switch count from language_state (already tracked there)
             call_stats['language_switch_count'] = language_state.get('switch_count', 0)
-            asyncio.create_task(
-                CallEvaluationService.record_call_metrics(
-                    call_id=call_id,
-                    agent_config=agent_config,
-                    call_outcome=outcome,
-                    transcript_log=transcript_log,
-                    stats=call_stats,
+            if ENABLE_TRACING and OTLP_ENDPOINT:
+                t = asyncio.create_task(
+                    CallEvaluationService.record_call_metrics(
+                        call_id=call_id,
+                        agent_config=agent_config,
+                        call_outcome=outcome,
+                        transcript_log=transcript_log,
+                        stats=call_stats,
+                    )
                 )
-            )
+                call_evaluation_tasks.append(t)
 
         @transport.event_handler('on_client_connected')
         async def on_client_connected(transport, client):
@@ -732,4 +735,6 @@ class PipecatService:
             raise
         finally:
             await task.cancel()
+            if call_evaluation_tasks:
+                await asyncio.gather(*call_evaluation_tasks, return_exceptions=True)
             logger.info(f"Conversation ended for agent: {agent_config['name']}")

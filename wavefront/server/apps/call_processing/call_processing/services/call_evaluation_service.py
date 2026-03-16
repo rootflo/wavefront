@@ -244,7 +244,8 @@ Respond ONLY with a valid JSON object in this exact structure:
             'response_format': {'type': 'json_object'},
         }
 
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(total=40, connect=8, sock_read=32)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(url, headers=headers, json=payload) as resp:
                 if resp.status != 200:
                     body = await resp.text()
