@@ -208,7 +208,7 @@ class TestOpenAI:
         mock_obj = Mock()
         del mock_obj.content
         result = llm.get_message_content(mock_obj)
-        assert result == str(mock_obj)
+        assert result == ''
 
     def test_openai_format_tool_for_llm(self):
         """Test format_tool_for_llm method."""

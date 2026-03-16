@@ -126,7 +126,7 @@ class OllamaLLM(BaseLLM):
                     if data.get('done') is True:
                         break
 
-    def get_message_content(self, response: Any) -> str:
+    def get_message_content(self, response: Any) -> Optional[str]:
         """Extract message content from response"""
         if isinstance(response, dict):
             return response.get('content', '')
