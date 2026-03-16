@@ -153,7 +153,7 @@ class OpenAI(BaseLLM):
             return response
         if hasattr(response, 'content') and response.content is not None:
             return str(response.content)
-        return str(response)
+        return ''
 
     def format_tool_for_llm(self, tool: 'Tool') -> Dict[str, Any]:
         """Format a single tool for OpenAI's API"""

@@ -205,7 +205,7 @@ class Gemini(BaseLLM):
             if hasattr(chunk, 'text') and chunk.text:
                 yield {'content': chunk.text}
 
-    def get_message_content(self, response: Any) -> str:
+    def get_message_content(self, response: Any) -> Optional[str]:
         """Extract message content from response"""
         if isinstance(response, dict):
             return response.get('content', '')
