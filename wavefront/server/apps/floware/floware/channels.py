@@ -18,6 +18,11 @@ async def start_redis_listener(
     queue = asyncio.Queue()
 
     pubsub = cache_manager.subscribe(channels=[REDIS_API_SERVICE_UPDATES_CHANNEL])
+
+    if pubsub is None:
+        logger.info('Cache is disabled — skipping Redis pubsub listener')
+        return
+
     logger.info('Subscribed to Redis channel: %s', REDIS_API_SERVICE_UPDATES_CHANNEL)
 
     # Capture the running loop from the main thread
