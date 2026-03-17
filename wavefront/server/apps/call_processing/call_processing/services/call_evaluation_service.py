@@ -28,11 +28,13 @@ tracer = trace.get_tracer(__name__)
 _EVAL_DIMENSIONS = [
     'goal_completion',
     'instruction_adherence',
-    'tone_professionalism',
-    'naturalness',
-    'conciseness',
-    'handling_unknowns',
-    'language_quality',
+    'conversation_quality',
+    'response_efficiency',
+    'language_handling',
+    'turn_management',
+    'factual_accuracy',
+    'voice_delivery_quality',
+    'compliance_safety',
 ]
 
 
@@ -191,6 +193,7 @@ class CallEvaluationService:
 
         return f"""You are an expert AI quality assurance evaluator for voice agent conversations.
 Evaluate the transcript below against the agent's configured objective.
+The voice agent may operate in multiple languages including English and regional languages (such as Hindi, Tamil, Malayalam, Kannada, Telugu, Bengali, Marathi, or code-mixed forms like Hinglish or Tanglish).
 
 ## Agent Objective (System Prompt)
 {system_prompt}
@@ -198,34 +201,60 @@ Evaluate the transcript below against the agent's configured objective.
 ## Transcript
 {transcript_text}
 
-## Evaluation Rubric
-Score each dimension from 1 (very poor) to 10 (excellent). Include a brief comment (1-2 sentences).
+## Evaluation Process
+Before assigning scores, perform the following reasoning internally:
+1. Identify the agent's primary objective from the system prompt.
+2. Determine whether the conversation successfully progressed toward that objective.
+3. Identify any major failures, including:
+    hallucinated or fabricated information
+    compliance or policy violations
+    truncated responses or speech likely to break in TTS
+    incorrect language usage or unnatural translation
+    poor turn-taking or interruptions in the conversation
+4. Check whether the agent stayed within its allowed scope and handled unknown questions safely.
+5. Consider whether the responses would sound natural and complete when spoken aloud.
+After completing this reasoning, assign scores for each evaluation dimension.
+Do NOT output your reasoning. Only output the final JSON result.
 
-Dimensions:
-- goal_completion: Did the agent achieve the conversation's objective as defined in the system prompt?
-- instruction_adherence: Did the agent follow all rules, restrictions, persona and format instructions in the system prompt?
-- tone_professionalism: Was the tone warm, professional and appropriate to the context?
-- naturalness: Did the conversation flow naturally, avoiding robotic, repetitive or scripted-sounding phrasing?
-- conciseness: Were responses appropriately brief without sacrificing clarity? Penalise over-verbose responses.
-- handling_unknowns: Did the agent gracefully handle questions outside its scope — avoiding hallucination and staying in persona?
-- language_quality: Clarity, grammar and vocabulary appropriateness. For multi-language calls, assess the switched language too.
+## Evaluation Rubric
+Score each dimension from 1 (very poor) to 10 (excellent).
+Scoring guidance:
+1-3 = major failure
+4-5 = below expectations
+6-7 = acceptable but flawed
+8-9 = strong performance
+10 = near perfect execution
+
+## Dimensions
+- goal_completion: Did the agent successfully achieve the objective defined in the system prompt?
+- instruction_adherence: Did the agent follow all system prompt rules, restrictions, persona guidelines, and behavioural instructions?
+- conversation_quality: Did the conversation flow naturally with a professional, clear, and human-like tone suitable for spoken interaction?
+- response_efficiency: Were responses concise, relevant, and free from unnecessary repetition or verbosity?
+- language_handling: Did the agent correctly understand and respond in the user's language with fluency and clarity, including appropriate grammar, vocabulary, and switching between languages such as English, Hindi, Tamil, Malayalam, Kannada, Telugu, Bengali, Marathi, or mixed forms like Hinglish?
+- turn_management: Did the agent manage conversation turns effectively without interrupting the user, missing responses, causing awkward pauses, or breaking conversational flow?
+- factual_accuracy: Did the agent avoid hallucinating or fabricating information and stay within its knowledge boundaries?
+- voice_delivery_quality: Were responses suitable for spoken delivery without truncation, abrupt endings, incomplete words, or formatting that could break TTS playback?
+- compliance_safety: Did the agent avoid sharing restricted information, violating policies, or creating regulatory risks?
 
 ## Output Format
 Respond ONLY with a valid JSON object in this exact structure:
 {{
-  "overall_rating": <int 1-10>,
-  "summary": "<2-3 sentence summary of the conversation>",
+  "overall_rating": <integer 1-10>,
+  "detected_languages": ["<str>", "..."],
   "dimensions": {{
-    "goal_completion":       {{"score": <int>, "comment": "<str>"}},
-    "instruction_adherence": {{"score": <int>, "comment": "<str>"}},
-    "tone_professionalism":  {{"score": <int>, "comment": "<str>"}},
-    "naturalness":           {{"score": <int>, "comment": "<str>"}},
-    "conciseness":           {{"score": <int>, "comment": "<str>"}},
-    "handling_unknowns":     {{"score": <int>, "comment": "<str>"}},
-    "language_quality":      {{"score": <int>, "comment": "<str>"}}
+    "goal_completion":        {{"score": <integer 1-10>}},
+    "instruction_adherence":  {{"score": <integer 1-10>}},
+    "conversation_quality":   {{"score": <integer 1-10>}},
+    "response_efficiency":    {{"score": <integer 1-10>}},
+    "language_handling":      {{"score": <integer 1-10>}},
+    "turn_management":        {{"score": <integer 1-10>}},
+    "factual_accuracy":       {{"score": <integer 1-10>}},
+    "voice_delivery_quality": {{"score": <integer 1-10>}},
+    "compliance_safety":      {{"score": <integer 1-10>}}
   }},
-  "strengths": ["<str>", ...],
-  "improvement_areas": ["<str>", ...]
+  "strengths": ["<str>", "..."],
+  "improvement_areas": ["<str>", "..."],
+  "failure_tags": ["<only include tags that apply, from: hallucination | tts_truncation | policy_violation | missed_escalation | goal_not_met>"]
 }}"""
 
     @staticmethod
@@ -264,13 +293,15 @@ Respond ONLY with a valid JSON object in this exact structure:
         span.set_attribute(
             'eval.overall_rating', int(analysis.get('overall_rating', 0))
         )
-        span.set_attribute('eval.summary', str(analysis.get('summary', '')))
+        span.set_attribute(
+            'eval.detected_languages',
+            [str(lang) for lang in analysis.get('detected_languages', [])],
+        )
 
         dimensions = analysis.get('dimensions', {})
         for dim in _EVAL_DIMENSIONS:
             dim_data = dimensions.get(dim, {})
             span.set_attribute(f'eval.{dim}', int(dim_data.get('score', 0)))
-            span.set_attribute(f'eval.{dim}_comment', str(dim_data.get('comment', '')))
 
         span.set_attribute(
             'eval.strengths', [str(s) for s in analysis.get('strengths', [])]
@@ -278,4 +309,8 @@ Respond ONLY with a valid JSON object in this exact structure:
         span.set_attribute(
             'eval.improvement_areas',
             [str(a) for a in analysis.get('improvement_areas', [])],
+        )
+        span.set_attribute(
+            'eval.failure_tags',
+            [str(t) for t in analysis.get('failure_tags', [])],
         )
