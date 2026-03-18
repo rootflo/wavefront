@@ -625,7 +625,9 @@ dependencies = [
     { name = "dependency-injector" },
     { name = "fastapi" },
     { name = "httpx" },
-    { name = "pipecat-ai", extra = ["azure", "cartesia", "deepgram", "google", "groq", "local-smart-turn-v3", "runner", "sarvam", "silero", "websocket"] },
+    { name = "opentelemetry-exporter-otlp-proto-grpc" },
+    { name = "opentelemetry-exporter-otlp-proto-http" },
+    { name = "pipecat-ai", extra = ["azure", "cartesia", "deepgram", "google", "groq", "local-smart-turn-v3", "runner", "sarvam", "silero", "tracing", "websocket"] },
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "python-multipart" },
@@ -640,7 +642,9 @@ requires-dist = [
     { name = "dependency-injector", specifier = ">=4.46.0,<5.0.0" },
     { name = "fastapi", specifier = ">=0.115.2,<1.0.0" },
     { name = "httpx", specifier = ">=0.27.0" },
-    { name = "pipecat-ai", extras = ["websocket", "cartesia", "google", "silero", "deepgram", "groq", "runner", "azure", "local-smart-turn-v3", "sarvam"], specifier = "==0.0.103" },
+    { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.0.0" },
+    { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.0.0" },
+    { name = "pipecat-ai", extras = ["websocket", "cartesia", "google", "silero", "deepgram", "groq", "runner", "azure", "local-smart-turn-v3", "sarvam", "tracing"], specifier = "==0.0.103" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "python-dotenv", specifier = ">=1.1.0,<2.0.0" },
     { name = "python-multipart", specifier = ">=0.0.9" },
@@ -3947,6 +3951,11 @@ sarvam = [
 ]
 silero = [
     { name = "onnxruntime" },
+]
+tracing = [
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-instrumentation" },
+    { name = "opentelemetry-sdk" },
 ]
 websocket = [
     { name = "fastapi" },
