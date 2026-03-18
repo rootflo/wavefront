@@ -16,7 +16,14 @@ from call_processing.utils import get_current_ist_time_str
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
-from pipecat.frames.frames import Frame, TTSSpeakFrame
+from pipecat.frames.frames import (
+    Frame,
+    TTSSpeakFrame,
+    BotSpeakingFrame,
+    BotStartedSpeakingFrame,
+    UserSpeakingFrame,
+    UserStartedSpeakingFrame,
+)
 from pipecat.pipeline.parallel_pipeline import ParallelPipeline
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
@@ -555,7 +562,13 @@ class PipecatService:
                 # enable_usage_metrics=True,
                 # report_only_initial_ttfb=True
             ),
-            idle_timeout_secs=20,
+            idle_timeout_frames=(
+                BotSpeakingFrame,
+                UserSpeakingFrame,
+                BotStartedSpeakingFrame,
+                UserStartedSpeakingFrame,
+            ),
+            idle_timeout_secs=50,
         )
 
         # Populate task container for language detection tool (if multi-language)
