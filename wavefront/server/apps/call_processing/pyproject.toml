@@ -21,7 +21,9 @@ dependencies = [
     "redis>=5.0.0",
     "tenacity>=8.0.0",
     # Pipecat and voice processing
-    "pipecat-ai[websocket,cartesia,google,silero,deepgram,groq,runner,azure,local-smart-turn-v3,sarvam]==0.0.103",
+    "pipecat-ai[websocket,cartesia,google,silero,deepgram,groq,runner,azure,local-smart-turn-v3,sarvam,tracing]==0.0.103",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.0.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.0.0",
     # Twilio
     "twilio>=8.0.0",
 ]
