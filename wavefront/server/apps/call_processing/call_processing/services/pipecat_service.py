@@ -658,7 +658,7 @@ class PipecatService:
                 BotStartedSpeakingFrame,
                 UserStartedSpeakingFrame,
             ),
-            idle_timeout_secs=50,
+            idle_timeout_secs=300,
             enable_tracing=ENABLE_TRACING,
             enable_turn_tracking=ENABLE_TURN_TRACKING,
             conversation_id=None,
