@@ -28,6 +28,10 @@ from pipecat.frames.frames import (
     Frame,
     StopFrame,
     TTSSpeakFrame,
+    BotSpeakingFrame,
+    BotStartedSpeakingFrame,
+    UserSpeakingFrame,
+    UserStartedSpeakingFrame,
 )
 from pipecat.pipeline.parallel_pipeline import ParallelPipeline
 from pipecat.pipeline.pipeline import Pipeline
@@ -648,7 +652,13 @@ class PipecatService:
                 # enable_usage_metrics=True,
                 # report_only_initial_ttfb=True
             ),
-            idle_timeout_secs=20,
+            idle_timeout_frames=(
+                BotSpeakingFrame,
+                UserSpeakingFrame,
+                BotStartedSpeakingFrame,
+                UserStartedSpeakingFrame,
+            ),
+            idle_timeout_secs=300,
             enable_tracing=ENABLE_TRACING,
             enable_turn_tracking=ENABLE_TURN_TRACKING,
             conversation_id=None,
