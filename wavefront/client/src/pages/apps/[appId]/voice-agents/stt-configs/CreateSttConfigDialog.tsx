@@ -30,12 +30,18 @@ import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
-const createSttConfigSchema = z.object({
-  display_name: z.string().min(1, 'Display name is required').max(100, 'Display name must be 100 characters or less'),
-  description: z.string().max(500, 'Description must be 500 characters or less').optional(),
-  provider: z.enum(['deepgram', 'sarvam', 'elevenlabs'] as [string, ...string[]]),
-  api_key: z.string().min(1, 'API key is required'),
-});
+const createSttConfigSchema = z
+  .object({
+    display_name: z.string().min(1, 'Display name is required').max(100, 'Display name must be 100 characters or less'),
+    description: z.string().max(500, 'Description must be 500 characters or less').optional(),
+    provider: z.enum(['deepgram', 'sarvam', 'elevenlabs', 'azure'] as [string, ...string[]]),
+    api_key: z.string().min(1, 'API key is required'),
+    region: z.string().optional(),
+  })
+  .refine((data) => data.provider !== 'azure' || (data.region && data.region.trim().length > 0), {
+    message: 'Region is required for Azure',
+    path: ['region'],
+  });
 
 type CreateSttConfigInput = z.infer<typeof createSttConfigSchema>;
 
@@ -56,8 +62,11 @@ const CreateSttConfigDialog: React.FC<CreateSttConfigDialogProps> = ({ isOpen, o
       description: '',
       provider: 'deepgram',
       api_key: '',
+      region: '',
     },
   });
+
+  const selectedProvider = form.watch('provider');
 
   // Reset form when dialog closes
   useEffect(() => {
@@ -67,6 +76,7 @@ const CreateSttConfigDialog: React.FC<CreateSttConfigDialogProps> = ({ isOpen, o
         description: '',
         provider: 'deepgram',
         api_key: '',
+        region: '',
       });
     }
   }, [isOpen, form]);
@@ -79,6 +89,7 @@ const CreateSttConfigDialog: React.FC<CreateSttConfigDialogProps> = ({ isOpen, o
         description: data.description?.trim() || null,
         provider: data.provider as SttProvider,
         api_key: data.api_key.trim(),
+        region: data.region?.trim() || null,
       });
       notifySuccess('STT configuration created successfully');
       onSuccess?.();
@@ -185,6 +196,24 @@ const CreateSttConfigDialog: React.FC<CreateSttConfigDialogProps> = ({ isOpen, o
                 </FormItem>
               )}
             />
+
+            {selectedProvider === 'azure' && (
+              <FormField
+                control={form.control}
+                name="region"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      Region <span className="text-red-500">*</span>
+                    </FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g., eastus, westus2" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             <Alert variant="info">
               <AlertDescription>
