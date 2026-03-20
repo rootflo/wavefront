@@ -262,6 +262,7 @@ class PipecatService:
         tts_config_with_params = {
             'provider': tts_config['provider'],
             'api_key': tts_config['api_key'],
+            'region': tts_config.get('region'),
             'voice_id': default_voice_id,  # Will be overridden per language in multi-lang mode
             'parameters': tts_parameters or {},
         }
@@ -270,6 +271,7 @@ class PipecatService:
         stt_config_with_params = {
             'provider': stt_config['provider'],
             'api_key': stt_config['api_key'],
+            'region': stt_config.get('region'),
             'parameters': stt_parameters or {},
         }
 

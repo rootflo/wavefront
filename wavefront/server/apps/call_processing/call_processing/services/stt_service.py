@@ -18,9 +18,7 @@ from pipecat.transcriptions.language import Language
 # Deepgram options
 from deepgram import LiveOptions
 
-# Add more as needed:
-# from pipecat.services.assemblyai.stt import AssemblyAISTTService
-# from pipecat.services.whisper.stt import WhisperSTTService
+from pipecat.services.azure.stt import AzureSTTService
 
 
 class STTServiceFactory:
@@ -47,6 +45,7 @@ class STTServiceFactory:
         """
         provider = stt_config['provider']
         api_key = stt_config['api_key']
+        region = stt_config.get('region')
         parameters = stt_config.get('parameters', {})
 
         if parameters is None:
@@ -60,6 +59,8 @@ class STTServiceFactory:
             return STTServiceFactory._create_sarvam_stt(api_key, parameters)
         elif provider == 'elevenlabs':
             return STTServiceFactory._create_elevenlabs_stt(api_key, parameters)
+        elif provider == 'azure':
+            return STTServiceFactory._create_azure_stt(api_key, region, parameters)
         elif provider == 'assemblyai':
             return STTServiceFactory._create_assemblyai_stt(api_key, parameters)
         elif provider == 'whisper':
@@ -180,6 +181,20 @@ class STTServiceFactory:
         'or': 'ori',
     }
 
+    AZURE_LANGUAGE_MAP = {
+        'en': Language.EN_US,
+        'hi': Language.HI_IN,
+        'ta': Language.TA_IN,
+        'te': Language.TE_IN,
+        'kn': Language.KN_IN,
+        'ml': Language.ML_IN,
+        'gu': Language.GU_IN,
+        'bn': Language.BN_IN,
+        'mr': Language.MR_IN,
+        'pa': Language.PA_IN,
+        'or': Language.OR_IN,
+    }
+
     @staticmethod
     def _create_elevenlabs_stt(api_key: str, parameters: Dict[str, Any]):
         """Create ElevenLabs Realtime STT service (WebSocket streaming, scribe_v2_realtime)"""
@@ -213,6 +228,41 @@ class STTServiceFactory:
             sample_rate=sample_rate,
             params=input_params,
         )
+
+    @staticmethod
+    def _create_azure_stt(api_key: str, region: str, parameters: Dict[str, Any]):
+        """Create Azure STT service"""
+        if not region:
+            raise ValueError("Azure STT requires 'region' to be set in the STT config")
+
+        kwargs = {
+            'api_key': api_key,
+            'region': region,
+        }
+
+        if 'sample_rate' in parameters and parameters['sample_rate']:
+            kwargs['sample_rate'] = parameters['sample_rate']
+        if 'endpoint_id' in parameters and parameters['endpoint_id']:
+            kwargs['endpoint_id'] = parameters['endpoint_id']
+        if (
+            'ttfs_p99_latency' in parameters
+            and parameters['ttfs_p99_latency'] is not None
+        ):
+            kwargs['ttfs_p99_latency'] = parameters['ttfs_p99_latency']
+
+        if 'language' in parameters and parameters['language']:
+            lang_code = parameters['language']
+            lang_enum = STTServiceFactory.AZURE_LANGUAGE_MAP.get(lang_code)
+            if lang_enum:
+                kwargs['language'] = lang_enum
+            else:
+                logger.warning(
+                    f"Unknown Azure language '{lang_code}', using service default"
+                )
+
+        logger.info(f'Azure STT config: region={region}')
+
+        return AzureSTTService(**kwargs)
 
     @staticmethod
     def _create_assemblyai_stt(api_key: str, parameters: Dict[str, Any]):

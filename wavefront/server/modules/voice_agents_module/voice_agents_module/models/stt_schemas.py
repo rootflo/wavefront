@@ -32,12 +32,16 @@ class CreateSttConfigPayload(BaseModel):
     )
     provider: SttProvider = Field(..., description='STT provider')
     api_key: str = Field(..., description='API key for the STT provider')
+    region: Optional[str] = Field(
+        None, description='Region for the STT provider (e.g. Azure region)'
+    )
 
 
 class UpdateSttConfigPayload(BaseModel):
     display_name: Union[str, Any] = Field(default=UNSET)
     description: Union[str, None, Any] = Field(default=UNSET)
     api_key: Union[str, Any] = Field(default=UNSET)
+    region: Union[str, None, Any] = Field(default=UNSET)
 
 
 class SttConfigResponse(BaseModel):
@@ -45,6 +49,7 @@ class SttConfigResponse(BaseModel):
     display_name: str
     description: Optional[str]
     provider: str
+    region: Optional[str]
     is_deleted: bool
     created_at: datetime
     updated_at: datetime

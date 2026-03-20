@@ -20,6 +20,7 @@ class SttConfig(Base):
     )
     provider: Mapped[str] = mapped_column(String(length=64), nullable=False)
     api_key: Mapped[str] = mapped_column(String(length=512), nullable=False)
+    region: Mapped[Optional[str]] = mapped_column(String(length=64), nullable=True)
     is_deleted: Mapped[bool] = mapped_column(default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

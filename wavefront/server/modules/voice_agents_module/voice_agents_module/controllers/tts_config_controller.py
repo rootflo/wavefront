@@ -45,6 +45,7 @@ async def create_tts_config(
         description=payload.description,
         provider=payload.provider.value,
         api_key=payload.api_key,
+        region=payload.region,
     )
 
     return JSONResponse(
@@ -151,6 +152,8 @@ async def update_tts_config(
         update_data['description'] = payload.description
     if payload.api_key is not UNSET:
         update_data['api_key'] = payload.api_key
+    if payload.region is not UNSET:
+        update_data['region'] = payload.region
 
     if not update_data:
         return JSONResponse(

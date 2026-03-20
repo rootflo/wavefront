@@ -40,6 +40,7 @@ class SttConfigService:
         description: Optional[str] = None,
         provider: str = None,
         api_key: str = None,
+        region: Optional[str] = None,
     ) -> dict:
         """
         Create a new STT configuration
@@ -49,6 +50,7 @@ class SttConfigService:
             description: Optional description
             provider: STT provider
             api_key: API key for the STT provider
+            region: Region for the provider (e.g. Azure region)
 
         Returns:
             Created STT config as dict
@@ -62,6 +64,7 @@ class SttConfigService:
             description=description,
             provider=provider,
             api_key=api_key,
+            region=region,
         )
 
         # Convert to dict

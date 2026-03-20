@@ -1,12 +1,13 @@
 import { IApiResponse } from '@app/lib/axios';
 
-export type TtsProvider = 'elevenlabs' | 'deepgram' | 'cartesia' | 'sarvam';
+export type TtsProvider = 'elevenlabs' | 'deepgram' | 'cartesia' | 'sarvam' | 'azure';
 
 export interface TtsConfig {
   id: string;
   display_name: string;
   description: string | null;
   provider: TtsProvider;
+  region: string | null;
   is_deleted: boolean;
   created_at: string;
   updated_at: string;
@@ -17,12 +18,14 @@ export interface CreateTtsConfigRequest {
   description?: string | null;
   provider: TtsProvider;
   api_key: string;
+  region?: string | null;
 }
 
 export interface UpdateTtsConfigRequest {
   display_name?: string;
   description?: string | null;
   api_key?: string;
+  region?: string | null;
 }
 
 export interface TtsConfigData {
@@ -72,4 +75,12 @@ export interface SarvamTtsParameters {
   loudness?: number; // 0.1 to 3.0
   enable_preprocessing?: boolean;
   temperature?: number; // 0.01 to 1.0
+}
+
+// Azure TTS specific parameters
+export interface AzureTtsParameters {
+  style?: string; // e.g. 'cheerful', 'sad', 'angry'
+  rate?: string; // e.g. '+10%', 'fast', 'slow'
+  pitch?: string; // e.g. '+0Hz', 'high', 'low'
+  sample_rate?: number;
 }
