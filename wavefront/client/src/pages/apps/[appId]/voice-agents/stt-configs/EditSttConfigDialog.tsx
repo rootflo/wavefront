@@ -30,13 +30,18 @@ import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
-const updateSttConfigSchema = z.object({
-  display_name: z.string().min(1, 'Display name is required').max(100, 'Display name must be 100 characters or less'),
-  description: z.string().max(500, 'Description must be 500 characters or less').optional(),
-  provider: z.enum(['deepgram', 'sarvam', 'elevenlabs', 'azure'] as [string, ...string[]]),
-  api_key: z.string().optional(),
-  region: z.string().optional(),
-});
+const updateSttConfigSchema = z
+  .object({
+    display_name: z.string().min(1, 'Display name is required').max(100, 'Display name must be 100 characters or less'),
+    description: z.string().max(500, 'Description must be 500 characters or less').optional(),
+    provider: z.enum(['deepgram', 'sarvam', 'elevenlabs', 'azure'] as [string, ...string[]]),
+    api_key: z.string().optional(),
+    region: z.string().optional(),
+  })
+  .refine((data) => data.provider !== 'azure' || (data.region && data.region.trim().length > 0), {
+    message: 'Region is required for Azure',
+    path: ['region'],
+  });
 
 type UpdateSttConfigInput = z.infer<typeof updateSttConfigSchema>;
 

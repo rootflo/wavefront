@@ -181,6 +181,20 @@ class STTServiceFactory:
         'or': 'ori',
     }
 
+    AZURE_LANGUAGE_MAP = {
+        'en': Language.EN_US,
+        'hi': Language.HI_IN,
+        'ta': Language.TA_IN,
+        'te': Language.TE_IN,
+        'kn': Language.KN_IN,
+        'ml': Language.ML_IN,
+        'gu': Language.GU_IN,
+        'bn': Language.BN_IN,
+        'mr': Language.MR_IN,
+        'pa': Language.PA_IN,
+        'or': Language.OR_IN,
+    }
+
     @staticmethod
     def _create_elevenlabs_stt(api_key: str, parameters: Dict[str, Any]):
         """Create ElevenLabs Realtime STT service (WebSocket streaming, scribe_v2_realtime)"""
@@ -238,7 +252,7 @@ class STTServiceFactory:
 
         if 'language' in parameters and parameters['language']:
             lang_code = parameters['language']
-            lang_enum = STTServiceFactory.SARVAM_LANGUAGE_MAP.get(lang_code)
+            lang_enum = STTServiceFactory.AZURE_LANGUAGE_MAP.get(lang_code)
             if lang_enum:
                 kwargs['language'] = lang_enum
             else:
