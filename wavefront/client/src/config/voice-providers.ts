@@ -44,7 +44,7 @@ export interface VoiceProvidersConfig {
  */
 export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
   tts: {
-    providers: ['elevenlabs', 'deepgram', 'cartesia', 'sarvam'] as const,
+    providers: ['elevenlabs', 'deepgram', 'cartesia', 'sarvam', 'azure'] as const,
     configs: {
       elevenlabs: {
         name: 'ElevenLabs',
@@ -217,10 +217,61 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
           },
         },
       },
+      azure: {
+        name: 'Azure',
+        badge: {
+          bg: 'bg-sky-100',
+          text: 'text-sky-700',
+        },
+        parameters: {
+          style: {
+            type: 'string' as const,
+            default: '',
+            description: 'Speaking style (e.g. cheerful, sad, angry)',
+            placeholder: 'cheerful',
+          },
+          rate: {
+            type: 'string' as const,
+            default: '',
+            description: 'Speech rate (e.g. +10%, fast, slow)',
+            placeholder: '+0%',
+          },
+          pitch: {
+            type: 'string' as const,
+            default: '',
+            description: 'Pitch adjustment (e.g. +0Hz, high, low)',
+            placeholder: '+0Hz',
+          },
+          role: {
+            type: 'string' as const,
+            default: '',
+            description: 'Voice role for expression (e.g. YoungAdultFemale)',
+            placeholder: 'YoungAdultFemale',
+          },
+          style_degree: {
+            type: 'string' as const,
+            default: '',
+            description: 'Intensity of speaking style (0.01 to 2.0)',
+            placeholder: '1.0',
+          },
+          volume: {
+            type: 'string' as const,
+            default: '',
+            description: 'Volume level (e.g. +20%, loud, x-soft)',
+            placeholder: '+0%',
+          },
+          sample_rate: {
+            type: 'number' as const,
+            default: undefined,
+            description: 'Audio sample rate in Hz',
+            placeholder: '16000',
+          },
+        },
+      },
     },
   },
   stt: {
-    providers: ['deepgram', 'sarvam', 'elevenlabs'] as const,
+    providers: ['deepgram', 'sarvam', 'elevenlabs', 'azure'] as const,
     configs: {
       deepgram: {
         name: 'Deepgram',
@@ -349,6 +400,34 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
             default: 8000,
             description: 'Audio sample rate in Hz',
             placeholder: '8000',
+          },
+        },
+      },
+      azure: {
+        name: 'Azure',
+        badge: {
+          bg: 'bg-sky-100',
+          text: 'text-sky-700',
+        },
+        parameters: {
+          endpoint_id: {
+            type: 'string' as const,
+            default: '',
+            description: 'Custom model endpoint ID (optional)',
+            placeholder: '',
+          },
+          sample_rate: {
+            type: 'number' as const,
+            default: undefined,
+            description: 'Audio sample rate in Hz',
+            placeholder: '8000',
+          },
+          ttfs_p99_latency: {
+            type: 'number' as const,
+            default: undefined,
+            description: 'P99 latency threshold in seconds for first speech detection',
+            placeholder: '1.5',
+            step: 0.1,
           },
         },
       },

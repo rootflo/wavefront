@@ -32,12 +32,16 @@ class CreateTtsConfigPayload(BaseModel):
     )
     provider: TtsProvider = Field(..., description='TTS provider')
     api_key: str = Field(..., description='API key for the TTS provider')
+    region: Optional[str] = Field(
+        None, description='Region for the TTS provider (e.g. Azure region)'
+    )
 
 
 class UpdateTtsConfigPayload(BaseModel):
     display_name: Union[str, Any] = Field(default=UNSET)
     description: Union[str, None, Any] = Field(default=UNSET)
     api_key: Union[str, Any] = Field(default=UNSET)
+    region: Union[str, None, Any] = Field(default=UNSET)
 
 
 class TtsConfigResponse(BaseModel):
@@ -45,6 +49,7 @@ class TtsConfigResponse(BaseModel):
     display_name: str
     description: Optional[str]
     provider: str
+    region: Optional[str]
     is_deleted: bool
     created_at: datetime
     updated_at: datetime

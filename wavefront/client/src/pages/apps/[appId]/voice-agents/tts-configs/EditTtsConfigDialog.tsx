@@ -33,8 +33,9 @@ import { z } from 'zod';
 const updateTtsConfigSchema = z.object({
   display_name: z.string().min(1, 'Display name is required').max(100, 'Display name must be 100 characters or less'),
   description: z.string().max(500, 'Description must be 500 characters or less').optional(),
-  provider: z.enum(['elevenlabs', 'deepgram', 'cartesia', 'sarvam'] as [string, ...string[]]),
+  provider: z.enum(['elevenlabs', 'deepgram', 'cartesia', 'sarvam', 'azure'] as [string, ...string[]]),
   api_key: z.string().optional(),
+  region: z.string().optional(),
 });
 
 type UpdateTtsConfigInput = z.infer<typeof updateTtsConfigSchema>;
@@ -57,8 +58,11 @@ const EditTtsConfigDialog: React.FC<EditTtsConfigDialogProps> = ({ isOpen, onOpe
       description: config.description || '',
       provider: config.provider,
       api_key: '',
+      region: config.region || '',
     },
   });
+
+  const selectedProvider = form.watch('provider');
 
   // Reset form when dialog opens or config changes
   useEffect(() => {
@@ -68,6 +72,7 @@ const EditTtsConfigDialog: React.FC<EditTtsConfigDialogProps> = ({ isOpen, onOpe
         description: config.description || '',
         provider: config.provider,
         api_key: '',
+        region: config.region || '',
       });
     }
   }, [isOpen, config, form]);
@@ -82,6 +87,10 @@ const EditTtsConfigDialog: React.FC<EditTtsConfigDialogProps> = ({ isOpen, onOpe
 
       if (data.api_key?.trim()) {
         updateData.api_key = data.api_key.trim();
+      }
+
+      if (data.region !== undefined) {
+        updateData.region = data.region?.trim() || null;
       }
 
       await floConsoleService.ttsConfigService.updateTtsConfig(config.id, updateData);
@@ -195,6 +204,24 @@ const EditTtsConfigDialog: React.FC<EditTtsConfigDialogProps> = ({ isOpen, onOpe
                 </FormItem>
               )}
             />
+
+            {selectedProvider === 'azure' && (
+              <FormField
+                control={form.control}
+                name="region"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      Region <span className="text-red-500">*</span>
+                    </FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g., eastus, westus2" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
