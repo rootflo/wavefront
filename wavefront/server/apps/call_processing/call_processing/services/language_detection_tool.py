@@ -132,19 +132,29 @@ class LanguageDetectionToolFactory:
                         target_language,
                         tts_voice_ids.get(target_language),
                     )
+                    tts_frame_queued = False
                     if tts_frame:
                         await task.queue_frame(tts_frame)
+                        tts_frame_queued = True
 
                     # Queue STT settings update (language)
                     stt_frame = STTServiceFactory.create_language_update_frame(
                         stt_provider, target_language
                     )
+                    stt_frame_queued = False
                     if stt_frame:
                         await task.queue_frame(stt_frame)
+                        stt_frame_queued = True
 
-                    logger.info(
-                        f'Queued TTS/STT language update from {current_language} to {target_language}'
+                    log_msg = (
+                        f'Language update {current_language} -> {target_language}: '
+                        f'TTS={"queued" if tts_frame_queued else "skipped"}, '
+                        f'STT={"queued" if stt_frame_queued else "skipped"}'
                     )
+                    if tts_frame_queued or stt_frame_queued:
+                        logger.info(log_msg)
+                    else:
+                        logger.error(log_msg)
 
                     # Update system prompt with language instruction
                     language_instruction = LANGUAGE_INSTRUCTIONS.get(
