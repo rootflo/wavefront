@@ -25,7 +25,6 @@ from pipecat.frames.frames import (
     CancelFrame,
     EndFrame,
     ErrorFrame,
-    Frame,
     StopFrame,
     TTSSpeakFrame,
     BotSpeakingFrame,
@@ -33,7 +32,6 @@ from pipecat.frames.frames import (
     UserSpeakingFrame,
     UserStartedSpeakingFrame,
 )
-from pipecat.pipeline.parallel_pipeline import ParallelPipeline
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -43,10 +41,6 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
     LLMUserAggregatorParams,
     UserTurnStoppedMessage,
-)
-from pipecat.processors.filters.function_filter import FunctionFilter
-from pipecat.processors.transcript_processor import (
-    TranscriptProcessor,
 )
 
 # from pipecat.pipeline.service_switcher import (
@@ -99,103 +93,6 @@ if ENABLE_TRACING and OTLP_ENDPOINT:
         exporter=exporter,
         console_export=False,
     )
-
-
-class STTLanguageSwitcher(ParallelPipeline):
-    """
-    ParallelPipeline that routes STT to different language-specific services
-    based on current language state. Same pattern as LanguageSwitcher for TTS.
-    """
-
-    def __init__(
-        self,
-        stt_services: Dict[str, Any],
-        supported_languages: List[str],
-        default_language: str,
-    ):
-        self._current_language = default_language
-        self._stt_services = stt_services
-        self._supported_languages = supported_languages
-
-        # Build parallel routes: one per language
-        routes = []
-        for lang_code in supported_languages:
-            filter_func = self._create_language_filter(lang_code)
-            stt_service = stt_services[lang_code]
-            routes.append(
-                [FunctionFilter(filter_func, filter_system_frames=True), stt_service]
-            )
-
-        super().__init__(*routes)
-
-    def _create_language_filter(self, lang_code: str):
-        """Create filter function for specific language"""
-
-        async def language_filter(_: Frame) -> bool:
-            return self._current_language == lang_code
-
-        return language_filter
-
-    @property
-    def current_language(self):
-        return self._current_language
-
-    def set_language(self, language_code: str):
-        """Update current language (called by language detection tool)"""
-        if language_code in self._supported_languages:
-            self._current_language = language_code
-            logger.info(f'STTLanguageSwitcher: Language set to {language_code}')
-        else:
-            logger.warning(f'STTLanguageSwitcher: Invalid language {language_code}')
-
-
-class LanguageSwitcher(ParallelPipeline):
-    """
-    ParallelPipeline that routes TTS to different language-specific services
-    based on current language state.
-    """
-
-    def __init__(
-        self,
-        tts_services: Dict[str, Any],
-        supported_languages: List[str],
-        default_language: str,
-    ):
-        self._current_language = default_language
-        self._tts_services = tts_services
-        self._supported_languages = supported_languages
-
-        # Build parallel routes: one per language
-        # Each route: [FunctionFilter, TTS service]
-        routes = []
-        for lang_code in supported_languages:
-            filter_func = self._create_language_filter(lang_code)
-            tts_service = tts_services[lang_code]
-            routes.append(
-                [FunctionFilter(filter_func, filter_system_frames=True), tts_service]
-            )
-
-        super().__init__(*routes)
-
-    def _create_language_filter(self, lang_code: str):
-        """Create filter function for specific language"""
-
-        async def language_filter(_: Frame) -> bool:
-            return self._current_language == lang_code
-
-        return language_filter
-
-    @property
-    def current_language(self):
-        return self._current_language
-
-    def set_language(self, language_code: str):
-        """Update current language (called by language detection tool)"""
-        if language_code in self._supported_languages:
-            self._current_language = language_code
-            logger.info(f'LanguageSwitcher: Language set to {language_code}')
-        else:
-            logger.warning(f'LanguageSwitcher: Invalid language {language_code}')
 
 
 class PipecatService:
@@ -275,74 +172,28 @@ class PipecatService:
             'parameters': stt_parameters or {},
         }
 
-        # Create TTS services (one per language for multi-language mode)
-        tts_services = {}
-
         if is_multi_language:
             logger.info(
-                f'Multi-language mode enabled for languages: {supported_languages}'
+                f'Multi-language mode enabled for languages: {supported_languages}. '
+                f'Creating single TTS/STT service with default language: {default_language}'
             )
 
-            # Create TTS services for each supported language
-            for lang_code in supported_languages:
-                # Get voice ID for this language
-                voice_id_for_lang = tts_voice_ids_dict.get(lang_code)
-                if not voice_id_for_lang:
-                    logger.warning(
-                        f'No voice ID for language {lang_code}, using default'
-                    )
-                    voice_id_for_lang = default_voice_id
-
-                # Deep clone config to avoid mutating original
-                tts_config_lang = deepcopy(tts_config_with_params)
-
-                # Update language parameters
-                if 'parameters' not in tts_config_lang:
-                    tts_config_lang['parameters'] = {}
-                tts_config_lang['parameters']['language'] = lang_code
-                tts_config_lang['voice_id'] = voice_id_for_lang
-
-                # Create TTS service
-                tts_services[lang_code] = TTSServiceFactory.create_tts_service(
-                    tts_config_lang
-                )
-                logger.info(
-                    f'Created TTS service for language: {lang_code} '
-                    f'with voice: {voice_id_for_lang}'
-                )
-
-            # Create per-language STT services (same pattern as TTS)
-            stt_services = {}
-            for lang_code in supported_languages:
-                stt_config_lang = deepcopy(stt_config_with_params)
-                if 'parameters' not in stt_config_lang:
-                    stt_config_lang['parameters'] = {}
-                stt_config_lang['parameters']['language'] = lang_code
-
-                stt_services[lang_code] = STTServiceFactory.create_stt_service(
-                    stt_config_lang
-                )
-                logger.info(f'Created STT service for language: {lang_code}')
-
-            # Create STTLanguageSwitcher for STT routing
-            stt = STTLanguageSwitcher(
-                stt_services=stt_services,
-                supported_languages=supported_languages,
-                default_language=default_language,
+            # Create a single TTS service with the default language; language switches
+            # are handled at runtime via TTSUpdateSettingsFrame / STTUpdateSettingsFrame
+            tts_config_lang = deepcopy(tts_config_with_params)
+            if 'parameters' not in tts_config_lang:
+                tts_config_lang['parameters'] = {}
+            tts_config_lang['parameters']['language'] = default_language
+            tts_config_lang['voice_id'] = tts_voice_ids_dict.get(
+                default_language, default_voice_id
             )
-            logger.info(
-                f'Initialized STTLanguageSwitcher with default language: {default_language}'
-            )
+            tts = TTSServiceFactory.create_tts_service(tts_config_lang)
 
-            # Create LanguageSwitcher for TTS routing
-            tts = LanguageSwitcher(
-                tts_services=tts_services,
-                supported_languages=supported_languages,
-                default_language=default_language,
-            )
-            logger.info(
-                f'Initialized LanguageSwitcher with default language: {default_language}'
-            )
+            stt_config_lang = deepcopy(stt_config_with_params)
+            if 'parameters' not in stt_config_lang:
+                stt_config_lang['parameters'] = {}
+            stt_config_lang['parameters']['language'] = default_language
+            stt = STTServiceFactory.create_stt_service(stt_config_lang)
 
         else:
             logger.info('Single language mode - no language detection needed')
@@ -414,8 +265,7 @@ class PipecatService:
             {
                 'role': 'system',
                 'content': system_content,
-            },
-            {'role': 'assistant', 'content': agent_config['welcome_message']},
+            }
         ]
 
         # Load and register tools for this agent
@@ -459,8 +309,9 @@ class PipecatService:
             language_detection_func = (
                 LanguageDetectionToolFactory.create_language_detection_tool(
                     task_container=task_container,
-                    language_switcher=tts,  # Pass the TTS LanguageSwitcher instance
-                    stt_language_switcher=stt,  # Pass the STT LanguageSwitcher instance
+                    tts_provider=tts_config['provider'],
+                    stt_provider=stt_config['provider'],
+                    tts_voice_ids=tts_voice_ids_dict,
                     context_container=context_container,
                     supported_languages=supported_languages,
                     default_language=default_language,
@@ -570,9 +421,6 @@ class PipecatService:
             ),
         )
 
-        # Create transcript processor for language detection
-        transcript = TranscriptProcessor()
-
         # --- Call evaluation: transcript log and stats ---
         transcript_log: List[Dict[str, Any]] = []
         call_evaluation_tasks: List[asyncio.Task] = []
@@ -624,13 +472,11 @@ class PipecatService:
         # Build pipeline components list
         pipeline_components = [
             transport.input(),  # Audio input from Twilio
-            stt,  # Speech-to-Text (ServiceSwitcher for multi-lang, direct for single)
-            transcript.user(),  # Transcript processor for user messages
+            stt,  # Speech-to-Text
             context_aggregator.user(),  # Add user message to context
             llm,  # LLM processing
-            tts,  # Text-to-Speech (ServiceSwitcher for multi-lang, direct for single)
+            tts,  # Text-to-Speech
             transport.output(),  # Audio output to Twilio
-            transcript.assistant(),  # Transcript processor for assistant messages
             context_aggregator.assistant(),  # Add assistant response to context
         ]
 
@@ -734,7 +580,9 @@ class PipecatService:
         @transport.event_handler('on_client_connected')
         async def on_client_connected(transport, client):
             logger.info(f"Client connected for agent: {agent_config['name']}")
-            await task.queue_frame(TTSSpeakFrame(agent_config['welcome_message']))
+            await task.queue_frame(
+                TTSSpeakFrame(agent_config['welcome_message'], append_to_context=True)
+            )
 
         @transport.event_handler('on_client_disconnected')
         async def on_client_disconnected(transport, client):
