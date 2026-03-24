@@ -50,6 +50,32 @@ class ScheduledJobService:
             bucket_name=self.bucket_name,
         )
 
+    def _resolve_runtime_params(self, payload: dict, tz_name: str) -> dict | None:
+        """Build query params for this run, including dynamic date presets."""
+        base_params = payload.get('params')
+        params: dict = dict(base_params) if isinstance(base_params, dict) else {}
+        date_range = payload.get('date_range')
+        if date_range not in {'last_day', 'last_7_days', 'last_30_days'}:
+            return params or None
+
+        tz = ZoneInfo(tz_name)
+        today = datetime.now(tz).date()
+        if date_range == 'last_day':
+            start_date = today - timedelta(days=1)
+            end_date = today - timedelta(days=1)
+        elif date_range == 'last_7_days':
+            end_date = today - timedelta(days=1)
+            start_date = end_date - timedelta(days=6)
+        else:  # last_30_days
+            end_date = today - timedelta(days=1)
+            start_date = end_date - timedelta(days=29)
+
+        start_key = payload.get('start_date_param', 'start_date')
+        end_key = payload.get('end_date_param', 'end_date')
+        params[str(start_key)] = start_date.isoformat()
+        params[str(end_key)] = end_date.isoformat()
+        return params
+
     def _compute_next_run_at(self, cron_expr: str, tz_name: str) -> datetime:
         tz = ZoneInfo(tz_name)
         now = datetime.now(tz)
@@ -310,7 +336,7 @@ class ScheduledJobService:
 
         asyncio.run(self.recover_stale_locks())
 
-    async def _execute_email_dynamic_query_job(self, payload: dict):
+    async def _execute_email_dynamic_query_job(self, payload: dict, job_timezone: str):
         datasource_id = payload.get('datasource_id')
         query_id = payload.get('query_id')
         recipients = payload.get('recipients', [])
@@ -318,7 +344,7 @@ class ScheduledJobService:
         filter_expr = payload.get('filter')
         offset = payload.get('offset', 0)
         limit = payload.get('limit', 100)
-        params = payload.get('params')
+        params = self._resolve_runtime_params(payload, job_timezone)
 
         if isinstance(recipients, str):
             recipients = [recipients]
@@ -462,7 +488,9 @@ class ScheduledJobService:
         try:
             if job_row['job_type'] != 'email_dynamic_query':
                 raise ValueError(f"Unsupported job_type: {job_row['job_type']}")
-            await self._execute_email_dynamic_query_job(job_row['payload'])
+            await self._execute_email_dynamic_query_job(
+                job_row['payload'], job_row['timezone']
+            )
         except Exception as exc:
             job_exc = exc
             logger.error(f'Failed scheduled job {job_id}: {exc}')
