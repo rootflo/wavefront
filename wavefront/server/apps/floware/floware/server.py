@@ -53,10 +53,12 @@ from user_management_module.user_container import UserContainer
 from floware.controllers.notification_controller import notification_router
 from floware.di.application_container import ApplicationContainer
 from floware.middleware.security_headers import SecurityHeadersMiddleware
+from floware.services.scheduler_manager import SchedulerManager
 from plugins_module.plugins_container import PluginsContainer
 from plugins_module.controllers.datasource_controller import datasource_router
 from plugins_module.controllers.authenticator_controller import authenticator_router
 from floware.controllers.config_controller import config_router
+from floware.controllers.scheduled_job_controller import scheduled_job_router
 from product_analysis_module.controllers.product_anaysis_controllers import (
     product_analysis_router,
 )
@@ -101,6 +103,7 @@ from api_services_module.api_services_container import ApiServicesContainer
 from floware.channels import start_redis_listener
 from starlette.middleware import _MiddlewareFactory
 
+
 # Initialize dependency containers
 # Create a single shared instance of the database container
 db_repo_container = DatabaseModuleContainer()
@@ -130,6 +133,11 @@ application_container = ApplicationContainer(
     notification_repository=db_repo_container.notification_repository,
     notification_user_repository=db_repo_container.notification_user_repository,
     config_repository=db_repo_container.config_repository,
+    scheduled_job_repository=db_repo_container.scheduled_job_repository,
+    scheduled_job_execution_repository=db_repo_container.scheduled_job_execution_repository,
+    datasource_repository=db_repo_container.datasource_repository,
+    dynamic_query_repository=db_repo_container.dynamic_query_repository,
+    email_service=user_module_container.email_service,
 )
 
 email_rag_container = KnowledgeBaseContainer(
@@ -198,6 +206,7 @@ voice_agents_container = VoiceAgentsContainer(
     cache_manager=db_repo_container.cache_manager,
     cloud_storage_manager=common_container.cloud_storage_manager,
 )
+scheduler_manager = SchedulerManager(config=config)
 
 
 @asynccontextmanager
@@ -217,9 +226,18 @@ async def lifespan(app: FastAPI):
 
         db_client.run_migration()
 
-        # Instantiate scheduler from container when needed
-        scheduler = common_container.scheduler()
-        scheduler.start_scheduler()
+        scheduled_job_service = application_container.scheduled_job_service()
+
+        # Run stale lock recovery once on startup before the scheduler ticks.
+        await scheduled_job_service.recover_stale_locks()
+
+        scheduler_manager.start()
+        scheduler_manager.register_due_jobs_poller(
+            callback=scheduled_job_service.process_due_jobs_sync
+        )
+        scheduler_manager.register_stale_lock_recovery(
+            callback=scheduled_job_service.recover_stale_locks_sync
+        )
         logger.info('Database connection established.')
 
         # Load API services from database into registry
@@ -261,6 +279,7 @@ async def lifespan(app: FastAPI):
         yield  # This is where the application runs
 
         # Shutdown code
+        scheduler_manager.shutdown()
         logger.info('Shutting down application...')
 
     except Exception as e:
@@ -367,6 +386,7 @@ app.include_router(datasource_router, prefix='/floware')
 app.include_router(hmac_router, prefix='/floware')
 app.include_router(authenticator_router, prefix='/floware')
 app.include_router(config_router, prefix='/floware')
+app.include_router(scheduled_job_router, prefix='/floware')
 app.include_router(product_analysis_router, prefix='/floware')
 app.include_router(agents_router, prefix='/floware')
 app.include_router(namespace_router, prefix='/floware')

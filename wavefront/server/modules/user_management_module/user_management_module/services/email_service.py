@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Any
 from common_module.log.logger import logger
 from fastapi import HTTPException
 from fastapi import status
@@ -8,6 +9,8 @@ import base64
 import json
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
@@ -22,7 +25,13 @@ class EmailService(ABC):
         pass
 
     @abstractmethod
-    def send_email(self, subject: str, body: str, email_id: str) -> bool:
+    def send_email(
+        self,
+        subject: str,
+        body: str,
+        email_id: str,
+        attachments: list[dict[str, Any]] | None = None,
+    ) -> bool:
         pass
 
 
@@ -76,10 +85,16 @@ class OutlookEmailService(EmailService):
             }
         }
 
-        response = requests.post(url, headers=headers, json=email_data)
+        response = requests.post(url, headers=headers, json=email_data, timeout=10)
         return response.status_code == 202
 
-    def send_email(self, subject: str, body: str, email_id: str) -> bool:
+    def send_email(
+        self,
+        subject: str,
+        body: str,
+        email_id: str,
+        attachments: list[dict[str, Any]] | None = None,
+    ) -> bool:
         access_token = self.get_access_token()
         if not access_token:
             logger.error('failed to obtain outlook access token')
@@ -92,14 +107,28 @@ class OutlookEmailService(EmailService):
             'Authorization': f'Bearer {access_token}',
             'Content-Type': 'application/json',
         }
-        email_data = {
+        message_data = {
             'message': {
                 'subject': subject,
-                'body': body,
+                'body': {'contentType': 'HTML', 'content': body},
                 'toRecipients': [{'emailAddress': {'address': email_id}}],
             }
         }
-        response = requests.post(url, headers=headers, json=email_data)
+        if attachments:
+            message_data['message']['attachments'] = [
+                {
+                    '@odata.type': '#microsoft.graph.fileAttachment',
+                    'name': attachment['filename'],
+                    'contentType': attachment.get(
+                        'mime_type', 'application/octet-stream'
+                    ),
+                    'contentBytes': base64.b64encode(
+                        attachment['content_bytes']
+                    ).decode('utf-8'),
+                }
+                for attachment in attachments
+            ]
+        response = requests.post(url, headers=headers, json=message_data, timeout=10)
         return response.status_code == 202
 
 
@@ -169,7 +198,13 @@ class GmailEmailService(EmailService):
             logger.error(f'Error sending Gmail email: {e}')
             return False
 
-    def send_email(self, subject: str, body: str, email_id: str) -> bool:
+    def send_email(
+        self,
+        subject: str,
+        body: str,
+        email_id: str,
+        attachments: list[dict[str, Any]] | None = None,
+    ) -> bool:
         try:
             credentials = self.get_access_token()
             if not credentials:
@@ -184,6 +219,15 @@ class GmailEmailService(EmailService):
             message['from'] = self.email_sender
             message['subject'] = subject
             message.attach(MIMEText(body, 'html'))
+            for attachment in attachments or []:
+                part = MIMEBase('application', 'octet-stream')
+                part.set_payload(attachment['content_bytes'])
+                encoders.encode_base64(part)
+                part.add_header(
+                    'Content-Disposition',
+                    f'attachment; filename="{attachment["filename"]}"',
+                )
+                message.attach(part)
             raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
             send_message = (
                 service.users()

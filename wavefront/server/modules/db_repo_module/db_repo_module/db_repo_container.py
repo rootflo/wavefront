@@ -23,6 +23,8 @@ from db_repo_module.models.dynamic_query_yaml import DynamicQueryYaml
 from db_repo_module.models.model_schema import ModelSchema
 from db_repo_module.models.workflow_pipeline import WorkflowPipeline
 from db_repo_module.models.workflow_runs import WorkflowRuns
+from db_repo_module.models.scheduled_job import ScheduledJob
+from db_repo_module.models.scheduled_job_execution import ScheduledJobExecution
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from db_repo_module.models.image_search_models import (
     ReferenceImageFeatures,
@@ -214,6 +216,16 @@ class DatabaseModuleContainer(containers.DeclarativeContainer):
     datasource_repository = providers.Singleton(
         SQLAlchemyRepository[Datasource],
         model=Datasource,
+        db_client=db_client,
+    )
+    scheduled_job_repository = providers.Singleton(
+        SQLAlchemyRepository[ScheduledJob],
+        model=ScheduledJob,
+        db_client=db_client,
+    )
+    scheduled_job_execution_repository = providers.Singleton(
+        SQLAlchemyRepository[ScheduledJobExecution],
+        model=ScheduledJobExecution,
         db_client=db_client,
     )
     knowledge_base_inference_repository = providers.Singleton(
