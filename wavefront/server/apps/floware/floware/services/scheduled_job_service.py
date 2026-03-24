@@ -13,11 +13,11 @@ from db_repo_module.models.dynamic_query_yaml import DynamicQueryYaml
 from db_repo_module.models.scheduled_job import ScheduledJob
 from db_repo_module.models.scheduled_job_execution import ScheduledJobExecution
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
+from plugins_module.services.dynamic_query_service import DynamicQueryService
 from plugins_module.services.datasource_services import get_datasource_config
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from user_management_module.services.email_service import EmailService
-import yaml
 
 STALE_LOCK_TIMEOUT_MINUTES = 30
 
@@ -43,6 +43,11 @@ class ScheduledJobService:
         self.bucket_name = bucket_name
         self.email_service = email_service
         self.worker_id = os.getenv('HOSTNAME', 'floware-worker')
+        self.dynamic_query_service = DynamicQueryService(
+            cloud_storage_manager=self.cloud_storage_manager,
+            dynamic_query_repo=self.dynamic_query_repository,
+            bucket_name=self.bucket_name,
+        )
 
     def _compute_next_run_at(self, cron_expr: str, tz_name: str) -> datetime:
         tz = ZoneInfo(tz_name)
@@ -327,18 +332,11 @@ class ScheduledJobService:
         if not datasource_type or not datasource_config:
             raise ValueError(f'Datasource not found: {datasource_id}')
 
-        query_ref = await self.dynamic_query_repository.find_one(name=query_id)
-        if not query_ref:
-            raise ValueError(f'Dynamic query not found: {query_id}')
-        file_content = self.cloud_storage_manager.read_file(
-            self.bucket_name, query_ref.file_path
+        yaml_query, yaml_name = await self.dynamic_query_service.get_dynamic_yaml_query(
+            query_id
         )
-        yaml_doc = yaml.safe_load(file_content.decode('utf-8'))
-        yaml_query = [
-            {'id': query['id'], 'query': query['query']}
-            for query in yaml_doc.get('queries', [])
-        ]
-        yaml_name = yaml_doc.get('name')
+        if not yaml_query:
+            raise ValueError(f'Dynamic query not found: {query_id}')
         datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
         result = await datasource_plugin.execute_dynamic_query(
             yaml_query,
