@@ -1,4 +1,5 @@
 import base64
+import binascii
 import json
 import os
 from typing import List
@@ -18,7 +19,12 @@ def _decode_message(content: str):
     try:
         return json.loads(content)
     except json.JSONDecodeError:
-        return json.loads(base64.b64decode(content).decode('utf-8'))
+        try:
+            return json.loads(base64.b64decode(content).decode('utf-8'))
+        except (binascii.Error, UnicodeDecodeError) as e:
+            raise ValueError(
+                f'Message content is neither valid JSON nor base64-encoded JSON: {e}'
+            )
 
 
 class StorageQueue(MessageQueue):
@@ -49,8 +55,20 @@ class StorageQueue(MessageQueue):
     def receive_messages(
         self, max_messages=10, wait_time_sec=20
     ) -> List[MessageQueueDict]:
-        # Storage Queue doesn't support long-polling; visibility_timeout controls
-        # how long received messages are hidden from other consumers.
+        """Receive messages from Azure Storage Queue.
+
+        Note: Azure Storage Queue does not support long-polling. This method
+        returns immediately, potentially with an empty list. The `wait_time_sec`
+        parameter is repurposed as the visibility timeout, controlling how long
+        received messages remain hidden from other consumers.
+
+        Args:
+            max_messages: Maximum number of messages to receive (1-32).
+            wait_time_sec: Visibility timeout in seconds for received messages.
+
+        Returns:
+            List of MessageQueueDict, possibly empty.
+        """
         received = []
         for msg in self._client.receive_messages(
             max_messages=max_messages,
