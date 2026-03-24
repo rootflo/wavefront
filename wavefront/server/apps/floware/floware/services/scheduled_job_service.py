@@ -13,7 +13,7 @@ from db_repo_module.models.dynamic_query_yaml import DynamicQueryYaml
 from db_repo_module.models.scheduled_job import ScheduledJob
 from db_repo_module.models.scheduled_job_execution import ScheduledJobExecution
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from user_management_module.services.email_service import EmailService
 import yaml
@@ -74,8 +74,25 @@ class ScheduledJobService:
             retry_count=0,
         )
 
-    async def list_jobs(self, limit: int = 100) -> list[ScheduledJob]:
-        return await self.scheduled_job_repository.find(limit=limit)
+    async def list_jobs(
+        self,
+        limit: int = 100,
+        job_type: str | None = None,
+        status: str | None = None,
+        payload_filters: dict[str, str] | None = None,
+    ) -> list[ScheduledJob]:
+        query = select(ScheduledJob)
+        if job_type:
+            query = query.where(ScheduledJob.job_type == job_type)
+        if status:
+            query = query.where(ScheduledJob.status == status)
+        if payload_filters:
+            for key, value in payload_filters.items():
+                # JSONB subscript + astext for case-sensitive text comparison.
+                query = query.where(ScheduledJob.payload[key].astext == value)
+        query = query.order_by(ScheduledJob.created_at.desc()).limit(limit)
+        async with self.db_client.session() as session:
+            return (await session.scalars(query)).all()
 
     async def get_job(self, job_id: str) -> ScheduledJob | None:
         return await self.scheduled_job_repository.find_one(id=job_id)

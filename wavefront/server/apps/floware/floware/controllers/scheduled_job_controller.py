@@ -69,6 +69,10 @@ async def create_scheduled_job(
 async def list_scheduled_jobs(
     request: Request,
     limit: int = 100,
+    job_type: str | None = None,
+    job_status: str | None = None,
+    query_id: str | None = None,
+    datasource_id: str | None = None,
     scheduled_job_service: Annotated[
         ScheduledJobService,
         Depends(Provide[ApplicationContainer.scheduled_job_service]),
@@ -81,7 +85,18 @@ async def list_scheduled_jobs(
     if not await check_is_admin(role_id):
         raise HTTPException(status_code=401, detail='Unauthorized')
 
-    jobs = await scheduled_job_service.list_jobs(limit=limit)
+    payload_filters: dict[str, str] = {}
+    if query_id:
+        payload_filters['query_id'] = query_id
+    if datasource_id:
+        payload_filters['datasource_id'] = datasource_id
+
+    jobs = await scheduled_job_service.list_jobs(
+        limit=limit,
+        job_type=job_type,
+        status=job_status,
+        payload_filters=payload_filters or None,
+    )
     return JSONResponse(
         status_code=status.HTTP_200_OK,
         content=response_formatter.buildSuccessResponse(
