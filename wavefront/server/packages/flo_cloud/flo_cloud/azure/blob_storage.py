@@ -4,6 +4,7 @@ import re
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from typing import IO, ContextManager, List, Optional, Tuple
+from urllib.parse import quote
 
 from azure.core.exceptions import ResourceNotFoundError
 from azure.identity import ClientSecretCredential, DefaultAzureCredential
@@ -259,7 +260,8 @@ class AzureBlobStorage(CloudStorageHandler):
                 expiry=expiry,
             )
 
-            blob_url = f'{self._account_url}/{bucket_name}/{key}?{sas_token}'
+            encoded_key = quote(key, safe='/')
+            blob_url = f'{self._account_url}/{bucket_name}/{encoded_key}?{sas_token}'
             return blob_url
         except Exception as e:
             raise Exception(
