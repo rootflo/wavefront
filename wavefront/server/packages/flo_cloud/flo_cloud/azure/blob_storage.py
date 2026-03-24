@@ -3,7 +3,6 @@ import os
 import re
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
-from itertools import islice
 from typing import IO, ContextManager, List, Optional, Tuple
 
 from azure.core.exceptions import ResourceNotFoundError
@@ -59,11 +58,17 @@ class AzureBlobStorage(CloudStorageHandler):
         self._account_url = resolved_url
         self._account_name = self._parse_account_name(resolved_url)
 
-        if client_id and client_secret and tenant_id:
+        creds_provided = [client_id, client_secret, tenant_id]
+        if all(creds_provided):
             credential = ClientSecretCredential(
                 tenant_id=tenant_id,
                 client_id=client_id,
                 client_secret=client_secret,
+            )
+        elif any(creds_provided):
+            raise ValueError(
+                'Partial credentials provided. Supply all of client_id, '
+                'client_secret, and tenant_id, or none to use DefaultAzureCredential.'
             )
         else:
             credential = DefaultAzureCredential()
@@ -191,7 +196,7 @@ class AzureBlobStorage(CloudStorageHandler):
         except Exception as e:
             raise Exception(f'Error deleting file from Azure Blob Storage: {str(e)}')
 
-    def get_bucket_key(self, value: str):
+    def get_bucket_key(self, value: str) -> Tuple[str, str]:
         """
         Parse an azure:// URL into (container_name, blob_key).
 
@@ -286,18 +291,26 @@ class AzureBlobStorage(CloudStorageHandler):
                 raise ValueError('page_size must be >= 1')
 
             container_client = self.client.get_container_client(bucket_name)
-            blobs_iterator = container_client.list_blobs(name_starts_with=prefix)
+            pages = container_client.list_blobs(
+                name_starts_with=prefix, results_per_page=page_size
+            ).by_page()
 
-            start_index = (page_number - 1) * page_size
-            end_index = start_index + page_size + 1
+            # Advance to the requested page (1-based)
+            try:
+                for _ in range(page_number):
+                    current_page = next(pages)
+            except StopIteration:
+                return [], False
 
-            page_slice = islice(blobs_iterator, start_index, end_index)
-            blob_names = [blob.name for blob in page_slice]
+            blob_names = [blob.name for blob in current_page]
 
-            has_next_page = len(blob_names) > page_size
-            if has_next_page:
-                return blob_names[:page_size], True
-            return blob_names, False
+            try:
+                next(pages)
+                has_next_page = True
+            except StopIteration:
+                has_next_page = False
+
+            return blob_names, has_next_page
 
         except ResourceNotFoundError:
             raise Exception(f'Container {bucket_name} not found')

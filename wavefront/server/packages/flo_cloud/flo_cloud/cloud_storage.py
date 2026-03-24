@@ -149,7 +149,7 @@ class CloudStorageManager:
         """
         self.handler.save_small_file(file_content, bucket_name, key, content_type)
 
-    def file_protocol(self) -> str:
+    def file_protocol(self) -> Optional[str]:
         if self.provider == CloudProvider.AWS:
             return 's3'
         elif self.provider == CloudProvider.GCP:
