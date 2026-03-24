@@ -21,6 +21,7 @@ from sqlalchemy.exc import IntegrityError
 from user_management_module.services.email_service import EmailService
 
 STALE_LOCK_TIMEOUT_MINUTES = 30
+SIGNED_URL_EXPIRY_SECONDS = 7 * 24 * 60 * 60
 
 
 class ScheduledJobService:
@@ -417,14 +418,14 @@ class ScheduledJobService:
             bucket_name=self.bucket_name,
             key=report_key,
             type='GET',
-            expiresIn=10 * 24 * 60 * 60,
+            expiresIn=SIGNED_URL_EXPIRY_SECONDS,
         )
         body = (
             f'<p>Scheduled report: <b>{yaml_name or query_id}</b></p>'
             f'<p>Datasource: {datasource_id}</p>'
             '<p>Report generated successfully.</p>'
             f'<p><a href="{report_url}" target="_blank" rel="noopener noreferrer">'
-            'Download report (valid for 10 days)</a></p>'
+            'Download report (valid for 7 days)</a></p>'
         )
 
         failed_recipients = []
