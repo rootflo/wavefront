@@ -33,6 +33,8 @@ from db_repo_module.models.tts_config import TtsConfig
 from db_repo_module.models.stt_config import SttConfig
 from db_repo_module.models.voice_agent import VoiceAgent
 from db_repo_module.models.message_processors import MessageProcessors
+from db_repo_module.models.scheduled_job import ScheduledJob
+from db_repo_module.models.scheduled_job_execution import ScheduledJobExecution
 from dotenv import load_dotenv
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
@@ -76,6 +78,8 @@ models = [
     SttConfig,
     VoiceAgent,
     MessageProcessors,
+    ScheduledJob,
+    ScheduledJobExecution,
 ]
 target_metadata = Base.metadata
 
