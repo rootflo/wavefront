@@ -1,3 +1,4 @@
+import csv
 import json
 import os
 from datetime import datetime, timedelta, timezone
@@ -347,12 +348,57 @@ class ScheduledJobService:
             params,
         )
         result = serialize_values(result)
-        compact_json = json.dumps(result, separators=(',', ':'))
-        report_filename = f'{query_id}_{datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")}_report.json'
+        if not result:
+            raise ValueError(f'No results returned for dynamic query: {query_id}')
+        first_key = next(iter(result))
+        if result[first_key].get('status') != 'success':
+            raise ValueError(
+                f'Unexpected dynamic query result format for query_id {query_id}, no successful results'
+            )
+
+        rows = result[first_key].get('result') or []
+        if not isinstance(rows, list):
+            raise ValueError(
+                f'Unexpected dynamic query result format for query_id {query_id}, invalid rows'
+            )
+
+        if rows:
+            fieldnames = list(rows[0].keys())
+            for row in rows[1:]:
+                for k in row:
+                    if k not in fieldnames:
+                        fieldnames.append(k)
+        else:
+            fieldnames = []
+
+        def _cell_value(v):
+            if isinstance(v, (dict, list)):
+                return json.dumps(v)
+            return v if v is None or isinstance(v, str) else str(v)
+
+        report_filename = f'{query_id}_{datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")}_report.csv'
+        report_key = f'scheduled_query_reports/{query_id}/{report_filename}'
+        # Store report CSV in cloud storage and share via signed URL (10 days).
+        with self.cloud_storage_manager.open_text_writer(
+            bucket_name=self.bucket_name, key=report_key, content_type='text/csv'
+        ) as f:
+            if fieldnames:
+                writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
+                writer.writeheader()
+                for row in rows:
+                    writer.writerow({k: _cell_value(row.get(k)) for k in fieldnames})
+        report_url = self.cloud_storage_manager.generate_presigned_url(
+            bucket_name=self.bucket_name,
+            key=report_key,
+            type='GET',
+            expiresIn=10 * 24 * 60 * 60,
+        )
         body = (
             f'<p>Scheduled report: <b>{yaml_name or query_id}</b></p>'
             f'<p>Datasource: {datasource_id}</p>'
-            '<p>Report attached as JSON file.</p>'
+            '<p>Report generated successfully.</p>'
+            f'<p><a href="{report_url}" target="_blank" rel="noopener noreferrer">'
+            'Download report (valid for 10 days)</a></p>'
         )
 
         failed_recipients = []
@@ -361,13 +407,6 @@ class ScheduledJobService:
                 subject,
                 body,
                 recipient,
-                attachments=[
-                    {
-                        'filename': report_filename,
-                        'content_bytes': compact_json.encode('utf-8'),
-                        'mime_type': 'application/json',
-                    }
-                ],
             )
             if not is_sent:
                 failed_recipients.append(recipient)
