@@ -232,29 +232,52 @@ class ScheduledJobService:
             )
 
     async def recover_stale_locks(self):
-        """Reset jobs stuck in 'running' beyond STALE_LOCK_TIMEOUT_MINUTES back to 'active'."""
-        stale_sql = text(
+        """Reset jobs stuck in 'running' and remove their orphaned in-progress execution locks.
+
+        A crashed worker leaves the scheduled_job row in 'running' and the
+        scheduled_job_execution row in 'running' (never completed).  If we only
+        reset the job row the next claim hits the unique constraint on
+        (scheduled_job_id, scheduled_for) and skips the fire.  Both cleanups
+        must happen atomically.
+        """
+        recover_sql = text(
             """
-            UPDATE scheduled_job
-            SET status = 'active',
-                locked_by = NULL,
-                locked_at = NULL,
-                updated_at = now()
-            WHERE status = 'running'
-              AND locked_at <= now() - make_interval(mins => :timeout_minutes)
-            RETURNING id
+            WITH stale AS (
+                UPDATE scheduled_job
+                SET status = 'active',
+                    locked_by = NULL,
+                    locked_at = NULL,
+                    updated_at = now()
+                WHERE status = 'running'
+                  AND locked_at <= now() - make_interval(mins => :timeout_minutes)
+                RETURNING id
+            ),
+            cleaned AS (
+                DELETE FROM scheduled_job_execution
+                WHERE scheduled_job_id IN (SELECT id FROM stale)
+                  AND status = 'running'
+                RETURNING scheduled_job_id
+            )
+            SELECT
+                (SELECT count(*) FROM stale)   AS recovered_jobs,
+                (SELECT count(*) FROM cleaned) AS cleaned_executions
             """
         )
         try:
             async with self.db_client.session() as session:
                 async with session.begin():
                     res = await session.execute(
-                        stale_sql,
+                        recover_sql,
                         {'timeout_minutes': STALE_LOCK_TIMEOUT_MINUTES},
                     )
-                    recovered = res.rowcount
+                    row = res.fetchone()
+                    recovered = int(row.recovered_jobs) if row else 0
+                    cleaned = int(row.cleaned_executions) if row else 0
             if recovered:
-                logger.warning(f'Recovered {recovered} stale locked job(s)')
+                logger.warning(
+                    f'Recovered {recovered} stale locked job(s); '
+                    f'removed {cleaned} orphaned execution lock(s)'
+                )
         except Exception as exc:
             logger.error(f'Failed to recover stale locks: {exc}')
 
@@ -331,7 +354,24 @@ class ScheduledJobService:
                 failed_recipients.append(recipient)
 
         if failed_recipients:
-            raise ValueError(f'Failed sending email to: {", ".join(failed_recipients)}')
+            if len(failed_recipients) == len(recipients):
+                # Every send failed — no one has the report, so raising here is
+                # safe: the next-run retry will resend to all recipients without
+                # creating duplicates.
+                raise ValueError(
+                    f'Failed sending report to all {len(recipients)} recipient(s) '
+                    f'for query={query_id}'
+                )
+            # Partial failure: some recipients already have the report.  Do NOT
+            # raise — that would schedule a retry which re-sends to the
+            # already-successful recipients.  Log the failures so they are
+            # visible in job.last_error via the caller, but let execution
+            # complete normally.
+            logger.error(
+                f'Partial delivery failure for query={query_id}: '
+                f'{len(failed_recipients)}/{len(recipients)} recipient(s) failed: '
+                f'{", ".join(failed_recipients)}'
+            )
 
     async def _run_job(self, job_row: dict):
         job_id = str(job_row['id'])
