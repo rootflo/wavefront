@@ -27,9 +27,12 @@ FROM node:22-alpine
 WORKDIR /app
 
 RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION}
+RUN chown node:node /app
 
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/server.cjs ./
+COPY --from=build --chown=node:node /app/dist ./dist
+COPY --from=build --chown=node:node /app/server.cjs ./
+
+USER node
 RUN pnpm install express@4.21.2 compression@^1.8.0
 
 EXPOSE 3000
