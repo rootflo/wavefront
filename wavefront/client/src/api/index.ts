@@ -13,6 +13,7 @@ import { LLMInferenceService } from './llm-inference-service';
 import { MessageProcessorService } from './message-processor-service';
 import { ModelInferenceService } from './model-inference-service';
 import { NamespaceService } from './namespace-service';
+import { ScheduledJobService } from './scheduled-job-service';
 import { SttConfigService } from './stt-config-service';
 import { TelephonyConfigService } from './telephony-config-service';
 import { ToolService } from './tool-service';
@@ -78,6 +79,10 @@ class FloConsoleService {
 
   get namespaceService() {
     return new NamespaceService(this.http);
+  }
+
+  get scheduledJobService() {
+    return new ScheduledJobService(this.http);
   }
 
   get sttConfigService() {

@@ -420,12 +420,29 @@ class ScheduledJobService:
             type='GET',
             expiresIn=SIGNED_URL_EXPIRY_SECONDS,
         )
+        generated_at_utc = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+        start_key = str(payload.get('start_date_param', 'start_date'))
+        end_key = str(payload.get('end_date_param', 'end_date'))
+        applied_start = params.get(start_key) if isinstance(params, dict) else None
+        applied_end = params.get(end_key) if isinstance(params, dict) else None
+        applied_range_html = (
+            f'<p><b>Applied Date Range:</b> {applied_start} to {applied_end} '
+            f'(keys: {start_key}, {end_key})</p>'
+            if applied_start and applied_end
+            else '<p><b>Applied Date Range:</b> Not specified in query parameters</p>'
+        )
         body = (
             f'<p>Scheduled report: <b>{yaml_name or query_id}</b></p>'
-            f'<p>Datasource: {datasource_id}</p>'
-            '<p>Report generated successfully.</p>'
+            f'<p><b>Datasource ID:</b> {datasource_id}</p>'
+            f'<p><b>Query ID:</b> {query_id}</p>'
+            f'<p><b>Generated At:</b> {generated_at_utc}</p>'
+            f'{applied_range_html}'
+            f'<p><b>Total Rows:</b> {len(rows)}</p>'
+            f'<p><b>Columns:</b> {len(fieldnames)}</p>'
+            '<p>The report has been generated successfully.</p>'
+            '<p>The download link below is secure and will expire in 7 days.</p>'
             f'<p><a href="{report_url}" target="_blank" rel="noopener noreferrer">'
-            'Download report (valid for 7 days)</a></p>'
+            'Download CSV report (valid for 7 days)</a></p>'
         )
 
         failed_recipients = []
