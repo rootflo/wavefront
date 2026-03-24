@@ -13,6 +13,7 @@ from db_repo_module.models.dynamic_query_yaml import DynamicQueryYaml
 from db_repo_module.models.scheduled_job import ScheduledJob
 from db_repo_module.models.scheduled_job_execution import ScheduledJobExecution
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
+from plugins_module.services.datasource_services import get_datasource_config
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from user_management_module.services.email_service import EmailService
@@ -319,8 +320,11 @@ class ScheduledJobService:
         if not datasource_id or not query_id or not recipients:
             raise ValueError('payload must include datasource_id, query_id, recipients')
 
-        datasource = await self.datasource_repository.find_one(id=datasource_id)
-        if not datasource:
+        datasource_type, datasource_config = await get_datasource_config(
+            datasource_id=datasource_id,
+            datasource_repository=self.datasource_repository,
+        )
+        if not datasource_type or not datasource_config:
             raise ValueError(f'Datasource not found: {datasource_id}')
 
         query_ref = await self.dynamic_query_repository.find_one(name=query_id)
@@ -335,7 +339,7 @@ class ScheduledJobService:
             for query in yaml_doc.get('queries', [])
         ]
         yaml_name = yaml_doc.get('name')
-        datasource_plugin = DatasourcePlugin(datasource.type, datasource.config)
+        datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
         result = await datasource_plugin.execute_dynamic_query(
             yaml_query,
             None,
