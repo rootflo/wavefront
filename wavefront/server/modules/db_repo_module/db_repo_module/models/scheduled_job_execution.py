@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -25,15 +25,21 @@ class ScheduledJobExecution(Base):
         UUID, ForeignKey('scheduled_job.id', ondelete='CASCADE'), nullable=False
     )
     execution_key: Mapped[str] = mapped_column(String(length=128), nullable=False)
-    scheduled_for: Mapped[datetime] = mapped_column(nullable=False)
+    scheduled_for: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     status: Mapped[str] = mapped_column(
         String(length=32), nullable=False, default='running', server_default='running'
     )
     error: Mapped[str] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        nullable=False, default=func.now(), server_default=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        default=func.now(),
+        server_default=func.now(),
     )
     updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
         nullable=False,
         default=func.now(),
         onupdate=func.now(),

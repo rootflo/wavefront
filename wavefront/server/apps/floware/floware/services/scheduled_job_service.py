@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from apscheduler.triggers.cron import CronTrigger
@@ -50,7 +50,9 @@ class ScheduledJobService:
         next_fire = trigger.get_next_fire_time(previous_fire_time=None, now=now)
         if next_fire is None:
             raise ValueError('Unable to compute next run time for cron expression')
-        return next_fire.replace(tzinfo=None)
+        # Normalise to UTC-aware so the value written to the TIMESTAMPTZ column is
+        # always unambiguous regardless of the PostgreSQL session timezone.
+        return next_fire.astimezone(timezone.utc)
 
     async def create_job(
         self,
@@ -181,7 +183,7 @@ class ScheduledJobService:
                 status=status,
                 retry_count=retry_count,
                 last_error=last_error,
-                last_run_at=datetime.utcnow(),
+                last_run_at=datetime.now(timezone.utc),
                 next_run_at=next_run_at,
                 locked_by=None,
                 locked_at=None,
@@ -239,7 +241,7 @@ class ScheduledJobService:
                 locked_at = NULL,
                 updated_at = now()
             WHERE status = 'running'
-              AND locked_at <= now() - INTERVAL ':timeout_minutes minutes'
+              AND locked_at <= now() - make_interval(mins => :timeout_minutes)
             RETURNING id
             """
         )
@@ -304,9 +306,7 @@ class ScheduledJobService:
         )
         result = serialize_values(result)
         compact_json = json.dumps(result, separators=(',', ':'))
-        report_filename = (
-            f'{query_id}_{datetime.utcnow().strftime("%Y%m%d%H%M%S")}_report.json'
-        )
+        report_filename = f'{query_id}_{datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")}_report.json'
         body = (
             f'<p>Scheduled report: <b>{yaml_name or query_id}</b></p>'
             f'<p>Datasource: {datasource_id}</p>'
@@ -340,6 +340,24 @@ class ScheduledJobService:
             job_id, scheduled_for
         )
         if not acquired:
+            # Another worker already executed this fire time. Release the row-level
+            # lock that claim_due_jobs placed on the row so the job is not stuck
+            # in 'running' until stale-lock recovery fires (30 min later).
+            # We also advance next_run_at so the same execution_key is never hit
+            # again, breaking the otherwise-infinite claim → duplicate → recover loop.
+            try:
+                next_run_at = self._compute_next_run_at(
+                    job_row['cron_expr'], job_row['timezone']
+                )
+            except Exception:
+                next_run_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+            await self._unlock_job(
+                job_id=job_id,
+                status='active',
+                retry_count=int(job_row['retry_count']),
+                last_error=None,
+                next_run_at=next_run_at,
+            )
             return
 
         job_exc: Exception | None = None
@@ -374,7 +392,7 @@ class ScheduledJobService:
                 logger.error(
                     f'Could not compute next_run_at for job {job_id}: {cron_exc}'
                 )
-                next_run_at = datetime.utcnow() + timedelta(minutes=10)
+                next_run_at = datetime.now(timezone.utc) + timedelta(minutes=10)
 
             await self._unlock_job(
                 job_id=job_id,

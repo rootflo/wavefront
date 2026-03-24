@@ -1,6 +1,8 @@
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+JobStatus = Literal['active', 'paused', 'running', 'failed', 'completed']
 
 
 class CreateScheduledJobRequest(BaseModel):
@@ -16,4 +18,4 @@ class UpdateScheduledJobRequest(BaseModel):
     timezone: str | None = None
     payload: dict[str, Any] | None = None
     max_retries: int | None = Field(default=None, ge=0, le=10)
-    status: str | None = None
+    status: JobStatus | None = None

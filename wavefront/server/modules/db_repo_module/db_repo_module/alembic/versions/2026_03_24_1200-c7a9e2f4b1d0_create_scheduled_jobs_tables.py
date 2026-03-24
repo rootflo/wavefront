@@ -39,8 +39,8 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.text("'active'"),
         ),
-        sa.Column('next_run_at', sa.DateTime(), nullable=False),
-        sa.Column('last_run_at', sa.DateTime(), nullable=True),
+        sa.Column('next_run_at', sa.DateTime(timezone=True), nullable=False),
+        sa.Column('last_run_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column('last_error', sa.String(), nullable=True),
         sa.Column(
             'retry_count', sa.Integer(), nullable=False, server_default=sa.text('0')
@@ -49,16 +49,16 @@ def upgrade() -> None:
             'max_retries', sa.Integer(), nullable=False, server_default=sa.text('3')
         ),
         sa.Column('locked_by', sa.String(length=128), nullable=True),
-        sa.Column('locked_at', sa.DateTime(), nullable=True),
+        sa.Column('locked_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column(
             'created_at',
-            sa.DateTime(),
+            sa.DateTime(timezone=True),
             nullable=False,
             server_default=sa.text('now()'),
         ),
         sa.Column(
             'updated_at',
-            sa.DateTime(),
+            sa.DateTime(timezone=True),
             nullable=False,
             server_default=sa.text('now()'),
         ),
@@ -77,7 +77,7 @@ def upgrade() -> None:
         sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('scheduled_job_id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('execution_key', sa.String(length=128), nullable=False),
-        sa.Column('scheduled_for', sa.DateTime(), nullable=False),
+        sa.Column('scheduled_for', sa.DateTime(timezone=True), nullable=False),
         sa.Column(
             'status',
             sa.String(length=32),
@@ -87,13 +87,13 @@ def upgrade() -> None:
         sa.Column('error', sa.String(), nullable=True),
         sa.Column(
             'created_at',
-            sa.DateTime(),
+            sa.DateTime(timezone=True),
             nullable=False,
             server_default=sa.text('now()'),
         ),
         sa.Column(
             'updated_at',
-            sa.DateTime(),
+            sa.DateTime(timezone=True),
             nullable=False,
             server_default=sa.text('now()'),
         ),

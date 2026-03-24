@@ -85,7 +85,7 @@ class OutlookEmailService(EmailService):
             }
         }
 
-        response = requests.post(url, headers=headers, json=email_data)
+        response = requests.post(url, headers=headers, json=email_data, timeout=10)
         return response.status_code == 202
 
     def send_email(
@@ -128,7 +128,7 @@ class OutlookEmailService(EmailService):
                 }
                 for attachment in attachments
             ]
-        response = requests.post(url, headers=headers, json=message_data)
+        response = requests.post(url, headers=headers, json=message_data, timeout=10)
         return response.status_code == 202
 
 
