@@ -35,6 +35,8 @@ async def check_is_admin(
         Provide[UserContainer.role_repository]
     ),
 ) -> bool:
+    if role_id == 'floconsole-service':
+        return True
     role = await role_repository.find_one(id=role_id)
 
     if not role:

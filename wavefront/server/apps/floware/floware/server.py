@@ -206,7 +206,7 @@ voice_agents_container = VoiceAgentsContainer(
     cache_manager=db_repo_container.cache_manager,
     cloud_storage_manager=common_container.cloud_storage_manager,
 )
-scheduler_manager = SchedulerManager(config=config)
+scheduler_manager = SchedulerManager()
 
 
 @asynccontextmanager

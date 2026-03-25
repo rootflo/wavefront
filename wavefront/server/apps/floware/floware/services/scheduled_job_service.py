@@ -1,3 +1,5 @@
+import csv
+import io
 import json
 import os
 from datetime import datetime, timedelta, timezone
@@ -13,12 +15,16 @@ from db_repo_module.models.dynamic_query_yaml import DynamicQueryYaml
 from db_repo_module.models.scheduled_job import ScheduledJob
 from db_repo_module.models.scheduled_job_execution import ScheduledJobExecution
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
+from plugins_module.services.dynamic_query_service import DynamicQueryService
+from plugins_module.services.datasource_services import get_datasource_config
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from user_management_module.services.email_service import EmailService
-import yaml
 
 STALE_LOCK_TIMEOUT_MINUTES = 30
+SIGNED_URL_EXPIRY_SECONDS = 7 * 24 * 60 * 60
+# Gmail and many providers cap attachments; keep below typical limits.
+MAX_EMAIL_ATTACHMENT_BYTES = 10 * 1024 * 1024
 
 
 class ScheduledJobService:
@@ -42,6 +48,37 @@ class ScheduledJobService:
         self.bucket_name = bucket_name
         self.email_service = email_service
         self.worker_id = os.getenv('HOSTNAME', 'floware-worker')
+        self.dynamic_query_service = DynamicQueryService(
+            cloud_storage_manager=self.cloud_storage_manager,
+            dynamic_query_repo=self.dynamic_query_repository,
+            bucket_name=self.bucket_name,
+        )
+
+    def _resolve_runtime_params(self, payload: dict, tz_name: str) -> dict | None:
+        """Build query params for this run, including dynamic date presets."""
+        base_params = payload.get('params')
+        params: dict = dict(base_params) if isinstance(base_params, dict) else {}
+        date_range = payload.get('date_range')
+        if date_range not in {'last_day', 'last_7_days', 'last_30_days'}:
+            return params or None
+
+        tz = ZoneInfo(tz_name)
+        today = datetime.now(tz).date()
+        if date_range == 'last_day':
+            start_date = today - timedelta(days=1)
+            end_date = today - timedelta(days=1)
+        elif date_range == 'last_7_days':
+            end_date = today - timedelta(days=1)
+            start_date = end_date - timedelta(days=6)
+        else:  # last_30_days
+            end_date = today - timedelta(days=1)
+            start_date = end_date - timedelta(days=29)
+
+        start_key = payload.get('start_date_param', 'start_date')
+        end_key = payload.get('end_date_param', 'end_date')
+        params[str(start_key)] = start_date.isoformat()
+        params[str(end_key)] = end_date.isoformat()
+        return params
 
     def _compute_next_run_at(self, cron_expr: str, tz_name: str) -> datetime:
         tz = ZoneInfo(tz_name)
@@ -303,7 +340,7 @@ class ScheduledJobService:
 
         asyncio.run(self.recover_stale_locks())
 
-    async def _execute_email_dynamic_query_job(self, payload: dict):
+    async def _execute_email_dynamic_query_job(self, payload: dict, job_timezone: str):
         datasource_id = payload.get('datasource_id')
         query_id = payload.get('query_id')
         recipients = payload.get('recipients', [])
@@ -311,7 +348,7 @@ class ScheduledJobService:
         filter_expr = payload.get('filter')
         offset = payload.get('offset', 0)
         limit = payload.get('limit', 100)
-        params = payload.get('params')
+        params = self._resolve_runtime_params(payload, job_timezone)
 
         if isinstance(recipients, str):
             recipients = [recipients]
@@ -319,23 +356,19 @@ class ScheduledJobService:
         if not datasource_id or not query_id or not recipients:
             raise ValueError('payload must include datasource_id, query_id, recipients')
 
-        datasource = await self.datasource_repository.find_one(id=datasource_id)
-        if not datasource:
+        datasource_type, datasource_config = await get_datasource_config(
+            datasource_id=datasource_id,
+            datasource_repository=self.datasource_repository,
+        )
+        if not datasource_type or not datasource_config:
             raise ValueError(f'Datasource not found: {datasource_id}')
 
-        query_ref = await self.dynamic_query_repository.find_one(name=query_id)
-        if not query_ref:
-            raise ValueError(f'Dynamic query not found: {query_id}')
-        file_content = self.cloud_storage_manager.read_file(
-            self.bucket_name, query_ref.file_path
+        yaml_query, yaml_name = await self.dynamic_query_service.get_dynamic_yaml_query(
+            query_id
         )
-        yaml_doc = yaml.safe_load(file_content.decode('utf-8'))
-        yaml_query = [
-            {'id': query['id'], 'query': query['query']}
-            for query in yaml_doc.get('queries', [])
-        ]
-        yaml_name = yaml_doc.get('name')
-        datasource_plugin = DatasourcePlugin(datasource.type, datasource.config)
+        if not yaml_query:
+            raise ValueError(f'Dynamic query not found: {query_id}')
+        datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
         result = await datasource_plugin.execute_dynamic_query(
             yaml_query,
             None,
@@ -345,27 +378,115 @@ class ScheduledJobService:
             params,
         )
         result = serialize_values(result)
-        compact_json = json.dumps(result, separators=(',', ':'))
-        report_filename = f'{query_id}_{datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")}_report.json'
+        if not result:
+            raise ValueError(f'No results returned for dynamic query: {query_id}')
+        first_key = next(iter(result))
+        if result[first_key].get('status') != 'success':
+            raise ValueError(
+                f'Unexpected dynamic query result format for query_id {query_id}, no successful results'
+            )
+
+        rows = result[first_key].get('result') or []
+        if not isinstance(rows, list):
+            raise ValueError(
+                f'Unexpected dynamic query result format for query_id {query_id}, invalid rows'
+            )
+
+        if rows:
+            fieldnames = list(rows[0].keys())
+            for row in rows[1:]:
+                for k in row:
+                    if k not in fieldnames:
+                        fieldnames.append(k)
+        else:
+            fieldnames = []
+
+        def _cell_value(v):
+            if isinstance(v, (dict, list)):
+                return json.dumps(v)
+            return v if v is None or isinstance(v, str) else str(v)
+
+        report_filename = f'{query_id}_{datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")}_report.csv'
+        buf = io.StringIO()
+        if fieldnames:
+            writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction='ignore')
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({k: _cell_value(row.get(k)) for k in fieldnames})
+        csv_bytes = buf.getvalue().encode('utf-8')
+        csv_size = len(csv_bytes)
+
+        report_url: str | None = None
+        use_attachment = csv_size <= MAX_EMAIL_ATTACHMENT_BYTES
+        if not use_attachment:
+            report_key = f'scheduled_query_reports/{query_id}/{report_filename}'
+            self.cloud_storage_manager.save_small_file(
+                file_content=csv_bytes,
+                bucket_name=self.bucket_name,
+                key=report_key,
+                content_type='text/csv',
+            )
+            report_url = self.cloud_storage_manager.generate_presigned_url(
+                bucket_name=self.bucket_name,
+                key=report_key,
+                type='GET',
+                expiresIn=SIGNED_URL_EXPIRY_SECONDS,
+            )
+        generated_at_utc = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+        start_key = str(payload.get('start_date_param', 'start_date'))
+        end_key = str(payload.get('end_date_param', 'end_date'))
+        applied_start = params.get(start_key) if isinstance(params, dict) else None
+        applied_end = params.get(end_key) if isinstance(params, dict) else None
+        applied_range_html = (
+            f'<p><b>Applied Date Range:</b> {applied_start} to {applied_end} '
+            f'(keys: {start_key}, {end_key})</p>'
+            if applied_start and applied_end
+            else '<p><b>Applied Date Range:</b> Not specified in query parameters</p>'
+        )
         body = (
             f'<p>Scheduled report: <b>{yaml_name or query_id}</b></p>'
-            f'<p>Datasource: {datasource_id}</p>'
-            '<p>Report attached as JSON file.</p>'
+            f'<p><b>Datasource ID:</b> {datasource_id}</p>'
+            f'<p><b>Query ID:</b> {query_id}</p>'
+            f'<p><b>Generated At:</b> {generated_at_utc}</p>'
+            f'{applied_range_html}'
+            f'<p><b>Total Rows:</b> {len(rows)}</p>'
+            f'<p><b>Columns:</b> {len(fieldnames)}</p>'
+            '<p>The report has been generated successfully.</p>'
         )
+        if use_attachment:
+            body += (
+                f'<p><b>Delivery:</b> CSV attached ({csv_size:,} bytes, '
+                f'max {MAX_EMAIL_ATTACHMENT_BYTES // (1024 * 1024)} MB for email).</p>'
+            )
+        else:
+            body += (
+                f'<p><b>Delivery:</b> Report is {csv_size:,} bytes (over '
+                f'{MAX_EMAIL_ATTACHMENT_BYTES // (1024 * 1024)} MB email limit). '
+                'Use the download link below instead of an attachment.</p>'
+                '<p>The link is secure and expires in 7 days.</p>'
+            )
+            if report_url:
+                body += (
+                    f'<p><a href="{report_url}" target="_blank" rel="noopener noreferrer">'
+                    'Download CSV report (valid for 7 days)</a></p>'
+                )
 
         failed_recipients = []
         for recipient in recipients:
+            attachments = None
+            if use_attachment:
+                attachments = [
+                    {
+                        'filename': report_filename,
+                        'content_bytes': csv_bytes,
+                        'mime_type': 'text/csv',
+                    }
+                ]
             is_sent = self.email_service.send_email(
                 subject,
                 body,
                 recipient,
-                attachments=[
-                    {
-                        'filename': report_filename,
-                        'content_bytes': compact_json.encode('utf-8'),
-                        'mime_type': 'application/json',
-                    }
-                ],
+                attachments=attachments,
             )
             if not is_sent:
                 failed_recipients.append(recipient)
@@ -421,7 +542,9 @@ class ScheduledJobService:
         try:
             if job_row['job_type'] != 'email_dynamic_query':
                 raise ValueError(f"Unsupported job_type: {job_row['job_type']}")
-            await self._execute_email_dynamic_query_job(job_row['payload'])
+            await self._execute_email_dynamic_query_job(
+                job_row['payload'], job_row['timezone']
+            )
         except Exception as exc:
             job_exc = exc
             logger.error(f'Failed scheduled job {job_id}: {exc}')
