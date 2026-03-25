@@ -3,30 +3,28 @@ from typing import Callable
 
 from apscheduler.events import EVENT_JOB_ERROR
 from apscheduler.executors.pool import ThreadPoolExecutor
-from apscheduler.jobstores.redis import RedisJobStore
+from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from common_module.log.logger import logger
 
 
 class SchedulerManager:
-    def __init__(self, config):
-        self.config = config
+    def __init__(self):
         self.scheduler: BackgroundScheduler | None = None
 
     def _on_scheduler_error(self, event):
         logger.error(f'Scheduler job failed: {event}')
 
     def _build_scheduler(self) -> BackgroundScheduler:
-        redis_store = RedisJobStore(
-            jobs_key='apscheduler.jobs',
-            run_times_key='apscheduler.run_times',
-            host=self.config['redis']['host'],
-            port=int(self.config['redis']['port']),
-        )
+        # MemoryJobStore avoids pickling the job callable.  Redis persistence
+        # is not needed here because:
+        #   1. The polling loop is re-registered on every startup (server.py).
+        #   2. Distributed deduplication is handled by FOR UPDATE SKIP LOCKED
+        #      in claim_due_jobs — not by APScheduler's job store.
         executors = {'default': ThreadPoolExecutor(max(1, (os.cpu_count() or 2) - 1))}
         built = BackgroundScheduler(
-            jobstores={'default': redis_store},
+            jobstores={'default': MemoryJobStore()},
             executors=executors,
             job_defaults={'coalesce': False, 'max_instances': 3},
             timezone='Asia/Kolkata',

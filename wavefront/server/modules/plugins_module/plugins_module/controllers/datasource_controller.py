@@ -50,6 +50,7 @@ from ..utils.helper import DynamicQueryRequest
 from ..utils.helper import DynamicQueryExecuteRequest
 from datetime import datetime
 
+EXPORT_RATE_LIMIT_SECONDS = 5  # 5 seconds between exports per user
 
 datasource_router = APIRouter()
 
@@ -723,9 +724,6 @@ async def execute_dynamic_query(
         status_code=status.HTTP_200_OK,
         content=response_formatter.buildSuccessResponse(serialized_res),
     )
-
-
-EXPORT_RATE_LIMIT_SECONDS = 120  # 2 minutes between exports per user
 
 
 @datasource_router.post('/v1/{datasource_id}/dynamic-queries/{query_id}/export')
