@@ -21,6 +21,11 @@ def main():
             os.getenv('GCP_KMS_KEY_RING') is not None
             and os.getenv('GCP_KMS_CRYPTO_KEY') is not None
         )
+        or (
+            CLOUD_PROVIDER == 'azure'
+            and os.getenv('AZURE_KEY_VAULT_URL') is not None
+            and os.getenv('AZURE_KEY_VAULT_KEY_NAME') is not None
+        )
     ):
         encryption_service = FloKmsService(cloud_provider=CLOUD_PROVIDER)
 
