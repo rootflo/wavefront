@@ -402,6 +402,18 @@ class ScheduledJobService:
                 f'Unexpected dynamic query result format for query_id {query_id}, invalid rows'
             )
 
+        if len(rows) == 0:
+            start_key = str(payload.get('start_date_param', 'start_date'))
+            end_key = str(payload.get('end_date_param', 'end_date'))
+            applied_start = params.get(start_key) if isinstance(params, dict) else None
+            applied_end = params.get(end_key) if isinstance(params, dict) else None
+            logger.info(
+                f'No records in scheduled window for query_id={query_id}; '
+                f'applying range {applied_start}..{applied_end} (keys: {start_key}, {end_key}). '
+                'Skipping email.'
+            )
+            return
+
         if rows:
             fieldnames = list(rows[0].keys())
             for row in rows[1:]:
