@@ -22,4 +22,13 @@ RUN chmod +x /app/scripts/console-server-init.sh
 
 RUN uv sync --package floconsole --frozen --no-dev
 
+# Add a new non-root user named 'appuser' with a home directory
+RUN useradd -m appuser
+
+# Give 'appuser' ownership of the /app directory and its contents
+RUN chown -R appuser:appuser /app
+
+# Switch to the non-root user for all subsequent instructions
+USER appuser
+
 ENTRYPOINT ["/app/scripts/console-server-init.sh"]
