@@ -69,3 +69,49 @@ class ImageEmbedding:
             results.append({name: embedding})
 
         return results
+
+    @torch.inference_mode()
+    def query_embed_batch(
+        self, image_batch: list[bytes]
+    ) -> List[Dict[str, List[List[float]]]]:
+        """
+        GPU batch embedding.
+
+        Returns:
+          [
+            {"clip": [embedding_for_image_0, ..., embedding_for_image_N]},
+            {"dino": [embedding_for_image_0, ..., embedding_for_image_N]},
+          ]
+        """
+        if not image_batch:
+            return []
+
+        # Decode bytes -> PIL images on CPU.
+        # The actual model forward pass (processor->tensor + model) is batched on GPU.
+        images: List[Image.Image] = []
+        for idx, image_content in enumerate(image_batch):
+            try:
+                images.append(Image.open(io.BytesIO(image_content)).convert('RGB'))
+            except Exception as e:
+                logger.error(
+                    f'Error opening image at index={idx}: {e}',
+                    exc_info=True,
+                )
+                return []
+
+        results: List[Dict[str, List[List[float]]]] = []
+
+        for name, embedder in self.embedders.items():
+            inputs = embedder['processor'](images=images, return_tensors='pt')
+            inputs = {k: v.to(self.device) for k, v in inputs.items()}
+
+            # Batched forward pass.
+            image_features = embedder['extractor'](inputs)  # (batch, dim)
+
+            # L2-normalize per-vector.
+            image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+
+            embeddings = image_features.cpu().numpy().tolist()  # batch x dim
+            results.append({name: embeddings})
+
+        return results
