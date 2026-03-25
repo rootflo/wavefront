@@ -216,7 +216,7 @@ class GmailEmailService(EmailService):
             service = build('gmail', 'v1', credentials=credentials)
             message = MIMEMultipart()
             message['to'] = email_id
-            message['from'] = self.email_sender
+            message['from'] = f'Rootflo Notifications <{self.email_sender}>'
             message['subject'] = subject
             message.attach(MIMEText(body, 'html'))
             for attachment in attachments or []:
