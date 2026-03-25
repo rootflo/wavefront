@@ -33,8 +33,8 @@ RUN uv sync --package workflow_job --frozen --no-dev
 # Create a non-root user named 'appuser'
 RUN useradd -m appuser
 
-# Ensure that /app is owned by 'appuser'
-RUN chown -R appuser /app
+# Give 'appuser' ownership of the /app directory and its contents
+RUN chown -R appuser:appuser /app
 
 # change WORKDIR
 WORKDIR /app/background_jobs/workflow_job/workflow_job
