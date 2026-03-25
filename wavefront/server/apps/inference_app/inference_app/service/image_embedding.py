@@ -5,11 +5,11 @@ import io
 from typing import List, Dict, Any
 from common_module.log.logger import logger
 
+CLIP_MODEL_NAME = 'openai/clip-vit-base-patch32'
+DINO_MODEL_NAME = 'facebook/dinov3-vitl16-pretrain-lvd1689m'
+
 
 class ImageEmbedding:
-    CLIP_MODEL_NAME = 'openai/clip-vit-base-patch32'
-    DINO_MODEL_NAME = 'facebook/dinov3-vitl16-pretrain-lvd1689m'
-
     def __init__(self):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         logger.info(f'Using device: {self.device}')
