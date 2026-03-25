@@ -59,8 +59,20 @@ class ScheduledJobService:
         base_params = payload.get('params')
         params: dict = dict(base_params) if isinstance(base_params, dict) else {}
         date_range = payload.get('date_range')
-        if date_range not in {'last_day', 'last_7_days', 'last_30_days'}:
+        if date_range not in {'last_day', 'last_hour', 'last_7_days', 'last_30_days'}:
             return params or None
+
+        start_key = payload.get('start_date_param', 'start_date')
+        end_key = payload.get('end_date_param', 'end_date')
+
+        # Time-window presets should be based on a stable clock. For `last_hour`,
+        # use UTC explicitly (your DB timestamps are stored as UTC).
+        if date_range == 'last_hour':
+            end_dt_utc = datetime.now(timezone.utc).replace(microsecond=0)
+            start_dt_utc = end_dt_utc - timedelta(hours=1)
+            params[str(start_key)] = start_dt_utc.strftime('%Y-%m-%d %H:%M:%S')
+            params[str(end_key)] = end_dt_utc.strftime('%Y-%m-%d %H:%M:%S')
+            return params
 
         tz = ZoneInfo(tz_name)
         today = datetime.now(tz).date()
@@ -74,8 +86,6 @@ class ScheduledJobService:
             end_date = today - timedelta(days=1)
             start_date = end_date - timedelta(days=29)
 
-        start_key = payload.get('start_date_param', 'start_date')
-        end_key = payload.get('end_date_param', 'end_date')
         params[str(start_key)] = start_date.isoformat()
         params[str(end_key)] = end_date.isoformat()
         return params
