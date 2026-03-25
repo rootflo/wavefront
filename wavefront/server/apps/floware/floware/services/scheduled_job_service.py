@@ -1,4 +1,5 @@
 import csv
+import io
 import json
 import os
 from datetime import datetime, timedelta, timezone
@@ -22,6 +23,8 @@ from user_management_module.services.email_service import EmailService
 
 STALE_LOCK_TIMEOUT_MINUTES = 30
 SIGNED_URL_EXPIRY_SECONDS = 7 * 24 * 60 * 60
+# Gmail and many providers cap attachments; keep below typical limits.
+MAX_EMAIL_ATTACHMENT_BYTES = 10 * 1024 * 1024
 
 
 class ScheduledJobService:
@@ -404,22 +407,31 @@ class ScheduledJobService:
             return v if v is None or isinstance(v, str) else str(v)
 
         report_filename = f'{query_id}_{datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")}_report.csv'
-        report_key = f'scheduled_query_reports/{query_id}/{report_filename}'
-        # Store report CSV in cloud storage and share via signed URL (10 days).
-        with self.cloud_storage_manager.open_text_writer(
-            bucket_name=self.bucket_name, key=report_key, content_type='text/csv'
-        ) as f:
-            if fieldnames:
-                writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
-                writer.writeheader()
-                for row in rows:
-                    writer.writerow({k: _cell_value(row.get(k)) for k in fieldnames})
-        report_url = self.cloud_storage_manager.generate_presigned_url(
-            bucket_name=self.bucket_name,
-            key=report_key,
-            type='GET',
-            expiresIn=SIGNED_URL_EXPIRY_SECONDS,
-        )
+        buf = io.StringIO()
+        if fieldnames:
+            writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction='ignore')
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({k: _cell_value(row.get(k)) for k in fieldnames})
+        csv_bytes = buf.getvalue().encode('utf-8')
+        csv_size = len(csv_bytes)
+
+        report_url: str | None = None
+        use_attachment = csv_size <= MAX_EMAIL_ATTACHMENT_BYTES
+        if not use_attachment:
+            report_key = f'scheduled_query_reports/{query_id}/{report_filename}'
+            self.cloud_storage_manager.save_small_file(
+                file_content=csv_bytes,
+                bucket_name=self.bucket_name,
+                key=report_key,
+                content_type='text/csv',
+            )
+            report_url = self.cloud_storage_manager.generate_presigned_url(
+                bucket_name=self.bucket_name,
+                key=report_key,
+                type='GET',
+                expiresIn=SIGNED_URL_EXPIRY_SECONDS,
+            )
         generated_at_utc = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
         start_key = str(payload.get('start_date_param', 'start_date'))
         end_key = str(payload.get('end_date_param', 'end_date'))
@@ -440,17 +452,41 @@ class ScheduledJobService:
             f'<p><b>Total Rows:</b> {len(rows)}</p>'
             f'<p><b>Columns:</b> {len(fieldnames)}</p>'
             '<p>The report has been generated successfully.</p>'
-            '<p>The download link below is secure and will expire in 7 days.</p>'
-            f'<p><a href="{report_url}" target="_blank" rel="noopener noreferrer">'
-            'Download CSV report (valid for 7 days)</a></p>'
         )
+        if use_attachment:
+            body += (
+                f'<p><b>Delivery:</b> CSV attached ({csv_size:,} bytes, '
+                f'max {MAX_EMAIL_ATTACHMENT_BYTES // (1024 * 1024)} MB for email).</p>'
+            )
+        else:
+            body += (
+                f'<p><b>Delivery:</b> Report is {csv_size:,} bytes (over '
+                f'{MAX_EMAIL_ATTACHMENT_BYTES // (1024 * 1024)} MB email limit). '
+                'Use the download link below instead of an attachment.</p>'
+                '<p>The link is secure and expires in 7 days.</p>'
+            )
+            if report_url:
+                body += (
+                    f'<p><a href="{report_url}" target="_blank" rel="noopener noreferrer">'
+                    'Download CSV report (valid for 7 days)</a></p>'
+                )
 
         failed_recipients = []
         for recipient in recipients:
+            attachments = None
+            if use_attachment:
+                attachments = [
+                    {
+                        'filename': report_filename,
+                        'content_bytes': csv_bytes,
+                        'mime_type': 'text/csv',
+                    }
+                ]
             is_sent = self.email_service.send_email(
                 subject,
                 body,
                 recipient,
+                attachments=attachments,
             )
             if not is_sent:
                 failed_recipients.append(recipient)
