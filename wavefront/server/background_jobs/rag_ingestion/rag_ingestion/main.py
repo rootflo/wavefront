@@ -16,8 +16,10 @@ def main():
     encryption_service = None
     if (
         (CLOUD_PROVIDER == 'aws' and os.getenv('AWS_KMS_ARN'))
-        or CLOUD_PROVIDER == 'gcp'
-        and (os.getenv('GCP_KMS_KEY_RING') and os.getenv('GCP_KMS_CRYPTO_KEY'))
+        or (
+            CLOUD_PROVIDER == 'gcp'
+            and (os.getenv('GCP_KMS_KEY_RING') and os.getenv('GCP_KMS_CRYPTO_KEY'))
+        )
         or (
             CLOUD_PROVIDER == 'azure'
             and os.getenv('AZURE_KEY_VAULT_URL')
