@@ -66,12 +66,8 @@ class ApplicationContainer(containers.DeclarativeContainer):
         app_user_repository=app_user_repository,
     )
 
-    kms_service = providers.Selector(
-        config.jwt_token.enable_cloud_kms,
-        true=providers.Singleton(
-            FloKmsService, cloud_provider=config.cloud_config.cloud_provider
-        ),
-        false=providers.Object(None),  # No KMS service if cloud KMS is not enabled
+    kms_service = providers.Singleton(
+        FloKmsService, cloud_provider=config.cloud_config.cloud_provider
     )
 
     token_service = providers.Singleton(
