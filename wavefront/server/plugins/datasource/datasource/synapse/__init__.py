@@ -107,8 +107,13 @@ class SynapsePlugin(DataSourceABC):
             query_to_execute = query_to_execute.replace(
                 '{{filters}}', f'{odata_filter}' if odata_filter else '1=1'
             )
-            # SQL Server pagination: requires ORDER BY before OFFSET/FETCH
-            query_to_execute += f' ORDER BY (SELECT NULL) OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY'
+            query_to_execute = query_to_execute.rstrip().rstrip(';')
+            if ' order by ' in query_to_execute.lower():
+                query_to_execute += (
+                    f' OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY'
+                )
+            else:
+                query_to_execute += f' ORDER BY (SELECT NULL) OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY'
 
             task = asyncio.create_task(
                 asyncio.to_thread(

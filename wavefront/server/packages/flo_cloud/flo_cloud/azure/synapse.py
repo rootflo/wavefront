@@ -52,13 +52,18 @@ class SynapseClient:
                 'Password must be provided via parameter or AZURE_SYNAPSE_PASSWORD environment variable'
             )
 
+    @staticmethod
+    def _escape_conn_value(value: str) -> str:
+        """Wrap an ODBC connection-string value in braces, escaping any literal }."""
+        return '{' + value.replace('}', '}}') + '}'
+
     def _build_connection_string(self) -> str:
         return (
-            f'DRIVER={{{self.driver}}};'
-            f'Server={self.host},{self.port};'
-            f'Database={self.database};'
-            f'Uid={self.user};'
-            f'Pwd={self.password};'
+            f'DRIVER={self._escape_conn_value(self.driver)};'
+            f'Server={self._escape_conn_value(f"{self.host},{self.port}")};'
+            f'Database={self._escape_conn_value(self.database)};'
+            f'Uid={self._escape_conn_value(self.user)};'
+            f'Pwd={self._escape_conn_value(self.password)};'
             f'Encrypt=yes;'
             f'TrustServerCertificate=no;'
             f'Connection Timeout={self.timeout};'
@@ -116,6 +121,13 @@ class SynapseClient:
             try:
                 cursor.execute(converted_query, values)
                 columns = [desc[0] for desc in cursor.description]
+                seen = set()
+                duplicates = {c for c in columns if c in seen or seen.add(c)}
+                if duplicates:
+                    raise ValueError(
+                        f'Duplicate column names {sorted(duplicates)!r} in query result. '
+                        f'Query: {converted_query!r}'
+                    )
                 return [dict(zip(columns, row)) for row in cursor.fetchall()]
             except pyodbc.Error as e:
                 logger.error(f'Synapse query execution error: {e}')
