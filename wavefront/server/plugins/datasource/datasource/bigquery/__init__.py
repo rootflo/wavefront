@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from ..types import DataSourceABC
 from .config import BigQueryConfig
@@ -86,12 +87,18 @@ class BigQueryPlugin(DataSourceABC):
 
         for query_obj in queries:
             query_to_execute = query_obj.get('query', '')
-            query_params = query_obj.get('parameters', {})
+            query_params = query_obj.get('parameters', [])
             query_id = query_obj.get('id')
             if not query_id:
                 raise ValueError('Query ID is required')
 
             params_key = [params['name'] for params in query_params]
+            param_types = {
+                params['name']: (
+                    params.get('type') if isinstance(params, dict) else None
+                )
+                for params in query_params
+            }
             params_to_execute = dict()
 
             # Handle case when params is None
@@ -101,7 +108,19 @@ class BigQueryPlugin(DataSourceABC):
             for key in params_key:
                 if key not in params:
                     raise ValueError(f'Missing parameter: {key} for query {query_id}')
-                params_to_execute[key] = params[key]
+                value = params[key]
+                # If the YAML declares this param as TIMESTAMP, parse common
+                # scheduler-generated values into Python datetime so the
+                # BigQuery client binds as TIMESTAMP (not STRING).
+                if param_types.get(key) == 'timestamp' and isinstance(value, str):
+                    # Expected format from scheduler: 'YYYY-MM-DD HH:MM:SS' (UTC).
+                    try:
+                        value_dt = datetime.strptime(value, '%Y-%m-%d %H:%M:%S')
+                        params_to_execute[key] = value_dt.replace(tzinfo=timezone.utc)
+                    except Exception:
+                        params_to_execute[key] = value
+                else:
+                    params_to_execute[key] = value
 
             if odata_params:
                 params_to_execute.update(odata_params)
