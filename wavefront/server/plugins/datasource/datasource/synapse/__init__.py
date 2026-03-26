@@ -76,7 +76,7 @@ class SynapsePlugin(DataSourceABC):
         params: Optional[Dict[str, Any]] = None,
     ):
         results = {}
-        tasks = []
+        prepared_queries = []
 
         for query_obj in query:
             query_to_execute = query_obj.get('query', '')
@@ -115,14 +115,21 @@ class SynapsePlugin(DataSourceABC):
             else:
                 query_to_execute += f' ORDER BY (SELECT NULL) OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY'
 
-            task = asyncio.create_task(
-                asyncio.to_thread(
-                    self.client.execute_query_as_dict,
-                    query_to_execute,
-                    params_to_execute,
-                )
+            prepared_queries.append((query_id, query_to_execute, params_to_execute))
+
+        tasks = [
+            (
+                query_id,
+                asyncio.create_task(
+                    asyncio.to_thread(
+                        self.client.execute_query_as_dict,
+                        query_to_execute,
+                        params_to_execute,
+                    )
+                ),
             )
-            tasks.append((query_id, task))
+            for query_id, query_to_execute, params_to_execute in prepared_queries
+        ]
 
         for query_id, task in tasks:
             try:

@@ -206,7 +206,7 @@ class SynapseClient:
             qualified = f'{table_prefix}{table_name}'
             processed_join = processed_join.replace(
                 f'JOIN {table_name}',
-                f'LEFT JOIN {qualified} AS {alias}',
+                f'JOIN {qualified} AS {alias}',
             )
             processed_join = processed_join.replace(f'{table_name}.', f'{alias}.')
             processed_where = processed_where.replace(f'{table_name}.', f'{alias}.')
