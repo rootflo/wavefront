@@ -98,7 +98,7 @@ export const validateDynamicQueryYaml = (yaml_str: string) => {
             error: 'parameters must be an object or array',
           };
         }
-        const allowed = ['string', 'number', 'boolean', 'date'];
+        const allowed = ['string', 'number', 'boolean', 'date', 'timestamp'];
 
         // Handle array format: [{ name: 'param1', type: 'date' }, ...]
         if (Array.isArray(q.parameters)) {
