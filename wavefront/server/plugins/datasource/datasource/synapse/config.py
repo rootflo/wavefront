@@ -4,8 +4,8 @@ from dataclasses import dataclass
 @dataclass
 class SynapseConfig:
     host: str
-    port: int
     database: str
     user: str
     password: str
+    port: int = 1433
     schema: str = 'dbo'

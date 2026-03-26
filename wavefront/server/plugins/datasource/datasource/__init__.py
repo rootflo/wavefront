@@ -116,13 +116,13 @@ class DatasourcePlugin(DataSourceABC):
             rls_filter
         )
         result_by_query: Dict[str, Any] = await self.datasource.execute_dynamic_query(
-            query,
-            offset,
-            limit,
-            odata_filter,
-            odata_params,
-            odata_data_filter,
-            odata_data_params,
-            params,
+            query=query,
+            odata_filter=odata_filter,
+            odata_params=odata_params,
+            odata_data_filter=odata_data_filter,
+            odata_data_params=odata_data_params,
+            offset=offset,
+            limit=limit,
+            params=params,
         )
         return result_by_query

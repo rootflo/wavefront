@@ -25,7 +25,7 @@ class SynapsePlugin(DataSourceABC):
         return self.client.get_table_info()
 
     def get_table_names(self, **kwargs) -> list[str]:
-        return self.client.list_tables()
+        return self.client.list_tables(kwargs.get('schema', self.db_name))
 
     def fetch_data(
         self,

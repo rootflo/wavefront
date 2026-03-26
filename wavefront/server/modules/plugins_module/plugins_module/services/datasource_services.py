@@ -1,5 +1,6 @@
 import collections
 from datasource import DataSourceType, BigQueryConfig, RedshiftConfig
+from datasource.synapse.config import SynapseConfig
 from db_repo_module.models.datasource import Datasource
 from db_repo_module.models.role import Role
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
@@ -17,7 +18,7 @@ async def get_datasource_config(
     datasource_repository: SQLAlchemyRepository[Datasource] = Depends(
         Provide(PluginsContainer.datasource_repository)
     ),
-) -> tuple[DataSourceType, BigQueryConfig | RedshiftConfig]:
+) -> tuple[DataSourceType, BigQueryConfig | RedshiftConfig | SynapseConfig]:
     datasource: Datasource | None = await datasource_repository.find_one(
         id=datasource_id
     )
@@ -28,6 +29,8 @@ async def get_datasource_config(
         return DataSourceType.GCP_BIGQUERY, BigQueryConfig(**datasource.config)
     elif datasource.type == DataSourceType.AWS_REDSHIFT:
         return DataSourceType.AWS_REDSHIFT, RedshiftConfig(**datasource.config)
+    elif datasource.type == DataSourceType.AZURE_SYNAPSE:
+        return DataSourceType.AZURE_SYNAPSE, SynapseConfig(**datasource.config)
     else:
         raise ValueError(f'Invalid datasource type: {datasource.type}')
 

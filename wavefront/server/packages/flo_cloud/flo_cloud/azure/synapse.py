@@ -43,6 +43,14 @@ class SynapseClient:
             raise ValueError(
                 'Database must be provided via parameter or AZURE_SYNAPSE_DATABASE environment variable'
             )
+        if not self.user:
+            raise ValueError(
+                'User must be provided via parameter or AZURE_SYNAPSE_USER environment variable'
+            )
+        if not self.password:
+            raise ValueError(
+                'Password must be provided via parameter or AZURE_SYNAPSE_PASSWORD environment variable'
+            )
 
     def _build_connection_string(self) -> str:
         return (
