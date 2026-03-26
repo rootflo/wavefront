@@ -9,6 +9,7 @@ from typing import Any, Optional, List, Dict
 
 from .bigquery import BigQueryPlugin, BigQueryConfig
 from .redshift import RedshiftPlugin, RedshiftConfig
+from .synapse import SynapsePlugin, SynapseConfig
 from .helper import construct_meta
 from .odata_parser import ODataQueryParser
 
@@ -17,7 +18,7 @@ class DatasourcePlugin(DataSourceABC):
     def __init__(
         self,
         datasource_type: DataSourceType,
-        config: BigQueryConfig | RedshiftConfig,
+        config: BigQueryConfig | RedshiftConfig | SynapseConfig,
     ):
         self.datasource_type = datasource_type
         self.config = config
@@ -34,6 +35,11 @@ class DatasourcePlugin(DataSourceABC):
             if not isinstance(self.config, BigQueryConfig):
                 raise ValueError(f'Invalid config type: {type(self.config)}')
             return BigQueryPlugin(self.config)
+        elif self.datasource_type == DataSourceType.AZURE_SYNAPSE:
+            self.odata_parser = ODataQueryParser(type='sql', dynamic_var_char='@')
+            if not isinstance(self.config, SynapseConfig):
+                raise ValueError(f'Invalid config type: {type(self.config)}')
+            return SynapsePlugin(self.config)
         else:
             raise ValueError(f'Invalid datasource type: {self.datasource_type}')
 
