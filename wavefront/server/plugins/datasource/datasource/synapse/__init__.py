@@ -22,7 +22,7 @@ class SynapsePlugin(DataSourceABC):
         return await asyncio.to_thread(self.client.test_connection)
 
     def get_schema(self) -> dict:
-        return self.client.get_table_info()
+        return self.client.get_table_info(schema=self.db_name)
 
     def get_table_names(self, **kwargs) -> list[str]:
         return self.client.list_tables(kwargs.get('schema', self.db_name))
@@ -31,7 +31,7 @@ class SynapsePlugin(DataSourceABC):
         self,
         table_names: List[str],
         projection: str = '*',
-        where_clause: str = '1=1',
+        where_clause: Optional[str] = '1=1',
         join_query: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
         offset: int = 0,
@@ -40,13 +40,14 @@ class SynapsePlugin(DataSourceABC):
         group_by: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         # T-SQL has no boolean literal TRUE — normalise any coming from the orchestrator
-        if where_clause.strip().lower() == 'true':
-            where_clause = '1=1'
+        normalized_where_clause = (where_clause or '1=1').strip()
+        if normalized_where_clause.lower() == 'true':
+            normalized_where_clause = '1=1'
         return self.client.execute_query_to_dict(
             projection=projection,
             table_prefix=f'{self.db_name}.',
             table_names=table_names,
-            where_clause=where_clause,
+            where_clause=normalized_where_clause,
             join_query=join_query,
             params=params,
             limit=limit,

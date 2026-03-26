@@ -204,12 +204,12 @@ class SynapseClient:
         for i, table_name in enumerate(table_names):
             alias = aliases[i]
             qualified = f'{table_prefix}{table_name}'
+            processed_join = processed_join.replace(f'{table_name}.', f'{alias}.')
+            processed_where = processed_where.replace(f'{table_name}.', f'{alias}.')
             processed_join = processed_join.replace(
                 f'JOIN {table_name}',
                 f'JOIN {qualified} AS {alias}',
             )
-            processed_join = processed_join.replace(f'{table_name}.', f'{alias}.')
-            processed_where = processed_where.replace(f'{table_name}.', f'{alias}.')
 
         group_by_clause = f'GROUP BY {group_by}' if group_by else ''
         order_by_clause = (
@@ -223,7 +223,7 @@ class SynapseClient:
             f'OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY'
         )
 
-    def get_table_info(self) -> List[Dict[str, Any]]:
+    def get_table_info(self, schema: str = 'dbo') -> List[Dict[str, Any]]:
         query = """
         SELECT
             c.TABLE_NAME,
@@ -236,9 +236,10 @@ class SynapseClient:
             c.COLUMN_DEFAULT,
             c.ORDINAL_POSITION
         FROM INFORMATION_SCHEMA.COLUMNS c
+        WHERE c.TABLE_SCHEMA = @schema
         ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION
         """
-        return self.execute_query_as_dict(query)
+        return self.execute_query_as_dict(query, {'schema': schema})
 
     def list_tables(self, schema: str = 'dbo') -> List[str]:
         query = (
