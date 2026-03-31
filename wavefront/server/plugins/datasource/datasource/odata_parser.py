@@ -79,7 +79,7 @@ class Lexer:
                 self.advance()
 
         if self.current_char == quote_char:
-            result += self.current_char
+            result += quote_char
             self.advance()
 
         return result
@@ -217,8 +217,8 @@ class Lexer:
 class ODataParserABC(ABC):
     @abstractmethod
     def prepare_odata_filter(
-        self, filter_expr: str, dynamic_var_char: str = '@'
-    ) -> Tuple[str, dict]:
+        self, filter_expr: Optional[str]
+    ) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
         pass
 
     @abstractmethod
@@ -240,7 +240,9 @@ class ODataQueryParser:
         else:
             raise ValueError(f'Invalid type: {self.type}')
 
-    def prepare_odata_filter(self, odata_filter: str) -> Dict[str, Any]:
+    def prepare_odata_filter(
+        self, odata_filter: Optional[str]
+    ) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
         return self.parser.prepare_odata_filter(odata_filter)
 
     def prepare_odata_joins(
@@ -666,7 +668,9 @@ class SQLODataParser(ODataParserABC):
     def __init__(self, dynamic_var_char: str = '@'):
         self.dynamic_var_char = dynamic_var_char
 
-    def prepare_odata_filter(self, filter_expr: str) -> Tuple[str, dict]:
+    def prepare_odata_filter(
+        self, filter_expr: Optional[str]
+    ) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
         """Parses an OData-like filter expression and converts it into a SQL-like query with parameters."""
         if not filter_expr:
             return None, None
@@ -800,6 +804,7 @@ class JoinBuilder:
                         sql_filter, filter_params = filter_parser.prepare_odata_filter(
                             filter_expr
                         )
+                        filter_params = filter_params or {}
                         if sql_filter:
                             # Prefix the filter with table name to avoid ambiguity
                             # Replace @param with @table_param_ to match the new parameter names
