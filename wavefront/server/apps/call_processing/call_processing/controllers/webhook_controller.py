@@ -80,11 +80,11 @@ async def inbound_webhook(
     # Build WebSocket URL
     base_url = os.getenv('CALL_PROCESSING_BASE_URL', 'http://localhost:8003')
 
-    # Convert https:// to wss:// (or http:// to ws://)
+    # Convert https:// to wss:// (or http:// to wss://)
     if base_url.startswith('https://'):
         websocket_url = base_url.replace('https://', 'wss://')
     elif base_url.startswith('http://'):
-        websocket_url = base_url.replace('http://', 'ws://')
+        websocket_url = base_url.replace('http://', 'wss://')
     else:
         websocket_url = f'wss://{base_url}'
 
@@ -135,11 +135,11 @@ async def twiml_endpoint(
     # Build WebSocket URL
     base_url = os.getenv('CALL_PROCESSING_BASE_URL', 'http://localhost:8003')
 
-    # Convert https:// to wss:// (or http:// to ws://)
+    # Convert https:// to wss:// (or http:// to wss://)
     if base_url.startswith('https://'):
         websocket_url = base_url.replace('https://', 'wss://')
     elif base_url.startswith('http://'):
-        websocket_url = base_url.replace('http://', 'ws://')
+        websocket_url = base_url.replace('http://', 'wss://')
     else:
         websocket_url = f'wss://{base_url}'
 
