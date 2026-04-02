@@ -28,7 +28,7 @@ from plugins_module.services.authenticator_services import (
 from user_management_module.user_container import UserContainer
 from user_management_module.services.user_service import UserService
 from user_management_module.utils.password_utils import verify_password
-from user_management_module.utils.user_utils import get_session_cache_key
+from user_management_module.utils.user_utils import get_session_cache_key, validate_redirect_url
 
 from authenticator import AuthenticatorType
 from authenticator.helper import validate_email
@@ -355,13 +355,13 @@ async def _handle_oauth_callback(
             auth_uuid, authenticator_repository
         )
 
-        # Helper to get failure URL from config
+        # Helper to get failure URL from config with validation
         def get_failure_redirect(error_msg: str) -> RedirectResponse:
             if config_data:
                 failure_url = config_data.get('config', {}).get(
                     'client_redirect_failure_url'
                 )
-                if failure_url:
+                if failure_url and validate_redirect_url(failure_url):
                     provider = config_data.get('auth_type')
                     params = urlencode({'provider': provider, 'error': error_msg})
                     return RedirectResponse(url=f'{failure_url}?{params}')
@@ -375,10 +375,14 @@ async def _handle_oauth_callback(
         if authenticator is None:
             return get_failure_redirect(f'Authenticator {auth_id} is not enabled')
 
-        # Extract redirect URLs
+        # Extract and validate redirect URLs
         provider = config_data.get('auth_type')
-        success_url = config_data.get('config', {}).get('client_redirect_success_url')
-        failure_url = config_data.get('config', {}).get('client_redirect_failure_url')
+        success_url_raw = config_data.get('config', {}).get('client_redirect_success_url')
+        failure_url_raw = config_data.get('config', {}).get('client_redirect_failure_url')
+
+        # Validate URLs to prevent open redirect vulnerabilities
+        success_url = success_url_raw if validate_redirect_url(success_url_raw) else None
+        failure_url = failure_url_raw if validate_redirect_url(failure_url_raw) else None
 
         # Handle OAuth error from provider
         if callback_data.get('error'):
@@ -484,7 +488,8 @@ async def _handle_oauth_callback(
                 failure_url = config_data.get('config', {}).get(
                     'client_redirect_failure_url'
                 )
-                if failure_url:
+                # Validate URL to prevent open redirect vulnerabilities
+                if failure_url and validate_redirect_url(failure_url):
                     provider = config_data.get('auth_type')
                     params = urlencode(
                         {
@@ -493,7 +498,7 @@ async def _handle_oauth_callback(
                         }
                     )
                     return RedirectResponse(url=f'{failure_url}?{params}')
-        except Exception as e:
+        except Exception:
             pass
 
         return RedirectResponse(url='about:blank')

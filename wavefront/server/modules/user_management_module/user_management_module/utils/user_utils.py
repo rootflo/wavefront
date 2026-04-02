@@ -1,5 +1,6 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
+from urllib.parse import urlparse
 
 from common_module.response_formatter import ResponseFormatter
 import uuid
@@ -80,3 +81,62 @@ def create_account_lockout_response(
 
 def get_session_cache_key(session_id: Union[str, uuid.UUID]) -> str:
     return f'session_{str(session_id)}'
+
+
+def validate_redirect_url(
+    url: Optional[str], allowed_domains: Optional[List[str]] = None
+) -> bool:
+    """
+    Validate a redirect URL to prevent open redirect vulnerabilities.
+
+    Args:
+        url: The URL to validate
+        allowed_domains: Optional list of allowed domains. If provided, the URL's
+                        domain must match one of these domains.
+
+    Returns:
+        True if the URL is safe to redirect to, False otherwise
+    """
+    if not url:
+        return False
+
+    try:
+        parsed = urlparse(url)
+
+        # Must have a valid scheme (http or https only)
+        if parsed.scheme not in ('http', 'https'):
+            return False
+
+        # Must have a valid netloc (host)
+        if not parsed.netloc:
+            return False
+
+        # Prevent protocol-relative URL bypass (e.g., //evil.com)
+        if url.startswith('//'):
+            return False
+
+        # Prevent backslash-based bypasses (e.g., /\evil.com)
+        if '\\' in url:
+            return False
+
+        # Prevent URL with credentials (e.g., https://attacker.com@legitimate.com)
+        if parsed.username or parsed.password:
+            return False
+
+        # If allowed_domains is specified, validate against it
+        if allowed_domains:
+            # Extract the domain (without port)
+            domain = parsed.netloc.split(':')[0].lower()
+            allowed_lower = [d.lower() for d in allowed_domains]
+
+            # Check exact match or subdomain match
+            if not any(
+                domain == allowed or domain.endswith('.' + allowed)
+                for allowed in allowed_lower
+            ):
+                return False
+
+        return True
+
+    except Exception:
+        return False
