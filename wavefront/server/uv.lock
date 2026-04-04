@@ -33,7 +33,6 @@ members = [
     "gold-module",
     "inference-app",
     "inference-module",
-    "insights-module",
     "knowledge-base-module",
     "llm-inference-config-module",
     "plugins-module",
@@ -1014,15 +1013,6 @@ wheels = [
 ]
 
 [[package]]
-name = "dacite"
-version = "1.9.2"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/55/a0/7ca79796e799a3e782045d29bf052b5cde7439a2bbb17f15ff44f7aacc63/dacite-1.9.2.tar.gz", hash = "sha256:6ccc3b299727c7aa17582f0021f6ae14d5de47c7227932c47fec4cdfefd26f09", size = 22420, upload-time = "2025-02-05T09:27:29.757Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/94/35/386550fd60316d1e37eccdda609b074113298f23cef5bddb2049823fe666/dacite-1.9.2-py3-none-any.whl", hash = "sha256:053f7c3f5128ca2e9aceb66892b1a3c8936d02c686e707bee96e19deef4bc4a0", size = 16600, upload-time = "2025-02-05T09:27:24.345Z" },
-]
-
-[[package]]
 name = "dataclasses-json"
 version = "0.6.7"
 source = { registry = "https://pypi.org/simple" }
@@ -1537,7 +1527,6 @@ dependencies = [
     { name = "fastapi" },
     { name = "gold-module" },
     { name = "inference-module" },
-    { name = "insights-module" },
     { name = "knowledge-base-module" },
     { name = "llm-inference-config-module" },
     { name = "plugins-module" },
@@ -1562,7 +1551,6 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115.2,<1.0.0" },
     { name = "gold-module", editable = "modules/gold_module" },
     { name = "inference-module", editable = "modules/inference_module" },
-    { name = "insights-module", editable = "modules/insights_module" },
     { name = "knowledge-base-module", editable = "modules/knowledge_base_module" },
     { name = "llm-inference-config-module", editable = "modules/llm_inference_config_module" },
     { name = "plugins-module", editable = "modules/plugins_module" },
@@ -2438,57 +2426,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f2/97/ebf4da567aa6827c909642694d71c9fcf53e5b504f2d96afea02718862f3/iniconfig-2.1.0.tar.gz", hash = "sha256:3abbd2e30b36733fee78f9c7f7308f2d0050e88f0087fd25c2645f63c773e1c7", size = 4793, upload-time = "2025-03-19T20:09:59.721Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2c/e1/e6716421ea10d38022b952c159d5161ca1193197fb744506875fbb87ea7b/iniconfig-2.1.0-py3-none-any.whl", hash = "sha256:9deba5723312380e77435581c6bf4935c94cbfab9b1ed33ef8d238ea168eb760", size = 6050, upload-time = "2025-03-19T20:10:01.071Z" },
-]
-
-[[package]]
-name = "insights-module"
-version = "0.0.1"
-source = { editable = "modules/insights_module" }
-dependencies = [
-    { name = "boto3" },
-    { name = "common-module" },
-    { name = "dacite" },
-    { name = "db-repo-module" },
-    { name = "dependency-injector" },
-    { name = "fastapi" },
-    { name = "google-cloud-bigquery" },
-    { name = "google-cloud-storage" },
-    { name = "httpx" },
-    { name = "psycopg2" },
-    { name = "pyyaml" },
-    { name = "redshift-connector" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "asyncpg" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "testing-postgresql" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "boto3", specifier = "<=1.38.40" },
-    { name = "common-module", editable = "modules/common_module" },
-    { name = "dacite", specifier = ">=1.9.2,<2.0.0" },
-    { name = "db-repo-module", editable = "modules/db_repo_module" },
-    { name = "dependency-injector", specifier = ">=4.42.0,<5.0.0" },
-    { name = "fastapi", specifier = ">=0.115.2,<1.0.0" },
-    { name = "google-cloud-bigquery", specifier = "==3.34.0" },
-    { name = "google-cloud-storage", specifier = "<3.0.0" },
-    { name = "httpx", specifier = ">=0.28.1,<1.0.0" },
-    { name = "psycopg2", specifier = ">=2.9.10,<3.0.0" },
-    { name = "pyyaml", specifier = ">=6.0.3,<7" },
-    { name = "redshift-connector", specifier = ">=2.1.5,<3.0.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "asyncpg", specifier = ">=0.30.0,<1.0.0" },
-    { name = "pytest", specifier = ">=8.3.4,<9.0.0" },
-    { name = "pytest-asyncio", specifier = ">=0.24.0,<1.0.0" },
-    { name = "testing-postgresql", specifier = ">=1.3.0,<2.0.0" },
 ]
 
 [[package]]
