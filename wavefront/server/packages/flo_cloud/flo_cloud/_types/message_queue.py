@@ -13,7 +13,7 @@ class MessageQueueDict:
 class MessageQueue(ABC):
     @abstractmethod
     def receive_messages(
-        self, max_messages=10, wait_time_sec=20
+        self, max_messages: int = 10, wait_time_sec: int = 20
     ) -> List[MessageQueueDict] | None:
         """
         Receive messages from the event queue.
