@@ -1,4 +1,5 @@
 import base64
+import binascii
 
 from common_module.common_container import CommonContainer
 from common_module.response_formatter import ResponseFormatter
@@ -59,10 +60,25 @@ async def image_embedding_batch(
         Provide[InferenceAppContainer.image_embedding]
     ),
 ):
-    image_batch = [
-        extract_decoded_image_data(image_data) for image_data in payload.image_batch
-    ]
+    try:
+        image_batch = [
+            extract_decoded_image_data(image_data) for image_data in payload.image_batch
+        ]
+    except binascii.Error:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                'Invalid base64 image data in batch'
+            ),
+        )
     embeddings = image_embedding_service.query_embed_batch(image_batch)
+    if not embeddings:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                'No Embedding data is present'
+            ),
+        )
     return JSONResponse(
         status_code=status.HTTP_200_OK,
         content=response_formatter.buildSuccessResponse(data={'response': embeddings}),

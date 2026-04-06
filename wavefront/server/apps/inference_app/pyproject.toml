@@ -18,7 +18,7 @@ dependencies = [
     "torchvision==0.16.0",
     "opencv-python>=4.11.0.86",
     "pillow>=11.1.0,<12",
-    "psycopg2>=2.9.10,<3.0.0",
+    "psycopg2-binary>=2.9.10,<3.0.0",
     "numpy>=1.26.4,<2.0.0",
     "accelerate>=0.33.0,<1.0.0",
     "transformers>=4.45.0"

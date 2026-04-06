@@ -14,15 +14,15 @@ class ImageEmbedding:
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         logger.info(f'Using device: {self.device}')
 
-        self.clip_processor = CLIPProcessor.from_pretrained(self.CLIP_MODEL_NAME)
-        self.clip_model = CLIPModel.from_pretrained(self.CLIP_MODEL_NAME).to(
+        self.clip_processor = CLIPProcessor.from_pretrained(CLIP_MODEL_NAME)
+        self.clip_model = CLIPModel.from_pretrained(CLIP_MODEL_NAME).to(
             self.device
         )
         self.clip_model.eval()
 
-        self.dino_processor = AutoImageProcessor.from_pretrained(self.DINO_MODEL_NAME)
+        self.dino_processor = AutoImageProcessor.from_pretrained(DINO_MODEL_NAME)
         self.dino_model = AutoModel.from_pretrained(
-            self.DINO_MODEL_NAME, trust_remote_code=True
+            DINO_MODEL_NAME, trust_remote_code=True
         ).to(self.device)
         self.dino_model.eval()
 
@@ -97,7 +97,9 @@ class ImageEmbedding:
                     f'Error opening image at index={idx}: {e}',
                     exc_info=True,
                 )
-                return []
+                raise ValueError(
+                    f'Failed to decode image at index {idx}: {e}'
+                ) from e
 
         results: List[Dict[str, List[List[float]]]] = []
 
