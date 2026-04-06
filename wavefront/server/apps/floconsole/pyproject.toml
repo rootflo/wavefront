@@ -19,7 +19,7 @@ dependencies = [
     "sqlalchemy>=2.0.40,<3.0.0",
     "python-dotenv>=1.1.0,<2.0.0",
     "dependency-injector>=4.46.0,<5.0.0",
-    "psycopg2>=2.9.10,<3.0.0",
+    "psycopg2-binary>=2.9.10,<3.0.0",
     "python-jose[cryptography]>=3.3.0,<4.0.0",
     "async-lru>=2.0.5",
 ]
