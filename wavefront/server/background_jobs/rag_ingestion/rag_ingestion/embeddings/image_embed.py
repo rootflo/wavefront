@@ -1,71 +1,48 @@
-import torch
-from transformers import CLIPProcessor, CLIPModel, AutoImageProcessor, AutoModel
-from PIL import Image
-import io
+import base64
+
+import httpx
+from flo_utils.utils.log import logger
+
+from rag_ingestion.env import INFERENCE_SERVICE_URL
 from rag_ingestion.models.knowledge_base_embeddings import KnowledgeBaseEmbeddingObject
 
 
 class ImageEmbedding:
+    """Image embeddings via the inference service (CLIP + DINO)."""
+
     def __init__(self):
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        print(f'Initializing models on device: {self.device}')
-
-        # CLIP Model (Fixed: Added .to(self.device))
-        self.clip_model_name = 'openai/clip-vit-base-patch32'
-        self.model = (
-            CLIPModel.from_pretrained(self.clip_model_name).to(self.device).eval()
-        )
-        self.processor = CLIPProcessor.from_pretrained(self.clip_model_name)
-
-        # DINO Model (No change needed for device_map="auto")
-        self.dino_model_name = 'facebook/dinov3-vitl16-pretrain-lvd1689m'
-        self.dino_processor = AutoImageProcessor.from_pretrained(self.dino_model_name)
-        self.dino_model = AutoModel.from_pretrained(
-            self.dino_model_name, device_map='auto', trust_remote_code=True
-        ).eval()
+        if not INFERENCE_SERVICE_URL:
+            raise ValueError(
+                'INFERENCE_SERVICE_URL must be set for image embedding API calls'
+            )
+        base = INFERENCE_SERVICE_URL.rstrip('/')
+        self._embed_url = f'{base}/inference/v1/query/embeddings'
+        logger.info(f'Image embedding endpoint: {self._embed_url}')
 
     def embed_image(self, file_content: bytes) -> KnowledgeBaseEmbeddingObject:
-        image = Image.open(io.BytesIO(file_content))
-        if image.mode != 'RGB':
-            image = image.convert('RGB')
+        payload = {'image_data': base64.b64encode(file_content).decode('ascii')}
+        response = httpx.post(
+            self._embed_url,
+            json=payload,
+            timeout=httpx.Timeout(120.0, connect=30.0),
+        )
+        response.raise_for_status()
+        body = response.json()
+        embeddings = body.get('data', {}).get('response')
+        if not isinstance(embeddings, list) or len(embeddings) < 2:
+            raise ValueError(
+                f"Unexpected embedding response shape — expected list of at least 2 entries: {body!r}"
+            )
 
-        # CLIP Inputs (Fixed: Added .to(self.device))
-        inputs = self.processor(images=image, return_tensors='pt').to(self.device)
+        clip_entry, dino_entry = embeddings[0], embeddings[1]
+        if not isinstance(clip_entry, dict) or 'clip' not in clip_entry:
+            raise ValueError(f"Missing CLIP embedding in response entry: {clip_entry!r}")
+        if not isinstance(dino_entry, dict) or 'dino' not in dino_entry:
+            raise ValueError(f"Missing DINO embedding in response entry: {dino_entry!r}")
 
-        # --- CLIP EMBEDDING ---
-        with torch.no_grad():
-            image_features = self.model.get_image_features(**inputs)
-            image_features = image_features / image_features.norm(dim=-1, keepdim=True)
-            embedding = image_features.squeeze().cpu().numpy().tolist()
-
-        # --- DINO EMBEDDING CALL ---
-        dino_embedding = self.embed_image_dino(file_content)
-
-        # Pass the DINO embedding to the correct field
         return KnowledgeBaseEmbeddingObject(
-            embedding_vector=embedding,
-            embedding_vector_1=dino_embedding,
+            embedding_vector=clip_entry['clip'],
+            embedding_vector_1=dino_entry['dino'],
             chunk_text='image data',
             chunk_index='chunk_0',
         )
-
-    @torch.inference_mode()
-    def embed_image_dino(self, file_content: bytes) -> list:
-        image = Image.open(io.BytesIO(file_content))
-        if image.mode != 'RGB':
-            image = image.convert('RGB')
-
-        inputs = self.dino_processor(images=image, return_tensors='pt')
-
-        target_device = self.dino_model.device
-        # Move inputs to the DINO model's device
-        inputs = {k: v.to(target_device) for k, v in inputs.items()}
-
-        outputs = self.dino_model(**inputs)
-
-        image_features = outputs.last_hidden_state[:, 0]
-
-        image_features = image_features / image_features.norm(dim=-1, keepdim=True)
-        embedding = image_features.squeeze().cpu().numpy().tolist()
-
-        return embedding
