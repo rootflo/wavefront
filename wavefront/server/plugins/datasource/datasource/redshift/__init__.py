@@ -22,7 +22,11 @@ class RedshiftPlugin(DataSourceABC):
         return await asyncio.to_thread(self.client.test_connection)
 
     def get_schema(self) -> dict:
-        return self.client.get_table_info()
+        table_names = self.client.list_tables()
+        return {
+            table_name: self.client.get_table_info(table_name)
+            for table_name in table_names
+        }
 
     def get_table_names(self, **kwargs) -> list[str]:
         return self.client.list_tables()
@@ -30,24 +34,29 @@ class RedshiftPlugin(DataSourceABC):
     def fetch_data(
         self,
         table_names: List[str],
-        projection: str = '*',
-        where_clause: str = 'true',
+        projection: Optional[str] = '*',
+        where_clause: Optional[str] = 'true',
         join_query: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
-        offset: int = 0,
-        limit: int = 10,
+        offset: Optional[int] = 0,
+        limit: Optional[int] = 10,
         order_by: Optional[str] = None,
         group_by: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
+        projection_value = projection or '*'
+        where_clause_value = where_clause or 'true'
+        limit_value = limit if limit is not None else 10
+        offset_value = offset if offset is not None else 0
+
         return self.client.execute_query_to_dict(
-            projection=projection,
+            projection=projection_value,
             table_prefix=f'{self.db_name}.',
             table_names=table_names,
-            where_clause=where_clause,
+            where_clause=where_clause_value,
             join_query=join_query,
             params=params,
-            limit=limit,
-            offset=offset,
+            limit=limit_value,
+            offset=offset_value,
             order_by=order_by,
             group_by=group_by,
         )
