@@ -20,9 +20,17 @@ class BigQueryPlugin(DataSourceABC):
     async def test_connection(self) -> bool:
         return await self.client.test_connection()
 
-    def get_schema(self, table_id: str) -> dict:
-        table_info = self.client.get_table_info(self.config.dataset_id, table_id)
-        return table_info['schema'] or {}
+    def get_schema(self) -> dict:
+        tables = self.client.list_tables(self.config.dataset_id)
+        return {
+            table.table_id: (
+                self.client.get_table_info(self.config.dataset_id, table.table_id).get(
+                    'schema'
+                )
+                or {}
+            )
+            for table in tables
+        }
 
     def get_table_names(self, **kwargs) -> list[str]:
         dataset_id = kwargs.get('dataset_id', self.config.dataset_id)
@@ -32,24 +40,29 @@ class BigQueryPlugin(DataSourceABC):
     def fetch_data(
         self,
         table_names: List[str],
-        projection: str = '*',
-        where_clause: str = 'true',
+        projection: Optional[str] = '*',
+        where_clause: Optional[str] = 'true',
         join_query: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
-        offset: int = 0,
-        limit: int = 1000,
+        offset: Optional[int] = 0,
+        limit: Optional[int] = 1000,
         order_by: Optional[str] = None,
         group_by: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
+        projection_value = projection or '*'
+        where_clause_value = where_clause or 'true'
+        limit_value = limit if limit is not None else 1000
+        offset_value = offset if offset is not None else 0
+
         result = self.client.execute_query_to_dict(
-            projection=projection,
+            projection=projection_value,
             table_prefix=self.table_prefix,
             table_names=table_names,
-            where_clause=where_clause,
+            where_clause=where_clause_value,
             join_query=join_query,
             params=params,
-            limit=limit,
-            offset=offset,
+            limit=limit_value,
+            offset=offset_value,
             order_by=order_by,
             group_by=group_by,
         )
@@ -73,19 +86,19 @@ class BigQueryPlugin(DataSourceABC):
 
     async def execute_dynamic_query(
         self,
-        queries: List[Dict[str, Any]],
-        offset: Optional[int] = 0,
-        limit: Optional[int] = 100,
+        query: List[Dict[str, Any]],
         odata_filter: Optional[str] = None,
         odata_params: Optional[Dict[str, Any]] = None,
         odata_data_filter: Optional[str] = None,
         odata_data_params: Optional[Dict[str, Any]] = None,
+        offset: Optional[int] = 0,
+        limit: Optional[int] = 100,
         params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         results = {}
         tasks = []
 
-        for query_obj in queries:
+        for query_obj in query:
             query_to_execute = query_obj.get('query', '')
             query_params = query_obj.get('parameters', [])
             query_id = query_obj.get('id')

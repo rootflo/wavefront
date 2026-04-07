@@ -13,7 +13,7 @@ from .helper import construct_meta
 from .odata_parser import ODataQueryParser
 
 
-class DatasourcePlugin(DataSourceABC):
+class DatasourcePlugin:
     def __init__(
         self,
         datasource_type: DataSourceType,
@@ -65,7 +65,7 @@ class DatasourcePlugin(DataSourceABC):
     ) -> QueryResult:
         where_clause, params = self.odata_parser.prepare_odata_filter(filter)
         join_query, table_aliases, join_where_clause, join_params = (
-            self.odata_parser.prepare_odata_joins(join, table_name)
+            self.odata_parser.prepare_odata_joins(join or '', table_name)
         )
 
         where_clause = where_clause if where_clause else 'true'
@@ -110,13 +110,13 @@ class DatasourcePlugin(DataSourceABC):
             rls_filter
         )
         result_by_query: Dict[str, Any] = await self.datasource.execute_dynamic_query(
-            query,
-            offset,
-            limit,
-            odata_filter,
-            odata_params,
-            odata_data_filter,
-            odata_data_params,
-            params,
+            query=query,
+            odata_filter=odata_filter,
+            odata_params=odata_params,
+            odata_data_filter=odata_data_filter,
+            odata_data_params=odata_data_params,
+            offset=offset,
+            limit=limit,
+            params=params,
         )
         return result_by_query
