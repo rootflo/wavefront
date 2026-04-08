@@ -3,6 +3,7 @@ import os
 import time
 from typing import Any, Dict, Optional, Union
 
+from azure.identity import DefaultAzureCredential
 from call_processing.log.logger import logger
 
 from redis import ConnectionError
@@ -10,10 +11,27 @@ from redis import ConnectionPool
 from redis import Redis
 from redis import RedisError
 from redis import TimeoutError
+from redis.credentials import CredentialProvider
 from tenacity import retry
 from tenacity import retry_if_exception_type
 from tenacity import stop_after_attempt
 from tenacity import wait_exponential
+
+
+class AzureManagedRedisProvider(CredentialProvider):
+    """
+    Adapter to bridge Azure Identity with Redis CredentialProvider.
+    Azure Managed Redis requires 'default' as the username and the
+    Entra ID access token as the password.
+    """
+
+    def __init__(self):
+        self.credential = DefaultAzureCredential()
+        self.scope = 'https://redis.azure.com/.default'
+
+    def get_credentials(self):
+        token = self.credential.get_token(self.scope)
+        return ('default', token.token)
 
 
 class CacheManager:
@@ -51,19 +69,39 @@ class CacheManager:
         pool_size: int,
     ) -> ConnectionPool:
         try:
-            return ConnectionPool(
-                host=str(os.getenv('REDIS_HOST', 'localhost')),
-                port=int(os.getenv('REDIS_PORT', 6379)),
-                db=int(os.getenv('REDIS_DB', 0)),
-                max_connections=pool_size,
-                socket_timeout=socket_timeout,
-                socket_keepalive=socket_keepalive,
-                socket_connect_timeout=connection_timeout,
-                retry_on_timeout=True,
-                health_check_interval=30,
-                encoding='utf-8',
-                decode_responses=True,
-            )
+            host = os.getenv('REDIS_HOST', 'localhost')
+            port = int(os.getenv('REDIS_PORT', 6379))
+            protocol = os.getenv('REDIS_PROTOCOL', 'redis')
+            password = os.getenv('REDIS_PASSWORD')
+            cloud_provider = os.getenv('CLOUD_PROVIDER', '').lower()
+
+            pool_kwargs = {
+                'host': host,
+                'port': port,
+                'db': int(os.getenv('REDIS_DB', 0)),
+                'max_connections': pool_size,
+                'socket_timeout': socket_timeout,
+                'socket_keepalive': socket_keepalive,
+                'socket_connect_timeout': connection_timeout,
+                'retry_on_timeout': True,
+                'health_check_interval': 30,
+                'encoding': 'utf-8',
+                'decode_responses': True,
+            }
+
+            if protocol == 'rediss' or port == 10000:
+                logger.info(f'Enabling SSL for Redis connection (Port: {port})')
+                pool_kwargs['ssl'] = True
+
+            if cloud_provider == 'azure' and not password:
+                logger.info(
+                    'Configuring Azure Entra ID (Workload Identity) authentication'
+                )
+                pool_kwargs['credential_provider'] = AzureManagedRedisProvider()
+            elif password:
+                pool_kwargs['password'] = password
+
+            return ConnectionPool(**pool_kwargs)
         except Exception as e:
             logger.error(f'Failed to create connection pool: {e}s')
             raise
