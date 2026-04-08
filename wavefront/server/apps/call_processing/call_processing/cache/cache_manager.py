@@ -7,10 +7,12 @@ from azure.core.exceptions import ClientAuthenticationError
 from azure.identity import DefaultAzureCredential
 from call_processing.log.logger import logger
 
+from redis import Connection
 from redis import ConnectionError
 from redis import ConnectionPool
 from redis import Redis
 from redis import RedisError
+from redis import SSLConnection
 from redis import TimeoutError
 from redis.credentials import CredentialProvider
 from tenacity import retry
@@ -80,7 +82,13 @@ class CacheManager:
             password = os.getenv('REDIS_PASSWORD')
             cloud_provider = os.getenv('CLOUD_PROVIDER', '').lower()
 
+            connection_class = Connection
+            if protocol == 'rediss' or port == 10000:
+                logger.info(f'Using SSLConnection for Redis (Port: {port})')
+                connection_class = SSLConnection
+
             pool_kwargs = {
+                'connection_class': connection_class,
                 'host': host,
                 'port': port,
                 'db': int(os.getenv('REDIS_DB', 0)),
@@ -93,10 +101,6 @@ class CacheManager:
                 'encoding': 'utf-8',
                 'decode_responses': True,
             }
-
-            if protocol == 'rediss' or port == 10000:
-                logger.info(f'Enabling SSL for Redis connection (Port: {port})')
-                pool_kwargs['ssl'] = True
 
             if cloud_provider == 'azure' and not password:
                 logger.info(
