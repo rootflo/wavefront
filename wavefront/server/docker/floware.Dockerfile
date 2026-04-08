@@ -17,7 +17,6 @@ COPY wavefront/server/modules/auth_module /app/modules/auth_module
 COPY wavefront/server/modules/common_module /app/modules/common_module
 COPY wavefront/server/modules/db_repo_module /app/modules/db_repo_module
 COPY wavefront/server/modules/gold_module /app/modules/gold_module
-COPY wavefront/server/modules/insights_module /app/modules/insights_module
 COPY wavefront/server/modules/knowledge_base_module /app/modules/knowledge_base_module
 COPY wavefront/server/modules/user_management_module /app/modules/user_management_module
 COPY wavefront/server/modules/llm_inference_config_module /app/modules/llm_inference_config_module
