@@ -2,6 +2,7 @@ import os
 import time
 from typing import Any, List, Optional, Union
 
+from azure.core.exceptions import ClientAuthenticationError
 from azure.identity import DefaultAzureCredential
 from common_module.common_cache import CommonCache
 from common_module.log.logger import logger
@@ -29,8 +30,12 @@ class AzureManagedRedisProvider(CredentialProvider):
         self.scope = 'https://redis.azure.com/.default'
 
     def get_credentials(self):
-        token = self.credential.get_token(self.scope)
-        return ('default', token.token)
+        try:
+            token = self.credential.get_token(self.scope)
+            return ('default', token.token)
+        except ClientAuthenticationError as e:
+            logger.error(f'Azure authentication failed: {e}')
+            raise
 
 
 class CacheManager(CommonCache):
