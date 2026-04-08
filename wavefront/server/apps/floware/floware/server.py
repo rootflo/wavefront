@@ -33,8 +33,6 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from gold_module.controllers.router import gold_router
 from gold_module.gold_container import GoldContainer
-from insights_module.controllers.router import insights_router
-from insights_module.insights_container import InsightsContainer
 
 from knowledge_base_module.controllers.knowledge_base_controller import (
     knowledge_base_router,
@@ -115,12 +113,6 @@ config = common_container.config()
 user_module_container = UserContainer(
     db_client=db_repo_container.db_client, cache_manager=db_repo_container.cache_manager
 )
-insights_container = InsightsContainer(
-    notification_repository=db_repo_container.notification_repository,
-    cache_manager=db_repo_container.cache_manager,
-)
-
-
 application_container = ApplicationContainer(
     db_client=db_repo_container.db_client,
     cloud_storage_manager=common_container.cloud_storage_manager,
@@ -128,8 +120,6 @@ application_container = ApplicationContainer(
     oauth_credential_repository=db_repo_container.oauth_credential_repository,
     user_repository=db_repo_container.user_repository,
     task_repository=db_repo_container.task_repository,
-    insights_service=insights_container.insights_service,
-    pvo_repository=insights_container.pvo_repository,
     notification_repository=db_repo_container.notification_repository,
     notification_user_repository=db_repo_container.notification_user_repository,
     config_repository=db_repo_container.config_repository,
@@ -376,7 +366,6 @@ app.add_middleware(
 app.include_router(notification_router, prefix='/floware')
 app.include_router(user_management_router, prefix='/floware')
 app.include_router(superset_controller, prefix='/floware')
-app.include_router(insights_router, prefix='/floware')
 app.include_router(knowledge_base_router, prefix='/floware')
 app.include_router(kb_document_router, prefix='/floware')
 app.include_router(rag_retrieval_router, prefix='/floware')
@@ -452,7 +441,6 @@ user_module_container.wire(
     packages=[
         'auth_module.controllers',
         'plugins_module.controllers',
-        'insights_module.controllers',
         'user_management_module.controllers',
         'user_management_module.authorization',
         'plugins_module.controllers',
@@ -465,16 +453,10 @@ auth_container.wire(
         'auth_module.controllers',
         'user_management_module.authorization',
         'user_management_module.controllers',
-        'insights_module.controllers',
         'plugins_module.services',
         'plugins_module.controllers',
         'llm_inference_config_module.controllers',
     ],
-)
-
-insights_container.wire(
-    modules=[__name__],
-    packages=['insights_module.controllers'],
 )
 
 gold_container.wire(
@@ -488,7 +470,6 @@ common_container.wire(
         'auth_module.controllers',
         'user_management_module.controllers',
         'user_management_module.authorization',
-        'insights_module.controllers',
         'floware.controllers',
         'knowledge_base_module.controllers',
         'gold_module.controllers',

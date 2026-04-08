@@ -16,9 +16,6 @@ class ApplicationContainer(containers.DeclarativeContainer):
     user_repository = providers.Dependency()
     task_repository = providers.Dependency()
 
-    insights_service = providers.Dependency()
-    pvo_repository = providers.Dependency()
-
     notification_repository = providers.Dependency()
     notification_user_repository = providers.Dependency()
     config_repository = providers.Dependency()
