@@ -31,11 +31,12 @@ class AzureManagedRedisProvider(CredentialProvider):
     def __init__(self):
         self.credential = DefaultAzureCredential()
         self.scope = 'https://redis.azure.com/.default'
+        self.username = os.getenv('REDIS_USERNAME', 'default')
 
     def get_credentials(self):
         try:
             token = self.credential.get_token(self.scope)
-            return ('default', token.token)
+            return (self.username, token.token)
         except ClientAuthenticationError as e:
             logger.error(f'Azure authentication failed: {e}')
             raise
