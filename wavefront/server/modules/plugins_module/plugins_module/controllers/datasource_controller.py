@@ -21,7 +21,6 @@ from datasource import DatasourcePlugin
 from datasource.types import DataSourceType, QueryResult, TableListResult
 from plugins_module.services.datasource_services import (
     check_admin,
-    check_is_valid_resource,
     fetch_data_filters,
     get_datasource_config,
     validate_datasource_payload,
@@ -30,6 +29,7 @@ from plugins_module.utils.helper import (
     AddDatasourcePayload,
     UpdateDatasourcePayload,
     InsertRowsJsonPayload,
+    UpdateRowsJsonPayload,
 )
 from plugins_module.plugins_container import PluginsContainer
 from user_management_module.user_container import UserContainer
@@ -429,15 +429,6 @@ async def query_datasource(
     user_id = request.state.session.user_id
     role_id = request.state.session.role_id
 
-    resource_is_valid = check_is_valid_resource(resource_id)
-    if not resource_is_valid:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(
-                f'Invalid resource name: {resource_id}'
-            ),
-        )
-
     if resource_id == 'parsed_data_object':
         resource_id = 'rf_parsed_data_object'
 
@@ -528,6 +519,48 @@ async def insert_rows_json(
             {
                 'message': f'Inserted {len(insert_rows_json_payload.data)} rows successfully'
             }
+        ),
+    )
+
+
+@datasource_router.patch('/v1/datasources/{datasource_id}/resources/{resource_id}')
+@inject
+async def update_rows_json(
+    _: Request,
+    datasource_id: str,
+    resource_id: str,
+    update_rows_json_payload: UpdateRowsJsonPayload,
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+):
+    datasource_type, datasource_config = await get_datasource_config(datasource_id)
+    if not datasource_config:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse(
+                f'Datasource not found: {datasource_id}'
+            ),
+        )
+
+    if not update_rows_json_payload.filter:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                'filter is required to update rows'
+            ),
+        )
+
+    datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
+    await datasource_plugin.update_rows_json(
+        resource_id,
+        update_rows_json_payload.filter,
+        update_rows_json_payload.data,
+    )
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            {'message': 'Rows updated successfully'}
         ),
     )
 

@@ -82,6 +82,12 @@ class DataSourceABC(ABC):
         pass
 
     @abstractmethod
+    async def update_rows_json(
+        self, table_name: str, filter: Dict[str, Any], data: Dict[str, Any]
+    ) -> None:
+        pass
+
+    @abstractmethod
     async def execute_dynamic_query(
         self,
         query: List[Dict[str, Any]],

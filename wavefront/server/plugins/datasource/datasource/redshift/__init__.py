@@ -64,6 +64,19 @@ class RedshiftPlugin(DataSourceABC):
     def insert_rows_json(self, table_name: str, data):
         pass
 
+    async def update_rows_json(
+        self, table_name: str, filter: Dict[str, Any], data: Dict[str, Any]
+    ) -> None:
+        set_params = {f'set_{k}': v for k, v in data.items()}
+        where_params = {f'where_{k}': v for k, v in filter.items()}
+        all_params = {**set_params, **where_params}
+        set_clause = ', '.join([f'{k} = :set_{k}' for k in data])
+        where_clause = ' AND '.join([f'{k} = :where_{k}' for k in filter])
+        query = (
+            f'UPDATE {self.db_name}.{table_name} SET {set_clause} WHERE {where_clause}'
+        )
+        await asyncio.to_thread(self.client.execute_query_as_dict, query, all_params)
+
     async def execute_query(
         self, query: str, use_legacy_sql: bool = False, dry_run: bool = False, **kwargs
     ) -> Any:

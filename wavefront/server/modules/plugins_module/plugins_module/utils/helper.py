@@ -22,6 +22,11 @@ class InsertRowsJsonPayload(BaseModel):
     data: List[Dict[str, Any]]
 
 
+class UpdateRowsJsonPayload(BaseModel):
+    filter: Dict[str, Any]
+    data: Dict[str, Any]
+
+
 class DynamicQueryRequest(BaseModel):
     dynamic_query: str
 

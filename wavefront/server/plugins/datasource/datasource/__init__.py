@@ -89,6 +89,11 @@ class DatasourcePlugin:
     def insert_rows_json(self, table_name: str, data: List[Dict[str, Any]]):
         return self.datasource.insert_rows_json(table_name, data)
 
+    async def update_rows_json(
+        self, table_name: str, filter: Dict[str, Any], data: Dict[str, Any]
+    ) -> None:
+        return await self.datasource.update_rows_json(table_name, filter, data)
+
     async def execute_query(
         self, query: str, use_legacy_sql: bool = False, dry_run: bool = False, **kwargs
     ) -> Any:

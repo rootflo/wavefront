@@ -47,18 +47,6 @@ async def check_admin(
     return role.name == 'admin'
 
 
-def check_is_valid_resource(resource_id: str) -> bool:
-    if resource_id in [
-        'parsed_data_object',
-        'rf_parsed_data_object',
-        'rf_gold_data_object',
-        'rf_gold_item_details',
-        'rf_gold_auditor_data',
-    ]:
-        return True
-    return False
-
-
 def fetch_data_filters(data_filters: list) -> str:
     group_filter = collections.defaultdict(list)
     for data_filter in data_filters:
