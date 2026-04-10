@@ -26,7 +26,7 @@ def upgrade() -> None:
 
     # HNSW index on embedding_vector for cosine distance (used in text RAG retrieval)
     op.execute("""
-        CREATE INDEX CONCURRENTLY IF NOT EXISTS
+        CREATE INDEX IF NOT EXISTS
             ix_kbe_embedding_vector_hnsw_cosine
         ON knowledge_base_embeddings
         USING hnsw ((embedding_vector::vector(512)) vector_cosine_ops)
@@ -35,7 +35,7 @@ def upgrade() -> None:
 
     # HNSW index on embedding_vector for L2 distance (used in CLIP image search)
     op.execute("""
-        CREATE INDEX CONCURRENTLY IF NOT EXISTS
+        CREATE INDEX IF NOT EXISTS
             ix_kbe_embedding_vector_hnsw_l2
         ON knowledge_base_embeddings
         USING hnsw ((embedding_vector::vector(512)) vector_l2_ops)
@@ -44,7 +44,7 @@ def upgrade() -> None:
 
     # HNSW index on embedding_vector_1 for cosine distance (used in DINO image search)
     op.execute("""
-        CREATE INDEX CONCURRENTLY IF NOT EXISTS
+        CREATE INDEX IF NOT EXISTS
             ix_kbe_embedding_vector_1_hnsw_cosine
         ON knowledge_base_embeddings
         USING hnsw ((embedding_vector_1::vector(1024)) vector_cosine_ops)
@@ -53,7 +53,7 @@ def upgrade() -> None:
 
     # GIN index on token column for fast full-text keyword search
     op.execute("""
-        CREATE INDEX CONCURRENTLY IF NOT EXISTS
+        CREATE INDEX IF NOT EXISTS
             ix_kbe_token_gin
         ON knowledge_base_embeddings
         USING gin (token)
@@ -61,9 +61,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute('DROP INDEX CONCURRENTLY IF EXISTS ix_kbe_embedding_vector_hnsw_cosine')
-    op.execute('DROP INDEX CONCURRENTLY IF EXISTS ix_kbe_embedding_vector_hnsw_l2')
-    op.execute(
-        'DROP INDEX CONCURRENTLY IF EXISTS ix_kbe_embedding_vector_1_hnsw_cosine'
-    )
-    op.execute('DROP INDEX CONCURRENTLY IF EXISTS ix_kbe_token_gin')
+    op.execute('DROP INDEX IF EXISTS ix_kbe_embedding_vector_hnsw_cosine')
+    op.execute('DROP INDEX IF EXISTS ix_kbe_embedding_vector_hnsw_l2')
+    op.execute('DROP INDEX IF EXISTS ix_kbe_embedding_vector_1_hnsw_cosine')
+    op.execute('DROP INDEX IF EXISTS ix_kbe_token_gin')
