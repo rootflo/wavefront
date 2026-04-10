@@ -48,6 +48,8 @@ class ImageRagRetrieve:
             clip_results = await self.image_retrieve(
                 clip_embedding, kb_id, threshold, top_k, query_filter
             )
+            if not clip_results:
+                return []
             reference_id_list = [str(data['document_id']) for data in clip_results]
             return await self.image_retrieve_dino(
                 dino_embedding,
