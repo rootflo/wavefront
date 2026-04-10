@@ -89,24 +89,37 @@ class QueryGenerator:
                 )
                 query_params.update(filter_params)
         sql_query = f"""
-            WITH vector_results AS (
+            WITH hnsw_candidates AS (
                 SELECT
-                    e.id as embedding_id,
-                    e.chunk_text,
-                    e.chunk_index,
+                    id,
+                    document_id,
+                    chunk_text,
+                    chunk_index,
+                    embedding_vector <=> :query_embed ::vector(512) AS distance
+                FROM
+                    {KnowledgeBaseEmbeddings.__tablename__}
+                ORDER BY
+                    embedding_vector <=> :query_embed ::vector(512)
+                LIMIT :limit * 10
+            ),
+            vector_results AS (
+                SELECT
+                    hc.id as embedding_id,
+                    hc.chunk_text,
+                    hc.chunk_index,
                     d.id as document_id,
                     d.file_path,
                     d.knowledge_base_id,
                     d.metadata_value,
-                    1 - (e.embedding_vector <=> :query_embed ::vector) as vector_score
+                    1 - hc.distance as vector_score
                 FROM
-                    {KnowledgeBaseEmbeddings.__tablename__} e
+                    hnsw_candidates hc
                 JOIN
-                    {KnowledgeBaseDocuments.__tablename__} d ON e.document_id = d.id
+                    {KnowledgeBaseDocuments.__tablename__} d ON hc.document_id = d.id
                 WHERE
                      d.knowledge_base_id = :kb_id {'AND (' + metadata_filter_clause_inner + ')' if metadata_filter_clause_inner else ''}
                 ORDER BY
-                    vector_score DESC
+                    hc.distance ASC
                 LIMIT :limit
             ),
             keyword_results AS (
@@ -190,7 +203,7 @@ class QueryGenerator:
                 d.file_name,
                 d.knowledge_base_id,
                 d.metadata_value,
-                e.embedding_vector <-> :query_embedding ::vector AS distance
+                e.embedding_vector <-> :query_embedding ::vector(512) AS distance
             FROM
                 {KnowledgeBaseEmbeddings.__tablename__} e
             JOIN
@@ -264,7 +277,7 @@ class QueryGenerator:
                 d.file_name,
                 d.knowledge_base_id,
                 d.metadata_value,
-                (1 - (e.embedding_vector_1 <=> :query_embedding ::vector)) AS similarity
+                (1 - (e.embedding_vector_1 <=> :query_embedding ::vector(1024))) AS similarity
             FROM {KnowledgeBaseEmbeddings.__tablename__} e
             JOIN {KnowledgeBaseDocuments.__tablename__} d ON e.document_id = d.id
             WHERE
@@ -346,4 +359,4 @@ class QueryGenerator:
         Returns:
             SQL query string
         """
-        return "UPDATE knowledge_base_embeddings SET token = to_tsvector('english', chunk_text)"
+        return "UPDATE knowledge_base_embeddings SET token = to_tsvector('english', chunk_text) WHERE token IS NULL"
