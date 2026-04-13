@@ -666,6 +666,7 @@ name = "call-processing"
 version = "0.1.0"
 source = { editable = "apps/call_processing" }
 dependencies = [
+    { name = "azure-identity" },
     { name = "dependency-injector" },
     { name = "fastapi" },
     { name = "httpx" },
@@ -683,6 +684,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "azure-identity", specifier = ">=1.17.0,<2.0.0" },
     { name = "dependency-injector", specifier = ">=4.46.0,<5.0.0" },
     { name = "fastapi", specifier = ">=0.115.2,<1.0.0" },
     { name = "httpx", specifier = ">=0.27.0" },
@@ -1042,6 +1044,7 @@ version = "0.1.0"
 source = { editable = "modules/db_repo_module" }
 dependencies = [
     { name = "alembic" },
+    { name = "azure-identity" },
     { name = "common-module" },
     { name = "dependency-injector" },
     { name = "pgvector" },
@@ -1054,6 +1057,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "alembic", specifier = ">=1.14.1,<2.0.0" },
+    { name = "azure-identity", specifier = ">=1.17.0,<2.0.0" },
     { name = "common-module", editable = "modules/common_module" },
     { name = "dependency-injector", specifier = ">=4.42.0,<5.0.0" },
     { name = "pgvector", specifier = ">=0.4.1" },
