@@ -3,6 +3,7 @@ import os
 from dependency_injector import containers
 from dependency_injector import providers
 from gold_module.services.cloud_image_service import AWSImageService
+from gold_module.services.cloud_image_service import AzureImageService
 from gold_module.services.cloud_image_service import GCPImageService
 from gold_module.services.image_service import ImageService
 
@@ -28,9 +29,20 @@ class GoldContainer(containers.DeclarativeContainer):
         topic_id=config.gcp.gold_topic_id,
     )
 
+    azure_image_service = providers.Singleton(
+        AzureImageService,
+        container_name=config.azure.asset_storage_bucket,
+        account_url=config.azure.account_url,
+        queue_url=config.azure.queue_url,
+        queue_name=config.azure.queue_name,
+    )
+
     # provider.selector is basically an if/else. if cloud_provider = gcp, gcp_image_service will be selected
     cloud_service = providers.Selector(
-        cloud_provider, aws=aws_image_service, gcp=gcp_image_service
+        cloud_provider,
+        aws=aws_image_service,
+        gcp=gcp_image_service,
+        azure=azure_image_service,
     )
 
     image_service = providers.Singleton(ImageService, cloud_service=cloud_service)

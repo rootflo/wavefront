@@ -1670,6 +1670,9 @@ name = "gold-module"
 version = "0.1.0"
 source = { editable = "modules/gold_module" }
 dependencies = [
+    { name = "azure-identity" },
+    { name = "azure-storage-blob" },
+    { name = "azure-storage-queue" },
     { name = "common-module" },
     { name = "dependency-injector" },
     { name = "fastapi" },
@@ -1679,6 +1682,9 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "azure-identity", specifier = ">=1.17.0,<2.0.0" },
+    { name = "azure-storage-blob", specifier = ">=12.20.0,<13.0.0" },
+    { name = "azure-storage-queue", specifier = ">=12.10.0,<13.0.0" },
     { name = "common-module", editable = "modules/common_module" },
     { name = "dependency-injector", specifier = ">=4.42.0,<5.0.0" },
     { name = "fastapi", specifier = ">=0.115.2,<1.0.0" },
