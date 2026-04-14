@@ -71,7 +71,6 @@ class QueryGenerator:
         }
         metadata_filter_clause_final = ''
         metadata_filter_clause_inner = ''
-        metadata_filter_clause_subquery = ''
         if filter:
             where_clause, filter_params = self.odata_parser.prepare_odata_filter(filter)
             if where_clause and filter_params:
@@ -88,11 +87,6 @@ class QueryGenerator:
                     filter_params,
                     lambda field: f"(d.metadata_value ->> '{field}')",
                 )
-                metadata_filter_clause_subquery = self.build_metadata_clause(
-                    where_clause,
-                    filter_params,
-                    lambda field: f"(metadata_value ->> '{field}')",
-                )
                 query_params.update(filter_params)
         sql_query = f"""
             WITH hnsw_candidates AS (
@@ -104,15 +98,9 @@ class QueryGenerator:
                     (embedding_vector::vector(512)) <=> :query_embed ::vector(512) AS distance
                 FROM
                     {KnowledgeBaseEmbeddings.__tablename__}
-                WHERE
-                    document_id IN (
-                        SELECT id FROM {KnowledgeBaseDocuments.__tablename__}
-                        WHERE knowledge_base_id = :kb_id
-                        {'AND (' + metadata_filter_clause_subquery + ')' if metadata_filter_clause_subquery else ''}
-                    )
                 ORDER BY
                     (embedding_vector::vector(512)) <=> :query_embed ::vector(512)
-                LIMIT :limit * 10
+                LIMIT :limit * 20
             ),
             vector_results AS (
                 SELECT
@@ -194,14 +182,14 @@ class QueryGenerator:
             'kb_id': kb_id,
             'top_k': top_k,
         }
-        metadata_filter_clause_subquery = ''
+        metadata_filter_clause = ''
         if filter:
             where_clause, filter_params = self.odata_parser.prepare_odata_filter(filter)
             if where_clause and filter_params:
-                metadata_filter_clause_subquery = self.build_metadata_clause(
+                metadata_filter_clause = self.build_metadata_clause(
                     where_clause,
                     filter_params,
-                    lambda field: f"(metadata_value ->> '{field}')",
+                    lambda field: f"(d.metadata_value ->> '{field}')",
                 )
                 params.update(filter_params)
         sql_query = f"""
@@ -211,18 +199,12 @@ class QueryGenerator:
                 document_id,
                 chunk_text,
                 chunk_index,
-                (embedding_vector::vector(512)) <-> :query_embedding ::vector(512) AS distance
+                (embedding_vector::vector(512)) <=> :query_embedding ::vector(512) AS distance
             FROM
                 {KnowledgeBaseEmbeddings.__tablename__}
-            WHERE
-                document_id IN (
-                    SELECT id FROM {KnowledgeBaseDocuments.__tablename__}
-                    WHERE knowledge_base_id = :kb_id
-                    {'AND (' + metadata_filter_clause_subquery + ')' if metadata_filter_clause_subquery else ''}
-                )
             ORDER BY
-                (embedding_vector::vector(512)) <-> :query_embedding ::vector(512)
-            LIMIT :top_k
+                (embedding_vector::vector(512)) <=> :query_embedding ::vector(512)
+            LIMIT :top_k * 20
         )
         SELECT
             hc.id AS embedding_id,
@@ -236,7 +218,10 @@ class QueryGenerator:
             hc.distance
         FROM hnsw_candidates hc
         JOIN {KnowledgeBaseDocuments.__tablename__} d ON hc.document_id = d.id
+        WHERE d.knowledge_base_id = :kb_id
+            {'AND (' + metadata_filter_clause + ')' if metadata_filter_clause else ''}
         ORDER BY hc.distance ASC
+        LIMIT :top_k
         """
 
         return sql_query, params
@@ -265,26 +250,21 @@ class QueryGenerator:
         params = {
             'query_embedding': query_embeddings,
             'kb_id': kb_id,
-            'top_k': effective_limit,
             'reference_ids': processed_reference_ids,
             'offset': effective_offset,
             'limit': effective_limit,
         }
 
-        metadata_filter_clause_subquery = ''
+        metadata_filter_clause = ''
         if filter:
             where_clause, filter_params = self.odata_parser.prepare_odata_filter(filter)
             if where_clause and filter_params:
-                metadata_filter_clause_subquery = self.build_metadata_clause(
+                metadata_filter_clause = self.build_metadata_clause(
                     where_clause,
                     filter_params,
-                    lambda field: f"(metadata_value ->> '{field}')",
+                    lambda field: f"(d.metadata_value ->> '{field}')",
                 )
                 params.update(filter_params)
-
-        reference_filter = (
-            'AND id = ANY(:reference_ids)' if processed_reference_ids else ''
-        )
 
         sql_query = f"""
         WITH hnsw_candidates AS (
@@ -296,15 +276,9 @@ class QueryGenerator:
                 (embedding_vector_1::vector(1024)) <=> :query_embedding ::vector(1024) AS distance
             FROM
                 {KnowledgeBaseEmbeddings.__tablename__}
-            WHERE
-                document_id IN (
-                    SELECT id FROM {KnowledgeBaseDocuments.__tablename__}
-                    WHERE knowledge_base_id = :kb_id {reference_filter}
-                    {'AND (' + metadata_filter_clause_subquery + ')' if metadata_filter_clause_subquery else ''}
-                )
             ORDER BY
                 (embedding_vector_1::vector(1024)) <=> :query_embedding ::vector(1024)
-            LIMIT :limit * 10
+            LIMIT :limit * 20
         )
         SELECT
             hc.id AS embedding_id,
@@ -318,6 +292,9 @@ class QueryGenerator:
             1 - hc.distance AS similarity
         FROM hnsw_candidates hc
         JOIN {KnowledgeBaseDocuments.__tablename__} d ON hc.document_id = d.id
+        WHERE d.knowledge_base_id = :kb_id
+            {('AND d.id = ANY(:reference_ids)' if processed_reference_ids else '')}
+            {'AND (' + metadata_filter_clause + ')' if metadata_filter_clause else ''}
         ORDER BY similarity DESC
         LIMIT :limit OFFSET :offset
         """

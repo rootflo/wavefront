@@ -26,9 +26,10 @@ def upgrade() -> None:
     # embedding_vector_1 → 1024 dims (DINO image embeddings)
     #
     # CREATE INDEX CONCURRENTLY must run outside a transaction block.
-    # We switch the connection to AUTOCOMMIT for the duration of this migration.
     connection = op.get_bind()
     connection.execution_options(isolation_level='AUTOCOMMIT')
+
+    connection.execute(text("SET maintenance_work_mem = '2GB'"))
 
     connection.execute(
         text("""
@@ -36,16 +37,6 @@ def upgrade() -> None:
             ix_kbe_embedding_vector_hnsw_cosine
         ON knowledge_base_embeddings
         USING hnsw ((embedding_vector::vector(512)) vector_cosine_ops)
-        WITH (m = 16, ef_construction = 64)
-    """)
-    )
-
-    connection.execute(
-        text("""
-        CREATE INDEX CONCURRENTLY IF NOT EXISTS
-            ix_kbe_embedding_vector_hnsw_l2
-        ON knowledge_base_embeddings
-        USING hnsw ((embedding_vector::vector(512)) vector_l2_ops)
         WITH (m = 16, ef_construction = 64)
     """)
     )
@@ -76,9 +67,6 @@ def downgrade() -> None:
 
     connection.execute(
         text('DROP INDEX CONCURRENTLY IF EXISTS ix_kbe_embedding_vector_hnsw_cosine')
-    )
-    connection.execute(
-        text('DROP INDEX CONCURRENTLY IF EXISTS ix_kbe_embedding_vector_hnsw_l2')
     )
     connection.execute(
         text('DROP INDEX CONCURRENTLY IF EXISTS ix_kbe_embedding_vector_1_hnsw_cosine')
