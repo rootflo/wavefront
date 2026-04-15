@@ -26,7 +26,10 @@ def upgrade() -> None:
     # embedding_vector_1 → 1024 dims (DINO image embeddings)
     #
     # CREATE INDEX CONCURRENTLY must run outside a transaction block.
+    # SQLAlchemy 2.x autobegins a transaction on get_bind(); we must COMMIT it
+    # before switching to AUTOCOMMIT, otherwise isolation_level change is rejected.
     connection = op.get_bind()
+    connection.execute(text('COMMIT'))
     connection.execution_options(isolation_level='AUTOCOMMIT')
 
     connection.execute(text("SET maintenance_work_mem = '2GB'"))
@@ -63,6 +66,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     connection = op.get_bind()
+    connection.execute(text('COMMIT'))
     connection.execution_options(isolation_level='AUTOCOMMIT')
 
     connection.execute(
