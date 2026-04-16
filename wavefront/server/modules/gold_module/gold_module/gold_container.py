@@ -31,7 +31,7 @@ class GoldContainer(containers.DeclarativeContainer):
 
     azure_image_service = providers.Singleton(
         AzureImageService,
-        container_name=config.azure.asset_storage_bucket,
+        container_name=config.floware.asset_storage_bucket,
         account_url=config.azure.account_url,
         queue_url=config.azure.queue_url,
         queue_name=config.azure.queue_name,
