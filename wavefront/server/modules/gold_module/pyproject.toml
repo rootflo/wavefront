@@ -13,6 +13,9 @@ dependencies = [
     "fastapi>=0.115.2,<1.0.0",
     "google-cloud-storage<3.0.0",
     "google-cloud-pubsub>=2.29.0,<3.0.0",
+    "azure-identity>=1.17.0,<2.0.0",
+    "azure-storage-blob>=12.20.0,<13.0.0",
+    "azure-storage-queue>=12.10.0,<13.0.0",
 ]
 
 [tool.uv.sources]
