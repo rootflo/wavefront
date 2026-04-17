@@ -1,6 +1,7 @@
 from typing import Dict, Any
 from datasource.bigquery.config import BigQueryConfig
 from datasource.redshift.config import RedshiftConfig
+from datasource.postgres.config import PostgresConfig
 from dependency_injector.wiring import inject
 import json
 from dependency_injector.wiring import Provide
@@ -90,6 +91,8 @@ async def add_datasource(
         config = BigQueryConfig(**config_json)
     elif add_datasource_payload.type == DataSourceType.AWS_REDSHIFT:
         config = RedshiftConfig(**config_json)
+    elif add_datasource_payload.type == DataSourceType.POSTGRES:
+        config = PostgresConfig(**config_json)
     else:
         raise ValueError(f'Invalid datasource type: {add_datasource_payload.type}')
 
@@ -181,6 +184,8 @@ async def update_datasource(
                 config = BigQueryConfig(**payload_config)
             elif datasource_type == DataSourceType.AWS_REDSHIFT:
                 config = RedshiftConfig(**payload_config)
+            elif datasource_type == DataSourceType.POSTGRES:
+                config = PostgresConfig(**payload_config)
             else:
                 raise ValueError(f'Invalid datasource type: {datasource_type}')
 
