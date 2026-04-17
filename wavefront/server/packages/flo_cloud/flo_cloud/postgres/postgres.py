@@ -6,6 +6,7 @@ from contextlib import contextmanager
 
 import psycopg2
 import psycopg2.extras
+from psycopg2 import sql
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +114,7 @@ class PostgresClient:
         self,
         projection: str = '*',
         table_prefix: str = '',
-        table_names: List[str] = [],
+        table_names: Optional[List[str]] = None,
         where_clause: str = 'true',
         join_query: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
@@ -176,11 +177,14 @@ class PostgresClient:
         for i, table_name in enumerate(table_names):
             alias = aliases[i]
             qualified = f'{table_prefix}{table_name}'
-            processed_join = processed_join.replace(
-                f'JOIN {table_name}', f'LEFT JOIN {qualified} AS {alias}'
+            escaped = re.escape(table_name)
+            processed_join = re.sub(
+                rf'\bJOIN\s+{escaped}\b',
+                f'LEFT JOIN {qualified} AS {alias}',
+                processed_join,
             )
-            processed_join = processed_join.replace(f'{table_name}.', f'{alias}.')
-            processed_where = processed_where.replace(f'{table_name}.', f'{alias}.')
+            processed_join = re.sub(rf'\b{escaped}\.', f'{alias}.', processed_join)
+            processed_where = re.sub(rf'\b{escaped}\.', f'{alias}.', processed_where)
 
         group_by_clause = f'GROUP BY {group_by}' if group_by else ''
         order_by_clause = f'ORDER BY {order_by}' if order_by else ''
@@ -245,9 +249,11 @@ class PostgresClient:
             for row in data
         ]
         columns = list(serialized[0].keys())
-        col_str = ', '.join(columns)
-        val_str = ', '.join(f'%({col})s' for col in columns)
-        query = f'INSERT INTO {table_name} ({col_str}) VALUES ({val_str})'
+        query = sql.SQL('INSERT INTO {table} ({cols}) VALUES ({vals})').format(
+            table=sql.Identifier(*table_name.split('.')),
+            cols=sql.SQL(', ').join(map(sql.Identifier, columns)),
+            vals=sql.SQL(', ').join(sql.Placeholder(name=col) for col in columns),
+        )
         with self.get_connection() as conn:
             cursor = conn.cursor()
             try:

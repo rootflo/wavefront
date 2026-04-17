@@ -1,4 +1,5 @@
 import asyncio
+import re
 from typing import Any, Dict, List, Optional
 
 from ..types import DataSourceABC
@@ -83,11 +84,13 @@ class PostgresPlugin(DataSourceABC):
 
         for query_obj in query:
             query_to_execute = query_obj.get('query', '')
-            query_params = query_obj.get('parameters', {})
+            query_params = query_obj.get('parameters', [])
             query_id = query_obj.get('id')
             if not query_id:
                 raise ValueError('Query ID is required')
 
+            if not isinstance(query_params, list):
+                raise ValueError(f'parameters for query {query_id} must be a list')
             params_key = [p['name'] for p in query_params]
             params_to_execute: Dict[str, Any] = {}
 
@@ -110,7 +113,24 @@ class PostgresPlugin(DataSourceABC):
             query_to_execute = query_to_execute.replace(
                 '{{filters}}', f'{odata_filter}' if odata_filter else 'TRUE'
             )
-            query_to_execute += f' LIMIT {limit} OFFSET {offset}'
+            query_to_execute = query_to_execute.rstrip().rstrip(';')
+            depth = 0
+            has_top_level_limit = False
+            for token in re.split(r'(\(|\))', query_to_execute):
+                if token == '(':
+                    depth += 1
+                elif token == ')':
+                    depth -= 1
+                elif depth == 0 and re.search(r'\bLIMIT\b', token, re.IGNORECASE):
+                    has_top_level_limit = True
+                    break
+            if has_top_level_limit:
+                query_to_execute = (
+                    f'SELECT * FROM ({query_to_execute}) AS _sub'
+                    f' LIMIT {limit} OFFSET {offset}'
+                )
+            else:
+                query_to_execute += f' LIMIT {limit} OFFSET {offset}'
 
             task = asyncio.create_task(
                 asyncio.to_thread(
