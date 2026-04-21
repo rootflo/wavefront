@@ -135,7 +135,7 @@ class FlowareProxyService:
         # Step 6: Make request to floware
         if is_streaming:
             # Streaming path: Keep client and stream contexts alive during iteration
-            client = httpx.AsyncClient(timeout=120.0)
+            client = httpx.AsyncClient(timeout=1200.0)
 
             # Start the stream context
             stream_context = client.stream(
@@ -178,7 +178,7 @@ class FlowareProxyService:
             )
 
         # Non-streaming path: Use context manager for automatic cleanup
-        async with httpx.AsyncClient(timeout=600.0) as client:
+        async with httpx.AsyncClient(timeout=1200.0) as client:
             # Non-streaming path: Buffer entire response (backward compatible)
             response = await client.request(
                 method=method,
