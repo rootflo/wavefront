@@ -726,7 +726,7 @@ const WorkflowDetail: React.FC = () => {
           <DialogHeader>
             <DialogTitle>Edit Workflow Configuration</DialogTitle>
           </DialogHeader>
-          <div className="flex flex-col gap-3 py-4">
+          <div className="flex flex-col gap-3 overflow-auto py-4">
             <CodeMirror
               value={yamlContent}
               editable={true}
