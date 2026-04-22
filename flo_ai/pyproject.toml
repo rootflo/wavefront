@@ -23,8 +23,7 @@ dependencies = [
     "opentelemetry-instrumentation>=0.54b0",
     "pydantic>=2.9.2,<3",
     "pyjwt>=2.10.1",
-    "pypdf>=4.2.0,<5",
-    "pymupdf4llm>=0.0.17,<0.0.18",
+    "pymupdf>=1.24.0,<2",
     "pyyaml>=6.0.3,<7",
 ]
 

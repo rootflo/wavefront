@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import AsyncIterator, Dict, Any, List, Optional
 from datetime import datetime, timedelta
-from flo_ai.models.chat_message import ImageMessageContent
+from flo_ai.models.chat_message import DocumentMessageContent, ImageMessageContent
 import jwt
 import httpx
 import asyncio
@@ -318,3 +318,9 @@ class RootFloLLM(BaseLLM):
         if self._llm is None:
             raise RuntimeError('LLM initialization failed: _llm is None')
         return self._llm.format_image_in_message(image)
+
+    async def format_document_in_message(self, document: DocumentMessageContent) -> Any:
+        """Delegate document formatting to the underlying provider LLM."""
+        if self._llm is None:
+            raise RuntimeError('LLM initialization failed: _llm is None')
+        return await self._llm.format_document_in_message(document)

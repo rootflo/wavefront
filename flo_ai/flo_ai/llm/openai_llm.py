@@ -24,7 +24,10 @@ class OpenAI(BaseLLM):
         **kwargs,
     ):
         super().__init__(
-            model=model, api_key=api_key, temperature=temperature, **kwargs
+            model=model,
+            api_key=api_key,
+            temperature=temperature,
+            **kwargs,
         )
 
         self.client = AsyncOpenAI(
