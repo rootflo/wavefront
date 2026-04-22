@@ -13,7 +13,7 @@ dependencies = [
     "flo-utils",
     "tools-module",
     "api-services-module",
-    "flo-ai==1.1.3",
+    "flo-ai==1.1.4",
 ]
 
 [tool.uv.sources]
