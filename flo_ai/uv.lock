@@ -903,8 +903,7 @@ dependencies = [
     { name = "opentelemetry-sdk" },
     { name = "pydantic" },
     { name = "pyjwt" },
-    { name = "pymupdf4llm" },
-    { name = "pypdf" },
+    { name = "pymupdf" },
     { name = "pyyaml" },
 ]
 
@@ -949,8 +948,7 @@ requires-dist = [
     { name = "opentelemetry-sdk", specifier = ">=1.28.2,<2" },
     { name = "pydantic", specifier = ">=2.9.2,<3" },
     { name = "pyjwt", specifier = ">=2.10.1" },
-    { name = "pymupdf4llm", specifier = ">=0.0.17,<0.0.18" },
-    { name = "pypdf", specifier = ">=4.2.0,<5" },
+    { name = "pymupdf", specifier = ">=1.24.0,<2" },
     { name = "pyyaml", specifier = ">=6.0.3,<7" },
 ]
 provides-extras = ["vizualize"]
@@ -3279,36 +3277,12 @@ wheels = [
 ]
 
 [[package]]
-name = "pymupdf4llm"
-version = "0.0.17"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pymupdf" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/2e/3c/1a530a410bdf76d83289bf30b3b86236d338b3f5f21842790c2cf7e9c1f6/pymupdf4llm-0.0.17.tar.gz", hash = "sha256:27287ef9fe0217cf37841a3ef2bcf70da2553c43d95ea39b664a6de6485678c3", size = 25180, upload-time = "2024-09-21T18:40:01.033Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ae/af/1576ecfc8a62d31c0c8b34b856e52f6b05f1d76546dbac0e1d037f044a9e/pymupdf4llm-0.0.17-py3-none-any.whl", hash = "sha256:26de9996945f15e3ca507908f80dc18a959f5b5214bb2e302c7f7034089665a0", size = 26190, upload-time = "2024-09-21T18:40:03.097Z" },
-]
-
-[[package]]
 name = "pyparsing"
 version = "3.2.5"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f2/a5/181488fc2b9d093e3972d2a472855aae8a03f000592dbfce716a512b3359/pyparsing-3.2.5.tar.gz", hash = "sha256:2df8d5b7b2802ef88e8d016a2eb9c7aeaa923529cd251ed0fe4608275d4105b6", size = 1099274, upload-time = "2025-09-21T04:11:06.277Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/10/5e/1aa9a93198c6b64513c9d7752de7422c06402de6600a8767da1524f9570b/pyparsing-3.2.5-py3-none-any.whl", hash = "sha256:e38a4f02064cf41fe6593d328d0512495ad1f3d8a91c4f73fc401b3079a59a5e", size = 113890, upload-time = "2025-09-21T04:11:04.117Z" },
-]
-
-[[package]]
-name = "pypdf"
-version = "4.3.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/f0/65/2ed7c9e1d31d860f096061b3dd2d665f501e09faaa0409a3f0d719d2a16d/pypdf-4.3.1.tar.gz", hash = "sha256:b2f37fe9a3030aa97ca86067a56ba3f9d3565f9a791b305c7355d8392c30d91b", size = 293266, upload-time = "2024-07-21T19:35:20.207Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/3c/60/eccdd92dd4af3e4bea6d6a342f7588c618a15b9bec4b968af581e498bcc4/pypdf-4.3.1-py3-none-any.whl", hash = "sha256:64b31da97eda0771ef22edb1bfecd5deee4b72c3d1736b7df2689805076d6418", size = 295825, upload-time = "2024-07-21T19:35:18.126Z" },
 ]
 
 [[package]]

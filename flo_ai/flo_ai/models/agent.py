@@ -35,13 +35,18 @@ class ParserFieldModel(BaseModel):
     """A field definition in a parser configuration."""
 
     name: str = Field(..., description='Field name')
-    type: Literal['str', 'int', 'bool', 'float', 'literal', 'object', 'array'] = Field(
-        ..., description='Field type'
-    )
+    type: Literal[
+        'str', 'int', 'bool', 'float', 'literal', 'enum', 'object', 'array'
+    ] = Field(..., description='Field type')
     description: str = Field(..., description='Field description')
     required: Optional[bool] = Field(None, description='Whether field is required')
-    values: Optional[List[LiteralValueModel]] = Field(
-        None, description='Values for literal type fields'
+    values: Optional[List[Union[LiteralValueModel, str, int, float]]] = Field(
+        None,
+        description=(
+            "Allowed values. For 'literal' type, use LiteralValueModel entries "
+            "(value + description [+ examples]). For 'enum' type, use plain "
+            'primitives (str/int/float) or LiteralValueModel entries.'
+        ),
     )
     items: Optional['ParserFieldModel'] = Field(
         None, description='Item type for array fields'
@@ -50,14 +55,18 @@ class ParserFieldModel(BaseModel):
         None, description='Nested fields for object type fields'
     )
     default_value_prompt: Optional[str] = Field(
-        None, description='Default value prompt for literal fields'
+        None, description='Default value prompt for literal/enum fields'
     )
 
     def model_post_init(self, __context):
-        """Validate that literal type fields have values."""
+        """Validate type-specific required attributes."""
         if self.type == 'literal' and not self.values:
             raise ValueError(
                 f"Field '{self.name}' of type 'literal' must specify 'values'."
+            )
+        if self.type == 'enum' and not self.values:
+            raise ValueError(
+                f"Field '{self.name}' of type 'enum' must specify 'values'."
             )
         if self.type == 'array' and not self.items:
             raise ValueError(
@@ -67,6 +76,17 @@ class ParserFieldModel(BaseModel):
             raise ValueError(
                 f"Field '{self.name}' of type 'object' must specify 'fields'."
             )
+
+        if self.type == 'literal' and self.values:
+            non_literal = [
+                v for v in self.values if not isinstance(v, LiteralValueModel)
+            ]
+            if non_literal:
+                raise ValueError(
+                    f"Field '{self.name}' of type 'literal' requires each value to be "
+                    "an object with 'value' and 'description'. Use type 'enum' for "
+                    'plain primitive values.'
+                )
 
 
 class ParserModel(BaseModel):

@@ -37,9 +37,17 @@ class AzureOpenAI(BaseLLM):
             temperature: Sampling temperature
             custom_headers: Optional additional headers to send with each request
             **kwargs: Extra parameters forwarded to the SDK client / calls
+
+        PDFs are sent to the underlying deployment as rasterized page images
+        via the Chat Completions multimodal format. The deployment must be
+        vision-capable (gpt-4o, gpt-4.1, gpt-5, etc.); text-only deployments
+        will error on the first document call.
         """
         super().__init__(
-            model=model, api_key=api_key, temperature=temperature, **kwargs
+            model=model,
+            api_key=api_key,
+            temperature=temperature,
+            **kwargs,
         )
         self.client = AsyncAzureOpenAI(
             api_key=self.api_key,
