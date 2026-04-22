@@ -26,6 +26,7 @@ class ImageMessageContent(MediaMessageContent):
 
     def __post_init__(self):
         self.type = 'image'
+        self._formatted_cache: Dict[str, Any] = {}
 
 
 @dataclass
@@ -37,6 +38,10 @@ class DocumentMessageContent(MediaMessageContent):
 
     def __post_init__(self):
         self.type = 'document'
+        # Cache of provider-formatted payloads keyed by LLM class name.
+        # Avoids re-running PDF rasterization / text extraction across
+        # multiple agent nodes or retry attempts.
+        self._formatted_cache: Dict[str, Any] = {}
 
 
 @dataclass
