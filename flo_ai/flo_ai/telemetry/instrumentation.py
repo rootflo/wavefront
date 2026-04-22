@@ -6,6 +6,7 @@ from typing import Optional, Dict, Any, Callable
 from functools import wraps
 from opentelemetry.trace import Status, StatusCode, Span
 from .telemetry import get_tracer, get_meter
+from flo_ai.utils.profiler import aprofile, record as _profile_record
 import time
 import asyncio
 
@@ -368,16 +369,25 @@ def trace_llm_call(provider: str = '', model: str = ''):
     def decorator(func: Callable):
         @wraps(func)
         async def async_wrapper(*args, **kwargs):
-            tracer = get_tracer()
-            if not tracer:
-                return await func(*args, **kwargs)
-
-            # Extract self to get instance attributes
             self_arg = args[0] if args else None
             actual_model = model or (getattr(self_arg, 'model', '') if self_arg else '')
             actual_provider = provider or (
                 self_arg.__class__.__name__ if self_arg else ''
             )
+            profile_label = f'llm.{actual_provider}.generate[{actual_model}]'
+
+            tracer = get_tracer()
+            if not tracer:
+                async with aprofile(profile_label):
+                    start_time = time.time()
+                    try:
+                        return await func(*args, **kwargs)
+                    finally:
+                        llm_metrics.record_latency(
+                            (time.time() - start_time) * 1000,
+                            actual_model,
+                            actual_provider,
+                        )
 
             with tracer.start_as_current_span(
                 f'llm.{actual_provider}.generate',
@@ -389,38 +399,45 @@ def trace_llm_call(provider: str = '', model: str = ''):
                     else 0.0,
                 },
             ) as span:
-                start_time = time.time()
-                try:
-                    result = await func(*args, **kwargs)
+                async with aprofile(profile_label):
+                    start_time = time.time()
+                    try:
+                        result = await func(*args, **kwargs)
 
-                    # Record success
-                    duration_ms = (time.time() - start_time) * 1000
-                    llm_metrics.record_request(actual_model, actual_provider, 'success')
-                    llm_metrics.record_latency(
-                        duration_ms, actual_model, actual_provider
-                    )
+                        # Record success
+                        duration_ms = (time.time() - start_time) * 1000
+                        llm_metrics.record_request(
+                            actual_model, actual_provider, 'success'
+                        )
+                        llm_metrics.record_latency(
+                            duration_ms, actual_model, actual_provider
+                        )
 
-                    span.set_status(Status(StatusCode.OK))
-                    span.set_attribute('llm.response.received', True)
+                        span.set_status(Status(StatusCode.OK))
+                        span.set_attribute('llm.response.received', True)
 
-                    return result
+                        return result
 
-                except Exception as e:
-                    # Record error
-                    duration_ms = (time.time() - start_time) * 1000
-                    error_type = type(e).__name__
+                    except Exception as e:
+                        # Record error
+                        duration_ms = (time.time() - start_time) * 1000
+                        error_type = type(e).__name__
 
-                    llm_metrics.record_request(actual_model, actual_provider, 'error')
-                    llm_metrics.record_error(actual_model, actual_provider, error_type)
-                    llm_metrics.record_latency(
-                        duration_ms, actual_model, actual_provider
-                    )
+                        llm_metrics.record_request(
+                            actual_model, actual_provider, 'error'
+                        )
+                        llm_metrics.record_error(
+                            actual_model, actual_provider, error_type
+                        )
+                        llm_metrics.record_latency(
+                            duration_ms, actual_model, actual_provider
+                        )
 
-                    span.set_status(Status(StatusCode.ERROR, str(e)))
-                    span.set_attribute('error.type', error_type)
-                    span.set_attribute('error.message', str(e))
+                        span.set_status(Status(StatusCode.ERROR, str(e)))
+                        span.set_attribute('error.type', error_type)
+                        span.set_attribute('error.message', str(e))
 
-                    raise
+                        raise
 
         @wraps(func)
         def sync_wrapper(*args, **kwargs):
@@ -495,74 +512,84 @@ def trace_llm_stream(provider: str = '', model: str = ''):
     def decorator(func: Callable):
         @wraps(func)
         async def async_wrapper(*args, **kwargs):
-            tracer = get_tracer()
-            if not tracer:
-                async for chunk in func(*args, **kwargs):
-                    yield chunk
-                return
-
-            # Extract self to get instance attributes
             self_arg = args[0] if args else None
             actual_model = model or (getattr(self_arg, 'model', '') if self_arg else '')
             actual_provider = provider or (
                 self_arg.__class__.__name__ if self_arg else ''
             )
+            stream_label = f'llm.{actual_provider}.stream[{actual_model}]'
 
-            with tracer.start_as_current_span(
-                f'llm.{actual_provider}.stream',
-                attributes={
-                    'llm.provider': actual_provider,
-                    'llm.model': actual_model,
-                    'llm.temperature': getattr(self_arg, 'temperature', 0.0)
-                    if self_arg
-                    else 0.0,
-                    'llm.operation': 'stream',
-                },
-            ) as span:
-                start_time = time.time()
-                chunk_count = 0
-                try:
-                    # Record stream start
-                    llm_metrics.record_stream(actual_model, actual_provider, 'start')
-
-                    # Track the streaming response
+            tracer = get_tracer()
+            if not tracer:
+                async with aprofile(stream_label):
                     async for chunk in func(*args, **kwargs):
-                        chunk_count += 1
                         yield chunk
+                return
 
-                    # Record success
-                    duration_ms = (time.time() - start_time) * 1000
-                    llm_metrics.record_stream(actual_model, actual_provider, 'success')
-                    llm_metrics.record_stream_chunks(
-                        chunk_count, actual_model, actual_provider
-                    )
-                    llm_metrics.record_stream_latency(
-                        duration_ms, actual_model, actual_provider
-                    )
+            async with aprofile(stream_label):
+                with tracer.start_as_current_span(
+                    f'llm.{actual_provider}.stream',
+                    attributes={
+                        'llm.provider': actual_provider,
+                        'llm.model': actual_model,
+                        'llm.temperature': getattr(self_arg, 'temperature', 0.0)
+                        if self_arg
+                        else 0.0,
+                        'llm.operation': 'stream',
+                    },
+                ) as span:
+                    start_time = time.time()
+                    chunk_count = 0
+                    try:
+                        # Record stream start
+                        llm_metrics.record_stream(
+                            actual_model, actual_provider, 'start'
+                        )
 
-                    span.set_status(Status(StatusCode.OK))
-                    span.set_attribute('llm.stream.chunks', chunk_count)
-                    span.set_attribute('llm.stream.duration_ms', duration_ms)
-                    span.set_attribute('llm.stream.completed', True)
+                        # Track the streaming response
+                        async for chunk in func(*args, **kwargs):
+                            chunk_count += 1
+                            yield chunk
 
-                except Exception as e:
-                    # Record error
-                    duration_ms = (time.time() - start_time) * 1000
-                    error_type = type(e).__name__
+                        # Record success
+                        duration_ms = (time.time() - start_time) * 1000
+                        llm_metrics.record_stream(
+                            actual_model, actual_provider, 'success'
+                        )
+                        llm_metrics.record_stream_chunks(
+                            chunk_count, actual_model, actual_provider
+                        )
+                        llm_metrics.record_stream_latency(
+                            duration_ms, actual_model, actual_provider
+                        )
 
-                    llm_metrics.record_stream(actual_model, actual_provider, 'error')
-                    llm_metrics.record_error(actual_model, actual_provider, error_type)
-                    llm_metrics.record_stream_latency(
-                        duration_ms, actual_model, actual_provider
-                    )
+                        span.set_status(Status(StatusCode.OK))
+                        span.set_attribute('llm.stream.chunks', chunk_count)
+                        span.set_attribute('llm.stream.duration_ms', duration_ms)
+                        span.set_attribute('llm.stream.completed', True)
 
-                    span.set_status(Status(StatusCode.ERROR, str(e)))
-                    span.set_attribute('error.type', error_type)
-                    span.set_attribute('error.message', str(e))
-                    span.set_attribute('llm.stream.chunks', chunk_count)
-                    span.set_attribute('llm.stream.duration_ms', duration_ms)
+                    except Exception as e:
+                        # Record error
+                        duration_ms = (time.time() - start_time) * 1000
+                        error_type = type(e).__name__
 
-                    raise
+                        llm_metrics.record_stream(
+                            actual_model, actual_provider, 'error'
+                        )
+                        llm_metrics.record_error(
+                            actual_model, actual_provider, error_type
+                        )
+                        llm_metrics.record_stream_latency(
+                            duration_ms, actual_model, actual_provider
+                        )
+
+                        span.set_status(Status(StatusCode.ERROR, str(e)))
+                        span.set_attribute('error.type', error_type)
+                        span.set_attribute('error.message', str(e))
+                        span.set_attribute('llm.stream.chunks', chunk_count)
+                        span.set_attribute('llm.stream.duration_ms', duration_ms)
+
+                        raise
 
         return async_wrapper
 
@@ -585,58 +612,65 @@ def trace_agent_execution(agent_name: str = ''):
     def decorator(func: Callable):
         @wraps(func)
         async def async_wrapper(*args, **kwargs):
-            tracer = get_tracer()
-            if not tracer:
-                return await func(*args, **kwargs)
-
             self_arg = args[0] if args else None
             actual_agent_name = agent_name or (
                 getattr(self_arg, 'name', '') if self_arg else ''
             )
             agent_type = getattr(self_arg, 'agent_type', '') if self_arg else ''
+            profile_label = f'agent.{actual_agent_name}.run'
 
-            with tracer.start_as_current_span(
-                f'agent.{actual_agent_name}.run',
-                attributes={
-                    'agent.name': actual_agent_name,
-                    'agent.type': str(agent_type),
-                },
-            ) as span:
-                start_time = time.time()
-                try:
-                    result = await func(*args, **kwargs)
+            tracer = get_tracer()
+            if not tracer:
+                async with aprofile(profile_label):
+                    start_time = time.time()
+                    try:
+                        return await func(*args, **kwargs)
+                    finally:
+                        _profile_record(profile_label, time.time() - start_time)
 
-                    duration_ms = (time.time() - start_time) * 1000
-                    agent_metrics.record_execution(
-                        actual_agent_name, str(agent_type), 'success'
-                    )
-                    agent_metrics.record_latency(
-                        duration_ms, actual_agent_name, str(agent_type)
-                    )
+            async with aprofile(profile_label):
+                with tracer.start_as_current_span(
+                    f'agent.{actual_agent_name}.run',
+                    attributes={
+                        'agent.name': actual_agent_name,
+                        'agent.type': str(agent_type),
+                    },
+                ) as span:
+                    start_time = time.time()
+                    try:
+                        result = await func(*args, **kwargs)
 
-                    span.set_status(Status(StatusCode.OK))
-                    span.set_attribute(
-                        'agent.result.length', len(str(result)) if result else 0
-                    )
+                        duration_ms = (time.time() - start_time) * 1000
+                        agent_metrics.record_execution(
+                            actual_agent_name, str(agent_type), 'success'
+                        )
+                        agent_metrics.record_latency(
+                            duration_ms, actual_agent_name, str(agent_type)
+                        )
 
-                    return result
+                        span.set_status(Status(StatusCode.OK))
+                        span.set_attribute(
+                            'agent.result.length', len(str(result)) if result else 0
+                        )
 
-                except Exception as e:
-                    duration_ms = (time.time() - start_time) * 1000
-                    error_type = type(e).__name__
+                        return result
 
-                    agent_metrics.record_execution(
-                        actual_agent_name, str(agent_type), 'error'
-                    )
-                    agent_metrics.record_error(actual_agent_name, error_type)
-                    agent_metrics.record_latency(
-                        duration_ms, actual_agent_name, str(agent_type)
-                    )
+                    except Exception as e:
+                        duration_ms = (time.time() - start_time) * 1000
+                        error_type = type(e).__name__
 
-                    span.set_status(Status(StatusCode.ERROR, str(e)))
-                    span.set_attribute('error.type', error_type)
+                        agent_metrics.record_execution(
+                            actual_agent_name, str(agent_type), 'error'
+                        )
+                        agent_metrics.record_error(actual_agent_name, error_type)
+                        agent_metrics.record_latency(
+                            duration_ms, actual_agent_name, str(agent_type)
+                        )
 
-                    raise
+                        span.set_status(Status(StatusCode.ERROR, str(e)))
+                        span.set_attribute('error.type', error_type)
+
+                        raise
 
         return async_wrapper
 

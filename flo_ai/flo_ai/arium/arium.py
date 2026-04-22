@@ -16,6 +16,7 @@ from flo_ai.utils.variable_extractor import (
 )
 from flo_ai.telemetry.instrumentation import workflow_metrics
 from flo_ai.telemetry import get_tracer
+from flo_ai.utils.profiler import aprofile, record as _profile_record
 from opentelemetry.trace import Status, StatusCode
 import asyncio
 import time
@@ -198,6 +199,20 @@ class Arium(BaseArium):
             callback(event)
 
     async def _execute_graph(
+        self,
+        inputs: List[BaseMessage],
+        event_callback: Optional[Callable[[AriumEvent], None]] = None,
+        events_filter: Optional[List[AriumEventType]] = None,
+        variables: Optional[Dict[str, Any]] = None,
+    ):
+        async with aprofile(
+            f'arium.execute_graph[{getattr(self, "name", "unnamed_workflow")}]'
+        ):
+            return await self._execute_graph_impl(
+                inputs, event_callback, events_filter, variables
+            )
+
+    async def _execute_graph_impl(
         self,
         inputs: List[BaseMessage],
         event_callback: Optional[Callable[[AriumEvent], None]] = None,
@@ -464,33 +479,9 @@ class Arium(BaseArium):
                 },
             ) as node_span:
                 try:
-                    # Execute the node based on its type
-
-                    if isinstance(node, Agent):
-                        # Variables are already resolved, pass empty dict to avoid re-processing
-                        result = await node.run(inputs, variables={})
-                    elif isinstance(node, FunctionNode):
-                        result = await node.run(inputs, variables=None)
-                    elif isinstance(node, ForEachNode):
-                        foreach_results: List[
-                            MessageMemoryItem | BaseMessage
-                        ] = await node.run(
-                            inputs,
-                            variables=variables,
-                        )
-                        result = self._flatten_results(foreach_results)
-                    elif isinstance(node, AriumNode):
-                        # AriumNode execution
-                        arium_result: List[MessageMemoryItem] = await node.run(
-                            inputs, variables=variables
-                        )
-                        result = self._flatten_results(arium_result)
-                    elif isinstance(node, StartNode):
-                        result = None
-                    elif isinstance(node, EndNode):
-                        result = None
-                    else:
-                        result = None
+                    result = await self._dispatch_node_run(
+                        node, node_type, inputs, variables
+                    )
 
                     # Calculate execution time
                     execution_time = time.time() - start_time
@@ -503,6 +494,7 @@ class Arium(BaseArium):
                     workflow_metrics.record_node_latency(
                         execution_time_ms, workflow_name, node.name, node_type
                     )
+                    _profile_record(f'node.{node.name}[{node_type}]', execution_time)
 
                     node_span.set_status(Status(StatusCode.OK))
                     node_span.set_attribute('node.execution_time_ms', execution_time_ms)
@@ -553,33 +545,13 @@ class Arium(BaseArium):
         else:
             # No telemetry or start/end node, execute without tracing
             try:
-                # Execute the node based on its type
-                if isinstance(node, Agent):
-                    result = await node.run(inputs, variables={})
-                elif isinstance(node, FunctionNode):
-                    result = await node.run(inputs, variables=None)
-                elif isinstance(node, ForEachNode):
-                    foreach_results: List[
-                        MessageMemoryItem | BaseMessage
-                    ] = await node.run(
-                        inputs,
-                        variables=variables,
-                    )
-                    result = self._flatten_results(foreach_results)
-                elif isinstance(node, AriumNode):
-                    arium_result: List[MessageMemoryItem] = await node.run(
-                        inputs, variables=variables
-                    )
-                    result = self._flatten_results(arium_result)
-                elif isinstance(node, StartNode):
-                    result = None
-                elif isinstance(node, EndNode):
-                    result = None
-                else:
-                    result = None
+                result = await self._dispatch_node_run(
+                    node, node_type, inputs, variables
+                )
 
                 # Calculate execution time
                 execution_time = time.time() - start_time
+                _profile_record(f'node.{node.name}[{node_type}]', execution_time)
 
                 # Emit node completed event
                 self._emit_event(
@@ -610,6 +582,39 @@ class Arium(BaseArium):
 
                 # Re-raise the exception
                 raise e
+
+    async def _dispatch_node_run(
+        self,
+        node: AriumNodeType,
+        node_type: str,
+        inputs: List[BaseMessage],
+        variables: Dict[str, Any],
+    ):
+        """Dispatch a node's ``run`` invocation under a profiler scope.
+
+        Keeps the dispatch logic in one place so both the telemetry and
+        non-telemetry branches of ``_execute_node`` get consistent profiling.
+        """
+        if node_type in ('start', 'end'):
+            return None
+
+        async with aprofile(f'node.{node.name}[{node_type}]'):
+            if isinstance(node, Agent):
+                return await node.run(inputs, variables={})
+            if isinstance(node, FunctionNode):
+                return await node.run(inputs, variables=None)
+            if isinstance(node, ForEachNode):
+                foreach_results: List[MessageMemoryItem | BaseMessage] = await node.run(
+                    inputs,
+                    variables=variables,
+                )
+                return self._flatten_results(foreach_results)
+            if isinstance(node, AriumNode):
+                arium_result: List[MessageMemoryItem] = await node.run(
+                    inputs, variables=variables
+                )
+                return self._flatten_results(arium_result)
+            return None
 
     def _flatten_results(
         self, sequence: List[MessageMemoryItem | BaseMessage | str]
