@@ -4,6 +4,7 @@ import { Switch } from '@app/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Spinner } from '@app/components/ui/spinner';
 import { Textarea } from '@app/components/ui/textarea';
+import { Popover, PopoverContent, PopoverTrigger } from '@app/components/ui/popover';
 import { LLMInferenceConfig } from '@app/types/llm-inference-config';
 import { ChatMessageContent, ImageContent, DocumentContent } from '@app/types/chat-message';
 import clsx from 'clsx';
@@ -106,6 +107,13 @@ const ChatBot = ({
   const variablesModalRef = useRef<HTMLDivElement>(null);
   const [showLogic, setShowLogic] = useState(true);
   const [selectValue, setSelectValue] = useState<string>('');
+  const combinedAttachments = [
+    ...uploadedImages.map((image, index) => ({ kind: 'image' as const, image, originalIndex: index })),
+    ...uploadedDocuments.map((document, index) => ({ kind: 'document' as const, document, originalIndex: index })),
+  ];
+  const visibleCombinedAttachments = combinedAttachments.slice(0, 2);
+  const remainingCombinedAttachmentsCount = Math.max(combinedAttachments.length - visibleCombinedAttachments.length, 0);
+  const remainingCombinedAttachments = combinedAttachments.slice(2);
 
   return (
     <div className="flex h-full w-full flex-col gap-7">
@@ -222,56 +230,81 @@ const ChatBot = ({
 
           {/* Scrollable Attachments Container */}
           {(uploadedImages.length > 0 || uploadedDocuments.length > 0) && (
-            <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
-              {/* Uploaded Images */}
-              {uploadedImages.length > 0 && (
-                <div className="flex shrink-0 gap-2">
-                  {uploadedImages.map((image, index) => (
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 overflow-x-auto">
+              <div className="flex shrink-0 gap-2">
+                {visibleCombinedAttachments.map((attachment, index) =>
+                  attachment.kind === 'image' ? (
                     <div
                       key={index}
                       className="group relative flex items-center gap-1 rounded-lg border border-gray-200 bg-white p-1 transition-colors hover:border-gray-300"
                     >
-                      <img src={image.base64} alt={image.file.name} className="h-6 w-6 rounded object-cover" />
+                      <img
+                        src={attachment.image.base64}
+                        alt={attachment.image.file.name}
+                        className="h-6 w-6 rounded object-cover"
+                      />
                       <div className="flex flex-col">
-                        <p className="max-w-[120px] truncate text-[8px] font-medium text-gray-800">{image.file.name}</p>
-                        <p className="text-[8px] text-gray-500">{formatFileSize(image.file.size)}</p>
+                        <p className="max-w-[120px] truncate text-[8px] font-medium text-gray-800">
+                          {attachment.image.file.name}
+                        </p>
+                        <p className="text-[8px] text-gray-500">{formatFileSize(attachment.image.file.size)}</p>
                       </div>
                       <button
-                        onClick={() => handleRemoveImage(index)}
+                        onClick={() => handleRemoveImage(attachment.originalIndex)}
                         className="ml-2 text-red-500 transition-colors hover:text-red-700"
                         title="Remove image"
                       >
                         <X />
                       </button>
                     </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Uploaded Documents */}
-              {uploadedDocuments.length > 0 && (
-                <div className="flex shrink-0 gap-2">
-                  {uploadedDocuments.map((doc, index) => (
+                  ) : (
                     <div
                       key={index}
                       className="group relative flex items-center gap-2 rounded-lg border border-gray-200 bg-white p-2 transition-colors hover:border-gray-300"
                     >
                       <div className="text-gray-600">📄</div>
                       <div className="flex flex-col">
-                        <p className="max-w-[120px] truncate text-[8px] font-medium text-gray-800">{doc.file.name}</p>
-                        <p className="text-[8px] text-gray-500">{formatFileSize(doc.file.size)}</p>
+                        <p className="max-w-[120px] truncate text-[8px] font-medium text-gray-800">
+                          {attachment.document.file.name}
+                        </p>
+                        <p className="text-[8px] text-gray-500">{formatFileSize(attachment.document.file.size)}</p>
                       </div>
                       <button
-                        onClick={() => handleRemoveDocument(index)}
+                        onClick={() => handleRemoveDocument(attachment.originalIndex)}
                         className="ml-2 text-red-500 transition-colors hover:text-red-700"
                         title="Remove document"
                       >
                         <X />
                       </button>
                     </div>
-                  ))}
-                </div>
-              )}
+                  )
+                )}
+                {remainingCombinedAttachmentsCount > 0 && (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        className="flex cursor-pointer items-center rounded-lg border border-gray-200 bg-white px-2 text-xs font-medium text-gray-600 transition-colors hover:border-gray-300"
+                        title="Show remaining attachments"
+                      >
+                        +{remainingCombinedAttachmentsCount}
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="w-64 bg-gray-800 p-2">
+                      <div className="b flex flex-col gap-1.5 opacity-80">
+                        {remainingCombinedAttachments.map((attachment, index) => (
+                          <p
+                            key={`${attachment.kind}-${attachment.originalIndex}-${index}`}
+                            className="truncate text-xs text-white"
+                          >
+                            {attachment.kind === 'image' ? attachment.image.file.name : attachment.document.file.name}
+                          </p>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                )}
+              </div>
             </div>
           )}
         </div>

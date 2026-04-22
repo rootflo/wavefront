@@ -208,9 +208,9 @@ class Gemini(BaseLLM):
     def get_message_content(self, response: Dict[str, Any]) -> str:
         if isinstance(response, str):
             return response
-        if hasattr(response, 'content') and response.content is not None:
-            return str(response.content)
-        return ''
+        if isinstance(response, dict):
+            content = response.get('content')
+            return str(content) if content is not None else ''
 
     def format_tool_for_llm(self, tool: 'Tool') -> Dict[str, Any]:
         """Format a single tool for Gemini's function declarations"""
