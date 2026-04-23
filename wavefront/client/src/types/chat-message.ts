@@ -8,6 +8,7 @@ export interface DocumentContent {
   document_type: string;
   document_base64?: string;
   mime_type?: string;
+  file_name?: string;
   metadata?: {
     filename?: string;
     size?: number;
