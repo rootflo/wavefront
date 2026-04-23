@@ -7,6 +7,7 @@ from dependency_injector.wiring import inject, Provide
 import json
 import asyncio
 import uuid
+import time
 
 from common_module.log.logger import logger
 from common_module.response_formatter import ResponseFormatter
@@ -133,6 +134,11 @@ async def workflow_inference(
                     except asyncio.TimeoutError:
                         continue
 
+                # Yield to the event loop so any ensure_future(add_event(...))
+                # callbacks scheduled inside the inference task have a chance
+                # to run and enqueue their events before we drain.
+                await asyncio.sleep(0)
+
                 # Drain any remaining events queued after task completion
                 while not event_queue.empty():
                     event_data = event_queue.get_nowait()
@@ -146,7 +152,7 @@ async def workflow_inference(
                     'workflow_id': workflow_id,
                     'namespace': namespace,
                     'execution_time': execution_time,
-                    'timestamp': asyncio.get_running_loop().time(),
+                    'timestamp': time.time(),
                 }
                 yield f'data: {json.dumps(output_event)}\n\n'
 
@@ -161,7 +167,7 @@ async def workflow_inference(
                 error_event = {
                     'event_type': 'error',
                     'error': str(e),
-                    'timestamp': asyncio.get_running_loop().time(),
+                    'timestamp': time.time(),
                 }
                 yield f'data: {json.dumps(error_event)}\n\n'
             finally:
@@ -325,6 +331,11 @@ async def workflow_inference_v2(
                     except asyncio.TimeoutError:
                         continue
 
+                # Yield to the event loop so any ensure_future(add_event(...))
+                # callbacks scheduled inside the inference task have a chance
+                # to run and enqueue their events before we drain.
+                await asyncio.sleep(0)
+
                 # Drain any remaining events queued after task completion
                 while not event_queue.empty():
                     event_data = event_queue.get_nowait()
@@ -338,7 +349,7 @@ async def workflow_inference_v2(
                     'workflow_id': workflow_name,
                     'namespace': namespace,
                     'execution_time': execution_time,
-                    'timestamp': asyncio.get_running_loop().time(),
+                    'timestamp': time.time(),
                 }
                 yield f'data: {json.dumps(output_event)}\n\n'
 
@@ -353,7 +364,7 @@ async def workflow_inference_v2(
                 error_event = {
                     'event_type': 'error',
                     'error': str(e),
-                    'timestamp': asyncio.get_running_loop().time(),
+                    'timestamp': time.time(),
                 }
                 yield f'data: {json.dumps(error_event)}\n\n'
             finally:
