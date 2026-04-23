@@ -650,12 +650,15 @@ class Arium(BaseArium):
             parts = [self._serialize_node_output(item) for item in result]
             return '\n'.join(p for p in parts if p) or None
         if hasattr(result, 'content'):
-            content = result.content
-            if isinstance(content, str):
-                return content
-            if hasattr(content, 'text'):
-                return content.text
-            return str(content)
+            return self._serialize_node_output(result.content)
         if hasattr(result, 'text'):
             return result.text
+        # DocumentMessageContent / ImageMessageContent — show url or type label
+        media_type = getattr(result, 'type', None)
+        if media_type in ('document', 'image'):
+            url = getattr(result, 'url', None)
+            mime = getattr(result, 'mime_type', None)
+            if url:
+                return f'[{media_type}: {url}]'
+            return f'[{media_type}{f": {mime}" if mime else ""}]'
         return str(result)
