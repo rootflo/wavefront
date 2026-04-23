@@ -10,6 +10,7 @@ interface StreamProps {
     execution_time?: number;
     error?: string;
     router_choice?: string;
+    node_output?: string;
   }>;
   isStreaming?: boolean;
   eventsContainerRef?: RefObject<HTMLDivElement | null>;
@@ -73,6 +74,12 @@ const Stream: React.FC<StreamProps> = ({ listenEventsEnabled, streamingEvents, i
                   )}
                   {'router_choice' in event && event.router_choice && (
                     <div className="mt-1 text-blue-600">Router choice: {event.router_choice}</div>
+                  )}
+                  {'node_output' in event && event.node_output && (
+                    <div className="mt-1 rounded border border-gray-200 bg-white p-2">
+                      <span className="font-medium text-gray-500">Output: </span>
+                      <span className="break-words whitespace-pre-wrap text-gray-700">{event.node_output}</span>
+                    </div>
                   )}
                 </div>
               ))}

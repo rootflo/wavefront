@@ -101,6 +101,9 @@ class WorkflowEventMessage(BaseModel):
     router_choice: Optional[str] = Field(
         None, description='Node chosen by router decision'
     )
+    node_output: Optional[str] = Field(
+        None, description='Output produced by the node upon completion'
+    )
     metadata: Optional[Dict[str, Any]] = Field(
         None, description='Additional event-specific data'
     )

@@ -175,7 +175,7 @@ class WorkflowMessageProcessor(MessageProcessor[ProcessingResult[Dict[str, Any]]
         req_headers = self._fetch_headers()
 
         return requests.put(
-            url=f'{self.floware_service_url}/v1/workflow-runs/{workflow_run_id}',
+            url=f'{self.floware_service_url}/floware/v1/workflow-runs/{workflow_run_id}',
             headers=req_headers,
             json=payload,
         )
