@@ -391,6 +391,7 @@ const WorkflowDetail: React.FC = () => {
             document_type: doc.documentType,
             document_base64: doc.base64Content,
             mime_type: doc.mimeType,
+            file_name: doc.file.name,
             metadata: {
               filename: doc.file.name,
               size: doc.file.size,

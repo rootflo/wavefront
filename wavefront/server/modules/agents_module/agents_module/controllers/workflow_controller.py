@@ -6,6 +6,8 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from dependency_injector.wiring import inject, Provide
 import json
 import asyncio
+import uuid
+import time
 
 from common_module.log.logger import logger
 from common_module.response_formatter import ResponseFormatter
@@ -75,9 +77,6 @@ async def workflow_inference(
         f'Starting inference for namespace: {namespace}, workflow_id: {workflow_id}, listen_events: {listen_events}'
     )
 
-    # Extract user_id from authenticated session
-    user_id = request.state.session.user_id
-
     # Extract authentication credentials
     access_token, app_key = extract_auth_credentials(request)
 
@@ -89,27 +88,26 @@ async def workflow_inference(
     events_filter = None
 
     if listen_events or request_body.listen_events:
-        event_callback = create_workflow_event_callback(user_id, namespace, workflow_id)
+        execution_id = str(uuid.uuid4())
+        event_callback = create_workflow_event_callback(
+            execution_id, namespace, workflow_id
+        )
         events_filter = DEFAULT_EVENTS_FILTER
         logger.info(
-            f'Event streaming enabled for user {user_id}, workflow {namespace}/{workflow_id}'
+            f'Event streaming enabled for execution {execution_id}, workflow {namespace}/{workflow_id}'
         )
 
     # Check if streaming is requested
     if listen_events or request_body.listen_events:
         logger.info(
-            f'Streaming inference for user {user_id}, workflow {namespace}/{workflow_id}'
+            f'Streaming inference for execution {execution_id}, workflow {namespace}/{workflow_id}'
         )
 
-        # Get or create event queue for this user-workflow
-        event_queue = event_streamer.get_or_create_queue(
-            user_id, namespace, workflow_id
-        )
+        event_queue = event_streamer.create_queue(execution_id)
 
         async def generate_inference_stream():
             """Generate streaming inference with events and final output"""
             try:
-                # Start inference in background task
                 inference_task = asyncio.create_task(
                     workflow_inference_service.perform_inference(
                         workflow_name=workflow_id,
@@ -126,60 +124,54 @@ async def workflow_inference(
                     )
                 )
 
-                # Stream events while workflow is running
-                workflow_completed = False
-                while not workflow_completed and not inference_task.done():
+                # Stream events until inference completes
+                while not inference_task.done():
                     try:
-                        # Wait for event with timeout
                         event_data = await asyncio.wait_for(
                             event_queue.get(), timeout=1.0
                         )
                         yield f'data: {json.dumps(event_data)}\n\n'
-                        await asyncio.sleep(0.1)  # remove it later
-
-                        # Check if workflow ended
-                        if event_data.get('event_type') in [
-                            'workflow_completed',
-                            'workflow_failed',
-                        ]:
-                            workflow_completed = True
-
                     except asyncio.TimeoutError:
-                        # Continue waiting if no events
                         continue
 
-                # Wait for inference to complete and get result
+                # Yield to the event loop so any ensure_future(add_event(...))
+                # callbacks scheduled inside the inference task have a chance
+                # to run and enqueue their events before we drain.
+                await asyncio.sleep(0)
+
+                # Drain any remaining events queued after task completion
+                while not event_queue.empty():
+                    event_data = event_queue.get_nowait()
+                    yield f'data: {json.dumps(event_data)}\n\n'
+
                 result, execution_time = await inference_task
 
-                # Send final output event
                 output_event = {
                     'event_type': 'output',
                     'result': result,
                     'workflow_id': workflow_id,
                     'namespace': namespace,
                     'execution_time': execution_time,
-                    'timestamp': asyncio.get_event_loop().time(),
+                    'timestamp': time.time(),
                 }
                 yield f'data: {json.dumps(output_event)}\n\n'
-                await asyncio.sleep(0.1)  # remove it later
 
                 logger.info(
-                    f'Streaming inference completed for user {user_id}, workflow {namespace}/{workflow_id}'
+                    f'Streaming inference completed for execution {execution_id}, workflow {namespace}/{workflow_id}'
                 )
 
             except Exception as e:
                 logger.error(
-                    f'Error in streaming inference for user {user_id}, workflow {namespace}/{workflow_id}: {e}'
+                    f'Error in streaming inference for execution {execution_id}, workflow {namespace}/{workflow_id}: {e}'
                 )
                 error_event = {
                     'event_type': 'error',
                     'error': str(e),
-                    'timestamp': asyncio.get_event_loop().time(),
+                    'timestamp': time.time(),
                 }
                 yield f'data: {json.dumps(error_event)}\n\n'
             finally:
-                # Clean up queue
-                event_streamer.cleanup_queue(user_id, namespace, workflow_id)
+                event_streamer.cleanup_queue(execution_id)
 
         return StreamingResponse(
             generate_inference_stream(),
@@ -278,10 +270,6 @@ async def workflow_inference_v2(
     logger.info(
         f'Starting v2 inference for workflow_id: {workflow_id}, listen_events: {listen_events}'
     )
-
-    # Extract user_id from authenticated session
-    user_id = request.state.session.user_id
-
     # Extract authentication credentials
     access_token, app_key = extract_auth_credentials(request)
 
@@ -298,30 +286,26 @@ async def workflow_inference_v2(
     events_filter = None
 
     if listen_events or request_body.listen_events:
-        # Use real namespace and workflow name for event streaming
+        execution_id = str(uuid.uuid4())
         event_callback = create_workflow_event_callback(
-            user_id, namespace, workflow_name
+            execution_id, namespace, workflow_name
         )
         events_filter = DEFAULT_EVENTS_FILTER
         logger.info(
-            f'Event streaming enabled for user {user_id}, workflow {namespace}/{workflow_name}'
+            f'Event streaming enabled for execution {execution_id}, workflow {namespace}/{workflow_name}'
         )
 
     # Check if streaming is requested
     if listen_events or request_body.listen_events:
         logger.info(
-            f'Streaming inference for user {user_id}, workflow {namespace}/{workflow_name}'
+            f'Streaming inference for execution {execution_id}, workflow {namespace}/{workflow_name}'
         )
 
-        # Get or create event queue for this user-workflow
-        event_queue = event_streamer.get_or_create_queue(
-            user_id, namespace, workflow_name
-        )
+        event_queue = event_streamer.create_queue(execution_id)
 
         async def generate_inference_stream():
             """Generate streaming inference with events and final output"""
             try:
-                # Start inference in background task
                 inference_task = asyncio.create_task(
                     workflow_inference_service.perform_inference_v2(
                         workflow_data=workflow_data,
@@ -337,66 +321,54 @@ async def workflow_inference_v2(
                     )
                 )
 
-                # Stream events while workflow is running
-                workflow_completed = False
-                while not workflow_completed and not inference_task.done():
+                # Stream events until inference completes
+                while not inference_task.done():
                     try:
-                        # Wait for event with timeout
                         event_data = await asyncio.wait_for(
                             event_queue.get(), timeout=1.0
                         )
                         yield f'data: {json.dumps(event_data)}\n\n'
-                        await asyncio.sleep(0.1)  # remove it later
-
-                        # Check if workflow ended
-                        if event_data.get('event_type') in [
-                            'workflow_completed',
-                            'workflow_failed',
-                        ]:
-                            workflow_completed = True
-
                     except asyncio.TimeoutError:
-                        # Continue waiting if no events
                         continue
 
-                # Wait for inference to complete and get result
+                # Yield to the event loop so any ensure_future(add_event(...))
+                # callbacks scheduled inside the inference task have a chance
+                # to run and enqueue their events before we drain.
+                await asyncio.sleep(0)
+
+                # Drain any remaining events queued after task completion
+                while not event_queue.empty():
+                    event_data = event_queue.get_nowait()
+                    yield f'data: {json.dumps(event_data)}\n\n'
+
                 result, execution_time = await inference_task
 
-                # Send final output event
                 output_event = {
                     'event_type': 'output',
                     'result': result,
                     'workflow_id': workflow_name,
                     'namespace': namespace,
                     'execution_time': execution_time,
-                    'timestamp': asyncio.get_event_loop().time(),
+                    'timestamp': time.time(),
                 }
                 yield f'data: {json.dumps(output_event)}\n\n'
-                await asyncio.sleep(0.1)  # remove it later
 
                 logger.info(
-                    f'Streaming inference completed for user {user_id}, workflow {namespace}/{workflow_name}'
+                    f'Streaming inference completed for execution {execution_id}, workflow {namespace}/{workflow_name}'
                 )
 
-            except ValueError as e:
-                logger.error(f'Error in streaming inference: {e}')
-                error_event = {
-                    'event_type': 'error',
-                    'error': str(e),
-                    'timestamp': asyncio.get_event_loop().time(),
-                }
-                yield f'data: {json.dumps(error_event)}\n\n'
             except Exception as e:
-                logger.error(f'Error in streaming inference: {e}')
+                logger.error(
+                    f'Error in streaming inference for execution {execution_id}: {e}'
+                )
                 error_event = {
                     'event_type': 'error',
                     'error': str(e),
-                    'timestamp': asyncio.get_event_loop().time(),
+                    'timestamp': time.time(),
                 }
                 yield f'data: {json.dumps(error_event)}\n\n'
             finally:
-                # Clean up queue
-                event_streamer.cleanup_queue(user_id, namespace, workflow_name)
+                event_streamer.cleanup_queue(execution_id)
 
         return StreamingResponse(
             generate_inference_stream(),

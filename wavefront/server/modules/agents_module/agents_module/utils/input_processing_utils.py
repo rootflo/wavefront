@@ -75,12 +75,23 @@ def process_inference_inputs(
                             detail=f'Invalid base64 image data: {e}',
                         )
                 elif is_doc_message(input_content):
-                    # DocumentMessage - append directly
+                    # Inject filename as a text message before the document so
+                    # agents can reference the original file name in their output.
+                    file_name = input_content.get('file_name')
+                    if file_name:
+                        resolved_inputs.append(
+                            UserMessage(
+                                content=TextMessageContent(
+                                    text=f'The original filename of this document is: {file_name}'
+                                )
+                            )
+                        )
                     resolved_inputs.append(
                         UserMessage(
                             content=DocumentMessageContent(
                                 base64=input_content.get('document_base64'),
                                 mime_type=input_content.get('mime_type'),
+                                url=input_content.get('document_url'),
                             )
                         )
                     )

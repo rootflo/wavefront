@@ -507,6 +507,7 @@ class Arium(BaseArium):
                         node_name=node.name,
                         node_type=node_type,
                         execution_time=execution_time,
+                        node_output=self._serialize_node_output(result),
                     )
 
                     return result
@@ -561,6 +562,7 @@ class Arium(BaseArium):
                     node_name=node.name,
                     node_type=node_type,
                     execution_time=execution_time,
+                    node_output=self._serialize_node_output(result),
                 )
 
                 return result
@@ -638,3 +640,25 @@ class Arium(BaseArium):
         Store message in memory
         """
         self.memory.add(message)
+
+    def _serialize_node_output(self, result: Any) -> Optional[str]:
+        if result is None:
+            return None
+        if isinstance(result, str):
+            return result
+        if isinstance(result, list):
+            parts = [self._serialize_node_output(item) for item in result]
+            return '\n'.join(p for p in parts if p) or None
+        if hasattr(result, 'content'):
+            return self._serialize_node_output(result.content)
+        if hasattr(result, 'text'):
+            return result.text
+        # DocumentMessageContent / ImageMessageContent — show url or type label
+        media_type = getattr(result, 'type', None)
+        if media_type in ('document', 'image'):
+            url = getattr(result, 'url', None)
+            mime = getattr(result, 'mime_type', None)
+            if url:
+                return f'[{media_type}: {url}]'
+            return f'[{media_type}{f": {mime}" if mime else ""}]'
+        return str(result)
