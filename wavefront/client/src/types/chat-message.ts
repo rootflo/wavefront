@@ -2,6 +2,7 @@
 export interface ImageContent {
   image_base64: string;
   mime_type?: string;
+  file_name?: string;
 }
 
 export interface DocumentContent {

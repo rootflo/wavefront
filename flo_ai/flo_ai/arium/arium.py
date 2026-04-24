@@ -647,8 +647,11 @@ class Arium(BaseArium):
         if isinstance(result, str):
             return result
         if isinstance(result, list):
-            parts = [self._serialize_node_output(item) for item in result]
-            return '\n'.join(p for p in parts if p) or None
+            # agent.run() returns conversation_history (all messages); take only
+            # the last item, which is the agent's own reply for this node.
+            if not result:
+                return None
+            return self._serialize_node_output(result[-1])
         if hasattr(result, 'content'):
             return self._serialize_node_output(result.content)
         if hasattr(result, 'text'):
