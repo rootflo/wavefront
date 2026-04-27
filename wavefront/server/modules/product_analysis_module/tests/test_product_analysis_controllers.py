@@ -1,5 +1,7 @@
 from db_repo_module.models.session import Session
 from db_repo_module.models.user import User
+from db_repo_module.models.product_analytics import ProductAnalytics
+from datetime import datetime
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -369,3 +371,170 @@ async def test_get_product_analysis_with_query_params(
     # Verify response structure
     response_data = response.json()
     assert isinstance(response_data, dict)
+
+
+@pytest.mark.asyncio
+async def test_get_product_login_stats_as_admin(
+    test_client,
+    test_session: AsyncSession,
+    test_user_id,
+    test_session_id,
+    auth_token,
+    mock_admin_functions,
+):
+    await create_session(test_session, test_user_id, test_session_id)
+
+    included_user_email = 'included.user@example.com'
+    excluded_user_email = 'rootflo@muthootgroup.com'
+    zero_user_email = 'zero.user@example.com'
+
+    included_user_id = test_user_id
+
+    async with test_session() as session:
+        session.add(
+            User(
+                id=included_user_id,
+                email=included_user_email,
+                password='hashed_password',
+                first_name='Included',
+                last_name='User',
+                deleted=False,
+            )
+        )
+        session.add(
+            User(
+                id='00000000-0000-0000-0000-000000000001',
+                email=excluded_user_email,
+                password='hashed_password',
+                first_name='Excluded',
+                last_name='User',
+                deleted=False,
+            )
+        )
+        session.add(
+            User(
+                id='00000000-0000-0000-0000-000000000002',
+                email=zero_user_email,
+                password='hashed_password',
+                first_name='Zero',
+                last_name='User',
+                deleted=False,
+            )
+        )
+
+        session.add_all(
+            [
+                ProductAnalytics(
+                    event_name='user_login',
+                    page='login',
+                    page_path='/login',
+                    user_id=included_user_id,
+                    session_id=test_session_id,
+                    user_role='user',
+                    created_at=datetime(2025, 1, 1, 0, 30, 0),
+                ),
+                ProductAnalytics(
+                    event_name='user_login',
+                    page='login',
+                    page_path='/login',
+                    user_id=included_user_id,
+                    session_id=test_session_id,
+                    user_role='user',
+                    created_at=datetime(2025, 1, 1, 10, 0, 0),
+                ),
+                ProductAnalytics(
+                    event_name='user_login',
+                    page='login',
+                    page_path='/login',
+                    user_id=included_user_id,
+                    session_id=test_session_id,
+                    user_role='user',
+                    created_at=datetime(2025, 1, 2, 1, 0, 0),
+                ),
+                ProductAnalytics(
+                    event_name='user_login',
+                    page='login',
+                    page_path='/login',
+                    user_id='00000000-0000-0000-0000-000000000001',
+                    session_id=test_session_id,
+                    user_role='user',
+                    created_at=datetime(2025, 1, 1, 0, 30, 0),
+                ),
+            ]
+        )
+
+        await session.commit()
+
+    response = test_client.get(
+        '/floware/v1/product-analysis/login-stats',
+        params={'start_date': '2025-01-01', 'end_date': '2025-01-02'},
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert 'data' in body
+    assert 'login_stats' in body['data']
+
+    login_stats = body['data']['login_stats']
+    emails = {row['email'] for row in login_stats}
+
+    assert included_user_email in emails
+    assert zero_user_email in emails
+    assert excluded_user_email not in emails
+
+    included_row = next(r for r in login_stats if r['email'] == included_user_email)
+    assert included_row['total_login_count'] == 3
+    assert included_row['unique_login_days'] == 2
+
+    zero_row = next(r for r in login_stats if r['email'] == zero_user_email)
+    assert zero_row['total_login_count'] == 0
+    assert zero_row['unique_login_days'] == 0
+
+
+@pytest.mark.asyncio
+async def test_get_product_login_stats_non_admin(
+    test_client,
+    test_session: AsyncSession,
+    test_user_id,
+    test_session_id,
+    auth_token,
+    monkeypatch,
+):
+    await create_session(test_session, test_user_id, test_session_id)
+
+    async def mock_check_is_admin(role_id, role_repository=None):
+        return False
+
+    monkeypatch.setattr(
+        'product_analysis_module.controllers.product_anaysis_controllers.check_is_admin',
+        mock_check_is_admin,
+    )
+
+    response = test_client.get(
+        '/floware/v1/product-analysis/login-stats',
+        params={'start_date': '2025-01-01', 'end_date': '2025-01-02'},
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_get_product_login_stats_invalid_date_range(
+    test_client,
+    test_session: AsyncSession,
+    test_user_id,
+    test_session_id,
+    auth_token,
+    mock_admin_functions,
+):
+    await create_session(test_session, test_user_id, test_session_id)
+
+    response = test_client.get(
+        '/floware/v1/product-analysis/login-stats',
+        params={'start_date': '2025-01-03', 'end_date': '2025-01-02'},
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+
+    assert response.status_code == 400
