@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, Request, status
+from datetime import date, datetime
+
+from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import JSONResponse
 from common_module.response_formatter import ResponseFormatter
 from common_module.common_container import CommonContainer
@@ -8,7 +10,6 @@ from product_analysis_module.models.product_analysis import (
     ProductAnalysis,
 )
 from user_management_module.utils.user_utils import get_current_user, check_is_admin
-from datetime import datetime
 from product_analysis_module.product_analysis_container import ProductAnalysisContainer
 from product_analysis_module.product_analysis_service import ProductAnalysisService
 
@@ -98,4 +99,47 @@ async def get_product_analysis(
         content=response_formatter.buildSuccessResponse(
             {'product_analysis': product_analysis_response}
         ),
+    )
+
+
+@product_analysis_router.get('/product-analysis/stats/login')
+@inject
+async def get_product_login_stats(
+    request: Request,
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    product_analysis_service: ProductAnalysisService = Depends(
+        Provide[ProductAnalysisContainer.product_analysis_service]
+    ),
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+):
+    """
+    Admin-only endpoint to fetch user login stats within a date range.
+    """
+    user_role_id, user_id, _ = get_current_user(request)
+    user_role = await check_is_admin(user_role_id)
+
+    if not user_id or not user_role:
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content=response_formatter.buildErrorResponse('Access denied'),
+        )
+
+    if start_date > end_date:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                'start_date must be less than or equal to end_date'
+            ),
+        )
+
+    login_stats = await product_analysis_service.get_login_stats(
+        start_date=start_date, end_date=end_date
+    )
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse({'login_stats': login_stats}),
     )
