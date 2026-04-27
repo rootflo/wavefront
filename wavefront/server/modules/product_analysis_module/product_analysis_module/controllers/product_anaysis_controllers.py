@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import JSONResponse
@@ -132,6 +132,15 @@ async def get_product_login_stats(
             status_code=status.HTTP_400_BAD_REQUEST,
             content=response_formatter.buildErrorResponse(
                 'start_date must be less than or equal to end_date'
+            ),
+        )
+
+    max_span_days = 366
+    if (end_date - start_date) > timedelta(days=max_span_days):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                f'date range too large (max {max_span_days} days)'
             ),
         )
 
