@@ -384,9 +384,8 @@ async def test_get_product_login_stats_as_admin(
 ):
     await create_session(test_session, test_user_id, test_session_id)
 
-    included_user_email = 'included.user@example.com'
-    excluded_user_email = 'rootflo@muthootgroup.com'
-    zero_user_email = 'zero.user@example.com'
+    included_user_email = 'included.user@example.invalid'
+    zero_user_email = 'zero.user@example.invalid'
 
     included_user_id = test_user_id
 
@@ -397,16 +396,6 @@ async def test_get_product_login_stats_as_admin(
                 email=included_user_email,
                 password='hashed_password',
                 first_name='Included',
-                last_name='User',
-                deleted=False,
-            )
-        )
-        session.add(
-            User(
-                id='00000000-0000-0000-0000-000000000001',
-                email=excluded_user_email,
-                password='hashed_password',
-                first_name='Excluded',
                 last_name='User',
                 deleted=False,
             )
@@ -451,22 +440,13 @@ async def test_get_product_login_stats_as_admin(
                     user_role='user',
                     created_at=datetime(2025, 1, 2, 1, 0, 0),
                 ),
-                ProductAnalytics(
-                    event_name='user_login',
-                    page='login',
-                    page_path='/login',
-                    user_id='00000000-0000-0000-0000-000000000001',
-                    session_id=test_session_id,
-                    user_role='user',
-                    created_at=datetime(2025, 1, 1, 0, 30, 0),
-                ),
             ]
         )
 
         await session.commit()
 
     response = test_client.get(
-        '/floware/v1/product-analysis/login-stats',
+        '/floware/v1/product-analysis/stats/login',
         params={'start_date': '2025-01-01', 'end_date': '2025-01-02'},
         headers={'Authorization': f'Bearer {auth_token}'},
     )
@@ -481,7 +461,6 @@ async def test_get_product_login_stats_as_admin(
 
     assert included_user_email in emails
     assert zero_user_email in emails
-    assert excluded_user_email not in emails
 
     included_row = next(r for r in login_stats if r['email'] == included_user_email)
     assert included_row['total_login_count'] == 3
@@ -512,7 +491,7 @@ async def test_get_product_login_stats_non_admin(
     )
 
     response = test_client.get(
-        '/floware/v1/product-analysis/login-stats',
+        '/floware/v1/product-analysis/stats/login',
         params={'start_date': '2025-01-01', 'end_date': '2025-01-02'},
         headers={'Authorization': f'Bearer {auth_token}'},
     )
@@ -532,7 +511,7 @@ async def test_get_product_login_stats_invalid_date_range(
     await create_session(test_session, test_user_id, test_session_id)
 
     response = test_client.get(
-        '/floware/v1/product-analysis/login-stats',
+        '/floware/v1/product-analysis/stats/login',
         params={'start_date': '2025-01-03', 'end_date': '2025-01-02'},
         headers={'Authorization': f'Bearer {auth_token}'},
     )

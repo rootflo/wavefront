@@ -102,7 +102,7 @@ async def get_product_analysis(
     )
 
 
-@product_analysis_router.get('/product-analysis/login-stats')
+@product_analysis_router.get('/product-analysis/stats/login')
 @inject
 async def get_product_login_stats(
     request: Request,
