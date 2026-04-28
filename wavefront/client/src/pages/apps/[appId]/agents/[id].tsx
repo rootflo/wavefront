@@ -416,6 +416,7 @@ const AgentDetail: React.FC = () => {
           const imageMessage = {
             image_base64: image.base64Content,
             mime_type: image.mimeType,
+            file_name: image.file.name,
           };
           setChatHistory((prev) => [...prev, { role: 'user', content: imageMessage }]);
           conversationInputs.push({

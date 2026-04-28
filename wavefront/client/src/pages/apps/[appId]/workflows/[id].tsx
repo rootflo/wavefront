@@ -369,6 +369,7 @@ const WorkflowDetail: React.FC = () => {
           const imageMessage = {
             image_base64: image.base64Content,
             mime_type: image.mimeType,
+            file_name: image.file.name,
           };
           messageInputs.push({ role: 'user', content: imageMessage });
           setChatHistory((prev) => [...prev, { role: 'user', content: imageMessage }]);
@@ -379,6 +380,7 @@ const WorkflowDetail: React.FC = () => {
         const imageMessage = {
           image_base64: imageBase64Content,
           mime_type: uploadedImage.mimeType,
+          file_name: uploadedImage.file?.name,
         };
         messageInputs.push({ role: 'user', content: imageMessage });
         setChatHistory((prev) => [...prev, { role: 'user', content: imageMessage }]);
