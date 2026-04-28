@@ -55,7 +55,7 @@ WITH login_events AS (
         u.email,
         pa.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata' AS created_at_ist
     FROM product_analytics pa
-    JOIN "user" u ON pa.user_id = u.id
+    JOIN "user" u ON u.id::text = pa.user_id
     WHERE
         pa.event_name = 'user_login'
         AND u.deleted = FALSE
