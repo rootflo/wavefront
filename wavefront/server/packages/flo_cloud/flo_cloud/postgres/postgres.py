@@ -159,6 +159,27 @@ class PostgresClient:
             logger.error(f'Postgres query execution error: {e}')
             raise
 
+    @staticmethod
+    def _qualify_unaliased_columns(clause: str, default_alias: str) -> str:
+        """Prefix unqualified column tokens with default_alias to avoid ambiguity in JOINs."""
+        if not clause:
+            return clause
+        _DIRECTION_KEYWORDS = {'ASC', 'DESC', 'NULLS', 'FIRST', 'LAST'}
+        parts = clause.split(',')
+        result = []
+        for part in parts:
+            tokens = part.strip().split()
+            new_tokens = []
+            for token in tokens:
+                if token.upper() in _DIRECTION_KEYWORDS:
+                    new_tokens.append(token)
+                elif '.' not in token and re.match(r'^[A-Za-z_][A-Za-z0-9_]*$', token):
+                    new_tokens.append(f'{default_alias}.{token}')
+                else:
+                    new_tokens.append(token)
+            result.append(' '.join(new_tokens))
+        return ', '.join(result)
+
     def __get_join_query(
         self,
         join_query: str,
@@ -174,6 +195,8 @@ class PostgresClient:
         aliases = list(string.ascii_lowercase)
         processed_join = join_query
         processed_where = where_clause
+        processed_order_by = order_by or ''
+        processed_group_by = group_by or ''
         for i, table_name in enumerate(table_names):
             alias = aliases[i]
             qualified = f'{table_prefix}{table_name}'
@@ -185,9 +208,22 @@ class PostgresClient:
             )
             processed_join = re.sub(rf'\b{escaped}\.', f'{alias}.', processed_join)
             processed_where = re.sub(rf'\b{escaped}\.', f'{alias}.', processed_where)
+            processed_order_by = re.sub(
+                rf'\b{escaped}\.', f'{alias}.', processed_order_by
+            )
+            processed_group_by = re.sub(
+                rf'\b{escaped}\.', f'{alias}.', processed_group_by
+            )
 
-        group_by_clause = f'GROUP BY {group_by}' if group_by else ''
-        order_by_clause = f'ORDER BY {order_by}' if order_by else ''
+        processed_order_by = self._qualify_unaliased_columns(
+            processed_order_by, aliases[0]
+        )
+        processed_group_by = self._qualify_unaliased_columns(
+            processed_group_by, aliases[0]
+        )
+
+        group_by_clause = f'GROUP BY {processed_group_by}' if processed_group_by else ''
+        order_by_clause = f'ORDER BY {processed_order_by}' if processed_order_by else ''
         base_table = f'{table_prefix}{table_names[0]}'
         return (
             f'SELECT {projection} FROM {base_table} AS {aliases[0]} '
