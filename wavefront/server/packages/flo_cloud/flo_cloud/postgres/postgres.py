@@ -59,6 +59,13 @@ class PostgresClient:
         connection = None
         try:
             connection = psycopg2.connect(**self._get_connection_params())
+            if self.schema:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        sql.SQL('SET search_path TO {}').format(
+                            sql.Identifier(self.schema)
+                        )
+                    )
             yield connection
         except psycopg2.Error as e:
             logger.error(f'Postgres connection error: {e}')
@@ -222,12 +229,68 @@ class PostgresClient:
             processed_group_by, aliases[0]
         )
 
-        group_by_clause = f'GROUP BY {processed_group_by}' if processed_group_by else ''
+        # Separate parent (a.*) columns from child columns, mirroring BigQuery's
+        # ARRAY_AGG(STRUCT(...)) pattern but using json_agg(json_build_object(...))
+        parent_cols = []
+        child_projections: Dict[
+            str, List[tuple]
+        ] = {}  # alias -> [(col_name, col_expr)]
+
+        for col in projection.split(','):
+            col = col.strip()
+            if not col or col == '*':
+                continue
+            if '.' in col:
+                tbl_alias, col_name = col.split('.', 1)
+                if tbl_alias == aliases[0]:
+                    parent_cols.append(col)
+                else:
+                    child_projections.setdefault(tbl_alias, []).append((col_name, col))
+            else:
+                parent_cols.append(col)
+
         order_by_clause = f'ORDER BY {processed_order_by}' if processed_order_by else ''
         base_table = f'{table_prefix}{table_names[0]}'
+
+        if not child_projections:
+            # No child columns — plain flat query
+            group_by_clause = (
+                f'GROUP BY {processed_group_by}' if processed_group_by else ''
+            )
+            return (
+                f'SELECT {projection} FROM {base_table} AS {aliases[0]} '
+                f'{processed_join} WHERE {processed_where} '
+                f'{group_by_clause} {order_by_clause} '
+                f'LIMIT {limit} OFFSET {offset}'
+            )
+
+        # Build correlated subqueries for child tables — avoids GROUP BY on parent columns
+        join_conditions = {}
+        for m in re.finditer(
+            r'LEFT JOIN\s+\S+\s+AS\s+(\w+)\s+ON\s+((?:(?!LEFT JOIN).)+)',
+            processed_join,
+            re.IGNORECASE | re.DOTALL,
+        ):
+            join_conditions[m.group(1)] = m.group(2).strip()
+
+        subquery_parts = []
+        for alias_key, cols in child_projections.items():
+            child_idx = aliases.index(alias_key)
+            child_table_name = table_names[child_idx]
+            full_qualified = f'{table_prefix}{child_table_name}'
+            json_args = ', '.join(f"'{name}', {expr}" for name, expr in cols)
+            cond = join_conditions.get(alias_key, 'TRUE')
+            subquery_parts.append(
+                f'(SELECT json_agg(json_build_object({json_args})) '
+                f'FROM {full_qualified} AS {alias_key} WHERE {cond}) AS {child_table_name}'
+            )
+
+        parent_select = ', '.join(parent_cols) if parent_cols else f'{aliases[0]}.*'
+        group_by_clause = f'GROUP BY {processed_group_by}' if processed_group_by else ''
         return (
-            f'SELECT {projection} FROM {base_table} AS {aliases[0]} '
-            f'{processed_join} WHERE {processed_where} '
+            f'SELECT {parent_select}, {", ".join(subquery_parts)} '
+            f'FROM {base_table} AS {aliases[0]} '
+            f'WHERE {processed_where} '
             f'{group_by_clause} {order_by_clause} '
             f'LIMIT {limit} OFFSET {offset}'
         )
