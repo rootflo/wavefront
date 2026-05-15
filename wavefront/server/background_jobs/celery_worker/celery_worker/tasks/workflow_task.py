@@ -1,10 +1,10 @@
 import asyncio
-import os
 from typing import Dict
 
 from common_module.log.logger import logger
 
 from celery_worker.celery_app import app
+from celery_worker.env import MAX_RETRIES, RETRY_DELAY, STREAM_NAME
 from celery_worker.tasks.agent_task import (
     _build_history,
     _now,
@@ -12,12 +12,6 @@ from celery_worker.tasks.agent_task import (
     _save_json,
 )
 from celery_worker.worker_setup import get_services
-
-STREAM_NAME = os.getenv(
-    'ASYNC_AGENTIC_EXEC_RESULTS_STREAM', 'async_agentic_exec:results'
-)
-MAX_RETRIES = int(os.getenv('CELERY_TASK_MAX_RETRIES', '0'))
-RETRY_DELAY = int(os.getenv('CELERY_TASK_RETRY_DELAY_SECONDS', '30'))
 
 
 async def _run(task, payload: Dict) -> None:

@@ -1,16 +1,11 @@
-from dotenv import load_dotenv
-
-
-import os
-
 from celery import Celery
 
-load_dotenv()  # load .env before reading env vars
+from celery_worker.env import CELERY_BROKER_URL, CELERY_RESULT_BACKEND
 
 app = Celery('async_executor')
 app.conf.update(
-    broker_url=os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0'),
-    result_backend=os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/1'),
+    broker_url=CELERY_BROKER_URL,
+    result_backend=CELERY_RESULT_BACKEND,
     include=[
         'celery_worker.tasks.agent_task',
         'celery_worker.tasks.workflow_task',

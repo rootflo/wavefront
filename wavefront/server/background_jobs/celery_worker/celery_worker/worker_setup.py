@@ -4,9 +4,6 @@ No DB connection owned by the worker — status updates go through Redis Streams
 DB credentials are read from env vars so config.ini is not required.
 """
 
-from dotenv import load_dotenv
-
-import os
 import threading
 from dataclasses import dataclass
 from typing import Optional
@@ -28,7 +25,17 @@ from flo_cloud.cloud_storage import CloudStorageManager
 from plugins_module.plugins_container import PluginsContainer
 from tools_module.tools_container import ToolsContainer
 
-load_dotenv()
+from celery_worker.env import (
+    AGENT_YAML_BUCKET,
+    APP_NAME,
+    CLOUD_PROVIDER,
+    DB_HOST,
+    DB_NAME,
+    DB_PASSWORD,
+    DB_PORT,
+    DB_USERNAME,
+    WORKFLOW_WORKER_TOPIC,
+)
 
 
 @dataclass
@@ -47,11 +54,11 @@ _services: Optional[WorkerServices] = None
 def _build_db_client() -> DatabaseClient:
     """Build DatabaseClient directly from env vars — no config.ini needed."""
     db_config = DatabaseConfig(
-        username=os.environ['DB_USERNAME'],
-        password=os.environ['DB_PASSWORD'],
-        host=os.environ['DB_HOST'],
-        port=os.environ['DB_PORT'],
-        db_name=os.environ['DB_NAME'],
+        username=DB_USERNAME,
+        password=DB_PASSWORD,
+        host=DB_HOST,
+        port=DB_PORT,
+        db_name=DB_NAME,
     )
     return DatabaseClient(db_config)
 
@@ -74,17 +81,9 @@ def get_services() -> WorkerServices:
             cache_manager=db_repo_container.cache_manager
         )
 
-        import google.auth
-
-        _, project = google.auth.default()
-        print(
-            f"[DEBUG] ADC project: {project}, GOOGLE_CLOUD_PROJECT env: {os.getenv('GOOGLE_CLOUD_PROJECT')}"
-        )
-
         # Override cloud storage manager with env-var-based provider
-        cloud_provider = os.environ['CLOUD_PROVIDER']
         common_container.cloud_storage_manager.override(
-            providers.Object(CloudStorageManager(provider=cloud_provider))
+            providers.Object(CloudStorageManager(provider=CLOUD_PROVIDER))
         )
 
         api_services_container: ApiServicesContainer = create_api_services_container(
@@ -102,7 +101,7 @@ def get_services() -> WorkerServices:
             cache_manager=db_repo_container.cache_manager,
         )
 
-        bucket_name = os.environ['AGENT_YAML_BUCKET']
+        bucket_name = AGENT_YAML_BUCKET
 
         tools_container = ToolsContainer(
             datasource_repository=db_repo_container.datasource_repository,
@@ -136,14 +135,14 @@ def get_services() -> WorkerServices:
         agents_container.config.from_dict(
             {
                 'agents': {'agent_yaml_bucket': bucket_name},
-                'cloud_config': {'cloud_provider': os.getenv('CLOUD_PROVIDER', 'aws')},
-                'workflow': {'worker_topic': os.getenv('WORKFLOW_WORKER_TOPIC', '')},
+                'cloud_config': {'cloud_provider': CLOUD_PROVIDER},
+                'workflow': {'worker_topic': WORKFLOW_WORKER_TOPIC},
             }
         )
 
         # Must use the same namespace as the floware app so stream keys match
         # floware's CacheManager uses config.env_config.app_name as its namespace
-        cache = CacheManager(namespace=os.getenv('APP_NAME', 'floware'))
+        cache = CacheManager(namespace=APP_NAME)
 
         _services = WorkerServices(
             agent_inference=agents_container.agent_inference_service(),

@@ -272,7 +272,9 @@ async def lifespan(app: FastAPI):
             exec_repo=db_repo_container.async_agentic_execution_repository(),
             cache_manager=db_repo_container.cache_manager(),
         )
-        asyncio.create_task(async_agentic_exec_consumer.start())
+        async_agentic_exec_consumer_task = asyncio.create_task(
+            async_agentic_exec_consumer.start()
+        )
 
         # Set app reference in proxy router so new routes can be added dynamically
         proxy_router = api_services_container.proxy_router()
@@ -283,6 +285,14 @@ async def lifespan(app: FastAPI):
 
         # Shutdown code
         scheduler_manager.shutdown()
+        async_agentic_exec_consumer.stop()
+        try:
+            await asyncio.wait_for(async_agentic_exec_consumer_task, timeout=5)
+        except asyncio.TimeoutError:
+            async_agentic_exec_consumer_task.cancel()
+            logger.warning(
+                'AsyncAgenticExecutionResultConsumer did not stop within 5s; cancelled'
+            )
         logger.info('Shutting down application...')
 
     except Exception as e:

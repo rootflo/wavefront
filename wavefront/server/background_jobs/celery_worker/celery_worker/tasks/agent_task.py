@@ -1,7 +1,6 @@
 import asyncio
 import base64
 import json
-import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -11,13 +10,8 @@ from db_repo_module.models.llm_inference_config import LlmInferenceConfig
 from agents_module.utils.input_processing_utils import process_inference_inputs
 
 from celery_worker.celery_app import app
+from celery_worker.env import MAX_RETRIES, RETRY_DELAY, STREAM_NAME
 from celery_worker.worker_setup import get_services
-
-STREAM_NAME = os.getenv(
-    'ASYNC_AGENTIC_EXEC_RESULTS_STREAM', 'async_agentic_exec:results'
-)
-MAX_RETRIES = int(os.getenv('CELERY_TASK_MAX_RETRIES', '0'))
-RETRY_DELAY = int(os.getenv('CELERY_TASK_RETRY_DELAY_SECONDS', '30'))
 
 
 def _now() -> str:
@@ -111,7 +105,7 @@ async def _run(task, payload: Dict) -> None:
         (
             result,
             exec_time,
-            namespace,
+            _namespace,
         ) = await services.agent_inference.perform_inference_v2(
             agent_id=UUID(payload['entity_id']),
             variables=payload.get('variables') or {},

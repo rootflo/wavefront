@@ -49,7 +49,10 @@ class AsyncAgenticExecutionResultConsumer:
         """Entry point — call as asyncio.create_task(consumer.start())."""
         self._running = True
 
-        # Create consumer group — idempotent, id='0' re-reads pending msgs on restart
+        # Create consumer group — idempotent. id='0' only sets the initial cursor
+        # when the group is first created; subsequent calls are no-ops (BUSYGROUP
+        # silently ignored). PEL entries from a previous run are NOT auto-redelivered
+        # by this call — a separate XAUTOCLAIM/XCLAIM pass would be needed for that.
         self._cache.xgroup_create(_STREAM, _GROUP, id='0', mkstream=True)
         logger.info(
             f'AsyncAgenticExecutionResultConsumer started — stream={_STREAM}, '
@@ -77,7 +80,7 @@ class AsyncAgenticExecutionResultConsumer:
                         except Exception as e:
                             logger.error(
                                 f'Failed to process stream message {msg_id}: {e}. '
-                                'Message will be redelivered on next consumer restart.'
+                                'Message remains in PEL until a claim/drain runs.'
                             )
 
             except Exception as e:

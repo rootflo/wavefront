@@ -67,15 +67,21 @@ async def async_agent_inference(
             'base_url': getattr(config_obj, 'base_url', None),
         }
 
-    result = await async_agentic_execution_service.create_and_enqueue_agent(
-        agent_id=agent_id,
-        inputs=payload.inputs,
-        variables=payload.variables,
-        output_json_enabled=payload.output_json_enabled,
-        access_token=access_token,
-        app_key=app_key,
-        llm_config=llm_config,
-    )
+    try:
+        result = await async_agentic_execution_service.create_and_enqueue_agent(
+            agent_id=agent_id,
+            inputs=payload.inputs,
+            variables=payload.variables,
+            output_json_enabled=payload.output_json_enabled,
+            access_token=access_token,
+            app_key=app_key,
+            llm_config=llm_config,
+        )
+    except ValueError as e:
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
 
     logger.info(f'Agent execution enqueued: {result.execution_id}')
     return JSONResponse(
@@ -119,16 +125,22 @@ async def async_workflow_inference(
             content=response_formatter.buildErrorResponse(str(e)),
         )
 
-    result = await async_agentic_execution_service.create_and_enqueue_workflow(
-        workflow_id=workflow_id,
-        workflow_name=workflow_data['name'],
-        namespace=workflow_data['namespace'],
-        inputs=payload.inputs,
-        variables=payload.variables,
-        output_json_enabled=payload.output_json_enabled,
-        access_token=access_token,
-        app_key=app_key,
-    )
+    try:
+        result = await async_agentic_execution_service.create_and_enqueue_workflow(
+            workflow_id=workflow_id,
+            workflow_name=workflow_data['name'],
+            namespace=workflow_data['namespace'],
+            inputs=payload.inputs,
+            variables=payload.variables,
+            output_json_enabled=payload.output_json_enabled,
+            access_token=access_token,
+            app_key=app_key,
+        )
+    except ValueError as e:
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
 
     logger.info(f'Workflow execution enqueued: {result.execution_id}')
     return JSONResponse(

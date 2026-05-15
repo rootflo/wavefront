@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import binascii
 import json
 import uuid
 from datetime import datetime
@@ -126,7 +127,12 @@ class AsyncAgenticExecutionService:
                 safe_name = _safe_filename(idx, file_name, mime_type)
                 key = f'{prefix}inputs/{safe_name}'
 
-                file_bytes = base64.b64decode(raw_b64)
+                try:
+                    file_bytes = base64.b64decode(raw_b64, validate=True)
+                except (binascii.Error, ValueError) as exc:
+                    raise ValueError(
+                        f'Invalid base64 data for input at index {idx}: {exc}'
+                    ) from exc
                 self.cloud_storage.save_small_file(
                     file_content=file_bytes,
                     bucket_name=self.bucket,
@@ -200,10 +206,17 @@ class AsyncAgenticExecutionService:
             'output_prefix': prefix,
         }
 
-        result = get_celery_client().send_task(
-            _AGENT_TASK_NAME,
-            kwargs={'payload': payload},
-        )
+        try:
+            result = get_celery_client().send_task(
+                _AGENT_TASK_NAME,
+                kwargs={'payload': payload},
+            )
+        except Exception as exc:
+            await self.repo.find_one_and_update(
+                {'id': execution_id}, status='failed', error=str(exc)
+            )
+            logger.error(f'Failed to enqueue agent execution {execution_id}: {exc}')
+            raise
 
         await self.repo.find_one_and_update(
             {'id': execution_id}, celery_task_id=result.id
@@ -262,10 +275,17 @@ class AsyncAgenticExecutionService:
             'output_prefix': prefix,
         }
 
-        result = get_celery_client().send_task(
-            _WORKFLOW_TASK_NAME,
-            kwargs={'payload': payload},
-        )
+        try:
+            result = get_celery_client().send_task(
+                _WORKFLOW_TASK_NAME,
+                kwargs={'payload': payload},
+            )
+        except Exception as exc:
+            await self.repo.find_one_and_update(
+                {'id': execution_id}, status='failed', error=str(exc)
+            )
+            logger.error(f'Failed to enqueue workflow execution {execution_id}: {exc}')
+            raise
 
         await self.repo.find_one_and_update(
             {'id': execution_id}, celery_task_id=result.id
@@ -377,7 +397,7 @@ class AsyncAgenticExecutionService:
         if status:
             filters['status'] = status
 
-        records = await self.repo.find(**filters, limit=limit)
+        records = await self.repo.find(**filters, limit=offset + limit)
         records = records[offset:]
 
         return [self._build_status_response(r.to_dict()) for r in records]
