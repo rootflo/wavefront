@@ -27,6 +27,7 @@ from tools_module.tools_container import ToolsContainer
 
 from celery_worker.env import (
     AGENT_YAML_BUCKET,
+    AGENTIC_EXECUTIONS_BUCKET,
     APP_NAME,
     CLOUD_PROVIDER,
     DB_HOST,
@@ -127,7 +128,7 @@ def get_services() -> WorkerServices:
             message_processor_bucket_name=bucket_name,
             api_services_manager=api_services_container.api_service_manager,
             async_agentic_execution_repository=db_repo_container.async_agentic_execution_repository,
-            executions_bucket=bucket_name,
+            executions_bucket=AGENTIC_EXECUTIONS_BUCKET,
         )
 
         # Inject config values from env vars so services like AgentCrudService
@@ -149,7 +150,7 @@ def get_services() -> WorkerServices:
             workflow_inference=agents_container.workflow_inference_service(),
             cloud_storage=common_container.cloud_storage_manager(),
             cache=cache,
-            execution_bucket=bucket_name,
+            execution_bucket=AGENTIC_EXECUTIONS_BUCKET,
         )
 
     return _services

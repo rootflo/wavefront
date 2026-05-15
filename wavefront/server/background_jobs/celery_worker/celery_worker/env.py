@@ -25,6 +25,7 @@ STREAM_NAME: str = os.getenv(
 # Cloud / storage
 CLOUD_PROVIDER: str = os.environ['CLOUD_PROVIDER']
 AGENT_YAML_BUCKET: str = os.environ['AGENT_YAML_BUCKET']
+AGENTIC_EXECUTIONS_BUCKET: str = os.environ['AGENTIC_EXECUTIONS_BUCKET']
 
 # App
 WORKFLOW_WORKER_TOPIC: str = os.getenv('WORKFLOW_WORKER_TOPIC', '')

@@ -16,7 +16,6 @@ from agents_module.services.workflow_crud_service import WorkflowCrudService
 from agents_module.models.agent_schemas import AgentInferenceRequest
 from agents_module.models.workflow_schemas import WorkflowInferenceRequest
 from agents_module.utils.auth_utils import extract_auth_credentials
-from db_repo_module.models.llm_inference_config import LlmInferenceConfig
 from llm_inference_config_module.container import LlmInferenceConfigContainer
 from llm_inference_config_module.services.llm_inference_config_service import (
     LlmInferenceConfigService,
@@ -59,13 +58,7 @@ async def async_agent_inference(
                     f'LLM inference configuration not found: {payload.llm_inference_config_id}'
                 ),
             )
-        config_obj = LlmInferenceConfig(**llm_config_dict)
-        llm_config = {
-            'type': config_obj.type,
-            'llm_model': config_obj.llm_model,
-            'api_key': config_obj.api_key,
-            'base_url': getattr(config_obj, 'base_url', None),
-        }
+        llm_config = llm_config_dict
 
     try:
         result = await async_agentic_execution_service.create_and_enqueue_agent(

@@ -184,7 +184,7 @@ agents_container = AgentsContainer(
     message_processor_bucket_name=bucket_name,
     api_services_manager=api_services_container.api_service_manager,
     async_agentic_execution_repository=db_repo_container.async_agentic_execution_repository,
-    executions_bucket=config['agents']['agent_yaml_bucket'],
+    executions_bucket=config['agents']['executions_bucket'],
 )
 
 inference_container = InferenceContainer(
