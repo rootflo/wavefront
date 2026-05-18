@@ -35,6 +35,7 @@ from db_repo_module.models.namespace import Namespace
 from db_repo_module.models.agent import Agent
 from db_repo_module.models.workflow import Workflow
 from db_repo_module.models.api_services import ApiServices
+from db_repo_module.models.async_agentic_execution import AsyncAgenticExecution
 from dependency_injector import containers
 from dependency_injector import providers
 
@@ -231,5 +232,11 @@ class DatabaseModuleContainer(containers.DeclarativeContainer):
     knowledge_base_inference_repository = providers.Singleton(
         SQLAlchemyRepository[KnowledgeBaseInferences],
         model=KnowledgeBaseInferences,
+        db_client=db_client,
+    )
+
+    async_agentic_execution_repository = providers.Singleton(
+        SQLAlchemyRepository[AsyncAgenticExecution],
+        model=AsyncAgenticExecution,
         db_client=db_client,
     )

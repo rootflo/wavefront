@@ -272,6 +272,84 @@ class CacheManager(CommonCache):
             logger.error(f'Error subscribing to channels/patterns: {e}')
             raise
 
+    # ------------------------------------------------------------------
+    # Redis Streams
+    # ------------------------------------------------------------------
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        retry=retry_if_exception_type((RedisError, ConnectionError, TimeoutError)),
+    )
+    def xadd(self, stream: str, fields: dict, maxlen: int = 10000) -> str:
+        """Append an entry to a Redis Stream. Returns the message ID."""
+        try:
+            return self.redis.xadd(f'{self.namespace}/{stream}', fields, maxlen=maxlen)
+        except (RedisError, ConnectionError, TimeoutError) as e:
+            logger.error(f'Error appending to stream {stream}: {e}')
+            raise
+
+    def xgroup_create(
+        self, stream: str, group: str, id: str = '$', mkstream: bool = True
+    ) -> None:
+        """Create a consumer group. Silently ignores BUSYGROUP if already exists."""
+        try:
+            self.redis.xgroup_create(
+                f'{self.namespace}/{stream}', group, id=id, mkstream=mkstream
+            )
+            logger.info(f'Created consumer group {group} on stream {stream}')
+        except Exception as e:
+            if 'BUSYGROUP' in str(e):
+                logger.debug(
+                    f'Consumer group {group} already exists on stream {stream}'
+                )
+            else:
+                logger.error(f'Error creating consumer group {group}: {e}')
+                raise
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        retry=retry_if_exception_type((RedisError, ConnectionError, TimeoutError)),
+    )
+    def xread_group(
+        self,
+        group: str,
+        consumer: str,
+        streams: dict,
+        count: int = 10,
+        block_ms: int = 1000,
+    ) -> list:
+        """Read messages from stream(s) via consumer group.
+
+        Args:
+            streams: mapping of stream_name → '>' (undelivered) or message ID (pending)
+        """
+        try:
+            namespaced = {f'{self.namespace}/{k}': v for k, v in streams.items()}
+            return (
+                self.redis.xreadgroup(
+                    group, consumer, namespaced, count=count, block=block_ms
+                )
+                or []
+            )
+        except (RedisError, ConnectionError, TimeoutError) as e:
+            logger.error(f'Error reading from stream group {group}: {e}')
+            raise
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        retry=retry_if_exception_type((RedisError, ConnectionError, TimeoutError)),
+    )
+    def xack(self, stream: str, group: str, *message_ids: str) -> int:
+        """Acknowledge one or more messages in a consumer group."""
+        try:
+            return self.redis.xack(f'{self.namespace}/{stream}', group, *message_ids)
+        except (RedisError, ConnectionError, TimeoutError) as e:
+            logger.error(f'Error acknowledging messages on stream {stream}: {e}')
+            raise
+
     def close(self):
         try:
             self.pool.disconnect()

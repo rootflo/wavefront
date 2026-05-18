@@ -69,6 +69,10 @@ from agents_module.controllers.workflow_runs import workflow_runs_router
 from agents_module.controllers.workflow_pipeline_controller import (
     workflow_pipeline_router,
 )
+from agents_module.controllers.async_inference_controller import async_router
+from agents_module.services.async_agentic_execution_result_consumer import (
+    AsyncAgenticExecutionResultConsumer,
+)
 from agents_module.agents_container import AgentsContainer
 from inference_module.inference_container import InferenceContainer
 from inference_module.controllers.inference_controller import inference_router
@@ -179,6 +183,8 @@ agents_container = AgentsContainer(
     message_processor_repository=plugins_container.message_processor_repository,
     message_processor_bucket_name=bucket_name,
     api_services_manager=api_services_container.api_service_manager,
+    async_agentic_execution_repository=db_repo_container.async_agentic_execution_repository,
+    executions_bucket=config['agents']['executions_bucket'],
 )
 
 inference_container = InferenceContainer(
@@ -261,6 +267,15 @@ async def lifespan(app: FastAPI):
             )
         )
 
+        # Start Redis Stream consumer for async execution status updates
+        async_agentic_exec_consumer = AsyncAgenticExecutionResultConsumer(
+            exec_repo=db_repo_container.async_agentic_execution_repository(),
+            cache_manager=db_repo_container.cache_manager(),
+        )
+        async_agentic_exec_consumer_task = asyncio.create_task(
+            async_agentic_exec_consumer.start()
+        )
+
         # Set app reference in proxy router so new routes can be added dynamically
         proxy_router = api_services_container.proxy_router()
         proxy_router.set_app(app, prefix='/floware')
@@ -270,6 +285,14 @@ async def lifespan(app: FastAPI):
 
         # Shutdown code
         scheduler_manager.shutdown()
+        async_agentic_exec_consumer.stop()
+        try:
+            await asyncio.wait_for(async_agentic_exec_consumer_task, timeout=5)
+        except asyncio.TimeoutError:
+            async_agentic_exec_consumer_task.cancel()
+            logger.warning(
+                'AsyncAgenticExecutionResultConsumer did not stop within 5s; cancelled'
+            )
         logger.info('Shutting down application...')
 
     except Exception as e:
@@ -380,6 +403,7 @@ app.include_router(product_analysis_router, prefix='/floware')
 app.include_router(agents_router, prefix='/floware')
 app.include_router(namespace_router, prefix='/floware')
 app.include_router(workflows_router, prefix='/floware')
+app.include_router(async_router, prefix='/floware')
 app.include_router(workflow_pipeline_router, prefix='/floware')
 app.include_router(workflow_runs_router, prefix='/floware')
 app.include_router(inference_router, prefix='/floware')
