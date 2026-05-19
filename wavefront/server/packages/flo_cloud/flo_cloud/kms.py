@@ -37,3 +37,9 @@ class FloKmsService(FloKMS):
 
     def get_public_key_pem(self, **kwargs) -> bytes | str:
         return self.kms_client.get_public_key_pem(**kwargs)
+
+    def jwt_algorithm(self) -> str:
+        getter = getattr(self.kms_client, 'jwt_algorithm', None)
+        if callable(getter):
+            return getter()
+        return 'PS256'

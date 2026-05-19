@@ -16,6 +16,15 @@ gcp_key_ring = os.getenv('GCP_KMS_KEY_RING')
 gcp_crypto_key = os.getenv('GCP_KMS_CRYPTO_KEY')
 gcp_crypto_key_version = os.getenv('GCP_KMS_CRYPTO_KEY_VERSION')
 
+# GCP KMS PKCS#1 v1.5 signing algorithms (JWT alg RS256)
+_PKCS1_ALGORITHMS = frozenset(
+    {
+        kms_v1.CryptoKeyVersion.CryptoKeyVersionAlgorithm.RSA_SIGN_PKCS1_2048_SHA256,
+        kms_v1.CryptoKeyVersion.CryptoKeyVersionAlgorithm.RSA_SIGN_PKCS1_3072_SHA256,
+        kms_v1.CryptoKeyVersion.CryptoKeyVersionAlgorithm.RSA_SIGN_PKCS1_4096_SHA256,
+    }
+)
+
 
 class GcpKMS(FloKMS):
     def __init__(self):
@@ -40,6 +49,11 @@ class GcpKMS(FloKMS):
             crypto_key=gcp_crypto_key,
             crypto_key_version=gcp_crypto_key_version,
         )
+        public_key = self.kms_client.get_public_key(
+            request=kms_v1.GetPublicKeyRequest(name=self.key_name)
+        )
+        self._key_algorithm = public_key.algorithm
+        self._uses_pkcs1 = self._key_algorithm in _PKCS1_ALGORITHMS
 
     def encrypt(self, plaintext: str) -> bytes:
         request = kms_v1.EncryptRequest(
@@ -68,20 +82,29 @@ class GcpKMS(FloKMS):
         response = self.kms_client.asymmetric_sign(request=request)
         return response.signature
 
+    def jwt_algorithm(self) -> str:
+        """JWT alg header matching this KMS key (RS256 for PKCS1 keys, PS256 for PSS)."""
+        return 'RS256' if self._uses_pkcs1 else 'PS256'
+
     def verify(self, message: bytes, signature: bytes, **kwargs) -> bool:
         public_key_pem: bytes | str = self.get_public_key_pem(encode=True)
         if isinstance(public_key_pem, str):
             raise ValueError('Public key is not a bytes object')
         rsa_key = serialization.load_pem_public_key(public_key_pem, default_backend())
 
+        if self._uses_pkcs1:
+            verify_padding = padding.PKCS1v15()
+        else:
+            verify_padding = padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH,
+            )
+
         try:
             rsa_key.verify(  # type: ignore
                 signature=signature,
                 data=message,
-                padding=padding.PSS(  # type: ignore
-                    mgf=padding.MGF1(hashes.SHA256()),
-                    salt_length=padding.PSS.MAX_LENGTH,
-                ),
+                padding=verify_padding,
                 algorithm=utils.Prehashed(hashes.SHA256()),  # type: ignore
             )
             return True

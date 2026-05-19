@@ -39,7 +39,7 @@ class TokenService:
         self.is_dev = app_env == 'dev' or (kms_service is None)
         self.private_key = self._load_key(private_key)
         self.public_key = self._load_key(public_key)
-        self.algorithm = TokenAlgorithms.RS256.value if self.is_dev else algorithm.value
+        self.algorithm = self._resolve_algorithm(kms_service, algorithm, self.is_dev)
         self.token_expiry = int(token_expiry)
         self.temporary_token_expiry = int(temporary_token_expiry)
         self.kms_service = kms_service
@@ -50,6 +50,30 @@ class TokenService:
     def _load_key(self, key: str):
         key = base64.b64decode(key).decode('ascii')
         return key
+
+    @staticmethod
+    def _resolve_algorithm(
+        kms_service: FloKMS | None,
+        configured: TokenAlgorithms,
+        is_dev: bool,
+    ) -> str:
+        if is_dev:
+            return TokenAlgorithms.RS256.value
+        if kms_service is not None:
+            getter = getattr(kms_service, 'jwt_algorithm', None)
+            if callable(getter):
+                return getter()
+        return configured.value
+
+    def _jwt_decode_algorithms(self) -> list[str]:
+        """Allow legacy PS256 headers on RS256 (PKCS1) KMS signatures."""
+        algorithms = [self.algorithm]
+        if (
+            self.algorithm == TokenAlgorithms.RS256.value
+            and TokenAlgorithms.PS256.value not in algorithms
+        ):
+            algorithms.append(TokenAlgorithms.PS256.value)
+        return algorithms
 
     def create_token(
         self,
@@ -137,14 +161,14 @@ class TokenService:
 
             is_valid = self.kms_service.verify(message=digest, signature=signature)
             if not is_valid:
-                return {}
+                raise ValueError('Invalid token signature')
 
             public_key_pem = self.kms_service.get_public_key_pem()
 
             decoded = jwt.decode(
                 clean_token,
                 public_key_pem,
-                algorithms=[self.algorithm],
+                algorithms=self._jwt_decode_algorithms(),
                 issuer=self.issuer,
                 audience=self.audience,
             )
