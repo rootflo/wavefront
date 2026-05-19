@@ -167,6 +167,7 @@ class MicrosoftOAuthAuthenticator(AuthenticatorABC):
             'scope': ' '.join(self.config.scopes),
             'state': state,
             'response_mode': self.config.response_mode,
+            'prompt': 'select_account',
         }
 
         return f'{self.auth_url}?{urlencode(params)}'
