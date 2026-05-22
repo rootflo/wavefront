@@ -22,6 +22,7 @@ dependencies = [
     "tools-module",
     "api-services-module",
     "voice-agents-module",
+    "triggers-module",
 
 
     "fastapi>=0.115.2,<1.0.0",
@@ -48,6 +49,7 @@ llm-inference-config-module = {workspace = true}
 tools-module = {workspace = true}
 api-services-module = {workspace = true}
 voice-agents-module = {workspace = true}
+triggers-module = {workspace = true}
 
 [build-system]
 requires = ["hatchling"]

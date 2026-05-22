@@ -9,6 +9,7 @@ app.conf.update(
     include=[
         'celery_worker.tasks.agent_task',
         'celery_worker.tasks.workflow_task',
+        'celery_worker.tasks.trigger_event_task',
     ],
     task_serializer='json',
     accept_content=['json'],

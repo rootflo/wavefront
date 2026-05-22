@@ -74,6 +74,8 @@ from agents_module.services.async_agentic_execution_result_consumer import (
     AsyncAgenticExecutionResultConsumer,
 )
 from agents_module.agents_container import AgentsContainer
+from triggers_module.controllers.trigger_controller import trigger_router
+from triggers_module.triggers_container import TriggersContainer
 from inference_module.inference_container import InferenceContainer
 from inference_module.controllers.inference_controller import inference_router
 
@@ -202,6 +204,16 @@ voice_agents_container = VoiceAgentsContainer(
     cache_manager=db_repo_container.cache_manager,
     cloud_storage_manager=common_container.cloud_storage_manager,
 )
+
+triggers_container = TriggersContainer(
+    trigger_repository=db_repo_container.agentic_trigger_repository,
+    credential_repository=db_repo_container.agentic_trigger_credential_repository,
+    event_repository=db_repo_container.agentic_trigger_event_repository,
+    agent_repository=db_repo_container.agent_repository,
+    workflow_repository=db_repo_container.workflow_repository,
+    async_agentic_execution_service=agents_container.async_agentic_execution_service,
+)
+
 scheduler_manager = SchedulerManager()
 
 
@@ -233,6 +245,18 @@ async def lifespan(app: FastAPI):
         )
         scheduler_manager.register_stale_lock_recovery(
             callback=scheduled_job_service.recover_stale_locks_sync
+        )
+
+        trigger_subscription_renewer = triggers_container.trigger_subscription_renewer()
+
+        def _run_trigger_renewer_sync() -> None:
+            try:
+                asyncio.run(trigger_subscription_renewer.run_once())
+            except Exception as exc:
+                logger.warning(f'Trigger subscription renewer failed: {exc}')
+
+        scheduler_manager.register_trigger_subscription_renewer(
+            callback=_run_trigger_renewer_sync
         )
         logger.info('Database connection established.')
 
@@ -418,6 +442,7 @@ app.include_router(voice_agent_router, prefix='/floware')
 app.include_router(tool_router, prefix='/floware')
 app.include_router(message_processor_router, prefix='/floware')
 app.include_router(cloud_storage_router, prefix='/floware')
+app.include_router(trigger_router, prefix='/floware')
 
 
 @app.exception_handler(Exception)
@@ -506,6 +531,7 @@ common_container.wire(
         'llm_inference_config_module.controllers',
         'tools_module.controllers',
         'voice_agents_module.controllers',
+        'triggers_module.controllers',
     ],
 )
 
@@ -535,6 +561,14 @@ agents_container.wire(
     packages=[
         'agents_module.controllers',
         'agents_module.services',
+    ],
+)
+
+triggers_container.wire(
+    modules=[__name__],
+    packages=[
+        'triggers_module.controllers',
+        'triggers_module.services',
     ],
 )
 

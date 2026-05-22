@@ -16,6 +16,8 @@ gcp_key_ring = os.getenv('GCP_KMS_KEY_RING')
 gcp_crypto_key = os.getenv('GCP_KMS_CRYPTO_KEY')
 gcp_crypto_key_version = os.getenv('GCP_KMS_CRYPTO_KEY_VERSION')
 
+gcp_enc_crypto_key = os.getenv('GCP_KMS_ENC_CRYPTO_KEY')
+
 
 class GcpKMS(FloKMS):
     def __init__(self):
@@ -41,17 +43,34 @@ class GcpKMS(FloKMS):
             crypto_key_version=gcp_crypto_key_version,
         )
 
-    def encrypt(self, plaintext: str) -> bytes:
+        # Separate symmetric key path for encryption/decryption.
+        # Symmetric encrypt/decrypt operates on a CryptoKey (not a version);
+        # GCP picks the primary version on encrypt and reads the embedded
+        # version metadata on decrypt.
+        enc_key = gcp_enc_crypto_key or gcp_crypto_key
+
+        self.enc_key_name = self.kms_client.crypto_key_path(
+            project=gcp_project_id,
+            location=gcp_location,
+            key_ring=gcp_key_ring,
+            crypto_key=enc_key,
+        )
+
+    def encrypt(self, plaintext: bytes | str) -> bytes:
+        if isinstance(plaintext, str):
+            plaintext = plaintext.encode('utf-8')
         request = kms_v1.EncryptRequest(
-            name=self.key_name,
+            name=self.enc_key_name,
             plaintext=plaintext,
         )
         response = self.kms_client.encrypt(request=request)
         return response.ciphertext
 
-    def decrypt(self, ciphertext: str) -> bytes:
+    def decrypt(self, ciphertext: bytes | str) -> bytes:
+        if isinstance(ciphertext, str):
+            ciphertext = ciphertext.encode('utf-8')
         request = kms_v1.DecryptRequest(
-            name=self.key_name,
+            name=self.enc_key_name,
             ciphertext=ciphertext,
         )
         response = self.kms_client.decrypt(request=request)

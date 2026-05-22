@@ -35,6 +35,10 @@ from db_repo_module.models.voice_agent import VoiceAgent
 from db_repo_module.models.message_processors import MessageProcessors
 from db_repo_module.models.scheduled_job import ScheduledJob
 from db_repo_module.models.scheduled_job_execution import ScheduledJobExecution
+from db_repo_module.models.async_agentic_execution import AsyncAgenticExecution
+from db_repo_module.models.agentic_trigger_credential import AgenticTriggerCredential
+from db_repo_module.models.agentic_trigger import AgenticTrigger
+from db_repo_module.models.agentic_trigger_event import AgenticTriggerEvent
 from dotenv import load_dotenv
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
@@ -80,6 +84,10 @@ models = [
     MessageProcessors,
     ScheduledJob,
     ScheduledJobExecution,
+    AsyncAgenticExecution,
+    AgenticTriggerCredential,
+    AgenticTrigger,
+    AgenticTriggerEvent,
 ]
 target_metadata = Base.metadata
 
