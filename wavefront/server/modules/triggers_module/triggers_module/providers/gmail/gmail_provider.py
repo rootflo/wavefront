@@ -240,8 +240,19 @@ class GmailProvider(TriggerProvider):
                     request={'resource': topic_path, 'policy': policy},
                     timeout=30,
                 )
-        except Exception as exc:
-            logger.warning(f'Could not set IAM policy on {topic_path}: {exc}')
+        except google_exceptions.PermissionDenied as exc:
+            logger.error(
+                f'Permission denied setting IAM policy on {topic_path} '
+                f'(role={wants_role}, member={wants_member}). '
+                f'Gmail will not be able to publish to this topic: {exc}'
+            )
+            raise
+        except google_exceptions.GoogleAPIError as exc:
+            logger.error(
+                f'Failed to set IAM policy on {topic_path} '
+                f'(role={wants_role}, member={wants_member}): {exc}'
+            )
+            raise
 
         subscriber = self._subscriber()
         request: Dict[str, Any] = {

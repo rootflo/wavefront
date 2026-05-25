@@ -66,16 +66,20 @@ class TriggerPushReceiver:
 
         if trigger.provider == 'gmail':
             oidc_audience = (trigger.provider_config or {}).get('oidc_audience')
-            if oidc_audience:
-                try:
-                    self._verifier.verify(
-                        authorization_header, expected_audience=oidc_audience
-                    )
-                except PubSubSignatureError as exc:
-                    logger.warning(
-                        f'Pub/Sub signature verification failed for trigger {trigger_id}: {exc}'
-                    )
-                    return {'status': 'ignored', 'reason': 'invalid_signature'}
+            if not oidc_audience:
+                logger.warning(
+                    f'Missing oidc_audience for gmail trigger {trigger_id}; refusing push'
+                )
+                return {'status': 'ignored', 'reason': 'missing_oidc_audience'}
+            try:
+                self._verifier.verify(
+                    authorization_header, expected_audience=oidc_audience
+                )
+            except PubSubSignatureError as exc:
+                logger.warning(
+                    f'Pub/Sub signature verification failed for trigger {trigger_id}: {exc}'
+                )
+                return {'status': 'ignored', 'reason': 'invalid_signature'}
 
         # Layer-2 dedup: skip pushes whose cursor we've already processed.
         provider = self._registry.get(trigger.provider)

@@ -78,9 +78,12 @@ class TriggerSubscriptionRenewer:
         if not raw:
             return None
         try:
-            return datetime.fromisoformat(raw)
+            dt = datetime.fromisoformat(raw)
         except Exception:
             return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
 
     async def _fresh_access_token(
         self, credential_id: UUID, provider: TriggerProvider

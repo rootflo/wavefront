@@ -38,13 +38,21 @@ DB_HOST: str = os.environ['DB_HOST']
 DB_PORT: str = os.environ['DB_PORT']
 DB_NAME: str = os.environ['DB_NAME']
 
+
+def _required_env(name: str) -> str:
+    value = os.getenv(name)
+    if not value:
+        raise RuntimeError(f'Missing required environment variable: {name}')
+    return value
+
+
 # Triggers — Gmail OAuth + Pub/Sub
-GOOGLE_OAUTH_CLIENT_ID: str = os.getenv('GOOGLE_OAUTH_CLIENT_ID', '')
-GOOGLE_OAUTH_CLIENT_SECRET: str = os.getenv('GOOGLE_OAUTH_CLIENT_SECRET', '')
-GOOGLE_OAUTH_REDIRECT_URI: str = os.getenv('GOOGLE_OAUTH_REDIRECT_URI', '')
-GCP_PROJECT_ID: str = os.getenv('GCP_PROJECT_ID', '')
+GOOGLE_OAUTH_CLIENT_ID: str = _required_env('GOOGLE_OAUTH_CLIENT_ID')
+GOOGLE_OAUTH_CLIENT_SECRET: str = _required_env('GOOGLE_OAUTH_CLIENT_SECRET')
+GOOGLE_OAUTH_REDIRECT_URI: str = _required_env('GOOGLE_OAUTH_REDIRECT_URI')
+GCP_PROJECT_ID: str = _required_env('GCP_PROJECT_ID')
 GMAIL_PUBSUB_TOPIC_PREFIX: str = os.getenv(
     'GMAIL_PUBSUB_TOPIC_PREFIX', 'agentic-trigger'
 )
-GMAIL_PUSH_ENDPOINT_TEMPLATE: str = os.getenv('GMAIL_PUSH_ENDPOINT_TEMPLATE', '')
-GMAIL_PUBSUB_OIDC_SA_EMAIL: str = os.getenv('GMAIL_PUBSUB_OIDC_SA_EMAIL', '')
+GMAIL_PUSH_ENDPOINT_TEMPLATE: str = _required_env('GMAIL_PUSH_ENDPOINT_TEMPLATE')
+GMAIL_PUBSUB_OIDC_SA_EMAIL: str = _required_env('GMAIL_PUBSUB_OIDC_SA_EMAIL')

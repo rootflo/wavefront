@@ -1,4 +1,6 @@
+from json import JSONDecodeError
 from typing import Optional
+from urllib.parse import urlparse
 from uuid import UUID
 
 from common_module.common_container import CommonContainer
@@ -23,6 +25,12 @@ from triggers_module.triggers_container import TriggersContainer
 
 
 trigger_router = APIRouter(prefix='/v1/triggers', tags=['triggers'])
+
+
+def _is_safe_redirect(url: str) -> bool:
+    parsed = urlparse(url)
+    # Allow only relative URLs (no scheme, no host) to prevent open redirects.
+    return not parsed.scheme and not parsed.netloc
 
 
 @trigger_router.post('', status_code=status.HTTP_201_CREATED)
@@ -77,21 +85,21 @@ async def gmail_oauth_callback(
     try:
         result = await trigger_crud_service.complete_oauth(state=state, code=code)
     except TriggerNotFound as exc:
-        if failure_redirect_url:
+        if failure_redirect_url and _is_safe_redirect(failure_redirect_url):
             return RedirectResponse(url=failure_redirect_url)
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND,
             content=response_formatter.buildErrorResponse(str(exc)),
         )
     except InvalidTriggerState as exc:
-        if failure_redirect_url:
+        if failure_redirect_url and _is_safe_redirect(failure_redirect_url):
             return RedirectResponse(url=failure_redirect_url)
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content=response_formatter.buildErrorResponse(str(exc)),
         )
 
-    if success_redirect_url:
+    if success_redirect_url and _is_safe_redirect(success_redirect_url):
         return RedirectResponse(url=success_redirect_url)
     return JSONResponse(
         status_code=status.HTTP_200_OK,
@@ -267,7 +275,15 @@ async def invoke_trigger(
         Provide[CommonContainer.response_formatter]
     ),
 ):
-    raw_payload = await request.json()
+    try:
+        raw_payload = await request.json()
+    except (JSONDecodeError, ValueError) as exc:
+        logger.warning(f'Trigger invoke received invalid JSON for {trigger_id}: {exc}')
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse('invalid_json_payload'),
+        )
+
     try:
         result = await push_receiver.handle_push(
             trigger_id=trigger_id,

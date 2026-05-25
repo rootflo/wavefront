@@ -24,9 +24,13 @@ def process_trigger_event_task(
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
+        parsed_trigger_id = UUID(trigger_id)
         return loop.run_until_complete(
-            processor.process(trigger_id=UUID(trigger_id), raw_payload=raw_payload)
+            processor.process(trigger_id=parsed_trigger_id, raw_payload=raw_payload)
         )
+    except ValueError:
+        logger.error(f'Invalid trigger_id for process_trigger_event_task: {trigger_id}')
+        raise
     except Exception as exc:
         logger.exception(
             f'process_trigger_event_task failed for trigger {trigger_id} '

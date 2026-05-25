@@ -228,16 +228,29 @@ class TriggerEventProcessor:
             and credential.token_expires_at
             and credential.token_expires_at > now
         ):
-            return (
-                self._crypto.decrypt(credential.encrypted_access_token) or '',
-                credential.external_account_id,
-            )
+            access_token = self._crypto.decrypt(credential.encrypted_access_token)
+            if not access_token:
+                raise RuntimeError(
+                    f'Credential {credential_id} (account={credential.external_account_id}) '
+                    f'has invalid/undecryptable access_token'
+                )
+            return (access_token, credential.external_account_id)
 
         refresh_token = self._crypto.decrypt(credential.encrypted_refresh_token)
-        bundle = await provider.refresh_access_token(refresh_token or '')
+        if not refresh_token:
+            raise RuntimeError(
+                f'Credential {credential_id} (account={credential.external_account_id}) '
+                f'has invalid/undecryptable refresh_token'
+            )
+        bundle = await provider.refresh_access_token(refresh_token)
+        if not bundle.access_token:
+            raise RuntimeError(
+                f'Credential {credential_id} (account={credential.external_account_id}) '
+                f'refresh returned empty access_token'
+            )
         await self._credentials.find_one_and_update(
             {'id': credential_id},
             encrypted_access_token=self._crypto.encrypt(bundle.access_token),
             token_expires_at=bundle.expires_at,
         )
-        return bundle.access_token or '', credential.external_account_id
+        return bundle.access_token, credential.external_account_id
