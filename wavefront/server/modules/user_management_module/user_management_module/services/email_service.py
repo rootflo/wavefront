@@ -6,12 +6,12 @@ from fastapi import status
 import msal
 import requests
 import base64
-import json
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
-from google.oauth2 import service_account
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
 
@@ -133,39 +133,39 @@ class OutlookEmailService(EmailService):
 
 
 class GmailEmailService(EmailService):
-    def __init__(self, service_account_b64, email_sender, delegate_user):
-        self.email_sender = email_sender or delegate_user
-        self.delegate_user = delegate_user
+    def __init__(self, client_id, client_secret, refresh_token, email_sender):
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.refresh_token = refresh_token
+        self.email_sender = email_sender
         self.scopes = ['https://www.googleapis.com/auth/gmail.send']
 
-        if not delegate_user:
-            raise Exception('Delegate user required for gmail')
+        if not all([client_id, client_secret, refresh_token, email_sender]):
+            raise Exception(
+                'Gmail OAuth requires client_id, client_secret, refresh_token, and email_sender'
+            )
 
-        try:
-            decoded_json = base64.b64decode(service_account_b64).decode('utf-8')
-            self.service_account_info = json.loads(decoded_json)
-        except Exception as e:
-            raise Exception(f'Invalid Gmail service account configuration: {str(e)}')
+    def get_credentials(self) -> Credentials:
+        creds = Credentials(
+            token=None,
+            refresh_token=self.refresh_token,
+            token_uri='https://oauth2.googleapis.com/token',
+            client_id=self.client_id,
+            client_secret=self.client_secret,
+            scopes=self.scopes,
+        )
+        creds.refresh(Request())
+        return creds
 
     def get_access_token(self):
-        credentials = service_account.Credentials.from_service_account_info(
-            self.service_account_info, scopes=self.scopes
-        )
+        return self.get_credentials()
 
-        credentials = credentials.with_subject(self.delegate_user)
-
-        return credentials
+    def _get_gmail_service(self):
+        return build('gmail', 'v1', credentials=self.get_credentials())
 
     def send_forget_password_email(self, forget_url_link: str, email: str) -> bool:
         try:
-            credentials = self.get_access_token()
-            if not credentials:
-                logger.error('failed to obtain gmail access token')
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail='Failed to authenticate while sending the email.',
-                )
-            service = build('gmail', 'v1', credentials=credentials)
+            service = self._get_gmail_service()
 
             message = MIMEMultipart()
             message['to'] = email
@@ -206,14 +206,7 @@ class GmailEmailService(EmailService):
         attachments: list[dict[str, Any]] | None = None,
     ) -> bool:
         try:
-            credentials = self.get_access_token()
-            if not credentials:
-                logger.error('failed to obtain gmail access token')
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail='Failed to authenticate while sending the email.',
-                )
-            service = build('gmail', 'v1', credentials=credentials)
+            service = self._get_gmail_service()
             message = MIMEMultipart()
             message['to'] = email_id
             message['from'] = f'Rootflo Notifications <{self.email_sender}>'
