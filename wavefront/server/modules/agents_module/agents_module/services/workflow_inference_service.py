@@ -88,23 +88,19 @@ class WorkflowInferenceService:
         Returns:
             List of agent references in format 'namespace/agent_name'
         """
-        try:
-            yaml_data = yaml.safe_load(yaml_content)
-            arium_config = yaml_data.get('arium', {})
-            agents_config = arium_config.get('agents', [])
+        yaml_data = yaml.safe_load(yaml_content)
+        arium_config = yaml_data.get('arium', {})
+        agents_config = arium_config.get('agents', [])
 
-            agent_references = []
-            for agent_def in agents_config:
-                agent_name = agent_def.get('name', '')
-                # If agent name contains '/', it's a reference to cloud storage
-                if '/' in agent_name:
-                    agent_references.append(agent_name)
-                    logger.info(f'Found agent reference: {agent_name}')
+        agent_references = []
+        for agent_def in agents_config:
+            agent_name = agent_def.get('name', '')
+            # If agent name contains '/', it's a reference to cloud storage
+            if '/' in agent_name:
+                agent_references.append(agent_name)
+                logger.info(f'Found agent reference: {agent_name}')
 
-            return agent_references
-        except Exception as e:
-            logger.error(f'Error extracting agent references from YAML: {str(e)}')
-            return []
+        return agent_references
 
     def _extract_subworkflow_references(self, yaml_content: str) -> List[str]:
         """
@@ -116,31 +112,27 @@ class WorkflowInferenceService:
         Returns:
             List of subworkflow references in format 'namespace/workflow_name'
         """
-        try:
-            yaml_data = yaml.safe_load(yaml_content)
-            arium_config = yaml_data.get('arium', {})
-            ariums_config = arium_config.get('ariums', [])
+        yaml_data = yaml.safe_load(yaml_content)
+        arium_config = yaml_data.get('arium', {})
+        ariums_config = arium_config.get('ariums', [])
 
-            subworkflow_references = []
-            for arium_def in ariums_config:
-                arium_name = arium_def.get('name', '')
-                # If arium name contains '/', it's a reference to cloud storage
-                if '/' in arium_name:
-                    # Check if this is a reference (not an inline definition)
-                    # If it has agents, workflow, etc., it's inline, not a reference
-                    if (
-                        arium_def.get('agents') is None
-                        and arium_def.get('workflow') is None
-                        and arium_def.get('function_nodes') is None
-                        and arium_def.get('yaml_file') is None
-                    ):
-                        subworkflow_references.append(arium_name)
-                        logger.info(f'Found subworkflow reference: {arium_name}')
+        subworkflow_references = []
+        for arium_def in ariums_config:
+            arium_name = arium_def.get('name', '')
+            # If arium name contains '/', it's a reference to cloud storage
+            if '/' in arium_name:
+                # Check if this is a reference (not an inline definition)
+                # If it has agents, workflow, etc., it's inline, not a reference
+                if (
+                    arium_def.get('agents') is None
+                    and arium_def.get('workflow') is None
+                    and arium_def.get('function_nodes') is None
+                    and arium_def.get('yaml_file') is None
+                ):
+                    subworkflow_references.append(arium_name)
+                    logger.info(f'Found subworkflow reference: {arium_name}')
 
-            return subworkflow_references
-        except Exception as e:
-            logger.error(f'Error extracting subworkflow references from YAML: {str(e)}')
-            return []
+        return subworkflow_references
 
     async def _build_referenced_agents(
         self,
