@@ -30,6 +30,7 @@ class TriggersContainer(containers.DeclarativeContainer):
     workflow_repository = providers.Dependency()
 
     async_agentic_execution_service = providers.Dependency()
+    cache_manager = providers.Dependency()
 
     kms_service = providers.Singleton(
         FloKmsService,
@@ -94,4 +95,5 @@ class TriggersContainer(containers.DeclarativeContainer):
         credential_repository=credential_repository,
         provider_registry=trigger_provider_registry,
         token_crypto=token_crypto,
+        cache_manager=cache_manager,
     )

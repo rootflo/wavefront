@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from uuid import UUID
 
+from common_module.common_cache import CommonCache
 from common_module.log.logger import logger
 from db_repo_module.models.agentic_trigger import AgenticTrigger
 from db_repo_module.models.agentic_trigger_credential import AgenticTriggerCredential
@@ -22,15 +23,35 @@ class TriggerSubscriptionRenewer:
         credential_repository: SQLAlchemyRepository[AgenticTriggerCredential],
         provider_registry: TriggerProviderRegistry,
         token_crypto: TokenCrypto,
+        cache_manager: CommonCache,
         renew_window_hours: int = 24,
     ):
         self._triggers = trigger_repository
         self._credentials = credential_repository
         self._registry = provider_registry
         self._crypto = token_crypto
+        self._cache = cache_manager
         self._renew_window = timedelta(hours=renew_window_hours)
 
     async def run_once(self) -> int:
+        lock_key = 'lock:trigger_subscription_renewer'
+        # Try to acquire lock with a 30-minute expiry (1800 seconds)
+        # using the atomic Set-if-Not-Exists (nx=True) flag
+        acquired = self._cache.add(lock_key, 'locked', expiry=1800, nx=True)
+        if not acquired:
+            logger.info(
+                'TriggerSubscriptionRenewer: lock already held in Redis. Skipping run.'
+            )
+            return 0
+
+        # Note: we intentionally do NOT release the lock on completion.
+        # Letting the TTL expire avoids a compare-and-delete race where a pod
+        # whose work outran the TTL would otherwise delete another pod's
+        # freshly-acquired lock. The next cron fire is 6h away, well past the
+        # 30-min TTL.
+        logger.info(
+            'TriggerSubscriptionRenewer: successfully acquired Redis lock. Starting watches renewal.'
+        )
         renewed = 0
         active = await self._triggers.find(status='active', limit=1000)
         cutoff = datetime.now(timezone.utc) + self._renew_window

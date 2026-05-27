@@ -212,6 +212,7 @@ triggers_container = TriggersContainer(
     agent_repository=db_repo_container.agent_repository,
     workflow_repository=db_repo_container.workflow_repository,
     async_agentic_execution_service=agents_container.async_agentic_execution_service,
+    cache_manager=db_repo_container.cache_manager,
 )
 
 scheduler_manager = SchedulerManager()
