@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const createDatasourceSchema = z.object({
   name: z.string().min(1, 'Datasource name is required'),
-  type: z.enum(['gcp_bigquery', 'aws_redshift']),
+  type: z.enum(['gcp_bigquery', 'aws_redshift', 'postgres']),
   description: z.string().optional(),
   connectionConfig: z
     .string()

@@ -25,6 +25,7 @@ import { createDatasourceSchema, type CreateDatasourceInput } from './schemas';
 const DATASOURCE_TYPES = [
   { value: 'gcp_bigquery', label: 'Google BigQuery' },
   { value: 'aws_redshift', label: 'AWS Redshift' },
+  { value: 'postgres', label: 'PostgreSQL' },
 ];
 
 const SAMPLE_CONFIGS = {
@@ -41,6 +42,14 @@ const SAMPLE_CONFIGS = {
     database: 'your-database',
     user: 'your-username',
     password: 'your-password',
+  },
+  postgres: {
+    host: 'localhost',
+    port: 5432,
+    database: 'your-database',
+    user: 'your-username',
+    password: 'your-password',
+    schema: 'public',
   },
 };
 
