@@ -36,28 +36,29 @@ class CacheManager(CommonCache):
             os.getenv('WAVEFRONT_CACHE_ENABLED', 'true').lower() == 'true'
         )
 
-        if self.cache_enabled:
-            self.pool = self._create_connection_pool(
-                connection_timeout=connection_timeout,
-                socket_timeout=socket_timeout,
-                socket_keepalive=socket_keepalive,
-                pool_size=pool_size,
+        self.pool = self._create_connection_pool(
+            connection_timeout=connection_timeout,
+            socket_timeout=socket_timeout,
+            socket_keepalive=socket_keepalive,
+            pool_size=pool_size,
+        )
+
+        self.redis = self._create_redis_connection()
+
+        # Test the connection immediately - fail fast if Redis is unreachable
+        try:
+            self.redis.ping()
+            logger.info('Connected to Redis with redis ping')
+        except (ConnectionError, TimeoutError, RedisError) as e:
+            logger.error(f'Failed to connect to Redis during initialization: {e}')
+            logger.error('Server will not start without Redis connectivity')
+            raise RuntimeError(f'Redis connection test failed: {e}') from e
+
+        if not self.cache_enabled:
+            logger.info(
+                'Cache get/set operations are disabled via WAVEFRONT_CACHE_ENABLED; '
+                'pub/sub remains active'
             )
-
-            self.redis = self._create_redis_connection()
-
-            # Test the connection immediately - fail fast if Redis is unreachable
-            try:
-                self.redis.ping()
-                logger.info('Connected to Redis with redis ping')
-            except (ConnectionError, TimeoutError, RedisError) as e:
-                logger.error(f'Failed to connect to Redis during initialization: {e}')
-                logger.error('Server will not start without Redis connectivity')
-                raise RuntimeError(f'Redis connection test failed: {e}') from e
-        else:
-            self.pool = None
-            self.redis = None
-            logger.info('Cache is disabled via WAVEFRONT_CACHE_ENABLED env variable')
 
     def _create_connection_pool(
         self,
@@ -89,9 +90,6 @@ class CacheManager(CommonCache):
         return Redis(connection_pool=self.pool)
 
     def _checking_redis_connection(self):
-        if not self.cache_enabled:
-            return False
-
         try:
             self.redis.ping()
             return True
@@ -197,8 +195,6 @@ class CacheManager(CommonCache):
         Raises:
             RedisError: If publishing fails
         """
-        if not self.cache_enabled:
-            return 0
 
         try:
             full_channel = f'{self.namespace}/{channel}'
@@ -233,8 +229,6 @@ class CacheManager(CommonCache):
                 if message['type'] == 'message':
                     print(f"Received: {message['data']}")
         """
-        if not self.cache_enabled:
-            return None
 
         try:
             pubsub = self.redis.pubsub()
@@ -258,9 +252,6 @@ class CacheManager(CommonCache):
             raise
 
     def close(self):
-        if not self.cache_enabled:
-            return
-
         try:
             self.pool.disconnect()
             logger.info('Redis connection pool closed successfully')
