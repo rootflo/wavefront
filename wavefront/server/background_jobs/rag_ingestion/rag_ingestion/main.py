@@ -2,7 +2,7 @@ from rag_ingestion.stream.rag_streamer import RagStreamListener
 from rag_ingestion.processors.kb_storage_processor import KbStorageProcessor
 from db_repo_module.cache.cache_manager import CacheManager
 from flo_cloud.kms import FloKmsService
-from rag_ingestion.env import CLOUD_PROVIDER, RETRY_COUNT
+from rag_ingestion.env import CLOUD_PROVIDER, RETRY_COUNT, STREAMING_BATCH_SIZE
 from flo_cloud.cloud_storage import CloudStorageManager
 from flo_cloud.message_queue import MessageQueueManager
 import os
@@ -30,6 +30,7 @@ def main():
 
     # Initialize stream listener
     listener = RagStreamListener(
+        streaming_batch_size=STREAMING_BATCH_SIZE,
         event_manager=event_manager,
         processor=KbStorageProcessor(
             storage_manager,

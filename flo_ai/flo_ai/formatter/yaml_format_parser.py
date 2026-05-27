@@ -66,6 +66,7 @@ class FloJsonParser:
             'bool': bool,
             'float': float,
             'literal': self.__create_literal_type,
+            'enum': self.__create_enum_type,
             'object': lambda f: self.__create_nested_model(f, model_name),
             'array': lambda f: self.__create_array_type(f, model_name),
         }
@@ -78,7 +79,7 @@ class FloJsonParser:
 
         return (
             type_handler(field)
-            if field_type in ['literal', 'object', 'array']
+            if field_type in ['literal', 'enum', 'object', 'array']
             else type_handler
         )
 
@@ -89,9 +90,49 @@ class FloJsonParser:
             raise ValueError(
                 f"Field '{field['name']}' of type 'literal' must specify 'values'."
             )
-        literals = tuple(literal_value['value'] for literal_value in literal_values)
+        literals = tuple(
+            self.__extract_enum_value(v, field['name']) for v in literal_values
+        )
         # Construct Literal type dynamically at runtime
         return Literal.__getitem__(literals)
+
+    def __create_enum_type(self, field: Dict[str, Any]) -> Any:
+        """Creates a Literal type for an enum field.
+
+        Enum values may be plain primitives (str/int/float) or dicts with a
+        ``value`` key (same shape as literal values). At the JSON-schema level
+        this emits ``{"enum": [...]}`` which every supported LLM backend handles
+        (OpenAI/Azure via response_format + function schema, Gemini via
+        response_schema, Anthropic/Ollama/Bedrock/vLLM via inlined schema in the
+        system prompt).
+        """
+        raw_values = field.get('values', [])
+        if not raw_values:
+            raise ValueError(
+                f"Field '{field['name']}' of type 'enum' must specify 'values'."
+            )
+        literals = tuple(
+            self.__extract_enum_value(v, field['name']) for v in raw_values
+        )
+        return Literal.__getitem__(literals)
+
+    @staticmethod
+    def __extract_enum_value(value: Any, field_name: str) -> Any:
+        """Normalize an enum/literal value entry to its primitive value."""
+        if isinstance(value, dict):
+            if 'value' not in value:
+                raise ValueError(
+                    f"Field '{field_name}' has an object-style value entry "
+                    "missing the required 'value' key."
+                )
+            return value['value']
+        if isinstance(value, (str, int, float, bool)):
+            return value
+        raise ValueError(
+            f"Field '{field_name}' has an unsupported enum value of type "
+            f'{type(value).__name__}. Expected str, int, float or object with '
+            "'value' key."
+        )
 
     def __create_array_type(self, field: Dict[str, Any], model_name: str) -> Any:
         """Creates a List type from field definition"""
@@ -121,6 +162,17 @@ class FloJsonParser:
                 This should be one of the values in the `value` column in the above csv.
                 {default_prompt}
                 """
+            elif field['type'] == 'enum':
+                enum_values = [
+                    self.__extract_enum_value(v, field['name'])
+                    for v in field.get('values', [])
+                ]
+                default_prompt = field.get('default_value_prompt', '')
+                field_description = (
+                    f"{field['description']}\n"
+                    f'Must be exactly one of: {enum_values}.'
+                    + (f'\n{default_prompt}' if default_prompt else '')
+                )
             else:
                 field_description = field['description']
 

@@ -34,7 +34,7 @@ export interface CreateScheduledJobRequest {
     query_id: string;
     recipients: string[];
     subject?: string;
-    date_range?: 'last_day' | 'last_7_days' | 'last_30_days';
+    date_range?: 'last_day' | 'last_hour' | 'last_7_days' | 'last_30_days';
     start_date_param?: string;
     end_date_param?: string;
     offset?: number;

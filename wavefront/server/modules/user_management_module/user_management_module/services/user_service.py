@@ -198,6 +198,8 @@ class UserService:
                 session.add_all(user_roles)
                 await session.commit()
 
+                self.cache_manager.invalidate_query('user_data_*')
+
                 return JSONResponse(
                     status_code=status.HTTP_200_OK,
                     content=response_formatter.buildSuccessResponse(

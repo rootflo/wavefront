@@ -19,12 +19,14 @@ class StreamListener(ABC):
         cache_manager: CacheManager,
         retry_count: int,
         streaming_batch_size: int = 5,
+        wait_time_sec: int = 20,
     ):
         self.event_manager = event_manager
         self.processor = processor
         self.cache_manager = cache_manager
         self.retry_count = retry_count
         self.streaming_batch_size = streaming_batch_size
+        self.wait_time_sec = wait_time_sec
 
     def handle_error(
         self,
@@ -71,7 +73,8 @@ class StreamListener(ABC):
         while True:
             try:
                 response = self.event_manager.receive_messages(
-                    max_messages=self.streaming_batch_size
+                    max_messages=self.streaming_batch_size,
+                    wait_time_sec=self.wait_time_sec
                 )
                 messages: List[BaseEventMessage] = self.get_event_messages(response)
                 logger.info(f'{worker_id}: listening for messages...')

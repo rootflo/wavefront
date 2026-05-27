@@ -6,6 +6,8 @@ services:
     image: ankane/pgvector
     container_name: postgres-floware
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     environment:
       - POSTGRES_USER=<YOUR_POSTGRES_USER>
       - POSTGRES_PASSWORD=<YOUR_POSTGRES_PASSWORD>
@@ -27,6 +29,8 @@ services:
     image: postgres:16
     container_name: postgres-console
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     environment:
       - POSTGRES_USER=<YOUR_POSTGRES_USER>
       - POSTGRES_PASSWORD=<YOUR_POSTGRES_PASSWORD>
@@ -48,6 +52,8 @@ services:
     image: redis:7.4
     container_name: redis-floware
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     ports:
       - '6379:6379'
     healthcheck:
@@ -63,6 +69,8 @@ services:
     image: redis:7.4
     container_name: redis-call-processing
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     ports:
       - '6380:6379'
     healthcheck:
@@ -245,7 +253,6 @@ services:
       - SUPERSET_URL=<YOUR_SUPERSET_URL>
       - SUPERSET_USERNAME=<YOUR_SUPERSET_USERNAME>
       - SUPERSET_PASSWORD=<YOUR_SUPERSET_PASSWORD>
-      - SUPERSET_FLAG=<YOUR_SUPERSET_FLAG>
       - BQ_PROJECT_ID=<YOUR_BIGQUERY_PROJECT>
       - BQ_DATASET_ID=<YOUR_BIGQUERY_DATASET>
 
@@ -420,7 +427,6 @@ services:
       - GCP_PROJECT_ID=<YOUR_GCP_PROJECT_ID>
       - GCP_LOCATION=<YOUR_GCP_LOCATION>
       - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/gcp-service-account.json
-      - MODEL_STORAGE_BUCKET=<YOUR_MODEL_BUCKET>
   
     networks:
       - floware-network

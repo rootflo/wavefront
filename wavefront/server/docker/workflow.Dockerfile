@@ -30,7 +30,16 @@ COPY wavefront/server/plugins/authenticator /app/plugins/authenticator
 # Install dependencies (without dependecy resolution and no dev dependencies)
 RUN uv sync --package workflow_job --frozen --no-dev
 
+# Create a non-root user named 'appuser'
+RUN useradd -m appuser
+
+# Give 'appuser' ownership of the /app directory and its contents
+RUN chown -R appuser:appuser /app
+
 # change WORKDIR
 WORKDIR /app/background_jobs/workflow_job/workflow_job
+
+# Switch to the non-root user before running the command
+USER appuser
 
 CMD ["uv", "run", "main.py"]

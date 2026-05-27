@@ -9,16 +9,17 @@ from typing import Any, Optional, List, Dict
 
 from .bigquery import BigQueryPlugin, BigQueryConfig
 from .redshift import RedshiftPlugin, RedshiftConfig
+from .postgres import PostgresPlugin, PostgresConfig
 from .synapse import SynapsePlugin, SynapseConfig
 from .helper import construct_meta
 from .odata_parser import ODataQueryParser
 
 
-class DatasourcePlugin(DataSourceABC):
+class DatasourcePlugin:
     def __init__(
         self,
         datasource_type: DataSourceType,
-        config: BigQueryConfig | RedshiftConfig | SynapseConfig,
+        config: BigQueryConfig | RedshiftConfig | PostgresConfig | SynapseConfig,
     ):
         self.datasource_type = datasource_type
         self.config = config
@@ -35,6 +36,11 @@ class DatasourcePlugin(DataSourceABC):
             if not isinstance(self.config, BigQueryConfig):
                 raise ValueError(f'Invalid config type: {type(self.config)}')
             return BigQueryPlugin(self.config)
+        elif self.datasource_type == DataSourceType.POSTGRES:
+            self.odata_parser = ODataQueryParser(type='sql', dynamic_var_char=':')
+            if not isinstance(self.config, PostgresConfig):
+                raise ValueError(f'Invalid config type: {type(self.config)}')
+            return PostgresPlugin(self.config)
         elif self.datasource_type == DataSourceType.AZURE_SYNAPSE:
             self.odata_parser = ODataQueryParser(type='sql', dynamic_var_char='@')
             if not isinstance(self.config, SynapseConfig):
@@ -71,7 +77,7 @@ class DatasourcePlugin(DataSourceABC):
     ) -> QueryResult:
         where_clause, params = self.odata_parser.prepare_odata_filter(filter)
         join_query, table_aliases, join_where_clause, join_params = (
-            self.odata_parser.prepare_odata_joins(join, table_name)
+            self.odata_parser.prepare_odata_joins(join or '', table_name)
         )
 
         where_clause = where_clause if where_clause else 'true'

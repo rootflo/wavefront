@@ -2,7 +2,7 @@ import base64
 import asyncio
 from typing import Dict, Any, List, Optional, AsyncIterator
 from .base_llm import BaseLLM
-from flo_ai.models.chat_message import ImageMessageContent
+from flo_ai.models.chat_message import DocumentMessageContent, ImageMessageContent
 from google import genai
 from google.genai import types
 from flo_ai.tool.base_tool import Tool
@@ -205,11 +205,12 @@ class Gemini(BaseLLM):
             if hasattr(chunk, 'text') and chunk.text:
                 yield {'content': chunk.text}
 
-    def get_message_content(self, response: Any) -> Optional[str]:
-        """Extract message content from response"""
+    def get_message_content(self, response: Dict[str, Any]) -> str:
+        if isinstance(response, str):
+            return response
         if isinstance(response, dict):
-            return response.get('content', '')
-        return str(response)
+            content = response.get('content')
+            return str(content) if content is not None else ''
 
     def format_tool_for_llm(self, tool: 'Tool') -> Dict[str, Any]:
         """Format a single tool for Gemini's function declarations"""
@@ -261,3 +262,32 @@ class Gemini(BaseLLM):
         raise NotImplementedError(
             f'Image formatting for Gemini LLM requires either url or base64 data. Received: url={image.url}, base64={bool(image.base64)}'
         )
+
+    async def format_document_in_message(
+        self, document: DocumentMessageContent
+    ) -> types.Part:
+        """Return a Gemini native Part for this document.
+
+        Gemini accepts PDFs (and many other document formats) as `inline_data`
+        Parts, so there is no need to extract or rasterize locally.
+        """
+        cache_key = self.__class__.__name__
+        cache = getattr(document, '_formatted_cache', None)
+        if isinstance(cache, dict) and cache_key in cache:
+            return cache[cache_key]
+
+        mime = document.mime_type or 'application/pdf'
+        if document.bytes:
+            part = types.Part.from_bytes(data=document.bytes, mime_type=mime)
+        elif document.base64:
+            part = types.Part.from_bytes(
+                data=base64.b64decode(document.base64), mime_type=mime
+            )
+        elif document.url:
+            part = types.Part.from_uri(file_uri=document.url, mime_type=mime)
+        else:
+            raise ValueError('DocumentMessageContent has no bytes, base64, or url')
+
+        if isinstance(cache, dict):
+            cache[cache_key] = part
+        return part
