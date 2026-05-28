@@ -40,8 +40,7 @@ class SttConfigService:
         description: Optional[str] = None,
         provider: str = None,
         api_key: str = None,
-        language: Optional[str] = None,
-        parameters: Optional[dict] = None,
+        region: Optional[str] = None,
     ) -> dict:
         """
         Create a new STT configuration
@@ -51,8 +50,7 @@ class SttConfigService:
             description: Optional description
             provider: STT provider
             api_key: API key for the STT provider
-            language: ISO 639-1 language code (optional)
-            parameters: Provider-specific parameters (optional)
+            region: Region for the provider (e.g. Azure region)
 
         Returns:
             Created STT config as dict
@@ -66,8 +64,7 @@ class SttConfigService:
             description=description,
             provider=provider,
             api_key=api_key,
-            language=language,
-            parameters=json.dumps(parameters) if parameters else None,
+            region=region,
         )
 
         # Convert to dict

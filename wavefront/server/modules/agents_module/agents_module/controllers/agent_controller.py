@@ -21,6 +21,7 @@ from llm_inference_config_module.services.llm_inference_config_service import (
     LlmInferenceConfigService,
 )
 from tools_module.registry.tool_loader import ToolLoader
+from flo_ai import FloUtils
 
 agents_router = APIRouter()
 
@@ -204,8 +205,13 @@ async def agent_inference_v2(
             content=response_formatter.buildErrorResponse(str(e)),
         )
 
+    if agent_inference_payload.output_json_enabled:
+        result = FloUtils.extract_jsons_from_string(result[-1].content)
+    else:
+        result = result[-1].content
+
     response_data = AgentInferenceResponse(
-        result=result[-1].content,
+        result=result,
         agent_id=str(agent_id),
         namespace=namespace,
         execution_time=execution_time,

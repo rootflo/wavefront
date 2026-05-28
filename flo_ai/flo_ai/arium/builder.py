@@ -592,11 +592,12 @@ class AriumBuilder:
                 nested_builder = cls.from_yaml(
                     yaml_file=arium_node.yaml_file,
                     memory=None,
-                    agents=None,
+                    agents=agents,
                     routers=None,
                     base_llm=base_llm,
-                    function_registry=None,
-                    tool_registry=None,
+                    function_registry=function_registry,
+                    tool_registry=tool_registry,
+                    **kwargs,
                 )
                 nested_arium = nested_builder.build()
 
@@ -634,11 +635,12 @@ class AriumBuilder:
                 nested_builder = cls.from_yaml(
                     yaml_str=yaml.dump(sub_config),
                     memory=None,
-                    agents=None,
+                    agents=agents,
                     routers=None,
                     base_llm=base_llm,
-                    function_registry=None,
-                    tool_registry=None,
+                    function_registry=function_registry,
+                    tool_registry=tool_registry,
+                    **kwargs,
                 )
                 nested_arium = nested_builder.build()
 

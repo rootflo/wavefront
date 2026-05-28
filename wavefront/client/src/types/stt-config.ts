@@ -1,14 +1,13 @@
 import { IApiResponse } from '@app/lib/axios';
 
-export type SttProvider = 'deepgram';
+export type SttProvider = 'deepgram' | 'sarvam' | 'elevenlabs' | 'azure';
 
 export interface SttConfig {
   id: string;
   display_name: string;
   description: string | null;
   provider: SttProvider;
-  language: string | null;
-  parameters: Record<string, unknown> | null;
+  region: string | null;
   is_deleted: boolean;
   created_at: string;
   updated_at: string;
@@ -19,17 +18,14 @@ export interface CreateSttConfigRequest {
   description?: string | null;
   provider: SttProvider;
   api_key: string;
-  language?: string | null;
-  parameters?: Record<string, unknown> | null;
+  region?: string | null;
 }
 
 export interface UpdateSttConfigRequest {
   display_name?: string;
   description?: string | null;
-  provider?: SttProvider;
   api_key?: string;
-  language?: string | null;
-  parameters?: Record<string, unknown> | null;
+  region?: string | null;
 }
 
 export interface SttConfigData {
@@ -58,4 +54,25 @@ export interface DeepgramSttParameters {
   punctuate?: boolean;
   profanity_filter?: boolean;
   vad_events?: boolean;
+}
+
+// Sarvam STT specific parameters
+export interface SarvamSttParameters {
+  model?: string; // default: 'saarika:v2.5'
+  language?: string;
+  vad_signals?: boolean;
+  high_vad_sensitivity?: boolean;
+}
+
+// ElevenLabs STT specific parameters
+export interface ElevenLabsSttParameters {
+  model?: string; // default: 'scribe_v2_realtime'
+  language?: string; // ISO-639-1 code e.g. 'en', 'hi'
+  sample_rate?: number; // default: 8000
+}
+
+// Azure STT specific parameters
+export interface AzureSttParameters {
+  endpoint_id?: string; // custom model endpoint ID
+  sample_rate?: number;
 }

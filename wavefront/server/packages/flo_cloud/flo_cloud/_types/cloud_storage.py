@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, IO, ContextManager
 
 
 class CloudStorageHandler(ABC):
@@ -101,5 +101,18 @@ class CloudStorageHandler(ABC):
 
         Raises:
             Exception: If listing fails
+        """
+        pass
+
+    @abstractmethod
+    def open_text_writer(
+        self, bucket_name: str, key: str, content_type: Optional[str] = None
+    ) -> ContextManager[IO[str]]:
+        """
+        Open a text writer stream to cloud storage for incremental writes.
+
+        Implementations should return a context manager that yields a file-like
+        object opened in text mode. Data written to this object must be
+        uploaded to the underlying storage when the context manager exits.
         """
         pass

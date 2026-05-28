@@ -44,3 +44,8 @@ def get_voice_agents_list_cache_key() -> str:
 def get_welcome_message_url_cache_key(agent_id: UUID) -> str:
     """Generate cache key for a voice agent's welcome message presigned URL"""
     return f'voice_agent_welcome_url:{agent_id}'
+
+
+def get_inbound_number_cache_key(phone_number: str) -> str:
+    """Generate cache key for inbound number to agent ID mapping"""
+    return f'inbound_number:{phone_number}'

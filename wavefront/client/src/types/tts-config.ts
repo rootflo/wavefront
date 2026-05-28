@@ -1,15 +1,13 @@
 import { IApiResponse } from '@app/lib/axios';
 
-export type TtsProvider = 'elevenlabs' | 'deepgram' | 'cartesia';
+export type TtsProvider = 'elevenlabs' | 'deepgram' | 'cartesia' | 'sarvam' | 'azure';
 
 export interface TtsConfig {
   id: string;
   display_name: string;
   description: string | null;
   provider: TtsProvider;
-  voice_id: string;
-  language: string | null;
-  parameters: Record<string, unknown> | null;
+  region: string | null;
   is_deleted: boolean;
   created_at: string;
   updated_at: string;
@@ -19,20 +17,15 @@ export interface CreateTtsConfigRequest {
   display_name: string;
   description?: string | null;
   provider: TtsProvider;
-  voice_id: string;
   api_key: string;
-  language?: string | null;
-  parameters?: Record<string, unknown> | null;
+  region?: string | null;
 }
 
 export interface UpdateTtsConfigRequest {
   display_name?: string;
   description?: string | null;
-  provider?: TtsProvider;
-  voice_id?: string;
   api_key?: string;
-  language?: string | null;
-  parameters?: Record<string, unknown> | null;
+  region?: string | null;
 }
 
 export interface TtsConfigData {
@@ -71,4 +64,23 @@ export interface CartesiaParameters {
   model?: string; // default: 'sonic-2'
   language?: string; // Language enum
   speed?: number;
+}
+
+// Sarvam TTS specific parameters
+export interface SarvamTtsParameters {
+  model?: string; // default: 'bulbul:v2'
+  language?: string;
+  pitch?: number; // -0.75 to 0.75
+  pace?: number; // 0.3 to 3.0
+  loudness?: number; // 0.1 to 3.0
+  enable_preprocessing?: boolean;
+  temperature?: number; // 0.01 to 1.0
+}
+
+// Azure TTS specific parameters
+export interface AzureTtsParameters {
+  style?: string; // e.g. 'cheerful', 'sad', 'angry'
+  rate?: string; // e.g. '+10%', 'fast', 'slow'
+  pitch?: string; // e.g. '+0Hz', 'high', 'low'
+  sample_rate?: number;
 }

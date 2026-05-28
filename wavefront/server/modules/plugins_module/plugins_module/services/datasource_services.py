@@ -1,5 +1,5 @@
 import collections
-from datasource import DataSourceType, BigQueryConfig, RedshiftConfig
+from datasource import DataSourceType, BigQueryConfig, RedshiftConfig, PostgresConfig
 from db_repo_module.models.datasource import Datasource
 from db_repo_module.models.role import Role
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
@@ -17,7 +17,7 @@ async def get_datasource_config(
     datasource_repository: SQLAlchemyRepository[Datasource] = Depends(
         Provide(PluginsContainer.datasource_repository)
     ),
-) -> tuple[DataSourceType, BigQueryConfig | RedshiftConfig]:
+) -> tuple[DataSourceType, BigQueryConfig | RedshiftConfig | PostgresConfig]:
     datasource: Datasource | None = await datasource_repository.find_one(
         id=datasource_id
     )
@@ -28,6 +28,8 @@ async def get_datasource_config(
         return DataSourceType.GCP_BIGQUERY, BigQueryConfig(**datasource.config)
     elif datasource.type == DataSourceType.AWS_REDSHIFT:
         return DataSourceType.AWS_REDSHIFT, RedshiftConfig(**datasource.config)
+    elif datasource.type == DataSourceType.POSTGRES:
+        return DataSourceType.POSTGRES, PostgresConfig(**datasource.config)
     else:
         raise ValueError(f'Invalid datasource type: {datasource.type}')
 
@@ -53,6 +55,7 @@ def check_is_valid_resource(resource_id: str) -> bool:
         'rf_parsed_data_object',
         'rf_gold_data_object',
         'rf_gold_item_details',
+        'rf_gold_auditor_data',
     ]:
         return True
     return False

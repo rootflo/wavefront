@@ -1,7 +1,7 @@
 """
 STT (Speech-to-Text) service factory
 
-Supports multiple providers: Deepgram, AssemblyAI, Whisper, Google, Azure
+Supports multiple providers: Deepgram, Sarvam, ElevenLabs
 """
 
 from typing import Dict, Any
@@ -9,13 +9,16 @@ from call_processing.log.logger import logger
 
 # Pipecat STT services
 from pipecat.services.deepgram.stt import DeepgramSTTService
+from pipecat.services.sarvam.stt import SarvamSTTService
+from pipecat.services.elevenlabs.stt import ElevenLabsRealtimeSTTService
+
+# Pipecat language enum
+from pipecat.transcriptions.language import Language
 
 # Deepgram options
 from deepgram import LiveOptions
 
-# Add more as needed:
-# from pipecat.services.assemblyai.stt import AssemblyAISTTService
-# from pipecat.services.whisper.stt import WhisperSTTService
+from pipecat.services.azure.stt import AzureSTTService
 
 
 class STTServiceFactory:
@@ -42,6 +45,7 @@ class STTServiceFactory:
         """
         provider = stt_config['provider']
         api_key = stt_config['api_key']
+        region = stt_config.get('region')
         parameters = stt_config.get('parameters', {})
 
         if parameters is None:
@@ -51,6 +55,12 @@ class STTServiceFactory:
 
         if provider == 'deepgram':
             return STTServiceFactory._create_deepgram_stt(api_key, parameters)
+        elif provider == 'sarvam':
+            return STTServiceFactory._create_sarvam_stt(api_key, parameters)
+        elif provider == 'elevenlabs':
+            return STTServiceFactory._create_elevenlabs_stt(api_key, parameters)
+        elif provider == 'azure':
+            return STTServiceFactory._create_azure_stt(api_key, region, parameters)
         elif provider == 'assemblyai':
             return STTServiceFactory._create_assemblyai_stt(api_key, parameters)
         elif provider == 'whisper':
@@ -75,8 +85,8 @@ class STTServiceFactory:
             options_dict['encoding'] = parameters['encoding']
         if 'sample_rate' in parameters:
             options_dict['sample_rate'] = parameters['sample_rate']
-        if 'endpointing' in parameters:
-            options_dict['endpointing'] = parameters['endpointing']
+        # if 'endpointing' in parameters:   # using pipecat VAD + smart turn detection
+        #     options_dict['endpointing'] = parameters['endpointing']
         if 'channels' in parameters:
             options_dict['channels'] = parameters['channels']
         if 'smart_format' in parameters:
@@ -85,14 +95,14 @@ class STTServiceFactory:
             options_dict['punctuate'] = parameters['punctuate']
         if 'profanity_filter' in parameters:
             options_dict['profanity_filter'] = parameters['profanity_filter']
-        if 'vad_events' in parameters:
-            options_dict['vad_events'] = parameters['vad_events']
+        # if 'vad_events' in parameters:    # depreceated in pipecat 0.99+
+        #     options_dict['vad_events'] = parameters['vad_events']
 
         # Set smart defaults if not provided
         options_dict.setdefault(
             'interim_results', True
         )  # Always enable for faster feedback
-        options_dict.setdefault('endpointing', 300)  # 300ms = faster cutoff
+        # options_dict.setdefault('endpointing', 300)  # 300ms = faster cutoff
         options_dict.setdefault('encoding', 'linear16')
         options_dict.setdefault('sample_rate', 8000)
         options_dict.setdefault('model', 'nova-2')
@@ -105,6 +115,154 @@ class STTServiceFactory:
         )
 
         return DeepgramSTTService(api_key=api_key, live_options=live_options)
+
+    # Mapping of short language codes to pipecat Language enum for Sarvam
+    SARVAM_LANGUAGE_MAP = {
+        'bn': Language.BN_IN,
+        'en': Language.EN_IN,
+        'gu': Language.GU_IN,
+        'hi': Language.HI_IN,
+        'kn': Language.KN_IN,
+        'ml': Language.ML_IN,
+        'mr': Language.MR_IN,
+        'or': Language.OR_IN,
+        'pa': Language.PA_IN,
+        'ta': Language.TA_IN,
+        'te': Language.TE_IN,
+    }
+
+    @staticmethod
+    def _create_sarvam_stt(api_key: str, parameters: Dict[str, Any]):
+        """Create Sarvam STT service"""
+        params_dict = {}
+
+        # Map language code to pipecat Language enum
+        if 'language' in parameters and parameters['language']:
+            lang_code = parameters['language']
+            lang_enum = STTServiceFactory.SARVAM_LANGUAGE_MAP.get(lang_code)
+            if lang_enum:
+                params_dict['language'] = lang_enum
+            else:
+                logger.warning(f"Unknown Sarvam language '{lang_code}', skipping")
+
+        if 'vad_signals' in parameters:
+            params_dict['vad_signals'] = parameters['vad_signals']
+        if 'high_vad_sensitivity' in parameters:
+            params_dict['high_vad_sensitivity'] = parameters['high_vad_sensitivity']
+
+        model = parameters.get('model', 'saarika:v2.5')
+        sample_rate = parameters.get('sample_rate', 8000)
+
+        input_params = (
+            SarvamSTTService.InputParams(**params_dict) if params_dict else None
+        )
+
+        logger.info(f'Sarvam STT config: model={model}, sample_rate={sample_rate}')
+
+        return SarvamSTTService(
+            api_key=api_key,
+            model=model,
+            sample_rate=sample_rate,
+            params=input_params,
+        )
+
+    # Mapping of short language codes to ElevenLabs ISO-639-3 language codes
+    ELEVENLABS_LANGUAGE_MAP = {
+        'en': 'eng',
+        'hi': 'hin',
+        'ta': 'tam',
+        'te': 'tel',
+        'kn': 'kan',
+        'ml': 'mal',
+        'gu': 'guj',
+        'bn': 'ben',
+        'mr': 'mar',
+        'pa': 'pan',
+        'or': 'ori',
+    }
+
+    AZURE_LANGUAGE_MAP = {
+        'en': Language.EN_US,
+        'hi': Language.HI_IN,
+        'ta': Language.TA_IN,
+        'te': Language.TE_IN,
+        'kn': Language.KN_IN,
+        'ml': Language.ML_IN,
+        'gu': Language.GU_IN,
+        'bn': Language.BN_IN,
+        'mr': Language.MR_IN,
+        'pa': Language.PA_IN,
+        'or': Language.OR_IN,
+    }
+
+    @staticmethod
+    def _create_elevenlabs_stt(api_key: str, parameters: Dict[str, Any]):
+        """Create ElevenLabs Realtime STT service (WebSocket streaming, scribe_v2_realtime)"""
+        params_dict = {}
+
+        # Map language code to ElevenLabs ISO-639-3 code
+        if 'language' in parameters and parameters['language']:
+            lang_code = parameters['language']
+            elevenlabs_lang = STTServiceFactory.ELEVENLABS_LANGUAGE_MAP.get(lang_code)
+            if elevenlabs_lang:
+                params_dict['language_code'] = elevenlabs_lang
+            else:
+                logger.warning(
+                    f"Unknown ElevenLabs language '{lang_code}', skipping (auto-detect will be used)"
+                )
+
+        model = parameters.get('model', 'scribe_v2_realtime')
+        sample_rate = parameters.get('sample_rate', 8000)
+
+        input_params = (
+            ElevenLabsRealtimeSTTService.InputParams(**params_dict)
+            if params_dict
+            else None
+        )
+
+        logger.info(f'ElevenLabs STT config: model={model}, sample_rate={sample_rate}')
+
+        return ElevenLabsRealtimeSTTService(
+            api_key=api_key,
+            model=model,
+            sample_rate=sample_rate,
+            params=input_params,
+        )
+
+    @staticmethod
+    def _create_azure_stt(api_key: str, region: str, parameters: Dict[str, Any]):
+        """Create Azure STT service"""
+        if not region:
+            raise ValueError("Azure STT requires 'region' to be set in the STT config")
+
+        kwargs = {
+            'api_key': api_key,
+            'region': region,
+        }
+
+        if 'sample_rate' in parameters and parameters['sample_rate']:
+            kwargs['sample_rate'] = parameters['sample_rate']
+        if 'endpoint_id' in parameters and parameters['endpoint_id']:
+            kwargs['endpoint_id'] = parameters['endpoint_id']
+        if (
+            'ttfs_p99_latency' in parameters
+            and parameters['ttfs_p99_latency'] is not None
+        ):
+            kwargs['ttfs_p99_latency'] = parameters['ttfs_p99_latency']
+
+        if 'language' in parameters and parameters['language']:
+            lang_code = parameters['language']
+            lang_enum = STTServiceFactory.AZURE_LANGUAGE_MAP.get(lang_code)
+            if lang_enum:
+                kwargs['language'] = lang_enum
+            else:
+                logger.warning(
+                    f"Unknown Azure language '{lang_code}', using service default"
+                )
+
+        logger.info(f'Azure STT config: region={region}')
+
+        return AzureSTTService(**kwargs)
 
     @staticmethod
     def _create_assemblyai_stt(api_key: str, parameters: Dict[str, Any]):

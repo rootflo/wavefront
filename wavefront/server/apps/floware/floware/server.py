@@ -33,8 +33,6 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from gold_module.controllers.router import gold_router
 from gold_module.gold_container import GoldContainer
-from insights_module.controllers.router import insights_router
-from insights_module.insights_container import InsightsContainer
 
 from knowledge_base_module.controllers.knowledge_base_controller import (
     knowledge_base_router,
@@ -53,10 +51,12 @@ from user_management_module.user_container import UserContainer
 from floware.controllers.notification_controller import notification_router
 from floware.di.application_container import ApplicationContainer
 from floware.middleware.security_headers import SecurityHeadersMiddleware
+from floware.services.scheduler_manager import SchedulerManager
 from plugins_module.plugins_container import PluginsContainer
 from plugins_module.controllers.datasource_controller import datasource_router
 from plugins_module.controllers.authenticator_controller import authenticator_router
 from floware.controllers.config_controller import config_router
+from floware.controllers.scheduled_job_controller import scheduled_job_router
 from product_analysis_module.controllers.product_anaysis_controllers import (
     product_analysis_router,
 )
@@ -68,6 +68,10 @@ from agents_module.controllers.workflow_controller import workflows_router
 from agents_module.controllers.workflow_runs import workflow_runs_router
 from agents_module.controllers.workflow_pipeline_controller import (
     workflow_pipeline_router,
+)
+from agents_module.controllers.async_inference_controller import async_router
+from agents_module.services.async_agentic_execution_result_consumer import (
+    AsyncAgenticExecutionResultConsumer,
 )
 from agents_module.agents_container import AgentsContainer
 from inference_module.inference_container import InferenceContainer
@@ -89,15 +93,18 @@ from voice_agents_module.controllers.telephony_config_controller import (
 from voice_agents_module.controllers.tts_config_controller import tts_config_router
 from voice_agents_module.controllers.stt_config_controller import stt_config_router
 from voice_agents_module.controllers.voice_agent_controller import voice_agent_router
+from voice_agents_module.controllers.tool_controller import tool_router
 from plugins_module.controllers.message_processor_controller import (
     message_processor_router,
 )
+from plugins_module.controllers.cloud_storage_controller import cloud_storage_router
 
 # API Services Module
 from api_services_module.api_services_container import create_api_services_container
 from api_services_module.api_services_container import ApiServicesContainer
 from floware.channels import start_redis_listener
 from starlette.middleware import _MiddlewareFactory
+
 
 # Initialize dependency containers
 # Create a single shared instance of the database container
@@ -106,26 +113,25 @@ auth_container = AuthContainer(
     db_client=db_repo_container.db_client, cache_manager=db_repo_container.cache_manager
 )
 common_container = CommonContainer(cache_manager=db_repo_container.cache_manager)
+config = common_container.config()
 user_module_container = UserContainer(
     db_client=db_repo_container.db_client, cache_manager=db_repo_container.cache_manager
 )
-insights_container = InsightsContainer(
-    notification_repository=db_repo_container.notification_repository,
-    cache_manager=db_repo_container.cache_manager,
-)
-
-
 application_container = ApplicationContainer(
     db_client=db_repo_container.db_client,
+    cloud_storage_manager=common_container.cloud_storage_manager,
     email_repository=db_repo_container.email_repository,
     oauth_credential_repository=db_repo_container.oauth_credential_repository,
     user_repository=db_repo_container.user_repository,
     task_repository=db_repo_container.task_repository,
-    insights_service=insights_container.insights_service,
-    pvo_repository=insights_container.pvo_repository,
     notification_repository=db_repo_container.notification_repository,
     notification_user_repository=db_repo_container.notification_user_repository,
     config_repository=db_repo_container.config_repository,
+    scheduled_job_repository=db_repo_container.scheduled_job_repository,
+    scheduled_job_execution_repository=db_repo_container.scheduled_job_execution_repository,
+    datasource_repository=db_repo_container.datasource_repository,
+    dynamic_query_repository=db_repo_container.dynamic_query_repository,
+    email_service=user_module_container.email_service,
 )
 
 email_rag_container = KnowledgeBaseContainer(
@@ -136,7 +142,7 @@ gold_container = GoldContainer()
 
 plugins_container = PluginsContainer(
     db_client=db_repo_container.db_client,
-    cloud_manager=common_container.cloud_storage_manager,
+    cloud_storage_manager=common_container.cloud_storage_manager,
     dynamic_query_repository=db_repo_container.dynamic_query_repository,
     cache_manager=db_repo_container.cache_manager,
 )
@@ -152,12 +158,7 @@ api_services_container: ApiServicesContainer = create_api_services_container(
     response_formatter=common_container.response_formatter,
 )
 
-cloud_provider = os.getenv('CLOUD_PROVIDER', 'aws')
-bucket_name = (
-    os.getenv('AWS_GOLD_ASSET_BUCKET_NAME')
-    if cloud_provider == 'aws'
-    else os.getenv('GCP_ASSET_STORAGE_BUCKET')
-)
+bucket_name = config['floware']['asset_storage_bucket']
 
 tools_container = ToolsContainer(
     datasource_repository=db_repo_container.datasource_repository,
@@ -165,7 +166,7 @@ tools_container = ToolsContainer(
     knowledge_base_inference_repository=db_repo_container.knowledge_base_inference_repository,
     message_processor_repository=plugins_container.message_processor_repository,
     api_services_manager=api_services_container.api_service_manager,
-    cloud_manager=common_container.cloud_storage_manager,
+    cloud_storage_manager=common_container.cloud_storage_manager,
     message_processor_bucket_name=bucket_name,
 )
 
@@ -182,6 +183,8 @@ agents_container = AgentsContainer(
     message_processor_repository=plugins_container.message_processor_repository,
     message_processor_bucket_name=bucket_name,
     api_services_manager=api_services_container.api_service_manager,
+    async_agentic_execution_repository=db_repo_container.async_agentic_execution_repository,
+    executions_bucket=config['agents']['executions_bucket'],
 )
 
 inference_container = InferenceContainer(
@@ -199,6 +202,7 @@ voice_agents_container = VoiceAgentsContainer(
     cache_manager=db_repo_container.cache_manager,
     cloud_storage_manager=common_container.cloud_storage_manager,
 )
+scheduler_manager = SchedulerManager()
 
 
 @asynccontextmanager
@@ -218,9 +222,18 @@ async def lifespan(app: FastAPI):
 
         db_client.run_migration()
 
-        # Instantiate scheduler from container when needed
-        scheduler = common_container.scheduler()
-        scheduler.start_scheduler()
+        scheduled_job_service = application_container.scheduled_job_service()
+
+        # Run stale lock recovery once on startup before the scheduler ticks.
+        await scheduled_job_service.recover_stale_locks()
+
+        scheduler_manager.start()
+        scheduler_manager.register_due_jobs_poller(
+            callback=scheduled_job_service.process_due_jobs_sync
+        )
+        scheduler_manager.register_stale_lock_recovery(
+            callback=scheduled_job_service.recover_stale_locks_sync
+        )
         logger.info('Database connection established.')
 
         # Load API services from database into registry
@@ -254,6 +267,15 @@ async def lifespan(app: FastAPI):
             )
         )
 
+        # Start Redis Stream consumer for async execution status updates
+        async_agentic_exec_consumer = AsyncAgenticExecutionResultConsumer(
+            exec_repo=db_repo_container.async_agentic_execution_repository(),
+            cache_manager=db_repo_container.cache_manager(),
+        )
+        async_agentic_exec_consumer_task = asyncio.create_task(
+            async_agentic_exec_consumer.start()
+        )
+
         # Set app reference in proxy router so new routes can be added dynamically
         proxy_router = api_services_container.proxy_router()
         proxy_router.set_app(app, prefix='/floware')
@@ -262,6 +284,15 @@ async def lifespan(app: FastAPI):
         yield  # This is where the application runs
 
         # Shutdown code
+        scheduler_manager.shutdown()
+        async_agentic_exec_consumer.stop()
+        try:
+            await asyncio.wait_for(async_agentic_exec_consumer_task, timeout=5)
+        except asyncio.TimeoutError:
+            async_agentic_exec_consumer_task.cancel()
+            logger.warning(
+                'AsyncAgenticExecutionResultConsumer did not stop within 5s; cancelled'
+            )
         logger.info('Shutting down application...')
 
     except Exception as e:
@@ -358,7 +389,6 @@ app.add_middleware(
 app.include_router(notification_router, prefix='/floware')
 app.include_router(user_management_router, prefix='/floware')
 app.include_router(superset_controller, prefix='/floware')
-app.include_router(insights_router, prefix='/floware')
 app.include_router(knowledge_base_router, prefix='/floware')
 app.include_router(kb_document_router, prefix='/floware')
 app.include_router(rag_retrieval_router, prefix='/floware')
@@ -368,10 +398,12 @@ app.include_router(datasource_router, prefix='/floware')
 app.include_router(hmac_router, prefix='/floware')
 app.include_router(authenticator_router, prefix='/floware')
 app.include_router(config_router, prefix='/floware')
+app.include_router(scheduled_job_router, prefix='/floware')
 app.include_router(product_analysis_router, prefix='/floware')
 app.include_router(agents_router, prefix='/floware')
 app.include_router(namespace_router, prefix='/floware')
 app.include_router(workflows_router, prefix='/floware')
+app.include_router(async_router, prefix='/floware')
 app.include_router(workflow_pipeline_router, prefix='/floware')
 app.include_router(workflow_runs_router, prefix='/floware')
 app.include_router(inference_router, prefix='/floware')
@@ -383,7 +415,9 @@ app.include_router(telephony_config_router, prefix='/floware')
 app.include_router(tts_config_router, prefix='/floware')
 app.include_router(stt_config_router, prefix='/floware')
 app.include_router(voice_agent_router, prefix='/floware')
+app.include_router(tool_router, prefix='/floware')
 app.include_router(message_processor_router, prefix='/floware')
+app.include_router(cloud_storage_router, prefix='/floware')
 
 
 @app.exception_handler(Exception)
@@ -431,7 +465,6 @@ user_module_container.wire(
     packages=[
         'auth_module.controllers',
         'plugins_module.controllers',
-        'insights_module.controllers',
         'user_management_module.controllers',
         'user_management_module.authorization',
         'plugins_module.controllers',
@@ -444,16 +477,10 @@ auth_container.wire(
         'auth_module.controllers',
         'user_management_module.authorization',
         'user_management_module.controllers',
-        'insights_module.controllers',
         'plugins_module.services',
         'plugins_module.controllers',
         'llm_inference_config_module.controllers',
     ],
-)
-
-insights_container.wire(
-    modules=[__name__],
-    packages=['insights_module.controllers'],
 )
 
 gold_container.wire(
@@ -467,7 +494,6 @@ common_container.wire(
         'auth_module.controllers',
         'user_management_module.controllers',
         'user_management_module.authorization',
-        'insights_module.controllers',
         'floware.controllers',
         'knowledge_base_module.controllers',
         'gold_module.controllers',
@@ -497,6 +523,7 @@ plugins_container.wire(
     packages=[
         'plugins_module.controllers',
         'plugins_module.services',
+        'floware.controllers',
         'user_management_module.controllers',
         'user_management_module.authorization',
         'tools_module.datasources',
@@ -549,14 +576,17 @@ environment = os.getenv('APP_ENV', 'dev')
 
 # Running with Uvicorn (for local development)
 if __name__ == '__main__':
+    worker_count = os.getenv('FLOWARE_WORKER_COUNT', 4)
+    uvicorn_log_level = os.getenv('UVICORN_LOG_LEVEL', 'critical')
+
     print(f'Starting application in environment: {environment}')
     if environment == 'production':
         uvicorn.run(
             'server:app',
             host='0.0.0.0',
             port=8001,
-            workers=4,
-            log_level='critical',
+            workers=int(worker_count),
+            log_level=uvicorn_log_level,
             forwarded_allow_ips='*',
         )
     else:

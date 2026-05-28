@@ -28,6 +28,9 @@ const VoiceAgentsLayout: React.FC = () => {
     if (location.pathname.startsWith(`${basePath}/telephony-configs`)) {
       return 'telephony-configs';
     }
+    if (location.pathname.startsWith(`${basePath}/tools`)) {
+      return 'tools';
+    }
     return 'agents';
   };
 
@@ -88,6 +91,7 @@ const VoiceAgentsLayout: React.FC = () => {
           <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
             <TabsList>
               <TabsTrigger value="agents">Agents</TabsTrigger>
+              <TabsTrigger value="tools">Tools</TabsTrigger>
               <TabsTrigger value="stt-configs">STT Configs</TabsTrigger>
               <TabsTrigger value="tts-configs">TTS Configs</TabsTrigger>
               <TabsTrigger value="telephony-configs">Telephony Configs</TabsTrigger>

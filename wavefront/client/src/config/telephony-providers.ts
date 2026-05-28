@@ -95,6 +95,55 @@ export const TELEPHONY_PROVIDERS_CONFIG: Record<TelephonyProvider, TelephonyProv
       },
     },
   },
+  exotel: {
+    name: 'Exotel',
+    badge: {
+      bg: 'bg-green-100',
+      text: 'text-green-800',
+    },
+    allowedConnectionTypes: ['websocket'], // WebSocket only for Exotel
+    connectionTypes: {
+      websocket: {
+        label: 'WebSocket',
+        description: 'Real-time bidirectional audio streaming',
+        requiresSipConfig: false,
+      },
+      sip: {
+        label: 'SIP',
+        description: 'Session Initiation Protocol for PBX integration',
+        requiresSipConfig: true,
+      },
+    },
+    sipFields: {
+      sip_domain: {
+        type: 'string',
+        label: 'SIP Domain',
+        required: true,
+        placeholder: 'e.g., sip.exotel.com',
+        helpText: 'The SIP domain for your Exotel configuration',
+      },
+      port: {
+        type: 'number',
+        label: 'Port',
+        required: false,
+        min: 1,
+        max: 65535,
+        placeholder: '5060',
+        helpText: 'SIP port number (default varies by provider)',
+      },
+      transport: {
+        type: 'select',
+        label: 'Transport Protocol',
+        required: false,
+        options: [
+          { value: 'udp', label: 'UDP - User Datagram Protocol (fastest)' },
+          { value: 'tcp', label: 'TCP - Transmission Control Protocol (reliable)' },
+          { value: 'tls', label: 'TLS - Transport Layer Security (encrypted)' },
+        ],
+        helpText: 'The transport protocol for SIP communication',
+      },
+    },
+  },
 };
 
 // Connection type badge colors

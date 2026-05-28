@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import floConsoleService from '@app/api';
 import { Button } from '@app/components/ui/button';
 import {
@@ -18,14 +19,12 @@ import {
   FormMessage,
 } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
-import { Label } from '@app/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Textarea } from '@app/components/ui/textarea';
 import {
   getConnectionTypeOptions,
   getTelephonyProviderConfig,
   getTelephonyProviderOptions,
-  isValidE164PhoneNumber,
   requiresSipConfig,
 } from '@app/config/telephony-providers';
 import { extractErrorMessage } from '@app/lib/utils';
@@ -41,8 +40,15 @@ const createTelephonyConfigSchema = z.object({
   description: z.string().max(500, 'Description must be 500 characters or less').optional(),
   provider: z.string().min(1, 'Provider is required'),
   connection_type: z.enum(['websocket', 'sip']),
-  account_sid: z.string().min(1, 'Account SID is required'),
-  auth_token: z.string().min(1, 'Auth token is required'),
+  // Twilio credentials
+  account_sid: z.string().optional(),
+  auth_token: z.string().optional(),
+  // Exotel credentials
+  api_key: z.string().optional(),
+  api_token: z.string().optional(),
+  exotel_account_sid: z.string().optional(),
+  subdomain: z.string().optional(),
+  // SIP config
   sip_domain: z.string().optional(),
   sip_port: z.number().optional(),
   sip_transport: z.enum(['udp', 'tcp', 'tls']).optional(),
@@ -63,7 +69,6 @@ const CreateTelephonyConfigDialog: React.FC<CreateTelephonyConfigDialogProps> = 
 }) => {
   const { notifySuccess, notifyError } = useNotifyStore();
 
-  const [phoneNumbers, setPhoneNumbers] = useState<string[]>(['']);
   const [loading, setLoading] = useState(false);
 
   const form = useForm<CreateTelephonyConfigInput>({
@@ -75,6 +80,10 @@ const CreateTelephonyConfigDialog: React.FC<CreateTelephonyConfigDialogProps> = 
       connection_type: 'websocket',
       account_sid: '',
       auth_token: '',
+      api_key: '',
+      api_token: '',
+      exotel_account_sid: '',
+      subdomain: '',
       sip_domain: '',
       sip_port: undefined,
       sip_transport: undefined,
@@ -103,93 +112,94 @@ const CreateTelephonyConfigDialog: React.FC<CreateTelephonyConfigDialogProps> = 
         connection_type: 'websocket',
         account_sid: '',
         auth_token: '',
+        api_key: '',
+        api_token: '',
+        exotel_account_sid: '',
+        subdomain: '',
         sip_domain: '',
         sip_port: undefined,
         sip_transport: undefined,
       });
-      setPhoneNumbers(['']);
     }
   }, [isOpen, form]);
 
-  const handleAddPhoneNumber = () => {
-    setPhoneNumbers([...phoneNumbers, '']);
-  };
+  const onSubmit = async (data: CreateTelephonyConfigInput) => {
+    const provider = data.provider as TelephonyProvider;
 
-  const handleRemovePhoneNumber = (index: number) => {
-    if (phoneNumbers.length === 1) {
-      notifyError('At least one phone number is required');
-      return;
-    }
-    setPhoneNumbers(phoneNumbers.filter((_, i) => i !== index));
-  };
-
-  const handlePhoneNumberChange = (index: number, value: string) => {
-    const newPhoneNumbers = [...phoneNumbers];
-    newPhoneNumbers[index] = value;
-    setPhoneNumbers(newPhoneNumbers);
-  };
-
-  const validatePhoneNumbers = (): boolean => {
-    const filledPhoneNumbers = phoneNumbers.filter((p) => p.trim());
-
-    if (filledPhoneNumbers.length === 0) {
-      notifyError('At least one phone number is required');
-      return false;
-    }
-
-    for (const phone of filledPhoneNumbers) {
-      if (!isValidE164PhoneNumber(phone.trim())) {
-        notifyError(
-          `Invalid phone number format: ${phone}. Phone numbers must be in E.164 format (e.g., +14155551234)`
-        );
-        return false;
+    // Validate provider-specific credentials
+    if (provider === 'twilio') {
+      if (!data.account_sid?.trim()) {
+        notifyError('Account SID is required for Twilio');
+        return;
+      }
+      if (!data.auth_token?.trim()) {
+        notifyError('Auth Token is required for Twilio');
+        return;
+      }
+    } else if (provider === 'exotel') {
+      if (!data.api_key?.trim()) {
+        notifyError('API Key is required for Exotel');
+        return;
+      }
+      if (!data.api_token?.trim()) {
+        notifyError('API Token is required for Exotel');
+        return;
+      }
+      if (!data.exotel_account_sid?.trim()) {
+        notifyError('Account SID is required for Exotel');
+        return;
+      }
+      if (!data.subdomain?.trim()) {
+        notifyError('Subdomain is required for Exotel');
+        return;
       }
     }
 
-    return true;
-  };
-
-  const onSubmit = async (data: CreateTelephonyConfigInput) => {
-    if (!validatePhoneNumbers()) {
-      return;
-    }
-
     // Validate SIP config if required
-    if (requiresSipConfig(data.provider as TelephonyProvider, data.connection_type)) {
+    if (requiresSipConfig(provider, data.connection_type)) {
       if (!data.sip_domain?.trim()) {
         notifyError('SIP domain is required for SIP connection type');
         return;
       }
     }
 
-    const filledPhoneNumbers = phoneNumbers.filter((p) => p.trim()).map((p) => p.trim());
-
     setLoading(true);
     try {
+      // Build credentials based on provider
+      let credentials: any;
+      if (provider === 'twilio') {
+        credentials = {
+          account_sid: data.account_sid!.trim(),
+          auth_token: data.auth_token!.trim(),
+        };
+      } else if (provider === 'exotel') {
+        credentials = {
+          api_key: data.api_key!.trim(),
+          api_token: data.api_token!.trim(),
+          account_sid: data.exotel_account_sid!.trim(),
+          subdomain: data.subdomain!.trim(),
+        };
+      }
+
       const requestData: {
         display_name: string;
         description?: string;
         provider: TelephonyProvider;
         connection_type: ConnectionType;
-        credentials: { account_sid: string; auth_token: string };
-        phone_numbers: string[];
+        credentials: any;
         webhook_config: null;
         sip_config?: { sip_domain: string; port?: number; transport?: SipTransport };
       } = {
         display_name: data.display_name.trim(),
         description: data.description?.trim() || undefined,
-        provider: data.provider as TelephonyProvider,
+        provider: provider,
         connection_type: data.connection_type,
-        credentials: {
-          account_sid: data.account_sid.trim(),
-          auth_token: data.auth_token.trim(),
-        },
-        phone_numbers: filledPhoneNumbers,
+        credentials: credentials,
         webhook_config: null,
       };
 
       // Add SIP config if required
-      if (requiresSipConfig(data.provider as TelephonyProvider, data.connection_type) && data.sip_domain?.trim()) {
+      if (requiresSipConfig(provider, data.connection_type) && data.sip_domain?.trim()) {
         requestData.sip_config = {
           sip_domain: data.sip_domain.trim(),
           port: data.sip_port,
@@ -317,79 +327,117 @@ const CreateTelephonyConfigDialog: React.FC<CreateTelephonyConfigDialogProps> = 
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-6">
-              <FormField
-                control={form.control}
-                name="account_sid"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      Account SID <span className="text-red-500">*</span>
-                    </FormLabel>
-                    <FormControl>
-                      <Input placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            {/* Provider-specific credential fields */}
+            {watchedProvider === 'twilio' && (
+              <div className="grid grid-cols-2 gap-6">
+                <FormField
+                  control={form.control}
+                  name="account_sid"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        Account SID <span className="text-red-500">*</span>
+                      </FormLabel>
+                      <FormControl>
+                        <Input placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              <FormField
-                control={form.control}
-                name="auth_token"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      Auth Token <span className="text-red-500">*</span>
-                    </FormLabel>
-                    <FormControl>
-                      <Input type="password" placeholder="Enter your auth token" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <div className="rounded-lg border border-gray-200 p-4">
-              <div className="mb-4 flex items-center justify-between">
-                <Label>
-                  Phone Numbers <span className="text-red-500">*</span>
-                </Label>
-                <Button type="button" variant="outline" size="sm" onClick={handleAddPhoneNumber}>
-                  + Add Number
-                </Button>
+                <FormField
+                  control={form.control}
+                  name="auth_token"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        Auth Token <span className="text-red-500">*</span>
+                      </FormLabel>
+                      <FormControl>
+                        <Input type="password" placeholder="Enter your auth token" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
+            )}
 
-              <div className="space-y-3">
-                {phoneNumbers.map((phone, index) => (
-                  <div key={index} className="flex gap-2">
-                    <Input
-                      type="text"
-                      value={phone}
-                      onChange={(e) => handlePhoneNumberChange(index, e.target.value)}
-                      placeholder="+14155551234"
-                      className="flex-1"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      onClick={() => handleRemovePhoneNumber(index)}
-                      disabled={phoneNumbers.length === 1}
-                    >
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </Button>
-                  </div>
-                ))}
+            {watchedProvider === 'exotel' && (
+              <div className="space-y-6">
+                <div className="grid grid-cols-2 gap-6">
+                  <FormField
+                    control={form.control}
+                    name="api_key"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          API Key <span className="text-red-500">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <Input placeholder="Enter your API key" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="api_token"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          API Token <span className="text-red-500">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <Input type="password" placeholder="Enter your API token" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-6">
+                  <FormField
+                    control={form.control}
+                    name="exotel_account_sid"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          Account SID <span className="text-red-500">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <Input placeholder="Enter your account SID" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="subdomain"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          Subdomain <span className="text-red-500">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <Input placeholder="ccm-api.exotel.com or ccm-api.in.exotel.com" {...field} />
+                        </FormControl>
+                        <FormDescription>
+                          Regional API endpoint (Singapore: ccm-api.exotel.com, India: ccm-api.in.exotel.com)
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </div>
-
-              <p className="text-muted-foreground mt-2 text-[0.8rem]">
-                Phone numbers must be in E.164 format (e.g., +14155551234). Include country code with + prefix.
-              </p>
-            </div>
+            )}
 
             {showSipConfig && (
               <div className="rounded-lg border border-gray-200 p-4">

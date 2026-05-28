@@ -1,0 +1,107 @@
+name: (Develop) Build and Push RAG Ingestion to AWS, GCP and Azure
+
+on:
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: aesy-330511
+  GCP_REGION: asia-south1
+  GAR_LOCATION: asia-south1-docker.pkg.dev/aesy-330511/root-hub
+  IMAGE_NAME: auraflo-rag-ingestion
+
+  # AWS_REGION: ap-south-1
+  # ECR_REGISTRY: 025066241490.dkr.ecr.ap-south-1.amazonaws.com
+  # ECR_REPOSITORY: rootflo/auraflo-rag-ingestion
+
+  ACR_REGISTRY_NAME: rootflo
+  ACR_REGISTRY: rootflo.azurecr.io
+  ACR_REPOSITORY: auraflo-rag-ingestion
+
+jobs:
+  build-push-artifact:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: "Checkout"
+        uses: "actions/checkout@v3"
+
+      - name: Get commit hash
+        id: get-commit-hash
+        run: echo "::set-output name=commit-hash::$(git rev-parse --short HEAD)"
+
+      - name: Get timestamp
+        id: get-timestamp
+        run: echo "::set-output name=timestamp::$(date +'%Y-%m-%d-%H-%M')"
+
+      - name: Cache Docker layers
+        id: cache-docker-layers
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-docker-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-docker-
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker Image
+        id: build-image
+        run: |
+          docker build -f wavefront/server/docker/rag_ingestion.Dockerfile -t rootflo:${{ steps.get-commit-hash.outputs.commit-hash }}-${{ steps.get-timestamp.outputs.timestamp }} .
+          echo "IMAGE_TAG=${{ steps.get-commit-hash.outputs.commit-hash }}-${{ steps.get-timestamp.outputs.timestamp }}" >> $GITHUB_ENV
+
+      - id: "Auth-to-GCP"
+        uses: "google-github-actions/auth@v1"
+        with:
+          credentials_json: "${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}"
+
+      - name: "Set up Cloud SDK"
+        uses: "google-github-actions/setup-gcloud@v1"
+
+      - name: "Docker auth for GCP"
+        run: |-
+          gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Tag and push image to GCP Artifact Registry
+        run: |
+          docker tag rootflo:${{ env.IMAGE_TAG }} ${{ env.GAR_LOCATION }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          docker push ${{ env.GAR_LOCATION }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+
+        # Configure AWS credentials and push to ECR
+      # - name: Configure AWS credentials
+      #   uses: aws-actions/configure-aws-credentials@v1
+      #   with:
+      #     aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      #     aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      #     aws-region: ${{ env.AWS_REGION }}
+
+      # - name: Login to Amazon ECR
+      #   id: login-ecr
+      #   uses: aws-actions/amazon-ecr-login@v1
+
+      # - name: Tag and push image to Amazon ECR
+      #   run: |
+      #     docker tag rootflo:${{ env.IMAGE_TAG }} ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+      #     docker push ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+
+        # Configure Azure credentials and push to ACR
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Docker auth for Azure ACR
+        run: az acr login --name ${{ env.ACR_REGISTRY_NAME }}
+
+      - name: Tag and push image to Azure Container Registry
+        run: |
+          docker tag rootflo:${{ env.IMAGE_TAG }} ${{ env.ACR_REGISTRY }}/${{ env.ACR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+          docker push ${{ env.ACR_REGISTRY }}/${{ env.ACR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+
+      - name: Cleanup Docker images
+        run: |
+          docker rmi rootflo:${{ env.IMAGE_TAG }} || true
+          docker rmi ${{ env.GAR_LOCATION }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} || true
+          # docker rmi ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }} || true
+          docker rmi ${{ env.ACR_REGISTRY }}/${{ env.ACR_REPOSITORY }}:${{ env.IMAGE_TAG }} || true

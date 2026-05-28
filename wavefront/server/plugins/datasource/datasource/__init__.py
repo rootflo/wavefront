@@ -9,15 +9,16 @@ from typing import Any, Optional, List, Dict
 
 from .bigquery import BigQueryPlugin, BigQueryConfig
 from .redshift import RedshiftPlugin, RedshiftConfig
+from .postgres import PostgresPlugin, PostgresConfig
 from .helper import construct_meta
 from .odata_parser import ODataQueryParser
 
 
-class DatasourcePlugin(DataSourceABC):
+class DatasourcePlugin:
     def __init__(
         self,
         datasource_type: DataSourceType,
-        config: BigQueryConfig | RedshiftConfig,
+        config: BigQueryConfig | RedshiftConfig | PostgresConfig,
     ):
         self.datasource_type = datasource_type
         self.config = config
@@ -34,6 +35,11 @@ class DatasourcePlugin(DataSourceABC):
             if not isinstance(self.config, BigQueryConfig):
                 raise ValueError(f'Invalid config type: {type(self.config)}')
             return BigQueryPlugin(self.config)
+        elif self.datasource_type == DataSourceType.POSTGRES:
+            self.odata_parser = ODataQueryParser(type='sql', dynamic_var_char=':')
+            if not isinstance(self.config, PostgresConfig):
+                raise ValueError(f'Invalid config type: {type(self.config)}')
+            return PostgresPlugin(self.config)
         else:
             raise ValueError(f'Invalid datasource type: {self.datasource_type}')
 
@@ -65,7 +71,7 @@ class DatasourcePlugin(DataSourceABC):
     ) -> QueryResult:
         where_clause, params = self.odata_parser.prepare_odata_filter(filter)
         join_query, table_aliases, join_where_clause, join_params = (
-            self.odata_parser.prepare_odata_joins(join, table_name)
+            self.odata_parser.prepare_odata_joins(join or '', table_name)
         )
 
         where_clause = where_clause if where_clause else 'true'
@@ -104,19 +110,19 @@ class DatasourcePlugin(DataSourceABC):
         offset: Optional[int] = 0,
         limit: Optional[int] = 100,
         params: Optional[Dict[str, Any]] = None,
-    ):
+    ) -> Dict[str, Any]:
         odata_filter, odata_params = self.odata_parser.prepare_odata_filter(filter)
         odata_data_filter, odata_data_params = self.odata_parser.prepare_odata_filter(
             rls_filter
         )
-        result_by_query = await self.datasource.execute_dynamic_query(
-            query,
-            offset,
-            limit,
-            odata_filter,
-            odata_params,
-            odata_data_filter,
-            odata_data_params,
-            params,
+        result_by_query: Dict[str, Any] = await self.datasource.execute_dynamic_query(
+            query=query,
+            odata_filter=odata_filter,
+            odata_params=odata_params,
+            odata_data_filter=odata_data_filter,
+            odata_data_params=odata_data_params,
+            offset=offset,
+            limit=limit,
+            params=params,
         )
         return result_by_query

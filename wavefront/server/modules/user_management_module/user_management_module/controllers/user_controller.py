@@ -70,6 +70,7 @@ async def create_user(
         Provide[UserContainer.role_repository]
     ),
     user_service: UserService = Depends(Provide[UserContainer.user_service]),
+    cache_manager: CacheManager = Depends(Provide[UserContainer.cache_manager]),
 ):
     role_id, _, _ = get_current_user(request)
     is_admin = await check_is_admin(role_id)
@@ -157,6 +158,9 @@ async def create_user(
             session.add_all(user_roles)
 
             await session.commit()
+
+            cache_manager.invalidate_query('user_data_*')
+
             return JSONResponse(
                 status_code=status.HTTP_200_OK,
                 content=response_formatter.buildSuccessResponse(

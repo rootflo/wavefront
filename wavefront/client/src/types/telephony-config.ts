@@ -1,7 +1,7 @@
 import { IApiResponse } from '@app/lib/axios';
 
 // Telephony provider types
-export type TelephonyProvider = 'twilio';
+export type TelephonyProvider = 'twilio' | 'exotel';
 
 // Connection types
 export type ConnectionType = 'websocket' | 'sip';
@@ -10,10 +10,21 @@ export type ConnectionType = 'websocket' | 'sip';
 export type SipTransport = 'udp' | 'tcp' | 'tls';
 
 // Credentials interface for Twilio
-export interface TelephonyCredentials {
+export interface TwilioCredentials {
   account_sid: string;
   auth_token: string;
 }
+
+// Credentials interface for Exotel
+export interface ExotelCredentials {
+  api_key: string;
+  api_token: string;
+  account_sid: string;
+  subdomain: string;
+}
+
+// Union type for all provider credentials
+export type TelephonyCredentials = TwilioCredentials | ExotelCredentials;
 
 // Webhook configuration (currently not implemented, always null)
 export interface WebhookConfig {
@@ -35,7 +46,6 @@ export interface TelephonyConfig {
   provider: TelephonyProvider;
   connection_type: ConnectionType;
   credentials: TelephonyCredentials;
-  phone_numbers: string[];
   webhook_config?: WebhookConfig | null;
   sip_config?: SipConfig | null;
   is_deleted: boolean;
@@ -50,7 +60,6 @@ export interface CreateTelephonyConfigRequest {
   provider: TelephonyProvider;
   connection_type: ConnectionType;
   credentials: TelephonyCredentials;
-  phone_numbers: string[];
   webhook_config?: WebhookConfig | null;
   sip_config?: SipConfig | null;
 }
@@ -62,7 +71,6 @@ export interface UpdateTelephonyConfigRequest {
   provider?: TelephonyProvider;
   connection_type?: ConnectionType;
   credentials?: TelephonyCredentials;
-  phone_numbers?: string[];
   webhook_config?: WebhookConfig | null;
   sip_config?: SipConfig | null;
 }

@@ -260,6 +260,7 @@ class BigQueryClient:
             if params:
                 job_config.query_parameters = self._get_query_params(params)
 
+            logger.debug(f'Executing query: {query}')
             query_job = self.client.query(query, job_config=job_config)
             results = query_job.result(timeout=self.timeout)
 
@@ -1634,7 +1635,7 @@ class BigQueryClient:
         for i, table_name in enumerate(table_names):
             join_query = join_query.replace(
                 f'JOIN {table_name}',
-                f'JOIN `{table_prefix}{table_name}` AS {aliases[i]}',
+                f'LEFT JOIN `{table_prefix}{table_name}` AS {aliases[i]}',
             )
             join_query = join_query.replace(f'{table_name}.', f'{aliases[i]}.')
             where_clause = where_clause.replace(f'{table_name}.', f'{aliases[i]}.')

@@ -4,6 +4,9 @@ import json
 from typing import Any, Dict, Tuple
 
 import boto3
+from azure.identity import DefaultAzureCredential
+from azure.storage.blob import BlobServiceClient, ContentSettings
+from azure.storage.queue import QueueClient
 from common_module.log.logger import logger
 from google.cloud import pubsub_v1
 from google.cloud import storage
@@ -20,7 +23,7 @@ class CloudImageService(ABC):
 
     @abstractmethod
     async def upload_image_metadata(
-        self, image_metadata: bytes, object_key: str
+        self, image_metadata: bytes | str, object_key: str
     ) -> Tuple[str, str]:
         """Upload image metadata to the cloud storage"""
         pass
@@ -73,6 +76,79 @@ class AWSImageService(CloudImageService):
         )
 
         return (self.bucket_name, object_key)
+
+
+class AzureImageService(CloudImageService):
+    def __init__(
+        self, container_name: str, account_url: str, queue_url: str, queue_name: str
+    ):
+        """
+        Args:
+            container_name: Azure Blob Storage container name (equivalent to S3 bucket / GCS bucket)
+            account_url: Blob service URL, e.g. "https://<account>.blob.core.windows.net"
+            queue_url: Queue service URL, e.g. "https://<account>.queue.core.windows.net"
+            queue_name: Azure Storage Queue name
+        """
+        self.container_name = container_name
+        self.account_url = account_url
+        self.queue_url = queue_url
+        self.queue_name = queue_name
+
+        if not self.container_name:
+            raise ValueError('Azure container name must be provided')
+        if not self.account_url:
+            raise ValueError('Azure blob service URL must be provided')
+        if not self.queue_url:
+            raise ValueError('Azure queue service URL must be provided')
+        if not self.queue_name:
+            raise ValueError('Azure queue name must be provided')
+
+        credential = DefaultAzureCredential()
+        self.blob_client = BlobServiceClient(
+            account_url=account_url, credential=credential
+        )
+        self.queue_client = QueueClient(
+            account_url=queue_url,
+            queue_name=queue_name,
+            credential=credential,
+            message_encode_policy=None,
+            message_decode_policy=None,
+        )
+
+    async def upload_image(self, image_data: bytes, object_key: str) -> Tuple[str, str]:
+        """Upload to Azure Blob Storage"""
+        blob = self.blob_client.get_blob_client(
+            container=self.container_name, blob=object_key
+        )
+        blob.upload_blob(
+            image_data,
+            overwrite=True,
+            content_settings=ContentSettings(content_type='image/jpeg'),
+        )
+        return (self.container_name, object_key)
+
+    async def upload_image_metadata(
+        self, image_metadata: bytes | str, object_key: str
+    ) -> Tuple[str, str]:
+        """Upload image metadata to Azure Blob Storage"""
+        if isinstance(image_metadata, str):
+            image_metadata = image_metadata.encode('utf-8')
+        blob = self.blob_client.get_blob_client(
+            container=self.container_name, blob=object_key
+        )
+        blob.upload_blob(
+            image_metadata,
+            overwrite=True,
+            content_settings=ContentSettings(content_type='application/json'),
+        )
+        return (self.container_name, object_key)
+
+    async def send_message(self, message: Dict[str, Any]) -> str:
+        """Send to Azure Storage Queue"""
+        result = self.queue_client.send_message(json.dumps(message))
+        message_id = result.id
+        logger.info(f'Successfully sent message to Azure Storage Queue: {message_id}')
+        return message_id
 
 
 class GCPImageService(CloudImageService):

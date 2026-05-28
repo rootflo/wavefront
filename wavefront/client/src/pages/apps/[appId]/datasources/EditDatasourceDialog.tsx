@@ -25,6 +25,7 @@ import { createDatasourceSchema, type CreateDatasourceInput } from './schemas';
 const DATASOURCE_TYPES = [
   { value: 'gcp_bigquery', label: 'Google BigQuery' },
   { value: 'aws_redshift', label: 'AWS Redshift' },
+  { value: 'postgres', label: 'PostgreSQL' },
 ];
 
 interface EditDatasourceDialogProps {
@@ -59,7 +60,7 @@ const EditDatasourceDialog: React.FC<EditDatasourceDialogProps> = ({
     if (datasource && isOpen) {
       form.reset({
         name: datasource.name || '',
-        type: (datasource.type as 'gcp_bigquery' | 'aws_redshift') || 'gcp_bigquery',
+        type: (datasource.type as 'gcp_bigquery' | 'aws_redshift' | 'postgres') || 'gcp_bigquery',
         description: datasource.description || '',
         connectionConfig: JSON.stringify(datasource.config || {}, null, 2),
       });

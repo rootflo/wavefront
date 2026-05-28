@@ -1,7 +1,7 @@
-from io import BytesIO
-from typing import Union, List, Tuple, Optional
+from typing import Union, List, Tuple, Optional, IO, ContextManager
 from .aws.s3 import S3Storage
 from .gcp.gcs import GCSStorage
+from .azure.blob_storage import AzureBlobStorage
 from ._types import CloudStorageHandler, CloudProvider
 
 
@@ -32,6 +32,8 @@ class CloudStorageFactory:
             return S3Storage()
         elif provider == CloudProvider.GCP:
             return GCSStorage()
+        elif provider == CloudProvider.AZURE:
+            return AzureBlobStorage(**credentials)
         else:
             raise ValueError(f'Unsupported cloud provider: {provider}')
 
@@ -81,9 +83,16 @@ class CloudStorageManager:
                 return 'PUT'
             elif type == 'post_object' or type == 'post':
                 return 'POST'
+        elif self.provider == CloudProvider.AZURE:
+            if type == 'get' or type == 'get_object':
+                return 'GET'
+            elif type == 'put' or type == 'put_object':
+                return 'PUT'
+            elif type == 'post' or type == 'post_object':
+                return 'POST'
         raise ValueError(f"Unsupported type '{type}' for provider '{self.provider}'")
 
-    def read_file(self, bucket_name: str, file_path: str) -> BytesIO:
+    def read_file(self, bucket_name: str, file_path: str) -> bytes:
         """
         Read file from cloud storage
 
@@ -140,10 +149,14 @@ class CloudStorageManager:
         """
         self.handler.save_small_file(file_content, bucket_name, key, content_type)
 
-    def file_protocol(self) -> str:
-        return (
-            's3' if self.provider == 'aws' else 'gs' if self.provider == 'gcp' else None
-        )
+    def file_protocol(self) -> Optional[str]:
+        if self.provider == CloudProvider.AWS:
+            return 's3'
+        elif self.provider == CloudProvider.GCP:
+            return 'gs'
+        elif self.provider == CloudProvider.AZURE:
+            return 'azure'
+        return None
 
     def get_bucket_key(self, value) -> str:
         return self.handler.get_bucket_key(value)
@@ -187,3 +200,14 @@ class CloudStorageManager:
             file_path: Path to the file in bucket
         """
         return self.handler.delete_file(bucket_name, file_path)
+
+    def open_text_writer(
+        self, bucket_name: str, key: str, content_type: Optional[str] = None
+    ) -> ContextManager[IO[str]]:
+        """
+        Open a text-mode writer to cloud storage for incremental writes.
+
+        For GCS, this uses the native streaming blob.open API.
+        For S3, this buffers content in memory and uploads on close.
+        """
+        return self.handler.open_text_writer(bucket_name, key, content_type)

@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from uuid import UUID
 
 # from floconsole.constants.app import AppDeploymentType
 from floconsole.constants.auth import RootfloHeaders
@@ -9,6 +10,7 @@ from fastapi.responses import Response, StreamingResponse
 
 from floconsole.services.token_service import TokenService
 from floconsole.services.app_service import AppService
+from floconsole.services.user_service import UserService
 
 
 @dataclass
@@ -23,6 +25,7 @@ class FlowareProxyService:
         self,
         token_service: TokenService,
         app_service: AppService,
+        user_service: UserService,
         service_issuer: str = 'https://console.rootflo.ai',
         app_env: str = 'production',
         token_prefix: str = 'fc_',
@@ -30,6 +33,7 @@ class FlowareProxyService:
     ):
         self.token_service = token_service
         self.app_service = app_service
+        self.user_service = user_service
         self.service_issuer = service_issuer
         self.is_dev = app_env == 'dev'
         self.app_env = app_env
@@ -56,23 +60,44 @@ class FlowareProxyService:
 
         Flow:
         1. Get user session from middleware (already validated)
-        2. Fetch app details from database using app_id
-        3. Generate T2 service token with app-specific secret
-        4. Forward request to floware with app-specific key + Authorization headers
-        5. Return floware response directly
+        2. Check if user has access to app (RBAC)
+        3. Fetch app details from database using app_id
+        4. Generate T2 service token with app-specific secret
+        5. Forward request to floware with app-specific key + Authorization headers
+        6. Return floware response directly
         """
         # Step 1: Get user session from middleware (already validated)
-        # session = request.state.session
-
-        # Step 2: Fetch app details from database
+        session = request.state.session
+        # Parse user_id with explicit error handling
         try:
-            app = await self.app_service.get_app_by_id(app_id)
+            user_id = UUID(session.user_id)
+        except (ValueError, AttributeError) as e:
+            raise ValueError(
+                f'Invalid user_id format in session: {session.user_id}'
+            ) from e
+
+        # Step 2: Check if user has access to app (RBAC)
+        try:
+            app_uuid = UUID(app_id)
+        except ValueError as e:
+            raise ValueError(f'Invalid app_id format: {app_id}') from e
+
+        has_access = await self.user_service.check_user_has_app_access(
+            user_id=user_id, app_id=app_uuid
+        )
+
+        if not has_access:
+            raise ValueError('User does not have access to this app')
+
+        # Step 3: Fetch app details from database
+        try:
+            app = await self.app_service.get_app_by_id(app_uuid)
             if not app:
                 raise ValueError(f'App not found for ID: {app_id}')
         except ValueError as e:
             if 'App not found' in str(e):
                 raise e
-            raise ValueError(f'Invalid app_id format: {app_id}')
+            raise ValueError(f'Invalid app_id format: {app_id}') from e
 
         # if app.deployment_type == AppDeploymentType.MANUAL.value:
         #     app_base_url = await self._get_app_base_url(app.private_url, app_id)

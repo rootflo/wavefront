@@ -27,8 +27,7 @@ from knowledge_base_module.knowledge_base_container import KnowledgeBaseContaine
 from flo_cloud.message_queue import MessageQueueManager
 from flo_cloud.cloud_storage import CloudStorageManager
 from pydantic import BaseModel
-from sqlalchemy import Result
-from sqlalchemy import select
+from knowledge_base_module.queries.generate_query import QueryGenerator
 
 kb_document_router = APIRouter()
 
@@ -123,11 +122,7 @@ async def upload_document(
 
         # Upload to cloud storage
         logger.info(f'The data filename is {gcs_file_name}')
-        bucket_name = (
-            config['gcp']['gcp_asset_storage_bucket']
-            if config['cloud_config']['cloud_provider'] == 'gcp'
-            else config['aws']['aws_asset_storage_bucket']
-        )
+        bucket_name = config['floware']['asset_storage_bucket']
         await asyncio.to_thread(
             cloud_storage.save_small_file,
             file_content=file_bytes,
@@ -182,11 +177,23 @@ async def upload_document(
             os.unlink(temp_file_path)
 
 
+def _document_row_to_dict(row: dict) -> dict:
+    """Convert a raw document row to the same format as KnowledgeBaseDocuments.to_dict()."""
+    result = dict(row)
+    for key, value in result.items():
+        if isinstance(value, uuid.UUID):
+            result[key] = str(value)
+        elif isinstance(value, datetime):
+            result[key] = value.isoformat()
+    return result
+
+
 @kb_document_router.get('/v1/knowledge-bases/{kb_id}/documents')
 @inject
 async def get_documents(
     kb_id: uuid.UUID,
     file_type: Optional[str] = Query(None, description='Type of file to filter by'),
+    query_filter: Optional[str] = Query(None, alias='$filter'),
     offset: int = Query(0, ge=0, description='The number of items to skip'),
     limit: int = Query(
         10, ge=1, le=100, description='The maximum number of items to return'
@@ -199,34 +206,27 @@ async def get_documents(
     ] = Depends(Provide[KnowledgeBaseContainer.knowledge_base_documents_repository]),
 ) -> JSONResponse:
     """Get documents for a knowledge base with optional filtering and pagination."""
-    # Validate knowledge base exists
-    existing_document = await knowledge_base_documents_repository.find_one(
-        knowledge_base_id=kb_id
-    )
-    if not existing_document:
-        return JSONResponse(
-            status_code=status.HTTP_200_OK,
-            content=response_formatter.buildSuccessResponse(data={'resources': []}),
+    try:
+        query_generator = QueryGenerator()
+        sql_query, query_params = query_generator.get_documents_list_query(
+            kb_id=str(kb_id),
+            file_type=file_type,
+            filter=query_filter,
+            offset=offset,
+            limit=limit,
         )
-
-    # Fetch documents
-    async with knowledge_base_documents_repository.session() as session:
-        query = select(KnowledgeBaseDocuments).where(
-            KnowledgeBaseDocuments.knowledge_base_id == kb_id
+        rows = await knowledge_base_documents_repository.execute_query(
+            sql_query, query_params
         )
-
-        if file_type:
-            query = query.where(KnowledgeBaseDocuments.file_type == file_type)
-
-        query = query.slice(offset, limit)
-
-        results: Result = await session.execute(query)
-        resources = results.scalars().all()
-        data = [res.to_dict() for res in resources]
-
+        data = [_document_row_to_dict(row) for row in rows]
         return JSONResponse(
             status_code=status.HTTP_200_OK,
             content=response_formatter.buildSuccessResponse(data={'resources': data}),
+        )
+    except ValueError as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(str(e)),
         )
 
 
@@ -305,12 +305,7 @@ async def get_document_with_id(
             ),
         )
     if signed_url:
-        provider = config['cloud_config']['cloud_provider']
-        bucket = (
-            config['gcp']['gcp_asset_storage_bucket']
-            if provider.lower() == 'gcp'
-            else config['aws']['aws_asset_storage_bucket']
-        )
+        bucket = config['floware']['asset_storage_bucket']
         presigned_url = cloude_storage_manager.generate_presigned_url(
             bucket, existing_document.file_path, 'GET'
         )

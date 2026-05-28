@@ -3,6 +3,7 @@ import { AxiosInstance } from 'axios';
 import { AgentService } from './agent-service';
 import { ApiServiceService } from './api-service-service';
 import { AppService } from './app-service';
+import { AppUserService } from './app-user-service';
 import { AuthenticatorService } from './authenticator-service';
 import { ConsoleAuthService } from './console-auth-service';
 import { DataPipelineService } from './data-pipeline-service';
@@ -12,6 +13,7 @@ import { LLMInferenceService } from './llm-inference-service';
 import { MessageProcessorService } from './message-processor-service';
 import { ModelInferenceService } from './model-inference-service';
 import { NamespaceService } from './namespace-service';
+import { ScheduledJobService } from './scheduled-job-service';
 import { SttConfigService } from './stt-config-service';
 import { TelephonyConfigService } from './telephony-config-service';
 import { ToolService } from './tool-service';
@@ -37,6 +39,10 @@ class FloConsoleService {
 
   get appService() {
     return new AppService(this.http);
+  }
+
+  get appUserService() {
+    return new AppUserService(this.http);
   }
 
   get authenticatorService() {
@@ -73,6 +79,10 @@ class FloConsoleService {
 
   get namespaceService() {
     return new NamespaceService(this.http);
+  }
+
+  get scheduledJobService() {
+    return new ScheduledJobService(this.http);
   }
 
   get sttConfigService() {

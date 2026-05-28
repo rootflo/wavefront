@@ -4,9 +4,12 @@ Twilio webhook endpoints
 Handles TwiML generation and WebSocket audio streaming
 """
 
+import html
+import json
 import os
 from uuid import UUID
-from fastapi import APIRouter, WebSocket, Query, Depends
+from call_processing.utils import normalize_indian_phone_number
+from fastapi import APIRouter, WebSocket, Query, Depends, Form
 from fastapi.responses import Response
 from twilio.twiml.voice_response import VoiceResponse, Connect, Stream
 from call_processing.log.logger import logger
@@ -16,9 +19,8 @@ from dependency_injector.wiring import inject, Provide
 from pipecat.runner.types import WebSocketRunnerArguments
 from pipecat.runner.utils import parse_telephony_websocket
 
-# from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
-# from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
 from pipecat.serializers.twilio import TwilioFrameSerializer
+from pipecat.serializers.exotel import ExotelFrameSerializer
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.transports.websocket.fastapi import (
@@ -33,32 +35,56 @@ from call_processing.di.application_container import ApplicationContainer
 webhook_router = APIRouter()
 
 
-@webhook_router.post('/twiml')
-async def twiml_endpoint(
-    voice_agent_id: str = Query(...),
-    welcome_message_audio_url: str = Query(default=''),
+@webhook_router.post('/inbound')
+@inject
+async def inbound_webhook(
+    From: str = Form(...),
+    To: str = Form(...),
+    CallSid: str = Form(...),
+    voice_agent_cache_service: VoiceAgentCacheService = Depends(
+        Provide[ApplicationContainer.voice_agent_cache_service]
+    ),
 ):
     """
-    Twilio TwiML endpoint
+    Twilio inbound webhook endpoint
 
-    Called by Twilio when call connects.
-    Returns TwiML XML with WebSocket connection instructions.
+    Called by Twilio when an inbound call is received.
+    Looks up the voice agent by inbound phone number and redirects to TwiML endpoint.
 
-    Query params:
-        voice_agent_id: UUID of the voice agent configuration
-        welcome_message_audio_url: URL of the welcome message audio file
+    Form params (from Twilio):
+        From: Caller's phone number (E.164 format)
+        To: Called phone number (E.164 format, the inbound number)
+        CallSid: Twilio call identifier
     """
-    logger.info(f'TwiML requested for voice_agent_id: {voice_agent_id}')
-    logger.info(f'Welcome message audio URL: {welcome_message_audio_url}')
+    # Mask phone numbers for privacy (show last 4 digits only)
+    masked_from = f'***{From[-4:]}' if len(From) > 4 else '****'
+    masked_to = f'***{To[-4:]}' if len(To) > 4 else '****'
+    logger.info(
+        f'Inbound call received: From={masked_from}, To={masked_to}, CallSid={CallSid}'
+    )
+
+    # Look up agent by inbound number
+    agent = await voice_agent_cache_service.get_agent_by_inbound_number(To)
+
+    if not agent:
+        logger.error(f'No voice agent found for inbound number: {To}')
+        # Return TwiML with error message
+        response = VoiceResponse()
+        response.say('Sorry, this number is not configured for voice services.')
+        response.hangup()
+        return Response(content=str(response), media_type='application/xml')
+
+    agent_id = agent['id']
+    logger.info(f'Agent found for inbound number {To}: {agent_id} ({agent["name"]})')
 
     # Build WebSocket URL
     base_url = os.getenv('CALL_PROCESSING_BASE_URL', 'http://localhost:8003')
 
-    # Convert https:// to wss:// (or http:// to ws://)
+    # Convert https:// to wss:// (or http:// to wss://)
     if base_url.startswith('https://'):
         websocket_url = base_url.replace('https://', 'wss://')
     elif base_url.startswith('http://'):
-        websocket_url = base_url.replace('http://', 'ws://')
+        websocket_url = base_url.replace('http://', 'wss://')
     else:
         websocket_url = f'wss://{base_url}'
 
@@ -69,19 +95,68 @@ async def twiml_endpoint(
     # Generate TwiML response
     response = VoiceResponse()
 
-    # Play welcome message audio if URL is provided
-    if welcome_message_audio_url:
-        response.play(welcome_message_audio_url)
+    connect = Connect()
+    stream = Stream(url=websocket_url)
+
+    # Pass parameters to WebSocket stream
+    stream.parameter(name='voice_agent_id', value=agent_id)
+    stream.parameter(name='customer_number', value=From)
+    stream.parameter(name='agent_number', value=To)
+
+    connect.append(stream)
+    response.append(connect)
+
+    # Pause for 60 seconds before auto-hangup (adjust as needed)
+    response.pause(length=60)
+
+    twiml_xml = str(response)
+    logger.info(f'Returning TwiML: {twiml_xml}')
+
+    return Response(content=twiml_xml, media_type='application/xml')
+
+
+@webhook_router.post('/twiml')
+async def twiml_endpoint(
+    From: str = Form(...),
+    To: str = Form(...),
+    voice_agent_id: str = Query(...),
+):
+    """
+    Twilio TwiML endpoint
+
+    Called by Twilio when call connects (directly or via outbound webhook redirect).
+    Returns TwiML XML with WebSocket connection instructions.
+
+    Query params:
+        voice_agent_id: UUID of the voice agent configuration
+    """
+    logger.info(f'TwiML requested for voice_agent_id: {voice_agent_id}')
+
+    # Build WebSocket URL
+    base_url = os.getenv('CALL_PROCESSING_BASE_URL', 'http://localhost:8003')
+
+    # Convert https:// to wss:// (or http:// to wss://)
+    if base_url.startswith('https://'):
+        websocket_url = base_url.replace('https://', 'wss://')
+    elif base_url.startswith('http://'):
+        websocket_url = base_url.replace('http://', 'wss://')
     else:
-        logger.warning(
-            'No welcome message audio URL provided, skipping welcome message'
-        )
+        websocket_url = f'wss://{base_url}'
+
+    websocket_url = f'{websocket_url}/webhooks/ws'
+
+    logger.info(f'WebSocket URL: {websocket_url}')
+
+    # Generate TwiML response
+    response = VoiceResponse()
 
     connect = Connect()
     stream = Stream(url=websocket_url)
 
-    # Pass voice_agent_id as stream parameter
+    # Pass parameters to WebSocket stream
     stream.parameter(name='voice_agent_id', value=voice_agent_id)
+    stream.parameter(name='customer_number', value=To)
+    stream.parameter(name='agent_number', value=From)
 
     connect.append(stream)
     response.append(connect)
@@ -121,14 +196,46 @@ async def websocket_endpoint(
         logger.info(f'Auto-detected transport: {transport_type}')
         logger.info(f'Call data: {call_data}')
 
-        # Extract voice_agent_id from stream parameters
-        body_data = call_data.get('body', {})
-        voice_agent_id = body_data.get('voice_agent_id')
+        # Extract parameters from stream (provider-specific)
+        if transport_type == 'twilio':
+            body_data = call_data.get('body', {})
+            voice_agent_id = body_data.get('voice_agent_id')
+            customer_number = body_data.get('customer_number')
+            agent_number = body_data.get('agent_number', '')
+        elif transport_type == 'exotel':
+            custom_parameters = call_data.get('custom_parameters', {})
+            logger.info(f'Exotel custom_parameters: {custom_parameters}')
+            # custom_parameters comes as {'{"voice_agent_id": "..."}': ''}
+            # The key is a JSON string from json.dumps() in exotel_service
+            voice_agent_id = None
+            for key in custom_parameters:
+                try:
+                    parsed = json.loads(html.unescape(key))
+                    if isinstance(parsed, dict) and 'voice_agent_id' in parsed:
+                        voice_agent_id = parsed['voice_agent_id']
+                        break
+                except (json.JSONDecodeError, TypeError):
+                    continue
+
+            customer_number = call_data.get('from', '')
+            agent_number = call_data.get('to', '')
+        else:
+            logger.error(f'Unknown transport type: {transport_type}')
+            await websocket.close(
+                code=1008, reason=f'Unknown transport: {transport_type}'
+            )
+            return
 
         if not voice_agent_id:
             logger.error('voice_agent_id not found in stream parameters')
             await websocket.close(code=1008, reason='Missing voice_agent_id')
             return
+
+        if not customer_number:
+            logger.warning(
+                'customer_number not found in stream parameters, using empty string'
+            )
+            customer_number = ''
 
         logger.info(f'Voice agent ID: {voice_agent_id}')
 
@@ -145,13 +252,26 @@ async def websocket_endpoint(
 
         logger.info('Successfully fetched all configs from cache')
 
-        # Create Twilio frame serializer
-        serializer = TwilioFrameSerializer(
-            stream_sid=call_data['stream_id'],
-            call_sid=call_data['call_id'],
-            account_sid=configs['telephony_config']['credentials']['account_sid'],
-            auth_token=configs['telephony_config']['credentials']['auth_token'],
-        )
+        # Create provider-specific frame serializer
+        provider = configs['telephony_config'].get('provider', 'twilio')
+        credentials = configs['telephony_config']['credentials']
+
+        if provider == 'twilio':
+            serializer = TwilioFrameSerializer(
+                stream_sid=call_data['stream_id'],
+                call_sid=call_data['call_id'],
+                account_sid=credentials['account_sid'],
+                auth_token=credentials['auth_token'],
+            )
+        elif provider == 'exotel':
+            serializer = ExotelFrameSerializer(
+                stream_sid=call_data['stream_id'],
+                call_sid=call_data.get('call_id'),
+            )
+        else:
+            logger.error(f'Unsupported telephony provider: {provider}')
+            await websocket.close(code=1008, reason=f'Unsupported provider: {provider}')
+            return
 
         # Create FastAPI WebSocket transport
         transport = FastAPIWebsocketTransport(
@@ -164,13 +284,12 @@ async def websocket_endpoint(
                 vad_analyzer=SileroVADAnalyzer(
                     params=VADParams(
                         confidence=0.7,  # Default is 0.7, can lower to 0.4-0.5 for faster detection
-                        start_secs=0.15,  # Default is 0.2, keep it
-                        stop_secs=0.8,  # KEY: Lower from default 0.8 for faster cutoff (should be 0.2 for smart turn detection)
+                        start_secs=0.2,  # Default is 0.2, keep it
+                        stop_secs=0.2,  # KEY: Lower from default 0.8 for faster cutoff (should be 0.2 for smart turn detection)
                         min_volume=0.6,  # Default is 0.6, adjust based on your audio quality
                     ),
                 ),  # Voice Activity Detection
                 serializer=serializer,
-                # turn_analyzer=LocalSmartTurnAnalyzerV3(params=SmartTurnParams()),
             ),
         )
 
@@ -182,9 +301,165 @@ async def websocket_endpoint(
             llm_config=configs['llm_config'],
             tts_config=configs['tts_config'],
             stt_config=configs['stt_config'],
+            tools=configs['tools'],
+            customer_number=customer_number,
+            call_id=call_data.get('call_id', ''),
+            agent_number=agent_number,
+            provider=transport_type,
+            call_direction='outbound',
         )
 
     except Exception as e:
         logger.error(f'Error in WebSocket endpoint: {e}', exc_info=True)
+        if websocket.client_state.name != 'DISCONNECTED':
+            await websocket.close(code=1011, reason='Internal error')
+
+
+@webhook_router.websocket('/exotel/inbound/ws')
+@inject
+async def exotel_inbound_websocket(
+    websocket: WebSocket,
+    voice_agent_cache_service: VoiceAgentCacheService = Depends(
+        Provide[ApplicationContainer.voice_agent_cache_service]
+    ),
+):
+    """
+    Exotel inbound WebSocket endpoint
+
+    Direct WebSocket connection for Exotel AppBazaar voicebot integration.
+    Handles bidirectional audio streaming with Pipecat pipeline.
+
+    Parameters are extracted from the Exotel WebSocket stream:
+        CallSid: Exotel call identifier
+        From: Caller's phone number (E.164 format)
+        To: Called phone number (for agent lookup)
+    """
+    await websocket.accept()
+    logger.info('Exotel WebSocket connection accepted')
+
+    try:
+        # Parse Exotel connection and extract call data
+        runner_args = WebSocketRunnerArguments(websocket=websocket)
+        transport_type, call_data = await parse_telephony_websocket(
+            runner_args.websocket
+        )
+
+        logger.info(f'Auto-detected transport: {transport_type}')
+
+        # Verify it's actually Exotel
+        if transport_type != 'exotel':
+            logger.error(f'Expected Exotel transport, got: {transport_type}')
+            await websocket.close(
+                code=1008, reason=f'Unexpected transport type: {transport_type}'
+            )
+            return
+
+        # Extract parameters from Exotel stream
+        call_sid = call_data.get('call_id', '')
+        from_number = call_data.get('from', '')
+        to_number = call_data.get('to', '')
+
+        # Mask phone numbers for privacy
+        masked_from = f'***{from_number[-4:]}' if len(from_number) > 4 else '****'
+        masked_to = f'***{to_number[-4:]}' if len(to_number) > 4 else '****'
+        logger.info(
+            f'Exotel call: CallSid={call_sid}, From={masked_from}, To={masked_to}'
+        )
+
+        if not to_number:
+            logger.error('No "to" number found in Exotel call data')
+            await websocket.close(code=1008, reason='Missing "to" number in call data')
+            return
+
+        # Normalize phone numbers to E.164 format (database stores in E.164)
+        # Exotel sends Indian numbers as 0xxxxxxxxxx, we need +91xxxxxxxxxx
+        normalized_to_number = normalize_indian_phone_number(to_number)
+        normalized_from_number = normalize_indian_phone_number(from_number)
+
+        # Mask normalized numbers for logging
+        masked_normalized_to = (
+            f'***{normalized_to_number[-4:]}'
+            if len(normalized_to_number) > 4
+            else '****'
+        )
+
+        # Look up agent by inbound number
+        logger.info(f'Looking up agent by inbound number: {masked_normalized_to}')
+        agent = await voice_agent_cache_service.get_agent_by_inbound_number(
+            normalized_to_number
+        )
+
+        if not agent:
+            logger.error(
+                f'No voice agent found for Exotel inbound number: {masked_normalized_to}'
+            )
+            await websocket.close(
+                code=1008, reason='No voice agent configured for this number'
+            )
+            return
+
+        voice_agent_id = agent['id']
+        logger.info(
+            f'Agent found for Exotel inbound {masked_normalized_to}: {voice_agent_id} ({agent["name"]})'
+        )
+
+        # Convert voice_agent_id to UUID
+        try:
+            agent_uuid = UUID(voice_agent_id)
+        except ValueError:
+            logger.error(f'Invalid UUID format for voice_agent_id: {voice_agent_id}')
+            await websocket.close(code=1008, reason='Invalid voice_agent_id format')
+            return
+
+        # Fetch all configs from cache with API fallback
+        configs = await voice_agent_cache_service.get_all_agent_configs(agent_uuid)
+        logger.info('Successfully fetched all configs from cache')
+
+        # Create Exotel frame serializer
+        serializer = ExotelFrameSerializer(
+            stream_sid=call_data['stream_id'],
+            call_sid=call_data.get('call_id'),
+        )
+
+        # Create FastAPI WebSocket transport
+        transport = FastAPIWebsocketTransport(
+            websocket=websocket,
+            params=FastAPIWebsocketParams(
+                audio_in_enabled=True,
+                audio_out_enabled=True,
+                audio_in_passthrough=True,
+                add_wav_header=False,
+                vad_analyzer=SileroVADAnalyzer(
+                    params=VADParams(
+                        confidence=0.7,
+                        start_secs=0.2,
+                        stop_secs=0.2,
+                        min_volume=0.6,
+                    ),
+                ),
+                serializer=serializer,
+            ),
+        )
+
+        logger.info(f'Starting Pipecat pipeline for Exotel call {call_sid}')
+
+        # Run conversation pipeline
+        pipecat_service = PipecatService()
+        await pipecat_service.run_conversation(
+            transport=transport,
+            agent_config=configs['agent'],
+            llm_config=configs['llm_config'],
+            tts_config=configs['tts_config'],
+            stt_config=configs['stt_config'],
+            tools=configs['tools'],
+            customer_number=normalized_from_number,
+            call_id=call_sid,
+            agent_number=normalized_to_number,
+            provider=transport_type,
+            call_direction='inbound',
+        )
+
+    except Exception as e:
+        logger.error(f'Error in Exotel WebSocket endpoint: {e}', exc_info=True)
         if websocket.client_state.name != 'DISCONNECTED':
             await websocket.close(code=1011, reason='Internal error')

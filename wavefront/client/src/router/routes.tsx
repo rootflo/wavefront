@@ -19,12 +19,14 @@ import VoiceAgentsPage from '@app/pages/apps/[appId]/voice-agents';
 import VoiceAgentsLayout from '@app/pages/apps/[appId]/voice-agents/layout';
 import SttConfigsPage from '@app/pages/apps/[appId]/voice-agents/stt-configs';
 import TelephonyConfigsPage from '@app/pages/apps/[appId]/voice-agents/telephony-configs';
+import ToolsPage from '@app/pages/apps/[appId]/voice-agents/tools';
 import TtsConfigsPage from '@app/pages/apps/[appId]/voice-agents/tts-configs';
 import WorkflowManagement from '@app/pages/apps/[appId]/workflows';
 import WorkflowDetail from '@app/pages/apps/[appId]/workflows/[id]';
 import WorkflowsLayout from '@app/pages/apps/[appId]/workflows/layout';
 import WorkflowPipelinesPage from '@app/pages/apps/[appId]/workflows/pipelines';
 import WorkflowPipelineDetail from '@app/pages/apps/[appId]/workflows/pipelines/[workflowPipelineId]';
+import UsersPage from '@app/pages/apps/users';
 import CreateApp from '@app/pages/apps/create';
 import EditApp from '@app/pages/apps/edit/[appId]';
 import AppLayout from '@app/pages/apps/layout';
@@ -64,6 +66,10 @@ const routes = {
     {
       path: '/logout',
       element: <Logout />,
+    },
+    {
+      path: '/apps/users',
+      element: <UsersPage />,
     },
     {
       path: 'apps/:app',
@@ -166,6 +172,10 @@ const routes = {
             {
               index: true,
               element: <VoiceAgentsPage />,
+            },
+            {
+              path: 'tools',
+              element: <ToolsPage />,
             },
             {
               path: 'tts-configs',

@@ -48,6 +48,7 @@ class AriumEvent:
     execution_time: Optional[float] = None
     error: Optional[str] = None
     router_choice: Optional[str] = None
+    node_output: Optional[str] = None
     metadata: Optional[dict] = None
 
 

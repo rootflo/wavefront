@@ -116,7 +116,7 @@ class ProxyResponse:
     def success(
         cls,
         data: Any,
-        trace: List[str],
+        trace: Optional[List[str]] = None,
         message: str = 'Success',
         http_status_code: int = 200,
     ) -> 'ProxyResponse':
@@ -131,7 +131,7 @@ class ProxyResponse:
     def error(
         cls,
         message: str,
-        trace: List[str],
+        trace: Optional[List[str]] = None,
         status: str = 'error',
         http_status_code: int = 500,
     ) -> 'ProxyResponse':

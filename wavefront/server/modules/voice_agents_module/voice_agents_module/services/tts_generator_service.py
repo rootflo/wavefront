@@ -5,6 +5,7 @@ Generates audio from text using various TTS providers.
 This service is used to pre-generate welcome message audio files.
 """
 
+import base64
 import httpx
 from typing import Dict, Any
 from common_module.log.logger import logger
@@ -44,6 +45,8 @@ class TTSGeneratorService:
             return await self._generate_deepgram(text, api_key, voice_id, parameters)
         elif provider == 'cartesia':
             return await self._generate_cartesia(text, api_key, voice_id, parameters)
+        elif provider == 'sarvam':
+            return await self._generate_sarvam(text, api_key, voice_id, parameters)
         else:
             raise ValueError(
                 f'Unsupported TTS provider for audio generation: {provider}'
@@ -226,3 +229,83 @@ class TTSGeneratorService:
         except Exception as e:
             logger.error(f'Cartesia request failed: {str(e)}')
             raise Exception(f'Cartesia TTS generation failed: {str(e)}')
+
+    # Mapping of short language codes to Sarvam API format
+    SARVAM_LANGUAGE_CODE_MAP = {
+        'bn': 'bn-IN',
+        'en': 'en-IN',
+        'gu': 'gu-IN',
+        'hi': 'hi-IN',
+        'kn': 'kn-IN',
+        'ml': 'ml-IN',
+        'mr': 'mr-IN',
+        'or': 'od-IN',
+        'pa': 'pa-IN',
+        'ta': 'ta-IN',
+        'te': 'te-IN',
+    }
+
+    async def _generate_sarvam(
+        self, text: str, api_key: str, voice_id: str, parameters: Dict[str, Any]
+    ) -> bytes:
+        """
+        Generate audio using Sarvam AI REST API.
+
+        API Docs: https://docs.sarvam.ai/api-reference-docs/endpoints/text-to-speech
+        """
+        url = 'https://api.sarvam.ai/text-to-speech'
+
+        headers = {
+            'api-subscription-key': api_key,
+            'Content-Type': 'application/json',
+        }
+
+        # Map short language code to Sarvam format
+        lang = parameters.get('language', 'hi')
+        target_language_code = self.SARVAM_LANGUAGE_CODE_MAP.get(lang, f'{lang}-IN')
+
+        body = {
+            'text': text,
+            'target_language_code': target_language_code,
+            'speaker': voice_id,
+            'model': parameters.get('model', 'bulbul:v2'),
+        }
+
+        # Optional parameters
+        if 'pitch' in parameters:
+            body['pitch'] = parameters['pitch']
+        if 'pace' in parameters:
+            body['pace'] = parameters['pace']
+        if 'loudness' in parameters:
+            body['loudness'] = parameters['loudness']
+        if 'sample_rate' in parameters:
+            body['sample_rate'] = parameters['sample_rate']
+        if 'enable_preprocessing' in parameters:
+            body['enable_preprocessing'] = parameters['enable_preprocessing']
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(url, headers=headers, json=body)
+                response.raise_for_status()
+
+                # Sarvam returns JSON with audios[] array of base64-encoded audio
+                data = response.json()
+                audios = data.get('audios')
+                if not audios:
+                    raise ValueError(f'Sarvam API returned no audio data: {data}')
+                audio_b64 = audios[0]
+                audio_bytes = base64.b64decode(audio_b64)
+
+                logger.info(
+                    f'Sarvam audio generated successfully, size: {len(audio_bytes)} bytes'
+                )
+                return audio_bytes
+
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                f'Sarvam API error: {e.response.status_code} - {e.response.text}'
+            )
+            raise Exception(f'Sarvam TTS generation failed: {e.response.text}')
+        except Exception as e:
+            logger.error(f'Sarvam request failed: {str(e)}')
+            raise Exception(f'Sarvam TTS generation failed: {str(e)}')

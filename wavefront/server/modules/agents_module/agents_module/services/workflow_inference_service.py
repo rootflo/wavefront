@@ -1,3 +1,4 @@
+import asyncio
 import time
 from typing import Any, Dict, List, Optional, Callable
 import yaml
@@ -56,7 +57,7 @@ class WorkflowInferenceService:
         cache_key = get_workflow_yaml_cache_key(namespace, workflow_name)
 
         # Try to get from cache first
-        cached_result = self.cache_manager.get_str(cache_key)
+        cached_result = await asyncio.to_thread(self.cache_manager.get_str, cache_key)
         if cached_result:
             logger.info(
                 f'Cache hit fetching workflow YAML for namespace: {namespace}, workflow: {workflow_name}'
@@ -66,12 +67,14 @@ class WorkflowInferenceService:
         logger.info(
             f'Fetching workflow YAML for namespace: {namespace}, workflow: {workflow_name}'
         )
-        yaml_bytes: bytes = self.cloud_storage_manager.read_file(
-            self.bucket_name, yaml_key
+        yaml_bytes: bytes = await asyncio.to_thread(
+            self.cloud_storage_manager.read_file, self.bucket_name, yaml_key
         )
         yaml_content = yaml_bytes.decode('utf-8')
 
-        self.cache_manager.add(cache_key, yaml_content, expiry=3600)
+        await asyncio.to_thread(
+            self.cache_manager.add, cache_key, yaml_content, expiry=3600
+        )
 
         logger.info(
             f'Successfully fetched workflow YAML for namespace: {namespace}, workflow: {workflow_name}'

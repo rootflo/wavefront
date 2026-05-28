@@ -1,3 +1,4 @@
+import asyncio
 from typing import Dict, Any, List, Tuple, cast, Optional
 from abc import ABC, abstractmethod
 from enum import Enum
@@ -9,6 +10,7 @@ from flo_ai.models.chat_message import (
     FunctionMessage,
 )
 from flo_ai.utils.variable_extractor import resolve_variables
+from flo_ai.utils.profiler import aprofile
 
 
 class AgentType(Enum):
@@ -85,16 +87,56 @@ class BaseAgent(ABC):
         self.conversation_history = []
 
     async def _get_message_history(self, variables: Optional[Dict[str, Any]] = None):
+        async with aprofile(f'agent.{self.name}.get_message_history'):
+            return await self._get_message_history_impl(variables)
+
+    async def _get_message_history_impl(
+        self, variables: Optional[Dict[str, Any]] = None
+    ):
+        """Build the message list passed to the LLM from the conversation history.
+
+        Document formatting (the expensive step — PDF rasterization or
+        extraction) is dispatched concurrently via ``asyncio.gather`` and
+        cached on the ``DocumentMessageContent`` instance by the underlying
+        LLM, so the same document is formatted at most once per LLM across
+        all nodes and retries in a workflow.
+        """
         variables = variables if variables is not None else {}
-        message_history = []
-        for input in self.conversation_history:
-            # Handle FunctionMessage (OpenAI function role format)
+
+        # First pass: kick off one formatting coroutine per *unique* document
+        # instance. If the same DocumentMessageContent is referenced at
+        # multiple indices, we share the single in-flight task so we never
+        # rasterize it twice concurrently.
+        doc_tasks_by_id: Dict[int, 'asyncio.Future[Any]'] = {}
+        doc_id_by_idx: Dict[int, int] = {}
+        for idx, input in enumerate(self.conversation_history):
+            if (
+                not isinstance(input, FunctionMessage)
+                and isinstance(input.content, MediaMessageContent)
+                and input.content.type == 'document'
+            ):
+                doc_id = id(input.content)
+                doc_id_by_idx[idx] = doc_id
+                if doc_id not in doc_tasks_by_id:
+                    doc_tasks_by_id[doc_id] = asyncio.ensure_future(
+                        self.llm.format_document_in_message(input.content)  # type: ignore[arg-type]
+                    )
+
+        if doc_tasks_by_id:
+            formatted_docs = await asyncio.gather(*doc_tasks_by_id.values())
+            formatted_by_doc_id: Dict[int, Any] = dict(
+                zip(doc_tasks_by_id.keys(), formatted_docs)
+            )
+        else:
+            formatted_by_doc_id = {}
+
+        # Second pass: assemble the provider-ready message list.
+        message_history: List[Dict[str, Any]] = []
+        for idx, input in enumerate(self.conversation_history):
             if isinstance(input, FunctionMessage):
                 message_history.append(
                     {'role': input.role, 'name': input.name, 'content': input.content}
                 )
-            # CRITICAL: Check content type FIRST, before message type
-            # This ensures TextMessageContent objects are converted to strings
             elif isinstance(input.content, TextMessageContent):
                 resolved_content = resolve_variables(input.content.text, variables)
                 message_history.append(
@@ -102,26 +144,22 @@ class BaseAgent(ABC):
                 )
             elif isinstance(input.content, MediaMessageContent):
                 if input.content.type == 'image':
-                    # Format image message and add to history
-                    formatted_content = self.llm.format_image_in_message(input.content)  # type: ignore
+                    formatted_content = self.llm.format_image_in_message(input.content)  # type: ignore[arg-type]
                     message_history.append(
                         {'role': input.role, 'content': formatted_content}
                     )
-
                 elif input.content.type == 'document':
-                    # Format document message and add to history
-                    formatted_content = await self.llm.format_document_in_message(
-                        input.content  # type: ignore
-                    )
                     message_history.append(
-                        {'role': input.role, 'content': formatted_content}
+                        {
+                            'role': input.role,
+                            'content': formatted_by_doc_id[doc_id_by_idx[idx]],
+                        }
                     )
                 else:
                     raise ValueError(
                         f'Invalid media message content type: {input.content.type}'
                     )
             elif isinstance(input.content, str):
-                # Handle other messages with string content (UserMessage, SystemMessage, etc.)
                 resolved_content = resolve_variables(input.content, variables)
                 message_history.append(
                     {'role': input.role, 'content': resolved_content}

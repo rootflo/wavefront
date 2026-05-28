@@ -6,6 +6,8 @@ from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
 from sqlalchemy.orm import relationship
 
+from floconsole.constants.user import UserRole
+
 from ..base import Base
 
 
@@ -20,6 +22,7 @@ class User(Base):
     first_name: Mapped[str] = mapped_column(nullable=False)
     last_name: Mapped[str] = mapped_column(nullable=False)
     deleted: Mapped[bool] = mapped_column(default=False)
+    role: Mapped[str] = mapped_column(nullable=False, default=UserRole.APP_ADMIN.value)
 
     # Account lockout fields
     failed_attempts: Mapped[int] = mapped_column(default=0, nullable=False)
@@ -31,10 +34,16 @@ class User(Base):
         'Session', back_populates='user', cascade='all, delete-orphan'
     )
 
+    # Add relationship for app access
+    app_users = relationship(
+        'AppUser', back_populates='user', cascade='all, delete-orphan'
+    )
+
     def to_dict(self):
         return {
             'id': str(self.id),
             'email': self.email,
             'first_name': self.first_name,
             'last_name': self.last_name,
+            'role': self.role,
         }

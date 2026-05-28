@@ -89,24 +89,37 @@ class QueryGenerator:
                 )
                 query_params.update(filter_params)
         sql_query = f"""
-            WITH vector_results AS (
+            WITH hnsw_candidates AS (
                 SELECT
-                    e.id as embedding_id,
-                    e.chunk_text,
-                    e.chunk_index,
+                    id,
+                    document_id,
+                    chunk_text,
+                    chunk_index,
+                    (embedding_vector::vector(512)) <=> :query_embed ::vector(512) AS distance
+                FROM
+                    {KnowledgeBaseEmbeddings.__tablename__}
+                ORDER BY
+                    (embedding_vector::vector(512)) <=> :query_embed ::vector(512)
+                LIMIT :limit * 20
+            ),
+            vector_results AS (
+                SELECT
+                    hc.id as embedding_id,
+                    hc.chunk_text,
+                    hc.chunk_index,
                     d.id as document_id,
                     d.file_path,
                     d.knowledge_base_id,
                     d.metadata_value,
-                    1 - (e.embedding_vector <=> :query_embed ::vector) as vector_score
+                    1 - hc.distance as vector_score
                 FROM
-                    {KnowledgeBaseEmbeddings.__tablename__} e
+                    hnsw_candidates hc
                 JOIN
-                    {KnowledgeBaseDocuments.__tablename__} d ON e.document_id = d.id
+                    {KnowledgeBaseDocuments.__tablename__} d ON hc.document_id = d.id
                 WHERE
                      d.knowledge_base_id = :kb_id {'AND (' + metadata_filter_clause_inner + ')' if metadata_filter_clause_inner else ''}
                 ORDER BY
-                    vector_score DESC
+                    hc.distance ASC
                 LIMIT :limit
             ),
             keyword_results AS (
@@ -169,40 +182,45 @@ class QueryGenerator:
             'kb_id': kb_id,
             'top_k': top_k,
         }
-        metadata_filter_clause_final = ''
+        metadata_filter_clause = ''
         if filter:
             where_clause, filter_params = self.odata_parser.prepare_odata_filter(filter)
             if where_clause and filter_params:
-                metadata_filter_clause_final = self.build_metadata_clause(
+                metadata_filter_clause = self.build_metadata_clause(
                     where_clause,
                     filter_params,
                     lambda field: f"(d.metadata_value ->> '{field}')",
                 )
                 params.update(filter_params)
         sql_query = f"""
-        WITH ranked_embeddings AS (
+        WITH hnsw_candidates AS (
             SELECT
-                e.id AS embedding_id,
-                e.chunk_text,
-                e.chunk_index,
-                d.id AS document_id,
-                d.file_path,
-                d.file_name,
-                d.knowledge_base_id,
-                d.metadata_value,
-                e.embedding_vector <-> :query_embedding ::vector AS distance
+                id,
+                document_id,
+                chunk_text,
+                chunk_index,
+                (embedding_vector::vector(512)) <=> :query_embedding ::vector(512) AS distance
             FROM
-                {KnowledgeBaseEmbeddings.__tablename__} e
-            JOIN
-                {KnowledgeBaseDocuments.__tablename__} d ON e.document_id = d.id
-            WHERE
-                d.knowledge_base_id = :kb_id {'AND (' + metadata_filter_clause_final + ')' if metadata_filter_clause_final else ''}
-            ORDER BY distance ASC
+                {KnowledgeBaseEmbeddings.__tablename__}
+            ORDER BY
+                (embedding_vector::vector(512)) <=> :query_embedding ::vector(512)
+            LIMIT :top_k * 20
         )
         SELECT
-            *
-        FROM
-            ranked_embeddings
+            hc.id AS embedding_id,
+            hc.chunk_text,
+            hc.chunk_index,
+            d.id AS document_id,
+            d.file_path,
+            d.file_name,
+            d.knowledge_base_id,
+            d.metadata_value,
+            hc.distance
+        FROM hnsw_candidates hc
+        JOIN {KnowledgeBaseDocuments.__tablename__} d ON hc.document_id = d.id
+        WHERE d.knowledge_base_id = :kb_id
+            {'AND (' + metadata_filter_clause + ')' if metadata_filter_clause else ''}
+        ORDER BY hc.distance ASC
         LIMIT :top_k
         """
 
@@ -232,52 +250,113 @@ class QueryGenerator:
         params = {
             'query_embedding': query_embeddings,
             'kb_id': kb_id,
-            'top_k': effective_limit,
             'reference_ids': processed_reference_ids,
             'offset': effective_offset,
             'limit': effective_limit,
         }
 
-        metadata_filter_clause_final = ''
+        metadata_filter_clause = ''
         if filter:
             where_clause, filter_params = self.odata_parser.prepare_odata_filter(filter)
             if where_clause and filter_params:
-                metadata_filter_clause_final = self.build_metadata_clause(
+                metadata_filter_clause = self.build_metadata_clause(
                     where_clause,
                     filter_params,
                     lambda field: f"(d.metadata_value ->> '{field}')",
                 )
                 params.update(filter_params)
-        # Use ANY operator for PostgreSQL array matching
-        reference_filter = (
-            'AND e.document_id = ANY(:reference_ids)' if processed_reference_ids else ''
-        )
 
         sql_query = f"""
-        WITH ranked_embeddings AS (
+        WITH hnsw_candidates AS (
             SELECT
-                e.id AS embedding_id,
-                e.chunk_text,
-                e.chunk_index,
-                d.id AS document_id,
-                d.file_path,
-                d.file_name,
-                d.knowledge_base_id,
-                d.metadata_value,
-                (1 - (e.embedding_vector_1 <=> :query_embedding ::vector)) AS similarity
-            FROM {KnowledgeBaseEmbeddings.__tablename__} e
-            JOIN {KnowledgeBaseDocuments.__tablename__} d ON e.document_id = d.id
-            WHERE
-                d.knowledge_base_id = :kb_id {reference_filter} {'AND (' + metadata_filter_clause_final + ')' if metadata_filter_clause_final else ''}
-            ORDER BY similarity DESC
+                id,
+                document_id,
+                chunk_text,
+                chunk_index,
+                (embedding_vector_1::vector(1024)) <=> :query_embedding ::vector(1024) AS distance
+            FROM
+                {KnowledgeBaseEmbeddings.__tablename__}
+            ORDER BY
+                (embedding_vector_1::vector(1024)) <=> :query_embedding ::vector(1024)
+            LIMIT :limit * 20
         )
         SELECT
-            *
-        FROM
-            ranked_embeddings
+            hc.id AS embedding_id,
+            hc.chunk_text,
+            hc.chunk_index,
+            d.id AS document_id,
+            d.file_path,
+            d.file_name,
+            d.knowledge_base_id,
+            d.metadata_value,
+            1 - hc.distance AS similarity
+        FROM hnsw_candidates hc
+        JOIN {KnowledgeBaseDocuments.__tablename__} d ON hc.document_id = d.id
+        WHERE d.knowledge_base_id = :kb_id
+            {('AND d.id = ANY(:reference_ids)' if processed_reference_ids else '')}
+            {'AND (' + metadata_filter_clause + ')' if metadata_filter_clause else ''}
+        ORDER BY similarity DESC
         LIMIT :limit OFFSET :offset
         """
 
+        return sql_query, params
+
+    def get_documents_list_query(
+        self,
+        kb_id: str,
+        file_type: Optional[str] = None,
+        filter: Optional[str] = None,
+        offset: int = 0,
+        limit: int = 10,
+    ) -> Tuple[str, Dict[str, Any]]:
+        """
+        Generate SQL query to list knowledge base documents with optional
+        metadata filter (OData-style $filter) and file_type.
+
+        Returns:
+            Tuple of (SQL query string, query parameters)
+        """
+        params: Dict[str, Any] = {
+            'kb_id': kb_id,
+            'offset': offset,
+            'limit': limit,
+        }
+        conditions = ['knowledge_base_id = :kb_id']
+        if file_type:
+            params['file_type'] = file_type
+            conditions.append('file_type = :file_type')
+
+        metadata_filter_clause = ''
+        if filter:
+            where_clause, filter_params = self.odata_parser.prepare_odata_filter(filter)
+            if where_clause and filter_params:
+                metadata_filter_clause = self.build_metadata_clause(
+                    where_clause,
+                    filter_params,
+                    lambda field: f"(metadata_value ->> '{field}')",
+                )
+                params.update(filter_params)
+                conditions.append(f'({metadata_filter_clause})')
+
+        where_sql = ' AND '.join(conditions)
+        sql_query = f"""
+            SELECT
+                id,
+                knowledge_base_id,
+                file_path,
+                file_name,
+                file_type,
+                file_size,
+                created_at,
+                updated_at,
+                metadata_value
+            FROM
+                {KnowledgeBaseDocuments.__tablename__}
+            WHERE
+                {where_sql}
+            ORDER BY created_at DESC
+            LIMIT :limit OFFSET :offset
+        """
         return sql_query, params
 
     @staticmethod
@@ -288,4 +367,4 @@ class QueryGenerator:
         Returns:
             SQL query string
         """
-        return "UPDATE knowledge_base_embeddings SET token = to_tsvector('english', chunk_text)"
+        return "UPDATE knowledge_base_embeddings SET token = to_tsvector('english', chunk_text) WHERE token IS NULL"

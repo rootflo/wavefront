@@ -6,12 +6,14 @@ const Yamls = ({
   yamls,
   setYamlCrud,
   setSelectedYaml,
+  onSchedule,
 }: {
   yamls: Yaml[];
   setYamlCrud: React.Dispatch<
     React.SetStateAction<{ view: boolean; edit: boolean; create: boolean; delete: boolean; execute: boolean }>
   >;
   setSelectedYaml: React.Dispatch<React.SetStateAction<string | null>>;
+  onSchedule: (filePath: string) => void;
 }) => {
   const setOnly = (
     key: keyof { view: boolean; edit: boolean; create: boolean; delete: boolean; execute: boolean },
@@ -72,14 +74,25 @@ const Yamls = ({
             </Button>
           </div>
           <div className="flex justify-end">
-            <Button
-              onClick={(e) => {
-                e.stopPropagation();
-                setOnly('execute', yaml.file);
-              }}
-            >
-              Execute
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSchedule(yaml.file);
+                }}
+              >
+                Schedule Alert
+              </Button>
+              <Button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setOnly('execute', yaml.file);
+                }}
+              >
+                Execute
+              </Button>
+            </div>
           </div>
         </div>
       ))}

@@ -53,6 +53,25 @@ def generate_cache_key(
     return f'dynamic_query:{hash_digest}'
 
 
+def generate_export_filename_hash(
+    filter: str = None,
+    limit: int = None,
+    offset: int = None,
+    params: dict[str, str] = None,
+    rls_filter_str: str = None,
+) -> str:
+    """Generate a short hash for export filename from $filter, limit, offset, dynamic_query params, and RLS scope."""
+    key_dict = {
+        'filter': filter,
+        'limit': limit,
+        'offset': offset,
+        'params': params or {},
+        'rls': rls_filter_str,
+    }
+    key_json = json.dumps(key_dict, sort_keys=True, separators=(',', ':'))
+    return hashlib.md5(key_json.encode()).hexdigest()
+
+
 def validate_yaml_query(yaml_query: dict) -> bool:
     """
     Validate the structure of a dynamic query YAML file.

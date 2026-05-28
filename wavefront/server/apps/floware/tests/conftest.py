@@ -153,7 +153,7 @@ def setup_containers(test_engine, test_session, test_user_id, test_session_id):
 
 
 @pytest.fixture
-def mock_cloud_manager():
+def mock_cloud_storage_manager():
     """Mock CloudStorageManager for testing"""
     mock_cloud = Mock(spec=CloudStorageManager)
     mock_cloud.save_small_file = Mock()
@@ -176,8 +176,8 @@ def mock_config_repository():
 def mock_config():
     """Mock configuration for testing"""
     return {
-        'gcp': {
-            'gcp_asset_storage_bucket': 'test-bucket',
+        'floware': {
+            'asset_storage_bucket': 'test-bucket',
             'config_file_name': 'config.png',
         }
     }
@@ -203,13 +203,13 @@ def mock_config_service():
 
 @pytest.fixture
 def setup_application_container(
-    mock_cloud_manager, mock_config_repository, mock_config, mock_config_service
+    mock_cloud_storage_manager, mock_config_repository, mock_config, mock_config_service
 ):
     """Setup ApplicationContainer with mocked dependencies"""
     app_container = ApplicationContainer()
 
     # Override the dependencies
-    app_container.cloud_manager.override(mock_cloud_manager)
+    app_container.cloud_storage_manager.override(mock_cloud_storage_manager)
     app_container.config_repository.override(mock_config_repository)
     app_container.config.override(mock_config)
     app_container.config_service.override(mock_config_service)

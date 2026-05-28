@@ -51,7 +51,6 @@ async def create_telephony_config(
         provider=payload.provider.value,
         connection_type=payload.connection_type.value,
         credentials=payload.credentials,
-        phone_numbers=payload.phone_numbers,
         webhook_config=payload.webhook_config,
         sip_config=payload.sip_config,
     )
@@ -198,8 +197,6 @@ async def update_telephony_config(
             )
     if payload.credentials is not UNSET:
         update_data['credentials'] = json.dumps(payload.credentials)
-    if payload.phone_numbers is not UNSET:
-        update_data['phone_numbers'] = json.dumps(payload.phone_numbers)
     if payload.webhook_config is not UNSET:
         update_data['webhook_config'] = (
             json.dumps(payload.webhook_config.model_dump())

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import floConsoleService from '@app/api';
 import { Button } from '@app/components/ui/button';
 import {
@@ -18,14 +19,12 @@ import {
   FormMessage,
 } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
-import { Label } from '@app/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Textarea } from '@app/components/ui/textarea';
 import {
   getConnectionTypeOptions,
   getTelephonyProviderConfig,
   getTelephonyProviderOptions,
-  isValidE164PhoneNumber,
   requiresSipConfig,
 } from '@app/config/telephony-providers';
 import { extractErrorMessage } from '@app/lib/utils';
@@ -46,8 +45,15 @@ const updateTelephonyConfigSchema = z.object({
   description: z.string().max(500, 'Description must be 500 characters or less').optional(),
   provider: z.string().min(1, 'Provider is required'),
   connection_type: z.enum(['websocket', 'sip']),
+  // Twilio credentials
   account_sid: z.string().optional(),
   auth_token: z.string().optional(),
+  // Exotel credentials
+  api_key: z.string().optional(),
+  api_token: z.string().optional(),
+  exotel_account_sid: z.string().optional(),
+  subdomain: z.string().optional(),
+  // SIP config
   sip_domain: z.string().optional(),
   sip_port: z.number().optional(),
   sip_transport: z.enum(['udp', 'tcp', 'tls']).optional(),
@@ -70,7 +76,6 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
 }) => {
   const { notifySuccess, notifyError } = useNotifyStore();
 
-  const [phoneNumbers, setPhoneNumbers] = useState<string[]>(['']);
   const [loading, setLoading] = useState(false);
 
   const form = useForm<UpdateTelephonyConfigInput>({
@@ -82,6 +87,10 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
       connection_type: config.connection_type,
       account_sid: '',
       auth_token: '',
+      api_key: '',
+      api_token: '',
+      exotel_account_sid: '',
+      subdomain: '',
       sip_domain: config.sip_config?.sip_domain || '',
       sip_port: config.sip_config?.port,
       sip_transport: config.sip_config?.transport,
@@ -90,6 +99,7 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
 
   const watchedProvider = form.watch('provider');
   const watchedConnectionType = form.watch('connection_type');
+  const providerChanged = watchedProvider !== config.provider;
 
   // Initialize form when dialog opens
   useEffect(() => {
@@ -101,11 +111,14 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
         connection_type: config.connection_type,
         account_sid: '',
         auth_token: '',
+        api_key: '',
+        api_token: '',
+        exotel_account_sid: '',
+        subdomain: '',
         sip_domain: config.sip_config?.sip_domain || '',
         sip_port: config.sip_config?.port,
         sip_transport: config.sip_config?.transport,
       });
-      setPhoneNumbers(config.phone_numbers.length > 0 ? config.phone_numbers : ['']);
     }
   }, [isOpen, config, form]);
 
@@ -118,91 +131,73 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
     }
   }, [watchedConnectionType, form]);
 
-  const handleAddPhoneNumber = () => {
-    setPhoneNumbers([...phoneNumbers, '']);
-  };
-
-  const handleRemovePhoneNumber = (index: number) => {
-    if (phoneNumbers.length === 1) {
-      notifyError('At least one phone number is required');
-      return;
-    }
-    setPhoneNumbers(phoneNumbers.filter((_, i) => i !== index));
-  };
-
-  const handlePhoneNumberChange = (index: number, value: string) => {
-    const newPhoneNumbers = [...phoneNumbers];
-    newPhoneNumbers[index] = value;
-    setPhoneNumbers(newPhoneNumbers);
-  };
-
-  const validatePhoneNumbers = (): boolean => {
-    const filledPhoneNumbers = phoneNumbers.filter((p) => p.trim());
-
-    if (filledPhoneNumbers.length === 0) {
-      notifyError('At least one phone number is required');
-      return false;
-    }
-
-    for (const phone of filledPhoneNumbers) {
-      if (!isValidE164PhoneNumber(phone.trim())) {
-        notifyError(
-          `Invalid phone number format: ${phone}. Phone numbers must be in E.164 format (e.g., +14155551234)`
-        );
-        return false;
-      }
-    }
-
-    return true;
-  };
-
   const onSubmit = async (data: UpdateTelephonyConfigInput) => {
-    if (!validatePhoneNumbers()) {
-      return;
-    }
+    const provider = data.provider as TelephonyProvider;
 
     // Validate SIP config if required
-    if (requiresSipConfig(data.provider as TelephonyProvider, data.connection_type)) {
+    if (requiresSipConfig(provider, data.connection_type)) {
       if (!data.sip_domain?.trim()) {
         notifyError('SIP domain is required for SIP connection type');
         return;
       }
     }
 
-    const filledPhoneNumbers = phoneNumbers.filter((p) => p.trim()).map((p) => p.trim());
-
     setLoading(true);
     try {
       const updateData: UpdateTelephonyConfigRequest = {
         display_name: data.display_name.trim(),
         description: data.description?.trim() || null,
-        provider: data.provider as TelephonyProvider,
+        provider: provider,
         connection_type: data.connection_type,
-        phone_numbers: filledPhoneNumbers,
       };
 
-      // Only include credentials if they were changed
-      if (data.account_sid?.trim() || data.auth_token?.trim()) {
-        updateData.credentials = {
-          account_sid: config.credentials.account_sid,
-          auth_token: config.credentials.auth_token,
-        };
-        if (data.account_sid?.trim()) {
-          updateData.credentials.account_sid = data.account_sid.trim();
+      // Handle credentials based on provider
+      const providerChanged = provider !== config.provider;
+
+      if (provider === 'twilio') {
+        const nextAccountSid = data.account_sid?.trim();
+        const nextAuthToken = data.auth_token?.trim();
+        if (providerChanged && (!nextAccountSid || !nextAuthToken)) {
+          notifyError('Twilio Account SID and Auth Token are required when switching provider');
+          setLoading(false);
+          return;
         }
-        if (data.auth_token?.trim()) {
-          updateData.credentials.auth_token = data.auth_token.trim();
+        if (providerChanged || nextAccountSid || nextAuthToken) {
+          const base = !providerChanged ? (config.credentials as any) : {};
+          updateData.credentials = {
+            account_sid: nextAccountSid ?? base.account_sid ?? '',
+            auth_token: nextAuthToken ?? base.auth_token ?? '',
+          };
+        }
+      } else if (provider === 'exotel') {
+        const nextApiKey = data.api_key?.trim();
+        const nextApiToken = data.api_token?.trim();
+        const nextAccountSid = data.exotel_account_sid?.trim();
+        const nextSubdomain = data.subdomain?.trim();
+        if (providerChanged && (!nextApiKey || !nextApiToken || !nextAccountSid || !nextSubdomain)) {
+          notifyError('All Exotel credentials are required when switching provider');
+          setLoading(false);
+          return;
+        }
+        if (providerChanged || nextApiKey || nextApiToken || nextAccountSid || nextSubdomain) {
+          const base = !providerChanged ? (config.credentials as any) : {};
+          updateData.credentials = {
+            api_key: nextApiKey ?? base.api_key ?? '',
+            api_token: nextApiToken ?? base.api_token ?? '',
+            account_sid: nextAccountSid ?? base.account_sid ?? '',
+            subdomain: nextSubdomain ?? base.subdomain ?? '',
+          };
         }
       }
 
       // Add SIP config if required
-      if (requiresSipConfig(data.provider as TelephonyProvider, data.connection_type) && data.sip_domain?.trim()) {
+      if (requiresSipConfig(provider, data.connection_type) && data.sip_domain?.trim()) {
         updateData.sip_config = {
           sip_domain: data.sip_domain.trim(),
           port: data.sip_port,
           transport: data.sip_transport,
         };
-      } else if (!requiresSipConfig(data.provider as TelephonyProvider, data.connection_type)) {
+      } else if (!requiresSipConfig(provider, data.connection_type)) {
         updateData.sip_config = null;
       }
 
@@ -326,75 +321,147 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-6">
-              <FormField
-                control={form.control}
-                name="account_sid"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Account SID (Optional - leave empty to keep existing)</FormLabel>
-                    <FormControl>
-                      <Input placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            {/* Provider-specific credential fields */}
+            {watchedProvider === 'twilio' && (
+              <div className="grid grid-cols-2 gap-6">
+                <FormField
+                  control={form.control}
+                  name="account_sid"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        Account SID{' '}
+                        {providerChanged ? (
+                          <span className="text-red-500">*</span>
+                        ) : (
+                          '(Optional - leave empty to keep existing)'
+                        )}
+                      </FormLabel>
+                      <FormControl>
+                        <Input placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              <FormField
-                control={form.control}
-                name="auth_token"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Auth Token (Optional - leave empty to keep existing)</FormLabel>
-                    <FormControl>
-                      <Input type="password" placeholder="Enter new auth token to update" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <div className="rounded-lg border border-gray-200 p-4">
-              <div className="mb-4 flex items-center justify-between">
-                <Label>
-                  Phone Numbers <span className="text-red-500">*</span>
-                </Label>
-                <Button type="button" variant="outline" size="sm" onClick={handleAddPhoneNumber}>
-                  + Add Number
-                </Button>
+                <FormField
+                  control={form.control}
+                  name="auth_token"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        Auth Token{' '}
+                        {providerChanged ? (
+                          <span className="text-red-500">*</span>
+                        ) : (
+                          '(Optional - leave empty to keep existing)'
+                        )}
+                      </FormLabel>
+                      <FormControl>
+                        <Input type="password" placeholder="Enter new auth token to update" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
+            )}
 
-              <div className="space-y-3">
-                {phoneNumbers.map((phone, index) => (
-                  <div key={index} className="flex gap-2">
-                    <Input
-                      type="text"
-                      value={phone}
-                      onChange={(e) => handlePhoneNumberChange(index, e.target.value)}
-                      placeholder="+14155551234"
-                      className="flex-1"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      onClick={() => handleRemovePhoneNumber(index)}
-                      disabled={phoneNumbers.length === 1}
-                    >
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </Button>
-                  </div>
-                ))}
+            {watchedProvider === 'exotel' && (
+              <div className="space-y-6">
+                <div className="grid grid-cols-2 gap-6">
+                  <FormField
+                    control={form.control}
+                    name="api_key"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          API Key{' '}
+                          {providerChanged ? (
+                            <span className="text-red-500">*</span>
+                          ) : (
+                            '(Optional - leave empty to keep existing)'
+                          )}
+                        </FormLabel>
+                        <FormControl>
+                          <Input placeholder="Enter new API key to update" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="api_token"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          API Token{' '}
+                          {providerChanged ? (
+                            <span className="text-red-500">*</span>
+                          ) : (
+                            '(Optional - leave empty to keep existing)'
+                          )}
+                        </FormLabel>
+                        <FormControl>
+                          <Input type="password" placeholder="Enter new API token to update" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-6">
+                  <FormField
+                    control={form.control}
+                    name="exotel_account_sid"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          Account SID{' '}
+                          {providerChanged ? (
+                            <span className="text-red-500">*</span>
+                          ) : (
+                            '(Optional - leave empty to keep existing)'
+                          )}
+                        </FormLabel>
+                        <FormControl>
+                          <Input placeholder="Enter new account SID to update" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="subdomain"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          Subdomain{' '}
+                          {providerChanged ? (
+                            <span className="text-red-500">*</span>
+                          ) : (
+                            '(Optional - leave empty to keep existing)'
+                          )}
+                        </FormLabel>
+                        <FormControl>
+                          <Input placeholder="ccm-api.exotel.com or ccm-api.in.exotel.com" {...field} />
+                        </FormControl>
+                        <FormDescription>
+                          Regional API endpoint (Singapore: ccm-api.exotel.com, India: ccm-api.in.exotel.com)
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </div>
-
-              <p className="text-muted-foreground mt-2 text-[0.8rem]">
-                Phone numbers must be in E.164 format (e.g., +14155551234). Include country code with + prefix.
-              </p>
-            </div>
+            )}
 
             {showSipConfig && (
               <div className="rounded-lg border border-gray-200 p-4">

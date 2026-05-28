@@ -12,7 +12,7 @@ import { MessageProcessor, MessageProcessorListItem } from '@app/types/message-p
 import { Pipeline, PipelineFile, PipelineStatus } from '@app/types/pipeline';
 import { SttConfig } from '@app/types/stt-config';
 import { TelephonyConfig } from '@app/types/telephony-config';
-import { ToolDetails } from '@app/types/tool';
+import { ToolDetails, VoiceAgentTool, VoiceAgentToolWithAssociation } from '@app/types/tool';
 import { TtsConfig } from '@app/types/tts-config';
 import { VoiceAgent } from '@app/types/voice-agent';
 import { WorkflowListItem, WorkflowPipelineListItem, WorkflowRunListData } from '@app/types/workflow';
@@ -54,7 +54,11 @@ import {
   getToolsQueryFn,
   getTtsConfigQueryFn,
   getTtsConfigsQueryFn,
+  getUsersQueryFn,
   getVoiceAgentQueryFn,
+  getVoiceAgentToolQueryFn,
+  getVoiceAgentToolsQueryFn,
+  getAgentToolsQueryFn,
   getVoiceAgentsQueryFn,
   getWorkflowPipelinesQueryFn,
   getWorkflowRunsQueryFn,
@@ -96,7 +100,11 @@ import {
   getToolsKey,
   getTtsConfigKey,
   getTtsConfigsKey,
+  getUsersKey,
   getVoiceAgentKey,
+  getVoiceAgentToolKey,
+  getVoiceAgentToolsKey,
+  getAgentToolsKey,
   getVoiceAgentsKey,
   getWorkflowPipelinesKey,
   getWorkflowRunsKey,
@@ -407,4 +415,35 @@ export const useGetPipelineFiles = (
 
 export const useGetAppById = (appId: string, enabled: boolean = true): UseQueryResult<App | undefined, Error> => {
   return useQueryInit<App | undefined>(getAppByIdKey(appId), () => getAppByIdFn(appId), enabled);
+};
+
+export const useGetUsers = (): UseQueryResult<IUser[], Error> => {
+  return useQueryInit(getUsersKey(), getUsersQueryFn, true);
+};
+
+// Voice Agent Tools Hooks
+export const useGetVoiceAgentTools = (appId: string | undefined): UseQueryResult<VoiceAgentTool[], Error> => {
+  return useQueryInit(getVoiceAgentToolsKey(appId || ''), getVoiceAgentToolsQueryFn, !!appId);
+};
+
+export const useGetVoiceAgentTool = (
+  appId: string | undefined,
+  toolId: string | undefined
+): UseQueryResult<VoiceAgentTool | null, Error> => {
+  return useQueryInit(
+    getVoiceAgentToolKey(appId || '', toolId || ''),
+    () => getVoiceAgentToolQueryFn(toolId!),
+    !!appId && !!toolId
+  );
+};
+
+export const useGetAgentTools = (
+  appId: string | undefined,
+  agentId: string | undefined
+): UseQueryResult<VoiceAgentToolWithAssociation[], Error> => {
+  return useQueryInit(
+    getAgentToolsKey(appId || '', agentId || ''),
+    () => getAgentToolsQueryFn(agentId!),
+    !!appId && !!agentId
+  );
 };

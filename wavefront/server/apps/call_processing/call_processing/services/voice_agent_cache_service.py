@@ -11,6 +11,7 @@ from call_processing.cache.cache_utils import (
     get_tts_config_cache_key,
     get_stt_config_cache_key,
     get_telephony_config_cache_key,
+    get_tools_config_cache_key,
 )
 from call_processing.log.logger import logger
 from call_processing.services.floware_http_client import FlowareHttpClient
@@ -37,6 +38,7 @@ class VoiceAgentCacheService:
 
         Args:
             missing_configs: List of (config_type, config_id) tuples
+                            For 'tools', config_id is the agent_id
 
         Returns:
             Dict mapping config_type to fetched config data
@@ -51,10 +53,16 @@ class VoiceAgentCacheService:
             )
 
         # Create parallel fetch tasks
-        tasks = [
-            self.floware_http_client.fetch_config(config_type, config_id)
-            for config_type, config_id in missing_configs
-        ]
+        tasks = []
+        for config_type, config_id in missing_configs:
+            if config_type == 'tools':
+                # Tools are fetched by agent_id
+                tasks.append(self.floware_http_client.get_agent_tools(config_id))
+            else:
+                # Other configs are fetched by config_id
+                tasks.append(
+                    self.floware_http_client.fetch_config(config_type, config_id)
+                )
 
         try:
             # Execute all fetches in parallel
@@ -102,13 +110,19 @@ class VoiceAgentCacheService:
             'tts_config': get_tts_config_cache_key,
             'stt_config': get_stt_config_cache_key,
             'telephony_config': get_telephony_config_cache_key,
+            'tools': get_tools_config_cache_key,
         }
 
         cache_key_func = cache_key_funcs.get(config_type)
         if cache_key_func:
             cache_key = cache_key_func(config_id)
             self.cache_manager.set_json(cache_key, config_data, expiry=self.cache_ttl)
-            logger.info(f'Cached {config_type} {config_id}')
+            if config_type == 'tools':
+                logger.info(
+                    f'Cached {len(config_data) if config_data else 0} tools for agent {config_id}'
+                )
+            else:
+                logger.info(f'Cached {config_type} {config_id}')
 
     async def get_all_agent_configs(self, agent_id: UUID) -> Dict[str, Any]:
         """
@@ -131,7 +145,8 @@ class VoiceAgentCacheService:
                 'llm_config': {...},
                 'tts_config': {...},
                 'stt_config': {...},
-                'telephony_config': {...}
+                'telephony_config': {...},
+                'tools': {...}
             }
 
         Raises:
@@ -195,6 +210,9 @@ class VoiceAgentCacheService:
             get_telephony_config_cache_key(telephony_config_id)
         )
 
+        # Try fetching tools from cache
+        tools = self.cache_manager.get_json(get_tools_config_cache_key(agent_id))
+
         # Identify missing configs
         missing_configs = []
         if not llm_config:
@@ -205,6 +223,8 @@ class VoiceAgentCacheService:
             missing_configs.append(('stt_config', stt_config_id))
         if telephony_config_id and not telephony_config:
             missing_configs.append(('telephony_config', telephony_config_id))
+        if tools is None:
+            missing_configs.append(('tools', agent_id))
 
         # If any configs are missing, fetch from API
         if missing_configs:
@@ -234,6 +254,9 @@ class VoiceAgentCacheService:
                 elif config_type == 'telephony_config':
                     telephony_config = config_data
                     self._cache_config(config_type, telephony_config_id, config_data)
+                elif config_type == 'tools':
+                    tools = config_data
+                    self._cache_config(config_type, agent_id, config_data)
 
         # Final validation
         if not all([llm_config, tts_config, stt_config, telephony_config]):
@@ -253,6 +276,10 @@ class VoiceAgentCacheService:
                 detail=f'Failed to fetch all required configs: {", ".join(missing)}',
             )
 
+        # Default tools to empty list if not fetched
+        if tools is None:
+            tools = []
+
         logger.info(f'Successfully fetched all configs for voice agent {agent_id}')
 
         return {
@@ -261,4 +288,139 @@ class VoiceAgentCacheService:
             'tts_config': tts_config,
             'stt_config': stt_config,
             'telephony_config': telephony_config,
+            'tools': tools,
         }
+
+    async def get_agent_by_inbound_number(
+        self, phone_number: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get voice agent by inbound phone number (with caching).
+
+        Strategy:
+        1. Try cache first using inbound_number:{phone_number} key
+        2. If cache miss, fetch from floware API
+        3. Cache the agent ID mapping with 24-hour TTL
+        4. Return full agent dict
+
+        Args:
+            phone_number: E.164 formatted phone number
+
+        Returns:
+            Voice agent dict or None if not found
+        """
+        cache_key = f'inbound_number:{phone_number}'
+
+        # Try cache first
+        cached_agent_id = self.cache_manager.get_str(cache_key)
+        if cached_agent_id:
+            logger.info(
+                f'Cache hit for inbound number: {phone_number} -> agent {cached_agent_id}'
+            )
+
+            # Fetch agent from cache or API
+            agent_key = get_voice_agent_cache_key(UUID(cached_agent_id))
+            agent = self.cache_manager.get_json(agent_key)
+
+            if agent:
+                return agent
+            else:
+                # Agent not in cache, fetch from API
+                if self.floware_http_client:
+                    try:
+                        agent = await self.floware_http_client.fetch_voice_agent(
+                            UUID(cached_agent_id)
+                        )
+                        if agent:
+                            # Cache the agent
+                            self.cache_manager.set_json(
+                                agent_key, agent, expiry=self.cache_ttl
+                            )
+                            return agent
+                    except Exception as e:
+                        logger.error(
+                            f'Failed to fetch agent {cached_agent_id} from API: {e}'
+                        )
+
+        # Cache miss - fetch from floware API
+        logger.info(f'Cache miss - fetching agent by inbound number: {phone_number}')
+
+        if not self.floware_http_client:
+            logger.error('No HTTP client configured for inbound number lookup')
+            return None
+
+        try:
+            agent = await self.floware_http_client.get_agent_by_inbound_number(
+                phone_number
+            )
+
+            if agent:
+                agent_id = agent.get('id')
+                # Cache the inbound number -> agent ID mapping
+                self.cache_manager.add(cache_key, str(agent_id), expiry=self.cache_ttl)
+
+                # Cache the agent itself
+                agent_key = get_voice_agent_cache_key(UUID(agent_id))
+                self.cache_manager.set_json(agent_key, agent, expiry=self.cache_ttl)
+
+                logger.info(f'Cached inbound number {phone_number} -> agent {agent_id}')
+                return agent
+            else:
+                logger.warning(f'No agent found for inbound number: {phone_number}')
+                return None
+
+        except Exception as e:
+            logger.error(
+                f'Failed to fetch agent by inbound number {phone_number}: {e}',
+                exc_info=True,
+            )
+            return None
+
+    async def get_welcome_message_audio_url(self, agent_id: str) -> str:
+        """
+        Get welcome message audio URL for an agent (with caching).
+
+        Strategy:
+        1. Try cache first using voice_agent_welcome_url:{agent_id} key
+        2. If cache miss, fetch from floware API
+        3. Cache the URL with ~2 hour TTL (same as floware)
+
+        Args:
+            agent_id: Voice agent UUID (string)
+
+        Returns:
+            Presigned URL for welcome message audio or empty string if not available
+        """
+        cache_key = f'voice_agent_welcome_url:{agent_id}'
+
+        # Try cache first
+        cached_url = self.cache_manager.get_str(cache_key)
+        if cached_url:
+            logger.info(f'Cache hit for welcome message URL: {agent_id}')
+            return cached_url
+
+        # Cache miss - fetch from floware API
+        logger.info(f'Cache miss - fetching welcome message URL for agent: {agent_id}')
+
+        if not self.floware_http_client:
+            logger.error('No HTTP client configured for welcome message URL fetch')
+            return ''
+
+        try:
+            url = await self.floware_http_client.get_welcome_message_audio_url(agent_id)
+
+            if url:
+                # Cache URL with ~2 hour TTL (7100 seconds - matches floware)
+                self.cache_manager.add(cache_key, url, expiry=7100)
+                logger.info(f'Cached welcome message URL for agent {agent_id}')
+                return url
+            else:
+                logger.warning(f'No welcome message URL for agent: {agent_id}')
+                return ''
+
+        except Exception as e:
+            logger.error(
+                f'Failed to fetch welcome message URL for agent {agent_id}: {e}',
+                exc_info=True,
+            )
+            return ''
