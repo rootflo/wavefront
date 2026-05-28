@@ -12,6 +12,9 @@ from flo_ai.llm import OpenAI, Anthropic, Gemini, OllamaLLM, OpenAIVLLM
 from flo_ai.tool.base_tool import Tool
 from flo_cloud.cloud_storage import CloudStorageManager
 from common_module.log.logger import logger
+from llm_inference_config_module.services.llm_inference_config_service import (
+    LlmInferenceConfigService,
+)
 from tools_module.registry.tool_loader import ToolLoader
 from tools_module.utils.message_processor_fn import execute_message_processor_fn
 from tools_module.utils.api_service_tool_loader import load_api_service_tool
@@ -31,6 +34,7 @@ class AgentInferenceService:
         cloud_storage_manager: CloudStorageManager,
         message_processor_bucket_name: str,
         api_services_manager: Optional[ApiServicesManager] = None,
+        llm_inference_config_service: Optional[LlmInferenceConfigService] = None,
     ):
         """
         Initialize the agent inference service
@@ -43,6 +47,8 @@ class AgentInferenceService:
             cloud_storage_manager: Cloud storage manager instance
             message_processor_bucket_name: Name of the bucket containing message processor YAML files
             api_services_manager: API services manager instance (optional)
+            llm_inference_config_service: LLM inference config service for resolving
+                rootflo model_id references in agent YAMLs (required for v2 inference)
         """
         self.cache_manager = cache_manager
         self.tool_loader = tool_loader
@@ -51,6 +57,7 @@ class AgentInferenceService:
         self.message_processor_repository = message_processor_repository
         self.cloud_storage_manager = cloud_storage_manager
         self.message_processor_bucket_name = message_processor_bucket_name
+        self.llm_inference_config_service = llm_inference_config_service
 
     async def create_agent_from_yaml(
         self,
@@ -309,12 +316,60 @@ class AgentInferenceService:
 
         return result, execution_time
 
+    async def _resolve_rootflo_llm_config(
+        self, yaml_content: str
+    ) -> Optional[LlmInferenceConfig]:
+        """
+        Resolve an LlmInferenceConfig from a YAML's `agent.model` block when the
+        provider is `rootflo` and the `model_id` is a UUID pointing to a
+        LlmInferenceConfig row.
+
+        Returns None for any other case (no model block, or provider != rootflo)
+        so that the caller can fall through to AgentBuilder.from_yaml's default
+        behavior (which builds the LLM directly from the YAML model block).
+
+        Raises:
+            ValueError: when provider is rootflo but model_id is missing,
+                not a valid UUID, or does not resolve to a LlmInferenceConfig row.
+        """
+        yaml_data = yaml.safe_load(yaml_content)
+        model_config = yaml_data.get('agent', {}).get('model')
+        if not model_config:
+            return None
+
+        if model_config.get('provider') != 'rootflo':
+            return None
+
+        model_id = model_config.get('model_id')
+        if not model_id:
+            raise ValueError(
+                'rootflo provider requires "model_id" in agent.model block'
+            )
+
+        try:
+            config_uuid = UUID(str(model_id))
+        except (ValueError, TypeError):
+            raise ValueError(f'rootflo model_id must be a valid UUID, got: {model_id}')
+
+        if not self.llm_inference_config_service:
+            raise ValueError(
+                'llm_inference_config_service not initialized. '
+                'Required to resolve rootflo model_id references.'
+            )
+
+        llm_config_dict = await self.llm_inference_config_service.get_config(
+            config_uuid
+        )
+        if not llm_config_dict:
+            raise ValueError(f'LLM inference configuration not found: {config_uuid}')
+
+        return LlmInferenceConfig(**llm_config_dict)
+
     async def perform_inference_v2(
         self,
         agent_id: UUID,
         variables: Dict[str, Any],
         inputs: List[BaseMessage] | str,
-        llm_config: Optional[LlmInferenceConfig] = None,
         output_json_enabled: bool = True,
         access_token: Optional[str] = None,
         app_key: Optional[str] = None,
@@ -322,18 +377,24 @@ class AgentInferenceService:
         """
         Complete inference workflow (v2): fetch agent from DB + cloud storage, run inference
 
+        The LLM is resolved from the agent YAML itself: when the YAML's
+        `agent.model.provider` is `rootflo`, the `model_id` is treated as a
+        LlmInferenceConfig UUID and the corresponding LLM is built and applied
+        via with_llm(). For any other provider, AgentBuilder.from_yaml builds
+        the LLM directly from the YAML.
+
         Args:
             agent_id: The UUID of the agent
             variables: Variables to pass to the agent
             inputs: Inputs to use for inference
-            llm_config: Optional LLM configuration to override agent's default LLM
             output_json_enabled: Whether to extract JSON from the response
 
         Returns:
             tuple: (result, execution_time, namespace)
 
         Raises:
-            ValueError: If agent_crud_service is not initialized or agent not found
+            ValueError: If agent_crud_service is not initialized, agent not found,
+                or the YAML's rootflo model_id cannot be resolved.
         """
         if not self.agent_crud_service:
             raise ValueError(
@@ -353,6 +414,9 @@ class AgentInferenceService:
         logger.info(
             f'Retrieved agent - namespace: {namespace}, name: {name}, agent_id: {agent_id}'
         )
+
+        # Resolve rootflo model_id references from the YAML, if any
+        llm_config = await self._resolve_rootflo_llm_config(yaml_content)
 
         # Create agent from YAML with optional LLM override and tools
         agent = await self.create_agent_from_yaml(

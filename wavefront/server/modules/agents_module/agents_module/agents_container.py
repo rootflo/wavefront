@@ -41,6 +41,8 @@ class AgentsContainer(containers.DeclarativeContainer):
 
     executions_bucket = providers.Dependency()
 
+    llm_inference_config_service = providers.Dependency(default=None)
+
     namespace_service = providers.Singleton(
         NamespaceService,
         namespace_repository=namespace_repository,
@@ -69,6 +71,7 @@ class AgentsContainer(containers.DeclarativeContainer):
         cloud_storage_manager=cloud_storage_manager,
         message_processor_bucket_name=message_processor_bucket_name,
         api_services_manager=api_services_manager,
+        llm_inference_config_service=llm_inference_config_service,
     )
 
     workflow_crud_service = providers.Singleton(
