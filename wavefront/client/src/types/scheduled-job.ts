@@ -1,5 +1,20 @@
 import { IApiResponse } from '@app/lib/axios';
 
+export interface ColumnStyleRule {
+  op: 'eq' | 'neq' | 'lt' | 'lte' | 'gt' | 'gte' | 'between';
+  fill: string;
+  value?: number;
+  min?: number;
+  max?: number;
+  min_inclusive?: boolean;
+  max_inclusive?: boolean;
+}
+
+export interface ColumnStyleConfig {
+  column: string;
+  rules: ColumnStyleRule[];
+}
+
 export interface ScheduledJob {
   id: string;
   job_type: string;
@@ -34,6 +49,8 @@ export interface CreateScheduledJobRequest {
     query_id: string;
     recipient_user_ids: string[];
     subject?: string;
+    email_content?: string;
+    column_styles?: ColumnStyleConfig[];
     date_range?: 'last_day' | 'last_hour' | 'last_7_days' | 'last_30_days';
     start_date_param?: string;
     end_date_param?: string;

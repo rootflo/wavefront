@@ -1,4 +1,3 @@
-import csv
 import io
 import json
 import os
@@ -9,6 +8,8 @@ from apscheduler.triggers.cron import CronTrigger
 from common_module.log.logger import logger
 from common_module.utils.serializer import serialize_values
 from datasource import DatasourcePlugin
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill
 from db_repo_module.database.connection import DatabaseClient
 from db_repo_module.models.datasource import Datasource
 from db_repo_module.models.dynamic_query_yaml import DynamicQueryYaml
@@ -34,6 +35,16 @@ STALE_LOCK_TIMEOUT_MINUTES = 30
 SIGNED_URL_EXPIRY_SECONDS = 7 * 24 * 60 * 60
 # Gmail and many providers cap attachments; keep below typical limits.
 MAX_EMAIL_ATTACHMENT_BYTES = 10 * 1024 * 1024
+
+COLUMN_FILL_COLORS = {
+    'light_red': 'FFC7CE',
+    'light_yellow': 'FFEB9C',
+    'light_green': 'C6EFCE',
+    'dark_green': '006100',
+}
+COLUMN_FILL_FONT_COLORS = {
+    'dark_green': 'FFFFFF',
+}
 
 
 class ScheduledJobService:
@@ -438,7 +449,174 @@ class ScheduledJobService:
         return rows
 
     @staticmethod
-    def _rows_to_csv_bytes(rows: list[dict]) -> tuple[bytes, list[str]]:
+    def _parse_numeric_cell_value(value) -> float | None:
+        if value is None or value == '':
+            return None
+        if isinstance(value, bool):
+            return float(value)
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            stripped = value.strip().replace(',', '')
+            if not stripped:
+                return None
+            try:
+                return float(stripped)
+            except ValueError:
+                return None
+        return None
+
+    @staticmethod
+    def _normalize_column_key(name: str) -> str:
+        return name.strip().casefold()
+
+    @classmethod
+    def _parse_column_styles_config(cls, raw_config) -> list[dict]:
+        if not isinstance(raw_config, list):
+            return []
+
+        parsed_configs: list[dict] = []
+        supported_ops = {'eq', 'neq', 'lt', 'lte', 'gt', 'gte', 'between'}
+        for item in raw_config:
+            if not isinstance(item, dict):
+                continue
+            column = item.get('column')
+            rules = item.get('rules')
+            if not isinstance(column, str) or not column.strip():
+                continue
+            if not isinstance(rules, list):
+                continue
+
+            parsed_rules: list[dict] = []
+            for rule in rules:
+                if not isinstance(rule, dict):
+                    continue
+                op = rule.get('op')
+                fill = rule.get('fill')
+                if (
+                    op not in supported_ops
+                    or not isinstance(fill, str)
+                    or not fill.strip()
+                ):
+                    continue
+
+                parsed_rule: dict = {'op': op, 'fill': fill.strip()}
+                if op == 'between':
+                    min_value = rule.get('min')
+                    max_value = rule.get('max')
+                    if not isinstance(min_value, (int, float)) or not isinstance(
+                        max_value, (int, float)
+                    ):
+                        continue
+                    parsed_rule['min'] = float(min_value)
+                    parsed_rule['max'] = float(max_value)
+                    parsed_rule['min_inclusive'] = bool(rule.get('min_inclusive', True))
+                    parsed_rule['max_inclusive'] = bool(rule.get('max_inclusive', True))
+                else:
+                    value = rule.get('value')
+                    if not isinstance(value, (int, float)):
+                        continue
+                    parsed_rule['value'] = float(value)
+                parsed_rules.append(parsed_rule)
+
+            if parsed_rules:
+                parsed_configs.append({'column': column.strip(), 'rules': parsed_rules})
+        return parsed_configs
+
+    @classmethod
+    def _resolve_fill_styles(
+        cls, fill_name: str
+    ) -> tuple[PatternFill | None, Font | None]:
+        normalized = fill_name.strip()
+        bg_hex: str | None = None
+        font_hex: str | None = None
+
+        if normalized.startswith('#'):
+            bg_hex = normalized[1:].upper()
+        elif normalized.casefold() in COLUMN_FILL_COLORS:
+            key = normalized.casefold()
+            bg_hex = COLUMN_FILL_COLORS[key]
+            font_hex = COLUMN_FILL_FONT_COLORS.get(key)
+        elif len(normalized) == 6 and all(
+            ch in '0123456789ABCDEFabcdef' for ch in normalized
+        ):
+            bg_hex = normalized.upper()
+        else:
+            return None, None
+
+        fill = PatternFill(start_color=bg_hex, end_color=bg_hex, fill_type='solid')
+        font = Font(color=font_hex) if font_hex else None
+        return fill, font
+
+    @classmethod
+    def _rule_matches(cls, rule: dict, numeric_value: float) -> bool:
+        op = rule['op']
+        if op == 'eq':
+            return numeric_value == rule['value']
+        if op == 'neq':
+            return numeric_value != rule['value']
+        if op == 'lt':
+            return numeric_value < rule['value']
+        if op == 'lte':
+            return numeric_value <= rule['value']
+        if op == 'gt':
+            return numeric_value > rule['value']
+        if op == 'gte':
+            return numeric_value >= rule['value']
+
+        min_value = rule['min']
+        max_value = rule['max']
+        if rule.get('min_inclusive', True):
+            if numeric_value < min_value:
+                return False
+        elif numeric_value <= min_value:
+            return False
+        if rule.get('max_inclusive', True):
+            if numeric_value > max_value:
+                return False
+        elif numeric_value >= max_value:
+            return False
+        return True
+
+    @classmethod
+    def _build_column_style_map(
+        cls, fieldnames: list[str], column_styles: list[dict]
+    ) -> dict[int, list[dict]]:
+        column_index = {
+            cls._normalize_column_key(name): idx for idx, name in enumerate(fieldnames)
+        }
+        style_map: dict[int, list[dict]] = {}
+        for config in column_styles:
+            col_idx = column_index.get(cls._normalize_column_key(config['column']))
+            if col_idx is None:
+                logger.warning(
+                    f'Column style config ignored; column not found: {config["column"]}'
+                )
+                continue
+            style_map[col_idx] = config['rules']
+        return style_map
+
+    @classmethod
+    def _apply_cell_style(cls, cell, raw_value, rules: list[dict]) -> None:
+        numeric_value = cls._parse_numeric_cell_value(raw_value)
+        if numeric_value is None:
+            return
+        for rule in rules:
+            if not cls._rule_matches(rule, numeric_value):
+                continue
+            fill, font = cls._resolve_fill_styles(rule['fill'])
+            if fill:
+                cell.fill = fill
+            if font:
+                cell.font = font
+            return
+
+    @classmethod
+    def _rows_to_xlsx_bytes(
+        cls,
+        rows: list[dict],
+        column_styles: list[dict] | None = None,
+    ) -> tuple[bytes, list[str]]:
         if rows:
             fieldnames = list(rows[0].keys())
             for row in rows[1:]:
@@ -453,57 +631,52 @@ class ScheduledJobService:
                 return json.dumps(value)
             return value if value is None or isinstance(value, str) else str(value)
 
-        buf = io.StringIO()
+        workbook = Workbook()
+        worksheet = workbook.active
+        worksheet.title = 'Report'
+        style_map = cls._build_column_style_map(fieldnames, column_styles or [])
         if fieldnames:
-            writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction='ignore')
-            writer.writeheader()
-            for row in rows:
-                writer.writerow({k: cell_value(row.get(k)) for k in fieldnames})
-        return buf.getvalue().encode('utf-8'), fieldnames
+            header_font = Font(bold=True)
+            for col_idx, fieldname in enumerate(fieldnames, start=1):
+                header_cell = worksheet.cell(row=1, column=col_idx, value=fieldname)
+                header_cell.font = header_font
+            for row_idx, row in enumerate(rows, start=2):
+                for col_idx, fieldname in enumerate(fieldnames, start=1):
+                    raw_value = row.get(fieldname)
+                    cell = worksheet.cell(
+                        row=row_idx, column=col_idx, value=cell_value(raw_value)
+                    )
+                    rules = style_map.get(col_idx - 1)
+                    if rules:
+                        cls._apply_cell_style(cell, raw_value, rules)
+
+        buf = io.BytesIO()
+        workbook.save(buf)
+        return buf.getvalue(), fieldnames
 
     def _build_report_email_body(
         self,
         *,
-        yaml_name: str | None,
-        query_id: str,
-        datasource_id: str,
-        rows: list[dict],
-        fieldnames: list[str],
-        params: dict | None,
-        payload: dict,
-        csv_size: int,
+        report_name: str,
+        email_content: str | None,
+        report_size: int,
         use_attachment: bool,
         report_url: str | None,
     ) -> str:
-        generated_at_utc = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
-        start_key = str(payload.get('start_date_param', 'start_date'))
-        end_key = str(payload.get('end_date_param', 'end_date'))
-        applied_start = params.get(start_key) if isinstance(params, dict) else None
-        applied_end = params.get(end_key) if isinstance(params, dict) else None
-        applied_range_html = (
-            f'<p><b>Applied Date Range:</b> {applied_start} to {applied_end} '
-            f'(keys: {start_key}, {end_key})</p>'
-            if applied_start and applied_end
-            else '<p><b>Applied Date Range:</b> Not specified in query parameters</p>'
-        )
-        body = (
-            f'<p>Scheduled report: <b>{yaml_name or query_id}</b></p>'
-            f'<p><b>Datasource ID:</b> {datasource_id}</p>'
-            f'<p><b>Query ID:</b> {query_id}</p>'
-            f'<p><b>Generated At:</b> {generated_at_utc}</p>'
-            f'{applied_range_html}'
-            f'<p><b>Total Rows:</b> {len(rows)}</p>'
-            f'<p><b>Columns:</b> {len(fieldnames)}</p>'
-            '<p>The report has been generated successfully.</p>'
-        )
+        if email_content and email_content.strip():
+            body = email_content.strip()
+            if not body.lstrip().startswith('<'):
+                body = f'<p>{body}</p>'
+        else:
+            body = f'<p>Scheduled report: <b>{report_name}</b></p>'
         if use_attachment:
             body += (
-                f'<p><b>Delivery:</b> CSV attached ({csv_size:,} bytes, '
+                f'<p><b>Delivery:</b> Excel report attached ({report_size:,} bytes, '
                 f'max {MAX_EMAIL_ATTACHMENT_BYTES // (1024 * 1024)} MB for email).</p>'
             )
         else:
             body += (
-                f'<p><b>Delivery:</b> Report is {csv_size:,} bytes (over '
+                f'<p><b>Delivery:</b> Report is {report_size:,} bytes (over '
                 f'{MAX_EMAIL_ATTACHMENT_BYTES // (1024 * 1024)} MB email limit). '
                 'Use the download link below instead of an attachment.</p>'
                 '<p>The link is secure and expires in 7 days.</p>'
@@ -511,7 +684,7 @@ class ScheduledJobService:
             if report_url:
                 body += (
                     f'<p><a href="{report_url}" target="_blank" rel="noopener noreferrer">'
-                    'Download CSV report (valid for 7 days)</a></p>'
+                    'Download Excel report (valid for 7 days)</a></p>'
                 )
         return body
 
@@ -520,10 +693,14 @@ class ScheduledJobService:
         query_id = payload.get('query_id')
         recipient_user_ids = self._normalize_recipient_user_ids(payload)
         subject = payload.get('subject', f'Scheduled Dynamic Query Report: {query_id}')
+        email_content = payload.get('email_content')
+        if email_content is not None and not isinstance(email_content, str):
+            email_content = None
         filter_expr = payload.get('filter')
         offset = payload.get('offset', 0)
         limit = payload.get('limit', 100)
         params = self._resolve_runtime_params(payload, job_timezone)
+        column_styles = self._parse_column_styles_config(payload.get('column_styles'))
 
         if not datasource_id or not query_id or not recipient_user_ids:
             raise ValueError(
@@ -590,18 +767,20 @@ class ScheduledJobService:
                 )
                 continue
 
-            csv_bytes, fieldnames = self._rows_to_csv_bytes(rows)
-            csv_size = len(csv_bytes)
-            report_filename = f'{query_id}_{user_id}_{run_timestamp}_report.csv'
+            report_bytes, _ = self._rows_to_xlsx_bytes(
+                rows, column_styles=column_styles
+            )
+            report_size = len(report_bytes)
+            report_filename = f'{query_id}_{user_id}_{run_timestamp}_report.xlsx'
             report_url: str | None = None
-            use_attachment = csv_size <= MAX_EMAIL_ATTACHMENT_BYTES
+            use_attachment = report_size <= MAX_EMAIL_ATTACHMENT_BYTES
             if not use_attachment:
                 report_key = f'scheduled_query_reports/{query_id}/{report_filename}'
                 self.cloud_storage_manager.save_small_file(
-                    file_content=csv_bytes,
+                    file_content=report_bytes,
                     bucket_name=self.bucket_name,
                     key=report_key,
-                    content_type='text/csv',
+                    content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 )
                 report_url = self.cloud_storage_manager.generate_presigned_url(
                     bucket_name=self.bucket_name,
@@ -611,14 +790,9 @@ class ScheduledJobService:
                 )
 
             body = self._build_report_email_body(
-                yaml_name=yaml_name,
-                query_id=query_id,
-                datasource_id=datasource_id,
-                rows=rows,
-                fieldnames=fieldnames,
-                params=params,
-                payload=payload,
-                csv_size=csv_size,
+                report_name=yaml_name or query_id,
+                email_content=email_content,
+                report_size=report_size,
                 use_attachment=use_attachment,
                 report_url=report_url,
             )
@@ -627,8 +801,8 @@ class ScheduledJobService:
                 attachments = [
                     {
                         'filename': report_filename,
-                        'content_bytes': csv_bytes,
-                        'mime_type': 'text/csv',
+                        'content_bytes': report_bytes,
+                        'mime_type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                     }
                 ]
             is_sent = self.email_service.send_email(
