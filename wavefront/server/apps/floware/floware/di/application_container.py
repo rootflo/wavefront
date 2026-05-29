@@ -25,6 +25,9 @@ class ApplicationContainer(containers.DeclarativeContainer):
     datasource_repository = providers.Dependency()
     dynamic_query_repository = providers.Dependency()
     email_service = providers.Dependency()
+    user_service = providers.Dependency()
+    role_repository = providers.Dependency()
+    user_role_repository = providers.Dependency()
 
     # services
     notification_service = providers.Singleton(
@@ -48,4 +51,8 @@ class ApplicationContainer(containers.DeclarativeContainer):
         cloud_storage_manager=cloud_storage_manager,
         bucket_name=config.floware.asset_storage_bucket,
         email_service=email_service,
+        user_repository=user_repository,
+        user_service=user_service,
+        role_repository=role_repository,
+        user_role_repository=user_role_repository,
     )

@@ -7,12 +7,26 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@app/components/ui/dialog';
+import { Badge } from '@app/components/ui/badge';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@app/components/ui/command';
 import { Input } from '@app/components/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@app/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Textarea } from '@app/components/ui/textarea';
+import { useGetUsers } from '@app/hooks';
+import { cn } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
+import { IUser } from '@app/types/user';
 import { ScheduledJob } from '@app/types/scheduled-job';
 import floConsoleService from '@app/api';
+import { Check, ChevronDown, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 interface ScheduleEmailAlertDialogProps {
@@ -21,6 +35,28 @@ interface ScheduleEmailAlertDialogProps {
   queryId: string;
   onOpenChange: (open: boolean) => void;
 }
+
+const normalizeUserId = (id: string) => id.trim().toLowerCase();
+
+const formatUserLabel = (user: IUser) => `${user.first_name} ${user.last_name} (${user.email})`;
+
+const parseRecipientUserIdsFromPayload = (payload: Record<string, unknown>, users: IUser[]): string[] => {
+  const rawIds = payload.recipient_user_ids;
+  const ids: string[] = [];
+  if (Array.isArray(rawIds)) {
+    for (const item of rawIds) {
+      const id = String(item).trim();
+      if (id) ids.push(id);
+    }
+  } else if (typeof rawIds === 'string' && rawIds.trim()) {
+    ids.push(rawIds.trim());
+  }
+
+  return ids.map((id) => {
+    const match = users.find((u) => normalizeUserId(u.id) === normalizeUserId(id));
+    return match ? match.id : id;
+  });
+};
 
 const ScheduleEmailAlertDialog: React.FC<ScheduleEmailAlertDialogProps> = ({
   isOpen,
@@ -33,7 +69,77 @@ const ScheduleEmailAlertDialog: React.FC<ScheduleEmailAlertDialogProps> = ({
   const [loadingJobs, setLoadingJobs] = useState(false);
   const [cronExpr, setCronExpr] = useState('0 9 * * *');
   const [timezone, setTimezone] = useState('Asia/Kolkata');
-  const [recipientsText, setRecipientsText] = useState('');
+  const [selectedRecipientUserIds, setSelectedRecipientUserIds] = useState<string[]>([]);
+  const [recipientsSelectOpen, setRecipientsSelectOpen] = useState(false);
+  const { data: users = [], isLoading: usersLoading } = useGetUsers();
+
+  const selectedRecipientUsers = useMemo(() => {
+    return selectedRecipientUserIds.map((id) => {
+      const user = users.find((u) => normalizeUserId(u.id) === normalizeUserId(id));
+      if (user) return user;
+      return {
+        id,
+        email: id,
+        first_name: 'Unknown',
+        last_name: 'user',
+        role: '',
+      } satisfies IUser;
+    });
+  }, [selectedRecipientUserIds, users]);
+
+  const isRecipientSelected = (userId: string) =>
+    selectedRecipientUserIds.some((id) => normalizeUserId(id) === normalizeUserId(userId));
+
+  const toggleRecipientUser = (userId: string) => {
+    setSelectedRecipientUserIds((prev) =>
+      isRecipientSelected(userId)
+        ? prev.filter((id) => normalizeUserId(id) !== normalizeUserId(userId))
+        : [...prev, userId]
+    );
+  };
+
+  const removeRecipientUser = (userId: string) => {
+    setSelectedRecipientUserIds((prev) => prev.filter((id) => normalizeUserId(id) !== normalizeUserId(userId)));
+  };
+
+  const applyJobToForm = (job: ScheduledJob) => {
+    setEditingJobId(job.id);
+    setCronExpr(job.cron_expr || '0 9 * * *');
+    setTimezone(job.timezone || 'Asia/Kolkata');
+    setMaxRetries(String(job.max_retries ?? 3));
+    const payload = (job.payload || {}) as Record<string, unknown>;
+    setSelectedRecipientUserIds(parseRecipientUserIdsFromPayload(payload, users));
+    setSubject(typeof payload.subject === 'string' ? payload.subject : '');
+    const paramsValue = payload.params;
+    const dateRangeValue = payload.date_range;
+    if (
+      dateRangeValue === 'last_day' ||
+      dateRangeValue === 'last_hour' ||
+      dateRangeValue === 'last_7_days' ||
+      dateRangeValue === 'last_30_days'
+    ) {
+      setDateRange(dateRangeValue);
+    } else {
+      setDateRange('none');
+    }
+    setStartDateParamKey(typeof payload.start_date_param === 'string' ? payload.start_date_param : 'start_date');
+    setEndDateParamKey(typeof payload.end_date_param === 'string' ? payload.end_date_param : 'end_date');
+    if (paramsValue && typeof paramsValue === 'object' && !Array.isArray(paramsValue)) {
+      setQueryParamsJson(JSON.stringify(paramsValue, null, 2));
+    } else {
+      setQueryParamsJson('');
+    }
+    setError('');
+  };
+
+  const getJobRecipientLabels = (job: ScheduledJob): string[] => {
+    const payload = (job.payload || {}) as Record<string, unknown>;
+    const ids = parseRecipientUserIdsFromPayload(payload, users);
+    return ids.map((id) => {
+      const user = users.find((u) => normalizeUserId(u.id) === normalizeUserId(id));
+      return user ? formatUserLabel(user) : id;
+    });
+  };
   const [subject, setSubject] = useState('');
   const [queryParamsJson, setQueryParamsJson] = useState('');
   const [dateRange, setDateRange] = useState<'none' | 'last_day' | 'last_hour' | 'last_7_days' | 'last_30_days'>(
@@ -46,19 +152,10 @@ const ScheduleEmailAlertDialog: React.FC<ScheduleEmailAlertDialogProps> = ({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const recipients = useMemo(
-    () =>
-      recipientsText
-        .split(',')
-        .map((email) => email.trim())
-        .filter(Boolean),
-    [recipientsText]
-  );
-
   const resetForm = () => {
     setCronExpr('0 9 * * *');
     setTimezone('Asia/Kolkata');
-    setRecipientsText('');
+    setSelectedRecipientUserIds([]);
     setSubject('');
     setQueryParamsJson('');
     setDateRange('none');
@@ -96,6 +193,19 @@ const ScheduleEmailAlertDialog: React.FC<ScheduleEmailAlertDialogProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, datasourceId, queryId]);
 
+  useEffect(() => {
+    if (!editingJobId || usersLoading) return;
+    const job = jobs.find((j) => j.id === editingJobId);
+    if (!job) return;
+    setSelectedRecipientUserIds((prev) => {
+      if (prev.some((id) => users.some((u) => normalizeUserId(u.id) === normalizeUserId(id)))) {
+        return prev;
+      }
+      const parsedIds = parseRecipientUserIdsFromPayload((job.payload || {}) as Record<string, unknown>, users);
+      return parsedIds.length > 0 ? parsedIds : prev;
+    });
+  }, [editingJobId, jobs, users, usersLoading]);
+
   const handleOpenChange = (open: boolean) => {
     if (!open && !saving) {
       resetForm();
@@ -113,8 +223,8 @@ const ScheduleEmailAlertDialog: React.FC<ScheduleEmailAlertDialogProps> = ({
       setError('Timezone is required');
       return;
     }
-    if (recipients.length === 0) {
-      setError('At least one recipient email is required');
+    if (selectedRecipientUserIds.length === 0) {
+      setError('At least one recipient user is required');
       return;
     }
     if (!Number.isInteger(retries) || retries < 0 || retries > 10) {
@@ -147,7 +257,7 @@ const ScheduleEmailAlertDialog: React.FC<ScheduleEmailAlertDialogProps> = ({
           payload: {
             datasource_id: datasourceId,
             query_id: queryId,
-            recipients,
+            recipient_user_ids: selectedRecipientUserIds,
             subject: subject.trim() || undefined,
             date_range: dateRange === 'none' ? undefined : dateRange,
             start_date_param: dateRange === 'none' ? undefined : startDateParamKey.trim() || 'start_date',
@@ -156,6 +266,7 @@ const ScheduleEmailAlertDialog: React.FC<ScheduleEmailAlertDialogProps> = ({
           },
         });
         notifySuccess('Schedule updated successfully');
+        await fetchJobs();
       } else {
         await floConsoleService.scheduledJobService.createScheduledJob({
           job_type: 'email_dynamic_query',
@@ -165,7 +276,7 @@ const ScheduleEmailAlertDialog: React.FC<ScheduleEmailAlertDialogProps> = ({
           payload: {
             datasource_id: datasourceId,
             query_id: queryId,
-            recipients,
+            recipient_user_ids: selectedRecipientUserIds,
             subject: subject.trim() || undefined,
             date_range: dateRange === 'none' ? undefined : dateRange,
             start_date_param: dateRange === 'none' ? undefined : startDateParamKey.trim() || 'start_date',
@@ -174,9 +285,9 @@ const ScheduleEmailAlertDialog: React.FC<ScheduleEmailAlertDialogProps> = ({
           },
         });
         notifySuccess('Email alert scheduled successfully');
+        resetForm();
+        await fetchJobs();
       }
-      resetForm();
-      await fetchJobs();
     } catch {
       setError('Unable to create schedule. Please verify the details and try again.');
     } finally {
@@ -185,33 +296,7 @@ const ScheduleEmailAlertDialog: React.FC<ScheduleEmailAlertDialogProps> = ({
   };
 
   const handleEdit = (job: ScheduledJob) => {
-    setEditingJobId(job.id);
-    setCronExpr(job.cron_expr || '0 9 * * *');
-    setTimezone(job.timezone || 'Asia/Kolkata');
-    setMaxRetries(String(job.max_retries ?? 3));
-    const payload = (job.payload || {}) as Record<string, unknown>;
-    const recipients = Array.isArray(payload.recipients) ? payload.recipients : [];
-    setRecipientsText(recipients.map((item) => String(item)).join(', '));
-    setSubject(typeof payload.subject === 'string' ? payload.subject : '');
-    const paramsValue = payload.params;
-    const dateRangeValue = payload.date_range;
-    if (
-      dateRangeValue === 'last_day' ||
-      dateRangeValue === 'last_hour' ||
-      dateRangeValue === 'last_7_days' ||
-      dateRangeValue === 'last_30_days'
-    ) {
-      setDateRange(dateRangeValue);
-    } else {
-      setDateRange('none');
-    }
-    setStartDateParamKey(typeof payload.start_date_param === 'string' ? payload.start_date_param : 'start_date');
-    setEndDateParamKey(typeof payload.end_date_param === 'string' ? payload.end_date_param : 'end_date');
-    if (paramsValue && typeof paramsValue === 'object' && !Array.isArray(paramsValue)) {
-      setQueryParamsJson(JSON.stringify(paramsValue, null, 2));
-    } else {
-      setQueryParamsJson('');
-    }
+    applyJobToForm(job);
   };
 
   const handleDelete = async (jobId: string) => {
@@ -232,7 +317,7 @@ const ScheduleEmailAlertDialog: React.FC<ScheduleEmailAlertDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-[800px] overflow-y-auto">
+      <DialogContent className="max-h-[90vh] overflow-y-auto lg:max-w-[800px] xl:max-w-[1000px]">
         <DialogHeader>
           <DialogTitle>Schedule Email Alert</DialogTitle>
           <DialogDescription>Create a scheduled query email for this dynamic query.</DialogDescription>
@@ -261,7 +346,10 @@ const ScheduleEmailAlertDialog: React.FC<ScheduleEmailAlertDialogProps> = ({
                 {jobs.map((job) => (
                   <div
                     key={job.id}
-                    className="flex items-center justify-between rounded-md border border-[#EFF0F1] bg-white p-3"
+                    className={cn(
+                      'flex items-center justify-between rounded-md border bg-white p-3',
+                      editingJobId === job.id ? 'border-[#282828]' : 'border-[#EFF0F1]'
+                    )}
                   >
                     <div className="text-xs text-[#282828]">
                       <p>
@@ -273,6 +361,15 @@ const ScheduleEmailAlertDialog: React.FC<ScheduleEmailAlertDialogProps> = ({
                       <p>
                         <span className="font-medium">Next Run:</span>{' '}
                         {job.next_run_at ? new Date(job.next_run_at).toLocaleString() : '-'}
+                      </p>
+                      <p>
+                        <span className="font-medium">Recipients:</span>{' '}
+                        {usersLoading
+                          ? 'Loading...'
+                          : (() => {
+                              const labels = getJobRecipientLabels(job);
+                              return labels.length > 0 ? labels.join(', ') : 'None';
+                            })()}
                       </p>
                     </div>
                     <div className="flex gap-2">
@@ -295,7 +392,7 @@ const ScheduleEmailAlertDialog: React.FC<ScheduleEmailAlertDialogProps> = ({
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <div>
               <p className="mb-1 text-xs text-[#878787]">Datasource ID</p>
               <Input value={datasourceId} disabled />
@@ -304,9 +401,13 @@ const ScheduleEmailAlertDialog: React.FC<ScheduleEmailAlertDialogProps> = ({
               <p className="mb-1 text-xs text-[#878787]">Query ID</p>
               <Input value={queryId} disabled />
             </div>
+            <div>
+              <p className="mb-1 text-xs text-[#878787]">Subject (optional)</p>
+              <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Daily report" />
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <div>
               <p className="mb-1 text-xs text-[#878787]">Cron expression</p>
               <Input value={cronExpr} onChange={(e) => setCronExpr(e.target.value)} placeholder="0 9 * * *" />
@@ -315,27 +416,82 @@ const ScheduleEmailAlertDialog: React.FC<ScheduleEmailAlertDialogProps> = ({
               <p className="mb-1 text-xs text-[#878787]">Timezone</p>
               <Input value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="Asia/Kolkata" />
             </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
             <div>
               <p className="mb-1 text-xs text-[#878787]">Max retries</p>
               <Input value={maxRetries} onChange={(e) => setMaxRetries(e.target.value)} placeholder="3" />
             </div>
-            <div>
-              <p className="mb-1 text-xs text-[#878787]">Subject (optional)</p>
-              <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Daily report" />
-            </div>
           </div>
 
           <div>
-            <p className="mb-1 text-xs text-[#878787]">Recipients (comma-separated emails)</p>
-            <Textarea
-              value={recipientsText}
-              onChange={(e) => setRecipientsText(e.target.value)}
-              placeholder="user1@company.com, user2@company.com"
-              className="min-h-[90px]"
-            />
+            <p className="mb-1 text-xs text-[#878787]">Recipient users</p>
+            <p className="mb-2 text-xs text-[#878787]">
+              Each user receives a report filtered by their data access (RLS).
+            </p>
+            <Popover open={recipientsSelectOpen} onOpenChange={setRecipientsSelectOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  role="combobox"
+                  aria-expanded={recipientsSelectOpen}
+                  disabled={usersLoading}
+                  className={cn(
+                    'border-input ring-offset-background focus:ring-ring flex min-h-9 w-full items-center justify-between rounded-md border bg-white px-3 py-2 text-sm shadow-sm focus:ring-1 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50',
+                    selectedRecipientUserIds.length === 0 && 'text-[#878787]'
+                  )}
+                >
+                  <span className="truncate text-left">
+                    {usersLoading
+                      ? 'Loading users...'
+                      : selectedRecipientUsers.length === 0
+                        ? 'Select recipient users'
+                        : selectedRecipientUsers.length <= 2
+                          ? selectedRecipientUsers.map((u) => formatUserLabel(u)).join(', ')
+                          : `${selectedRecipientUsers.length} users selected`}
+                  </span>
+                  <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Search users..." />
+                  <CommandList>
+                    <CommandEmpty>No users found.</CommandEmpty>
+                    <CommandGroup>
+                      {users.map((user) => {
+                        const isSelected = isRecipientSelected(user.id);
+                        return (
+                          <CommandItem
+                            key={user.id}
+                            value={`${user.first_name} ${user.last_name} ${user.email}`}
+                            onSelect={() => toggleRecipientUser(user.id)}
+                          >
+                            <Check className={cn('mr-2 h-4 w-4 shrink-0', isSelected ? 'opacity-100' : 'opacity-0')} />
+                            {formatUserLabel(user)}
+                          </CommandItem>
+                        );
+                      })}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+            {selectedRecipientUsers.length > 0 ? (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {selectedRecipientUsers.map((user) => (
+                  <Badge key={user.id} variant="secondary" className="gap-1 pr-1 font-normal">
+                    <span className="max-w-[240px] truncate">{formatUserLabel(user)}</span>
+                    <button
+                      type="button"
+                      className="rounded-full p-0.5 hover:bg-black/10"
+                      aria-label={`Remove ${formatUserLabel(user)}`}
+                      onClick={() => removeRecipientUser(user.id)}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           <div>

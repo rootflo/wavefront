@@ -32,7 +32,7 @@ export interface CreateScheduledJobRequest {
   payload: {
     datasource_id: string;
     query_id: string;
-    recipients: string[];
+    recipient_user_ids: string[];
     subject?: string;
     date_range?: 'last_day' | 'last_hour' | 'last_7_days' | 'last_30_days';
     start_date_param?: string;

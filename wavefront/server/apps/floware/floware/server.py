@@ -132,6 +132,9 @@ application_container = ApplicationContainer(
     datasource_repository=db_repo_container.datasource_repository,
     dynamic_query_repository=db_repo_container.dynamic_query_repository,
     email_service=user_module_container.email_service,
+    user_service=user_module_container.user_service,
+    role_repository=user_module_container.role_repository,
+    user_role_repository=user_module_container.user_role_repository,
 )
 
 email_rag_container = KnowledgeBaseContainer(

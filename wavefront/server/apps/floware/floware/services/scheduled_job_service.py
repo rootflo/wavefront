@@ -12,14 +12,23 @@ from datasource import DatasourcePlugin
 from db_repo_module.database.connection import DatabaseClient
 from db_repo_module.models.datasource import Datasource
 from db_repo_module.models.dynamic_query_yaml import DynamicQueryYaml
+from db_repo_module.models.resource import ResourceScope
+from db_repo_module.models.role import Role
 from db_repo_module.models.scheduled_job import ScheduledJob
 from db_repo_module.models.scheduled_job_execution import ScheduledJobExecution
+from db_repo_module.models.user import User
+from db_repo_module.models.user_role import UserRole
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from plugins_module.services.dynamic_query_service import DynamicQueryService
-from plugins_module.services.datasource_services import get_datasource_config
+from plugins_module.services.datasource_services import (
+    fetch_data_filters,
+    get_datasource_config,
+)
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
+from user_management_module.constants.auth import SERVICE_AUTH_ROLE_ID
 from user_management_module.services.email_service import EmailService
+from user_management_module.services.user_service import UserService
 
 STALE_LOCK_TIMEOUT_MINUTES = 30
 SIGNED_URL_EXPIRY_SECONDS = 7 * 24 * 60 * 60
@@ -38,6 +47,10 @@ class ScheduledJobService:
         cloud_storage_manager,
         bucket_name: str,
         email_service: EmailService,
+        user_repository: SQLAlchemyRepository[User],
+        user_service: UserService,
+        role_repository: SQLAlchemyRepository[Role],
+        user_role_repository: SQLAlchemyRepository[UserRole],
     ):
         self.db_client = db_client
         self.scheduled_job_repository = scheduled_job_repository
@@ -47,6 +60,10 @@ class ScheduledJobService:
         self.cloud_storage_manager = cloud_storage_manager
         self.bucket_name = bucket_name
         self.email_service = email_service
+        self.user_repository = user_repository
+        self.user_service = user_service
+        self.role_repository = role_repository
+        self.user_role_repository = user_role_repository
         self.worker_id = os.getenv('HOSTNAME', 'floware-worker')
         self.dynamic_query_service = DynamicQueryService(
             cloud_storage_manager=self.cloud_storage_manager,
@@ -350,38 +367,55 @@ class ScheduledJobService:
 
         asyncio.run(self.recover_stale_locks())
 
-    async def _execute_email_dynamic_query_job(self, payload: dict, job_timezone: str):
-        datasource_id = payload.get('datasource_id')
-        query_id = payload.get('query_id')
-        recipients = payload.get('recipients', [])
-        subject = payload.get('subject', f'Scheduled Dynamic Query Report: {query_id}')
-        filter_expr = payload.get('filter')
-        offset = payload.get('offset', 0)
-        limit = payload.get('limit', 100)
-        params = self._resolve_runtime_params(payload, job_timezone)
+    @staticmethod
+    def _normalize_recipient_user_ids(payload: dict) -> list[str]:
+        recipient_user_ids = payload.get('recipient_user_ids', [])
+        if isinstance(recipient_user_ids, str):
+            recipient_user_ids = [recipient_user_ids]
+        return [
+            str(user_id).strip()
+            for user_id in recipient_user_ids
+            if str(user_id).strip()
+        ]
 
-        if isinstance(recipients, str):
-            recipients = [recipients]
+    async def _role_is_admin(self, role_id: str) -> bool:
+        if role_id == SERVICE_AUTH_ROLE_ID:
+            return True
+        role = await self.role_repository.find_one(id=role_id)
+        return bool(role and role.name == 'admin')
 
-        if not datasource_id or not query_id or not recipients:
-            raise ValueError('payload must include datasource_id, query_id, recipients')
+    async def _user_is_admin(self, user_id: str) -> bool:
+        user_roles = await self.user_role_repository.find(user_id=user_id, limit=100)
+        for user_role in user_roles:
+            if await self._role_is_admin(str(user_role.role_id)):
+                return True
+        return False
 
-        datasource_type, datasource_config = await get_datasource_config(
-            datasource_id=datasource_id,
-            datasource_repository=self.datasource_repository,
+    async def _rls_filter_for_user(self, user_id: str) -> str | None:
+        if await self._user_is_admin(user_id):
+            return None
+        rls_filters = await self.user_service.get_user_resources(
+            user_id=user_id, scope=ResourceScope.DATA
         )
-        if not datasource_type or not datasource_config:
-            raise ValueError(f'Datasource not found: {datasource_id}')
+        if len(rls_filters) == 0:
+            raise ValueError(f'Data access not set for non-admin user {user_id}')
+        additional_filters = fetch_data_filters(rls_filters)
+        return f"{' $and '.join(additional_filters)}"
 
-        yaml_query, yaml_name = await self.dynamic_query_service.get_dynamic_yaml_query(
-            query_id
-        )
-        if not yaml_query:
-            raise ValueError(f'Dynamic query not found: {query_id}')
-        datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
+    async def _fetch_dynamic_query_rows(
+        self,
+        datasource_plugin: DatasourcePlugin,
+        yaml_query: list,
+        query_id: str,
+        rls_filter_str: str | None,
+        filter_expr: str | None,
+        offset: int,
+        limit: int,
+        params: dict | None,
+    ) -> list[dict]:
         result = await datasource_plugin.execute_dynamic_query(
             yaml_query,
-            None,
+            rls_filter_str,
             filter_expr,
             offset,
             limit,
@@ -393,67 +427,54 @@ class ScheduledJobService:
         first_key = next(iter(result))
         if result[first_key].get('status') != 'success':
             raise ValueError(
-                f'Unexpected dynamic query result format for query_id {query_id}, no successful results'
+                f'Unexpected dynamic query result format for query_id {query_id}, '
+                'no successful results'
             )
-
         rows = result[first_key].get('result') or []
         if not isinstance(rows, list):
             raise ValueError(
                 f'Unexpected dynamic query result format for query_id {query_id}, invalid rows'
             )
+        return rows
 
-        if len(rows) == 0:
-            start_key = str(payload.get('start_date_param', 'start_date'))
-            end_key = str(payload.get('end_date_param', 'end_date'))
-            applied_start = params.get(start_key) if isinstance(params, dict) else None
-            applied_end = params.get(end_key) if isinstance(params, dict) else None
-            logger.info(
-                f'No records in scheduled window for query_id={query_id}; '
-                f'applying range {applied_start}..{applied_end} (keys: {start_key}, {end_key}). '
-                'Skipping email.'
-            )
-            return
-
+    @staticmethod
+    def _rows_to_csv_bytes(rows: list[dict]) -> tuple[bytes, list[str]]:
         if rows:
             fieldnames = list(rows[0].keys())
             for row in rows[1:]:
-                for k in row:
-                    if k not in fieldnames:
-                        fieldnames.append(k)
+                for key in row:
+                    if key not in fieldnames:
+                        fieldnames.append(key)
         else:
             fieldnames = []
 
-        def _cell_value(v):
-            if isinstance(v, (dict, list)):
-                return json.dumps(v)
-            return v if v is None or isinstance(v, str) else str(v)
+        def cell_value(value):
+            if isinstance(value, (dict, list)):
+                return json.dumps(value)
+            return value if value is None or isinstance(value, str) else str(value)
 
-        report_filename = f'{query_id}_{datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")}_report.csv'
         buf = io.StringIO()
         if fieldnames:
             writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction='ignore')
             writer.writeheader()
             for row in rows:
-                writer.writerow({k: _cell_value(row.get(k)) for k in fieldnames})
-        csv_bytes = buf.getvalue().encode('utf-8')
-        csv_size = len(csv_bytes)
+                writer.writerow({k: cell_value(row.get(k)) for k in fieldnames})
+        return buf.getvalue().encode('utf-8'), fieldnames
 
-        report_url: str | None = None
-        use_attachment = csv_size <= MAX_EMAIL_ATTACHMENT_BYTES
-        if not use_attachment:
-            report_key = f'scheduled_query_reports/{query_id}/{report_filename}'
-            self.cloud_storage_manager.save_small_file(
-                file_content=csv_bytes,
-                bucket_name=self.bucket_name,
-                key=report_key,
-                content_type='text/csv',
-            )
-            report_url = self.cloud_storage_manager.generate_presigned_url(
-                bucket_name=self.bucket_name,
-                key=report_key,
-                type='GET',
-                expiresIn=SIGNED_URL_EXPIRY_SECONDS,
-            )
+    def _build_report_email_body(
+        self,
+        *,
+        yaml_name: str | None,
+        query_id: str,
+        datasource_id: str,
+        rows: list[dict],
+        fieldnames: list[str],
+        params: dict | None,
+        payload: dict,
+        csv_size: int,
+        use_attachment: bool,
+        report_url: str | None,
+    ) -> str:
         generated_at_utc = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
         start_key = str(payload.get('start_date_param', 'start_date'))
         end_key = str(payload.get('end_date_param', 'end_date'))
@@ -492,9 +513,115 @@ class ScheduledJobService:
                     f'<p><a href="{report_url}" target="_blank" rel="noopener noreferrer">'
                     'Download CSV report (valid for 7 days)</a></p>'
                 )
+        return body
 
-        failed_recipients = []
-        for recipient in recipients:
+    async def _execute_email_dynamic_query_job(self, payload: dict, job_timezone: str):
+        datasource_id = payload.get('datasource_id')
+        query_id = payload.get('query_id')
+        recipient_user_ids = self._normalize_recipient_user_ids(payload)
+        subject = payload.get('subject', f'Scheduled Dynamic Query Report: {query_id}')
+        filter_expr = payload.get('filter')
+        offset = payload.get('offset', 0)
+        limit = payload.get('limit', 100)
+        params = self._resolve_runtime_params(payload, job_timezone)
+
+        if not datasource_id or not query_id or not recipient_user_ids:
+            raise ValueError(
+                'payload must include datasource_id, query_id, recipient_user_ids'
+            )
+
+        datasource_type, datasource_config = await get_datasource_config(
+            datasource_id=datasource_id,
+            datasource_repository=self.datasource_repository,
+        )
+        if not datasource_type or not datasource_config:
+            raise ValueError(f'Datasource not found: {datasource_id}')
+
+        yaml_query, yaml_name = await self.dynamic_query_service.get_dynamic_yaml_query(
+            query_id
+        )
+        if not yaml_query:
+            raise ValueError(f'Dynamic query not found: {query_id}')
+        datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
+
+        failed_recipient_user_ids: list[str] = []
+        delivered_count = 0
+        run_timestamp = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
+
+        for user_id in recipient_user_ids:
+            user = await self.user_repository.find_one(id=user_id)
+            if not user or user.deleted:
+                logger.warning(
+                    f'Scheduled report skipped: user not found or deleted ({user_id})'
+                )
+                failed_recipient_user_ids.append(user_id)
+                continue
+
+            try:
+                rls_filter_str = await self._rls_filter_for_user(user_id)
+                rows = await self._fetch_dynamic_query_rows(
+                    datasource_plugin,
+                    yaml_query,
+                    query_id,
+                    rls_filter_str,
+                    filter_expr,
+                    offset,
+                    limit,
+                    params,
+                )
+            except Exception as exc:
+                logger.error(
+                    f'Scheduled report failed for user_id={user_id}, query_id={query_id}: {exc}'
+                )
+                failed_recipient_user_ids.append(user_id)
+                continue
+
+            if len(rows) == 0:
+                start_key = str(payload.get('start_date_param', 'start_date'))
+                end_key = str(payload.get('end_date_param', 'end_date'))
+                applied_start = (
+                    params.get(start_key) if isinstance(params, dict) else None
+                )
+                applied_end = params.get(end_key) if isinstance(params, dict) else None
+                logger.info(
+                    f'No records for user_id={user_id}, query_id={query_id}; '
+                    f'range {applied_start}..{applied_end} (keys: {start_key}, {end_key}). '
+                    'Skipping email.'
+                )
+                continue
+
+            csv_bytes, fieldnames = self._rows_to_csv_bytes(rows)
+            csv_size = len(csv_bytes)
+            report_filename = f'{query_id}_{user_id}_{run_timestamp}_report.csv'
+            report_url: str | None = None
+            use_attachment = csv_size <= MAX_EMAIL_ATTACHMENT_BYTES
+            if not use_attachment:
+                report_key = f'scheduled_query_reports/{query_id}/{report_filename}'
+                self.cloud_storage_manager.save_small_file(
+                    file_content=csv_bytes,
+                    bucket_name=self.bucket_name,
+                    key=report_key,
+                    content_type='text/csv',
+                )
+                report_url = self.cloud_storage_manager.generate_presigned_url(
+                    bucket_name=self.bucket_name,
+                    key=report_key,
+                    type='GET',
+                    expiresIn=SIGNED_URL_EXPIRY_SECONDS,
+                )
+
+            body = self._build_report_email_body(
+                yaml_name=yaml_name,
+                query_id=query_id,
+                datasource_id=datasource_id,
+                rows=rows,
+                fieldnames=fieldnames,
+                params=params,
+                payload=payload,
+                csv_size=csv_size,
+                use_attachment=use_attachment,
+                report_url=report_url,
+            )
             attachments = None
             if use_attachment:
                 attachments = [
@@ -507,30 +634,27 @@ class ScheduledJobService:
             is_sent = self.email_service.send_email(
                 subject,
                 body,
-                recipient,
+                user.email,
                 attachments=attachments,
             )
             if not is_sent:
-                failed_recipients.append(recipient)
+                failed_recipient_user_ids.append(user_id)
+            else:
+                delivered_count += 1
 
-        if failed_recipients:
-            if len(failed_recipients) == len(recipients):
-                # Every send failed — no one has the report, so raising here is
-                # safe: the next-run retry will resend to all recipients without
-                # creating duplicates.
+        if failed_recipient_user_ids:
+            if delivered_count == 0 and len(failed_recipient_user_ids) == len(
+                recipient_user_ids
+            ):
                 raise ValueError(
-                    f'Failed sending report to all {len(recipients)} recipient(s) '
-                    f'for query={query_id}'
+                    f'Failed scheduled report for all {len(recipient_user_ids)} '
+                    f'recipient user(s) for query={query_id}'
                 )
-            # Partial failure: some recipients already have the report.  Do NOT
-            # raise — that would schedule a retry which re-sends to the
-            # already-successful recipients.  Log the failures so they are
-            # visible in job.last_error via the caller, but let execution
-            # complete normally.
             logger.error(
                 f'Partial delivery failure for query={query_id}: '
-                f'{len(failed_recipients)}/{len(recipients)} recipient(s) failed: '
-                f'{", ".join(failed_recipients)}'
+                f'{len(failed_recipient_user_ids)}/{len(recipient_user_ids)} '
+                f'recipient user(s) failed: '
+                f'{", ".join(failed_recipient_user_ids)}'
             )
 
     async def _run_job(self, job_row: dict):
