@@ -28,6 +28,7 @@ import {
   getApiServiceQueryFn,
   getApiServicesQueryFn,
   getAppByIdFn,
+  getAppUsersQueryFn,
   getAuthenticatorQueryFn,
   getAuthenticatorsQueryFn,
   getCurrentUserQueryFn,
@@ -54,7 +55,7 @@ import {
   getToolsQueryFn,
   getTtsConfigQueryFn,
   getTtsConfigsQueryFn,
-  getUsersQueryFn,
+  getConsoleUsersQueryFn,
   getVoiceAgentQueryFn,
   getVoiceAgentToolQueryFn,
   getVoiceAgentToolsQueryFn,
@@ -74,6 +75,7 @@ import {
   getApiServiceKey,
   getApiServicesKey,
   getAppByIdKey,
+  getAppUsersKey,
   getAuthenticatorKey,
   getAuthenticatorsKey,
   getCurrentUserKey,
@@ -100,7 +102,7 @@ import {
   getToolsKey,
   getTtsConfigKey,
   getTtsConfigsKey,
-  getUsersKey,
+  getConsoleUsersKey,
   getVoiceAgentKey,
   getVoiceAgentToolKey,
   getVoiceAgentToolsKey,
@@ -417,8 +419,12 @@ export const useGetAppById = (appId: string, enabled: boolean = true): UseQueryR
   return useQueryInit<App | undefined>(getAppByIdKey(appId), () => getAppByIdFn(appId), enabled);
 };
 
-export const useGetUsers = (): UseQueryResult<IUser[], Error> => {
-  return useQueryInit(getUsersKey(), getUsersQueryFn, true);
+export const useGetAppUsers = (appId: string | undefined): UseQueryResult<IUser[], Error> => {
+  return useQueryInit(getAppUsersKey(appId || ''), () => getAppUsersQueryFn(), !!appId);
+};
+
+export const useGetConsoleUsers = (): UseQueryResult<IUser[], Error> => {
+  return useQueryInit(getConsoleUsersKey(), getConsoleUsersQueryFn, true);
 };
 
 // Voice Agent Tools Hooks

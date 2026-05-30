@@ -22,7 +22,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@app/components/ui/tabs';
 import { Textarea } from '@app/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@app/components/ui/tooltip';
-import { useGetUsers } from '@app/hooks';
+import { useGetAppUsers } from '@app/hooks';
 import { cn } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { IUser } from '@app/types/user';
@@ -33,6 +33,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 interface ScheduleEmailAlertDialogProps {
   isOpen: boolean;
+  appId: string;
   datasourceId: string;
   queryId: string;
   onOpenChange: (open: boolean) => void;
@@ -83,6 +84,7 @@ const COLUMN_STYLES_PLACEHOLDER = `[
 
 const ScheduleEmailAlertDialog: React.FC<ScheduleEmailAlertDialogProps> = ({
   isOpen,
+  appId,
   datasourceId,
   queryId,
   onOpenChange,
@@ -94,11 +96,11 @@ const ScheduleEmailAlertDialog: React.FC<ScheduleEmailAlertDialogProps> = ({
   const [timezone, setTimezone] = useState('Asia/Kolkata');
   const [selectedRecipientUserIds, setSelectedRecipientUserIds] = useState<string[]>([]);
   const [recipientsSelectOpen, setRecipientsSelectOpen] = useState(false);
-  const { data: users = [], isLoading: usersLoading } = useGetUsers();
+  const { data: appUsers = [], isLoading: appUsersLoading } = useGetAppUsers(appId);
 
   const selectedRecipientUsers = useMemo(
-    () => resolveUsersFromRecipientIds(selectedRecipientUserIds, users),
-    [selectedRecipientUserIds, users]
+    () => resolveUsersFromRecipientIds(selectedRecipientUserIds, appUsers),
+    [selectedRecipientUserIds, appUsers]
   );
 
   const isRecipientSelected = (userId: string) =>
@@ -155,7 +157,7 @@ const ScheduleEmailAlertDialog: React.FC<ScheduleEmailAlertDialogProps> = ({
 
   const getJobRecipientLabels = (job: ScheduledJob): string[] => {
     const payload = (job.payload || {}) as Record<string, unknown>;
-    return resolveUsersFromRecipientIds(extractRecipientUserIdsFromPayload(payload), users).map(formatUserLabel);
+    return resolveUsersFromRecipientIds(extractRecipientUserIdsFromPayload(payload), appUsers).map(formatUserLabel);
   };
   const [subject, setSubject] = useState('');
   const [emailContent, setEmailContent] = useState('');
@@ -402,7 +404,7 @@ const ScheduleEmailAlertDialog: React.FC<ScheduleEmailAlertDialogProps> = ({
                       </p>
                       <p>
                         <span className="font-medium">Recipients:</span>{' '}
-                        {usersLoading
+                        {appUsersLoading
                           ? 'Loading...'
                           : (() => {
                               const labels = getJobRecipientLabels(job);
@@ -580,20 +582,20 @@ const ScheduleEmailAlertDialog: React.FC<ScheduleEmailAlertDialogProps> = ({
                       </TooltipContent>
                     </Tooltip>
                   </div>
-                  <Popover open={recipientsSelectOpen} onOpenChange={setRecipientsSelectOpen}>
+                  <Popover modal open={recipientsSelectOpen} onOpenChange={setRecipientsSelectOpen}>
                     <PopoverTrigger asChild>
                       <button
                         type="button"
                         role="combobox"
                         aria-expanded={recipientsSelectOpen}
-                        disabled={usersLoading}
+                        disabled={appUsersLoading}
                         className={cn(
                           'border-input ring-offset-background focus:ring-ring flex min-h-9 w-full items-center justify-between rounded-md border bg-white px-3 py-2 text-sm shadow-sm focus:ring-1 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50',
                           selectedRecipientUserIds.length === 0 && 'text-[#878787]'
                         )}
                       >
                         <span className="truncate text-left">
-                          {usersLoading
+                          {appUsersLoading
                             ? 'Loading users...'
                             : selectedRecipientUserIds.length === 0
                               ? 'Select recipient users'
@@ -609,7 +611,13 @@ const ScheduleEmailAlertDialog: React.FC<ScheduleEmailAlertDialogProps> = ({
                     <PopoverContent className="w-(--radix-popover-trigger-width) p-0" align="start">
                       <Command>
                         <CommandInput placeholder="Search users..." />
-                        <CommandList>
+                        <CommandList
+                          onWheel={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            e.currentTarget.scrollTop += e.deltaY;
+                          }}
+                        >
                           <CommandEmpty>No users found.</CommandEmpty>
                           {selectedRecipientUsers.length > 0 ? (
                             <CommandGroup heading="Selected">
@@ -626,7 +634,7 @@ const ScheduleEmailAlertDialog: React.FC<ScheduleEmailAlertDialogProps> = ({
                             </CommandGroup>
                           ) : null}
                           <CommandGroup heading="All users">
-                            {users
+                            {appUsers
                               .filter((user) => !isRecipientSelected(user.id))
                               .map((user) => (
                                 <CommandItem

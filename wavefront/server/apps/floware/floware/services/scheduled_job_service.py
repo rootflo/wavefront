@@ -1,7 +1,9 @@
+import hashlib
 import io
 import json
 import os
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from apscheduler.triggers.cron import CronTrigger
@@ -449,12 +451,42 @@ class ScheduledJobService:
         return rows
 
     @staticmethod
+    def _sanitize_filename_part(value: str) -> str:
+        return ''.join(
+            ch if ch.isalnum() or ch in '-_' else '_' for ch in value.strip()
+        )
+
+    @classmethod
+    def _build_report_filename(
+        cls,
+        *,
+        query_id: str,
+        user_id: str,
+        run_timestamp: str,
+        params: dict | None,
+        payload: dict,
+    ) -> str:
+        unique_hash = hashlib.sha256(f'{user_id}:{run_timestamp}'.encode()).hexdigest()[
+            :12
+        ]
+        start_key = str(payload.get('start_date_param', 'start_date'))
+        end_key = str(payload.get('end_date_param', 'end_date'))
+        start_date = params.get(start_key) if isinstance(params, dict) else None
+        end_date = params.get(end_key) if isinstance(params, dict) else None
+
+        if start_date and end_date:
+            start_part = cls._sanitize_filename_part(str(start_date))
+            end_part = cls._sanitize_filename_part(str(end_date))
+            return f'{query_id}_{start_part}_{end_part}_{unique_hash}_report.xlsx'
+        return f'{query_id}_{unique_hash}_report.xlsx'
+
+    @staticmethod
     def _parse_numeric_cell_value(value) -> float | None:
         if value is None or value == '':
             return None
         if isinstance(value, bool):
             return float(value)
-        if isinstance(value, (int, float)):
+        if isinstance(value, (int, float, Decimal)):
             return float(value)
         if isinstance(value, str):
             stripped = value.strip().replace(',', '')
@@ -669,12 +701,8 @@ class ScheduledJobService:
                 body = f'<p>{body}</p>'
         else:
             body = f'<p>Scheduled report: <b>{report_name}</b></p>'
-        if use_attachment:
-            body += (
-                f'<p><b>Delivery:</b> Excel report attached ({report_size:,} bytes, '
-                f'max {MAX_EMAIL_ATTACHMENT_BYTES // (1024 * 1024)} MB for email).</p>'
-            )
-        else:
+
+        if not use_attachment:
             body += (
                 f'<p><b>Delivery:</b> Report is {report_size:,} bytes (over '
                 f'{MAX_EMAIL_ATTACHMENT_BYTES // (1024 * 1024)} MB email limit). '
@@ -771,7 +799,13 @@ class ScheduledJobService:
                 rows, column_styles=column_styles
             )
             report_size = len(report_bytes)
-            report_filename = f'{query_id}_{user_id}_{run_timestamp}_report.xlsx'
+            report_filename = self._build_report_filename(
+                query_id=query_id,
+                user_id=user_id,
+                run_timestamp=run_timestamp,
+                params=params,
+                payload=payload,
+            )
             report_url: str | None = None
             use_attachment = report_size <= MAX_EMAIL_ATTACHMENT_BYTES
             if not use_attachment:

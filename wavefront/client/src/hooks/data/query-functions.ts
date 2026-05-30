@@ -396,7 +396,15 @@ const getAgentToolsQueryFn = async (agentId: string): Promise<VoiceAgentToolWith
   return [];
 };
 
-const getUsersQueryFn = async (): Promise<IUser[]> => {
+const getAppUsersQueryFn = async (): Promise<IUser[]> => {
+  const response = await floConsoleService.appUserService.listAppUsers();
+  if (response.data?.data?.users && Array.isArray(response.data.data.users)) {
+    return response.data.data.users;
+  }
+  return [];
+};
+
+const getConsoleUsersQueryFn = async (): Promise<IUser[]> => {
   const response = await floConsoleService.userService.listUsers();
   if (response.data?.data?.users && Array.isArray(response.data.data.users)) {
     return response.data.data.users;
@@ -414,6 +422,7 @@ export {
   getApiServiceQueryFn,
   getApiServicesQueryFn,
   getAppByIdFn,
+  getAppUsersQueryFn,
   getAuthenticatorQueryFn,
   getAuthenticatorsQueryFn,
   getCurrentUserQueryFn,
@@ -440,7 +449,7 @@ export {
   getToolsQueryFn,
   getTtsConfigQueryFn,
   getTtsConfigsQueryFn,
-  getUsersQueryFn,
+  getConsoleUsersQueryFn,
   getVoiceAgentQueryFn,
   getVoiceAgentToolQueryFn,
   getVoiceAgentToolsQueryFn,

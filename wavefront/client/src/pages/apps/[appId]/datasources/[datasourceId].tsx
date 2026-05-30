@@ -368,6 +368,7 @@ const DatasourceDetail: React.FC = () => {
         {datasourceId && scheduleQueryId && (
           <ScheduleEmailAlertDialog
             isOpen={scheduleDialogOpen}
+            appId={appId!}
             datasourceId={datasourceId}
             queryId={scheduleQueryId}
             onOpenChange={setScheduleDialogOpen}
