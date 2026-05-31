@@ -170,6 +170,16 @@ tools_container = ToolsContainer(
     message_processor_bucket_name=bucket_name,
 )
 
+inference_container = InferenceContainer(
+    db_client=db_repo_container.db_client,
+    cache_manager=db_repo_container.cache_manager,
+)
+
+llm_inference_config_container = LlmInferenceConfigContainer(
+    db_client=db_repo_container.db_client,
+    cache_manager=db_repo_container.cache_manager,
+)
+
 agents_container = AgentsContainer(
     db_client=db_repo_container.db_client,
     cloud_storage_manager=common_container.cloud_storage_manager,
@@ -185,16 +195,7 @@ agents_container = AgentsContainer(
     api_services_manager=api_services_container.api_service_manager,
     async_agentic_execution_repository=db_repo_container.async_agentic_execution_repository,
     executions_bucket=config['agents']['executions_bucket'],
-)
-
-inference_container = InferenceContainer(
-    db_client=db_repo_container.db_client,
-    cache_manager=db_repo_container.cache_manager,
-)
-
-llm_inference_config_container = LlmInferenceConfigContainer(
-    db_client=db_repo_container.db_client,
-    cache_manager=db_repo_container.cache_manager,
+    llm_inference_config_service=llm_inference_config_container.llm_inference_config_service,
 )
 
 voice_agents_container = VoiceAgentsContainer(
