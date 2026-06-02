@@ -334,6 +334,47 @@ async def microsoft_oauth_callback(
     )
 
 
+@auth_plugin_router.get('/v1/oauth/adfs/callback')
+@inject
+async def microsoft_adfs_oauth_callback(
+    request: Request,
+    code: Optional[str] = Query(...),
+    state: str = Query(...),
+    error: Optional[str] = Query(None),
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+    authenticator_repository: SQLAlchemyRepository[Authenticator] = Depends(
+        Provide[PluginsContainer.authenticator_repository]
+    ),
+    user_repository: SQLAlchemyRepository[User] = Depends(
+        Provide[UserContainer.user_repository]
+    ),
+    user_service: UserService = Depends(Provide[UserContainer.user_service]),
+    session_repository: SQLAlchemyRepository[Session] = Depends(
+        Provide[UserContainer.session_repository]
+    ),
+    cache_manager: CacheManager = Depends(Provide[UserContainer.cache_manager]),
+    token_service: TokenService = Depends(Provide[AuthContainer.token_service]),
+):
+    """Handle Microsoft ADFS OAuth callback."""
+    state_obj = json.loads(state)
+    auth_id = state_obj['auth_id']
+
+    return await _handle_oauth_callback(
+        auth_id,
+        {'authorization_code': code, 'state': state, 'error': error},
+        request,
+        response_formatter,
+        authenticator_repository,
+        user_service,
+        user_repository,
+        session_repository,
+        cache_manager,
+        token_service,
+    )
+
+
 async def _handle_oauth_callback(
     auth_id: str,
     callback_data: Dict[str, Any],

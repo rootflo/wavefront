@@ -45,6 +45,7 @@ optional_auth_apis = [
     '/floware/v1/plugin-auth/authenticate',
     '/floware/v1/oauth/google/callback',
     '/floware/v1/oauth/microsoft/callback',
+    '/floware/v1/oauth/adfs/callback',
     '/floware/v1/plugin-auth/oauth/init',
     '/floware/v1/settings/config',
 ]

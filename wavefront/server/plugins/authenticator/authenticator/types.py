@@ -71,6 +71,7 @@ class AuthenticatorType(Enum):
     EMAIL_PASSWORD = 'email_password'
     GOOGLE_OAUTH = 'google_oauth'
     MICROSOFT_OAUTH = 'microsoft_oauth'
+    MICROSOFT_ADFS = 'microsoft_adfs'
     SAML = 'saml'
     LDAP = 'ldap'
 
