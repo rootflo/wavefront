@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'darwin'",
@@ -473,11 +473,15 @@ name = "authenticator"
 version = "0.1.0"
 source = { editable = "plugins/authenticator" }
 dependencies = [
+    { name = "pyjwt", extra = ["crypto"] },
     { name = "requests" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "requests", specifier = ">=2.25.0" }]
+requires-dist = [
+    { name = "pyjwt", extras = ["crypto"], specifier = ">=2.9.0" },
+    { name = "requests", specifier = ">=2.25.0" },
+]
 
 [[package]]
 name = "authlib"

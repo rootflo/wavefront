@@ -1,12 +1,19 @@
-import base64
 import json
+import logging
+import ssl
+import jwt
 import requests
 from datetime import datetime
+from jwt import PyJWKClient
 from typing import Dict, Any, Optional
 from urllib.parse import urlencode, urlparse
 
 from ..types import AuthenticatorABC, AuthResult, TokenResult, HealthStatus, UserInfo
 from .config import MicrosoftADFSConfig
+
+logger = logging.getLogger(__name__)
+
+_ALLOWED_ID_TOKEN_ALGS = ['RS256', 'RS384', 'RS512', 'ES256', 'ES384', 'ES512']
 
 
 class MicrosoftADFSAuthenticator(AuthenticatorABC):
@@ -22,6 +29,14 @@ class MicrosoftADFSAuthenticator(AuthenticatorABC):
         base = config.authority.rstrip('/')
         self.auth_url = f'{base}{config.authorize_path}'
         self.token_url = f'{base}{config.token_path}'
+        self.jwks_url = f'{base}{config.jwks_path}'
+
+        ssl_ctx = ssl.create_default_context()
+        if not config.verify_ssl:
+            ssl_ctx.check_hostname = False
+            ssl_ctx.verify_mode = ssl.CERT_NONE
+        # PyJWKClient caches keys in-process; safe to construct once per instance.
+        self._jwks_client = PyJWKClient(self.jwks_url, ssl_context=ssl_ctx)
 
     @staticmethod
     def validate_config_static(config: Dict[str, Any]) -> bool:
@@ -307,18 +322,34 @@ class MicrosoftADFSAuthenticator(AuthenticatorABC):
             },
         )
 
-    @staticmethod
-    def _decode_id_token_claims(id_token: str) -> Optional[Dict[str, Any]]:
-        # The id_token arrived over TLS from an endpoint we just successfully
-        # authenticated against, so we trust the channel and skip signature
-        # verification (which would require fetching JWKS per IdP).
+    def _decode_id_token_claims(self, id_token: str) -> Optional[Dict[str, Any]]:
+        # Verify signature against the IdP's JWKS and enforce aud + exp/nbf.
+        # iss is only enforced when expected_issuer is configured, because some
+        # IdPs (e.g. Authentik in mixed http/https setups) advertise an iss host
+        # that legitimately differs from the configured `authority`.
         try:
-            segments = id_token.split('.')
-            if len(segments) < 2:
-                return None
-            payload_b64 = segments[1]
-            padding = '=' * (-len(payload_b64) % 4)
-            payload_bytes = base64.urlsafe_b64decode(payload_b64 + padding)
-            return json.loads(payload_bytes)
-        except Exception:
+            signing_key = self._jwks_client.get_signing_key_from_jwt(id_token)
+            decode_kwargs: Dict[str, Any] = {
+                'audience': self.config.client_id,
+                'leeway': self.config.clock_skew_seconds,
+                'algorithms': _ALLOWED_ID_TOKEN_ALGS,
+                'options': {
+                    'verify_signature': True,
+                    'verify_aud': True,
+                    'verify_exp': True,
+                    'verify_nbf': True,
+                    'verify_iss': self.config.expected_issuer is not None,
+                },
+            }
+            if self.config.expected_issuer:
+                decode_kwargs['issuer'] = self.config.expected_issuer
+
+            return jwt.decode(id_token, signing_key.key, **decode_kwargs)
+        except jwt.PyJWTError as e:
+            logger.warning('ADFS id_token JWT validation failed: %s', e)
+            return None
+        except Exception as e:
+            logger.warning(
+                'ADFS id_token decode failed (jwks_url=%s): %s', self.jwks_url, e
+            )
             return None

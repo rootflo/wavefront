@@ -7,6 +7,7 @@ requires-python = ">=3.11"
 
 dependencies = [
     "requests>=2.25.0",
+    "pyjwt[crypto]>=2.9.0",
 ]
 
 [tool.pytest.ini_options]

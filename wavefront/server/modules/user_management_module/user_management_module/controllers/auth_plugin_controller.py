@@ -338,8 +338,8 @@ async def microsoft_oauth_callback(
 @inject
 async def microsoft_adfs_oauth_callback(
     request: Request,
-    code: Optional[str] = Query(...),
     state: str = Query(...),
+    code: Optional[str] = Query(None),
     error: Optional[str] = Query(None),
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
