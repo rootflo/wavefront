@@ -39,25 +39,51 @@ export interface ScheduledJobListResponseData {
   jobs: ScheduledJob[];
 }
 
+/** Per-query overrides; job payload requires a non-empty queries array. */
+export interface ScheduledJobQuerySpec {
+  query_id: string;
+  datasource_id?: string;
+  filter?: string;
+  offset?: number;
+  limit?: number;
+  params?: Record<string, unknown>;
+  column_styles?: ColumnStyleConfig[];
+  date_range?: 'last_day' | 'last_hour' | 'last_7_days' | 'last_30_days';
+  start_date_param?: string;
+  end_date_param?: string;
+}
+
+export interface ScheduledJobEmailPayload {
+  datasource_id: string;
+  queries: ScheduledJobQuerySpec[];
+  recipient_user_ids: string[];
+  subject?: string;
+  email_content?: string;
+  column_styles?: ColumnStyleConfig[];
+  date_range?: 'last_day' | 'last_hour' | 'last_7_days' | 'last_30_days';
+  start_date_param?: string;
+  end_date_param?: string;
+  offset?: number;
+  limit?: number;
+  params?: Record<string, unknown>;
+}
+
 export interface CreateScheduledJobRequest {
   job_type: 'email_dynamic_query';
   cron_expr: string;
   timezone: string;
   max_retries: number;
-  payload: {
-    datasource_id: string;
-    query_id: string;
-    recipient_user_ids: string[];
-    subject?: string;
-    email_content?: string;
-    column_styles?: ColumnStyleConfig[];
-    date_range?: 'last_day' | 'last_hour' | 'last_7_days' | 'last_30_days';
-    start_date_param?: string;
-    end_date_param?: string;
-    offset?: number;
-    limit?: number;
-    params?: Record<string, unknown>;
-  };
+  payload: ScheduledJobEmailPayload;
+}
+
+export type JobStatus = 'active' | 'paused' | 'running' | 'failed' | 'completed';
+
+export interface UpdateScheduledJobRequest {
+  cron_expr?: string;
+  timezone?: string;
+  payload?: ScheduledJobEmailPayload;
+  max_retries?: number;
+  status?: JobStatus;
 }
 
 export type CreateScheduledJobResponse = IApiResponse<ScheduledJobResponseData>;

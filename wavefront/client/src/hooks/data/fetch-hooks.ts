@@ -15,6 +15,7 @@ import { TelephonyConfig } from '@app/types/telephony-config';
 import { ToolDetails, VoiceAgentTool, VoiceAgentToolWithAssociation } from '@app/types/tool';
 import { TtsConfig } from '@app/types/tts-config';
 import { VoiceAgent } from '@app/types/voice-agent';
+import { ScheduledJob } from '@app/types/scheduled-job';
 import { WorkflowListItem, WorkflowPipelineListItem, WorkflowRunListData } from '@app/types/workflow';
 import { UseQueryResult } from '@tanstack/react-query';
 
@@ -65,6 +66,7 @@ import {
   getWorkflowRunsQueryFn,
   getWorkflowsQueryFn,
   readYamlQueryFn,
+  getScheduledJobsQueryFn,
 } from './query-functions';
 import {
   getAgentKey,
@@ -112,6 +114,7 @@ import {
   getWorkflowRunsKey,
   getWorkflowsKey,
   readYamlKey,
+  getScheduledJobsKey,
 } from './query-keys';
 
 export const useGetAllApps = (enabled: boolean): UseQueryResult<App[], Error> => {
@@ -421,6 +424,10 @@ export const useGetAppById = (appId: string, enabled: boolean = true): UseQueryR
 
 export const useGetAppUsers = (appId: string | undefined): UseQueryResult<IUser[], Error> => {
   return useQueryInit(getAppUsersKey(appId || ''), () => getAppUsersQueryFn(), !!appId);
+};
+
+export const useGetScheduledJobs = (appId: string | undefined): UseQueryResult<ScheduledJob[], Error> => {
+  return useQueryInit(getScheduledJobsKey(appId || ''), getScheduledJobsQueryFn, !!appId);
 };
 
 export const useGetConsoleUsers = (): UseQueryResult<IUser[], Error> => {

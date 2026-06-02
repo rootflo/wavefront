@@ -68,6 +68,7 @@ const getUserKey = (userId: string) => ['user', userId];
 const getVoiceAgentToolsKey = (appId: string) => ['voice-agent-tools', appId];
 const getVoiceAgentToolKey = (appId: string, toolId: string) => ['voice-agent-tool', appId, toolId];
 const getAgentToolsKey = (appId: string, agentId: string) => ['agent-tools', appId, agentId];
+const getScheduledJobsKey = (appId: string) => ['scheduled-jobs', appId];
 
 export {
   getAgentKey,
@@ -116,4 +117,5 @@ export {
   getWorkflowsKey,
   getAppByIdKey,
   getAppUsersKey,
+  getScheduledJobsKey,
 };

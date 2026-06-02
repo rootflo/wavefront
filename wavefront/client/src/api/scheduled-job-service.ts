@@ -3,6 +3,7 @@ import {
   CreateScheduledJobResponse,
   DeleteScheduledJobResponse,
   ListScheduledJobsResponse,
+  UpdateScheduledJobRequest,
   UpdateScheduledJobResponse,
 } from '@app/types/scheduled-job';
 import { AxiosInstance } from 'axios';
@@ -24,20 +25,19 @@ export class ScheduledJobService {
     return this.http.get(`/v1/:appId/floware/v1/scheduled-jobs`, { params });
   }
 
-  async updateScheduledJob(
-    jobId: string,
-    payload: {
-      cron_expr?: string;
-      timezone?: string;
-      payload?: Record<string, unknown>;
-      max_retries?: number;
-      status?: 'active' | 'paused' | 'running' | 'failed' | 'completed';
-    }
-  ): Promise<UpdateScheduledJobResponse> {
-    return this.http.patch(`/v1/:appId/floware/v1/scheduled-jobs/${jobId}`, payload);
+  async updateScheduledJob(jobId: string, request: UpdateScheduledJobRequest): Promise<UpdateScheduledJobResponse> {
+    return this.http.patch(`/v1/:appId/floware/v1/scheduled-jobs/${jobId}`, request);
   }
 
   async deleteScheduledJob(jobId: string): Promise<DeleteScheduledJobResponse> {
     return this.http.delete(`/v1/:appId/floware/v1/scheduled-jobs/${jobId}`);
+  }
+
+  async pauseScheduledJob(jobId: string): Promise<UpdateScheduledJobResponse> {
+    return this.http.post(`/v1/:appId/floware/v1/scheduled-jobs/${jobId}/pause`);
+  }
+
+  async resumeScheduledJob(jobId: string): Promise<UpdateScheduledJobResponse> {
+    return this.http.post(`/v1/:appId/floware/v1/scheduled-jobs/${jobId}/resume`);
   }
 }

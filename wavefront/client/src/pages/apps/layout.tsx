@@ -6,6 +6,7 @@ import {
   ModelRepositoryIcon,
   PhoneIcon,
   RagIcon,
+  ScheduledJobsIcon,
   WorkflowIcon,
 } from '@app/assets/icons';
 import { appEnv } from '@app/config/env';
@@ -33,6 +34,13 @@ const navItems = [
     icon: DatasourcesIcon,
     link: `/apps/:appId/datasources`,
     description: 'Manage and configure data sources for this application',
+  },
+  {
+    id: 'scheduled-jobs',
+    name: 'Scheduled Jobs',
+    icon: ScheduledJobsIcon,
+    link: `/apps/:appId/scheduled-jobs`,
+    description: 'Schedule dynamic query reports to be emailed automatically',
   },
   {
     id: 'functions',

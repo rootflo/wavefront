@@ -15,6 +15,7 @@ import { ToolDetails, VoiceAgentTool, VoiceAgentToolWithAssociation } from '@app
 import { TtsConfig } from '@app/types/tts-config';
 import { IUser } from '@app/types/user';
 import { VoiceAgent } from '@app/types/voice-agent';
+import { ScheduledJob } from '@app/types/scheduled-job';
 import { WorkflowListItem, WorkflowPipelineListItem, WorkflowRunListData } from '@app/types/workflow';
 
 const getAllAppsQueryFn = async () => {
@@ -412,6 +413,11 @@ const getConsoleUsersQueryFn = async (): Promise<IUser[]> => {
   return [];
 };
 
+const getScheduledJobsQueryFn = async (): Promise<ScheduledJob[]> => {
+  const response = await floConsoleService.scheduledJobService.listScheduledJobs({ limit: 200 });
+  return response.data.data?.jobs ?? [];
+};
+
 export {
   getAgentQueryFn,
   getAgentsQueryFn,
@@ -458,4 +464,5 @@ export {
   getWorkflowRunsQueryFn,
   getWorkflowsQueryFn,
   readYamlQueryFn,
+  getScheduledJobsQueryFn,
 };
