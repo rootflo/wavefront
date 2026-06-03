@@ -74,7 +74,11 @@ class MicrosoftADFSAuthenticator(AuthenticatorABC):
 
         return True
 
-    def authenticate(self, credentials: Dict[str, Any]) -> AuthResult:
+    def authenticate(
+        self,
+        credentials: Dict[str, Any],
+        expected_nonce: Optional[str] = None,
+    ) -> AuthResult:
         authorization_code = credentials.get('authorization_code')
 
         if not authorization_code:
@@ -100,7 +104,7 @@ class MicrosoftADFSAuthenticator(AuthenticatorABC):
                 error_code='ID_TOKEN_MISSING',
             )
 
-        user_info = self._get_user_info_from_id_token(id_token)
+        user_info = self._get_user_info_from_id_token(id_token, expected_nonce)
 
         if not user_info:
             return AuthResult(
@@ -151,13 +155,11 @@ class MicrosoftADFSAuthenticator(AuthenticatorABC):
         except Exception:
             return False
 
-    def get_authorization_url(self, state: Optional[str] = None) -> Optional[str]:
+    def get_authorization_url(
+        self, state: Optional[str] = None, nonce: Optional[str] = None
+    ) -> Optional[str]:
         if not state:
             raise ValueError("State doesn't exist Microsoft ADFS")
-
-        state_obj = json.loads(state)
-        if state_obj.get('auth_id') is None:
-            raise ValueError("Auth Id doesn't exist in Microsoft ADFS state")
 
         params = {
             'response_type': self.config.response_type,
@@ -169,10 +171,15 @@ class MicrosoftADFSAuthenticator(AuthenticatorABC):
             'prompt': 'select_account',
         }
 
+        if nonce:
+            params['nonce'] = nonce
+
         return f'{self.auth_url}?{urlencode(params)}'
 
-    def handle_callback(self, callback_data: Dict[str, Any]) -> AuthResult:
-        return self.authenticate(callback_data)
+    def handle_callback(
+        self, callback_data: Dict[str, Any], expected_nonce: Optional[str] = None
+    ) -> AuthResult:
+        return self.authenticate(callback_data, expected_nonce=expected_nonce)
 
     def refresh_token(self, refresh_token: str) -> TokenResult:
         if not refresh_token:
@@ -294,8 +301,10 @@ class MicrosoftADFSAuthenticator(AuthenticatorABC):
                 None,
             )
 
-    def _get_user_info_from_id_token(self, id_token: str) -> Optional[UserInfo]:
-        claims = self._decode_id_token_claims(id_token)
+    def _get_user_info_from_id_token(
+        self, id_token: str, expected_nonce: Optional[str] = None
+    ) -> Optional[UserInfo]:
+        claims = self._decode_id_token_claims(id_token, expected_nonce=expected_nonce)
         if not claims:
             return None
 
@@ -322,7 +331,9 @@ class MicrosoftADFSAuthenticator(AuthenticatorABC):
             },
         )
 
-    def _decode_id_token_claims(self, id_token: str) -> Optional[Dict[str, Any]]:
+    def _decode_id_token_claims(
+        self, id_token: str, expected_nonce: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
         # Verify signature against the IdP's JWKS and enforce aud + exp/nbf.
         # iss is only enforced when expected_issuer is configured, because some
         # IdPs (e.g. Authentik in mixed http/https setups) advertise an iss host
@@ -344,7 +355,13 @@ class MicrosoftADFSAuthenticator(AuthenticatorABC):
             if self.config.expected_issuer:
                 decode_kwargs['issuer'] = self.config.expected_issuer
 
-            return jwt.decode(id_token, signing_key.key, **decode_kwargs)
+            claims = jwt.decode(id_token, signing_key.key, **decode_kwargs)
+
+            if expected_nonce is not None and claims.get('nonce') != expected_nonce:
+                logger.warning('ADFS id_token nonce mismatch')
+                return None
+
+            return claims
         except jwt.PyJWTError as e:
             logger.warning('ADFS id_token JWT validation failed: %s', e)
             return None

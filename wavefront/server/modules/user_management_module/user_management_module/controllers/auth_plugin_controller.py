@@ -1,4 +1,6 @@
 import json
+import logging
+import secrets
 from uuid import uuid4
 from db_repo_module.models.resource import ResourceScope
 from dependency_injector.wiring import inject, Provide
@@ -35,6 +37,53 @@ from authenticator.helper import validate_email
 
 
 auth_plugin_router = APIRouter()
+
+logger = logging.getLogger(__name__)
+
+# Per-flow OAuth state lives in Redis with a short TTL. Each authorize ->
+# callback round-trip is a one-shot: stored on init, consumed (deleted) on
+# successful callback. Replays after consumption miss the cache and are
+# rejected.
+OAUTH_FLOW_TTL_SECONDS = 600
+_OAUTH_FLOW_KEY_PREFIX = 'oauth:flow:'
+
+
+def _store_oauth_flow(cache_manager: CacheManager, auth_id: str) -> tuple[str, str]:
+    """Mint and persist an opaque state+nonce pair bound to auth_id.
+
+    `nx=True` prevents accidental overwrite if (astronomically) the same
+    32-byte token is minted twice.
+    """
+    state = secrets.token_urlsafe(32)
+    nonce = secrets.token_urlsafe(32)
+    cache_manager.add(
+        f'{_OAUTH_FLOW_KEY_PREFIX}{state}',
+        json.dumps({'auth_id': str(auth_id), 'nonce': nonce}),
+        expiry=OAUTH_FLOW_TTL_SECONDS,
+        nx=True,
+    )
+    return state, nonce
+
+
+def _consume_oauth_flow(
+    cache_manager: CacheManager, state: Optional[str]
+) -> Optional[Dict[str, str]]:
+    """Single-use lookup of the flow record. Returns None on miss/parse error."""
+    if not state:
+        return None
+    key = f'{_OAUTH_FLOW_KEY_PREFIX}{state}'
+    raw = cache_manager.get_str(key)
+    if not raw:
+        return None
+    try:
+        flow = json.loads(raw)
+    except (TypeError, ValueError):
+        cache_manager.remove(key)
+        return None
+    cache_manager.remove(key)
+    if not isinstance(flow, dict) or 'auth_id' not in flow:
+        return None
+    return flow
 
 
 class UnifiedAuthRequest(BaseModel):
@@ -204,6 +253,7 @@ async def init_oauth_flow(
     authenticator_repository: SQLAlchemyRepository[Authenticator] = Depends(
         Provide[PluginsContainer.authenticator_repository]
     ),
+    cache_manager: CacheManager = Depends(Provide[UserContainer.cache_manager]),
 ):
     """Initialize OAuth flow and return authorization URL."""
 
@@ -222,9 +272,10 @@ async def init_oauth_flow(
                 ),
             )
 
-        # Generate state and get authorization URL
-        state = json.dumps({'auth_id': oauth_request.auth_id})
-        auth_url = authenticator.get_authorization_url(state)
+        # Mint opaque CSRF state + OIDC nonce, persist server-side, and pass
+        # both into the provider so they end up in the authorize URL.
+        state, nonce = _store_oauth_flow(cache_manager, oauth_request.auth_id)
+        auth_url = authenticator.get_authorization_url(state, nonce=nonce)
 
         if not auth_url:
             return JSONResponse(
@@ -274,11 +325,13 @@ async def google_oauth_callback(
     token_service: TokenService = Depends(Provide[AuthContainer.token_service]),
 ):
     """Handle Google OAuth callback."""
-    state_obj = json.loads(state)
-    auth_id = state_obj['auth_id']
+    flow = _consume_oauth_flow(cache_manager, state)
+    if flow is None:
+        logger.warning('Google OAuth callback received unknown/expired state')
+        return RedirectResponse(url='about:blank')
 
     return await _handle_oauth_callback(
-        auth_id,
+        flow['auth_id'],
         {'authorization_code': code, 'state': state, 'error': error},
         request,
         response_formatter,
@@ -288,6 +341,7 @@ async def google_oauth_callback(
         session_repository,
         cache_manager,
         token_service,
+        expected_nonce=flow.get('nonce'),
     )
 
 
@@ -317,11 +371,13 @@ async def microsoft_oauth_callback(
     token_service: TokenService = Depends(Provide[AuthContainer.token_service]),
 ):
     """Handle Microsoft OAuth callback."""
-    state_obj = json.loads(state)
-    auth_id = state_obj['auth_id']
+    flow = _consume_oauth_flow(cache_manager, state)
+    if flow is None:
+        logger.warning('Microsoft OAuth callback received unknown/expired state')
+        return RedirectResponse(url='about:blank')
 
     return await _handle_oauth_callback(
-        auth_id,
+        flow['auth_id'],
         {'authorization_code': code, 'state': state, 'error': error},
         request,
         response_formatter,
@@ -331,6 +387,7 @@ async def microsoft_oauth_callback(
         session_repository,
         cache_manager,
         token_service,
+        expected_nonce=flow.get('nonce'),
     )
 
 
@@ -358,11 +415,13 @@ async def microsoft_adfs_oauth_callback(
     token_service: TokenService = Depends(Provide[AuthContainer.token_service]),
 ):
     """Handle Microsoft ADFS OAuth callback."""
-    state_obj = json.loads(state)
-    auth_id = state_obj['auth_id']
+    flow = _consume_oauth_flow(cache_manager, state)
+    if flow is None:
+        logger.warning('Microsoft ADFS callback received unknown/expired state')
+        return RedirectResponse(url='about:blank')
 
     return await _handle_oauth_callback(
-        auth_id,
+        flow['auth_id'],
         {'authorization_code': code, 'state': state, 'error': error},
         request,
         response_formatter,
@@ -372,6 +431,7 @@ async def microsoft_adfs_oauth_callback(
         session_repository,
         cache_manager,
         token_service,
+        expected_nonce=flow.get('nonce'),
     )
 
 
@@ -386,6 +446,7 @@ async def _handle_oauth_callback(
     session_repository: SQLAlchemyRepository[Session],
     cache_manager: CacheManager,
     token_service: TokenService,
+    expected_nonce: Optional[str] = None,
 ) -> RedirectResponse:
     """Common OAuth callback handler."""
 
@@ -434,7 +495,9 @@ async def _handle_oauth_callback(
             return RedirectResponse(url='about:blank')
 
         # Handle OAuth callback
-        auth_result = authenticator.handle_callback(callback_data)
+        auth_result = authenticator.handle_callback(
+            callback_data, expected_nonce=expected_nonce
+        )
 
         if not auth_result.success:
             if failure_url:

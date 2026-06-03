@@ -116,11 +116,15 @@ class EmailPasswordAuthenticator(AuthenticatorABC):
         except Exception:
             return False
 
-    def get_authorization_url(self, state: Optional[str] = None) -> Optional[str]:
+    def get_authorization_url(
+        self, state: Optional[str] = None, nonce: Optional[str] = None
+    ) -> Optional[str]:
         """Email/password doesn't need authorization URL."""
         return None
 
-    def handle_callback(self, callback_data: Dict[str, Any]) -> AuthResult:
+    def handle_callback(
+        self, callback_data: Dict[str, Any], expected_nonce: Optional[str] = None
+    ) -> AuthResult:
         """Email/password doesn't use OAuth callbacks."""
         return AuthResult(
             success=False,

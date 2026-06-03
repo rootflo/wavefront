@@ -108,12 +108,18 @@ class AuthenticatorABC(ABC):
         pass
 
     @abstractmethod
-    def get_authorization_url(self, state: Optional[str] = None) -> Optional[str]:
+    def get_authorization_url(
+        self, state: Optional[str] = None, nonce: Optional[str] = None
+    ) -> Optional[str]:
         """
         Get the authorization URL for OAuth flow.
 
         Args:
-            state: Optional state parameter for OAuth flow
+            state: Opaque CSRF state token issued and tracked by the controller.
+                Providers must treat it as an opaque string and not parse it.
+            nonce: Optional OIDC nonce to bind the resulting id_token to this
+                authorize request. Providers that consume id_tokens should
+                forward this value and verify it on callback.
 
         Returns:
             Optional[str]: Authorization URL for OAuth providers, None for email/password
@@ -121,12 +127,17 @@ class AuthenticatorABC(ABC):
         pass
 
     @abstractmethod
-    def handle_callback(self, callback_data: Dict[str, Any]) -> AuthResult:
+    def handle_callback(
+        self, callback_data: Dict[str, Any], expected_nonce: Optional[str] = None
+    ) -> AuthResult:
         """
         Handle OAuth callback from provider.
 
         Args:
             callback_data: Dictionary containing callback data (code, state, etc.)
+            expected_nonce: Nonce that was sent on the matching authorize
+                request. Providers that decode id_tokens must reject the
+                callback if the id_token's `nonce` claim does not match.
 
         Returns:
             AuthResult: Authentication result
