@@ -48,7 +48,7 @@ export interface ScheduledJobQuerySpec {
   limit?: number;
   params?: Record<string, unknown>;
   column_styles?: ColumnStyleConfig[];
-  date_range?: 'last_day' | 'last_hour' | 'last_7_days' | 'last_30_days';
+  date_range?: 'last_day' | 't_2' | 'last_hour' | 'last_7_days' | 'last_30_days';
   start_date_param?: string;
   end_date_param?: string;
 }
@@ -60,7 +60,7 @@ export interface ScheduledJobEmailPayload {
   subject?: string;
   email_content?: string;
   column_styles?: ColumnStyleConfig[];
-  date_range?: 'last_day' | 'last_hour' | 'last_7_days' | 'last_30_days';
+  date_range?: 'last_day' | 't_2' | 'last_hour' | 'last_7_days' | 'last_30_days';
   start_date_param?: string;
   end_date_param?: string;
   offset?: number;

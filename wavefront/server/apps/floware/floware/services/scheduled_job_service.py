@@ -93,7 +93,13 @@ class ScheduledJobService:
         base_params = payload.get('params')
         params: dict = dict(base_params) if isinstance(base_params, dict) else {}
         date_range = payload.get('date_range')
-        if date_range not in {'last_day', 'last_hour', 'last_7_days', 'last_30_days'}:
+        if date_range not in {
+            'last_day',
+            't_2',
+            'last_hour',
+            'last_7_days',
+            'last_30_days',
+        }:
             return params or None
 
         start_key = payload.get('start_date_param', 'start_date')
@@ -113,6 +119,10 @@ class ScheduledJobService:
         if date_range == 'last_day':
             start_date = today - timedelta(days=1)
             end_date = today - timedelta(days=1)
+        elif date_range == 't_2':
+            # T-2: two calendar days before the run date in the job timezone.
+            start_date = today - timedelta(days=2)
+            end_date = today - timedelta(days=2)
         elif date_range == 'last_7_days':
             end_date = today - timedelta(days=1)
             start_date = end_date - timedelta(days=6)

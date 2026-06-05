@@ -82,9 +82,9 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
   const [emailContent, setEmailContent] = useState('');
   const [queryParamsJson, setQueryParamsJson] = useState('');
   const [columnStylesJson, setColumnStylesJson] = useState('');
-  const [dateRange, setDateRange] = useState<'none' | 'last_day' | 'last_hour' | 'last_7_days' | 'last_30_days'>(
-    'none'
-  );
+  const [dateRange, setDateRange] = useState<
+    'none' | 'last_day' | 't_2' | 'last_hour' | 'last_7_days' | 'last_30_days'
+  >('none');
   const [startDateParamKey, setStartDateParamKey] = useState('start_date');
   const [endDateParamKey, setEndDateParamKey] = useState('end_date');
   const [maxRetries, setMaxRetries] = useState('3');
@@ -153,6 +153,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
     const dateRangeValue = payload.date_range;
     if (
       dateRangeValue === 'last_day' ||
+      dateRangeValue === 't_2' ||
       dateRangeValue === 'last_hour' ||
       dateRangeValue === 'last_7_days' ||
       dateRangeValue === 'last_30_days'
@@ -407,8 +408,9 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">None</SelectItem>
-                    <SelectItem value="last_day">Last day</SelectItem>
                     <SelectItem value="last_hour">Last hour</SelectItem>
+                    <SelectItem value="last_day">Last day</SelectItem>
+                    <SelectItem value="t_2">T-2 (2 days ago)</SelectItem>
                     <SelectItem value="last_7_days">Last 7 days</SelectItem>
                     <SelectItem value="last_30_days">Last 30 days</SelectItem>
                   </SelectContent>
