@@ -22,8 +22,8 @@ export class AppUserService {
   /**
    * List users with access to an app (owners only)
    */
-  async listAppUsers(appId: string): Promise<IApiResponse<{ users: IUser[] }>> {
-    return this.http.get(`/v1/apps/${appId}/users`);
+  async listAppUsers(): Promise<IApiResponse<{ users: IUser[] }>> {
+    return this.http.get(`/v1/:appId/floware/v1/users`);
   }
 
   /**

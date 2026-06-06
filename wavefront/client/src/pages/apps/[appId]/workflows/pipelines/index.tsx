@@ -85,7 +85,7 @@ const WorkflowPipelinesPage: React.FC = () => {
   };
 
   return (
-    <div className="h-full w-full overflow-hidden">
+    <div className="w-full pb-8">
       <div className="mb-8 flex items-center justify-end">
         <div className="flex items-center gap-4">
           <Select value={workflow || undefined} onValueChange={(value) => handleWorkflowChange(value || '')}>

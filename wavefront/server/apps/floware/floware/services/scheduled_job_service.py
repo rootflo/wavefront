@@ -1,30 +1,56 @@
-import csv
+import hashlib
+import html
 import io
 import json
 import os
+import re
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from apscheduler.triggers.cron import CronTrigger
 from common_module.log.logger import logger
 from common_module.utils.serializer import serialize_values
 from datasource import DatasourcePlugin
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill
 from db_repo_module.database.connection import DatabaseClient
 from db_repo_module.models.datasource import Datasource
 from db_repo_module.models.dynamic_query_yaml import DynamicQueryYaml
+from db_repo_module.models.resource import ResourceScope
+from db_repo_module.models.role import Role
 from db_repo_module.models.scheduled_job import ScheduledJob
 from db_repo_module.models.scheduled_job_execution import ScheduledJobExecution
+from db_repo_module.models.user import User
+from db_repo_module.models.user_role import UserRole
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from plugins_module.services.dynamic_query_service import DynamicQueryService
-from plugins_module.services.datasource_services import get_datasource_config
+from plugins_module.services.datasource_services import (
+    fetch_data_filters,
+    get_datasource_config,
+)
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
+from user_management_module.constants.auth import SERVICE_AUTH_ROLE_ID
 from user_management_module.services.email_service import EmailService
+from user_management_module.services.user_service import UserService
 
 STALE_LOCK_TIMEOUT_MINUTES = 30
 SIGNED_URL_EXPIRY_SECONDS = 7 * 24 * 60 * 60
 # Gmail and many providers cap attachments; keep below typical limits.
 MAX_EMAIL_ATTACHMENT_BYTES = 10 * 1024 * 1024
+
+COLUMN_FILL_COLORS = {
+    'light_red': 'FFC7CE',
+    'light_yellow': 'FFEB9C',
+    'light_green': 'C6EFCE',
+    'dark_green': '006100',
+}
+COLUMN_FILL_FONT_COLORS = {
+    'dark_green': 'FFFFFF',
+}
+
+EMAIL_QUERY_PLACEHOLDER_PATTERN = re.compile(r'\{([a-zA-Z0-9_.\-]+)\}')
 
 
 class ScheduledJobService:
@@ -38,6 +64,10 @@ class ScheduledJobService:
         cloud_storage_manager,
         bucket_name: str,
         email_service: EmailService,
+        user_repository: SQLAlchemyRepository[User],
+        user_service: UserService,
+        role_repository: SQLAlchemyRepository[Role],
+        user_role_repository: SQLAlchemyRepository[UserRole],
     ):
         self.db_client = db_client
         self.scheduled_job_repository = scheduled_job_repository
@@ -47,6 +77,10 @@ class ScheduledJobService:
         self.cloud_storage_manager = cloud_storage_manager
         self.bucket_name = bucket_name
         self.email_service = email_service
+        self.user_repository = user_repository
+        self.user_service = user_service
+        self.role_repository = role_repository
+        self.user_role_repository = user_role_repository
         self.worker_id = os.getenv('HOSTNAME', 'floware-worker')
         self.dynamic_query_service = DynamicQueryService(
             cloud_storage_manager=self.cloud_storage_manager,
@@ -59,7 +93,13 @@ class ScheduledJobService:
         base_params = payload.get('params')
         params: dict = dict(base_params) if isinstance(base_params, dict) else {}
         date_range = payload.get('date_range')
-        if date_range not in {'last_day', 'last_hour', 'last_7_days', 'last_30_days'}:
+        if date_range not in {
+            'last_day',
+            't_2',
+            'last_hour',
+            'last_7_days',
+            'last_30_days',
+        }:
             return params or None
 
         start_key = payload.get('start_date_param', 'start_date')
@@ -79,6 +119,10 @@ class ScheduledJobService:
         if date_range == 'last_day':
             start_date = today - timedelta(days=1)
             end_date = today - timedelta(days=1)
+        elif date_range == 't_2':
+            # T-2: two calendar days before the run date in the job timezone.
+            start_date = today - timedelta(days=2)
+            end_date = today - timedelta(days=2)
         elif date_range == 'last_7_days':
             end_date = today - timedelta(days=1)
             start_date = end_date - timedelta(days=6)
@@ -124,6 +168,7 @@ class ScheduledJobService:
     async def list_jobs(
         self,
         limit: int = 100,
+        offset: int = 0,
         job_type: str | None = None,
         status: str | None = None,
         payload_filters: dict[str, str] | None = None,
@@ -135,9 +180,26 @@ class ScheduledJobService:
             query = query.where(ScheduledJob.status == status)
         if payload_filters:
             for key, value in payload_filters.items():
+                if key == 'query_id':
+                    query = query.where(
+                        text(
+                            """
+                            EXISTS (
+                                SELECT 1
+                                FROM jsonb_array_elements(
+                                    scheduled_job.payload->'queries'
+                                ) AS elem
+                                WHERE elem->>'query_id' = :query_id
+                            )
+                            """
+                        ).bindparams(query_id=value)
+                    )
+                    continue
                 # JSONB subscript + astext for case-sensitive text comparison.
                 query = query.where(ScheduledJob.payload[key].astext == value)
-        query = query.order_by(ScheduledJob.created_at.desc()).limit(limit)
+        query = (
+            query.order_by(ScheduledJob.created_at.desc()).offset(offset).limit(limit)
+        )
         async with self.db_client.session() as session:
             return (await session.scalars(query)).all()
 
@@ -350,38 +412,114 @@ class ScheduledJobService:
 
         asyncio.run(self.recover_stale_locks())
 
-    async def _execute_email_dynamic_query_job(self, payload: dict, job_timezone: str):
-        datasource_id = payload.get('datasource_id')
-        query_id = payload.get('query_id')
-        recipients = payload.get('recipients', [])
-        subject = payload.get('subject', f'Scheduled Dynamic Query Report: {query_id}')
-        filter_expr = payload.get('filter')
-        offset = payload.get('offset', 0)
-        limit = payload.get('limit', 100)
-        params = self._resolve_runtime_params(payload, job_timezone)
+    @staticmethod
+    def _normalize_query_specs(payload: dict) -> list[dict]:
+        queries = payload.get('queries')
+        if not isinstance(queries, list) or not queries:
+            raise ValueError('payload must include a non-empty queries array')
 
-        if isinstance(recipients, str):
-            recipients = [recipients]
+        specs: list[dict] = []
+        seen_query_ids: set[str] = set()
+        for index, item in enumerate(queries):
+            if not isinstance(item, dict):
+                raise ValueError(f'payload.queries[{index}] must be an object')
+            query_id = item.get('query_id')
+            if not query_id or not str(query_id).strip():
+                raise ValueError(
+                    f'payload.queries[{index}] must include a non-empty query_id'
+                )
+            normalized_query_id = str(query_id).strip()
+            if normalized_query_id in seen_query_ids:
+                raise ValueError(
+                    f'payload.queries[{index}] duplicates query_id '
+                    f'{normalized_query_id!r}'
+                )
+            seen_query_ids.add(normalized_query_id)
+            specs.append(item)
+        return specs
 
-        if not datasource_id or not query_id or not recipients:
-            raise ValueError('payload must include datasource_id, query_id, recipients')
+    @classmethod
+    def _merge_query_spec(cls, job_payload: dict, query_spec: dict) -> dict:
+        """Merge per-query overrides with job-level defaults."""
+        job_params = job_payload.get('params')
+        query_params = query_spec.get('params')
+        merged_params: dict | None = None
+        if isinstance(job_params, dict) or isinstance(query_params, dict):
+            merged_params = {}
+            if isinstance(job_params, dict):
+                merged_params.update(job_params)
+            if isinstance(query_params, dict):
+                merged_params.update(query_params)
 
-        datasource_type, datasource_config = await get_datasource_config(
-            datasource_id=datasource_id,
-            datasource_repository=self.datasource_repository,
+        return {
+            'datasource_id': query_spec.get('datasource_id')
+            or job_payload.get('datasource_id'),
+            'query_id': str(query_spec['query_id']).strip(),
+            'filter': query_spec.get('filter', job_payload.get('filter')),
+            'offset': query_spec.get('offset', job_payload.get('offset', 0)),
+            'limit': query_spec.get('limit', job_payload.get('limit', 100)),
+            'column_styles': query_spec.get(
+                'column_styles', job_payload.get('column_styles')
+            ),
+            'date_range': query_spec.get('date_range', job_payload.get('date_range')),
+            'start_date_param': query_spec.get(
+                'start_date_param', job_payload.get('start_date_param', 'start_date')
+            ),
+            'end_date_param': query_spec.get(
+                'end_date_param', job_payload.get('end_date_param', 'end_date')
+            ),
+            'params': merged_params,
+        }
+
+    @staticmethod
+    def _normalize_recipient_user_ids(payload: dict) -> list[str]:
+        recipient_user_ids = payload.get('recipient_user_ids', [])
+        if isinstance(recipient_user_ids, str):
+            recipient_user_ids = [recipient_user_ids]
+        return [
+            str(user_id).strip()
+            for user_id in recipient_user_ids
+            if str(user_id).strip()
+        ]
+
+    async def _role_is_admin(self, role_id: str) -> bool:
+        if role_id == SERVICE_AUTH_ROLE_ID:
+            return True
+        role = await self.role_repository.find_one(id=role_id)
+        return bool(role and role.name == 'admin')
+
+    async def _user_is_admin(self, user_id: str) -> bool:
+        user_roles = await self.user_role_repository.find(user_id=user_id, limit=100)
+        for user_role in user_roles:
+            if await self._role_is_admin(str(user_role.role_id)):
+                return True
+        return False
+
+    async def _rls_filter_for_user(self, user_id: str) -> str | None:
+        if await self._user_is_admin(user_id):
+            return None
+        rls_filters = await self.user_service.get_user_resources(
+            user_id=user_id, scope=ResourceScope.DATA
         )
-        if not datasource_type or not datasource_config:
-            raise ValueError(f'Datasource not found: {datasource_id}')
+        if len(rls_filters) == 0:
+            raise ValueError(f'Data access not set for non-admin user {user_id}')
+        additional_filters = fetch_data_filters(rls_filters)
+        return f"{' $and '.join(additional_filters)}"
 
-        yaml_query, yaml_name = await self.dynamic_query_service.get_dynamic_yaml_query(
-            query_id
-        )
-        if not yaml_query:
-            raise ValueError(f'Dynamic query not found: {query_id}')
-        datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
+    async def _fetch_dynamic_query_rows(
+        self,
+        datasource_plugin: DatasourcePlugin,
+        yaml_query: list,
+        query_id: str,
+        rls_filter_str: str | None,
+        filter_expr: str | None,
+        offset: int,
+        limit: int,
+        params: dict | None,
+    ) -> list[dict]:
         result = await datasource_plugin.execute_dynamic_query(
             yaml_query,
-            None,
+            rls_filter_str,
             filter_expr,
             offset,
             limit,
@@ -393,144 +531,720 @@ class ScheduledJobService:
         first_key = next(iter(result))
         if result[first_key].get('status') != 'success':
             raise ValueError(
-                f'Unexpected dynamic query result format for query_id {query_id}, no successful results'
+                f'Unexpected dynamic query result format for query_id {query_id}, '
+                'no successful results'
             )
-
         rows = result[first_key].get('result') or []
         if not isinstance(rows, list):
             raise ValueError(
                 f'Unexpected dynamic query result format for query_id {query_id}, invalid rows'
             )
+        return rows
 
-        if len(rows) == 0:
-            start_key = str(payload.get('start_date_param', 'start_date'))
-            end_key = str(payload.get('end_date_param', 'end_date'))
-            applied_start = params.get(start_key) if isinstance(params, dict) else None
-            applied_end = params.get(end_key) if isinstance(params, dict) else None
-            logger.info(
-                f'No records in scheduled window for query_id={query_id}; '
-                f'applying range {applied_start}..{applied_end} (keys: {start_key}, {end_key}). '
-                'Skipping email.'
-            )
-            return
+    @staticmethod
+    def _sanitize_filename_part(value: str) -> str:
+        return ''.join(
+            ch if ch.isalnum() or ch in '-_' else '_' for ch in value.strip()
+        )
 
-        if rows:
-            fieldnames = list(rows[0].keys())
-            for row in rows[1:]:
-                for k in row:
-                    if k not in fieldnames:
-                        fieldnames.append(k)
-        else:
-            fieldnames = []
-
-        def _cell_value(v):
-            if isinstance(v, (dict, list)):
-                return json.dumps(v)
-            return v if v is None or isinstance(v, str) else str(v)
-
-        report_filename = f'{query_id}_{datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")}_report.csv'
-        buf = io.StringIO()
-        if fieldnames:
-            writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction='ignore')
-            writer.writeheader()
-            for row in rows:
-                writer.writerow({k: _cell_value(row.get(k)) for k in fieldnames})
-        csv_bytes = buf.getvalue().encode('utf-8')
-        csv_size = len(csv_bytes)
-
-        report_url: str | None = None
-        use_attachment = csv_size <= MAX_EMAIL_ATTACHMENT_BYTES
-        if not use_attachment:
-            report_key = f'scheduled_query_reports/{query_id}/{report_filename}'
-            self.cloud_storage_manager.save_small_file(
-                file_content=csv_bytes,
-                bucket_name=self.bucket_name,
-                key=report_key,
-                content_type='text/csv',
-            )
-            report_url = self.cloud_storage_manager.generate_presigned_url(
-                bucket_name=self.bucket_name,
-                key=report_key,
-                type='GET',
-                expiresIn=SIGNED_URL_EXPIRY_SECONDS,
-            )
-        generated_at_utc = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+    @classmethod
+    def _build_report_filename(
+        cls,
+        *,
+        query_id: str,
+        user_id: str,
+        run_timestamp: str,
+        params: dict | None,
+        payload: dict,
+    ) -> str:
+        unique_hash = hashlib.sha256(f'{user_id}:{run_timestamp}'.encode()).hexdigest()[
+            :12
+        ]
         start_key = str(payload.get('start_date_param', 'start_date'))
         end_key = str(payload.get('end_date_param', 'end_date'))
-        applied_start = params.get(start_key) if isinstance(params, dict) else None
-        applied_end = params.get(end_key) if isinstance(params, dict) else None
-        applied_range_html = (
-            f'<p><b>Applied Date Range:</b> {applied_start} to {applied_end} '
-            f'(keys: {start_key}, {end_key})</p>'
-            if applied_start and applied_end
-            else '<p><b>Applied Date Range:</b> Not specified in query parameters</p>'
-        )
-        body = (
-            f'<p>Scheduled report: <b>{yaml_name or query_id}</b></p>'
-            f'<p><b>Datasource ID:</b> {datasource_id}</p>'
-            f'<p><b>Query ID:</b> {query_id}</p>'
-            f'<p><b>Generated At:</b> {generated_at_utc}</p>'
-            f'{applied_range_html}'
-            f'<p><b>Total Rows:</b> {len(rows)}</p>'
-            f'<p><b>Columns:</b> {len(fieldnames)}</p>'
-            '<p>The report has been generated successfully.</p>'
-        )
-        if use_attachment:
-            body += (
-                f'<p><b>Delivery:</b> CSV attached ({csv_size:,} bytes, '
-                f'max {MAX_EMAIL_ATTACHMENT_BYTES // (1024 * 1024)} MB for email).</p>'
-            )
+        start_date = params.get(start_key) if isinstance(params, dict) else None
+        end_date = params.get(end_key) if isinstance(params, dict) else None
+
+        if start_date and end_date:
+            start_part = cls._sanitize_filename_part(str(start_date))
+            end_part = cls._sanitize_filename_part(str(end_date))
+            return f'{query_id}_{start_part}_{end_part}_{unique_hash}_report.xlsx'
+        return f'{query_id}_{unique_hash}_report.xlsx'
+
+    @staticmethod
+    def _parse_numeric_cell_value(value) -> float | None:
+        if value is None or value == '':
+            return None
+        if isinstance(value, bool):
+            return float(value)
+        if isinstance(value, (int, float, Decimal)):
+            return float(value)
+        if isinstance(value, str):
+            stripped = value.strip().replace(',', '')
+            if not stripped:
+                return None
+            try:
+                return float(stripped)
+            except ValueError:
+                return None
+        return None
+
+    @staticmethod
+    def _normalize_column_key(name: str) -> str:
+        return name.strip().casefold()
+
+    @classmethod
+    def _parse_column_styles_config(cls, raw_config) -> list[dict]:
+        if not isinstance(raw_config, list):
+            return []
+
+        parsed_configs: list[dict] = []
+        supported_ops = {'eq', 'neq', 'lt', 'lte', 'gt', 'gte', 'between'}
+        for item in raw_config:
+            if not isinstance(item, dict):
+                continue
+            column = item.get('column')
+            rules = item.get('rules')
+            if not isinstance(column, str) or not column.strip():
+                continue
+            if not isinstance(rules, list):
+                continue
+
+            parsed_rules: list[dict] = []
+            for rule in rules:
+                if not isinstance(rule, dict):
+                    continue
+                op = rule.get('op')
+                fill = rule.get('fill')
+                if (
+                    op not in supported_ops
+                    or not isinstance(fill, str)
+                    or not fill.strip()
+                ):
+                    continue
+
+                parsed_rule: dict = {'op': op, 'fill': fill.strip()}
+                if op == 'between':
+                    min_value = rule.get('min')
+                    max_value = rule.get('max')
+                    if not isinstance(min_value, (int, float)) or not isinstance(
+                        max_value, (int, float)
+                    ):
+                        continue
+                    parsed_rule['min'] = float(min_value)
+                    parsed_rule['max'] = float(max_value)
+                    parsed_rule['min_inclusive'] = bool(rule.get('min_inclusive', True))
+                    parsed_rule['max_inclusive'] = bool(rule.get('max_inclusive', True))
+                else:
+                    value = rule.get('value')
+                    if not isinstance(value, (int, float)):
+                        continue
+                    parsed_rule['value'] = float(value)
+                parsed_rules.append(parsed_rule)
+
+            if parsed_rules:
+                parsed_configs.append({'column': column.strip(), 'rules': parsed_rules})
+        return parsed_configs
+
+    @staticmethod
+    def _normalize_hex_color(value: str) -> str | None:
+        if len(value) == 6 and all(ch in '0123456789ABCDEFabcdef' for ch in value):
+            return value.upper()
+        return None
+
+    @classmethod
+    def _resolve_fill_styles(
+        cls, fill_name: str
+    ) -> tuple[PatternFill | None, Font | None]:
+        normalized = fill_name.strip()
+        bg_hex: str | None = None
+        font_hex: str | None = None
+
+        if normalized.startswith('#'):
+            bg_hex = cls._normalize_hex_color(normalized[1:])
+        elif normalized.casefold() in COLUMN_FILL_COLORS:
+            key = normalized.casefold()
+            bg_hex = COLUMN_FILL_COLORS[key]
+            font_hex = COLUMN_FILL_FONT_COLORS.get(key)
         else:
-            body += (
-                f'<p><b>Delivery:</b> Report is {csv_size:,} bytes (over '
-                f'{MAX_EMAIL_ATTACHMENT_BYTES // (1024 * 1024)} MB email limit). '
-                'Use the download link below instead of an attachment.</p>'
-                '<p>The link is secure and expires in 7 days.</p>'
+            bg_hex = cls._normalize_hex_color(normalized)
+
+        if bg_hex is None:
+            return None, None
+
+        fill = PatternFill(start_color=bg_hex, end_color=bg_hex, fill_type='solid')
+        font = Font(color=font_hex) if font_hex else None
+        return fill, font
+
+    @classmethod
+    def _rule_matches(cls, rule: dict, numeric_value: float) -> bool:
+        op = rule['op']
+        if op == 'eq':
+            return numeric_value == rule['value']
+        if op == 'neq':
+            return numeric_value != rule['value']
+        if op == 'lt':
+            return numeric_value < rule['value']
+        if op == 'lte':
+            return numeric_value <= rule['value']
+        if op == 'gt':
+            return numeric_value > rule['value']
+        if op == 'gte':
+            return numeric_value >= rule['value']
+
+        min_value = rule['min']
+        max_value = rule['max']
+        if rule.get('min_inclusive', True):
+            if numeric_value < min_value:
+                return False
+        elif numeric_value <= min_value:
+            return False
+        if rule.get('max_inclusive', True):
+            if numeric_value > max_value:
+                return False
+        elif numeric_value >= max_value:
+            return False
+        return True
+
+    @classmethod
+    def _build_column_style_map(
+        cls, fieldnames: list[str], column_styles: list[dict]
+    ) -> dict[int, list[dict]]:
+        column_index = {
+            cls._normalize_column_key(name): idx for idx, name in enumerate(fieldnames)
+        }
+        style_map: dict[int, list[dict]] = {}
+        for config in column_styles:
+            col_idx = column_index.get(cls._normalize_column_key(config['column']))
+            if col_idx is None:
+                logger.warning(
+                    f'Column style config ignored; column not found: {config["column"]}'
+                )
+                continue
+            style_map[col_idx] = config['rules']
+        return style_map
+
+    @classmethod
+    def _apply_cell_style(cls, cell, raw_value, rules: list[dict]) -> None:
+        numeric_value = cls._parse_numeric_cell_value(raw_value)
+        if numeric_value is None:
+            return
+        for rule in rules:
+            if not cls._rule_matches(rule, numeric_value):
+                continue
+            fill, font = cls._resolve_fill_styles(rule['fill'])
+            if fill:
+                cell.fill = fill
+            if font:
+                cell.font = font
+            return
+
+    @staticmethod
+    def _fieldnames_from_rows(rows: list[dict]) -> list[str]:
+        if not rows:
+            return []
+        fieldnames = list(rows[0].keys())
+        for row in rows[1:]:
+            for key in row:
+                if key not in fieldnames:
+                    fieldnames.append(key)
+        return fieldnames
+
+    @classmethod
+    def _format_cell_display_value(cls, value) -> str:
+        if isinstance(value, (dict, list)):
+            return html.escape(json.dumps(value))
+        if value is None:
+            return ''
+        return html.escape(str(value))
+
+    @classmethod
+    def _css_for_cell_value(cls, raw_value, rules: list[dict] | None) -> str:
+        if not rules:
+            return ''
+        numeric_value = cls._parse_numeric_cell_value(raw_value)
+        if numeric_value is None:
+            return ''
+        for rule in rules:
+            if not cls._rule_matches(rule, numeric_value):
+                continue
+            fill, font = cls._resolve_fill_styles(rule['fill'])
+            styles: list[str] = []
+            if fill and fill.start_color:
+                rgb = getattr(fill.start_color, 'rgb', None) or getattr(
+                    fill.start_color, 'value', None
+                )
+                if rgb:
+                    hex_color = str(rgb)[-6:]
+                    styles.append(f'background-color:#{hex_color}')
+            if font and font.color:
+                rgb = getattr(font.color, 'rgb', None) or getattr(
+                    font.color, 'value', None
+                )
+                if rgb:
+                    hex_color = str(rgb)[-6:]
+                    styles.append(f'color:#{hex_color}')
+            if styles:
+                return ';'.join(styles)
+            return ''
+        return ''
+
+    @classmethod
+    def _rows_to_html_table(
+        cls,
+        rows: list[dict],
+        column_styles: list[dict] | None = None,
+    ) -> str:
+        if not rows:
+            return '<p><em>No data</em></p>'
+
+        fieldnames = cls._fieldnames_from_rows(rows)
+        style_map = cls._build_column_style_map(fieldnames, column_styles or [])
+        parts = [
+            '<table border="1" cellpadding="6" cellspacing="0" '
+            'style="border-collapse:collapse;margin:12px 0;max-width:100%;">',
+            '<thead><tr>',
+        ]
+        for name in fieldnames:
+            parts.append(
+                f'<th style="font-weight:bold;background:#f3f3f3;text-align:left;">'
+                f'{html.escape(name)}</th>'
             )
-            if report_url:
-                body += (
-                    f'<p><a href="{report_url}" target="_blank" rel="noopener noreferrer">'
-                    'Download CSV report (valid for 7 days)</a></p>'
+        parts.append('</tr></thead><tbody>')
+        for row in rows:
+            parts.append('<tr>')
+            for col_idx, fieldname in enumerate(fieldnames):
+                raw_value = row.get(fieldname)
+                css = cls._css_for_cell_value(raw_value, style_map.get(col_idx))
+                cell_html = cls._format_cell_display_value(raw_value)
+                if css:
+                    parts.append(f'<td style="{css}">{cell_html}</td>')
+                else:
+                    parts.append(f'<td>{cell_html}</td>')
+            parts.append('</tr>')
+        parts.append('</tbody></table>')
+        return ''.join(parts)
+
+    @classmethod
+    def _plain_text_to_html(cls, text: str) -> str:
+        stripped = text.strip()
+        if not stripped:
+            return ''
+        escaped = html.escape(stripped)
+        paragraphs = escaped.split('\n\n')
+        return ''.join(
+            f'<p>{paragraph.replace(chr(10), "<br>")}</p>'
+            for paragraph in paragraphs
+            if paragraph
+        )
+
+    @classmethod
+    def _looks_like_html(cls, content: str) -> bool:
+        return bool(re.search(r'</?[a-zA-Z][^>]*>', content))
+
+    @classmethod
+    def _download_report_placeholder_html(cls, report: dict) -> str:
+        report_name = html.escape(str(report['report_name']))
+        report_size = int(report['report_size'])
+        report_url = report.get('report_url')
+        placeholder = (
+            f'<p><b>{report_name}</b> ({report_size:,} bytes) exceeds the email '
+            f'attachment limit.'
+        )
+        if report_url:
+            placeholder += (
+                f' <a href="{report_url}" target="_blank" '
+                'rel="noopener noreferrer">Download Excel report</a>'
+            )
+        return f'{placeholder}</p>'
+
+    @classmethod
+    def _referenced_query_ids(cls, email_content: str | None) -> set[str]:
+        if not email_content or not email_content.strip():
+            return set()
+        return {
+            match.group(1)
+            for match in EMAIL_QUERY_PLACEHOLDER_PATTERN.finditer(email_content.strip())
+        }
+
+    @classmethod
+    def _build_query_tables_for_email(
+        cls,
+        prepared_reports: list[dict],
+        referenced_query_ids: set[str],
+    ) -> dict[str, str]:
+        if not referenced_query_ids:
+            return {}
+
+        query_tables: dict[str, str] = {}
+        for report in prepared_reports:
+            query_id = report['query_id']
+            if query_id not in referenced_query_ids:
+                continue
+            if report['use_attachment']:
+                query_tables[query_id] = cls._rows_to_html_table(
+                    report['rows'], column_styles=report.get('column_styles')
+                )
+            else:
+                query_tables[query_id] = cls._download_report_placeholder_html(report)
+        return query_tables
+
+    @classmethod
+    def _placeholder_table_html(
+        cls, query_id: str, query_tables: dict[str, str]
+    ) -> str:
+        if query_id in query_tables:
+            return query_tables[query_id]
+        return (
+            f'<p><em>No data for query '
+            f'<code>{html.escape(query_id)}</code></em></p>'
+        )
+
+    @classmethod
+    def _render_email_template(cls, template: str, query_tables: dict[str, str]) -> str:
+        if not EMAIL_QUERY_PLACEHOLDER_PATTERN.search(template):
+            if cls._looks_like_html(template):
+                return template
+            return cls._plain_text_to_html(template)
+
+        is_html = cls._looks_like_html(template)
+        parts: list[str] = []
+        last_end = 0
+        for match in EMAIL_QUERY_PLACEHOLDER_PATTERN.finditer(template):
+            static = template[last_end : match.start()]
+            if static:
+                parts.append(static if is_html else cls._plain_text_to_html(static))
+            parts.append(cls._placeholder_table_html(match.group(1), query_tables))
+            last_end = match.end()
+        trailing = template[last_end:]
+        if trailing:
+            parts.append(trailing if is_html else cls._plain_text_to_html(trailing))
+        return ''.join(parts)
+
+    @classmethod
+    def _rows_to_xlsx_bytes(
+        cls,
+        rows: list[dict],
+        column_styles: list[dict] | None = None,
+    ) -> tuple[bytes, list[str]]:
+        fieldnames = cls._fieldnames_from_rows(rows)
+
+        def cell_value(value):
+            if isinstance(value, (dict, list)):
+                return json.dumps(value)
+            return value if value is None or isinstance(value, str) else str(value)
+
+        workbook = Workbook()
+        worksheet = workbook.active
+        worksheet.title = 'Report'
+        style_map = cls._build_column_style_map(fieldnames, column_styles or [])
+        if fieldnames:
+            header_font = Font(bold=True)
+            for col_idx, fieldname in enumerate(fieldnames, start=1):
+                header_cell = worksheet.cell(row=1, column=col_idx, value=fieldname)
+                header_cell.font = header_font
+            for row_idx, row in enumerate(rows, start=2):
+                for col_idx, fieldname in enumerate(fieldnames, start=1):
+                    raw_value = row.get(fieldname)
+                    cell = worksheet.cell(
+                        row=row_idx, column=col_idx, value=cell_value(raw_value)
+                    )
+                    rules = style_map.get(col_idx - 1)
+                    if rules:
+                        cls._apply_cell_style(cell, raw_value, rules)
+
+        buf = io.BytesIO()
+        workbook.save(buf)
+        return buf.getvalue(), fieldnames
+
+    def _build_report_email_body(
+        self,
+        *,
+        report_names: list[str],
+        email_content: str | None,
+        query_tables: dict[str, str],
+        download_reports: list[dict],
+    ) -> str:
+        if email_content and email_content.strip():
+            body = self._render_email_template(email_content.strip(), query_tables)
+        elif len(report_names) == 1:
+            body = f'<p>Scheduled report: <b>{report_names[0]}</b></p>'
+        else:
+            names_html = ', '.join(f'<b>{name}</b>' for name in report_names)
+            body = f'<p>Scheduled reports: {names_html}</p>'
+
+        if download_reports:
+            body += (
+                f'<p><b>Delivery:</b> The following report(s) exceed the '
+                f'{MAX_EMAIL_ATTACHMENT_BYTES // (1024 * 1024)} MB email attachment limit. '
+                'Use the download links below instead of attachments.</p>'
+                '<p>Links are secure and expire in 7 days.</p>'
+            )
+            for report in download_reports:
+                report_name = report['report_name']
+                report_size = report['report_size']
+                report_url = report.get('report_url')
+                body += f'<p><b>{report_name}</b> ({report_size:,} bytes)'
+                if report_url:
+                    body += (
+                        f' — <a href="{report_url}" target="_blank" '
+                        'rel="noopener noreferrer">Download Excel report</a>'
+                    )
+                body += '</p>'
+        return body
+
+    async def _get_datasource_plugin(
+        self, datasource_id: str
+    ) -> tuple[DatasourcePlugin, str, str]:
+        datasource_type, datasource_config = await get_datasource_config(
+            datasource_id=datasource_id,
+            datasource_repository=self.datasource_repository,
+        )
+        if not datasource_type or not datasource_config:
+            raise ValueError(f'Datasource not found: {datasource_id}')
+        return (
+            DatasourcePlugin(datasource_type, datasource_config),
+            datasource_type,
+            datasource_id,
+        )
+
+    async def _execute_email_dynamic_query_job(self, payload: dict, job_timezone: str):
+        query_specs = self._normalize_query_specs(payload)
+        recipient_user_ids = self._normalize_recipient_user_ids(payload)
+        email_content = payload.get('email_content')
+        if email_content is not None and not isinstance(email_content, str):
+            email_content = None
+
+        if not recipient_user_ids:
+            raise ValueError('payload must include recipient_user_ids')
+
+        merged_specs = [self._merge_query_spec(payload, spec) for spec in query_specs]
+        default_datasource_id = payload.get('datasource_id')
+        if not default_datasource_id and not all(
+            spec.get('datasource_id') for spec in merged_specs
+        ):
+            raise ValueError(
+                'payload must include datasource_id (job-level or on each query)'
+            )
+
+        query_ids = [spec['query_id'] for spec in merged_specs]
+        default_subject = payload.get('subject')
+        if not default_subject:
+            if len(query_ids) == 1:
+                default_subject = f'Scheduled Dynamic Query Report: {query_ids[0]}'
+            else:
+                default_subject = 'Scheduled Dynamic Query Reports'
+        subject = default_subject
+
+        datasource_plugins: dict[str, DatasourcePlugin] = {}
+        yaml_by_query_id: dict[str, tuple[list, str | None]] = {}
+
+        for spec in merged_specs:
+            query_id = spec['query_id']
+            datasource_id = spec.get('datasource_id')
+            if not datasource_id:
+                raise ValueError(
+                    f'datasource_id required for query_id={query_id} '
+                    '(set at job level or on the query entry)'
+                )
+            if datasource_id not in datasource_plugins:
+                plugin, _, _ = await self._get_datasource_plugin(datasource_id)
+                datasource_plugins[datasource_id] = plugin
+            if query_id not in yaml_by_query_id:
+                (
+                    yaml_query,
+                    yaml_name,
+                ) = await self.dynamic_query_service.get_dynamic_yaml_query(query_id)
+                if not yaml_query:
+                    raise ValueError(f'Dynamic query not found: {query_id}')
+                yaml_by_query_id[query_id] = (yaml_query, yaml_name)
+
+        failed_recipient_user_ids: list[str] = []
+        delivered_count = 0
+        run_timestamp = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
+
+        for user_id in recipient_user_ids:
+            user = await self.user_repository.find_one(id=user_id)
+            if not user or user.deleted:
+                logger.warning(
+                    f'Scheduled report skipped: user not found or deleted ({user_id})'
+                )
+                failed_recipient_user_ids.append(user_id)
+                continue
+
+            try:
+                rls_filter_str = await self._rls_filter_for_user(user_id)
+            except Exception as exc:
+                logger.error(f'Scheduled report failed for user_id={user_id}: {exc}')
+                failed_recipient_user_ids.append(user_id)
+                continue
+
+            prepared_reports: list[dict] = []
+            report_names: list[str] = []
+            user_query_failed = False
+
+            for spec in merged_specs:
+                query_id = spec['query_id']
+                datasource_id = spec['datasource_id']
+                yaml_query, yaml_name = yaml_by_query_id[query_id]
+                datasource_plugin = datasource_plugins[datasource_id]
+                filter_expr = spec.get('filter')
+                offset = spec.get('offset', 0)
+                limit = spec.get('limit', 100)
+                params = self._resolve_runtime_params(spec, job_timezone)
+                column_styles = self._parse_column_styles_config(
+                    spec.get('column_styles')
                 )
 
-        failed_recipients = []
-        for recipient in recipients:
-            attachments = None
-            if use_attachment:
-                attachments = [
+                try:
+                    rows = await self._fetch_dynamic_query_rows(
+                        datasource_plugin,
+                        yaml_query,
+                        query_id,
+                        rls_filter_str,
+                        filter_expr,
+                        offset,
+                        limit,
+                        params,
+                    )
+                except Exception as exc:
+                    logger.error(
+                        f'Scheduled report failed for user_id={user_id}, '
+                        f'query_id={query_id}: {exc}'
+                    )
+                    user_query_failed = True
+                    break
+
+                if len(rows) == 0:
+                    start_key = str(spec.get('start_date_param', 'start_date'))
+                    end_key = str(spec.get('end_date_param', 'end_date'))
+                    applied_start = (
+                        params.get(start_key) if isinstance(params, dict) else None
+                    )
+                    applied_end = (
+                        params.get(end_key) if isinstance(params, dict) else None
+                    )
+                    logger.info(
+                        f'No records for user_id={user_id}, query_id={query_id}; '
+                        f'range {applied_start}..{applied_end} (keys: {start_key}, {end_key}). '
+                        'Skipping this report.'
+                    )
+                    continue
+
+                report_bytes, _ = self._rows_to_xlsx_bytes(
+                    rows, column_styles=column_styles
+                )
+                report_size = len(report_bytes)
+                report_filename = self._build_report_filename(
+                    query_id=query_id,
+                    user_id=user_id,
+                    run_timestamp=run_timestamp,
+                    params=params,
+                    payload=spec,
+                )
+                report_name = yaml_name or query_id
+                report_names.append(report_name)
+                use_attachment = report_size <= MAX_EMAIL_ATTACHMENT_BYTES
+                report_url: str | None = None
+                if not use_attachment:
+                    report_key = f'scheduled_query_reports/{query_id}/{report_filename}'
+                    self.cloud_storage_manager.save_small_file(
+                        file_content=report_bytes,
+                        bucket_name=self.bucket_name,
+                        key=report_key,
+                        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    )
+                    report_url = self.cloud_storage_manager.generate_presigned_url(
+                        bucket_name=self.bucket_name,
+                        key=report_key,
+                        type='GET',
+                        expiresIn=SIGNED_URL_EXPIRY_SECONDS,
+                    )
+
+                prepared_reports.append(
                     {
+                        'query_id': query_id,
+                        'report_name': report_name,
+                        'report_size': report_size,
+                        'report_url': report_url,
+                        'use_attachment': use_attachment,
                         'filename': report_filename,
-                        'content_bytes': csv_bytes,
-                        'mime_type': 'text/csv',
+                        'content_bytes': report_bytes,
+                        'rows': rows,
+                        'column_styles': column_styles,
                     }
+                )
+
+            if user_query_failed:
+                failed_recipient_user_ids.append(user_id)
+                continue
+
+            if not prepared_reports:
+                logger.info(
+                    f'No reports with data for user_id={user_id}; skipping email.'
+                )
+                continue
+
+            download_reports = [
+                {
+                    'query_id': r['query_id'],
+                    'report_name': r['report_name'],
+                    'report_size': r['report_size'],
+                    'report_url': r['report_url'],
+                }
+                for r in prepared_reports
+                if not r['use_attachment']
+            ]
+            referenced_query_ids = self._referenced_query_ids(email_content)
+            query_tables = self._build_query_tables_for_email(
+                prepared_reports, referenced_query_ids
+            )
+            if referenced_query_ids:
+                download_reports = [
+                    report
+                    for report in download_reports
+                    if report['query_id'] not in referenced_query_ids
                 ]
+            body = self._build_report_email_body(
+                report_names=report_names,
+                email_content=email_content,
+                query_tables=query_tables,
+                download_reports=download_reports,
+            )
+            attachments = [
+                {
+                    'filename': r['filename'],
+                    'content_bytes': r['content_bytes'],
+                    'mime_type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                }
+                for r in prepared_reports
+                if r['use_attachment']
+            ]
             is_sent = self.email_service.send_email(
                 subject,
                 body,
-                recipient,
-                attachments=attachments,
+                user.email,
+                attachments=attachments or None,
             )
             if not is_sent:
-                failed_recipients.append(recipient)
+                failed_recipient_user_ids.append(user_id)
+            else:
+                delivered_count += 1
 
-        if failed_recipients:
-            if len(failed_recipients) == len(recipients):
-                # Every send failed — no one has the report, so raising here is
-                # safe: the next-run retry will resend to all recipients without
-                # creating duplicates.
+        if failed_recipient_user_ids:
+            query_label = ', '.join(query_ids)
+            if delivered_count == 0 and len(failed_recipient_user_ids) == len(
+                recipient_user_ids
+            ):
                 raise ValueError(
-                    f'Failed sending report to all {len(recipients)} recipient(s) '
-                    f'for query={query_id}'
+                    f'Failed scheduled report for all {len(recipient_user_ids)} '
+                    f'recipient user(s) for queries={query_label}'
                 )
-            # Partial failure: some recipients already have the report.  Do NOT
-            # raise — that would schedule a retry which re-sends to the
-            # already-successful recipients.  Log the failures so they are
-            # visible in job.last_error via the caller, but let execution
-            # complete normally.
             logger.error(
-                f'Partial delivery failure for query={query_id}: '
-                f'{len(failed_recipients)}/{len(recipients)} recipient(s) failed: '
-                f'{", ".join(failed_recipients)}'
+                f'Partial delivery failure for queries={query_label}: '
+                f'{len(failed_recipient_user_ids)}/{len(recipient_user_ids)} '
+                f'recipient user(s) failed: '
+                f'{", ".join(failed_recipient_user_ids)}'
             )
 
     async def _run_job(self, job_row: dict):

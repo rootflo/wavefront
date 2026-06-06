@@ -19,7 +19,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import EditDatasourceDialog from './EditDatasourceDialog';
-import ScheduleEmailAlertDialog from './ScheduleEmailAlertDialog';
 import YamlCreation from './YamlCreation';
 import Yamls from './Yamls';
 import YamlView from './YamlView';
@@ -76,8 +75,6 @@ const DatasourceDetail: React.FC = () => {
   const [testingConnection, setTestingConnection] = useState(false);
 
   const [yamlCreation, setYamlCreation] = useState<boolean>(false);
-  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
-  const [scheduleQueryId, setScheduleQueryId] = useState('');
   const [yamlContent, setYamlContent] = useState<string>('');
   const [yamlQueries, setYamlQueries] = useState<YamlReadData[]>([]);
   const [yamlName, setYamlName] = useState<string>('');
@@ -176,11 +173,6 @@ const DatasourceDetail: React.FC = () => {
     } finally {
       setExecuting(false);
     }
-  };
-
-  const handleOpenScheduleDialog = (yamlFile: string) => {
-    setScheduleQueryId(yamlFile.split('.')[0]);
-    setScheduleDialogOpen(true);
   };
 
   const handleEditSuccess = () => {
@@ -306,12 +298,7 @@ const DatasourceDetail: React.FC = () => {
             </div>
             {/* Yamls component moved inside main container to get pb-10 padding */}
             {yamls && yamls.length > 0 && (
-              <Yamls
-                yamls={yamls}
-                setYamlCrud={setYamlCrud}
-                setSelectedYaml={setSelectedYaml}
-                onSchedule={handleOpenScheduleDialog}
-              />
+              <Yamls yamls={yamls} setYamlCrud={setYamlCrud} setSelectedYaml={setSelectedYaml} />
             )}
           </TabsContent>
         </Tabs>
@@ -364,15 +351,6 @@ const DatasourceDetail: React.FC = () => {
           setYamlExecuteResult={setYamlExecuteResult}
           executing={executing}
         />
-
-        {datasourceId && scheduleQueryId && (
-          <ScheduleEmailAlertDialog
-            isOpen={scheduleDialogOpen}
-            datasourceId={datasourceId}
-            queryId={scheduleQueryId}
-            onOpenChange={setScheduleDialogOpen}
-          />
-        )}
 
         {yamlCrud.delete && selectedYaml && (
           <DeleteConfirmationDialog

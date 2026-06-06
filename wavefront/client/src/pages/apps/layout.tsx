@@ -6,6 +6,7 @@ import {
   ModelRepositoryIcon,
   PhoneIcon,
   RagIcon,
+  ScheduledJobsIcon,
   WorkflowIcon,
 } from '@app/assets/icons';
 import { appEnv } from '@app/config/env';
@@ -33,6 +34,13 @@ const navItems = [
     icon: DatasourcesIcon,
     link: `/apps/:appId/datasources`,
     description: 'Manage and configure data sources for this application',
+  },
+  {
+    id: 'scheduled-jobs',
+    name: 'Scheduled Jobs',
+    icon: ScheduledJobsIcon,
+    link: `/apps/:appId/scheduled-jobs`,
+    description: 'Schedule dynamic query reports to be emailed automatically',
   },
   {
     id: 'functions',
@@ -104,7 +112,7 @@ const AppLayout: React.FC = () => {
 
   return (
     <div className="h-full bg-white">
-      <div className="flex h-full w-full overflow-auto">
+      <div className="flex h-full min-h-0 w-full">
         <div className="flex h-full w-[240px] flex-col gap-3 border-r border-gray-200 p-5">
           {finalNavItems.map((item) => {
             const isActive = item.id === location.pathname.split('/')[3];
@@ -141,7 +149,7 @@ const AppLayout: React.FC = () => {
             );
           })}
         </div>
-        <div className="flex-1 overflow-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto">
           <Outlet />
         </div>
       </div>

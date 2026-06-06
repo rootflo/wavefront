@@ -1,5 +1,5 @@
 import { QueryClient, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getAgentKey, getAgentsKey, getAppByIdKey, getUserKey, getUsersKey } from './query-keys';
+import { getAgentKey, getAgentsKey, getAppByIdKey, getConsoleUsersKey, getUserKey } from './query-keys';
 import {
   createUserMutationFn,
   deleteAgentMutationFn,
@@ -90,7 +90,7 @@ export const useCreateUser = () => {
     mutationFn: createUserMutationFn,
     onSuccess: () => {
       notifySuccess('User created successfully');
-      queryClient.invalidateQueries({ queryKey: getUsersKey() });
+      queryClient.invalidateQueries({ queryKey: getConsoleUsersKey() });
     },
     onError: (error) => {
       console.error('Error creating user:', error);
@@ -108,7 +108,7 @@ export const useUpdateUser = (userId: string | undefined) => {
     mutationFn: updateUserMutationFn,
     onSuccess: () => {
       notifySuccess('User updated successfully');
-      queryClient.invalidateQueries({ queryKey: getUsersKey() });
+      queryClient.invalidateQueries({ queryKey: getConsoleUsersKey() });
       if (userId) {
         queryClient.invalidateQueries({ queryKey: getUserKey(userId) });
       }
@@ -129,7 +129,7 @@ export const useDeleteUser = () => {
     mutationFn: deleteUserMutationFn,
     onSuccess: () => {
       notifySuccess('User deleted successfully');
-      queryClient.invalidateQueries({ queryKey: getUsersKey() });
+      queryClient.invalidateQueries({ queryKey: getConsoleUsersKey() });
     },
     onError: (error) => {
       console.error('Error deleting user:', error);
