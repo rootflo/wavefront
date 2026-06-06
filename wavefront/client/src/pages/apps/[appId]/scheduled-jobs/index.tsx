@@ -193,6 +193,7 @@ const ScheduledJobsPage: React.FC = () => {
               <SelectItem value="paused">Paused</SelectItem>
               <SelectItem value="running">Running</SelectItem>
               <SelectItem value="failed">Failed</SelectItem>
+              <SelectItem value="completed">Completed</SelectItem>
             </SelectContent>
           </Select>
           <Button onClick={handleCreate}>Create Schedule</Button>

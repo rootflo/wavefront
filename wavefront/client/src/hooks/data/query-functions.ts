@@ -18,6 +18,9 @@ import { VoiceAgent } from '@app/types/voice-agent';
 import { ScheduledJob } from '@app/types/scheduled-job';
 import { WorkflowListItem, WorkflowPipelineListItem, WorkflowRunListData } from '@app/types/workflow';
 
+const SCHEDULED_JOBS_PAGE_SIZE = 20;
+const MAX_SCHEDULED_JOBS = 1000;
+
 const getAllAppsQueryFn = async () => {
   const {
     data: { data = { apps: [] } },
@@ -414,8 +417,23 @@ const getConsoleUsersQueryFn = async (): Promise<IUser[]> => {
 };
 
 const getScheduledJobsQueryFn = async (): Promise<ScheduledJob[]> => {
-  const response = await floConsoleService.scheduledJobService.listScheduledJobs({ limit: 200 });
-  return response.data.data?.jobs ?? [];
+  const jobs: ScheduledJob[] = [];
+  let offset = 0;
+
+  while (jobs.length < MAX_SCHEDULED_JOBS) {
+    const response = await floConsoleService.scheduledJobService.listScheduledJobs({
+      limit: SCHEDULED_JOBS_PAGE_SIZE,
+      offset,
+    });
+    const page = response.data.data?.jobs ?? [];
+    jobs.push(...page);
+    if (page.length < SCHEDULED_JOBS_PAGE_SIZE) {
+      break;
+    }
+    offset += SCHEDULED_JOBS_PAGE_SIZE;
+  }
+
+  return jobs.slice(0, MAX_SCHEDULED_JOBS);
 };
 
 export {

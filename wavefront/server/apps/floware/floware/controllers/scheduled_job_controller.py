@@ -69,6 +69,7 @@ async def create_scheduled_job(
 async def list_scheduled_jobs(
     request: Request,
     limit: int = 100,
+    offset: int = 0,
     job_type: str | None = None,
     job_status: str | None = None,
     query_id: str | None = None,
@@ -93,6 +94,7 @@ async def list_scheduled_jobs(
 
     jobs = await scheduled_job_service.list_jobs(
         limit=limit,
+        offset=offset,
         job_type=job_type,
         status=job_status,
         payload_filters=payload_filters or None,

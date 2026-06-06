@@ -17,6 +17,7 @@ export class ScheduledJobService {
 
   async listScheduledJobs(params: {
     limit?: number;
+    offset?: number;
     query_id?: string;
     datasource_id?: string;
     job_type?: string;

@@ -168,6 +168,7 @@ class ScheduledJobService:
     async def list_jobs(
         self,
         limit: int = 100,
+        offset: int = 0,
         job_type: str | None = None,
         status: str | None = None,
         payload_filters: dict[str, str] | None = None,
@@ -196,7 +197,9 @@ class ScheduledJobService:
                     continue
                 # JSONB subscript + astext for case-sensitive text comparison.
                 query = query.where(ScheduledJob.payload[key].astext == value)
-        query = query.order_by(ScheduledJob.created_at.desc()).limit(limit)
+        query = (
+            query.order_by(ScheduledJob.created_at.desc()).offset(offset).limit(limit)
+        )
         async with self.db_client.session() as session:
             return (await session.scalars(query)).all()
 
@@ -416,6 +419,7 @@ class ScheduledJobService:
             raise ValueError('payload must include a non-empty queries array')
 
         specs: list[dict] = []
+        seen_query_ids: set[str] = set()
         for index, item in enumerate(queries):
             if not isinstance(item, dict):
                 raise ValueError(f'payload.queries[{index}] must be an object')
@@ -424,6 +428,13 @@ class ScheduledJobService:
                 raise ValueError(
                     f'payload.queries[{index}] must include a non-empty query_id'
                 )
+            normalized_query_id = str(query_id).strip()
+            if normalized_query_id in seen_query_ids:
+                raise ValueError(
+                    f'payload.queries[{index}] duplicates query_id '
+                    f'{normalized_query_id!r}'
+                )
+            seen_query_ids.add(normalized_query_id)
             specs.append(item)
         return specs
 
@@ -635,6 +646,12 @@ class ScheduledJobService:
                 parsed_configs.append({'column': column.strip(), 'rules': parsed_rules})
         return parsed_configs
 
+    @staticmethod
+    def _normalize_hex_color(value: str) -> str | None:
+        if len(value) == 6 and all(ch in '0123456789ABCDEFabcdef' for ch in value):
+            return value.upper()
+        return None
+
     @classmethod
     def _resolve_fill_styles(
         cls, fill_name: str
@@ -644,16 +661,15 @@ class ScheduledJobService:
         font_hex: str | None = None
 
         if normalized.startswith('#'):
-            bg_hex = normalized[1:].upper()
+            bg_hex = cls._normalize_hex_color(normalized[1:])
         elif normalized.casefold() in COLUMN_FILL_COLORS:
             key = normalized.casefold()
             bg_hex = COLUMN_FILL_COLORS[key]
             font_hex = COLUMN_FILL_FONT_COLORS.get(key)
-        elif len(normalized) == 6 and all(
-            ch in '0123456789ABCDEFabcdef' for ch in normalized
-        ):
-            bg_hex = normalized.upper()
         else:
+            bg_hex = cls._normalize_hex_color(normalized)
+
+        if bg_hex is None:
             return None, None
 
         fill = PatternFill(start_color=bg_hex, end_color=bg_hex, fill_type='solid')
@@ -825,6 +841,53 @@ class ScheduledJobService:
     @classmethod
     def _looks_like_html(cls, content: str) -> bool:
         return bool(re.search(r'</?[a-zA-Z][^>]*>', content))
+
+    @classmethod
+    def _download_report_placeholder_html(cls, report: dict) -> str:
+        report_name = html.escape(str(report['report_name']))
+        report_size = int(report['report_size'])
+        report_url = report.get('report_url')
+        placeholder = (
+            f'<p><b>{report_name}</b> ({report_size:,} bytes) exceeds the email '
+            f'attachment limit.'
+        )
+        if report_url:
+            placeholder += (
+                f' <a href="{report_url}" target="_blank" '
+                'rel="noopener noreferrer">Download Excel report</a>'
+            )
+        return f'{placeholder}</p>'
+
+    @classmethod
+    def _referenced_query_ids(cls, email_content: str | None) -> set[str]:
+        if not email_content or not email_content.strip():
+            return set()
+        return {
+            match.group(1)
+            for match in EMAIL_QUERY_PLACEHOLDER_PATTERN.finditer(email_content.strip())
+        }
+
+    @classmethod
+    def _build_query_tables_for_email(
+        cls,
+        prepared_reports: list[dict],
+        referenced_query_ids: set[str],
+    ) -> dict[str, str]:
+        if not referenced_query_ids:
+            return {}
+
+        query_tables: dict[str, str] = {}
+        for report in prepared_reports:
+            query_id = report['query_id']
+            if query_id not in referenced_query_ids:
+                continue
+            if report['use_attachment']:
+                query_tables[query_id] = cls._rows_to_html_table(
+                    report['rows'], column_styles=report.get('column_styles')
+                )
+            else:
+                query_tables[query_id] = cls._download_report_placeholder_html(report)
+        return query_tables
 
     @classmethod
     def _placeholder_table_html(
@@ -1124,6 +1187,7 @@ class ScheduledJobService:
 
             download_reports = [
                 {
+                    'query_id': r['query_id'],
                     'report_name': r['report_name'],
                     'report_size': r['report_size'],
                     'report_url': r['report_url'],
@@ -1131,12 +1195,16 @@ class ScheduledJobService:
                 for r in prepared_reports
                 if not r['use_attachment']
             ]
-            query_tables = {
-                r['query_id']: self._rows_to_html_table(
-                    r['rows'], column_styles=r.get('column_styles')
-                )
-                for r in prepared_reports
-            }
+            referenced_query_ids = self._referenced_query_ids(email_content)
+            query_tables = self._build_query_tables_for_email(
+                prepared_reports, referenced_query_ids
+            )
+            if referenced_query_ids:
+                download_reports = [
+                    report
+                    for report in download_reports
+                    if report['query_id'] not in referenced_query_ids
+                ]
             body = self._build_report_email_body(
                 report_names=report_names,
                 email_content=email_content,

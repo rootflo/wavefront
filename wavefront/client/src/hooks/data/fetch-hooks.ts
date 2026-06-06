@@ -426,12 +426,12 @@ export const useGetAppUsers = (appId: string | undefined): UseQueryResult<IUser[
   return useQueryInit(getAppUsersKey(appId || ''), () => getAppUsersQueryFn(), !!appId);
 };
 
-export const useGetScheduledJobs = (appId: string | undefined): UseQueryResult<ScheduledJob[], Error> => {
-  return useQueryInit(getScheduledJobsKey(appId || ''), getScheduledJobsQueryFn, !!appId);
-};
-
 export const useGetConsoleUsers = (): UseQueryResult<IUser[], Error> => {
   return useQueryInit(getConsoleUsersKey(), getConsoleUsersQueryFn, true);
+};
+
+export const useGetScheduledJobs = (appId: string | undefined): UseQueryResult<ScheduledJob[], Error> => {
+  return useQueryInit(getScheduledJobsKey(appId || ''), getScheduledJobsQueryFn, !!appId);
 };
 
 // Voice Agent Tools Hooks
