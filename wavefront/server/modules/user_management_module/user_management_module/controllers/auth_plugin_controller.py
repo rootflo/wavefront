@@ -258,6 +258,7 @@ async def init_oauth_flow(
     """Initialize OAuth flow and return authorization URL."""
 
     try:
+        logger.debug('OAuth init requested for auth_id=%s', oauth_request.auth_id)
         # Get authenticator instance by ID
         auth_id = UUID(oauth_request.auth_id)
         authenticator = await get_authenticator_instance(
@@ -265,6 +266,10 @@ async def init_oauth_flow(
         )
 
         if not authenticator:
+            logger.debug(
+                'OAuth init: no enabled authenticator for auth_id=%s',
+                oauth_request.auth_id,
+            )
             return JSONResponse(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 content=response_formatter.buildErrorResponse(
@@ -275,6 +280,13 @@ async def init_oauth_flow(
         # Mint opaque CSRF state + OIDC nonce, persist server-side, and pass
         # both into the provider so they end up in the authorize URL.
         state, nonce = _store_oauth_flow(cache_manager, oauth_request.auth_id)
+        logger.debug(
+            'OAuth flow stored: auth_id=%s state=%s nonce=%s ttl=%ss',
+            oauth_request.auth_id,
+            state,
+            nonce,
+            OAUTH_FLOW_TTL_SECONDS,
+        )
         auth_url = authenticator.get_authorization_url(state, nonce=nonce)
 
         if not auth_url:
@@ -325,6 +337,13 @@ async def google_oauth_callback(
     token_service: TokenService = Depends(Provide[AuthContainer.token_service]),
 ):
     """Handle Google OAuth callback."""
+    logger.debug(
+        'Google OAuth callback: has_code=%s has_state=%s has_error=%s state=%s',
+        bool(code),
+        bool(state),
+        bool(error),
+        state,
+    )
     flow = _consume_oauth_flow(cache_manager, state)
     if flow is None:
         logger.warning('Google OAuth callback received unknown/expired state')
@@ -371,6 +390,13 @@ async def microsoft_oauth_callback(
     token_service: TokenService = Depends(Provide[AuthContainer.token_service]),
 ):
     """Handle Microsoft OAuth callback."""
+    logger.debug(
+        'Microsoft OAuth callback: has_code=%s has_state=%s has_error=%s state=%s',
+        bool(code),
+        bool(state),
+        bool(error),
+        state,
+    )
     flow = _consume_oauth_flow(cache_manager, state)
     if flow is None:
         logger.warning('Microsoft OAuth callback received unknown/expired state')
@@ -415,6 +441,13 @@ async def microsoft_adfs_oauth_callback(
     token_service: TokenService = Depends(Provide[AuthContainer.token_service]),
 ):
     """Handle Microsoft ADFS OAuth callback."""
+    logger.debug(
+        'Microsoft ADFS callback: has_code=%s has_state=%s has_error=%s state=%s',
+        bool(code),
+        bool(state),
+        bool(error),
+        state,
+    )
     flow = _consume_oauth_flow(cache_manager, state)
     if flow is None:
         logger.warning('Microsoft ADFS callback received unknown/expired state')
@@ -451,6 +484,14 @@ async def _handle_oauth_callback(
     """Common OAuth callback handler."""
 
     try:
+        logger.debug(
+            '_handle_oauth_callback: auth_id=%s has_code=%s has_error=%s '
+            'expected_nonce_set=%s',
+            auth_id,
+            bool(callback_data.get('authorization_code')),
+            bool(callback_data.get('error')),
+            expected_nonce is not None,
+        )
         # Get authenticator instance and config
         auth_uuid = UUID(auth_id)
         authenticator, config_data = await get_authenticator_with_config(
@@ -481,6 +522,12 @@ async def _handle_oauth_callback(
         provider = config_data.get('auth_type')
         success_url = config_data.get('config', {}).get('client_redirect_success_url')
         failure_url = config_data.get('config', {}).get('client_redirect_failure_url')
+        logger.debug(
+            '_handle_oauth_callback: provider=%s success_url=%s failure_url=%s',
+            provider,
+            success_url,
+            failure_url,
+        )
 
         # Handle OAuth error from provider
         if callback_data.get('error'):
@@ -498,6 +545,13 @@ async def _handle_oauth_callback(
         auth_result = authenticator.handle_callback(
             callback_data, expected_nonce=expected_nonce
         )
+        logger.debug(
+            '_handle_oauth_callback: provider auth_result success=%s error_code=%s '
+            'email=%s',
+            auth_result.success,
+            auth_result.error_code,
+            auth_result.user_info.email if auth_result.user_info else None,
+        )
 
         if not auth_result.success:
             if failure_url:
@@ -512,6 +566,12 @@ async def _handle_oauth_callback(
 
         # Create session from auth result
         user = await user_repository.find_one(email=auth_result.user_info.email)
+        logger.debug(
+            '_handle_oauth_callback: user lookup by email=%s found=%s deleted=%s',
+            auth_result.user_info.email,
+            user is not None,
+            getattr(user, 'deleted', None),
+        )
         if user is None:
             if failure_url:
                 params = urlencode(
@@ -552,6 +612,11 @@ async def _handle_oauth_callback(
         role_id = await user_service.get_user_role_for_scope(
             user_id=str(user.id), scope=ResourceScope.CONSOLE
         )
+        logger.debug(
+            '_handle_oauth_callback: console role lookup user_id=%s role_id=%s',
+            str(user.id),
+            role_id,
+        )
 
         if not role_id:
             if failure_url:
@@ -572,12 +637,24 @@ async def _handle_oauth_callback(
 
         # Success: redirect to success URL with access token
         if success_url:
+            logger.debug(
+                '_handle_oauth_callback: success redirect provider=%s user_id=%s '
+                'session_id=%s -> %s',
+                provider,
+                str(user.id),
+                str(session.id),
+                success_url,
+            )
             params = urlencode({'provider': provider, 'access_token': token})
             return RedirectResponse(url=f'{success_url}?{params}')
 
+        logger.debug(
+            '_handle_oauth_callback: no success_url configured, redirecting to about:blank'
+        )
         return RedirectResponse(url='about:blank')
 
     except Exception as e:
+        logger.debug('_handle_oauth_callback raised: %s', e)
         # Try to get config for failure URL
         try:
             auth_uuid = UUID(auth_id)

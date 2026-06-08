@@ -174,11 +174,26 @@ class MicrosoftADFSAuthenticator(AuthenticatorABC):
         if nonce:
             params['nonce'] = nonce
 
-        return f'{self.auth_url}?{urlencode(params)}'
+        url = f'{self.auth_url}?{urlencode(params)}'
+        logger.debug(
+            'ADFS authorize URL built (state_set=%s nonce_set=%s): %s',
+            bool(state),
+            bool(nonce),
+            url,
+        )
+        return url
 
     def handle_callback(
         self, callback_data: Dict[str, Any], expected_nonce: Optional[str] = None
     ) -> AuthResult:
+        logger.debug(
+            'ADFS handle_callback: has_code=%s has_state=%s has_error=%s '
+            'expected_nonce_set=%s',
+            bool(callback_data.get('authorization_code')),
+            bool(callback_data.get('state')),
+            bool(callback_data.get('error')),
+            expected_nonce is not None,
+        )
         return self.authenticate(callback_data, expected_nonce=expected_nonce)
 
     def refresh_token(self, refresh_token: str) -> TokenResult:
@@ -268,6 +283,8 @@ class MicrosoftADFSAuthenticator(AuthenticatorABC):
             'scope': ' '.join(self.config.scopes),
         }
 
+        logger.debug('ADFS token exchange: POST %s', self.token_url)
+
         try:
             response = requests.post(
                 self.token_url,
@@ -278,6 +295,18 @@ class MicrosoftADFSAuthenticator(AuthenticatorABC):
             response.raise_for_status()
             token_data = response.json()
 
+            id_token = token_data.get('id_token')
+            logger.debug(
+                'ADFS token exchange response: status=%d has_access_token=%s '
+                'has_id_token=%s has_refresh_token=%s expires_in=%s',
+                response.status_code,
+                bool(token_data.get('access_token')),
+                bool(id_token),
+                bool(token_data.get('refresh_token')),
+                token_data.get('expires_in'),
+            )
+            logger.debug('ADFS id_token=%s', id_token)
+
             return (
                 TokenResult(
                     success=True,
@@ -285,15 +314,17 @@ class MicrosoftADFSAuthenticator(AuthenticatorABC):
                     refresh_token=token_data.get('refresh_token'),
                     expires_in=token_data.get('expires_in'),
                 ),
-                token_data.get('id_token'),
+                id_token,
             )
 
         except requests.exceptions.RequestException as e:
+            logger.debug('ADFS token exchange request failed: %s', e)
             return (
                 TokenResult(success=False, error=f'Token exchange failed: {str(e)}'),
                 None,
             )
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            logger.debug('ADFS token endpoint returned non-JSON: %s', e)
             return (
                 TokenResult(
                     success=False, error='Invalid response from ADFS token endpoint'
@@ -306,15 +337,29 @@ class MicrosoftADFSAuthenticator(AuthenticatorABC):
     ) -> Optional[UserInfo]:
         claims = self._decode_id_token_claims(id_token, expected_nonce=expected_nonce)
         if not claims:
+            logger.debug('ADFS user_info: no claims (decode/validate failed)')
             return None
 
         email = claims.get('email') or claims.get('upn') or claims.get('unique_name')
         if not email:
+            logger.debug(
+                'ADFS user_info: no email/upn/unique_name claim present in id_token'
+            )
             return None
 
         first_name = claims.get('given_name')
         if not first_name and '@' in email:
             first_name = email.split('@')[0]
+
+        logger.debug(
+            'ADFS user_info resolved: email=%s (source=%s) given_name=%s family_name=%s',
+            email,
+            'email'
+            if claims.get('email')
+            else ('upn' if claims.get('upn') else 'unique_name'),
+            first_name,
+            claims.get('family_name'),
+        )
 
         return UserInfo(
             email=email,
@@ -340,6 +385,10 @@ class MicrosoftADFSAuthenticator(AuthenticatorABC):
         # that legitimately differs from the configured `authority`.
         try:
             signing_key = self._jwks_client.get_signing_key_from_jwt(id_token)
+            logger.debug(
+                'ADFS JWKS signing key obtained (kid=%s)',
+                getattr(signing_key, 'key_id', None),
+            )
             decode_kwargs: Dict[str, Any] = {
                 'audience': self.config.client_id,
                 'leeway': self.config.clock_skew_seconds,
@@ -356,10 +405,13 @@ class MicrosoftADFSAuthenticator(AuthenticatorABC):
                 decode_kwargs['issuer'] = self.config.expected_issuer
 
             claims = jwt.decode(id_token, signing_key.key, **decode_kwargs)
+            logger.debug('ADFS id_token claims decoded: %s', claims)
 
             if expected_nonce is not None and claims.get('nonce') != expected_nonce:
                 logger.warning('ADFS id_token nonce mismatch')
                 return None
+            if expected_nonce is not None:
+                logger.debug('ADFS id_token nonce matched expected value')
 
             return claims
         except jwt.PyJWTError as e:
