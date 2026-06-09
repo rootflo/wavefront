@@ -383,7 +383,7 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+      <DialogContent className="max-h-[90vh] w-[95vw] !max-w-6xl overflow-y-auto sm:!max-w-6xl">
         <DialogHeader>
           <DialogTitle>Create New Authenticator</DialogTitle>
           <DialogDescription>Configure a new authentication provider for {selectedApp?.app_name}</DialogDescription>

@@ -4,6 +4,7 @@ import {
   DatasourcesIcon,
   ModelInferenceIcon,
   ModelRepositoryIcon,
+  PermissionIcon,
   PhoneIcon,
   RagIcon,
   WorkflowIcon,
@@ -21,12 +22,12 @@ const navItems = [
     link: `/apps/:appId/agents`,
     description: 'Manage and configure agents for this application',
   },
-  // {
-  //   name: 'Authenticators',
-  //   icon: PermissionIcon,
-  //   link: `/apps/:appId/authenticators`,
-  //   description: 'Manage authentication provider configurations',
-  // },
+  {
+    name: 'Authenticators',
+    icon: PermissionIcon,
+    link: `/apps/:appId/authenticators`,
+    description: 'Manage authentication provider configurations',
+  },
   {
     id: 'datasources',
     name: 'Datasources',
