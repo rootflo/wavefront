@@ -46,7 +46,7 @@ import { z } from 'zod';
 
 const createAuthenticatorSchema = z.object({
   authName: z.string().min(1, 'Authenticator name is required'),
-  authType: z.enum(['google_oauth', 'microsoft_oauth', 'email_password']),
+  authType: z.enum(['google_oauth', 'microsoft_oauth', 'microsoft_adfs', 'email_password']),
   authDesc: z.string().optional(),
 });
 
