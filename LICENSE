@@ -1,3 +1,54 @@
+WAVEFRONT LICENSE
+
+This software is licensed under the GNU Affero General Public License (AGPL), Version 3, with the following additional restrictions:
+
+COMMERCIAL USE AND WHITELABELING RESTRICTIONS:
+
+1. COMMERCIAL USE PROHIBITION:
+   You may NOT use this software for any commercial purpose without an explicit written commercial license agreement from Rootflo.
+
+2. WHITELABELING PROHIBITION:
+   You may NOT whitelabel, resell, rebrand, or repackage this software or any derivative works as your own product or service, regardless of modifications made, without an explicit written commercial license agreement from Rootflo. This includes but is not limited to:
+   - Offering this software under your company's branding or name
+   - Hosting it as a service under your own brand
+   - Integrating it into commercial products or services you offer
+   - Creating SaaS or hosted solutions based on this software
+   - Any form of redistribution to third parties for commercial gain
+
+3. DEFINITIONS OF COMMERCIAL USE:
+   Commercial use includes, but is not limited to:
+   - Offering services or features derived from this software to paying customers
+   - Using this software in a commercial environment for business operations
+   - Incorporating this software into commercial products or services
+   - Any use that generates revenue, either directly or indirectly
+   - Cloud hosting or managed services deployments
+   - Consulting or implementation services involving this software
+
+4. INTERNAL USE ONLY (WITHOUT COMMERCIAL LICENSE):
+   This software may be used internally within your organization for non-commercial purposes only. Internal use means:
+   - Use by employees within your company for internal operations
+   - Testing and development for your organization's own needs
+   - Internal analytics, monitoring, and business intelligence
+   - Use that does not result in a commercial offering to third parties
+   - Use that does not generate any revenue or commercial benefit
+
+5. COMMERCIAL LICENSE REQUIREMENT:
+   To engage in any commercial use, whitelabeling, reselling, or derivative commercial products, you must:
+   - Obtain a written commercial license agreement from Rootflo
+   - Comply with all terms and conditions set forth in the commercial license agreement
+   - Maintain the agreement in good standing
+
+6. CONTACT FOR COMMERCIAL LICENSING:
+   For inquiries regarding commercial licenses, licensing agreements, or whitelabeling arrangements, please contact the Rootflo team. The copyright holder reserves the right to approve or deny commercial license requests at their sole discretion.
+
+7. ENFORCEMENT:
+   Violations of these restrictions are a material breach of this License. The copyright holder reserves the right to pursue legal action against unauthorized commercial use, whitelabeling, or redistribution.
+
+8. PRECEDENCE:
+   All terms and conditions of the GNU Affero General Public License Version 3 apply, except where explicitly modified by these restrictions. In case of conflict, these restrictions take precedence.
+
+---
+
 GNU AFFERO GENERAL PUBLIC LICENSE
 Version 3, 19 November 2007
 
@@ -479,7 +530,7 @@ propagate the contents of its contributor version.
 
 In the following three paragraphs, a "patent license" is any express
 agreement or commitment, however denominated, not to enforce a patent
-(such as an express permission to practice a patent or covenant not to
+(or an express permission to practice a patent or covenant not to
 sue for patent infringement).  To "grant" such a patent license to a
 party means to make such an agreement or commitment not to enforce a
 patent against the party.
