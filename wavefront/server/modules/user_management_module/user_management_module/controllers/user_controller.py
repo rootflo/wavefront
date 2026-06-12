@@ -314,6 +314,7 @@ async def get_all_user(
                 User.first_name,
                 User.last_name,
                 User.email,
+                User.username,
                 func.array_agg(
                     func.json_build_object(
                         'id',
@@ -339,6 +340,7 @@ async def get_all_user(
             if len(name) > 1 and name[1]:
                 filters.append(User.last_name.ilike(f'%{name[1]}%'))
             filters.append(User.email.ilike(f'%{search}%'))
+            filters.append(User.username.ilike(f'%{search}%'))
             query = query.where(or_(*filters))
 
         # Add role filter
