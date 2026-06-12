@@ -545,12 +545,15 @@ async def _handle_oauth_callback(
         auth_result = authenticator.handle_callback(
             callback_data, expected_nonce=expected_nonce
         )
+        ui = auth_result.user_info
         logger.debug(
             '_handle_oauth_callback: provider auth_result success=%s error_code=%s '
-            'email=%s',
+            'email=%s upn=%s unique_name=%s',
             auth_result.success,
             auth_result.error_code,
-            auth_result.user_info.email if auth_result.user_info else None,
+            ui.email if ui else None,
+            ui.upn if ui else None,
+            ui.unique_name if ui else None,
         )
 
         if not auth_result.success:
@@ -564,13 +567,17 @@ async def _handle_oauth_callback(
                 return RedirectResponse(url=f'{failure_url}?{params}')
             return RedirectResponse(url='about:blank')
 
-        # Create session from auth result
-        user = await user_repository.find_one(email=auth_result.user_info.email)
+        if ui is None:
+            return get_failure_redirect('OAuth authentication returned no user info')
+
+        user = await user_repository.find_one(email=ui.email)
+        if user is None and ui.email:
+            user = await user_repository.find_one(username=ui.email.lower())
         logger.debug(
-            '_handle_oauth_callback: user lookup by email=%s found=%s deleted=%s',
-            auth_result.user_info.email,
+            '_handle_oauth_callback: user lookup by identifier=%s found=%s deleted=%s',
+            ui.email,
             user is not None,
-            getattr(user, 'deleted', None),
+            user.deleted if user else None,
         )
         if user is None:
             if failure_url:

@@ -24,7 +24,9 @@ class AuthenticatorResult(Generic[T]):
 @dataclass
 class UserInfo:
     email: str
-    first_name: str
+    upn: Optional[str] = None
+    unique_name: Optional[str] = None
+    first_name: Optional[str] = None
     last_name: Optional[str] = None
     user_id: Optional[str] = None
     provider: Optional[str] = None

@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import ssl
 import jwt
 import requests
@@ -332,6 +333,77 @@ class MicrosoftADFSAuthenticator(AuthenticatorABC):
                 None,
             )
 
+    def _extract_identifier_from_claim(self, value: str) -> Optional[str]:
+        """Pull the user identifier out of a raw UPN or unique_name string.
+
+        Resolution order:
+        1. If ``user_id_pattern`` is set, use it as a regex.  The first capture
+           group (if any) is returned; otherwise the full match.
+        2. DOMAIN\\userid  — return the segment after the last backslash.
+        3. userid@domain  — return the local part (before '@').
+        4. Fall back to the whole trimmed value.
+        """
+        value = value.strip()
+        if not value:
+            return None
+
+        pattern = self.config.user_id_pattern
+        if pattern:
+            m = re.search(pattern, value, re.IGNORECASE)
+            if m:
+                return (m.group(1) if m.lastindex else m.group(0)).strip() or None
+            logger.debug(
+                'ADFS identifier extraction: pattern %r did not match %r',
+                pattern,
+                value,
+            )
+            return None
+
+        if '\\' in value:
+            return value.rsplit('\\', 1)[-1].strip() or None
+
+        if '@' in value:
+            local = value.split('@', 1)[0].strip()
+            return local or None
+
+        return value or None
+
+    def _resolve_login_email(
+        self,
+        email: Optional[str],
+        upn: Optional[str],
+        unique_name: Optional[str],
+    ) -> Optional[str]:
+        """Return the value to use as the login email for DB lookup.
+
+        If a real ``email`` claim is present it is used as-is.  Otherwise the
+        identifier is extracted from ``upn`` then ``unique_name``.  When the
+        extracted value is a bare ID (no '@'), ``email_fallback_domain`` is
+        appended to produce a valid email-shaped string.
+        """
+        if email:
+            return email.lower()
+
+        for candidate in (upn, unique_name):
+            if not candidate:
+                continue
+            identifier = self._extract_identifier_from_claim(candidate)
+            if not identifier:
+                continue
+
+            if '@' in identifier:
+                return identifier.lower()
+
+            if self.config.email_fallback_domain:
+                domain = self.config.email_fallback_domain.lstrip('@')
+                return f'{identifier}@{domain}'.lower()
+
+            # No fallback domain — return the bare identifier so it can match
+            # a username stored in the email column by convention.
+            return identifier.lower()
+
+        return None
+
     def _get_user_info_from_id_token(
         self, id_token: str, expected_nonce: Optional[str] = None
     ) -> Optional[UserInfo]:
@@ -340,37 +412,41 @@ class MicrosoftADFSAuthenticator(AuthenticatorABC):
             logger.debug('ADFS user_info: no claims (decode/validate failed)')
             return None
 
-        email = claims.get('email') or claims.get('upn') or claims.get('unique_name')
-        if not email:
+        raw_email = claims.get('email')
+        upn = claims.get('upn')
+        unique_name = claims.get('unique_name')
+        if not raw_email and not upn and not unique_name:
             logger.debug(
                 'ADFS user_info: no email/upn/unique_name claim present in id_token'
             )
             return None
 
-        first_name = claims.get('given_name')
-        if not first_name and '@' in email:
-            first_name = email.split('@')[0]
-
+        email = self._resolve_login_email(raw_email, upn, unique_name)
         logger.debug(
-            'ADFS user_info resolved: email=%s (source=%s) given_name=%s family_name=%s',
+            'ADFS user_info resolved: email=%s (raw=%s) upn=%s unique_name=%s '
+            'given_name=%s family_name=%s',
             email,
-            'email'
-            if claims.get('email')
-            else ('upn' if claims.get('upn') else 'unique_name'),
-            first_name,
+            raw_email,
+            upn,
+            unique_name,
+            claims.get('given_name'),
             claims.get('family_name'),
         )
 
+        first_name = claims.get('given_name')
+        if not first_name and email and '@' in email:
+            first_name = email.split('@')[0]
+
         return UserInfo(
             email=email,
+            upn=upn,
+            unique_name=unique_name,
             first_name=first_name,
             last_name=claims.get('family_name'),
             user_id=claims.get('sub') or claims.get('oid'),
             provider='microsoft_adfs',
             avatar_url=None,
             additional_info={
-                'upn': claims.get('upn'),
-                'unique_name': claims.get('unique_name'),
                 'name': claims.get('name'),
                 'groups': claims.get('groups'),
             },

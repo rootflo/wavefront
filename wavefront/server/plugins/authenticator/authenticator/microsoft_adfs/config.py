@@ -28,3 +28,12 @@ class MicrosoftADFSConfig:
     # Set to False ONLY for local testing against IdPs with self-signed certs
     # (e.g. dockerised Authentik). Must stay True for any real ADFS.
     verify_ssl: bool = True
+    # When the id_token has no `email` claim, the authenticator falls back to
+    # extracting a user identifier from `upn` or `unique_name`.
+    # If the extracted value is a bare ID (e.g. "EMP12345"), append this domain
+    # to form "emp12345@domain.com" so it matches what is stored in the DB.
+    email_fallback_domain: Optional[str] = None
+    # Optional regex with a single capture group to pull the ID out of a longer
+    # upn/unique_name string, e.g. r"EMP\d+" or r"(?<=_)EMP\d+(?=_)".
+    # When None the full local part (before '@') or post-backslash segment is used.
+    user_id_pattern: Optional[str] = None
