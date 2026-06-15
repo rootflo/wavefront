@@ -9,9 +9,9 @@ env:
   GAR_LOCATION: asia-south1-docker.pkg.dev/aesy-330511/root-hub
   IMAGE_NAME: auraflo-rag-ingestion
 
-  # AWS_REGION: ap-south-1
-  # ECR_REGISTRY: 025066241490.dkr.ecr.ap-south-1.amazonaws.com
-  # ECR_REPOSITORY: rootflo/auraflo-rag-ingestion
+  AWS_REGION: ap-south-1
+  ECR_REGISTRY: 025066241490.dkr.ecr.ap-south-1.amazonaws.com
+  ECR_REPOSITORY: rootflo/auraflo-rag-ingestion
 
   ACR_REGISTRY_NAME: rootflo
   ACR_REGISTRY: rootflo.azurecr.io
@@ -69,21 +69,21 @@ jobs:
           docker push ${{ env.GAR_LOCATION }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
 
         # Configure AWS credentials and push to ECR
-      # - name: Configure AWS credentials
-      #   uses: aws-actions/configure-aws-credentials@v1
-      #   with:
-      #     aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      #     aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      #     aws-region: ${{ env.AWS_REGION }}
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
 
-      # - name: Login to Amazon ECR
-      #   id: login-ecr
-      #   uses: aws-actions/amazon-ecr-login@v1
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
 
-      # - name: Tag and push image to Amazon ECR
-      #   run: |
-      #     docker tag rootflo:${{ env.IMAGE_TAG }} ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
-      #     docker push ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+      - name: Tag and push image to Amazon ECR
+        run: |
+          docker tag rootflo:${{ env.IMAGE_TAG }} ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+          docker push ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
 
         # Configure Azure credentials and push to ACR
       - name: Login to Azure

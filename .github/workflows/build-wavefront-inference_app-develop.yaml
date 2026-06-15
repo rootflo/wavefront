@@ -9,6 +9,10 @@ env:
   GAR_LOCATION: asia-south1-docker.pkg.dev/aesy-330511/root-hub
   IMAGE_NAME: wavefront-inference_app
 
+  AWS_REGION: ap-south-1
+  ECR_REGISTRY: 025066241490.dkr.ecr.ap-south-1.amazonaws.com
+  ECR_REPOSITORY: rootflo/wavefront-inference_app
+
   ACR_REGISTRY_NAME: rootflo
   ACR_REGISTRY: rootflo.azurecr.io
   ACR_REPOSITORY: wavefront-inference_app
@@ -64,6 +68,23 @@ jobs:
           docker tag rootflo:${{ env.IMAGE_TAG }} ${{ env.GAR_LOCATION }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
           docker push ${{ env.GAR_LOCATION }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
 
+        # Configure AWS credentials and push to ECR
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Tag and push image to Amazon ECR
+        run: |
+          docker tag rootflo:${{ env.IMAGE_TAG }} ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+          docker push ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+
         # Configure Azure credentials and push to ACR
       - name: Login to Azure
         uses: azure/login@v2
@@ -82,4 +103,5 @@ jobs:
         run: |
           docker rmi rootflo:${{ env.IMAGE_TAG }} || true
           docker rmi ${{ env.GAR_LOCATION }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} || true
+          docker rmi ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }} || true
           docker rmi ${{ env.ACR_REGISTRY }}/${{ env.ACR_REPOSITORY }}:${{ env.IMAGE_TAG }} || true
