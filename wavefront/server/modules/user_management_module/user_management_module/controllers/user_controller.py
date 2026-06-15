@@ -547,8 +547,9 @@ async def get_resources(
     user_repository: SQLAlchemyRepository[User] = Depends(
         Provide[UserContainer.user_repository]
     ),
+    user_service: UserService = Depends(Provide[UserContainer.user_service]),
 ):
-    _, user_id, _ = get_current_user(request)
+    role_id, user_id, _ = get_current_user(request)
     user = await user_repository.find_one(id=user_id)
 
     if not user:
@@ -557,9 +558,40 @@ async def get_resources(
             content=response_formatter.buildErrorResponse('User not found'),
         )
 
+    is_admin = await check_is_admin(role_id)
+
+    # Console resources are the user's UI identity marker (e.g. admin_resource),
+    # so they always stay role-based.
+    console_resources = await user_service.get_user_resources(
+        user_id=user_id, scope=ResourceScope.CONSOLE
+    )
+
+    # Admins have implicit access to every dashboard, so they receive the full
+    # list; non-admins only get the dashboards their roles grant.
+    if is_admin:
+        dashboards: List[Resource] = await user_service.get_all_resources(
+            scope=ResourceScope.DASHBOARD
+        )
+        data: List[Resource] = []
+    else:
+        dashboards = await user_service.get_user_resources(
+            user_id=user_id, scope=ResourceScope.DASHBOARD
+        )
+        data = await user_service.get_user_resources(
+            user_id=user_id, scope=ResourceScope.DATA
+        )
+
+    resource = {
+        'console_resources': [res.to_dict() for res in console_resources],
+        'dashboards': [res.to_dict() for res in dashboards],
+        'data': [res.to_dict() for res in data],
+    }
+
     return JSONResponse(
         status_code=status.HTTP_200_OK,
-        content=response_formatter.buildSuccessResponse({'user': user.to_dict()}),
+        content=response_formatter.buildSuccessResponse(
+            {'user': user.to_dict(), 'resource': resource}
+        ),
     )
 
 

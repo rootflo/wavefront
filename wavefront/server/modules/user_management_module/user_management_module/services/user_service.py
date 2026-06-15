@@ -7,7 +7,7 @@ from db_repo_module.models.resource import Resource, ResourceScope
 from db_repo_module.models.role import Role
 from db_repo_module.models.role_resource import RoleResource
 from db_repo_module.cache.cache_manager import CacheManager
-from sqlalchemy import select, Result, and_
+from sqlalchemy import select, Result, and_, or_, func
 from user_management_module.constants.auth import ADMIN_ROLE_NAME
 from common_module.response_formatter import ResponseFormatter
 from common_module.log.logger import logger
@@ -37,40 +37,29 @@ class UserService:
         user_id: str,
         scope: Optional[ResourceScope] = None,
         scopes: Optional[List[ResourceScope]] = None,
-        is_admin: bool = False,
     ) -> List[Resource]:
         """
-        Fetch all resources accessible to a user based on their roles.
-
-        Admin access is decided by the caller via the single ``check_is_admin``
-        helper and passed in through ``is_admin``. Admins implicitly have access
-        to every resource, so the role join is skipped for them.
+        Fetch all resources a user has access to through their role assignments.
 
         Args:
             user_id: The ID of the user
             scope: Single scope to filter by (optional)
             scopes: Multiple scopes to filter by (optional)
-            is_admin: Whether the requesting user is an admin
 
         Returns:
             List of Resource objects the user has access to
         """
         async with self.resource_repository.session() as session:
-            if is_admin:
-                # Admins have access to all resources — skip the role join
-                statement = select(Resource)
-            else:
-                statement = (
-                    select(Resource)
-                    .join(RoleResource, Resource.id == RoleResource.resource_id)
-                    .join(Role, Role.id == RoleResource.role_id)
-                    .join(UserRole, UserRole.role_id == Role.id)
-                    .join(User, UserRole.user_id == User.id)
-                    .where(UserRole.user_id == user_id)
-                    .where(User.deleted.is_(False))
-                )
+            statement = (
+                select(Resource)
+                .join(RoleResource, Resource.id == RoleResource.resource_id)
+                .join(Role, Role.id == RoleResource.role_id)
+                .join(UserRole, UserRole.role_id == Role.id)
+                .join(User, UserRole.user_id == User.id)
+                .where(UserRole.user_id == user_id)
+                .where(User.deleted.is_(False))
+            )
 
-            # Apply scope filtering
             if scope is not None:
                 statement = statement.where(Resource.scope == scope)
             elif scopes is not None:
@@ -78,6 +67,83 @@ class UserService:
 
             result: Result = await session.execute(statement)
             return result.scalars().all()
+
+    def _resource_filters(
+        self,
+        scope: Optional[ResourceScope] = None,
+        scopes: Optional[List[ResourceScope]] = None,
+        search: Optional[str] = None,
+    ) -> list:
+        """Build the WHERE conditions shared by resource listing and counting."""
+        conditions: list = []
+        if scope is not None:
+            conditions.append(Resource.scope == scope)
+        elif scopes is not None:
+            conditions.append(Resource.scope.in_(scopes))
+
+        if search and search.strip():
+            term = f'%{search.strip()}%'
+            conditions.append(
+                or_(
+                    Resource.key.ilike(term),
+                    Resource.value.ilike(term),
+                    Resource.description.ilike(term),
+                )
+            )
+        return conditions
+
+    async def get_all_resources(
+        self,
+        scope: Optional[ResourceScope] = None,
+        scopes: Optional[List[ResourceScope]] = None,
+        search: Optional[str] = None,
+        offset: int = 0,
+        limit: Optional[int] = None,
+    ) -> List[Resource]:
+        """
+        Fetch every resource in the system, optionally filtered by scope/search.
+
+        Used to grant admins implicit access to all resources without requiring
+        explicit role assignments, and to power the admin resource listing.
+
+        Args:
+            scope: Single scope to filter by (optional)
+            scopes: Multiple scopes to filter by (optional)
+            search: Case-insensitive term matched against key/value/description
+            offset: Number of records to skip (pagination)
+            limit: Maximum number of records to return (no limit when None)
+
+        Returns:
+            List of all matching Resource objects
+        """
+        async with self.resource_repository.session() as session:
+            statement = select(Resource)
+            conditions = self._resource_filters(scope, scopes, search)
+            if conditions:
+                statement = statement.where(and_(*conditions))
+
+            statement = statement.offset(offset)
+            if limit is not None:
+                statement = statement.limit(limit)
+
+            result: Result = await session.execute(statement)
+            return result.scalars().all()
+
+    async def count_all_resources(
+        self,
+        scope: Optional[ResourceScope] = None,
+        scopes: Optional[List[ResourceScope]] = None,
+        search: Optional[str] = None,
+    ) -> int:
+        """Total number of resources matching the given scope/search filters."""
+        async with self.resource_repository.session() as session:
+            statement = select(func.count()).select_from(Resource)
+            conditions = self._resource_filters(scope, scopes, search)
+            if conditions:
+                statement = statement.where(and_(*conditions))
+
+            result: Result = await session.execute(statement)
+            return result.scalar() or 0
 
     async def get_user_role_for_scope(
         self, user_id: str, scope: ResourceScope

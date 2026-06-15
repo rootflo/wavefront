@@ -37,9 +37,12 @@ async def superset_authenticator(
     data_filters = []
     is_admin = await check_is_admin(role_id)
 
-    dashboards = await user_service.get_user_resources(
-        user_id=user_id, scope=ResourceScope.DASHBOARD, is_admin=is_admin
-    )
+    if is_admin:
+        dashboards = await user_service.get_all_resources(scope=ResourceScope.DASHBOARD)
+    else:
+        dashboards = await user_service.get_user_resources(
+            user_id=user_id, scope=ResourceScope.DASHBOARD
+        )
 
     if not dashboards:
         return JSONResponse(

@@ -17,6 +17,7 @@ from fastapi import status
 from fastapi.params import Depends
 from fastapi.responses import JSONResponse
 from sqlalchemy import func
+from sqlalchemy import or_
 from sqlalchemy import Result
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -206,19 +207,33 @@ async def get_resource(
         default=[ResourceScope.DASHBOARD, ResourceScope.CONSOLE],
         description='The scopes of the resources to fetch',
     ),
+    search: Optional[str] = Query(
+        None, description='Search by key, value or description'
+    ),
+    limit: int = Query(100, description='Maximum number of resources to return'),
+    offset: int = Query(0, description='Number of resources to skip'),
 ):
-    role_id, user_id, _ = get_current_user(request)
+    role_id, _, _ = get_current_user(request)
     is_admin = await check_is_admin(role_id)
 
-    resources = await user_service.get_user_resources(
-        user_id=user_id, scopes=scopes, is_admin=is_admin
+    if not is_admin:
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content=response_formatter.buildErrorResponse('Access denied'),
+        )
+
+    resources = await user_service.get_all_resources(
+        scopes=scopes, search=search, offset=offset, limit=limit
     )
+    total = await user_service.count_all_resources(scopes=scopes, search=search)
 
     data = [res.to_dict() for res in resources]
 
     return JSONResponse(
         status_code=status.HTTP_200_OK,
-        content=response_formatter.buildSuccessResponse(data={'resources': data}),
+        content=response_formatter.buildSuccessResponse(
+            data={'resources': data, 'total': total}
+        ),
     )
 
 
@@ -236,6 +251,9 @@ async def get_role(
         default=[ResourceScope.CONSOLE], description='The scopes of the roles to fetch'
     ),
     select_item: Optional[str] = None,
+    search: Optional[str] = Query(None, description='Search by name or description'),
+    limit: int = Query(100, description='Maximum number of roles to return'),
+    offset: int = Query(0, description='Number of roles to skip'),
 ):
     role_id, _, _ = get_current_user(request)
     is_admin = await check_is_admin(role_id)
@@ -257,9 +275,22 @@ async def get_role(
             )
         valid_columns.append(getattr(Role, item))
 
+    search_filter = None
+    if search and search.strip():
+        term = f'%{search.strip()}%'
+        search_filter = or_(Role.name.ilike(term), Role.description.ilike(term))
+
     async with role_repository.session() as session:
         if valid_columns:
             statement = select(Role).options(selectinload(Role.resources))
+            count_statement = select(func.count()).select_from(Role)
+            if search_filter is not None:
+                statement = statement.where(search_filter)
+                count_statement = count_statement.where(search_filter)
+
+            total = (await session.execute(count_statement)).scalar() or 0
+
+            statement = statement.offset(offset).limit(limit)
             result = await session.execute(statement)
             roles = result.scalars().unique().all()
             data = []
@@ -279,15 +310,32 @@ async def get_role(
                 .join(RoleResource, Role.id == RoleResource.role_id)
                 .join(Resource, Resource.id == RoleResource.resource_id)
                 .where(Resource.scope.in_(scopes))
+                .distinct()
             )
+            count_statement = (
+                select(func.count(func.distinct(Role.id)))
+                .select_from(Role)
+                .join(RoleResource, Role.id == RoleResource.role_id)
+                .join(Resource, Resource.id == RoleResource.resource_id)
+                .where(Resource.scope.in_(scopes))
+            )
+            if search_filter is not None:
+                statement = statement.where(search_filter)
+                count_statement = count_statement.where(search_filter)
+
+            total = (await session.execute(count_statement)).scalar() or 0
+
+            statement = statement.offset(offset).limit(limit)
             result: Result = await session.execute(statement)
-            roles = result.scalars().all()
+            roles = result.scalars().unique().all()
 
             data = [role.to_dict() for role in roles]
 
     return JSONResponse(
         status_code=status.HTTP_200_OK,
-        content=response_formatter.buildSuccessResponse(data={'roles': data}),
+        content=response_formatter.buildSuccessResponse(
+            data={'roles': data, 'total': total}
+        ),
     )
 
 
