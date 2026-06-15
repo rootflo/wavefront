@@ -66,9 +66,6 @@ async def create_user(
     user_repository: SQLAlchemyRepository[User] = Depends(
         Provide[UserContainer.user_repository]
     ),
-    role_repository: SQLAlchemyRepository[Role] = Depends(
-        Provide[UserContainer.role_repository]
-    ),
     user_service: UserService = Depends(Provide[UserContainer.user_service]),
     cache_manager: CacheManager = Depends(Provide[UserContainer.cache_manager]),
 ):
@@ -80,6 +77,8 @@ async def create_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content=response_formatter.buildErrorResponse('Access denied'),
         )
+
+    is_creating_admin = role_id in new_user.role_id
 
     existing_user = await user_repository.find_one(email=new_user.email)
     if existing_user:
@@ -109,25 +108,26 @@ async def create_user(
 
     async with user_repository.session() as session:
         try:
-            get_console_resources_query = (
-                select(Resource)
-                .join(RoleResource, Resource.id == RoleResource.resource_id)
-                .where(
-                    and_(
-                        RoleResource.role_id.in_(new_user.role_id),
-                        Resource.scope == ResourceScope.CONSOLE,
+            if not is_creating_admin:
+                get_console_resources_query = (
+                    select(Resource)
+                    .join(RoleResource, Resource.id == RoleResource.resource_id)
+                    .where(
+                        and_(
+                            RoleResource.role_id.in_(new_user.role_id),
+                            Resource.scope == ResourceScope.CONSOLE,
+                        )
                     )
                 )
-            )
-            result = await session.execute(get_console_resources_query)
-            console_resources = result.scalars().all()
-            if len(console_resources) == 0:
-                return JSONResponse(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    content=response_formatter.buildErrorResponse(
-                        'Atleast one console resource is mandatory'
-                    ),
-                )
+                result = await session.execute(get_console_resources_query)
+                console_resources = result.scalars().all()
+                if len(console_resources) == 0:
+                    return JSONResponse(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        content=response_formatter.buildErrorResponse(
+                            'Atleast one console resource is mandatory'
+                        ),
+                    )
 
             hashed_password = hash_password(new_user.password)
             user = User(
@@ -158,16 +158,9 @@ async def create_user(
             await session.flush()
             user_id = user.id
 
-            if role_id in new_user.role_id:  # Is creating admin user
-                all_roles = await role_repository.find()
-                user_roles = [
-                    UserRole(user_id=user_id, role_id=role.id) for role in all_roles
-                ]
-            else:  # Is creating user with role other than admin
-                user_roles = [
-                    UserRole(user_id=user_id, role_id=role_id)
-                    for role_id in new_user.role_id
-                ]
+            user_roles = [
+                UserRole(user_id=user_id, role_id=r_id) for r_id in new_user.role_id
+            ]
             session.add_all(user_roles)
 
             await session.commit()

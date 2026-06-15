@@ -9,3 +9,5 @@ class RootfloHeaders:
 
 
 SERVICE_AUTH_ROLE_ID = 'floconsole-service'
+
+ADMIN_ROLE_NAME = 'admin'

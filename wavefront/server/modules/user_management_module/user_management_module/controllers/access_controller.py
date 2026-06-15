@@ -7,7 +7,6 @@ from db_repo_module.models.resource import Resource
 from db_repo_module.models.resource import ResourceScope
 from db_repo_module.models.role import Role
 from db_repo_module.models.role_resource import RoleResource
-from db_repo_module.models.user_role import UserRole
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from dependency_injector.wiring import inject
 from dependency_injector.wiring import Provide
@@ -48,9 +47,6 @@ async def create_resource(
     ),
     role_resource_repository: SQLAlchemyRepository[RoleResource] = Depends(
         Provide[UserContainer.role_resource_repository]
-    ),
-    user_role_repository: SQLAlchemyRepository[UserRole] = Depends(
-        Provide[UserContainer.user_role_repository]
     ),
 ):
     user_role_id, _, _ = get_current_user(request)
@@ -100,21 +96,6 @@ async def create_resource(
             await role_resource_repository.create_all(
                 role_resources, replace=True, session=session
             )
-            admin_users = await user_role_repository.find(
-                role_id=user_role_id, session=session
-            )
-
-            permissions: list[UserRole] = []
-            if admin_users and len(admin_users) > 0:
-                for user in admin_users:
-                    for role in roles:
-                        permissions.append(
-                            UserRole(user_id=user.user_id, role_id=role.id)
-                        )
-
-                await user_role_repository.create_all(
-                    permissions, replace=True, session=session
-                )
 
             await session.commit()
 
@@ -226,9 +207,12 @@ async def get_resource(
         description='The scopes of the resources to fetch',
     ),
 ):
-    _, user_id, _ = get_current_user(request)
+    role_id, user_id, _ = get_current_user(request)
+    is_admin = await check_is_admin(role_id)
 
-    resources = await user_service.get_user_resources(user_id=user_id, scopes=scopes)
+    resources = await user_service.get_user_resources(
+        user_id=user_id, scopes=scopes, is_admin=is_admin
+    )
 
     data = [res.to_dict() for res in resources]
 

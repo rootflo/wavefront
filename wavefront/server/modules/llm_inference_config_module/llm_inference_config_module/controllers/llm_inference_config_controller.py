@@ -1,10 +1,7 @@
 import uuid
 
-from auth_module.auth_container import AuthContainer
 from common_module.common_container import CommonContainer
 from common_module.response_formatter import ResponseFormatter
-from db_repo_module.models.role import Role
-from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import JSONResponse
@@ -18,24 +15,9 @@ from llm_inference_config_module.models.schemas import (
 from llm_inference_config_module.services.llm_inference_config_service import (
     LlmInferenceConfigService,
 )
-from user_management_module.constants.auth import SERVICE_AUTH_ROLE_ID
+from user_management_module.utils.user_utils import check_is_admin
 
 llm_inference_config_router = APIRouter()
-
-
-@inject
-async def check_admin(
-    role_id: str,
-    role_repository: SQLAlchemyRepository[Role] = Depends(
-        Provide[AuthContainer.role_repository]
-    ),
-) -> bool:
-    if role_id == SERVICE_AUTH_ROLE_ID:
-        return True
-    role = await role_repository.find_one(id=role_id)
-    if not role:
-        return False
-    return role.name == 'admin'
 
 
 @llm_inference_config_router.post('/v1/llm-inference-configs')
@@ -51,7 +33,7 @@ async def create_llm_inference_config(
     ),
 ):
     role_id = request.state.session.role_id
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -99,7 +81,7 @@ async def get_llm_inference_configs(
     ),
 ):
     role_id = request.state.session.role_id
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -169,7 +151,7 @@ async def update_llm_inference_config(
     ),
 ):
     role_id = request.state.session.role_id
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -293,7 +275,7 @@ async def delete_llm_inference_config(
     ),
 ):
     role_id = request.state.session.role_id
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,

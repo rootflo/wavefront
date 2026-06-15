@@ -12,6 +12,8 @@ from fastapi import Request
 from fastapi import status
 from fastapi.params import Depends
 from fastapi.responses import JSONResponse
+from user_management_module.constants.auth import ADMIN_ROLE_NAME
+from user_management_module.constants.auth import SERVICE_AUTH_ROLE_ID
 from user_management_module.services.account_lockout_service import (
     AccountLockoutService,
 )
@@ -35,14 +37,19 @@ async def check_is_admin(
         Provide[UserContainer.role_repository]
     ),
 ) -> bool:
-    if role_id == 'floconsole-service':
+    """Single source of truth for admin checks based on the session role_id.
+
+    Service identities (mTLS/passthrough/service-to-service) carry the
+    SERVICE_AUTH_ROLE_ID and are always treated as admins.
+    """
+    if role_id == SERVICE_AUTH_ROLE_ID:
         return True
     role = await role_repository.find_one(id=role_id)
 
     if not role:
         return False
 
-    return role.name == 'admin'
+    return role.name == ADMIN_ROLE_NAME
 
 
 def create_account_lockout_response(
