@@ -141,11 +141,22 @@ class GmailEmailService(EmailService):
         self.scopes = ['https://www.googleapis.com/auth/gmail.send']
 
         if not all([client_id, client_secret, refresh_token, email_sender]):
+            logger.warning(
+                'Gmail OAuth credentials are incomplete '
+                '(client_id, client_secret, refresh_token, email_sender). '
+                'Email sending will fail if attempted.'
+            )
+
+    def _assert_credentials(self):
+        if not all(
+            [self.client_id, self.client_secret, self.refresh_token, self.email_sender]
+        ):
             raise Exception(
                 'Gmail OAuth requires client_id, client_secret, refresh_token, and email_sender'
             )
 
     def get_credentials(self) -> Credentials:
+        self._assert_credentials()
         creds = Credentials(
             token=None,
             refresh_token=self.refresh_token,
