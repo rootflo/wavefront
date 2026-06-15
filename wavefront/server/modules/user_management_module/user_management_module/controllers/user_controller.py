@@ -95,6 +95,18 @@ async def create_user(
                 ),
             )
 
+    if new_user.username:
+        existing_by_username = await user_repository.find_one(
+            username=new_user.username
+        )
+        if existing_by_username and not existing_by_username.deleted:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content=response_formatter.buildErrorResponse(
+                    'User with the same username already exists'
+                ),
+            )
+
     async with user_repository.session() as session:
         try:
             get_console_resources_query = (
@@ -120,6 +132,7 @@ async def create_user(
             hashed_password = hash_password(new_user.password)
             user = User(
                 email=new_user.email,
+                username=new_user.username,
                 password=hashed_password,
                 first_name=new_user.first_name,
                 last_name=new_user.last_name,
@@ -301,6 +314,7 @@ async def get_all_user(
                 User.first_name,
                 User.last_name,
                 User.email,
+                User.username,
                 func.array_agg(
                     func.json_build_object(
                         'id',
@@ -326,6 +340,7 @@ async def get_all_user(
             if len(name) > 1 and name[1]:
                 filters.append(User.last_name.ilike(f'%{name[1]}%'))
             filters.append(User.email.ilike(f'%{search}%'))
+            filters.append(User.username.ilike(f'%{search}%'))
             query = query.where(or_(*filters))
 
         # Add role filter

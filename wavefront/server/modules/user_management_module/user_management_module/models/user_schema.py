@@ -11,6 +11,7 @@ PASSWORD_REGEX = r'^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}
 
 class NewUser(BaseModel):
     email: EmailStr = Field(..., max_length=254)  # RFC 5321 standard max length
+    username: Optional[str] = Field(None, min_length=3, max_length=50)
     password: str = Field(..., min_length=8)
     first_name: Optional[str] = Field(None, min_length=1, max_length=50)
     last_name: Optional[str] = Field(None, max_length=50)
@@ -43,6 +44,17 @@ class NewUser(BaseModel):
             raise ValueError('Invalid TLD length')
 
         return v.lower()  # Normalize email to lowercase
+
+    @field_validator('username')
+    @classmethod
+    def validate_username_format(cls, v):
+        if v is None:
+            return v
+        if not re.match(r'^[a-zA-Z0-9._@+-]+$', v):
+            raise ValueError(
+                'Username may only contain letters, digits, and the characters . _ @ + -'
+            )
+        return v.lower()
 
     @field_validator('password')
     @classmethod

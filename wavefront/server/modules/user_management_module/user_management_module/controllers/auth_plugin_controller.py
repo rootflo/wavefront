@@ -1,4 +1,6 @@
 import json
+import logging
+import secrets
 from uuid import uuid4
 from db_repo_module.models.resource import ResourceScope
 from dependency_injector.wiring import inject, Provide
@@ -35,6 +37,53 @@ from authenticator.helper import validate_email
 
 
 auth_plugin_router = APIRouter()
+
+logger = logging.getLogger(__name__)
+
+# Per-flow OAuth state lives in Redis with a short TTL. Each authorize ->
+# callback round-trip is a one-shot: stored on init, consumed (deleted) on
+# successful callback. Replays after consumption miss the cache and are
+# rejected.
+OAUTH_FLOW_TTL_SECONDS = 600
+_OAUTH_FLOW_KEY_PREFIX = 'oauth:flow:'
+
+
+def _store_oauth_flow(cache_manager: CacheManager, auth_id: str) -> tuple[str, str]:
+    """Mint and persist an opaque state+nonce pair bound to auth_id.
+
+    `nx=True` prevents accidental overwrite if (astronomically) the same
+    32-byte token is minted twice.
+    """
+    state = secrets.token_urlsafe(32)
+    nonce = secrets.token_urlsafe(32)
+    cache_manager.add(
+        f'{_OAUTH_FLOW_KEY_PREFIX}{state}',
+        json.dumps({'auth_id': str(auth_id), 'nonce': nonce}),
+        expiry=OAUTH_FLOW_TTL_SECONDS,
+        nx=True,
+    )
+    return state, nonce
+
+
+def _consume_oauth_flow(
+    cache_manager: CacheManager, state: Optional[str]
+) -> Optional[Dict[str, str]]:
+    """Single-use lookup of the flow record. Returns None on miss/parse error."""
+    if not state:
+        return None
+    key = f'{_OAUTH_FLOW_KEY_PREFIX}{state}'
+    raw = cache_manager.get_str(key)
+    if not raw:
+        return None
+    try:
+        flow = json.loads(raw)
+    except (TypeError, ValueError):
+        cache_manager.remove(key)
+        return None
+    cache_manager.remove(key)
+    if not isinstance(flow, dict) or 'auth_id' not in flow:
+        return None
+    return flow
 
 
 class UnifiedAuthRequest(BaseModel):
@@ -204,10 +253,12 @@ async def init_oauth_flow(
     authenticator_repository: SQLAlchemyRepository[Authenticator] = Depends(
         Provide[PluginsContainer.authenticator_repository]
     ),
+    cache_manager: CacheManager = Depends(Provide[UserContainer.cache_manager]),
 ):
     """Initialize OAuth flow and return authorization URL."""
 
     try:
+        logger.debug('OAuth init requested for auth_id=%s', oauth_request.auth_id)
         # Get authenticator instance by ID
         auth_id = UUID(oauth_request.auth_id)
         authenticator = await get_authenticator_instance(
@@ -215,6 +266,10 @@ async def init_oauth_flow(
         )
 
         if not authenticator:
+            logger.debug(
+                'OAuth init: no enabled authenticator for auth_id=%s',
+                oauth_request.auth_id,
+            )
             return JSONResponse(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 content=response_formatter.buildErrorResponse(
@@ -222,9 +277,17 @@ async def init_oauth_flow(
                 ),
             )
 
-        # Generate state and get authorization URL
-        state = json.dumps({'auth_id': oauth_request.auth_id})
-        auth_url = authenticator.get_authorization_url(state)
+        # Mint opaque CSRF state + OIDC nonce, persist server-side, and pass
+        # both into the provider so they end up in the authorize URL.
+        state, nonce = _store_oauth_flow(cache_manager, oauth_request.auth_id)
+        logger.debug(
+            'OAuth flow stored: auth_id=%s state=%s nonce=%s ttl=%ss',
+            oauth_request.auth_id,
+            state,
+            nonce,
+            OAUTH_FLOW_TTL_SECONDS,
+        )
+        auth_url = authenticator.get_authorization_url(state, nonce=nonce)
 
         if not auth_url:
             return JSONResponse(
@@ -274,11 +337,20 @@ async def google_oauth_callback(
     token_service: TokenService = Depends(Provide[AuthContainer.token_service]),
 ):
     """Handle Google OAuth callback."""
-    state_obj = json.loads(state)
-    auth_id = state_obj['auth_id']
+    logger.debug(
+        'Google OAuth callback: has_code=%s has_state=%s has_error=%s state=%s',
+        bool(code),
+        bool(state),
+        bool(error),
+        state,
+    )
+    flow = _consume_oauth_flow(cache_manager, state)
+    if flow is None:
+        logger.warning('Google OAuth callback received unknown/expired state')
+        return RedirectResponse(url='about:blank')
 
     return await _handle_oauth_callback(
-        auth_id,
+        flow['auth_id'],
         {'authorization_code': code, 'state': state, 'error': error},
         request,
         response_formatter,
@@ -288,6 +360,7 @@ async def google_oauth_callback(
         session_repository,
         cache_manager,
         token_service,
+        expected_nonce=flow.get('nonce'),
     )
 
 
@@ -317,11 +390,20 @@ async def microsoft_oauth_callback(
     token_service: TokenService = Depends(Provide[AuthContainer.token_service]),
 ):
     """Handle Microsoft OAuth callback."""
-    state_obj = json.loads(state)
-    auth_id = state_obj['auth_id']
+    logger.debug(
+        'Microsoft OAuth callback: has_code=%s has_state=%s has_error=%s state=%s',
+        bool(code),
+        bool(state),
+        bool(error),
+        state,
+    )
+    flow = _consume_oauth_flow(cache_manager, state)
+    if flow is None:
+        logger.warning('Microsoft OAuth callback received unknown/expired state')
+        return RedirectResponse(url='about:blank')
 
     return await _handle_oauth_callback(
-        auth_id,
+        flow['auth_id'],
         {'authorization_code': code, 'state': state, 'error': error},
         request,
         response_formatter,
@@ -331,6 +413,58 @@ async def microsoft_oauth_callback(
         session_repository,
         cache_manager,
         token_service,
+        expected_nonce=flow.get('nonce'),
+    )
+
+
+@auth_plugin_router.get('/v1/oauth/adfs/callback')
+@inject
+async def microsoft_adfs_oauth_callback(
+    request: Request,
+    state: str = Query(...),
+    code: Optional[str] = Query(None),
+    error: Optional[str] = Query(None),
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+    authenticator_repository: SQLAlchemyRepository[Authenticator] = Depends(
+        Provide[PluginsContainer.authenticator_repository]
+    ),
+    user_repository: SQLAlchemyRepository[User] = Depends(
+        Provide[UserContainer.user_repository]
+    ),
+    user_service: UserService = Depends(Provide[UserContainer.user_service]),
+    session_repository: SQLAlchemyRepository[Session] = Depends(
+        Provide[UserContainer.session_repository]
+    ),
+    cache_manager: CacheManager = Depends(Provide[UserContainer.cache_manager]),
+    token_service: TokenService = Depends(Provide[AuthContainer.token_service]),
+):
+    """Handle Microsoft ADFS OAuth callback."""
+    logger.debug(
+        'Microsoft ADFS callback: has_code=%s has_state=%s has_error=%s state=%s',
+        bool(code),
+        bool(state),
+        bool(error),
+        state,
+    )
+    flow = _consume_oauth_flow(cache_manager, state)
+    if flow is None:
+        logger.warning('Microsoft ADFS callback received unknown/expired state')
+        return RedirectResponse(url='about:blank')
+
+    return await _handle_oauth_callback(
+        flow['auth_id'],
+        {'authorization_code': code, 'state': state, 'error': error},
+        request,
+        response_formatter,
+        authenticator_repository,
+        user_service,
+        user_repository,
+        session_repository,
+        cache_manager,
+        token_service,
+        expected_nonce=flow.get('nonce'),
     )
 
 
@@ -345,10 +479,19 @@ async def _handle_oauth_callback(
     session_repository: SQLAlchemyRepository[Session],
     cache_manager: CacheManager,
     token_service: TokenService,
+    expected_nonce: Optional[str] = None,
 ) -> RedirectResponse:
     """Common OAuth callback handler."""
 
     try:
+        logger.debug(
+            '_handle_oauth_callback: auth_id=%s has_code=%s has_error=%s '
+            'expected_nonce_set=%s',
+            auth_id,
+            bool(callback_data.get('authorization_code')),
+            bool(callback_data.get('error')),
+            expected_nonce is not None,
+        )
         # Get authenticator instance and config
         auth_uuid = UUID(auth_id)
         authenticator, config_data = await get_authenticator_with_config(
@@ -379,6 +522,12 @@ async def _handle_oauth_callback(
         provider = config_data.get('auth_type')
         success_url = config_data.get('config', {}).get('client_redirect_success_url')
         failure_url = config_data.get('config', {}).get('client_redirect_failure_url')
+        logger.debug(
+            '_handle_oauth_callback: provider=%s success_url=%s failure_url=%s',
+            provider,
+            success_url,
+            failure_url,
+        )
 
         # Handle OAuth error from provider
         if callback_data.get('error'):
@@ -393,7 +542,19 @@ async def _handle_oauth_callback(
             return RedirectResponse(url='about:blank')
 
         # Handle OAuth callback
-        auth_result = authenticator.handle_callback(callback_data)
+        auth_result = authenticator.handle_callback(
+            callback_data, expected_nonce=expected_nonce
+        )
+        ui = auth_result.user_info
+        logger.debug(
+            '_handle_oauth_callback: provider auth_result success=%s error_code=%s '
+            'email=%s upn=%s unique_name=%s',
+            auth_result.success,
+            auth_result.error_code,
+            ui.email if ui else None,
+            ui.upn if ui else None,
+            ui.unique_name if ui else None,
+        )
 
         if not auth_result.success:
             if failure_url:
@@ -406,8 +567,18 @@ async def _handle_oauth_callback(
                 return RedirectResponse(url=f'{failure_url}?{params}')
             return RedirectResponse(url='about:blank')
 
-        # Create session from auth result
-        user = await user_repository.find_one(email=auth_result.user_info.email)
+        if ui is None:
+            return get_failure_redirect('OAuth authentication returned no user info')
+
+        user = await user_repository.find_one(email=ui.email)
+        if user is None and ui.email:
+            user = await user_repository.find_one(username=ui.email.lower())
+        logger.debug(
+            '_handle_oauth_callback: user lookup by identifier=%s found=%s deleted=%s',
+            ui.email,
+            user is not None,
+            user.deleted if user else None,
+        )
         if user is None:
             if failure_url:
                 params = urlencode(
@@ -448,6 +619,11 @@ async def _handle_oauth_callback(
         role_id = await user_service.get_user_role_for_scope(
             user_id=str(user.id), scope=ResourceScope.CONSOLE
         )
+        logger.debug(
+            '_handle_oauth_callback: console role lookup user_id=%s role_id=%s',
+            str(user.id),
+            role_id,
+        )
 
         if not role_id:
             if failure_url:
@@ -468,12 +644,24 @@ async def _handle_oauth_callback(
 
         # Success: redirect to success URL with access token
         if success_url:
+            logger.debug(
+                '_handle_oauth_callback: success redirect provider=%s user_id=%s '
+                'session_id=%s -> %s',
+                provider,
+                str(user.id),
+                str(session.id),
+                success_url,
+            )
             params = urlencode({'provider': provider, 'access_token': token})
             return RedirectResponse(url=f'{success_url}?{params}')
 
+        logger.debug(
+            '_handle_oauth_callback: no success_url configured, redirecting to about:blank'
+        )
         return RedirectResponse(url='about:blank')
 
     except Exception as e:
+        logger.debug('_handle_oauth_callback raised: %s', e)
         # Try to get config for failure URL
         try:
             auth_uuid = UUID(auth_id)

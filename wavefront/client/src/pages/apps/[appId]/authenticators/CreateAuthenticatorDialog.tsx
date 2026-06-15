@@ -46,7 +46,7 @@ import { z } from 'zod';
 
 const createAuthenticatorSchema = z.object({
   authName: z.string().min(1, 'Authenticator name is required'),
-  authType: z.enum(['google_oauth', 'microsoft_oauth', 'email_password']),
+  authType: z.enum(['google_oauth', 'microsoft_oauth', 'microsoft_adfs', 'email_password']),
   authDesc: z.string().optional(),
 });
 
@@ -383,7 +383,7 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+      <DialogContent className="max-h-[90vh] w-[95vw] !max-w-6xl overflow-y-auto sm:!max-w-6xl">
         <DialogHeader>
           <DialogTitle>Create New Authenticator</DialogTitle>
           <DialogDescription>Configure a new authentication provider for {selectedApp?.app_name}</DialogDescription>

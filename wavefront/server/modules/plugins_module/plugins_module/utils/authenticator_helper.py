@@ -12,7 +12,13 @@ def validate_google_oauth_config(config: Dict[str, Any]) -> List[str]:
     """Validate Google OAuth configuration and return list of errors."""
     errors = []
 
-    required_fields = ['client_id', 'client_secret', 'redirect_uri']
+    required_fields = [
+        'client_id',
+        'client_secret',
+        'redirect_uri',
+        'client_redirect_success_url',
+        'client_redirect_failure_url',
+    ]
     for field in required_fields:
         if not config.get(field):
             errors.append(f'Missing required field: {field}')
@@ -23,6 +29,11 @@ def validate_google_oauth_config(config: Dict[str, Any]) -> List[str]:
         redirect_uri.startswith('http://') or redirect_uri.startswith('https://')
     ):
         errors.append('redirect_uri must be a valid HTTP/HTTPS URL')
+
+    for field in ('client_redirect_success_url', 'client_redirect_failure_url'):
+        value = config.get(field)
+        if value and not (value.startswith('http://') or value.startswith('https://')):
+            errors.append(f'{field} must be a valid HTTP/HTTPS URL')
 
     # Validate scopes
     scopes = config.get('scopes', [])
@@ -57,6 +68,32 @@ def validate_microsoft_oauth_config(config: Dict[str, Any]) -> List[str]:
     authority = config.get('authority', '')
     if authority and not authority.startswith('https://'):
         errors.append('authority must be a valid HTTPS URL')
+
+    return errors
+
+
+def validate_microsoft_adfs_config(config: Dict[str, Any]) -> List[str]:
+    """Validate Microsoft ADFS configuration and return list of errors."""
+    errors = []
+
+    required_fields = ['client_id', 'client_secret', 'authority', 'redirect_uri']
+    for field in required_fields:
+        if not config.get(field):
+            errors.append(f'Missing required field: {field}')
+
+    authority = config.get('authority', '')
+    if authority and not authority.startswith('https://'):
+        errors.append('authority must be a valid HTTPS URL')
+
+    redirect_uri = config.get('redirect_uri')
+    if redirect_uri and not (
+        redirect_uri.startswith('http://') or redirect_uri.startswith('https://')
+    ):
+        errors.append('redirect_uri must be a valid HTTP/HTTPS URL')
+
+    scopes = config.get('scopes', [])
+    if not isinstance(scopes, list) or len(scopes) == 0:
+        errors.append('scopes must be a non-empty list')
 
     return errors
 
@@ -129,6 +166,23 @@ def get_config_template(auth_type: str) -> Dict[str, Any]:
             'authority': 'https://login.microsoftonline.com/',
             'response_type': 'code',
             'response_mode': 'query',
+        },
+        'microsoft_adfs': {
+            'client_id': 'YOUR_ADFS_CLIENT_ID',
+            'client_secret': 'YOUR_ADFS_CLIENT_SECRET',
+            'authority': 'https://fs.your-domain.com',
+            'redirect_uri': 'https://your-domain.com/v1/oauth/adfs/callback',
+            'client_redirect_success_url': 'https://your-domain.com/login/success',
+            'client_redirect_failure_url': 'https://your-domain.com/login/failed',
+            'scopes': ['openid', 'profile', 'email'],
+            'response_type': 'code',
+            'response_mode': 'query',
+            'authorize_path': '/adfs/oauth2/authorize',
+            'token_path': '/adfs/oauth2/token',
+            'jwks_path': '/adfs/discovery/keys',
+            'expected_issuer': 'https://fs.your-domain.com/adfs',
+            'clock_skew_seconds': 60,
+            'verify_ssl': True,
         },
     }
 
