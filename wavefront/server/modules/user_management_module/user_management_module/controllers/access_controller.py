@@ -268,75 +268,55 @@ async def get_role(
             content=response_formatter.buildErrorResponse('Access denied'),
         )
     item_to_select = select_item.split(',') if select_item else []
-    valid_columns = []
     for item in item_to_select:
-        if not getattr(Role, item):
+        if not hasattr(Role, item):
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content=response_formatter.buildErrorResponse(
                     error=f'Invalid column {item}'
                 ),
             )
-        valid_columns.append(getattr(Role, item))
 
-    search_filter = None
+    # Roles having at least one resource in the requested scopes. The IN-subquery
+    # keeps the outer query join-free, so each role is returned exactly once.
+    filters = [
+        Role.id.in_(
+            select(RoleResource.role_id)
+            .join(Resource, Resource.id == RoleResource.resource_id)
+            .where(Resource.scope.in_(scopes))
+        )
+    ]
     if search and search.strip():
         term = f'%{search.strip()}%'
-        search_filter = or_(Role.name.ilike(term), Role.description.ilike(term))
+        filters.append(or_(Role.name.ilike(term), Role.description.ilike(term)))
 
     async with role_repository.session() as session:
-        if valid_columns:
-            statement = select(Role).options(selectinload(Role.resources))
-            count_statement = select(func.count()).select_from(Role)
-            if search_filter is not None:
-                statement = statement.where(search_filter)
-                count_statement = count_statement.where(search_filter)
+        total = (
+            await session.execute(
+                select(func.count()).select_from(Role).where(*filters)
+            )
+        ).scalar() or 0
 
-            total = (await session.execute(count_statement)).scalar() or 0
+        statement = select(Role).where(*filters)
+        if 'resources' in item_to_select:
+            statement = statement.options(selectinload(Role.resources))
+        statement = statement.offset(offset)
+        if limit is not None:
+            statement = statement.limit(limit)
 
-            statement = statement.offset(offset)
-            if limit is not None:
-                statement = statement.limit(limit)
-            result = await session.execute(statement)
-            roles = result.scalars().unique().all()
-            data = []
-            for role in roles:
-                role_dict = {}
-                for col in item_to_select:
-                    if col == 'resources':
-                        role_dict[col] = [
-                            resource.to_dict() for resource in role.resources
-                        ]
-                    else:
-                        role_dict[col] = str(getattr(role, col))
-                data.append(role_dict)
+        roles = (await session.execute(statement)).scalars().all()
+
+        if item_to_select:
+            data = [
+                {
+                    col: [resource.to_dict() for resource in role.resources]
+                    if col == 'resources'
+                    else str(getattr(role, col))
+                    for col in item_to_select
+                }
+                for role in roles
+            ]
         else:
-            statement = (
-                select(Role)
-                .join(RoleResource, Role.id == RoleResource.role_id)
-                .join(Resource, Resource.id == RoleResource.resource_id)
-                .where(Resource.scope.in_(scopes))
-                .distinct()
-            )
-            count_statement = (
-                select(func.count(func.distinct(Role.id)))
-                .select_from(Role)
-                .join(RoleResource, Role.id == RoleResource.role_id)
-                .join(Resource, Resource.id == RoleResource.resource_id)
-                .where(Resource.scope.in_(scopes))
-            )
-            if search_filter is not None:
-                statement = statement.where(search_filter)
-                count_statement = count_statement.where(search_filter)
-
-            total = (await session.execute(count_statement)).scalar() or 0
-
-            statement = statement.offset(offset)
-            if limit is not None:
-                statement = statement.limit(limit)
-            result: Result = await session.execute(statement)
-            roles = result.scalars().unique().all()
-
             data = [role.to_dict() for role in roles]
 
     return JSONResponse(
