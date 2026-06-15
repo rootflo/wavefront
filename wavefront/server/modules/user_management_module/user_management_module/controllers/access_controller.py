@@ -203,14 +203,16 @@ async def get_resource(
         Provide[CommonContainer.response_formatter]
     ),
     user_service: UserService = Depends(Provide[UserContainer.user_service]),
-    scopes: list[str] = Query(
-        default=[ResourceScope.DASHBOARD, ResourceScope.CONSOLE],
-        description='The scopes of the resources to fetch',
+    scopes: Optional[list[str]] = Query(
+        default=None,
+        description='Scopes of the resources to fetch (all scopes when omitted)',
     ),
     search: Optional[str] = Query(
         None, description='Search by key, value or description'
     ),
-    limit: int = Query(100, description='Maximum number of resources to return'),
+    limit: Optional[int] = Query(
+        None, description='Maximum number of resources to return (all when omitted)'
+    ),
     offset: int = Query(0, description='Number of resources to skip'),
 ):
     role_id, _, _ = get_current_user(request)
@@ -252,7 +254,9 @@ async def get_role(
     ),
     select_item: Optional[str] = None,
     search: Optional[str] = Query(None, description='Search by name or description'),
-    limit: int = Query(100, description='Maximum number of roles to return'),
+    limit: Optional[int] = Query(
+        None, description='Maximum number of roles to return (all when omitted)'
+    ),
     offset: int = Query(0, description='Number of roles to skip'),
 ):
     role_id, _, _ = get_current_user(request)
@@ -290,7 +294,9 @@ async def get_role(
 
             total = (await session.execute(count_statement)).scalar() or 0
 
-            statement = statement.offset(offset).limit(limit)
+            statement = statement.offset(offset)
+            if limit is not None:
+                statement = statement.limit(limit)
             result = await session.execute(statement)
             roles = result.scalars().unique().all()
             data = []
@@ -325,7 +331,9 @@ async def get_role(
 
             total = (await session.execute(count_statement)).scalar() or 0
 
-            statement = statement.offset(offset).limit(limit)
+            statement = statement.offset(offset)
+            if limit is not None:
+                statement = statement.limit(limit)
             result: Result = await session.execute(statement)
             roles = result.scalars().unique().all()
 
