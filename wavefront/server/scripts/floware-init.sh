@@ -24,6 +24,13 @@ if not cur.fetchone():
 else:
     print('Database already exists, skipping')
 conn.close()
+
+conn = psycopg2.connect(host=host, user=user, password=password, dbname=dbname)
+conn.autocommit = True
+cur = conn.cursor()
+cur.execute('CREATE EXTENSION IF NOT EXISTS vector')
+print('Ensured vector extension exists')
+conn.close()
 "
 else
     echo "FLOWARE_DB_CREATE is not true, skipping database creation"
