@@ -359,6 +359,11 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                             'Invalid HMAC signature'
                         ),
                     )
+                request.state.session = UserSession(
+                    role_id=SERVICE_AUTH_ROLE_ID,
+                    user_id='hmac-service',
+                    session_id='hmac-token',
+                )
             # Check for service-to-service authentication (Client-Key header + JWT)
             elif request.headers.get(RootfloHeaders.CLIENT_KEY):
                 if not await validate_service_auth(
