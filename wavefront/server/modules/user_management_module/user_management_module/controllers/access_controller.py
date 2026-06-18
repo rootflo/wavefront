@@ -24,6 +24,7 @@ from sqlalchemy.orm import selectinload
 from user_management_module.models.resource import CreateRolePayload
 from user_management_module.models.resource import ResourcePayload
 from user_management_module.models.resource import UpdateResourcePayload
+from user_management_module.models.resource import UpdateRolePayload
 from user_management_module.user_container import UserContainer
 from user_management_module.services.user_service import UserService
 from user_management_module.utils.user_utils import check_is_admin
@@ -204,7 +205,12 @@ async def get_resource(
     ),
     user_service: UserService = Depends(Provide[UserContainer.user_service]),
     scopes: Optional[list[str]] = Query(
-        default=None,
+        default=[
+            ResourceScope.CONSOLE,
+            ResourceScope.DASHBOARD,
+            ResourceScope.ROUTE,
+            ResourceScope.DATA,
+        ],
         description='Scopes of the resources to fetch (all scopes when omitted)',
     ),
     search: Optional[str] = Query(
@@ -223,7 +229,6 @@ async def get_resource(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content=response_formatter.buildErrorResponse('Access denied'),
         )
-
     resources = await user_service.get_all_resources(
         scopes=scopes, search=search, offset=offset, limit=limit
     )
@@ -249,8 +254,19 @@ async def get_role(
     role_repository: SQLAlchemyRepository[Role] = Depends(
         Provide[UserContainer.role_repository]
     ),
-    scopes: list[str] = Query(
-        default=[ResourceScope.CONSOLE], description='The scopes of the roles to fetch'
+    scopes: Optional[list[str]] = Query(
+        default=None,
+        description='Filter roles by resource scope. When omitted, all scopes are used unless composite_only is true with an empty scopes list, which returns composite roles across every scope.',
+    ),
+    composite_only: bool = Query(
+        False,
+        description=(
+            'When true, only return composite roles (linked to 2+ resources). '
+            'With scopes empty, returns every composite role across all scopes. '
+            'With scopes set, returns only composite roles whose resource scope '
+            'set exactly matches the requested scopes (all requested scopes '
+            'present and no resource outside them).'
+        ),
     ),
     select_item: Optional[str] = None,
     search: Optional[str] = Query(None, description='Search by name or description'),
@@ -277,15 +293,81 @@ async def get_role(
                 ),
             )
 
-    # Roles having at least one resource in the requested scopes. The IN-subquery
+    # Base join used by every role-selection subquery below. The IN-subquery
     # keeps the outer query join-free, so each role is returned exactly once.
-    filters = [
-        Role.id.in_(
-            select(RoleResource.role_id)
-            .join(Resource, Resource.id == RoleResource.resource_id)
-            .where(Resource.scope.in_(scopes))
+    base_role_ids = select(RoleResource.role_id).join(
+        Resource, Resource.id == RoleResource.resource_id
+    )
+
+    def _composite_exact_match(requested_scopes: list[str]):
+        # A composite role (2+ resources) matches only when the set of scopes
+        # across all its resources is exactly the requested set — every requested
+        # scope is present and no resource falls outside it. Grouping spans all of
+        # the role's resources (no scope WHERE filter) so out-of-scope resources
+        # still count against the match.
+        return (
+            base_role_ids.group_by(RoleResource.role_id)
+            .having(func.count(RoleResource.resource_id) >= 2)
+            .having(
+                func.count(func.distinct(Resource.scope)).filter(
+                    Resource.scope.in_(requested_scopes)
+                )
+                == len(requested_scopes)
+            )
+            .having(
+                func.count(RoleResource.resource_id).filter(
+                    Resource.scope.not_in(requested_scopes)
+                )
+                == 0
+            )
         )
-    ]
+
+    def _single_resource_in_scope(requested_scopes: list[str]):
+        # A single-resource role matches when its only resource is in scope.
+        return (
+            base_role_ids.group_by(RoleResource.role_id)
+            .having(func.count(RoleResource.resource_id) == 1)
+            .having(
+                func.count(RoleResource.resource_id).filter(
+                    Resource.scope.in_(requested_scopes)
+                )
+                == 1
+            )
+        )
+
+    if not scopes:
+        if composite_only:
+            # No scopes requested: every composite role, regardless of scopes.
+            scoped_role_ids = base_role_ids.group_by(RoleResource.role_id).having(
+                func.count(RoleResource.resource_id) >= 2
+            )
+        else:
+            scoped_role_ids = base_role_ids.where(
+                Resource.scope.in_(
+                    [
+                        ResourceScope.CONSOLE,
+                        ResourceScope.DASHBOARD,
+                        ResourceScope.ROUTE,
+                        ResourceScope.DATA,
+                    ]
+                )
+            )
+        filters = [Role.id.in_(scoped_role_ids)]
+    else:
+        requested_scopes = list(set(scopes))
+        if composite_only:
+            # Only composite roles whose scope set exactly matches the request.
+            filters = [Role.id.in_(_composite_exact_match(requested_scopes))]
+        else:
+            # Single-resource roles in scope, plus composite roles that match the
+            # requested scope set exactly (so e.g. a route+data+dashboard role is
+            # NOT returned under scopes=route).
+            filters = [
+                or_(
+                    Role.id.in_(_single_resource_in_scope(requested_scopes)),
+                    Role.id.in_(_composite_exact_match(requested_scopes)),
+                )
+            ]
     if search and search.strip():
         term = f'%{search.strip()}%'
         filters.append(or_(Role.name.ilike(term), Role.description.ilike(term)))
@@ -409,5 +491,148 @@ async def delete_resources(
         status_code=status.HTTP_200_OK,
         content=response_formatter.buildSuccessResponse(
             data={'message': 'Resource deleted successfully'}
+        ),
+    )
+
+
+@access_router.patch('/roles/{role_id}')
+@inject
+async def patch_role_resources(
+    request: Request,
+    role_id: str,
+    payload: UpdateRolePayload,
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter],
+    ),
+    resource_repository: SQLAlchemyRepository[Resource] = Depends(
+        Provide[UserContainer.resource_repository]
+    ),
+    role_repository: SQLAlchemyRepository[Role] = Depends(
+        Provide[UserContainer.role_repository]
+    ),
+    role_resource_repository: SQLAlchemyRepository[RoleResource] = Depends(
+        Provide[UserContainer.role_resource_repository]
+    ),
+):
+    user_role_id, _, _ = get_current_user(request)
+    is_admin = await check_is_admin(user_role_id)
+    if not is_admin:
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content=response_formatter.buildErrorResponse('Access denied'),
+        )
+
+    role = await role_repository.find_one(id=role_id)
+    if not role:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse(
+                'Role not found with the given ID.'
+            ),
+        )
+
+    # Console roles are the user's UI identity marker and are managed separately,
+    # so their resource assignments must not be edited here.
+    async with role_resource_repository.session() as session:
+        console_stmt = (
+            select(func.count())
+            .select_from(RoleResource)
+            .join(Resource, Resource.id == RoleResource.resource_id)
+            .where(RoleResource.role_id == role_id)
+            .where(Resource.scope == ResourceScope.CONSOLE)
+        )
+        console_resource_count = (await session.execute(console_stmt)).scalar() or 0
+
+    if console_resource_count > 0:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                'Cannot update resources of a console role'
+            ),
+        )
+
+    resources = await resource_repository.find(id=payload.resources)
+    unknown_resource_count = len(payload.resources) - len(resources)
+    if unknown_resource_count != 0:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                f'Found {unknown_resource_count} unknown resource(s) in the payload. Remove these resources from the payload or create these resources and then proceed'
+            ),
+        )
+
+    await role_resource_repository.delete_all(role_id=role_id)
+    if payload.resources:
+        role_resources = [
+            RoleResource(role_id=role_id, resource_id=resource_id)
+            for resource_id in payload.resources
+        ]
+        await role_resource_repository.create_all(role_resources)
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            data={'message': 'Role resources updated successfully'}
+        ),
+    )
+
+
+@access_router.delete('/roles/{role_id}')
+@inject
+async def delete_role(
+    request: Request,
+    role_id: str,
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter],
+    ),
+    role_repository: SQLAlchemyRepository[Role] = Depends(
+        Provide[UserContainer.role_repository]
+    ),
+    role_resource_repository: SQLAlchemyRepository[RoleResource] = Depends(
+        Provide[UserContainer.role_resource_repository]
+    ),
+):
+    user_role_id, _, _ = get_current_user(request)
+    is_admin = await check_is_admin(user_role_id)
+    if not is_admin:
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content=response_formatter.buildErrorResponse('Access denied'),
+        )
+
+    role = await role_repository.find_one(id=role_id)
+    if not role:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse(
+                'Role not found with the given ID.'
+            ),
+        )
+
+    # Console roles are the user's UI identity marker and are managed separately,
+    # so they must not be deleted here.
+    async with role_resource_repository.session() as session:
+        console_stmt = (
+            select(func.count())
+            .select_from(RoleResource)
+            .join(Resource, Resource.id == RoleResource.resource_id)
+            .where(RoleResource.role_id == role_id)
+            .where(Resource.scope == ResourceScope.CONSOLE)
+        )
+        console_resource_count = (await session.execute(console_stmt)).scalar() or 0
+
+    if console_resource_count > 0:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                'Cannot delete a console role'
+            ),
+        )
+
+    await role_repository.delete_all(id=role_id)
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            data={'message': 'Role deleted successfully'}
         ),
     )

@@ -52,6 +52,7 @@ class UserService:
         async with self.resource_repository.session() as session:
             statement = (
                 select(Resource)
+                .distinct()
                 .join(RoleResource, Resource.id == RoleResource.resource_id)
                 .join(Role, Role.id == RoleResource.role_id)
                 .join(UserRole, UserRole.role_id == Role.id)

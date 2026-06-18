@@ -194,6 +194,9 @@ async def update_user(
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
     ),
+    user_repository: SQLAlchemyRepository[User] = Depends(
+        Provide[UserContainer.user_repository]
+    ),
     user_role_repository: SQLAlchemyRepository[UserRole] = Depends(
         Provide[UserContainer.user_role_repository]
     ),
@@ -208,52 +211,120 @@ async def update_user(
             content=response_formatter.buildErrorResponse('Access denied'),
         )
 
-    async with user_role_repository.session() as session:
-        # Check for valid roles
-        query = select(Role).where(Role.id.in_(update_user.add_role_ids))
-        result = await session.execute(query)
-        existing_roles = result.scalars().all()
-        existing_role_ids = {str(role.id) for role in existing_roles}
+    target_user = await user_repository.find_one(id=update_user.user_id)
+    if not target_user or target_user.deleted:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse('User not found'),
+        )
 
-        invalid_roles = set(update_user.add_role_ids) - existing_role_ids
-        if invalid_roles:
-            return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content=response_formatter.buildErrorResponse(
-                    f'Invalid role IDs: {", ".join(invalid_roles)}'
-                ),
-            )
+    add_role_ids = update_user.add_role_ids or []
+    delete_role_ids = update_user.delete_role_ids or []
 
-        admins = await user_role_repository.find(role_id=role_id)
-        if len(admins) == 1 and str(update_user.user_id) == str(admins[0].user_id):
-            return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content=response_formatter.buildErrorResponse(
-                    error='Atleast one admin is mandatory, please assign another user as admin before updating this user.'
-                ),
-            )
-
-        user_roles = [
-            UserRole(user_id=update_user.user_id, role_id=id)
-            for id in update_user.add_role_ids
-        ]
-        session.add_all(user_roles)
-
+    # Build the set of profile fields to edit, enforcing uniqueness for the
+    # columns that carry a DB unique constraint (email, username).
+    profile_updates: dict = {}
+    if update_user.email is not None and update_user.email != target_user.email:
+        existing_by_email = await user_repository.find_one(email=update_user.email)
         if (
-            update_user.delete_role_ids is not None
-            and len(update_user.delete_role_ids) > 0
+            existing_by_email
+            and not existing_by_email.deleted
+            and str(existing_by_email.id) != str(update_user.user_id)
         ):
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content=response_formatter.buildErrorResponse(
+                    'User with the same email already exists'
+                ),
+            )
+        profile_updates['email'] = update_user.email
+
+    if (
+        update_user.username is not None
+        and update_user.username != target_user.username
+    ):
+        existing_by_username = await user_repository.find_one(
+            username=update_user.username
+        )
+        if (
+            existing_by_username
+            and not existing_by_username.deleted
+            and str(existing_by_username.id) != str(update_user.user_id)
+        ):
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content=response_formatter.buildErrorResponse(
+                    'User with the same username already exists'
+                ),
+            )
+        profile_updates['username'] = update_user.username
+
+    if update_user.password is not None:
+        profile_updates['password'] = hash_password(update_user.password)
+    if update_user.first_name is not None:
+        profile_updates['first_name'] = update_user.first_name
+    if update_user.last_name is not None:
+        profile_updates['last_name'] = update_user.last_name
+
+    async with user_role_repository.session() as session:
+        if add_role_ids:
+            # Check for valid roles
+            query = select(Role).where(Role.id.in_(add_role_ids))
+            result = await session.execute(query)
+            existing_roles = result.scalars().all()
+            existing_role_ids = {str(role.id) for role in existing_roles}
+
+            invalid_roles = set(add_role_ids) - existing_role_ids
+            if invalid_roles:
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content=response_formatter.buildErrorResponse(
+                        f'Invalid role IDs: {", ".join(invalid_roles)}'
+                    ),
+                )
+
+        # Guard against demoting the only remaining admin when roles are changed.
+        if add_role_ids or delete_role_ids:
+            admins = await user_role_repository.find(role_id=role_id)
+            if len(admins) == 1 and str(update_user.user_id) == str(admins[0].user_id):
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content=response_formatter.buildErrorResponse(
+                        error='Atleast one admin is mandatory, please assign another user as admin before updating this user.'
+                    ),
+                )
+
+        if add_role_ids:
+            existing_links = await user_role_repository.find(
+                user_id=update_user.user_id, role_id=add_role_ids, session=session
+            )
+            already_assigned = {str(link.role_id) for link in existing_links}
+            new_user_roles = [
+                UserRole(user_id=update_user.user_id, role_id=r_id)
+                for r_id in add_role_ids
+                if r_id not in already_assigned
+            ]
+            session.add_all(new_user_roles)
+
+        if delete_role_ids:
             query = delete(UserRole.__table__).where(
                 and_(
                     UserRole.user_id == update_user.user_id,
-                    UserRole.role_id.in_(update_user.delete_role_ids),
+                    UserRole.role_id.in_(delete_role_ids),
                 )
             )
             await session.execute(query)
+
+        if profile_updates:
+            user_in_session = await session.get(User, update_user.user_id)
+            for field, value in profile_updates.items():
+                setattr(user_in_session, field, value)
+
         await session.commit()
 
     # Invalidate all user_data cache entries
     cache_manager.invalidate_query('user_data_*')
+    cache_manager.remove(str(update_user.user_id))
     return JSONResponse(
         status_code=status.HTTP_200_OK,
         content=response_formatter.buildSuccessResponse(
@@ -572,10 +643,14 @@ async def get_resources(
         dashboards: List[Resource] = await user_service.get_all_resources(
             scope=ResourceScope.DASHBOARD
         )
+        routes: List[Resource] = []
         data: List[Resource] = []
     else:
         dashboards = await user_service.get_user_resources(
             user_id=user_id, scope=ResourceScope.DASHBOARD
+        )
+        routes = await user_service.get_user_resources(
+            user_id=user_id, scope=ResourceScope.ROUTE
         )
         data = await user_service.get_user_resources(
             user_id=user_id, scope=ResourceScope.DATA
@@ -584,6 +659,7 @@ async def get_resources(
     resource = {
         'console_resources': [res.to_dict() for res in console_resources],
         'dashboards': [res.to_dict() for res in dashboards],
+        'routes': [res.to_dict() for res in routes],
         'data': [res.to_dict() for res in data],
     }
 

@@ -226,18 +226,18 @@ async def lifespan(app: FastAPI):
 
         db_client.run_migration()
 
-        scheduled_job_service = application_container.scheduled_job_service()
+        # scheduled_job_service = application_container.scheduled_job_service()
 
         # Run stale lock recovery once on startup before the scheduler ticks.
-        await scheduled_job_service.recover_stale_locks()
+        # await scheduled_job_service.recover_stale_locks()
 
-        scheduler_manager.start()
-        scheduler_manager.register_due_jobs_poller(
-            callback=scheduled_job_service.process_due_jobs_sync
-        )
-        scheduler_manager.register_stale_lock_recovery(
-            callback=scheduled_job_service.recover_stale_locks_sync
-        )
+        # scheduler_manager.start()
+        # scheduler_manager.register_due_jobs_poller(
+        #     callback=scheduled_job_service.process_due_jobs_sync
+        # )
+        # scheduler_manager.register_stale_lock_recovery(
+        #     callback=scheduled_job_service.recover_stale_locks_sync
+        # )
         logger.info('Database connection established.')
 
         # Load API services from database into registry
