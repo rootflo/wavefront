@@ -15,6 +15,7 @@ from sqlalchemy import func
 from sqlalchemy import or_
 from sqlalchemy import Result
 from sqlalchemy import select
+from sqlalchemy import tuple_
 from sqlalchemy.orm import selectinload
 from user_management_module.dependencies.injection import (
     ResourceRepositoryDep,
@@ -50,6 +51,55 @@ async def create_resource(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content=response_formatter.buildErrorResponse('Access denied'),
         )
+
+    seen_pairs: set[tuple[str, str]] = set()
+    payload_duplicates: set[str] = set()
+    for res in payload.resources:
+        pair = (res.key, res.value)
+        if pair in seen_pairs:
+            payload_duplicates.add(f'{res.key} - {res.value}')
+        seen_pairs.add(pair)
+    if payload_duplicates:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                'Duplicate (key, value) pairs in payload: '
+                + ', '.join(sorted(payload_duplicates))
+            ),
+        )
+
+    key_value_pairs = [(res.key, res.value) for res in payload.resources]
+    role_names = [f'{res.key} - {res.value}' for res in payload.resources]
+
+    async with resource_repository.session() as session:
+        existing_resources = (
+            await session.scalars(
+                select(Resource).where(
+                    tuple_(Resource.key, Resource.value).in_(key_value_pairs)
+                )
+            )
+        ).all()
+        if existing_resources:
+            conflicts = ', '.join(f'{r.key} - {r.value}' for r in existing_resources)
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content=response_formatter.buildErrorResponse(
+                    f'Resource(s) already exist for (key, value): {conflicts}'
+                ),
+            )
+
+        existing_roles = (
+            await session.scalars(select(Role).where(Role.name.in_(role_names)))
+        ).all()
+
+        if existing_roles:
+            conflicts = ', '.join(sorted(r.name for r in existing_roles))
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content=response_formatter.buildErrorResponse(
+                    f'Role(s) already exist with name(s): {conflicts}'
+                ),
+            )
 
     resources: list[Resource] = []
     roles: list[Role] = []
@@ -119,6 +169,16 @@ async def create_role(
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content=response_formatter.buildErrorResponse('Access denied'),
+        )
+
+    # Enforce the role 'name' unique constraint with a clear error.
+    existing_role = await role_repository.find_one(name=payload.name)
+    if existing_role:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                f"A role with the name '{payload.name}' already exists"
+            ),
         )
 
     resources = await resource_repository.find(id=payload.resources)
