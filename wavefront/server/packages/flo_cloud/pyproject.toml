@@ -19,6 +19,7 @@ dependencies = [
     "google-cloud-storage<3.0.0",
     "google-cloud-pubsub>=2.28.0",
     "redshift-connector>=2.1.7",
+    "mssql-python",
 ]
 
 [tool.pytest.ini_options]

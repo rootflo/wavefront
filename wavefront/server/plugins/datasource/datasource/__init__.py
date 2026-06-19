@@ -10,6 +10,7 @@ from typing import Any, Optional, List, Dict
 from .bigquery import BigQueryPlugin, BigQueryConfig
 from .redshift import RedshiftPlugin, RedshiftConfig
 from .postgres import PostgresPlugin, PostgresConfig
+from .mssql import MSSQLPlugin, MSSQLConfig
 from .helper import construct_meta
 from .odata_parser import ODataQueryParser
 
@@ -18,7 +19,7 @@ class DatasourcePlugin:
     def __init__(
         self,
         datasource_type: DataSourceType,
-        config: BigQueryConfig | RedshiftConfig | PostgresConfig,
+        config: BigQueryConfig | RedshiftConfig | PostgresConfig | MSSQLConfig,
     ):
         self.datasource_type = datasource_type
         self.config = config
@@ -40,6 +41,11 @@ class DatasourcePlugin:
             if not isinstance(self.config, PostgresConfig):
                 raise ValueError(f'Invalid config type: {type(self.config)}')
             return PostgresPlugin(self.config)
+        elif self.datasource_type == DataSourceType.MSSQL:
+            self.odata_parser = ODataQueryParser(type='sql', dynamic_var_char=':')
+            if not isinstance(self.config, MSSQLConfig):
+                raise ValueError(f'Invalid config type: {type(self.config)}')
+            return MSSQLPlugin(self.config)
         else:
             raise ValueError(f'Invalid datasource type: {self.datasource_type}')
 
@@ -74,7 +80,9 @@ class DatasourcePlugin:
             self.odata_parser.prepare_odata_joins(join or '', table_name)
         )
 
-        where_clause = where_clause if where_clause else 'true'
+        # '1=1' is a no-op predicate valid across all supported SQL dialects
+        # (Postgres/Redshift/BigQuery and MSSQL, which has no `true` literal).
+        where_clause = where_clause if where_clause else '1=1'
         if join_where_clause:
             where_clause = f'{where_clause} AND {join_where_clause}'
         params = (params if params else {}) | join_params

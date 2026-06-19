@@ -41,6 +41,7 @@ class DataSourceType(str, Enum):
     GCS = 'gcs'
     GCP_BIGQUERY = 'gcp_bigquery'
     MONGODB = 'mongodb'
+    MSSQL = 'mssql'
     MYSQL = 'mysql'
     ORACLE = 'oracle'
     POSTGRES = 'postgres'
