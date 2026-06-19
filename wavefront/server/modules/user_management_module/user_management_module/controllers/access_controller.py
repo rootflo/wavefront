@@ -1,32 +1,32 @@
 from typing import Optional
 import uuid
 
-from common_module.common_container import CommonContainer
-from common_module.response_formatter import ResponseFormatter
 from db_repo_module.models.resource import Resource
 from db_repo_module.models.resource import ResourceScope
 from db_repo_module.models.role import Role
 from db_repo_module.models.role_resource import RoleResource
-from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from dependency_injector.wiring import inject
-from dependency_injector.wiring import Provide
 from fastapi import APIRouter
 from fastapi import Query
 from fastapi import Request
 from fastapi import status
-from fastapi.params import Depends
 from fastapi.responses import JSONResponse
 from sqlalchemy import func
 from sqlalchemy import or_
 from sqlalchemy import Result
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
+from user_management_module.dependencies.injection import (
+    ResourceRepositoryDep,
+    ResponseFormatterDep,
+    RoleRepositoryDep,
+    RoleResourceRepositoryDep,
+    UserServiceDep,
+)
 from user_management_module.models.resource import CreateRolePayload
 from user_management_module.models.resource import ResourcePayload
 from user_management_module.models.resource import UpdateResourcePayload
 from user_management_module.models.resource import UpdateRolePayload
-from user_management_module.user_container import UserContainer
-from user_management_module.services.user_service import UserService
 from user_management_module.utils.user_utils import check_is_admin
 from user_management_module.utils.user_utils import get_current_user
 
@@ -38,18 +38,10 @@ access_router = APIRouter(prefix='/v1/access')
 async def create_resource(
     request: Request,
     payload: ResourcePayload,
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter]
-    ),
-    resource_repository: SQLAlchemyRepository[Resource] = Depends(
-        Provide[UserContainer.resource_repository]
-    ),
-    role_repository: SQLAlchemyRepository[Resource] = Depends(
-        Provide[UserContainer.role_repository]
-    ),
-    role_resource_repository: SQLAlchemyRepository[RoleResource] = Depends(
-        Provide[UserContainer.role_resource_repository]
-    ),
+    response_formatter: ResponseFormatterDep,
+    resource_repository: ResourceRepositoryDep,
+    role_repository: RoleRepositoryDep,
+    role_resource_repository: RoleResourceRepositoryDep,
 ):
     user_role_id, _, _ = get_current_user(request)
     is_admin = await check_is_admin(user_role_id)
@@ -115,18 +107,10 @@ async def create_resource(
 async def create_role(
     request: Request,
     payload: CreateRolePayload,
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter]
-    ),
-    resource_repository: SQLAlchemyRepository[Resource] = Depends(
-        Provide[UserContainer.resource_repository]
-    ),
-    role_repository: SQLAlchemyRepository[Role] = Depends(
-        Provide[UserContainer.role_repository]
-    ),
-    role_resource_repository: SQLAlchemyRepository[RoleResource] = Depends(
-        Provide[UserContainer.role_resource_repository]
-    ),
+    response_formatter: ResponseFormatterDep,
+    resource_repository: ResourceRepositoryDep,
+    role_repository: RoleRepositoryDep,
+    role_resource_repository: RoleResourceRepositoryDep,
 ):
     role_id, _, _ = get_current_user(request)
     is_admin = await check_is_admin(role_id)
@@ -200,17 +184,10 @@ async def create_role(
 @inject
 async def get_resource(
     request: Request,
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter]
-    ),
-    user_service: UserService = Depends(Provide[UserContainer.user_service]),
+    response_formatter: ResponseFormatterDep,
+    user_service: UserServiceDep,
     scopes: Optional[list[str]] = Query(
-        default=[
-            ResourceScope.CONSOLE,
-            ResourceScope.DASHBOARD,
-            ResourceScope.ROUTE,
-            ResourceScope.DATA,
-        ],
+        default=None,
         description='Scopes of the resources to fetch (all scopes when omitted)',
     ),
     search: Optional[str] = Query(
@@ -229,10 +206,21 @@ async def get_resource(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content=response_formatter.buildErrorResponse('Access denied'),
         )
+
+    if not scopes:
+        parsed_scopes = [
+            ResourceScope.CONSOLE,
+            ResourceScope.DASHBOARD,
+            ResourceScope.ROUTE,
+            ResourceScope.DATA,
+        ]
+    else:
+        parsed_scopes = [ResourceScope(scope) for scope in scopes]
+
     resources = await user_service.get_all_resources(
-        scopes=scopes, search=search, offset=offset, limit=limit
+        scopes=parsed_scopes, search=search, offset=offset, limit=limit
     )
-    total = await user_service.count_all_resources(scopes=scopes, search=search)
+    total = await user_service.count_all_resources(scopes=parsed_scopes, search=search)
 
     data = [res.to_dict() for res in resources]
 
@@ -248,12 +236,8 @@ async def get_resource(
 @inject
 async def get_role(
     request: Request,
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter]
-    ),
-    role_repository: SQLAlchemyRepository[Role] = Depends(
-        Provide[UserContainer.role_repository]
-    ),
+    response_formatter: ResponseFormatterDep,
+    role_repository: RoleRepositoryDep,
     scopes: Optional[list[str]] = Query(
         default=None,
         description='Filter roles by resource scope. When omitted, all scopes are used unless composite_only is true with an empty scopes list, which returns composite roles across every scope.',
@@ -415,12 +399,8 @@ async def patch_resources(
     request: Request,
     resource_id: str,
     payload: UpdateResourcePayload,
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter],
-    ),
-    resource_repository: SQLAlchemyRepository[Resource] = Depends(
-        Provide[UserContainer.resource_repository]
-    ),
+    response_formatter: ResponseFormatterDep,
+    resource_repository: ResourceRepositoryDep,
 ):
     user_role_id, _, _ = get_current_user(request)
     is_admin = await check_is_admin(user_role_id)
@@ -464,12 +444,8 @@ async def patch_resources(
 async def delete_resources(
     request: Request,
     resource_id: str,
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter],
-    ),
-    resource_repository: SQLAlchemyRepository[Resource] = Depends(
-        Provide[UserContainer.resource_repository]
-    ),
+    response_formatter: ResponseFormatterDep,
+    resource_repository: ResourceRepositoryDep,
 ):
     user_role_id, _, _ = get_current_user(request)
     is_admin = await check_is_admin(user_role_id)
@@ -501,18 +477,10 @@ async def patch_role_resources(
     request: Request,
     role_id: str,
     payload: UpdateRolePayload,
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter],
-    ),
-    resource_repository: SQLAlchemyRepository[Resource] = Depends(
-        Provide[UserContainer.resource_repository]
-    ),
-    role_repository: SQLAlchemyRepository[Role] = Depends(
-        Provide[UserContainer.role_repository]
-    ),
-    role_resource_repository: SQLAlchemyRepository[RoleResource] = Depends(
-        Provide[UserContainer.role_resource_repository]
-    ),
+    response_formatter: ResponseFormatterDep,
+    resource_repository: ResourceRepositoryDep,
+    role_repository: RoleRepositoryDep,
+    role_resource_repository: RoleResourceRepositoryDep,
 ):
     user_role_id, _, _ = get_current_user(request)
     is_admin = await check_is_admin(user_role_id)
@@ -561,13 +529,15 @@ async def patch_role_resources(
             ),
         )
 
-    await role_resource_repository.delete_all(role_id=role_id)
-    if payload.resources:
-        role_resources = [
-            RoleResource(role_id=role_id, resource_id=resource_id)
-            for resource_id in payload.resources
-        ]
-        await role_resource_repository.create_all(role_resources)
+    async with role_resource_repository.session() as session:
+        await role_resource_repository.delete_all(role_id=role_id, session=session)
+        if payload.resources:
+            role_resources = [
+                RoleResource(role_id=role_id, resource_id=resource_id)
+                for resource_id in payload.resources
+            ]
+            await role_resource_repository.create_all(role_resources, session=session)
+        await session.commit()
 
     return JSONResponse(
         status_code=status.HTTP_200_OK,
@@ -582,15 +552,9 @@ async def patch_role_resources(
 async def delete_role(
     request: Request,
     role_id: str,
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter],
-    ),
-    role_repository: SQLAlchemyRepository[Role] = Depends(
-        Provide[UserContainer.role_repository]
-    ),
-    role_resource_repository: SQLAlchemyRepository[RoleResource] = Depends(
-        Provide[UserContainer.role_resource_repository]
-    ),
+    response_formatter: ResponseFormatterDep,
+    role_repository: RoleRepositoryDep,
+    role_resource_repository: RoleResourceRepositoryDep,
 ):
     user_role_id, _, _ = get_current_user(request)
     is_admin = await check_is_admin(user_role_id)

@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Any, List, Optional, cast
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from db_repo_module.models.user import User
 from db_repo_module.models.user_role import UserRole
@@ -67,7 +67,7 @@ class UserService:
                 statement = statement.where(Resource.scope.in_(scopes))
 
             result: Result = await session.execute(statement)
-            return result.scalars().all()
+            return cast(List[Resource], result.scalars().all())
 
     def _resource_filters(
         self,
@@ -128,7 +128,7 @@ class UserService:
                 statement = statement.limit(limit)
 
             result: Result = await session.execute(statement)
-            return result.scalars().all()
+            return cast(List[Resource], result.scalars().all())
 
     async def count_all_resources(
         self,
@@ -256,11 +256,12 @@ class UserService:
                             ),
                         )
 
-                user_updates = {
+                user_updates: dict[str, Any] = {
                     'deleted': False,
                     'password': hash_password(new_user_data.password),
                     'first_name': new_user_data.first_name,
                     'last_name': new_user_data.last_name,
+                    'username': new_user_data.username,
                     'failed_attempts': 0,
                     'locked_until': None,
                     'last_failed_attempt': None,

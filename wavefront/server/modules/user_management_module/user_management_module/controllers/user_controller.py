@@ -1,26 +1,17 @@
 import secrets
-from typing import Optional
+from typing import List, Optional
 
-from auth_module.auth_container import AuthContainer
-from auth_module.services.token_service import TokenService
-from common_module.common_cache import CommonCache
-from common_module.common_container import CommonContainer
 from common_module.log.logger import logger
-from common_module.response_formatter import ResponseFormatter
 from db_repo_module.models.resource import Resource
 from db_repo_module.models.resource import ResourceScope
 from db_repo_module.models.role import Role
 from db_repo_module.models.role_resource import RoleResource
 from db_repo_module.models.user import User
 from db_repo_module.models.user_role import UserRole
-from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
-from db_repo_module.cache.cache_manager import CacheManager
 from dependency_injector.wiring import inject
-from dependency_injector.wiring import Provide
 from fastapi import Path, Query
 from fastapi import Request
 from fastapi import status
-from fastapi.params import Depends
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRouter
 from fastapi.security import OAuth2PasswordBearer
@@ -31,23 +22,28 @@ from sqlalchemy import select
 from sqlalchemy import or_
 from sqlalchemy import func
 
+from user_management_module.dependencies.injection import (
+    AccountLockoutServiceDep,
+    CacheManagerDep,
+    CommonCacheDep,
+    EmailServiceDep,
+    ResponseFormatterDep,
+    TokenServiceDep,
+    UserConfigDep,
+    UserRepositoryDep,
+    UserRoleRepositoryDep,
+    UserServiceDep,
+)
 from user_management_module.models.user_schema import NewUser
 from user_management_module.models.user_schema import ResetUser
 from user_management_module.models.user_schema import UpdateUser
-from user_management_module.services.email_service import EmailService
-from user_management_module.services.account_lockout_service import (
-    AccountLockoutService,
-)
-from user_management_module.user_container import UserContainer
 from user_management_module.utils.password_utils import hash_password
 from user_management_module.utils.user_utils import (
     check_is_admin,
     create_account_lockout_response,
 )
 from user_management_module.utils.user_utils import get_current_user
-from user_management_module.services.user_service import UserService
 import json
-from typing import List
 from common_module.utils.serializer import serialize_values
 
 user_router = APIRouter(prefix='/v1')
@@ -60,14 +56,10 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl='token')
 async def create_user(
     new_user: NewUser,
     request: Request,
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter]
-    ),
-    user_repository: SQLAlchemyRepository[User] = Depends(
-        Provide[UserContainer.user_repository]
-    ),
-    user_service: UserService = Depends(Provide[UserContainer.user_service]),
-    cache_manager: CacheManager = Depends(Provide[UserContainer.cache_manager]),
+    response_formatter: ResponseFormatterDep,
+    user_repository: UserRepositoryDep,
+    user_service: UserServiceDep,
+    cache_manager: CacheManagerDep,
 ):
     role_id, _, _ = get_current_user(request)
     is_admin = await check_is_admin(role_id)
@@ -191,16 +183,10 @@ async def create_user(
 async def update_user(
     update_user: UpdateUser,
     request: Request,
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter]
-    ),
-    user_repository: SQLAlchemyRepository[User] = Depends(
-        Provide[UserContainer.user_repository]
-    ),
-    user_role_repository: SQLAlchemyRepository[UserRole] = Depends(
-        Provide[UserContainer.user_role_repository]
-    ),
-    cache_manager: CacheManager = Depends(Provide[UserContainer.cache_manager]),
+    response_formatter: ResponseFormatterDep,
+    user_repository: UserRepositoryDep,
+    user_role_repository: UserRoleRepositoryDep,
+    cache_manager: CacheManagerDep,
 ):
     role_id, _, _ = get_current_user(request)
     is_admin = await check_is_admin(role_id)
@@ -337,13 +323,9 @@ async def update_user(
 @inject
 async def get_all_user(
     request: Request,
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter]
-    ),
-    user_repository: SQLAlchemyRepository[User] = Depends(
-        Provide[UserContainer.user_repository]
-    ),
-    cache_manager: CacheManager = Depends(Provide[UserContainer.cache_manager]),
+    response_formatter: ResponseFormatterDep,
+    user_repository: UserRepositoryDep,
+    cache_manager: CacheManagerDep,
     search: Optional[str] = Query(None, description='Search by name or email'),
     roles: Optional[List[str]] = Query(None, description='Filter by role name'),
     limit: int = Query(100),
@@ -430,15 +412,11 @@ async def get_all_user(
 @inject
 async def delete_user(
     request: Request,
+    response_formatter: ResponseFormatterDep,
+    user_role_repository: UserRoleRepositoryDep,
+    user_service: UserServiceDep,
+    cache_manager: CacheManagerDep,
     delete_id: str = Query(alias='id'),
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter]
-    ),
-    user_role_repository: SQLAlchemyRepository[UserRole] = Depends(
-        Provide[UserContainer.user_role_repository]
-    ),
-    user_service: UserService = Depends(Provide[UserContainer.user_service]),
-    cache_manager: CacheManager = Depends(Provide[UserContainer.cache_manager]),
 ):
     role_id, user_id, _ = get_current_user(request)
     is_admin = await check_is_admin(role_id)
@@ -479,19 +457,13 @@ async def delete_user(
 @inject
 async def send_reset_url(
     email: str,
-    user_repository: SQLAlchemyRepository[User] = Depends(
-        Provide[UserContainer.user_repository]
-    ),
-    user_reset_cache: CommonCache = Depends(Provide[CommonContainer.cache_manager]),
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter]
-    ),
-    token_service: TokenService = Depends(Provide[AuthContainer.token_service]),
-    config=Depends(Provide[UserContainer.config]),
-    email_service: EmailService = Depends(Provide[UserContainer.email_service]),
-    account_lockout_service: AccountLockoutService = Depends(
-        Provide[UserContainer.account_lockout_service]
-    ),
+    user_repository: UserRepositoryDep,
+    user_reset_cache: CommonCacheDep,
+    response_formatter: ResponseFormatterDep,
+    token_service: TokenServiceDep,
+    config: UserConfigDep,
+    email_service: EmailServiceDep,
+    account_lockout_service: AccountLockoutServiceDep,
 ):
     try:
         # checking if the user exists in the db
@@ -568,14 +540,10 @@ async def send_reset_url(
 @inject
 async def reset_password(
     reset_user: ResetUser,
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter]
-    ),
-    token_service: TokenService = Depends(Provide[AuthContainer.token_service]),
-    user_reset_cache: CommonCache = Depends(Provide[CommonContainer.cache_manager]),
-    user_repository: SQLAlchemyRepository[User] = Depends(
-        Provide[UserContainer.user_repository]
-    ),
+    response_formatter: ResponseFormatterDep,
+    token_service: TokenServiceDep,
+    user_reset_cache: CommonCacheDep,
+    user_repository: UserRepositoryDep,
 ):
     try:
         decoded_url = token_service.decode_token(reset_user.secret_token)
@@ -612,13 +580,9 @@ async def reset_password(
 @inject
 async def get_resources(
     request: Request,
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter]
-    ),
-    user_repository: SQLAlchemyRepository[User] = Depends(
-        Provide[UserContainer.user_repository]
-    ),
-    user_service: UserService = Depends(Provide[UserContainer.user_service]),
+    response_formatter: ResponseFormatterDep,
+    user_repository: UserRepositoryDep,
+    user_service: UserServiceDep,
 ):
     role_id, user_id, _ = get_current_user(request)
     user = await user_repository.find_one(id=user_id)
@@ -674,14 +638,10 @@ async def get_resources(
 @user_router.patch('/users/{user_id}/unblock')
 @inject
 async def unblock_user(
+    request: Request,
+    response_formatter: ResponseFormatterDep,
+    account_lockout_service: AccountLockoutServiceDep,
     user_id: str = Path(..., description='User id to unblock'),
-    request: Request = ...,
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter]
-    ),
-    account_lockout_service: AccountLockoutService = Depends(
-        Provide[UserContainer.account_lockout_service]
-    ),
 ):
     role_id, _, _ = get_current_user(request)
     is_admin = await check_is_admin(role_id)

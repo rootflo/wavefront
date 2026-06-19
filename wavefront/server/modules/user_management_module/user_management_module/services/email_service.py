@@ -151,7 +151,7 @@ class GmailEmailService(EmailService):
         if not all(
             [self.client_id, self.client_secret, self.refresh_token, self.email_sender]
         ):
-            raise Exception(
+            raise ValueError(
                 'Gmail OAuth requires client_id, client_secret, refresh_token, and email_sender'
             )
 
@@ -205,6 +205,8 @@ class GmailEmailService(EmailService):
             logger.info(f"Gmail message sent successfully: {send_message['id']}")
             return True
 
+        except ValueError:
+            raise
         except Exception as e:
             logger.error(f'Error sending Gmail email: {e}')
             return False
@@ -241,6 +243,8 @@ class GmailEmailService(EmailService):
             )
             logger.info(f"Gmail message sent successfully: {send_message['id']}")
             return True
+        except ValueError:
+            raise
         except Exception as e:
             logger.error(f'Error sending Gmail email: {e}')
             return False
