@@ -480,6 +480,236 @@ async def test_get_roles_scope_filter_excludes_cross_scope_composite(
 
 
 @pytest.mark.asyncio
+async def test_patch_role_resources_pure_console_role_rejected(
+    test_client,
+    test_session: AsyncSession,
+    mock_auth_admin_functions,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    """A single-resource role whose only resource is console-scoped is a console
+    role (UI identity marker) and its resources must not be editable."""
+    await create_session(test_session, test_user_id, test_session_id)
+
+    console_resource = Resource(
+        id=str(uuid.uuid4()),
+        key='console_resource',
+        value='viewer_resource',
+        description='Console resource',
+        scope=ResourceScope.CONSOLE,
+    )
+    data_resource = Resource(
+        id=str(uuid.uuid4()),
+        key='branch',
+        value='mumbai',
+        description='Data resource',
+        scope=ResourceScope.DATA,
+    )
+    console_role = Role(
+        id=str(uuid.uuid4()),
+        name='console_role',
+        description='Pure console role',
+    )
+
+    async with test_session() as session:
+        session.add_all([console_resource, data_resource, console_role])
+        await session.commit()
+
+    async with test_session() as session:
+        session.add(
+            RoleResource(role_id=console_role.id, resource_id=console_resource.id)
+        )
+        await session.commit()
+
+    response = test_client.patch(
+        f'/floware/v1/access/roles/{console_role.id}',
+        json={'resources': [data_resource.id]},
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 400
+    assert (
+        'cannot update resources of a console role'
+        in response.json()['meta']['error'].lower()
+    )
+
+
+@pytest.mark.asyncio
+async def test_patch_role_resources_composite_with_console_allowed(
+    test_client,
+    test_session: AsyncSession,
+    mock_auth_admin_functions,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    """A composite role (2+ resources) that merely includes a console resource is
+    not a console role and must remain editable."""
+    await create_session(test_session, test_user_id, test_session_id)
+
+    console_resource = Resource(
+        id=str(uuid.uuid4()),
+        key='console_resource',
+        value='viewer_resource',
+        description='Console resource',
+        scope=ResourceScope.CONSOLE,
+    )
+    data_resource = Resource(
+        id=str(uuid.uuid4()),
+        key='branch',
+        value='mumbai',
+        description='Data resource',
+        scope=ResourceScope.DATA,
+    )
+    route_resource = Resource(
+        id=str(uuid.uuid4()),
+        key='route',
+        value='agents',
+        description='Route resource',
+        scope=ResourceScope.ROUTE,
+    )
+    composite_role = Role(
+        id=str(uuid.uuid4()),
+        name='composite_role',
+        description='Composite role including a console resource',
+    )
+
+    async with test_session() as session:
+        session.add_all(
+            [console_resource, data_resource, route_resource, composite_role]
+        )
+        await session.commit()
+
+    async with test_session() as session:
+        session.add_all(
+            [
+                RoleResource(
+                    role_id=composite_role.id, resource_id=console_resource.id
+                ),
+                RoleResource(role_id=composite_role.id, resource_id=data_resource.id),
+            ]
+        )
+        await session.commit()
+
+    response = test_client.patch(
+        f'/floware/v1/access/roles/{composite_role.id}',
+        json={'resources': [data_resource.id, route_resource.id]},
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 200
+
+    async with test_session() as session:
+        result = await session.execute(
+            select(RoleResource.resource_id).where(
+                RoleResource.role_id == composite_role.id
+            )
+        )
+        resource_ids = {row[0] for row in result.all()}
+        assert resource_ids == {data_resource.id, route_resource.id}
+
+
+@pytest.mark.asyncio
+async def test_delete_role_pure_console_role_rejected(
+    test_client,
+    test_session: AsyncSession,
+    mock_auth_admin_functions,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    """A pure single console-resource role must not be deletable here."""
+    await create_session(test_session, test_user_id, test_session_id)
+
+    console_resource = Resource(
+        id=str(uuid.uuid4()),
+        key='console_resource',
+        value='viewer_resource',
+        description='Console resource',
+        scope=ResourceScope.CONSOLE,
+    )
+    console_role = Role(
+        id=str(uuid.uuid4()),
+        name='console_role',
+        description='Pure console role',
+    )
+
+    async with test_session() as session:
+        session.add_all([console_resource, console_role])
+        await session.commit()
+
+    async with test_session() as session:
+        session.add(
+            RoleResource(role_id=console_role.id, resource_id=console_resource.id)
+        )
+        await session.commit()
+
+    response = test_client.delete(
+        f'/floware/v1/access/roles/{console_role.id}',
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 400
+    assert 'cannot delete a console role' in response.json()['meta']['error'].lower()
+
+
+@pytest.mark.asyncio
+async def test_delete_role_composite_with_console_allowed(
+    test_client,
+    test_session: AsyncSession,
+    mock_auth_admin_functions,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    """A composite role that includes a console resource must remain deletable."""
+    await create_session(test_session, test_user_id, test_session_id)
+
+    console_resource = Resource(
+        id=str(uuid.uuid4()),
+        key='console_resource',
+        value='viewer_resource',
+        description='Console resource',
+        scope=ResourceScope.CONSOLE,
+    )
+    data_resource = Resource(
+        id=str(uuid.uuid4()),
+        key='branch',
+        value='mumbai',
+        description='Data resource',
+        scope=ResourceScope.DATA,
+    )
+    composite_role = Role(
+        id=str(uuid.uuid4()),
+        name='composite_role',
+        description='Composite role including a console resource',
+    )
+
+    async with test_session() as session:
+        session.add_all([console_resource, data_resource, composite_role])
+        await session.commit()
+
+    async with test_session() as session:
+        session.add_all(
+            [
+                RoleResource(
+                    role_id=composite_role.id, resource_id=console_resource.id
+                ),
+                RoleResource(role_id=composite_role.id, resource_id=data_resource.id),
+            ]
+        )
+        await session.commit()
+
+    response = test_client.delete(
+        f'/floware/v1/access/roles/{composite_role.id}',
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 200
+
+    async with test_session() as session:
+        result = await session.execute(select(Role).where(Role.id == composite_role.id))
+        assert result.scalar_one_or_none() is None
+
+
+@pytest.mark.asyncio
 async def test_create_role_invalid_resources(
     test_client,
     test_session: AsyncSession,
