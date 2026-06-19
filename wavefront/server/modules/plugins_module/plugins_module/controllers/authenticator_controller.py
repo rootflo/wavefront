@@ -19,7 +19,7 @@ from plugins_module.services.authenticator_services import (
     enable_authenticator,
     disable_authenticator,
 )
-from plugins_module.services.datasource_services import check_admin
+from user_management_module.utils.user_utils import check_is_admin
 
 
 authenticator_router = APIRouter()
@@ -52,7 +52,7 @@ async def create_authenticator(
     """Create a new authenticator configuration."""
     role_id = request.state.session.role_id
 
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -105,7 +105,7 @@ async def get_all_authenticators_endpoint(
     """Get all authenticator configurations."""
     role_id = request.state.session.role_id
 
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -145,7 +145,7 @@ async def get_authenticator(
     """Get authenticator configuration by ID."""
     role_id = request.state.session.role_id
 
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -202,7 +202,7 @@ async def update_authenticator(
     """Update authenticator configuration."""
     role_id = request.state.session.role_id
 
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -264,7 +264,7 @@ async def delete_authenticator(
     """Delete authenticator configuration."""
     role_id = request.state.session.role_id
 
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -305,7 +305,7 @@ async def enable_authenticator_endpoint(
     """Enable an authenticator."""
     role_id = request.state.session.role_id
 
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -346,7 +346,7 @@ async def disable_authenticator_endpoint(
     """Disable an authenticator."""
     role_id = request.state.session.role_id
 
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,

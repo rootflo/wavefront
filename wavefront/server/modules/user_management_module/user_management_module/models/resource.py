@@ -9,6 +9,7 @@ from pydantic import field_validator
 class AddableResourceScope(str, Enum):
     DASHBOARD = 'dashboard'
     DATA = 'data'
+    ROUTE = 'route'
 
 
 class Resource(BaseModel):
@@ -57,6 +58,10 @@ class Role(BaseModel):
 class CreateRolePayload(BaseModel):
     name: str
     description: Optional[str]
+    resources: List[str]
+
+
+class UpdateRolePayload(BaseModel):
     resources: List[str]
 
 

@@ -16,6 +16,7 @@ class ResourceScope(str, Enum):
     DATA = 'data'
     DASHBOARD = 'dashboard'
     CONSOLE = 'console'
+    ROUTE = 'route'
 
 
 class Resource(Base):
