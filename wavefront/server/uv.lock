@@ -40,6 +40,7 @@ members = [
     "product-analysis-module",
     "rag-ingestion",
     "tools-module",
+    "triggers-module",
     "user-management-module",
     "voice-agents-module",
     "wavefront",
@@ -788,6 +789,7 @@ dependencies = [
     { name = "flo-utils" },
     { name = "python-dotenv" },
     { name = "tools-module" },
+    { name = "triggers-module" },
 ]
 
 [package.metadata]
@@ -801,6 +803,7 @@ requires-dist = [
     { name = "flo-utils", editable = "packages/flo_utils" },
     { name = "python-dotenv", specifier = ">=1.1.0,<2.0.0" },
     { name = "tools-module", editable = "modules/tools_module" },
+    { name = "triggers-module", editable = "modules/triggers_module" },
 ]
 
 [[package]]
@@ -1668,6 +1671,7 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "python-multipart" },
     { name = "tools-module" },
+    { name = "triggers-module" },
     { name = "user-management-module" },
     { name = "uvicorn" },
     { name = "voice-agents-module" },
@@ -1694,6 +1698,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.1.0,<2.0.0" },
     { name = "python-multipart", specifier = "==0.0.9" },
     { name = "tools-module", editable = "modules/tools_module" },
+    { name = "triggers-module", editable = "modules/triggers_module" },
     { name = "user-management-module", editable = "modules/user_management_module" },
     { name = "uvicorn", specifier = ">=0.30.1,<1.0.0" },
     { name = "voice-agents-module", editable = "modules/voice_agents_module" },
@@ -1889,6 +1894,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/56/be/217a598a818567b28e859ff087f347475c807a5649296fb5a817c58dacef/google-auth-httplib2-0.2.0.tar.gz", hash = "sha256:38aa7badf48f974f1eb9861794e9c0cb2a0511a4ec0679b1f886d108f5640e05", size = 10842, upload-time = "2023-12-12T17:40:30.722Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/be/8a/fe34d2f3f9470a27b01c9e76226965863f153d5fbe276f83608562e49c04/google_auth_httplib2-0.2.0-py2.py3-none-any.whl", hash = "sha256:b65a0a2123300dd71281a7bf6e64d65a0759287df52729bdd1ae2e47dc311a3d", size = 9253, upload-time = "2023-12-12T17:40:13.055Z" },
+]
+
+[[package]]
+name = "google-auth-oauthlib"
+version = "1.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "google-auth" },
+    { name = "requests-oauthlib" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/70/18/90c7fac516e63cf2058166fce0c88c353647c677b51cc036c09c49bb5cbb/google_auth_oauthlib-1.4.0.tar.gz", hash = "sha256:18b5e28880eb8eba9065c436becdc0ee8e4b59117a73a510679c82f70cd363d2", size = 21675, upload-time = "2026-05-07T08:03:47.816Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/37/d3/d7dff0d58a9e9244b48044bfb6a898bfcc8ecc42e0031d1bebc695344725/google_auth_oauthlib-1.4.0-py3-none-any.whl", hash = "sha256:251314f213a9ee46a5ae73988e84fd7cca8bb68e7ecf4bfd45940f9e7f51d070", size = 19261, upload-time = "2026-05-07T08:02:13.798Z" },
 ]
 
 [[package]]
@@ -3589,6 +3607,15 @@ wheels = [
 ]
 
 [[package]]
+name = "oauthlib"
+version = "3.3.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/0b/5f/19930f824ffeb0ad4372da4812c50edbd1434f678c90c2733e1188edfc63/oauthlib-3.3.1.tar.gz", hash = "sha256:0f0f8aa759826a193cf66c12ea1af1637f87b9b4622d46e866952bb022e538c9", size = 185918, upload-time = "2025-06-19T22:48:08.269Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/be/9c/92789c596b8df838baa98fa71844d84283302f7604ed565dafe5a6b5041a/oauthlib-3.3.1-py3-none-any.whl", hash = "sha256:88119c938d2b8fb88561af5f6ee0eec8cc8d552b7bb1f712743136eb7523b7a1", size = 160065, upload-time = "2025-06-19T22:48:06.508Z" },
+]
+
+[[package]]
 name = "olefile"
 version = "0.47"
 source = { registry = "https://pypi.org/simple" }
@@ -5097,6 +5124,19 @@ wheels = [
 ]
 
 [[package]]
+name = "requests-oauthlib"
+version = "2.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "oauthlib" },
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/42/f2/05f29bc3913aea15eb670be136045bf5c5bbf4b99ecb839da9b422bb2c85/requests-oauthlib-2.0.0.tar.gz", hash = "sha256:b3dffaebd884d8cd778494369603a9e7b58d29111bf6b41bdc2dcd87203af4e9", size = 55650, upload-time = "2024-03-22T20:32:29.939Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3b/5d/63d4ae3b9daea098d5d6f5da83984853c1bbacd5dc826764b249fe119d24/requests_oauthlib-2.0.0-py2.py3-none-any.whl", hash = "sha256:7dd8a5c40426b779b0868c404bdef9768deccf22749cde15852df527e6269b36", size = 24179, upload-time = "2024-03-22T20:32:28.055Z" },
+]
+
+[[package]]
 name = "resampy"
 version = "0.4.3"
 source = { registry = "https://pypi.org/simple" }
@@ -5835,6 +5875,43 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/e5/82/0bcfddd134cdf53440becb5e738257cc3cf34cf229d63b57bfd288e6579f/transformers-4.56.2.tar.gz", hash = "sha256:5e7c623e2d7494105c726dd10f6f90c2c99a55ebe86eef7233765abd0cb1c529", size = 9844296, upload-time = "2025-09-19T15:16:26.778Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/70/26/2591b48412bde75e33bfd292034103ffe41743cacd03120e3242516cd143/transformers-4.56.2-py3-none-any.whl", hash = "sha256:79c03d0e85b26cb573c109ff9eafa96f3c8d4febfd8a0774e8bba32702dd6dde", size = 11608055, upload-time = "2025-09-19T15:16:23.736Z" },
+]
+
+[[package]]
+name = "triggers-module"
+version = "0.1.0"
+source = { editable = "modules/triggers_module" }
+dependencies = [
+    { name = "agents-module" },
+    { name = "beautifulsoup4" },
+    { name = "common-module" },
+    { name = "db-repo-module" },
+    { name = "dependency-injector" },
+    { name = "fastapi" },
+    { name = "flo-cloud" },
+    { name = "flo-utils" },
+    { name = "google-api-python-client" },
+    { name = "google-auth" },
+    { name = "google-auth-oauthlib" },
+    { name = "google-cloud-pubsub" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "agents-module", editable = "modules/agents_module" },
+    { name = "beautifulsoup4", specifier = ">=4.8.0,<4.9.dev0" },
+    { name = "common-module", editable = "modules/common_module" },
+    { name = "db-repo-module", editable = "modules/db_repo_module" },
+    { name = "dependency-injector", specifier = ">=4.41.0" },
+    { name = "fastapi", specifier = ">=0.110.0" },
+    { name = "flo-cloud", editable = "packages/flo_cloud" },
+    { name = "flo-utils", editable = "packages/flo_utils" },
+    { name = "google-api-python-client", specifier = ">=2.130.0" },
+    { name = "google-auth", specifier = ">=2.30.0" },
+    { name = "google-auth-oauthlib", specifier = ">=1.2.0" },
+    { name = "google-cloud-pubsub", specifier = ">=2.21.0" },
+    { name = "pydantic", specifier = ">=2.0.0" },
 ]
 
 [[package]]

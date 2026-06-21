@@ -24,6 +24,8 @@ from db_repo_module.db_repo_container import DatabaseModuleContainer
 from flo_cloud.cloud_storage import CloudStorageManager
 from plugins_module.plugins_container import PluginsContainer
 from tools_module.tools_container import ToolsContainer
+from triggers_module.services.trigger_event_processor import TriggerEventProcessor
+from triggers_module.triggers_container import TriggersContainer
 
 from celery_worker.env import (
     AGENT_YAML_BUCKET,
@@ -35,6 +37,13 @@ from celery_worker.env import (
     DB_PASSWORD,
     DB_PORT,
     DB_USERNAME,
+    GCP_PROJECT_ID,
+    GMAIL_PUBSUB_OIDC_SA_EMAIL,
+    GMAIL_PUBSUB_TOPIC_PREFIX,
+    GMAIL_PUSH_ENDPOINT_TEMPLATE,
+    GOOGLE_OAUTH_CLIENT_ID,
+    GOOGLE_OAUTH_CLIENT_SECRET,
+    GOOGLE_OAUTH_REDIRECT_URI,
     WORKFLOW_WORKER_TOPIC,
 )
 
@@ -46,6 +55,7 @@ class WorkerServices:
     cloud_storage: CloudStorageManager
     cache: CacheManager
     execution_bucket: str
+    trigger_event_processor: TriggerEventProcessor
 
 
 _lock = threading.Lock()
@@ -145,12 +155,36 @@ def get_services() -> WorkerServices:
         # floware's CacheManager uses config.env_config.app_name as its namespace
         cache = CacheManager(namespace=APP_NAME)
 
+        triggers_container = TriggersContainer(
+            trigger_repository=db_repo_container.agentic_trigger_repository,
+            credential_repository=db_repo_container.agentic_trigger_credential_repository,
+            event_repository=db_repo_container.agentic_trigger_event_repository,
+            agent_repository=db_repo_container.agent_repository,
+            workflow_repository=db_repo_container.workflow_repository,
+            async_agentic_execution_service=agents_container.async_agentic_execution_service,
+        )
+        triggers_container.config.from_dict(
+            {
+                'cloud_config': {'cloud_provider': CLOUD_PROVIDER},
+                'triggers_gmail': {
+                    'client_id': GOOGLE_OAUTH_CLIENT_ID,
+                    'client_secret': GOOGLE_OAUTH_CLIENT_SECRET,
+                    'redirect_uri': GOOGLE_OAUTH_REDIRECT_URI,
+                    'pubsub_project_id': GCP_PROJECT_ID,
+                    'pubsub_topic_prefix': GMAIL_PUBSUB_TOPIC_PREFIX,
+                    'push_endpoint_template': GMAIL_PUSH_ENDPOINT_TEMPLATE,
+                    'oidc_service_account_email': GMAIL_PUBSUB_OIDC_SA_EMAIL or None,
+                },
+            }
+        )
+
         _services = WorkerServices(
             agent_inference=agents_container.agent_inference_service(),
             workflow_inference=agents_container.workflow_inference_service(),
             cloud_storage=common_container.cloud_storage_manager(),
             cache=cache,
             execution_bucket=AGENTIC_EXECUTIONS_BUCKET,
+            trigger_event_processor=triggers_container.trigger_event_processor(),
         )
 
     return _services
