@@ -1038,12 +1038,14 @@ def llm_router(
         ):
             return await router_instance.route(memory, execution_context)
 
-        # Preserve the original function's type annotations including return type
-        wrapper.__annotations__ = func.__annotations__.copy()
-
-        # Ensure the return annotation is properly set
+        # Only copy the return annotation if needed for validation
+        # Avoid copying arbitrary string annotations which could be evaluated
+        # by get_type_hints() and potentially execute code
         if 'return' in func.__annotations__:
-            wrapper.__annotations__['return'] = func.__annotations__['return']
+            return_annotation = func.__annotations__['return']
+            # Only copy if it's an actual type object, not a forward reference string
+            if not isinstance(return_annotation, str):
+                wrapper.__annotations__['return'] = return_annotation
 
         return wrapper
 
