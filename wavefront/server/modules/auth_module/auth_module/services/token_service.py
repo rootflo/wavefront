@@ -36,8 +36,8 @@ class TokenService:
         audience: str = 'https://floware.rootflo.ai',
     ):
         self.is_dev = app_env == 'dev' or (kms_service is None)
-        self.private_key = self._load_key(private_key)
-        self.public_key = self._load_key(public_key)
+        self.private_key = self._load_key(private_key) if self.is_dev else None
+        self.public_key = self._load_key(public_key) if self.is_dev else None
         self.algorithm = TokenAlgorithms.RS256.value if self.is_dev else algorithm.value
         self.token_expiry = int(token_expiry)
         self.temporary_token_expiry = int(temporary_token_expiry)
@@ -46,8 +46,9 @@ class TokenService:
         self.audience = audience
 
     def _load_key(self, key: str):
-        key = base64.b64decode(key).decode('ascii')
-        return key
+        if not key:
+            return None
+        return base64.b64decode(key).decode('ascii')
 
     def create_token(
         self,
