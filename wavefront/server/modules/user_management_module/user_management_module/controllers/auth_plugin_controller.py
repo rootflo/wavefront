@@ -34,6 +34,7 @@ from user_management_module.utils.user_utils import get_session_cache_key
 
 from authenticator import AuthenticatorType
 from authenticator.helper import validate_email
+from authenticator.microsoft_adfs import MicrosoftADFSAuthenticator
 
 
 auth_plugin_router = APIRouter()
@@ -573,6 +574,28 @@ async def _handle_oauth_callback(
         user = await user_repository.find_one(email=ui.email)
         if user is None and ui.email:
             user = await user_repository.find_one(username=ui.email.lower())
+
+        # ADFS fallback: when the email lookup fails (even though an email was
+        # present in the id_token), retry using the upn and unique_name claims.
+        # These claims carry raw values like ``DOMAIN\userid`` or
+        # ``userid@domain``; the stored username is just the bare id, so the
+        # identifier must be extracted from the claim before matching.
+        if user is None and isinstance(authenticator, MicrosoftADFSAuthenticator):
+            for candidate in (ui.upn, ui.unique_name):
+                identifier = authenticator.extract_identifier_from_claim(candidate)
+                if not identifier:
+                    continue
+                identifier = identifier.lower()
+                user = await user_repository.find_one(username=identifier)
+                if user is not None:
+                    logger.debug(
+                        '_handle_oauth_callback: ADFS fallback matched user via '
+                        'claim=%s identifier=%s',
+                        candidate,
+                        identifier,
+                    )
+                    break
+
         logger.debug(
             '_handle_oauth_callback: user lookup by identifier=%s found=%s deleted=%s',
             ui.email,

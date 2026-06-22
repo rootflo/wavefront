@@ -13,7 +13,7 @@ class Role(Base):
     __tablename__ = 'role'
 
     id: Mapped[str] = mapped_column(index=True, primary_key=True, default=uuid.uuid4)
-    name: Mapped[str] = mapped_column(nullable=False)
+    name: Mapped[str] = mapped_column(nullable=False, unique=True)
     description: Mapped[str] = mapped_column(nullable=True)
 
     # Update relationships with explicit secondary models

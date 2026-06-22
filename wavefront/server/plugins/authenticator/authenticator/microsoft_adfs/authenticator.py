@@ -333,6 +333,17 @@ class MicrosoftADFSAuthenticator(AuthenticatorABC):
                 None,
             )
 
+    def extract_identifier_from_claim(self, value: Optional[str]) -> Optional[str]:
+        """Public wrapper around identifier extraction for upn/unique_name claims.
+
+        Lets callers (e.g. the auth controller) resolve the bare user id stored
+        as a username from a raw ``upn``/``unique_name`` claim value such as
+        ``DOMAIN\\userid`` or ``userid@domain``.
+        """
+        if not value:
+            return None
+        return self._extract_identifier_from_claim(value)
+
     def _extract_identifier_from_claim(self, value: str) -> Optional[str]:
         """Pull the user identifier out of a raw UPN or unique_name string.
 

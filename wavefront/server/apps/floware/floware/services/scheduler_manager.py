@@ -59,6 +59,17 @@ class SchedulerManager:
             replace_existing=True,
         )
 
+    def register_trigger_subscription_renewer(self, callback: Callable):
+        """Runs every 6 hours to renew provider subscriptions about to expire."""
+        if self.scheduler is None:
+            raise RuntimeError('Scheduler must be started before registering jobs')
+        self.scheduler.add_job(
+            callback,
+            trigger=CronTrigger(hour='*/6'),
+            id='trigger-subscription-renewer',
+            replace_existing=True,
+        )
+
     def shutdown(self):
         if self.scheduler and self.scheduler.running:
             # wait=True ensures in-flight jobs finish before shutdown,

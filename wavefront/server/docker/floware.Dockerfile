@@ -27,6 +27,7 @@ COPY wavefront/server/modules/inference_module /app/modules/inference_module
 COPY wavefront/server/modules/tools_module /app/modules/tools_module
 COPY wavefront/server/modules/voice_agents_module /app/modules/voice_agents_module
 COPY wavefront/server/modules/api_services_module /app/modules/api_services_module
+COPY wavefront/server/modules/triggers_module /app/modules/triggers_module
 
 COPY wavefront/server/packages/flo_cloud /app/packages/flo_cloud
 COPY wavefront/server/packages/flo_utils /app/packages/flo_utils
@@ -36,6 +37,9 @@ COPY wavefront/server/plugins/authenticator /app/plugins/authenticator
 
 COPY wavefront/server/apps/floware /app/apps/floware
 
+COPY wavefront/server/scripts/floware-init.sh /app/scripts/floware-init.sh
+RUN chmod +x /app/scripts/floware-init.sh
+
 RUN uv sync --package floware --frozen --no-dev
 
 # Create a non-root user and change ownership of the /app directory
@@ -44,6 +48,4 @@ RUN useradd -m -u 1000 floware && \
 
 USER floware
 
-WORKDIR /app/apps/floware/floware
-
-CMD ["uv", "run", "server.py"]
+ENTRYPOINT ["/app/scripts/floware-init.sh"]

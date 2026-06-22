@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Any, List, Optional, cast
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from db_repo_module.models.user import User
 from db_repo_module.models.user_role import UserRole
@@ -7,7 +7,8 @@ from db_repo_module.models.resource import Resource, ResourceScope
 from db_repo_module.models.role import Role
 from db_repo_module.models.role_resource import RoleResource
 from db_repo_module.cache.cache_manager import CacheManager
-from sqlalchemy import select, Result, and_
+from sqlalchemy import select, Result, and_, or_, func
+from user_management_module.constants.auth import ADMIN_ROLE_NAME
 from common_module.response_formatter import ResponseFormatter
 from common_module.log.logger import logger
 from user_management_module.utils.password_utils import hash_password
@@ -38,7 +39,7 @@ class UserService:
         scopes: Optional[List[ResourceScope]] = None,
     ) -> List[Resource]:
         """
-        Fetch all resources accessible to a user based on their roles.
+        Fetch all resources a user has access to through their role assignments.
 
         Args:
             user_id: The ID of the user
@@ -51,6 +52,7 @@ class UserService:
         async with self.resource_repository.session() as session:
             statement = (
                 select(Resource)
+                .distinct()
                 .join(RoleResource, Resource.id == RoleResource.resource_id)
                 .join(Role, Role.id == RoleResource.role_id)
                 .join(UserRole, UserRole.role_id == Role.id)
@@ -59,20 +61,98 @@ class UserService:
                 .where(User.deleted.is_(False))
             )
 
-            # Apply scope filtering
             if scope is not None:
                 statement = statement.where(Resource.scope == scope)
             elif scopes is not None:
                 statement = statement.where(Resource.scope.in_(scopes))
 
             result: Result = await session.execute(statement)
-            return result.scalars().all()
+            return cast(List[Resource], result.scalars().all())
+
+    def _resource_filters(
+        self,
+        scope: Optional[ResourceScope] = None,
+        scopes: Optional[List[ResourceScope]] = None,
+        search: Optional[str] = None,
+    ) -> list:
+        """Build the WHERE conditions shared by resource listing and counting."""
+        conditions: list = []
+        if scope is not None:
+            conditions.append(Resource.scope == scope)
+        elif scopes is not None:
+            conditions.append(Resource.scope.in_(scopes))
+
+        if search and search.strip():
+            term = f'%{search.strip()}%'
+            conditions.append(
+                or_(
+                    Resource.key.ilike(term),
+                    Resource.value.ilike(term),
+                    Resource.description.ilike(term),
+                )
+            )
+        return conditions
+
+    async def get_all_resources(
+        self,
+        scope: Optional[ResourceScope] = None,
+        scopes: Optional[List[ResourceScope]] = None,
+        search: Optional[str] = None,
+        offset: int = 0,
+        limit: Optional[int] = None,
+    ) -> List[Resource]:
+        """
+        Fetch every resource in the system, optionally filtered by scope/search.
+
+        Used to grant admins implicit access to all resources without requiring
+        explicit role assignments, and to power the admin resource listing.
+
+        Args:
+            scope: Single scope to filter by (optional)
+            scopes: Multiple scopes to filter by (optional)
+            search: Case-insensitive term matched against key/value/description
+            offset: Number of records to skip (pagination)
+            limit: Maximum number of records to return (no limit when None)
+
+        Returns:
+            List of all matching Resource objects
+        """
+        async with self.resource_repository.session() as session:
+            statement = select(Resource)
+            conditions = self._resource_filters(scope, scopes, search)
+            if conditions:
+                statement = statement.where(and_(*conditions))
+
+            statement = statement.offset(offset)
+            if limit is not None:
+                statement = statement.limit(limit)
+
+            result: Result = await session.execute(statement)
+            return cast(List[Resource], result.scalars().all())
+
+    async def count_all_resources(
+        self,
+        scope: Optional[ResourceScope] = None,
+        scopes: Optional[List[ResourceScope]] = None,
+        search: Optional[str] = None,
+    ) -> int:
+        """Total number of resources matching the given scope/search filters."""
+        async with self.resource_repository.session() as session:
+            statement = select(func.count()).select_from(Resource)
+            conditions = self._resource_filters(scope, scopes, search)
+            if conditions:
+                statement = statement.where(and_(*conditions))
+
+            result: Result = await session.execute(statement)
+            return result.scalar() or 0
 
     async def get_user_role_for_scope(
         self, user_id: str, scope: ResourceScope
     ) -> Optional[str]:
         """
         Get the user's role ID for a specific resource scope.
+        Admin users are granted access to every scope and their admin role_id is
+        returned directly without checking resource assignments.
 
         Args:
             user_id: The ID of the user
@@ -82,6 +162,22 @@ class UserService:
             The role_id if user has access to the scope, None otherwise
         """
         async with self.resource_repository.session() as session:
+            # Admins have access to all scopes; return their role_id immediately.
+            # role_id is not yet known at login, so admin status is resolved by
+            # user_id here (the one place this lookup is unavoidable).
+            admin_stmt = (
+                select(UserRole.role_id)
+                .join(Role, UserRole.role_id == Role.id)
+                .join(User, UserRole.user_id == User.id)
+                .where(UserRole.user_id == user_id)
+                .where(User.deleted.is_(False))
+                .where(Role.name == ADMIN_ROLE_NAME)
+            )
+            admin_result = await session.execute(admin_stmt)
+            admin_role_id = admin_result.scalar()
+            if admin_role_id:
+                return str(admin_role_id)
+
             statement = (
                 select(UserRole.role_id)
                 .join(Role, UserRole.role_id == Role.id)
@@ -118,6 +214,8 @@ class UserService:
         current_admin_role_id: str,
         response_formatter: ResponseFormatter,
     ) -> JSONResponse:
+        is_reactivating_admin = current_admin_role_id in new_user_data.role_id
+
         try:
             async with self.user_repository.session() as session:
                 # Validate roles first
@@ -135,32 +233,35 @@ class UserService:
                         ),
                     )
 
-                # Validate console resource requirement
-                console_resources_query = (
-                    select(Resource)
-                    .join(RoleResource, Resource.id == RoleResource.resource_id)
-                    .where(
-                        and_(
-                            RoleResource.role_id.in_(new_user_data.role_id),
-                            Resource.scope == ResourceScope.CONSOLE,
+                # Admins have implicit access to all resources; only validate console
+                # resource requirement for non-admin users
+                if not is_reactivating_admin:
+                    console_resources_query = (
+                        select(Resource)
+                        .join(RoleResource, Resource.id == RoleResource.resource_id)
+                        .where(
+                            and_(
+                                RoleResource.role_id.in_(new_user_data.role_id),
+                                Resource.scope == ResourceScope.CONSOLE,
+                            )
                         )
                     )
-                )
-                console_result = await session.execute(console_resources_query)
-                console_resources = console_result.scalars().all()
-                if len(console_resources) == 0:
-                    return JSONResponse(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        content=response_formatter.buildErrorResponse(
-                            'Atleast one console resource is mandatory'
-                        ),
-                    )
+                    console_result = await session.execute(console_resources_query)
+                    console_resources = console_result.scalars().all()
+                    if len(console_resources) == 0:
+                        return JSONResponse(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            content=response_formatter.buildErrorResponse(
+                                'Atleast one console resource is mandatory'
+                            ),
+                        )
 
-                user_updates = {
+                user_updates: dict[str, Any] = {
                     'deleted': False,
                     'password': hash_password(new_user_data.password),
                     'first_name': new_user_data.first_name,
                     'last_name': new_user_data.last_name,
+                    'username': new_user_data.username,
                     'failed_attempts': 0,
                     'locked_until': None,
                     'last_failed_attempt': None,
@@ -179,21 +280,10 @@ class UserService:
                         ),
                     )
 
-                # Handle role assignments
-                if (
-                    current_admin_role_id in new_user_data.role_id
-                ):  # Is creating admin user
-                    all_roles = await session.execute(select(Role))
-                    all_roles_list = all_roles.scalars().all()
-                    user_roles = [
-                        UserRole(user_id=existing_user.id, role_id=role.id)
-                        for role in all_roles_list
-                    ]
-                else:  # Is creating user with specific roles
-                    user_roles = [
-                        UserRole(user_id=existing_user.id, role_id=role_id)
-                        for role_id in new_user_data.role_id
-                    ]
+                user_roles = [
+                    UserRole(user_id=existing_user.id, role_id=role_id)
+                    for role_id in new_user_data.role_id
+                ]
 
                 session.add_all(user_roles)
                 await session.commit()

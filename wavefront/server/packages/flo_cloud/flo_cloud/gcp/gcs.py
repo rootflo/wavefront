@@ -152,7 +152,6 @@ class GCSStorage(CloudStorageHandler):
 
                 if hasattr(self.credentials, 'service_account_email'):
                     service_account_email = self.credentials.service_account_email
-                    print(f'service_account_email: {service_account_email}')
                 if hasattr(self.credentials, 'token'):
                     token = self.credentials.token
 

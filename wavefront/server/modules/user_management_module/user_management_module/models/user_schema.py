@@ -78,12 +78,66 @@ class UpdateUser(BaseModel):
     user_id: str = Field(..., min_length=1)
     add_role_ids: Optional[List[str]] = Field(None)
     delete_role_ids: Optional[List[str]] = Field(None)
+    email: Optional[EmailStr] = Field(None, max_length=254)
+    username: Optional[str] = Field(None, min_length=3, max_length=50)
+    password: Optional[str] = Field(None, min_length=8)
+    first_name: Optional[str] = Field(None, min_length=1, max_length=50)
+    last_name: Optional[str] = Field(None, max_length=50)
 
     @field_validator('add_role_ids', 'delete_role_ids')
     @classmethod
     def validate_role_ids(cls, v):
         if v is not None and len(set(v)) != len(v):
             raise ValueError('Role IDs must be unique')
+        return v
+
+    @field_validator('email')
+    @classmethod
+    def validate_email_format(cls, v):
+        if v is None:
+            return v
+        if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', v):
+            raise ValueError('Invalid email format')
+        if '..' in v:
+            raise ValueError('Email cannot contain consecutive dots')
+        domain = v.split('@')[1]
+        if len(domain.split('.')) < 2:
+            raise ValueError('Invalid email domain')
+        if len(domain) > 255:
+            raise ValueError('Email domain too long')
+        tld = domain.split('.')[-1]
+        if not 2 <= len(tld) <= 63:
+            raise ValueError('Invalid TLD length')
+        return v.lower()
+
+    @field_validator('username')
+    @classmethod
+    def validate_username_format(cls, v):
+        if v is None:
+            return v
+        if not re.match(r'^[a-zA-Z0-9._@+-]+$', v):
+            raise ValueError(
+                'Username may only contain letters, digits, and the characters . _ @ + -'
+            )
+        return v.lower()
+
+    @field_validator('password')
+    @classmethod
+    def validate_password_strength(cls, v):
+        if v is None:
+            return v
+        if not re.match(PASSWORD_REGEX, v):
+            raise ValueError(
+                'Password must contain at least one letter, one number, and one special character'
+            )
+        return v
+
+    @field_validator('first_name')
+    @classmethod
+    def validate_name_format(cls, v):
+        if v is not None:
+            if not v.replace(' ', '').isalpha():
+                raise ValueError('Name should only contain letters and spaces')
         return v
 
 

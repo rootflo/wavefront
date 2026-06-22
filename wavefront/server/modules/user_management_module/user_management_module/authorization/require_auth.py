@@ -48,6 +48,8 @@ optional_auth_apis = [
     '/floware/v1/oauth/adfs/callback',
     '/floware/v1/plugin-auth/oauth/init',
     '/floware/v1/settings/config',
+    '/floware/v1/triggers/oauth/google/callback',
+    '/floware/v1/triggers/{trigger_id}/{agentic_id}/invoke',
 ]
 
 hmac_routes = os.getenv('HMAC_AUTH_ROUTES', '').split(',')
@@ -359,6 +361,11 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                             'Invalid HMAC signature'
                         ),
                     )
+                request.state.session = UserSession(
+                    role_id=SERVICE_AUTH_ROLE_ID,
+                    user_id='hmac-service',
+                    session_id='hmac-token',
+                )
             # Check for service-to-service authentication (Client-Key header + JWT)
             elif request.headers.get(RootfloHeaders.CLIENT_KEY):
                 if not await validate_service_auth(
@@ -382,8 +389,13 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                 if authorization and authorization.startswith('Bearer '):
                     token = authorization.split(' ')[1]
 
-                # Skip authentication for optional APIs
-                if request.url.path in optional_auth_apis:
+                # Skip authentication for optional APIs (supports {param} placeholders)
+                if any(
+                    request.url.path == pattern
+                    if '{' not in pattern
+                    else matches_dynamic_route(request.url.path, pattern)
+                    for pattern in optional_auth_apis
+                ):
                     return await call_next(request)
 
                 # For non-production environments: Check passthrough authentication globally
