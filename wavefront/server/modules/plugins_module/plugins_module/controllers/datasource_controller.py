@@ -1,7 +1,9 @@
 from typing import Dict, Any
 from datasource.bigquery.config import BigQueryConfig
 from datasource.redshift.config import RedshiftConfig
-from datasource.postgres.config import PostgresConfig, SynapseConfig
+from datasource.synapse.config import SynapseConfig
+from datasource.postgres.config import PostgresConfig
+from datasource.mssql.config import MSSQLConfig
 from dependency_injector.wiring import inject
 import json
 from dependency_injector.wiring import Provide
@@ -95,6 +97,8 @@ async def add_datasource(
         config = PostgresConfig(**config_json)
     elif add_datasource_payload.type == DataSourceType.AZURE_SYNAPSE:
         config = SynapseConfig(**config_json)
+    elif add_datasource_payload.type == DataSourceType.MSSQL:
+        config = MSSQLConfig(**config_json)
     else:
         raise ValueError(f'Invalid datasource type: {add_datasource_payload.type}')
 
@@ -190,6 +194,8 @@ async def update_datasource(
                 config = PostgresConfig(**payload_config)
             elif datasource_type == DataSourceType.AZURE_SYNAPSE:
                 config = SynapseConfig(**payload_config)
+            elif datasource_type == DataSourceType.MSSQL:
+                config = MSSQLConfig(**payload_config)
             else:
                 raise ValueError(f'Invalid datasource type: {datasource_type}')
 

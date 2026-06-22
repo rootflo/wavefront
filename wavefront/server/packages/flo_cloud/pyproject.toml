@@ -20,6 +20,7 @@ dependencies = [
     "google-cloud-pubsub>=2.28.0",
     "redshift-connector>=2.1.7",
     "pyodbc>=5.0.0",
+    "mssql-python",
 ]
 
 [tool.pytest.ini_options]

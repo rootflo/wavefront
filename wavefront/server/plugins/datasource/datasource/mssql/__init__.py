@@ -3,20 +3,22 @@ import re
 from typing import Any, Dict, List, Optional
 
 from ..types import DataSourceABC
-from flo_cloud.postgres import PostgresClient
-from .config import PostgresConfig
+from flo_cloud.mssql import MSSQLClient
+from .config import MSSQLConfig
 
 
-class PostgresPlugin(DataSourceABC):
-    def __init__(self, config: PostgresConfig):
+class MSSQLPlugin(DataSourceABC):
+    def __init__(self, config: MSSQLConfig):
         self.config = config
-        self.client = PostgresClient(
+        self.client = MSSQLClient(
             host=config.host,
             port=config.port,
             database=config.database,
             user=config.user,
             password=config.password,
             schema=config.schema,
+            encrypt=config.encrypt,
+            trust_server_certificate=config.trust_server_certificate,
         )
         self.db_name = f'{config.database}.{config.schema}'
 
@@ -38,7 +40,7 @@ class PostgresPlugin(DataSourceABC):
         self,
         table_names: List[str],
         projection: Optional[str] = '*',
-        where_clause: Optional[str] = 'true',
+        where_clause: Optional[str] = '1=1',
         join_query: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
         offset: Optional[int] = 0,
@@ -50,7 +52,7 @@ class PostgresPlugin(DataSourceABC):
             projection=projection or '*',
             table_prefix=f'{self.config.schema}.',
             table_names=table_names,
-            where_clause=where_clause or 'true',
+            where_clause=where_clause or '1=1',
             join_query=join_query,
             params=params,
             limit=limit if limit is not None else 10,
@@ -72,12 +74,17 @@ class PostgresPlugin(DataSourceABC):
     def _apply_pagination(
         query: str, offset: Optional[int], limit: Optional[int]
     ) -> str:
-        """Attach LIMIT/OFFSET pagination to a (trimmed) query.
+        """Attach SQL Server OFFSET/FETCH pagination to a (trimmed) query.
 
-        We scan only the top level (ignoring anything inside parentheses, via a
-        paren-depth counter): if the query already has a top-level ``LIMIT`` we
-        wrap it as a subquery and paginate the wrapper, otherwise we append
-        ``LIMIT/OFFSET`` directly.
+        SQL Server has no LIMIT; it uses ``OFFSET ... ROWS FETCH NEXT ... ROWS
+        ONLY``, which requires an ``ORDER BY``. We scan only the top level
+        (ignoring anything inside parentheses, via a paren-depth counter) to
+        decide how to attach it:
+
+        - already paginates (OFFSET/FETCH/TOP) -> wrap as a derived table and
+          paginate the wrapper (can't stack two OFFSET/FETCH at one level);
+        - has its own top-level ORDER BY -> just append OFFSET/FETCH;
+        - neither -> append a no-op ``ORDER BY (SELECT NULL)`` plus OFFSET/FETCH.
 
         A missing offset/limit falls back to 0/100 so results stay bounded.
         """
@@ -87,19 +94,30 @@ class PostgresPlugin(DataSourceABC):
             raise ValueError('offset must be >= 0 and limit must be > 0')
 
         depth = 0
-        has_top_level_limit = False
+        has_top_level_pagination = False
+        has_top_level_order_by = False
         for token in re.split(r'(\(|\))', query):
             if token == '(':
                 depth += 1
             elif token == ')':
                 depth -= 1
-            elif depth == 0 and re.search(r'\bLIMIT\b', token, re.IGNORECASE):
-                has_top_level_limit = True
-                break
-        pagination = f'LIMIT {effective_limit} OFFSET {effective_offset}'
-        if has_top_level_limit:
-            return f'SELECT * FROM ({query}) AS _sub {pagination}'
-        return f'{query} {pagination}'
+            elif depth == 0:
+                if re.search(r'\b(OFFSET|FETCH|TOP)\b', token, re.IGNORECASE):
+                    has_top_level_pagination = True
+                if re.search(r'\bORDER\s+BY\b', token, re.IGNORECASE):
+                    has_top_level_order_by = True
+
+        pagination = (
+            f'OFFSET {effective_offset} ROWS ' f'FETCH NEXT {effective_limit} ROWS ONLY'
+        )
+        if has_top_level_pagination:
+            return (
+                f'SELECT * FROM ({query}) AS _sub '
+                f'ORDER BY (SELECT NULL) {pagination}'
+            )
+        if has_top_level_order_by:
+            return f'{query} {pagination}'
+        return f'{query} ORDER BY (SELECT NULL) {pagination}'
 
     async def execute_dynamic_query(
         self,
@@ -141,10 +159,10 @@ class PostgresPlugin(DataSourceABC):
                 params_to_execute.update(odata_data_params)
 
             query_to_execute = query_to_execute.replace(
-                '{{rls}}', f'{odata_data_filter}' if odata_data_filter else 'TRUE'
+                '{{rls}}', f'{odata_data_filter}' if odata_data_filter else '1=1'
             )
             query_to_execute = query_to_execute.replace(
-                '{{filters}}', f'{odata_filter}' if odata_filter else 'TRUE'
+                '{{filters}}', f'{odata_filter}' if odata_filter else '1=1'
             )
             query_to_execute = query_to_execute.rstrip().rstrip(';')
             query_to_execute = self._apply_pagination(query_to_execute, offset, limit)
@@ -178,4 +196,4 @@ class PostgresPlugin(DataSourceABC):
         return results
 
 
-__all__ = ['PostgresPlugin', 'PostgresConfig']
+__all__ = ['MSSQLPlugin', 'MSSQLConfig']

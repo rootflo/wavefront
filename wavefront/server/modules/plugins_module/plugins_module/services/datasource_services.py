@@ -1,6 +1,12 @@
 import collections
-from datasource import DataSourceType, BigQueryConfig, RedshiftConfig, PostgresConfig
-from datasource.synapse.config import SynapseConfig
+from datasource import (
+    DataSourceType,
+    BigQueryConfig,
+    RedshiftConfig,
+    PostgresConfig,
+    SynapseConfig,
+    MSSQLConfig,
+)
 from db_repo_module.models.datasource import Datasource
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from dependency_injector.wiring import Provide
@@ -15,7 +21,8 @@ async def get_datasource_config(
         Provide(PluginsContainer.datasource_repository)
     ),
 ) -> tuple[
-    DataSourceType, BigQueryConfig | RedshiftConfig | PostgresConfig | SynapseConfig
+    DataSourceType,
+    BigQueryConfig | RedshiftConfig | PostgresConfig | SynapseConfig | MSSQLConfig,
 ]:
     datasource: Datasource | None = await datasource_repository.find_one(
         id=datasource_id
@@ -31,6 +38,8 @@ async def get_datasource_config(
         return DataSourceType.POSTGRES, PostgresConfig(**datasource.config)
     elif datasource.type == DataSourceType.AZURE_SYNAPSE:
         return DataSourceType.AZURE_SYNAPSE, SynapseConfig(**datasource.config)
+    elif datasource.type == DataSourceType.MSSQL:
+        return DataSourceType.MSSQL, MSSQLConfig(**datasource.config)
     else:
         raise ValueError(f'Invalid datasource type: {datasource.type}')
 
