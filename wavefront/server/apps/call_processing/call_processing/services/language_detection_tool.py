@@ -6,9 +6,10 @@ Provides LLM-callable language detection and switching capabilities
 
 from typing import Dict, Any, List, Callable
 from pipecat.services.llm_service import FunctionCallParams
-from pipecat.frames.frames import LLMMessagesUpdateFrame
 from call_processing.log.logger import logger
 from call_processing.constants.language_config import LANGUAGE_INSTRUCTIONS
+from call_processing.services.tts_service import TTSServiceFactory
+from call_processing.services.stt_service import STTServiceFactory
 
 
 class LanguageDetectionToolFactory:
@@ -17,8 +18,9 @@ class LanguageDetectionToolFactory:
     @staticmethod
     def create_language_detection_tool(
         task_container: Dict[str, Any],
-        language_switcher: Any,
-        stt_language_switcher: Any,
+        tts_provider: str,
+        stt_provider: str,
+        tts_voice_ids: Dict[str, str],
         context_container: Dict[str, Any],
         supported_languages: List[str],
         default_language: str,
@@ -30,8 +32,9 @@ class LanguageDetectionToolFactory:
         Args:
             task_container: Dictionary containing PipelineTask (populated after task creation)
                            Format: {'task': PipelineTask | None}
-            language_switcher: LanguageSwitcher instance that manages TTS routing
-            stt_language_switcher: STTLanguageSwitcher instance that manages STT routing
+            tts_provider: TTS provider name (e.g. 'elevenlabs', 'azure')
+            stt_provider: STT provider name (e.g. 'deepgram', 'azure')
+            tts_voice_ids: Dict mapping language code -> voice ID for TTS
             context_container: Dictionary containing LLMContext (populated after context creation)
                               Format: {'context': LLMContext | None}
             supported_languages: List of supported language codes
@@ -123,15 +126,35 @@ class LanguageDetectionToolFactory:
 
                 # Perform language switch
                 try:
-                    # Update TTS language switcher state
-                    language_switcher.set_language(target_language)
-
-                    # Update STT language switcher state
-                    stt_language_switcher.set_language(target_language)
-
-                    logger.info(
-                        f'Switched TTS and STT language from {current_language} to {target_language}'
+                    # Queue TTS settings update (voice + language)
+                    tts_frame = TTSServiceFactory.create_language_update_frame(
+                        tts_provider,
+                        target_language,
+                        tts_voice_ids.get(target_language),
                     )
+                    tts_frame_queued = False
+                    if tts_frame:
+                        await task.queue_frame(tts_frame)
+                        tts_frame_queued = True
+
+                    # Queue STT settings update (language)
+                    stt_frame = STTServiceFactory.create_language_update_frame(
+                        stt_provider, target_language
+                    )
+                    stt_frame_queued = False
+                    if stt_frame:
+                        await task.queue_frame(stt_frame)
+                        stt_frame_queued = True
+
+                    log_msg = (
+                        f'Language update {current_language} -> {target_language}: '
+                        f'TTS={"queued" if tts_frame_queued else "skipped"}, '
+                        f'STT={"queued" if stt_frame_queued else "skipped"}'
+                    )
+                    if tts_frame_queued or stt_frame_queued:
+                        logger.info(log_msg)
+                    else:
+                        logger.error(log_msg)
 
                     # Update system prompt with language instruction
                     language_instruction = LANGUAGE_INSTRUCTIONS.get(
@@ -151,17 +174,16 @@ class LanguageDetectionToolFactory:
 
                     # Append new language instruction to clean base prompt
                     updated_content = f'{language_instruction}\n\n{base_prompt}'
-                    updated_system_message = {
-                        'role': 'system',
-                        'content': updated_content,
-                    }
 
-                    # Update context
+                    # Mutate the system message in-place on the context object so
+                    # the full conversation history (including the current tool
+                    # call + result being appended by pipecat) is preserved.
+                    # Using LLMMessagesUpdateFrame would snapshot messages BEFORE
+                    # pipecat appends the tool result, stripping it from context
+                    # and causing a second spurious tool call on LLM continuation.
                     current_messages = context.get_messages()
-                    new_messages = [updated_system_message] + current_messages[1:]
-                    await task.queue_frame(
-                        LLMMessagesUpdateFrame(new_messages, run_llm=False)
-                    )
+                    current_messages[0] = {'role': 'system', 'content': updated_content}
+                    context.set_messages(current_messages)
 
                     logger.info(
                         f'Updated system prompt with {target_language} instruction'
