@@ -68,6 +68,29 @@ class PostgresPlugin(DataSourceABC):
         params = kwargs.get('params')
         return await asyncio.to_thread(self.client.execute_query_as_dict, query, params)
 
+    @staticmethod
+    def _apply_pagination(query: str, offset: int, limit: int) -> str:
+        """Attach LIMIT/OFFSET pagination to a (trimmed) query.
+
+        We scan only the top level (ignoring anything inside parentheses, via a
+        paren-depth counter): if the query already has a top-level ``LIMIT`` we
+        wrap it as a subquery and paginate the wrapper, otherwise we append
+        ``LIMIT/OFFSET`` directly.
+        """
+        depth = 0
+        has_top_level_limit = False
+        for token in re.split(r'(\(|\))', query):
+            if token == '(':
+                depth += 1
+            elif token == ')':
+                depth -= 1
+            elif depth == 0 and re.search(r'\bLIMIT\b', token, re.IGNORECASE):
+                has_top_level_limit = True
+                break
+        if has_top_level_limit:
+            return f'SELECT * FROM ({query}) AS _sub LIMIT {limit} OFFSET {offset}'
+        return f'{query} LIMIT {limit} OFFSET {offset}'
+
     async def execute_dynamic_query(
         self,
         query: List[Dict[str, Any]],
@@ -114,23 +137,7 @@ class PostgresPlugin(DataSourceABC):
                 '{{filters}}', f'{odata_filter}' if odata_filter else 'TRUE'
             )
             query_to_execute = query_to_execute.rstrip().rstrip(';')
-            depth = 0
-            has_top_level_limit = False
-            for token in re.split(r'(\(|\))', query_to_execute):
-                if token == '(':
-                    depth += 1
-                elif token == ')':
-                    depth -= 1
-                elif depth == 0 and re.search(r'\bLIMIT\b', token, re.IGNORECASE):
-                    has_top_level_limit = True
-                    break
-            if has_top_level_limit:
-                query_to_execute = (
-                    f'SELECT * FROM ({query_to_execute}) AS _sub'
-                    f' LIMIT {limit} OFFSET {offset}'
-                )
-            else:
-                query_to_execute += f' LIMIT {limit} OFFSET {offset}'
+            query_to_execute = self._apply_pagination(query_to_execute, offset, limit)
 
             task = asyncio.create_task(
                 asyncio.to_thread(

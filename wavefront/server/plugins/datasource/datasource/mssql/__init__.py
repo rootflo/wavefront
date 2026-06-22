@@ -70,6 +70,44 @@ class MSSQLPlugin(DataSourceABC):
         params = kwargs.get('params')
         return await asyncio.to_thread(self.client.execute_query_as_dict, query, params)
 
+    @staticmethod
+    def _apply_pagination(query: str, offset: int, limit: int) -> str:
+        """Attach SQL Server OFFSET/FETCH pagination to a (trimmed) query.
+
+        SQL Server has no LIMIT; it uses ``OFFSET ... ROWS FETCH NEXT ... ROWS
+        ONLY``, which requires an ``ORDER BY``. We scan only the top level
+        (ignoring anything inside parentheses, via a paren-depth counter) to
+        decide how to attach it:
+
+        - already paginates (OFFSET/FETCH/TOP) -> wrap as a derived table and
+          paginate the wrapper (can't stack two OFFSET/FETCH at one level);
+        - has its own top-level ORDER BY -> just append OFFSET/FETCH;
+        - neither -> append a no-op ``ORDER BY (SELECT NULL)`` plus OFFSET/FETCH.
+        """
+        depth = 0
+        has_top_level_pagination = False
+        has_top_level_order_by = False
+        for token in re.split(r'(\(|\))', query):
+            if token == '(':
+                depth += 1
+            elif token == ')':
+                depth -= 1
+            elif depth == 0:
+                if re.search(r'\b(OFFSET|FETCH|TOP)\b', token, re.IGNORECASE):
+                    has_top_level_pagination = True
+                if re.search(r'\bORDER\s+BY\b', token, re.IGNORECASE):
+                    has_top_level_order_by = True
+
+        pagination = f'OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY'
+        if has_top_level_pagination:
+            return (
+                f'SELECT * FROM ({query}) AS _sub '
+                f'ORDER BY (SELECT NULL) {pagination}'
+            )
+        if has_top_level_order_by:
+            return f'{query} {pagination}'
+        return f'{query} ORDER BY (SELECT NULL) {pagination}'
+
     async def execute_dynamic_query(
         self,
         query: List[Dict[str, Any]],
@@ -116,33 +154,7 @@ class MSSQLPlugin(DataSourceABC):
                 '{{filters}}', f'{odata_filter}' if odata_filter else '1=1'
             )
             query_to_execute = query_to_execute.rstrip().rstrip(';')
-
-            # SQL Server pagination uses OFFSET/FETCH (requires ORDER BY) instead of
-            # LIMIT/OFFSET. Inspect the top level to apply it correctly.
-            depth = 0
-            has_top_level_pagination = False
-            has_top_level_order_by = False
-            for token in re.split(r'(\(|\))', query_to_execute):
-                if token == '(':
-                    depth += 1
-                elif token == ')':
-                    depth -= 1
-                elif depth == 0:
-                    if re.search(r'\b(OFFSET|FETCH|TOP)\b', token, re.IGNORECASE):
-                        has_top_level_pagination = True
-                    if re.search(r'\bORDER\s+BY\b', token, re.IGNORECASE):
-                        has_top_level_order_by = True
-
-            pagination = f'OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY'
-            if has_top_level_pagination:
-                query_to_execute = (
-                    f'SELECT * FROM ({query_to_execute}) AS _sub '
-                    f'ORDER BY (SELECT NULL) {pagination}'
-                )
-            elif has_top_level_order_by:
-                query_to_execute += f' {pagination}'
-            else:
-                query_to_execute += f' ORDER BY (SELECT NULL) {pagination}'
+            query_to_execute = self._apply_pagination(query_to_execute, offset, limit)
 
             task = asyncio.create_task(
                 asyncio.to_thread(
