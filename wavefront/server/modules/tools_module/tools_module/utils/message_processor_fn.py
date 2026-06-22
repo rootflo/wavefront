@@ -18,7 +18,7 @@ async def execute_message_processor_fn(message_processor_id: str, **kwargs) -> s
     # Remove message_processor_id from kwargs (it's not part of input_data)
     input_data = {k: v for k, v in kwargs.items() if k != 'message_processor_id'}
 
-    payload = ExecuteMessageProcessorPayload(input_data=input_data)
+    payload = ExecuteMessageProcessorPayload(input_data=input_data['kwargs'])
     response = await execute_message_processor(message_processor_id, payload)
 
     response_body_bytes = response.body

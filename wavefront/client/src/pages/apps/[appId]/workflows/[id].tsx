@@ -369,6 +369,7 @@ const WorkflowDetail: React.FC = () => {
           const imageMessage = {
             image_base64: image.base64Content,
             mime_type: image.mimeType,
+            file_name: image.file.name,
           };
           messageInputs.push({ role: 'user', content: imageMessage });
           setChatHistory((prev) => [...prev, { role: 'user', content: imageMessage }]);
@@ -379,6 +380,7 @@ const WorkflowDetail: React.FC = () => {
         const imageMessage = {
           image_base64: imageBase64Content,
           mime_type: uploadedImage.mimeType,
+          file_name: uploadedImage.file?.name,
         };
         messageInputs.push({ role: 'user', content: imageMessage });
         setChatHistory((prev) => [...prev, { role: 'user', content: imageMessage }]);
@@ -391,6 +393,7 @@ const WorkflowDetail: React.FC = () => {
             document_type: doc.documentType,
             document_base64: doc.base64Content,
             mime_type: doc.mimeType,
+            file_name: doc.file.name,
             metadata: {
               filename: doc.file.name,
               size: doc.file.size,
@@ -726,7 +729,7 @@ const WorkflowDetail: React.FC = () => {
           <DialogHeader>
             <DialogTitle>Edit Workflow Configuration</DialogTitle>
           </DialogHeader>
-          <div className="flex flex-col gap-3 py-4">
+          <div className="flex flex-col gap-3 overflow-auto py-4">
             <CodeMirror
               value={yamlContent}
               editable={true}

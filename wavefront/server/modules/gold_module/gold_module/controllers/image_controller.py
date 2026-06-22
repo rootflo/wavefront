@@ -1,6 +1,5 @@
 import base64
 import re
-import httpx
 
 from common_module.common_container import CommonContainer
 from common_module.response_formatter import ResponseFormatter
@@ -54,31 +53,11 @@ async def process_image(
                     'Invalid base64 image encoding'
                 ),
             )
-    elif image_str.startswith('http://') or image_str.startswith('https://'):
-        # Download the image from the URL
-        try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(image_str)
-                if resp.status_code != 200:
-                    return JSONResponse(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        content=response_formatter.buildErrorResponse(
-                            'Failed to download image from URL'
-                        ),
-                    )
-                gold_image = resp.content
-        except Exception:
-            return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content=response_formatter.buildErrorResponse(
-                    'Error downloading image from URL'
-                ),
-            )
     else:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content=response_formatter.buildErrorResponse(
-                'Image must be a data URL or a direct image URL'
+                'Image must be a data URL (data:image/<type>;base64,<data>)'
             ),
         )
     if not gold_image:
@@ -119,31 +98,11 @@ async def upload_historical_images(
                     'Invalid base64 image encoding'
                 ),
             )
-    elif image_str.startswith('http://') or image_str.startswith('https://'):
-        # Download the image from the URL
-        try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(image_str)
-                if resp.status_code != 200:
-                    return JSONResponse(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        content=response_formatter.buildErrorResponse(
-                            'Failed to download image from URL'
-                        ),
-                    )
-                gold_image = resp.content
-        except Exception:
-            return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content=response_formatter.buildErrorResponse(
-                    'Error downloading image from URL'
-                ),
-            )
     else:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content=response_formatter.buildErrorResponse(
-                'Image must be a data URL or a direct image URL'
+                 'Image must be a data URL (data:image/<type>;base64,<data>)'
             ),
         )
     if not gold_image:

@@ -69,9 +69,10 @@ class UserContainer(containers.DeclarativeContainer):
         ),
         gmail=providers.Singleton(
             GmailEmailService,
-            service_account_b64=config.gmail.service_account_file,
+            client_id=config.gmail.client_id,
+            client_secret=config.gmail.client_secret,
+            refresh_token=config.gmail.refresh_token,
             email_sender=config.gmail.email_sender,
-            delegate_user=config.gmail.delegate_user,
         ),
     )
 

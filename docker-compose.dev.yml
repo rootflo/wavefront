@@ -5,6 +5,8 @@ services:
     image: ankane/pgvector
     container_name: postgres
     restart: always
+    security_opt:
+      - no-new-privileges:true
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
@@ -20,6 +22,8 @@ services:
   redis:
     image: redis:7.4
     container_name: redis
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "6379:6379"
     networks:

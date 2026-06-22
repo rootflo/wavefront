@@ -2,6 +2,9 @@ from dependency_injector import containers
 from dependency_injector import providers
 from agents_module.services.agent_inference_service import AgentInferenceService
 from agents_module.services.agent_crud_service import AgentCrudService
+from agents_module.services.async_agentic_execution_service import (
+    AsyncAgenticExecutionService,
+)
 from agents_module.services.namespace_service import NamespaceService
 from agents_module.services.workflow_crud_service import WorkflowCrudService
 from agents_module.services.workflow_inference_service import WorkflowInferenceService
@@ -34,6 +37,12 @@ class AgentsContainer(containers.DeclarativeContainer):
 
     api_services_manager = providers.Dependency()
 
+    async_agentic_execution_repository = providers.Dependency()
+
+    executions_bucket = providers.Dependency()
+
+    llm_inference_config_service = providers.Dependency(default=None)
+
     namespace_service = providers.Singleton(
         NamespaceService,
         namespace_repository=namespace_repository,
@@ -62,6 +71,7 @@ class AgentsContainer(containers.DeclarativeContainer):
         cloud_storage_manager=cloud_storage_manager,
         message_processor_bucket_name=message_processor_bucket_name,
         api_services_manager=api_services_manager,
+        llm_inference_config_service=llm_inference_config_service,
     )
 
     workflow_crud_service = providers.Singleton(
@@ -82,6 +92,14 @@ class AgentsContainer(containers.DeclarativeContainer):
         bucket_name=config.agents.agent_yaml_bucket,
         agent_crud_service=agent_crud_service,
         tool_loader=tool_loader,
+    )
+
+    async_agentic_execution_service = providers.Singleton(
+        AsyncAgenticExecutionService,
+        async_agentic_execution_repository=async_agentic_execution_repository,
+        cloud_storage_manager=cloud_storage_manager,
+        cache_manager=cache_manager,
+        executions_bucket=executions_bucket,
     )
 
     message_queue_manager = providers.Singleton(

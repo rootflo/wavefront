@@ -2,17 +2,43 @@ import os
 import time
 from typing import Any, List, Optional, Union
 
+from azure.core.exceptions import ClientAuthenticationError
+from azure.identity import DefaultAzureCredential
 from common_module.common_cache import CommonCache
 from common_module.log.logger import logger
+from redis import Connection
 from redis import ConnectionError
 from redis import ConnectionPool
 from redis import Redis
 from redis import RedisError
+from redis import SSLConnection
 from redis import TimeoutError
+from redis.credentials import CredentialProvider
 from tenacity import retry
 from tenacity import retry_if_exception_type
 from tenacity import stop_after_attempt
 from tenacity import wait_exponential
+
+
+class AzureManagedRedisProvider(CredentialProvider):
+    """
+    Adapter to bridge Azure Identity with Redis CredentialProvider.
+    Azure Managed Redis requires 'default' as the username and the
+    Entra ID access token as the password.
+    """
+
+    def __init__(self):
+        self.credential = DefaultAzureCredential()
+        self.scope = 'https://redis.azure.com/.default'
+        self.username = os.getenv('REDIS_USERNAME', 'default')
+
+    def get_credentials(self):
+        try:
+            token = self.credential.get_token(self.scope)
+            return (self.username, token.token)
+        except ClientAuthenticationError as e:
+            logger.error(f'Azure authentication failed: {e}')
+            raise
 
 
 class CacheManager(CommonCache):
@@ -58,19 +84,41 @@ class CacheManager(CommonCache):
         pool_size: int,
     ) -> ConnectionPool:
         try:
-            return ConnectionPool(
-                host=str(os.getenv('REDIS_HOST', 'localhost')),
-                port=int(os.getenv('REDIS_PORT', 6379)),
-                db=int(os.getenv('REDIS_DB', 0)),
-                max_connections=pool_size,
-                socket_timeout=socket_timeout,
-                socket_keepalive=socket_keepalive,
-                socket_connect_timeout=connection_timeout,
-                retry_on_timeout=True,
-                health_check_interval=30,
-                encoding='utf-8',
-                decode_responses=True,
-            )
+            host = os.getenv('REDIS_HOST', 'localhost')
+            port = int(os.getenv('REDIS_PORT', 6379))
+            protocol = os.getenv('REDIS_PROTOCOL', 'redis')
+            password = os.getenv('REDIS_PASSWORD')
+            cloud_provider = os.getenv('CLOUD_PROVIDER', '').lower()
+
+            connection_class = Connection
+            if protocol == 'rediss' or port == 10000:
+                logger.info(f'Using SSLConnection for Redis (Port: {port})')
+                connection_class = SSLConnection
+
+            pool_kwargs = {
+                'connection_class': connection_class,
+                'host': host,
+                'port': port,
+                'db': int(os.getenv('REDIS_DB', 0)),
+                'max_connections': pool_size,
+                'socket_timeout': socket_timeout,
+                'socket_keepalive': socket_keepalive,
+                'socket_connect_timeout': connection_timeout,
+                'retry_on_timeout': True,
+                'health_check_interval': 30,
+                'encoding': 'utf-8',
+                'decode_responses': True,
+            }
+
+            if cloud_provider == 'azure' and not password:
+                logger.info(
+                    'Configuring Azure Entra ID (Workload Identity) authentication'
+                )
+                pool_kwargs['credential_provider'] = AzureManagedRedisProvider()
+            elif password:
+                pool_kwargs['password'] = password
+
+            return ConnectionPool(**pool_kwargs)
         except Exception as e:
             logger.error(f'Failed to create connection pool: {e}s')
             raise
@@ -222,6 +270,84 @@ class CacheManager(CommonCache):
             return pubsub
         except (RedisError, ConnectionError, TimeoutError) as e:
             logger.error(f'Error subscribing to channels/patterns: {e}')
+            raise
+
+    # ------------------------------------------------------------------
+    # Redis Streams
+    # ------------------------------------------------------------------
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        retry=retry_if_exception_type((RedisError, ConnectionError, TimeoutError)),
+    )
+    def xadd(self, stream: str, fields: dict, maxlen: int = 10000) -> str:
+        """Append an entry to a Redis Stream. Returns the message ID."""
+        try:
+            return self.redis.xadd(f'{self.namespace}/{stream}', fields, maxlen=maxlen)
+        except (RedisError, ConnectionError, TimeoutError) as e:
+            logger.error(f'Error appending to stream {stream}: {e}')
+            raise
+
+    def xgroup_create(
+        self, stream: str, group: str, id: str = '$', mkstream: bool = True
+    ) -> None:
+        """Create a consumer group. Silently ignores BUSYGROUP if already exists."""
+        try:
+            self.redis.xgroup_create(
+                f'{self.namespace}/{stream}', group, id=id, mkstream=mkstream
+            )
+            logger.info(f'Created consumer group {group} on stream {stream}')
+        except Exception as e:
+            if 'BUSYGROUP' in str(e):
+                logger.debug(
+                    f'Consumer group {group} already exists on stream {stream}'
+                )
+            else:
+                logger.error(f'Error creating consumer group {group}: {e}')
+                raise
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        retry=retry_if_exception_type((RedisError, ConnectionError, TimeoutError)),
+    )
+    def xread_group(
+        self,
+        group: str,
+        consumer: str,
+        streams: dict,
+        count: int = 10,
+        block_ms: int = 1000,
+    ) -> list:
+        """Read messages from stream(s) via consumer group.
+
+        Args:
+            streams: mapping of stream_name → '>' (undelivered) or message ID (pending)
+        """
+        try:
+            namespaced = {f'{self.namespace}/{k}': v for k, v in streams.items()}
+            return (
+                self.redis.xreadgroup(
+                    group, consumer, namespaced, count=count, block=block_ms
+                )
+                or []
+            )
+        except (RedisError, ConnectionError, TimeoutError) as e:
+            logger.error(f'Error reading from stream group {group}: {e}')
+            raise
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        retry=retry_if_exception_type((RedisError, ConnectionError, TimeoutError)),
+    )
+    def xack(self, stream: str, group: str, *message_ids: str) -> int:
+        """Acknowledge one or more messages in a consumer group."""
+        try:
+            return self.redis.xack(f'{self.namespace}/{stream}', group, *message_ids)
+        except (RedisError, ConnectionError, TimeoutError) as e:
+            logger.error(f'Error acknowledging messages on stream {stream}: {e}')
             raise
 
     def close(self):

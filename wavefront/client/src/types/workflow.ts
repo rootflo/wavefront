@@ -79,6 +79,7 @@ export interface WorkflowEventBase {
   execution_time?: number;
   error?: string;
   router_choice?: string;
+  node_output?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -105,6 +106,7 @@ export interface NodeCompletedEvent extends WorkflowEventBase {
   event_type: 'node_completed';
   node_name: string;
   execution_time: number;
+  node_output?: string;
 }
 
 export interface NodeFailedEvent extends WorkflowEventBase {

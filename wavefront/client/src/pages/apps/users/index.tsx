@@ -4,8 +4,8 @@ import { EmptyStateCard } from '@app/components/EmptyCard';
 import { Button } from '@app/components/ui/button';
 import { Input } from '@app/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
-import { useGetCurrentUser, useGetUsers } from '@app/hooks';
-import { getUsersKey } from '@app/hooks/data/query-keys';
+import { useGetConsoleUsers, useGetCurrentUser } from '@app/hooks';
+import { getConsoleUsersKey } from '@app/hooks/data/query-keys';
 import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { IUser } from '@app/types/user';
@@ -27,8 +27,8 @@ const UsersPage: React.FC = () => {
   const [editItem, setEditItem] = useState<IUser | null>(null);
   const [manageAppAccessItem, setManageAppAccessItem] = useState<IUser | null>(null);
 
-  // Fetch users and current user
-  const { data: users = [], isLoading: usersLoading } = useGetUsers();
+  // Fetch console users and current user
+  const { data: consoleUsers = [], isLoading: consoleUsersLoading } = useGetConsoleUsers();
   const { data: currentUser } = useGetCurrentUser(true);
 
   // Check if current user is owner
@@ -65,7 +65,7 @@ const UsersPage: React.FC = () => {
   };
 
   const handleEditSuccess = () => {
-    queryClient.invalidateQueries({ queryKey: getUsersKey() });
+    queryClient.invalidateQueries({ queryKey: getConsoleUsersKey() });
     setEditItem(null);
   };
 
@@ -76,7 +76,7 @@ const UsersPage: React.FC = () => {
     try {
       await floConsoleService.userService.deleteUser(deleteItem.id);
       notifySuccess('User deleted successfully');
-      queryClient.invalidateQueries({ queryKey: getUsersKey() });
+      queryClient.invalidateQueries({ queryKey: getConsoleUsersKey() });
       setDeleteItem(null);
     } catch (error) {
       const errorMessage = extractErrorMessage(error);
@@ -95,11 +95,11 @@ const UsersPage: React.FC = () => {
   };
 
   const handleCreateSuccess = () => {
-    queryClient.invalidateQueries({ queryKey: getUsersKey() });
+    queryClient.invalidateQueries({ queryKey: getConsoleUsersKey() });
     setCreateDialogOpen(false);
   };
 
-  const filteredUsers = users.filter((user) => {
+  const filteredUsers = consoleUsers.filter((user) => {
     const query = searchQuery.toLowerCase();
     return (
       user.email.toLowerCase().includes(query) ||
@@ -131,7 +131,7 @@ const UsersPage: React.FC = () => {
         </div>
       </div>
 
-      {usersLoading ? (
+      {consoleUsersLoading ? (
         <div className="flex justify-center py-10">
           <div className="text-gray-500">Loading users...</div>
         </div>

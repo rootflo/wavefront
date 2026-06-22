@@ -1,26 +1,17 @@
 import secrets
-from typing import Optional
+from typing import List, Optional
 
-from auth_module.auth_container import AuthContainer
-from auth_module.services.token_service import TokenService
-from common_module.common_cache import CommonCache
-from common_module.common_container import CommonContainer
 from common_module.log.logger import logger
-from common_module.response_formatter import ResponseFormatter
 from db_repo_module.models.resource import Resource
 from db_repo_module.models.resource import ResourceScope
 from db_repo_module.models.role import Role
 from db_repo_module.models.role_resource import RoleResource
 from db_repo_module.models.user import User
 from db_repo_module.models.user_role import UserRole
-from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
-from db_repo_module.cache.cache_manager import CacheManager
 from dependency_injector.wiring import inject
-from dependency_injector.wiring import Provide
 from fastapi import Path, Query
 from fastapi import Request
 from fastapi import status
-from fastapi.params import Depends
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRouter
 from fastapi.security import OAuth2PasswordBearer
@@ -31,23 +22,28 @@ from sqlalchemy import select
 from sqlalchemy import or_
 from sqlalchemy import func
 
+from user_management_module.dependencies.injection import (
+    AccountLockoutServiceDep,
+    CacheManagerDep,
+    CommonCacheDep,
+    EmailServiceDep,
+    ResponseFormatterDep,
+    TokenServiceDep,
+    UserConfigDep,
+    UserRepositoryDep,
+    UserRoleRepositoryDep,
+    UserServiceDep,
+)
 from user_management_module.models.user_schema import NewUser
 from user_management_module.models.user_schema import ResetUser
 from user_management_module.models.user_schema import UpdateUser
-from user_management_module.services.email_service import EmailService
-from user_management_module.services.account_lockout_service import (
-    AccountLockoutService,
-)
-from user_management_module.user_container import UserContainer
 from user_management_module.utils.password_utils import hash_password
 from user_management_module.utils.user_utils import (
     check_is_admin,
     create_account_lockout_response,
 )
 from user_management_module.utils.user_utils import get_current_user
-from user_management_module.services.user_service import UserService
 import json
-from typing import List
 from common_module.utils.serializer import serialize_values
 
 user_router = APIRouter(prefix='/v1')
@@ -60,16 +56,10 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl='token')
 async def create_user(
     new_user: NewUser,
     request: Request,
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter]
-    ),
-    user_repository: SQLAlchemyRepository[User] = Depends(
-        Provide[UserContainer.user_repository]
-    ),
-    role_repository: SQLAlchemyRepository[Role] = Depends(
-        Provide[UserContainer.role_repository]
-    ),
-    user_service: UserService = Depends(Provide[UserContainer.user_service]),
+    response_formatter: ResponseFormatterDep,
+    user_repository: UserRepositoryDep,
+    user_service: UserServiceDep,
+    cache_manager: CacheManagerDep,
 ):
     role_id, _, _ = get_current_user(request)
     is_admin = await check_is_admin(role_id)
@@ -79,6 +69,8 @@ async def create_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content=response_formatter.buildErrorResponse('Access denied'),
         )
+
+    is_creating_admin = role_id in new_user.role_id
 
     existing_user = await user_repository.find_one(email=new_user.email)
     if existing_user:
@@ -94,31 +86,45 @@ async def create_user(
                 ),
             )
 
+    if new_user.username:
+        existing_by_username = await user_repository.find_one(
+            username=new_user.username
+        )
+        if existing_by_username and not existing_by_username.deleted:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content=response_formatter.buildErrorResponse(
+                    'User with the same username already exists'
+                ),
+            )
+
     async with user_repository.session() as session:
         try:
-            get_console_resources_query = (
-                select(Resource)
-                .join(RoleResource, Resource.id == RoleResource.resource_id)
-                .where(
-                    and_(
-                        RoleResource.role_id.in_(new_user.role_id),
-                        Resource.scope == ResourceScope.CONSOLE,
+            if not is_creating_admin:
+                get_console_resources_query = (
+                    select(Resource)
+                    .join(RoleResource, Resource.id == RoleResource.resource_id)
+                    .where(
+                        and_(
+                            RoleResource.role_id.in_(new_user.role_id),
+                            Resource.scope == ResourceScope.CONSOLE,
+                        )
                     )
                 )
-            )
-            result = await session.execute(get_console_resources_query)
-            console_resources = result.scalars().all()
-            if len(console_resources) == 0:
-                return JSONResponse(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    content=response_formatter.buildErrorResponse(
-                        'Atleast one console resource is mandatory'
-                    ),
-                )
+                result = await session.execute(get_console_resources_query)
+                console_resources = result.scalars().all()
+                if len(console_resources) == 0:
+                    return JSONResponse(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        content=response_formatter.buildErrorResponse(
+                            'Atleast one console resource is mandatory'
+                        ),
+                    )
 
             hashed_password = hash_password(new_user.password)
             user = User(
                 email=new_user.email,
+                username=new_user.username,
                 password=hashed_password,
                 first_name=new_user.first_name,
                 last_name=new_user.last_name,
@@ -144,19 +150,15 @@ async def create_user(
             await session.flush()
             user_id = user.id
 
-            if role_id in new_user.role_id:  # Is creating admin user
-                all_roles = await role_repository.find()
-                user_roles = [
-                    UserRole(user_id=user_id, role_id=role.id) for role in all_roles
-                ]
-            else:  # Is creating user with role other than admin
-                user_roles = [
-                    UserRole(user_id=user_id, role_id=role_id)
-                    for role_id in new_user.role_id
-                ]
+            user_roles = [
+                UserRole(user_id=user_id, role_id=r_id) for r_id in new_user.role_id
+            ]
             session.add_all(user_roles)
 
             await session.commit()
+
+            cache_manager.invalidate_query('user_data_*')
+
             return JSONResponse(
                 status_code=status.HTTP_200_OK,
                 content=response_formatter.buildSuccessResponse(
@@ -181,13 +183,10 @@ async def create_user(
 async def update_user(
     update_user: UpdateUser,
     request: Request,
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter]
-    ),
-    user_role_repository: SQLAlchemyRepository[UserRole] = Depends(
-        Provide[UserContainer.user_role_repository]
-    ),
-    cache_manager: CacheManager = Depends(Provide[UserContainer.cache_manager]),
+    response_formatter: ResponseFormatterDep,
+    user_repository: UserRepositoryDep,
+    user_role_repository: UserRoleRepositoryDep,
+    cache_manager: CacheManagerDep,
 ):
     role_id, _, _ = get_current_user(request)
     is_admin = await check_is_admin(role_id)
@@ -198,52 +197,120 @@ async def update_user(
             content=response_formatter.buildErrorResponse('Access denied'),
         )
 
-    async with user_role_repository.session() as session:
-        # Check for valid roles
-        query = select(Role).where(Role.id.in_(update_user.add_role_ids))
-        result = await session.execute(query)
-        existing_roles = result.scalars().all()
-        existing_role_ids = {str(role.id) for role in existing_roles}
+    target_user = await user_repository.find_one(id=update_user.user_id)
+    if not target_user or target_user.deleted:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse('User not found'),
+        )
 
-        invalid_roles = set(update_user.add_role_ids) - existing_role_ids
-        if invalid_roles:
-            return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content=response_formatter.buildErrorResponse(
-                    f'Invalid role IDs: {", ".join(invalid_roles)}'
-                ),
-            )
+    add_role_ids = update_user.add_role_ids or []
+    delete_role_ids = update_user.delete_role_ids or []
 
-        admins = await user_role_repository.find(role_id=role_id)
-        if len(admins) == 1 and str(update_user.user_id) == str(admins[0].user_id):
-            return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content=response_formatter.buildErrorResponse(
-                    error='Atleast one admin is mandatory, please assign another user as admin before updating this user.'
-                ),
-            )
-
-        user_roles = [
-            UserRole(user_id=update_user.user_id, role_id=id)
-            for id in update_user.add_role_ids
-        ]
-        session.add_all(user_roles)
-
+    # Build the set of profile fields to edit, enforcing uniqueness for the
+    # columns that carry a DB unique constraint (email, username).
+    profile_updates: dict = {}
+    if update_user.email is not None and update_user.email != target_user.email:
+        existing_by_email = await user_repository.find_one(email=update_user.email)
         if (
-            update_user.delete_role_ids is not None
-            and len(update_user.delete_role_ids) > 0
+            existing_by_email
+            and not existing_by_email.deleted
+            and str(existing_by_email.id) != str(update_user.user_id)
         ):
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content=response_formatter.buildErrorResponse(
+                    'User with the same email already exists'
+                ),
+            )
+        profile_updates['email'] = update_user.email
+
+    if (
+        update_user.username is not None
+        and update_user.username != target_user.username
+    ):
+        existing_by_username = await user_repository.find_one(
+            username=update_user.username
+        )
+        if (
+            existing_by_username
+            and not existing_by_username.deleted
+            and str(existing_by_username.id) != str(update_user.user_id)
+        ):
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content=response_formatter.buildErrorResponse(
+                    'User with the same username already exists'
+                ),
+            )
+        profile_updates['username'] = update_user.username
+
+    if update_user.password is not None:
+        profile_updates['password'] = hash_password(update_user.password)
+    if update_user.first_name is not None:
+        profile_updates['first_name'] = update_user.first_name
+    if update_user.last_name is not None:
+        profile_updates['last_name'] = update_user.last_name
+
+    async with user_role_repository.session() as session:
+        if add_role_ids:
+            # Check for valid roles
+            query = select(Role).where(Role.id.in_(add_role_ids))
+            result = await session.execute(query)
+            existing_roles = result.scalars().all()
+            existing_role_ids = {str(role.id) for role in existing_roles}
+
+            invalid_roles = set(add_role_ids) - existing_role_ids
+            if invalid_roles:
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content=response_formatter.buildErrorResponse(
+                        f'Invalid role IDs: {", ".join(invalid_roles)}'
+                    ),
+                )
+
+        # Guard against demoting the only remaining admin when roles are changed.
+        if add_role_ids or delete_role_ids:
+            admins = await user_role_repository.find(role_id=role_id)
+            if len(admins) == 1 and str(update_user.user_id) == str(admins[0].user_id):
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content=response_formatter.buildErrorResponse(
+                        error='Atleast one admin is mandatory, please assign another user as admin before updating this user.'
+                    ),
+                )
+
+        if add_role_ids:
+            existing_links = await user_role_repository.find(
+                user_id=update_user.user_id, role_id=add_role_ids, session=session
+            )
+            already_assigned = {str(link.role_id) for link in existing_links}
+            new_user_roles = [
+                UserRole(user_id=update_user.user_id, role_id=r_id)
+                for r_id in add_role_ids
+                if r_id not in already_assigned
+            ]
+            session.add_all(new_user_roles)
+
+        if delete_role_ids:
             query = delete(UserRole.__table__).where(
                 and_(
                     UserRole.user_id == update_user.user_id,
-                    UserRole.role_id.in_(update_user.delete_role_ids),
+                    UserRole.role_id.in_(delete_role_ids),
                 )
             )
             await session.execute(query)
+
+        if profile_updates:
+            user_in_session = await session.get(User, update_user.user_id)
+            for field, value in profile_updates.items():
+                setattr(user_in_session, field, value)
+
         await session.commit()
 
     # Invalidate all user_data cache entries
     cache_manager.invalidate_query('user_data_*')
+    cache_manager.remove(str(update_user.user_id))
     return JSONResponse(
         status_code=status.HTTP_200_OK,
         content=response_formatter.buildSuccessResponse(
@@ -256,13 +323,9 @@ async def update_user(
 @inject
 async def get_all_user(
     request: Request,
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter]
-    ),
-    user_repository: SQLAlchemyRepository[User] = Depends(
-        Provide[UserContainer.user_repository]
-    ),
-    cache_manager: CacheManager = Depends(Provide[UserContainer.cache_manager]),
+    response_formatter: ResponseFormatterDep,
+    user_repository: UserRepositoryDep,
+    cache_manager: CacheManagerDep,
     search: Optional[str] = Query(None, description='Search by name or email'),
     roles: Optional[List[str]] = Query(None, description='Filter by role name'),
     limit: int = Query(100),
@@ -297,6 +360,7 @@ async def get_all_user(
                 User.first_name,
                 User.last_name,
                 User.email,
+                User.username,
                 func.array_agg(
                     func.json_build_object(
                         'id',
@@ -322,6 +386,7 @@ async def get_all_user(
             if len(name) > 1 and name[1]:
                 filters.append(User.last_name.ilike(f'%{name[1]}%'))
             filters.append(User.email.ilike(f'%{search}%'))
+            filters.append(User.username.ilike(f'%{search}%'))
             query = query.where(or_(*filters))
 
         # Add role filter
@@ -347,15 +412,11 @@ async def get_all_user(
 @inject
 async def delete_user(
     request: Request,
+    response_formatter: ResponseFormatterDep,
+    user_role_repository: UserRoleRepositoryDep,
+    user_service: UserServiceDep,
+    cache_manager: CacheManagerDep,
     delete_id: str = Query(alias='id'),
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter]
-    ),
-    user_role_repository: SQLAlchemyRepository[UserRole] = Depends(
-        Provide[UserContainer.user_role_repository]
-    ),
-    user_service: UserService = Depends(Provide[UserContainer.user_service]),
-    cache_manager: CacheManager = Depends(Provide[UserContainer.cache_manager]),
 ):
     role_id, user_id, _ = get_current_user(request)
     is_admin = await check_is_admin(role_id)
@@ -396,19 +457,13 @@ async def delete_user(
 @inject
 async def send_reset_url(
     email: str,
-    user_repository: SQLAlchemyRepository[User] = Depends(
-        Provide[UserContainer.user_repository]
-    ),
-    user_reset_cache: CommonCache = Depends(Provide[CommonContainer.cache_manager]),
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter]
-    ),
-    token_service: TokenService = Depends(Provide[AuthContainer.token_service]),
-    config=Depends(Provide[UserContainer.config]),
-    email_service: EmailService = Depends(Provide[UserContainer.email_service]),
-    account_lockout_service: AccountLockoutService = Depends(
-        Provide[UserContainer.account_lockout_service]
-    ),
+    user_repository: UserRepositoryDep,
+    user_reset_cache: CommonCacheDep,
+    response_formatter: ResponseFormatterDep,
+    token_service: TokenServiceDep,
+    config: UserConfigDep,
+    email_service: EmailServiceDep,
+    account_lockout_service: AccountLockoutServiceDep,
 ):
     try:
         # checking if the user exists in the db
@@ -485,14 +540,10 @@ async def send_reset_url(
 @inject
 async def reset_password(
     reset_user: ResetUser,
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter]
-    ),
-    token_service: TokenService = Depends(Provide[AuthContainer.token_service]),
-    user_reset_cache: CommonCache = Depends(Provide[CommonContainer.cache_manager]),
-    user_repository: SQLAlchemyRepository[User] = Depends(
-        Provide[UserContainer.user_repository]
-    ),
+    response_formatter: ResponseFormatterDep,
+    token_service: TokenServiceDep,
+    user_reset_cache: CommonCacheDep,
+    user_repository: UserRepositoryDep,
 ):
     try:
         decoded_url = token_service.decode_token(reset_user.secret_token)
@@ -529,14 +580,11 @@ async def reset_password(
 @inject
 async def get_resources(
     request: Request,
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter]
-    ),
-    user_repository: SQLAlchemyRepository[User] = Depends(
-        Provide[UserContainer.user_repository]
-    ),
+    response_formatter: ResponseFormatterDep,
+    user_repository: UserRepositoryDep,
+    user_service: UserServiceDep,
 ):
-    _, user_id, _ = get_current_user(request)
+    role_id, user_id, _ = get_current_user(request)
     user = await user_repository.find_one(id=user_id)
 
     if not user:
@@ -545,23 +593,55 @@ async def get_resources(
             content=response_formatter.buildErrorResponse('User not found'),
         )
 
+    is_admin = await check_is_admin(role_id)
+
+    # Console resources are the user's UI identity marker (e.g. admin_resource),
+    # so they always stay role-based.
+    console_resources = await user_service.get_user_resources(
+        user_id=user_id, scope=ResourceScope.CONSOLE
+    )
+
+    # Admins have implicit access to every dashboard, so they receive the full
+    # list; non-admins only get the dashboards their roles grant.
+    if is_admin:
+        dashboards: List[Resource] = await user_service.get_all_resources(
+            scope=ResourceScope.DASHBOARD
+        )
+        routes: List[Resource] = []
+        data: List[Resource] = []
+    else:
+        dashboards = await user_service.get_user_resources(
+            user_id=user_id, scope=ResourceScope.DASHBOARD
+        )
+        routes = await user_service.get_user_resources(
+            user_id=user_id, scope=ResourceScope.ROUTE
+        )
+        data = await user_service.get_user_resources(
+            user_id=user_id, scope=ResourceScope.DATA
+        )
+
+    resource = {
+        'console_resources': [res.to_dict() for res in console_resources],
+        'dashboards': [res.to_dict() for res in dashboards],
+        'routes': [res.to_dict() for res in routes],
+        'data': [res.to_dict() for res in data],
+    }
+
     return JSONResponse(
         status_code=status.HTTP_200_OK,
-        content=response_formatter.buildSuccessResponse({'user': user.to_dict()}),
+        content=response_formatter.buildSuccessResponse(
+            {'user': user.to_dict(), 'resource': resource}
+        ),
     )
 
 
 @user_router.patch('/users/{user_id}/unblock')
 @inject
 async def unblock_user(
+    request: Request,
+    response_formatter: ResponseFormatterDep,
+    account_lockout_service: AccountLockoutServiceDep,
     user_id: str = Path(..., description='User id to unblock'),
-    request: Request = ...,
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter]
-    ),
-    account_lockout_service: AccountLockoutService = Depends(
-        Provide[UserContainer.account_lockout_service]
-    ),
 ):
     role_id, _, _ = get_current_user(request)
     is_admin = await check_is_admin(role_id)

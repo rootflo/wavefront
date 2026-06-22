@@ -1,0 +1,92 @@
+import { IApiResponse } from '@app/lib/axios';
+
+export interface ColumnStyleRule {
+  op: 'eq' | 'neq' | 'lt' | 'lte' | 'gt' | 'gte' | 'between';
+  fill: string;
+  value?: number;
+  min?: number;
+  max?: number;
+  min_inclusive?: boolean;
+  max_inclusive?: boolean;
+}
+
+export interface ColumnStyleConfig {
+  column: string;
+  rules: ColumnStyleRule[];
+}
+
+export interface ScheduledJob {
+  id: string;
+  job_type: string;
+  cron_expr: string;
+  timezone: string;
+  status: string;
+  payload: Record<string, unknown>;
+  next_run_at: string | null;
+  last_run_at: string | null;
+  last_error: string | null;
+  retry_count: number;
+  max_retries: number;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface ScheduledJobResponseData {
+  job: ScheduledJob;
+}
+
+export interface ScheduledJobListResponseData {
+  jobs: ScheduledJob[];
+}
+
+/** Per-query overrides; job payload requires a non-empty queries array. */
+export interface ScheduledJobQuerySpec {
+  query_id: string;
+  datasource_id?: string;
+  filter?: string;
+  offset?: number;
+  limit?: number;
+  params?: Record<string, unknown>;
+  column_styles?: ColumnStyleConfig[];
+  date_range?: 'last_day' | 't_2' | 'last_hour' | 'last_7_days' | 'last_30_days';
+  start_date_param?: string;
+  end_date_param?: string;
+}
+
+export interface ScheduledJobEmailPayload {
+  datasource_id: string;
+  queries: ScheduledJobQuerySpec[];
+  recipient_user_ids: string[];
+  subject?: string;
+  email_content?: string;
+  column_styles?: ColumnStyleConfig[];
+  date_range?: 'last_day' | 't_2' | 'last_hour' | 'last_7_days' | 'last_30_days';
+  start_date_param?: string;
+  end_date_param?: string;
+  offset?: number;
+  limit?: number;
+  params?: Record<string, unknown>;
+}
+
+export interface CreateScheduledJobRequest {
+  job_type: 'email_dynamic_query';
+  cron_expr: string;
+  timezone: string;
+  max_retries: number;
+  payload: ScheduledJobEmailPayload;
+}
+
+export type JobStatus = 'active' | 'paused' | 'running' | 'failed' | 'completed';
+
+export interface UpdateScheduledJobRequest {
+  cron_expr?: string;
+  timezone?: string;
+  payload?: ScheduledJobEmailPayload;
+  max_retries?: number;
+  status?: JobStatus;
+}
+
+export type CreateScheduledJobResponse = IApiResponse<ScheduledJobResponseData>;
+export type ListScheduledJobsResponse = IApiResponse<ScheduledJobListResponseData>;
+export type UpdateScheduledJobResponse = IApiResponse<ScheduledJobResponseData>;
+export type DeleteScheduledJobResponse = IApiResponse<{ message: string }>;

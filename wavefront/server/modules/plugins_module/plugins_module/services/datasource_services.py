@@ -1,15 +1,18 @@
 import collections
-from datasource import DataSourceType, BigQueryConfig, RedshiftConfig
+from datasource import (
+    DataSourceType,
+    BigQueryConfig,
+    RedshiftConfig,
+    PostgresConfig,
+    SynapseConfig,
+    MSSQLConfig,
+)
 from db_repo_module.models.datasource import Datasource
-from db_repo_module.models.role import Role
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
-from dependency_injector.wiring import inject
 from dependency_injector.wiring import Provide
 from fastapi import Depends
-from auth_module.auth_container import AuthContainer
 from plugins_module.plugins_container import PluginsContainer
 from plugins_module.utils.helper import AddDatasourcePayload
-from user_management_module.constants.auth import SERVICE_AUTH_ROLE_ID
 
 
 async def get_datasource_config(
@@ -17,7 +20,10 @@ async def get_datasource_config(
     datasource_repository: SQLAlchemyRepository[Datasource] = Depends(
         Provide(PluginsContainer.datasource_repository)
     ),
-) -> tuple[DataSourceType, BigQueryConfig | RedshiftConfig]:
+) -> tuple[
+    DataSourceType,
+    BigQueryConfig | RedshiftConfig | PostgresConfig | SynapseConfig | MSSQLConfig,
+]:
     datasource: Datasource | None = await datasource_repository.find_one(
         id=datasource_id
     )
@@ -28,23 +34,14 @@ async def get_datasource_config(
         return DataSourceType.GCP_BIGQUERY, BigQueryConfig(**datasource.config)
     elif datasource.type == DataSourceType.AWS_REDSHIFT:
         return DataSourceType.AWS_REDSHIFT, RedshiftConfig(**datasource.config)
+    elif datasource.type == DataSourceType.POSTGRES:
+        return DataSourceType.POSTGRES, PostgresConfig(**datasource.config)
+    elif datasource.type == DataSourceType.AZURE_SYNAPSE:
+        return DataSourceType.AZURE_SYNAPSE, SynapseConfig(**datasource.config)
+    elif datasource.type == DataSourceType.MSSQL:
+        return DataSourceType.MSSQL, MSSQLConfig(**datasource.config)
     else:
         raise ValueError(f'Invalid datasource type: {datasource.type}')
-
-
-@inject
-async def check_admin(
-    role_id: str,
-    role_repositroy: SQLAlchemyRepository[Role] = Depends(
-        Provide(AuthContainer.role_repository)
-    ),
-) -> bool:
-    if role_id == SERVICE_AUTH_ROLE_ID:
-        return True
-    role = await role_repositroy.find_one(id=role_id)
-    if not role:
-        return False
-    return role.name == 'admin'
 
 
 def check_is_valid_resource(resource_id: str) -> bool:

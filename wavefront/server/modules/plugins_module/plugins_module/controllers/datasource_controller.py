@@ -1,6 +1,9 @@
 from typing import Dict, Any
 from datasource.bigquery.config import BigQueryConfig
 from datasource.redshift.config import RedshiftConfig
+from datasource.synapse.config import SynapseConfig
+from datasource.postgres.config import PostgresConfig
+from datasource.mssql.config import MSSQLConfig
 from dependency_injector.wiring import inject
 import json
 from dependency_injector.wiring import Provide
@@ -20,7 +23,6 @@ from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyReposit
 from datasource import DatasourcePlugin
 from datasource.types import DataSourceType, QueryResult, TableListResult
 from plugins_module.services.datasource_services import (
-    check_admin,
     check_is_valid_resource,
     fetch_data_filters,
     get_datasource_config,
@@ -36,6 +38,7 @@ from user_management_module.user_container import UserContainer
 from user_management_module.services.user_service import UserService
 from flo_cloud.cloud_storage import CloudStorageManager
 from fastapi import HTTPException
+from user_management_module.utils.user_utils import check_is_admin
 from user_management_module.utils.user_utils import get_current_user
 from plugins_module.services.dynamic_query_service import DynamicQueryService
 from db_repo_module.cache.cache_manager import CacheManager
@@ -50,6 +53,7 @@ from ..utils.helper import DynamicQueryRequest
 from ..utils.helper import DynamicQueryExecuteRequest
 from datetime import datetime
 
+EXPORT_RATE_LIMIT_SECONDS = 5  # 5 seconds between exports per user
 
 datasource_router = APIRouter()
 
@@ -68,7 +72,7 @@ async def add_datasource(
 ):
     role_id = request.state.session.role_id
 
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -89,6 +93,12 @@ async def add_datasource(
         config = BigQueryConfig(**config_json)
     elif add_datasource_payload.type == DataSourceType.AWS_REDSHIFT:
         config = RedshiftConfig(**config_json)
+    elif add_datasource_payload.type == DataSourceType.POSTGRES:
+        config = PostgresConfig(**config_json)
+    elif add_datasource_payload.type == DataSourceType.AZURE_SYNAPSE:
+        config = SynapseConfig(**config_json)
+    elif add_datasource_payload.type == DataSourceType.MSSQL:
+        config = MSSQLConfig(**config_json)
     else:
         raise ValueError(f'Invalid datasource type: {add_datasource_payload.type}')
 
@@ -137,7 +147,7 @@ async def update_datasource(
 ):
     role_id = request.state.session.role_id
 
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -180,6 +190,12 @@ async def update_datasource(
                 config = BigQueryConfig(**payload_config)
             elif datasource_type == DataSourceType.AWS_REDSHIFT:
                 config = RedshiftConfig(**payload_config)
+            elif datasource_type == DataSourceType.POSTGRES:
+                config = PostgresConfig(**payload_config)
+            elif datasource_type == DataSourceType.AZURE_SYNAPSE:
+                config = SynapseConfig(**payload_config)
+            elif datasource_type == DataSourceType.MSSQL:
+                config = MSSQLConfig(**payload_config)
             else:
                 raise ValueError(f'Invalid datasource type: {datasource_type}')
 
@@ -238,7 +254,7 @@ async def delete_datasource(
     ),
 ):
     role_id = request.state.session.role_id
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
 
     if not is_admin:
         return JSONResponse(
@@ -284,7 +300,7 @@ async def get_datasources(
     ),
 ):
     role_id = request.state.session.role_id
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -313,7 +329,7 @@ async def get_datasource(
     ),
 ):
     role_id = request.state.session.role_id
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -344,7 +360,7 @@ async def test_datasource_connection(
     ),
 ):
     role_id = request.state.session.role_id
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -379,7 +395,7 @@ async def get_tables(
 ):
     role_id = request.state.session.role_id
 
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -442,7 +458,7 @@ async def query_datasource(
 
     rls_filters = []
     filter = query_filter
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         rls_filters = await user_service.get_user_resources(
             user_id=user_id, scope=ResourceScope.DATA
@@ -545,7 +561,7 @@ async def create_dynamic_query(
     ),
 ):
     role_id, _, _ = get_current_user(request)
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         raise HTTPException(status_code=401, detail='Unauthorized')
 
@@ -582,7 +598,7 @@ async def get_all_dynamic_query_yaml(
     ),
 ):
     role_id, _, _ = get_current_user(request)
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         raise HTTPException(status_code=401, detail='Unauthorized')
 
@@ -615,7 +631,7 @@ async def get_dynamic_query(
     ),
 ):
     role_id, _, _ = get_current_user(request)
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         raise HTTPException(status_code=401, detail='Unauthorized')
 
@@ -673,7 +689,7 @@ async def execute_dynamic_query(
     yaml_query, _ = await dynamic_query_yaml_service.get_dynamic_yaml_query(query_id)
 
     rls_filter_str = None
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         rls_filters = await user_service.get_user_resources(
             user_id=user_id, scope=ResourceScope.DATA
@@ -723,9 +739,6 @@ async def execute_dynamic_query(
         status_code=status.HTTP_200_OK,
         content=response_formatter.buildSuccessResponse(serialized_res),
     )
-
-
-EXPORT_RATE_LIMIT_SECONDS = 120  # 2 minutes between exports per user
 
 
 @datasource_router.post('/v1/{datasource_id}/dynamic-queries/{query_id}/export')
@@ -784,7 +797,7 @@ async def export_dynamic_query_csv(
         )
 
     rls_filter_str = None
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         rls_filters = await user_service.get_user_resources(
             user_id=user_id, scope=ResourceScope.DATA
@@ -916,7 +929,7 @@ async def delete_dynamic_query(
     ),
 ):
     role_id, _, _ = get_current_user(request)
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         raise HTTPException(status_code=401, detail='Unauthorized')
     await dynamic_query_yaml_service.delete_dynamic_query(datasource_id, query_id)

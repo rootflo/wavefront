@@ -102,6 +102,7 @@ def get_authenticator_display_name(auth_type: AuthenticatorType) -> str:
         AuthenticatorType.EMAIL_PASSWORD: 'Email & Password',
         AuthenticatorType.GOOGLE_OAUTH: 'Google OAuth',
         AuthenticatorType.MICROSOFT_OAUTH: 'Microsoft OAuth',
+        AuthenticatorType.MICROSOFT_ADFS: 'Microsoft ADFS',
         AuthenticatorType.SAML: 'SAML',
         AuthenticatorType.LDAP: 'LDAP',
     }
@@ -110,7 +111,11 @@ def get_authenticator_display_name(auth_type: AuthenticatorType) -> str:
 
 def is_oauth_provider(auth_type: AuthenticatorType) -> bool:
     """Check if authenticator type is an OAuth provider."""
-    oauth_types = {AuthenticatorType.GOOGLE_OAUTH, AuthenticatorType.MICROSOFT_OAUTH}
+    oauth_types = {
+        AuthenticatorType.GOOGLE_OAUTH,
+        AuthenticatorType.MICROSOFT_OAUTH,
+        AuthenticatorType.MICROSOFT_ADFS,
+    }
     return auth_type in oauth_types
 
 

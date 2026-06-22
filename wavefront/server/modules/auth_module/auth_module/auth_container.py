@@ -42,7 +42,7 @@ class AuthContainer(containers.DeclarativeContainer):
         true=providers.Singleton(
             FloKmsService, cloud_provider=config.cloud_config.cloud_provider
         ),
-        false=providers.Object(None),  # No KMS service if cloud KMS is not enabled
+        false=providers.Object(None),
     )
 
     token_service = providers.Singleton(

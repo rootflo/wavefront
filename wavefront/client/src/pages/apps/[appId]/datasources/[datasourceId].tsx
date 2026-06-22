@@ -174,6 +174,7 @@ const DatasourceDetail: React.FC = () => {
       setExecuting(false);
     }
   };
+
   const handleEditSuccess = () => {
     queryClient.invalidateQueries({
       queryKey: getDatasourceKey(appId || '', datasourceId || ''),

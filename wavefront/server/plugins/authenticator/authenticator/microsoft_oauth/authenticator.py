@@ -150,15 +150,12 @@ class MicrosoftOAuthAuthenticator(AuthenticatorABC):
         except Exception:
             return False
 
-    def get_authorization_url(self, state: Optional[str] = None) -> Optional[str]:
+    def get_authorization_url(
+        self, state: Optional[str] = None, nonce: Optional[str] = None
+    ) -> Optional[str]:
         """Get the Microsoft OAuth authorization URL."""
         if not state:
             raise ValueError("State doesn't exist Microsoft Oauth")
-
-        state_obj = json.loads(state)
-
-        if state_obj['auth_id'] is None:
-            raise ValueError("Auth Id doesn't exist in Microsoft Oauth state")
 
         params = {
             'response_type': self.config.response_type,
@@ -167,12 +164,24 @@ class MicrosoftOAuthAuthenticator(AuthenticatorABC):
             'scope': ' '.join(self.config.scopes),
             'state': state,
             'response_mode': self.config.response_mode,
+            'prompt': 'select_account',
         }
+
+        if nonce:
+            params['nonce'] = nonce
 
         return f'{self.auth_url}?{urlencode(params)}'
 
-    def handle_callback(self, callback_data: Dict[str, Any]) -> AuthResult:
-        """Handle Microsoft OAuth callback."""
+    def handle_callback(
+        self, callback_data: Dict[str, Any], expected_nonce: Optional[str] = None
+    ) -> AuthResult:
+        """Handle Microsoft OAuth (Entra) callback.
+
+        Identity comes from Microsoft Graph (not an id_token), so
+        `expected_nonce` is accepted for ABC compatibility but not enforced.
+        State CSRF protection is performed by the controller before this is
+        called.
+        """
         return self.authenticate(callback_data)
 
     def refresh_token(self, refresh_token: str) -> TokenResult:
