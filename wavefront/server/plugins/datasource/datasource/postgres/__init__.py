@@ -69,14 +69,23 @@ class PostgresPlugin(DataSourceABC):
         return await asyncio.to_thread(self.client.execute_query_as_dict, query, params)
 
     @staticmethod
-    def _apply_pagination(query: str, offset: int, limit: int) -> str:
+    def _apply_pagination(
+        query: str, offset: Optional[int], limit: Optional[int]
+    ) -> str:
         """Attach LIMIT/OFFSET pagination to a (trimmed) query.
 
         We scan only the top level (ignoring anything inside parentheses, via a
         paren-depth counter): if the query already has a top-level ``LIMIT`` we
         wrap it as a subquery and paginate the wrapper, otherwise we append
         ``LIMIT/OFFSET`` directly.
+
+        A missing offset/limit falls back to 0/100 so results stay bounded.
         """
+        effective_offset = 0 if offset is None else offset
+        effective_limit = 100 if limit is None else limit
+        if effective_offset < 0 or effective_limit <= 0:
+            raise ValueError('offset must be >= 0 and limit must be > 0')
+
         depth = 0
         has_top_level_limit = False
         for token in re.split(r'(\(|\))', query):
@@ -87,9 +96,10 @@ class PostgresPlugin(DataSourceABC):
             elif depth == 0 and re.search(r'\bLIMIT\b', token, re.IGNORECASE):
                 has_top_level_limit = True
                 break
+        pagination = f'LIMIT {effective_limit} OFFSET {effective_offset}'
         if has_top_level_limit:
-            return f'SELECT * FROM ({query}) AS _sub LIMIT {limit} OFFSET {offset}'
-        return f'{query} LIMIT {limit} OFFSET {offset}'
+            return f'SELECT * FROM ({query}) AS _sub {pagination}'
+        return f'{query} {pagination}'
 
     async def execute_dynamic_query(
         self,

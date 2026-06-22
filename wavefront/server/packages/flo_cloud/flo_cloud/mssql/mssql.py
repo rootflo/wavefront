@@ -367,6 +367,12 @@ class MSSQLClient:
             logger.error(f'MSSQL connection test failed: {e}')
             return False
 
+    @staticmethod
+    def _quote_identifier(identifier: str) -> str:
+        """Bracket-quote a SQL Server identifier, escaping any ``]`` by doubling
+        it — the only character that can break out of a ``[...]`` context."""
+        return '[' + identifier.replace(']', ']]') + ']'
+
     def insert_rows_json(self, table_name: str, data: List[Dict[str, Any]]) -> None:
         if not data:
             return
@@ -385,8 +391,10 @@ class MSSQLClient:
         # to match the Postgres behavior of honoring self.schema.
         if '.' not in table_name and self.schema:
             table_name = f'{self.schema}.{table_name}'
-        quoted_table = '.'.join(f'[{part}]' for part in table_name.split('.'))
-        quoted_cols = ', '.join(f'[{col}]' for col in columns)
+        quoted_table = '.'.join(
+            self._quote_identifier(part) for part in table_name.split('.')
+        )
+        quoted_cols = ', '.join(self._quote_identifier(col) for col in columns)
         placeholders = ', '.join(f'%({col})s' for col in columns)
         query = f'INSERT INTO {quoted_table} ({quoted_cols}) VALUES ({placeholders})'
         with self.get_connection() as conn:

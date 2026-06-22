@@ -71,7 +71,9 @@ class MSSQLPlugin(DataSourceABC):
         return await asyncio.to_thread(self.client.execute_query_as_dict, query, params)
 
     @staticmethod
-    def _apply_pagination(query: str, offset: int, limit: int) -> str:
+    def _apply_pagination(
+        query: str, offset: Optional[int], limit: Optional[int]
+    ) -> str:
         """Attach SQL Server OFFSET/FETCH pagination to a (trimmed) query.
 
         SQL Server has no LIMIT; it uses ``OFFSET ... ROWS FETCH NEXT ... ROWS
@@ -83,7 +85,14 @@ class MSSQLPlugin(DataSourceABC):
           paginate the wrapper (can't stack two OFFSET/FETCH at one level);
         - has its own top-level ORDER BY -> just append OFFSET/FETCH;
         - neither -> append a no-op ``ORDER BY (SELECT NULL)`` plus OFFSET/FETCH.
+
+        A missing offset/limit falls back to 0/100 so results stay bounded.
         """
+        effective_offset = 0 if offset is None else offset
+        effective_limit = 100 if limit is None else limit
+        if effective_offset < 0 or effective_limit <= 0:
+            raise ValueError('offset must be >= 0 and limit must be > 0')
+
         depth = 0
         has_top_level_pagination = False
         has_top_level_order_by = False
@@ -98,7 +107,9 @@ class MSSQLPlugin(DataSourceABC):
                 if re.search(r'\bORDER\s+BY\b', token, re.IGNORECASE):
                     has_top_level_order_by = True
 
-        pagination = f'OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY'
+        pagination = (
+            f'OFFSET {effective_offset} ROWS ' f'FETCH NEXT {effective_limit} ROWS ONLY'
+        )
         if has_top_level_pagination:
             return (
                 f'SELECT * FROM ({query}) AS _sub '
