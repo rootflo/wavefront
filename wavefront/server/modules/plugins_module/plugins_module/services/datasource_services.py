@@ -4,7 +4,6 @@ from datasource import (
     BigQueryConfig,
     RedshiftConfig,
     PostgresConfig,
-    SynapseConfig,
     MSSQLConfig,
 )
 from db_repo_module.models.datasource import Datasource
@@ -22,7 +21,7 @@ async def get_datasource_config(
     ),
 ) -> tuple[
     DataSourceType,
-    BigQueryConfig | RedshiftConfig | PostgresConfig | SynapseConfig | MSSQLConfig,
+    BigQueryConfig | RedshiftConfig | PostgresConfig | MSSQLConfig,
 ]:
     datasource: Datasource | None = await datasource_repository.find_one(
         id=datasource_id
@@ -36,8 +35,6 @@ async def get_datasource_config(
         return DataSourceType.AWS_REDSHIFT, RedshiftConfig(**datasource.config)
     elif datasource.type == DataSourceType.POSTGRES:
         return DataSourceType.POSTGRES, PostgresConfig(**datasource.config)
-    elif datasource.type == DataSourceType.AZURE_SYNAPSE:
-        return DataSourceType.AZURE_SYNAPSE, SynapseConfig(**datasource.config)
     elif datasource.type == DataSourceType.MSSQL:
         return DataSourceType.MSSQL, MSSQLConfig(**datasource.config)
     else:
