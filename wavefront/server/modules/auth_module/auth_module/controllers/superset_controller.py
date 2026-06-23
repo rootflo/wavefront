@@ -56,13 +56,13 @@ async def superset_authenticator(
             user_id=user_id, scope=ResourceScope.DATA
         )
 
-    if data_filters and len(data_filters) < 1:
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=response_formatter.buildErrorResponse(
-                'Data access not set for user'
-            ),
-        )
+        if not data_filters:
+            return JSONResponse(
+                status_code=status.HTTP_403_FORBIDDEN,
+                content=response_formatter.buildErrorResponse(
+                    'Data access not set for user'
+                ),
+            )
 
     guest_token = superset_service.generate_guest_token(
         user_id, dashboards, data_filters, filter

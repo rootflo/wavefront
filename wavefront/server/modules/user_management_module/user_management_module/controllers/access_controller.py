@@ -11,6 +11,7 @@ from fastapi import Query
 from fastapi import Request
 from fastapi import status
 from fastapi.responses import JSONResponse
+from sqlalchemy import delete
 from sqlalchemy import func
 from sqlalchemy import or_
 from sqlalchemy import Result
@@ -193,14 +194,23 @@ async def create_role(
         )
 
     role_id = None
-    # Check if a role already exists for the given resources
+    # Check if a role already exists with the EXACT same resource set. Grouping
+    # spans every resource of each role (no WHERE filter) so a superset role —
+    # one containing all the payload resources plus others — is not treated as a
+    # duplicate. A role matches only when its total resource count equals the
+    # payload size and every one of those resources is in the payload.
     async with role_resource_repository.session() as session:
         stmt = (
             select(RoleResource.role_id)
-            .where(RoleResource.resource_id.in_(payload.resources))
             .group_by(RoleResource.role_id)
             .having(
                 func.count(func.distinct(RoleResource.resource_id))
+                == len(payload.resources)
+            )
+            .having(
+                func.count(func.distinct(RoleResource.resource_id)).filter(
+                    RoleResource.resource_id.in_(payload.resources)
+                )
                 == len(payload.resources)
             )
         )
@@ -522,7 +532,40 @@ async def delete_resources(
                 'Resource not found with the given ID.'
             ),
         )
-    await resource_repository.delete_all(id=resource_id)
+
+    async with resource_repository.session() as session:
+        async with session.begin():
+            linked_role_ids = (
+                await session.scalars(
+                    select(RoleResource.role_id).where(
+                        RoleResource.resource_id == resource_id
+                    )
+                )
+            ).all()
+
+            # Deleting the resource cascades its role_resource links.
+            await resource_repository.delete_all(id=resource_id, session=session)
+
+            if linked_role_ids:
+                remaining_role_ids = set(
+                    (
+                        await session.scalars(
+                            select(RoleResource.role_id).where(
+                                RoleResource.role_id.in_(linked_role_ids)
+                            )
+                        )
+                    ).all()
+                )
+                orphaned_role_ids = [
+                    role_id
+                    for role_id in linked_role_ids
+                    if role_id not in remaining_role_ids
+                ]
+                if orphaned_role_ids:
+                    await session.execute(
+                        delete(Role).where(Role.id.in_(orphaned_role_ids))
+                    )
+
     return JSONResponse(
         status_code=status.HTTP_200_OK,
         content=response_formatter.buildSuccessResponse(
@@ -560,18 +603,26 @@ async def patch_role_resources(
         )
 
     # Console roles are the user's UI identity marker and are managed separately,
-    # so their resource assignments must not be edited here.
+    # so their resource assignments must not be edited here. A console role is a
+    # single-resource role whose only resource is console-scoped; a composite role
+    # (2+ resources) that merely includes a console resource is still editable.
     async with role_resource_repository.session() as session:
-        console_stmt = (
-            select(func.count())
+        counts_stmt = (
+            select(
+                func.count(RoleResource.resource_id),
+                func.count(RoleResource.resource_id).filter(
+                    Resource.scope == ResourceScope.CONSOLE
+                ),
+            )
             .select_from(RoleResource)
             .join(Resource, Resource.id == RoleResource.resource_id)
             .where(RoleResource.role_id == role_id)
-            .where(Resource.scope == ResourceScope.CONSOLE)
         )
-        console_resource_count = (await session.execute(console_stmt)).scalar() or 0
+        total_resource_count, console_resource_count = (
+            await session.execute(counts_stmt)
+        ).one()
 
-    if console_resource_count > 0:
+    if console_resource_count > 0 and total_resource_count == 1:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content=response_formatter.buildErrorResponse(
@@ -634,18 +685,26 @@ async def delete_role(
         )
 
     # Console roles are the user's UI identity marker and are managed separately,
-    # so they must not be deleted here.
+    # so they must not be deleted here. A console role is a single-resource role
+    # whose only resource is console-scoped; a composite role (2+ resources) that
+    # merely includes a console resource is still deletable.
     async with role_resource_repository.session() as session:
-        console_stmt = (
-            select(func.count())
+        counts_stmt = (
+            select(
+                func.count(RoleResource.resource_id),
+                func.count(RoleResource.resource_id).filter(
+                    Resource.scope == ResourceScope.CONSOLE
+                ),
+            )
             .select_from(RoleResource)
             .join(Resource, Resource.id == RoleResource.resource_id)
             .where(RoleResource.role_id == role_id)
-            .where(Resource.scope == ResourceScope.CONSOLE)
         )
-        console_resource_count = (await session.execute(console_stmt)).scalar() or 0
+        total_resource_count, console_resource_count = (
+            await session.execute(counts_stmt)
+        ).one()
 
-    if console_resource_count > 0:
+    if console_resource_count > 0 and total_resource_count == 1:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content=response_formatter.buildErrorResponse(
