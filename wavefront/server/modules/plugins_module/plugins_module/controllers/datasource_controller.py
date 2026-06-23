@@ -1,7 +1,6 @@
 from typing import Dict, Any
 from datasource.bigquery.config import BigQueryConfig
 from datasource.redshift.config import RedshiftConfig
-from datasource.synapse.config import SynapseConfig
 from datasource.postgres.config import PostgresConfig
 from datasource.mssql.config import MSSQLConfig
 from dependency_injector.wiring import inject
@@ -95,8 +94,6 @@ async def add_datasource(
         config = RedshiftConfig(**config_json)
     elif add_datasource_payload.type == DataSourceType.POSTGRES:
         config = PostgresConfig(**config_json)
-    elif add_datasource_payload.type == DataSourceType.AZURE_SYNAPSE:
-        config = SynapseConfig(**config_json)
     elif add_datasource_payload.type == DataSourceType.MSSQL:
         config = MSSQLConfig(**config_json)
     else:
@@ -192,8 +189,6 @@ async def update_datasource(
                 config = RedshiftConfig(**payload_config)
             elif datasource_type == DataSourceType.POSTGRES:
                 config = PostgresConfig(**payload_config)
-            elif datasource_type == DataSourceType.AZURE_SYNAPSE:
-                config = SynapseConfig(**payload_config)
             elif datasource_type == DataSourceType.MSSQL:
                 config = MSSQLConfig(**payload_config)
             else:

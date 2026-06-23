@@ -1,4 +1,6 @@
 import os
+import re
+import json
 import string
 import logging
 from typing import List, Dict, Any, Optional, Tuple
@@ -327,6 +329,123 @@ class RedshiftClient:
             except RedshiftError as e:
                 logger.error(f'Batch execution error: {e}')
                 raise
+
+    def _get_super_columns(self, table_name: str, columns: List[str]) -> set:
+        """Return the subset of *columns* that are SUPER-typed in the target table.
+
+        SUPER columns must be wrapped in JSON_PARSE on insert so that JSON
+        payloads are stored as parsed objects instead of escaped strings. If the
+        column types cannot be resolved, an empty set is returned so the insert
+        falls back to the previous string behaviour.
+        """
+        parts = table_name.split('.')
+        bare_table = parts[-1]
+        schema = parts[-2] if len(parts) >= 2 else None
+
+        query = (
+            'SELECT column_name, data_type '
+            'FROM information_schema.columns '
+            'WHERE table_name = :table_name'
+        )
+        params: Dict[str, Any] = {'table_name': bare_table}
+        if schema:
+            query += ' AND table_schema = :table_schema'
+            params['table_schema'] = schema
+
+        try:
+            rows = self.execute_query_as_dict(query, params)
+        except Exception as e:
+            logger.warning(
+                f'Could not resolve column types for {table_name!r}; '
+                f'SUPER columns will not be JSON_PARSE-d: {e}'
+            )
+            return set()
+
+        requested = set(columns)
+        return {
+            row['column_name']
+            for row in rows
+            if str(row.get('data_type', '')).lower() == 'super'
+            and row['column_name'] in requested
+        }
+
+    def insert_rows_json(self, table_name: str, data: List[Dict[str, Any]]) -> int:
+        """
+        Insert rows provided as a list of dictionaries into a table.
+
+        Dict/list values are serialized to JSON strings so they can be stored
+        in VARCHAR/SUPER columns. Columns are derived from the first row, so all
+        rows are expected to share the same keys.
+
+        Args:
+            table_name: Fully qualified target table name (e.g. 'db.schema.table')
+            data: List of dictionaries, each representing a row
+
+        Returns:
+            Number of rows inserted
+        """
+        if not data:
+            return 0
+
+        columns = list(data[0].keys())
+
+        identifier_pattern = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+
+        for part in table_name.split('.'):
+            if not identifier_pattern.match(part):
+                raise ValueError(f'Invalid table identifier: {table_name!r}')
+
+        for col in columns:
+            if not isinstance(col, str) or not identifier_pattern.match(col):
+                raise ValueError(f'Invalid column identifier: {col!r}')
+
+        # Columns are derived from the first row; require every other row to
+        # share the exact same keys so we never silently insert NULL for a
+        # missing key or drop an extra key from a later row.
+        expected_keys = set(columns)
+        for index, row in enumerate(data):
+            if set(row.keys()) != expected_keys:
+                raise ValueError(
+                    f'Row {index} keys {sorted(row.keys())} do not match '
+                    f'expected columns {sorted(columns)}'
+                )
+
+        super_columns = self._get_super_columns(table_name, columns)
+
+        def _serialize(col: str, value: Any):
+            if value is None:
+                return None
+            if col in super_columns:
+                if isinstance(value, str):
+                    return value
+                return json.dumps(value)
+            if isinstance(value, (dict, list)):
+                return json.dumps(value)
+            return value
+
+        serialized = [
+            {col: _serialize(col, row.get(col)) for col in columns} for row in data
+        ]
+
+        column_list = ', '.join(f'"{col}"' for col in columns)
+        placeholders = ', '.join(
+            f'JSON_PARSE(:{col})' if col in super_columns else f':{col}'
+            for col in columns
+        )
+        command = f'INSERT INTO {table_name} ({column_list}) VALUES ({placeholders})'
+
+        with self.get_connection() as connection:
+            cursor = connection.cursor()
+            try:
+                cursor.executemany(command, serialized)
+                connection.commit()
+                return cursor.rowcount
+            except RedshiftError as e:
+                connection.rollback()
+                logger.error(f'Insert error: {e}')
+                raise
+            finally:
+                cursor.close()
 
     def execute_transaction(
         self, commands: List[Tuple[str, Optional[Dict[str, Any]]]]

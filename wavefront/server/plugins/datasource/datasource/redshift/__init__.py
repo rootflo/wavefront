@@ -61,8 +61,8 @@ class RedshiftPlugin(DataSourceABC):
             group_by=group_by,
         )
 
-    def insert_rows_json(self, table_name: str, data):
-        pass
+    def insert_rows_json(self, table_name: str, data: List[Dict[str, Any]]) -> None:
+        self.client.insert_rows_json(f'{self.db_name}.{table_name}', data)
 
     async def execute_query(
         self, query: str, use_legacy_sql: bool = False, dry_run: bool = False, **kwargs
