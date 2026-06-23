@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import string
 import logging
@@ -348,6 +349,28 @@ class RedshiftClient:
             return 0
 
         columns = list(data[0].keys())
+
+        identifier_pattern = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+
+        for part in table_name.split('.'):
+            if not identifier_pattern.match(part):
+                raise ValueError(f'Invalid table identifier: {table_name!r}')
+
+        for col in columns:
+            if not isinstance(col, str) or not identifier_pattern.match(col):
+                raise ValueError(f'Invalid column identifier: {col!r}')
+
+        # Columns are derived from the first row; require every other row to
+        # share the exact same keys so we never silently insert NULL for a
+        # missing key or drop an extra key from a later row.
+        expected_keys = set(columns)
+        for index, row in enumerate(data):
+            if set(row.keys()) != expected_keys:
+                raise ValueError(
+                    f'Row {index} keys {sorted(row.keys())} do not match '
+                    f'expected columns {sorted(columns)}'
+                )
+
         serialized = [
             {
                 col: json.dumps(row.get(col))
