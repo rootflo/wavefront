@@ -1,4 +1,5 @@
 import os
+import json
 import string
 import logging
 from typing import List, Dict, Any, Optional, Tuple
@@ -327,6 +328,52 @@ class RedshiftClient:
             except RedshiftError as e:
                 logger.error(f'Batch execution error: {e}')
                 raise
+
+    def insert_rows_json(self, table_name: str, data: List[Dict[str, Any]]) -> int:
+        """
+        Insert rows provided as a list of dictionaries into a table.
+
+        Dict/list values are serialized to JSON strings so they can be stored
+        in VARCHAR/SUPER columns. Columns are derived from the first row, so all
+        rows are expected to share the same keys.
+
+        Args:
+            table_name: Fully qualified target table name (e.g. 'db.schema.table')
+            data: List of dictionaries, each representing a row
+
+        Returns:
+            Number of rows inserted
+        """
+        if not data:
+            return 0
+
+        columns = list(data[0].keys())
+        serialized = [
+            {
+                col: json.dumps(row.get(col))
+                if isinstance(row.get(col), (dict, list))
+                else row.get(col)
+                for col in columns
+            }
+            for row in data
+        ]
+
+        column_list = ', '.join(f'"{col}"' for col in columns)
+        placeholders = ', '.join(f':{col}' for col in columns)
+        command = f'INSERT INTO {table_name} ({column_list}) VALUES ({placeholders})'
+
+        with self.get_connection() as connection:
+            cursor = connection.cursor()
+            try:
+                cursor.executemany(command, serialized)
+                connection.commit()
+                return cursor.rowcount
+            except RedshiftError as e:
+                connection.rollback()
+                logger.error(f'Insert error: {e}')
+                raise
+            finally:
+                cursor.close()
 
     def execute_transaction(
         self, commands: List[Tuple[str, Optional[Dict[str, Any]]]]
