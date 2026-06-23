@@ -1,7 +1,7 @@
 """add agentic triggers
 
 Revision ID: 74c837a023f3
-Revises: 3b5b1bf90e6c
+Revises: b2c3d4e5f6a0
 Create Date: 2026-05-16 14:01:11.712250
 
 """
@@ -15,7 +15,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = '74c837a023f3'
-down_revision: Union[str, None] = '3b5b1bf90e6c'
+down_revision: Union[str, None] = 'b2c3d4e5f6a0'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
