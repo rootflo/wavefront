@@ -374,8 +374,8 @@ class RedshiftClient:
         Insert rows provided as a list of dictionaries into a table.
 
         Dict/list values are serialized to JSON strings so they can be stored
-        in VARCHAR/SUPER columns. Columns are derived from the first row, so all
-        rows are expected to share the same keys.
+        in VARCHAR/SUPER columns. Rows are inserted via batched multi-row
+        INSERT statements (250 rows per round-trip).
 
         Args:
             table_name: Fully qualified target table name (e.g. 'db.schema.table')
@@ -428,18 +428,37 @@ class RedshiftClient:
         ]
 
         column_list = ', '.join(f'"{col}"' for col in columns)
-        placeholders = ', '.join(
-            f'JSON_PARSE(:{col})' if col in super_columns else f':{col}'
-            for col in columns
-        )
-        command = f'INSERT INTO {table_name} ({column_list}) VALUES ({placeholders})'
+        chunk_size = 250
+        total_inserted = 0
 
         with self.get_connection() as connection:
             cursor = connection.cursor()
             try:
-                cursor.executemany(command, serialized)
+                for chunk_start in range(0, len(serialized), chunk_size):
+                    chunk = serialized[chunk_start : chunk_start + chunk_size]
+                    value_groups = []
+                    params: Dict[str, Any] = {}
+
+                    for row_index, row in enumerate(chunk):
+                        placeholders = []
+                        for col in columns:
+                            param_name = f'{col}_{row_index}'
+                            params[param_name] = row[col]
+                            if col in super_columns:
+                                placeholders.append(f'JSON_PARSE(:{param_name})')
+                            else:
+                                placeholders.append(f':{param_name}')
+                        value_groups.append(f'({", ".join(placeholders)})')
+
+                    command = (
+                        f'INSERT INTO {table_name} ({column_list}) VALUES '
+                        f'{", ".join(value_groups)}'
+                    )
+                    cursor.execute(command, params)
+                    total_inserted += cursor.rowcount
+
                 connection.commit()
-                return cursor.rowcount
+                return total_inserted
             except RedshiftError as e:
                 connection.rollback()
                 logger.error(f'Insert error: {e}')
