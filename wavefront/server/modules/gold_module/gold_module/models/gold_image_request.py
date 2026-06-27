@@ -1,6 +1,7 @@
 from datetime import datetime
-from typing import List
-from pydantic import BaseModel, ConfigDict
+from typing import List, Literal
+
+from pydantic import BaseModel, ConfigDict, model_validator
 
 
 class Item(BaseModel):
@@ -33,6 +34,9 @@ class ImageMetadata(BaseModel):
     gold_loan_category: str = None
     loan_tenure: int = None
     loan_amount: float = None
+    loan_type: Literal['new', 'top_up'] = None
+    pos: float = None
+    parent_loan_id: str = None
 
     gross_weight: float = None
     stone_weight: float = None
@@ -55,6 +59,14 @@ class ImageMetadata(BaseModel):
     filter_5: str = None
 
     model_config = ConfigDict(extra='allow')
+
+    @model_validator(mode='after')
+    def validate_loan_type_fields(self):
+        if self.loan_type == 'top_up' and not self.parent_loan_id:
+            raise ValueError('parent_loan_id is required when loan_type is top_up')
+        if self.loan_type == 'new' and self.parent_loan_id is not None:
+            raise ValueError('parent_loan_id must be null when loan_type is new')
+        return self
 
     def get_extra_fields(self) -> dict:
         """Return a dict of extra fields not defined in the model."""
