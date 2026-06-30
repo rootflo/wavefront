@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y \
 
 COPY wavefront/server/pyproject.toml wavefront/server/uv.lock ./
 
+COPY wavefront/server/modules/auth_module /app/modules/auth_module
 COPY wavefront/server/modules/common_module /app/modules/common_module
 COPY wavefront/server/modules/db_repo_module /app/modules/db_repo_module
 COPY wavefront/server/modules/knowledge_base_module /app/modules/knowledge_base_module
@@ -22,6 +23,7 @@ COPY wavefront/server/modules/plugins_module /app/modules/plugins_module
 COPY wavefront/server/modules/tools_module /app/modules/tools_module
 COPY wavefront/server/modules/api_services_module /app/modules/api_services_module
 COPY wavefront/server/modules/triggers_module /app/modules/triggers_module
+COPY wavefront/server/modules/user_management_module /app/modules/user_management_module
 
 COPY wavefront/server/packages/flo_cloud /app/packages/flo_cloud
 COPY wavefront/server/packages/flo_utils /app/packages/flo_utils
