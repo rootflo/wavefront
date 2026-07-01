@@ -1,4 +1,3 @@
-from auth_module.services.client_token_service import ClientTokenService
 from auth_module.services.outlook_service import OutlookService
 from auth_module.services.superset_service import SupersetService
 from auth_module.services.token_service import TokenService
@@ -55,13 +54,6 @@ class AuthContainer(containers.DeclarativeContainer):
         app_env=config.env_config.app_env,
         issuer=config.jwt_token.issuer,
         audience=config.jwt_token.audience,
-    )
-
-    client_token_service = providers.Singleton(
-        ClientTokenService,
-        private_key_pem=config.app_config.client_secret,
-        client_id=config.app_config.client_id,
-        product_id=config.app_config.product_id,
     )
 
     if is_feature_enabled(SUPERSET_FLAG):
