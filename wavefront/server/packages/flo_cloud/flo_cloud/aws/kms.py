@@ -22,14 +22,16 @@ class AwsKMS(FloKMS):
     def encrypt(self, plaintext: str) -> bytes:
         if not self.aws_kms_enc_arn:
             raise ValueError('AWS_KMS_ENC_ARN must be set to use encryption')
-        return self.kms_client.encrypt(KeyId=self.aws_kms_enc_arn, Plaintext=plaintext)
+        return self.kms_client.encrypt(KeyId=self.aws_kms_enc_arn, Plaintext=plaintext)[
+            'CiphertextBlob'
+        ]
 
     def decrypt(self, ciphertext: str) -> bytes:
         if not self.aws_kms_enc_arn:
             raise ValueError('AWS_KMS_ENC_ARN must be set to use decryption')
         return self.kms_client.decrypt(
             KeyId=self.aws_kms_enc_arn, CiphertextBlob=ciphertext
-        )
+        )['Plaintext']
 
     def sign(self, message: bytes, **kwargs) -> bytes:
         signing_algorithm = kwargs.get('signing_algorithm', 'RSASSA_PSS_SHA_256')
