@@ -77,6 +77,7 @@ dependencies = [
     { name = "flo-ai" },
     { name = "flo-cloud" },
     { name = "flo-utils" },
+    { name = "llm-inference-config-module" },
     { name = "tools-module" },
 ]
 
@@ -88,6 +89,7 @@ requires-dist = [
     { name = "flo-ai", specifier = "==1.1.6" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "flo-utils", editable = "packages/flo_utils" },
+    { name = "llm-inference-config-module", editable = "modules/llm_inference_config_module" },
     { name = "tools-module", editable = "modules/tools_module" },
 ]
 
@@ -1510,6 +1512,7 @@ dependencies = [
     { name = "google-cloud-pubsub" },
     { name = "google-cloud-storage" },
     { name = "mssql-python" },
+    { name = "psycopg2-binary" },
     { name = "redshift-connector" },
 ]
 
@@ -1526,6 +1529,7 @@ requires-dist = [
     { name = "google-cloud-pubsub", specifier = ">=2.28.0" },
     { name = "google-cloud-storage", specifier = "<3.0.0" },
     { name = "mssql-python" },
+    { name = "psycopg2-binary", specifier = ">=2.9.10,<3.0.0" },
     { name = "redshift-connector", specifier = ">=2.1.7" },
 ]
 
