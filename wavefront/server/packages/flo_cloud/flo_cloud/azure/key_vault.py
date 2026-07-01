@@ -37,6 +37,8 @@ class AzureKMS(FloKMS):
         vault_url: Optional[str] = None,
         key_name: Optional[str] = None,
         key_version: Optional[str] = None,
+        enc_key_name: Optional[str] = None,
+        enc_key_version: Optional[str] = None,
         client_id: Optional[str] = None,
         client_secret: Optional[str] = None,
         tenant_id: Optional[str] = None,
@@ -45,6 +47,12 @@ class AzureKMS(FloKMS):
         resolved_key_name = key_name or os.environ.get('AZURE_KEY_VAULT_KEY_NAME')
         resolved_key_version = key_version or os.environ.get(
             'AZURE_KEY_VAULT_KEY_VERSION'
+        )
+        resolved_enc_key_name = enc_key_name or os.environ.get(
+            'AZURE_KEY_VAULT_ENC_KEY_NAME'
+        )
+        resolved_enc_key_version = enc_key_version or os.environ.get(
+            'AZURE_KEY_VAULT_ENC_KEY_VERSION'
         )
 
         if not resolved_vault_url:
@@ -74,19 +82,43 @@ class AzureKMS(FloKMS):
         self._key_name = resolved_key_name
         self._key_version = resolved_key_version
         self.key_client = KeyClient(vault_url=resolved_vault_url, credential=credential)
-        key = self.key_client.get_key(resolved_key_name, version=resolved_key_version)
-        self.crypto_client = CryptographyClient(key, credential=credential)
+
+        sign_key = self.key_client.get_key(
+            resolved_key_name, version=resolved_key_version
+        )
+        self.crypto_client = CryptographyClient(sign_key, credential=credential)
+
+        self.enc_crypto_client = (
+            CryptographyClient(
+                self.key_client.get_key(
+                    resolved_enc_key_name, version=resolved_enc_key_version
+                ),
+                credential=credential,
+            )
+            if resolved_enc_key_name
+            else None
+        )
 
     def encrypt(self, plaintext: str) -> bytes:
+        if not self.enc_crypto_client:
+            raise ValueError(
+                'AZURE_KEY_VAULT_ENC_KEY_NAME must be set to use encryption'
+            )
         if isinstance(plaintext, str):
             plaintext = plaintext.encode('utf-8')
-        result = self.crypto_client.encrypt(EncryptionAlgorithm.rsa_oaep_256, plaintext)
+        result = self.enc_crypto_client.encrypt(
+            EncryptionAlgorithm.rsa_oaep_256, plaintext
+        )
         return result.ciphertext
 
     def decrypt(self, ciphertext: str) -> bytes:
+        if not self.enc_crypto_client:
+            raise ValueError(
+                'AZURE_KEY_VAULT_ENC_KEY_NAME must be set to use decryption'
+            )
         if isinstance(ciphertext, str):
             ciphertext = ciphertext.encode('utf-8')
-        result = self.crypto_client.decrypt(
+        result = self.enc_crypto_client.decrypt(
             EncryptionAlgorithm.rsa_oaep_256, ciphertext
         )
         return result.plaintext
