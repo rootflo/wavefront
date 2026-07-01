@@ -43,20 +43,20 @@ class GcpKMS(FloKMS):
             crypto_key_version=gcp_crypto_key_version,
         )
 
-        # Separate symmetric key path for encryption/decryption.
-        # Symmetric encrypt/decrypt operates on a CryptoKey (not a version);
-        # GCP picks the primary version on encrypt and reads the embedded
-        # version metadata on decrypt.
-        enc_key = gcp_enc_crypto_key or gcp_crypto_key
-
-        self.enc_key_name = self.kms_client.crypto_key_path(
-            project=gcp_project_id,
-            location=gcp_location,
-            key_ring=gcp_key_ring,
-            crypto_key=enc_key,
+        self.enc_key_name = (
+            self.kms_client.crypto_key_path(
+                project=gcp_project_id,
+                location=gcp_location,
+                key_ring=gcp_key_ring,
+                crypto_key=gcp_enc_crypto_key,
+            )
+            if gcp_enc_crypto_key
+            else None
         )
 
     def encrypt(self, plaintext: bytes | str) -> bytes:
+        if not self.enc_key_name:
+            raise ValueError('GCP_KMS_ENC_CRYPTO_KEY must be set to use encryption')
         if isinstance(plaintext, str):
             plaintext = plaintext.encode('utf-8')
         request = kms_v1.EncryptRequest(
@@ -67,6 +67,8 @@ class GcpKMS(FloKMS):
         return response.ciphertext
 
     def decrypt(self, ciphertext: bytes | str) -> bytes:
+        if not self.enc_key_name:
+            raise ValueError('GCP_KMS_ENC_CRYPTO_KEY must be set to use decryption')
         if isinstance(ciphertext, str):
             ciphertext = ciphertext.encode('utf-8')
         request = kms_v1.DecryptRequest(
