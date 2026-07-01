@@ -2,8 +2,6 @@ import os
 import time
 from typing import Any, List, Optional, Union
 
-from azure.core.exceptions import ClientAuthenticationError
-from azure.identity import DefaultAzureCredential
 from common_module.common_cache import CommonCache
 from common_module.log.logger import logger
 from redis import Connection
@@ -13,32 +11,10 @@ from redis import Redis
 from redis import RedisError
 from redis import SSLConnection
 from redis import TimeoutError
-from redis.credentials import CredentialProvider
 from tenacity import retry
 from tenacity import retry_if_exception_type
 from tenacity import stop_after_attempt
 from tenacity import wait_exponential
-
-
-class AzureManagedRedisProvider(CredentialProvider):
-    """
-    Adapter to bridge Azure Identity with Redis CredentialProvider.
-    Azure Managed Redis requires 'default' as the username and the
-    Entra ID access token as the password.
-    """
-
-    def __init__(self):
-        self.credential = DefaultAzureCredential()
-        self.scope = 'https://redis.azure.com/.default'
-        self.username = os.getenv('REDIS_USERNAME', 'default')
-
-    def get_credentials(self):
-        try:
-            token = self.credential.get_token(self.scope)
-            return (self.username, token.token)
-        except ClientAuthenticationError as e:
-            logger.error(f'Azure authentication failed: {e}')
-            raise
 
 
 class CacheManager(CommonCache):
@@ -88,7 +64,6 @@ class CacheManager(CommonCache):
             port = int(os.getenv('REDIS_PORT', 6379))
             protocol = os.getenv('REDIS_PROTOCOL', 'redis')
             password = os.getenv('REDIS_PASSWORD')
-            cloud_provider = os.getenv('CLOUD_PROVIDER', '').lower()
 
             connection_class = Connection
             if protocol == 'rediss' or port == 10000:
@@ -110,12 +85,7 @@ class CacheManager(CommonCache):
                 'decode_responses': True,
             }
 
-            if cloud_provider == 'azure' and not password:
-                logger.info(
-                    'Configuring Azure Entra ID (Workload Identity) authentication'
-                )
-                pool_kwargs['credential_provider'] = AzureManagedRedisProvider()
-            elif password:
+            if password:
                 pool_kwargs['password'] = password
 
             return ConnectionPool(**pool_kwargs)

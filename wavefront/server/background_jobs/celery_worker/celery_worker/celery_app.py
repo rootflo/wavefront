@@ -1,6 +1,15 @@
 from celery import Celery
+from celery.signals import worker_process_init
 
 from celery_worker.env import CELERY_BROKER_URL, CELERY_RESULT_BACKEND
+
+
+@worker_process_init.connect
+def setup_azure_redis_auth(**kwargs):
+    from db_repo_module.cache.azure_redis_auth import patch_redis_for_azure
+
+    patch_redis_for_azure()
+
 
 app = Celery('async_executor')
 app.conf.update(

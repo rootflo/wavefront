@@ -26,6 +26,7 @@ from common_module.middleware.request_id_middleware import (
 from common_module.log.logger import logger
 from common_module.prometheus.prometheus_middleware import PrometheusMiddleware
 from common_module.response_formatter import ResponseFormatter
+from db_repo_module.cache.azure_redis_auth import patch_redis_for_azure
 from db_repo_module.database.connection import DatabaseClient
 from db_repo_module.db_repo_container import DatabaseModuleContainer
 from fastapi import HTTPException
@@ -224,6 +225,7 @@ scheduler_manager = SchedulerManager()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    patch_redis_for_azure()
     # Startup code (runs before the application starts)
     logger.info('Starting application...')
 
