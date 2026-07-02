@@ -30,4 +30,5 @@ app.conf.update(
     worker_prefetch_multiplier=1,  # Fair task distribution
     task_track_started=True,
     task_default_queue='{celery}',
+    worker_enable_remote_control=False,
 )
