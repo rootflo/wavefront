@@ -29,4 +29,5 @@ app.conf.update(
     task_reject_on_worker_lost=True,  # Re-queue on worker crash
     worker_prefetch_multiplier=1,  # Fair task distribution
     task_track_started=True,
+    task_default_queue='{celery}',
 )
