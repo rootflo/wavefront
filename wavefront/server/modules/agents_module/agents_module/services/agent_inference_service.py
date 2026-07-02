@@ -373,6 +373,7 @@ class AgentInferenceService:
         output_json_enabled: bool = True,
         access_token: Optional[str] = None,
         app_key: Optional[str] = None,
+        llm_config: Optional[LlmInferenceConfig] = None,
     ) -> tuple[List[BaseMessage], float, str]:
         """
         Complete inference workflow (v2): fetch agent from DB + cloud storage, run inference
@@ -415,8 +416,9 @@ class AgentInferenceService:
             f'Retrieved agent - namespace: {namespace}, name: {name}, agent_id: {agent_id}'
         )
 
-        # Resolve rootflo model_id references from the YAML, if any
-        llm_config = await self._resolve_rootflo_llm_config(yaml_content)
+        # Use caller-supplied config or fall back to resolving from the YAML
+        if llm_config is None:
+            llm_config = await self._resolve_rootflo_llm_config(yaml_content)
 
         # Create agent from YAML with optional LLM override and tools
         agent = await self.create_agent_from_yaml(
