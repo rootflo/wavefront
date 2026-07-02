@@ -31,4 +31,9 @@ app.conf.update(
     task_track_started=True,
     task_default_queue='{celery}',
     worker_enable_remote_control=False,
+    broker_transport_options={
+        'unacked_key': '{celery}.unacked',
+        'unacked_index_key': '{celery}.unacked_index',
+        'unacked_mutex_key': '{celery}.unacked_mutex',
+    },
 )
