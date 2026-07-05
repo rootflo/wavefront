@@ -14,7 +14,7 @@ class MessageQueue(ABC):
     @abstractmethod
     def receive_messages(
         self, max_messages: int = 10, wait_time_sec: int = 20
-    ) -> List[MessageQueueDict] | None:
+    ) -> List[MessageQueueDict]:
         """
         Receive messages from the event queue.
 
@@ -23,6 +23,7 @@ class MessageQueue(ABC):
                 - 'body': message content (any type)
                 - 'ack_id': acknowledgement ID (str)
                 - 'id': message ID (str)
+            Empty list if no messages are available; never None.
         """
         pass
 
