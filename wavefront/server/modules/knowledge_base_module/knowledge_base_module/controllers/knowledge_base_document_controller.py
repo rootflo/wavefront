@@ -143,7 +143,7 @@ async def upload_document(
             topic_id = (
                 config['gcp']['email_topic_id']
                 if config['cloud_config']['cloud_provider'] == 'gcp'
-                else config['aws']['queue_url']
+                else config['aws']['rag_queue_url']
             )
             message_id = message_queue.add_message(
                 message_body=data, topic_name_or_queue_url=topic_id
