@@ -194,10 +194,6 @@ class FunctionNode:
         variables: Optional[Dict[str, Any]] = None,
         **kwargs,
     ) -> Any:
-        logger.info(
-            f"Executing FunctionNode '{self.name}' with inputs: {inputs} variables: {variables} kwargs: {kwargs}"
-        )
-
         if asyncio.iscoroutinefunction(self.function):
             logger.info(f"Executing FunctionNode '{self.name}' as a coroutine function")
             result = await self.function(

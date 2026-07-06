@@ -294,9 +294,9 @@ class TestOpenAIVLLM:
         )
 
         # Test with dict response (should return str representation)
-        response = {'content': 'Hello, world!'}
+        response = str({'content': 'Hello, world!'})
         result = llm.get_message_content(response)
-        assert result == "{'content': 'Hello, world!'}"
+        assert result == response
 
         # Test with string response
         result = llm.get_message_content('Direct string')  # type: ignore[arg-type]
@@ -305,7 +305,7 @@ class TestOpenAIVLLM:
         # Test with empty content
         response = {'content': ''}
         result = llm.get_message_content(response)
-        assert result == "{'content': ''}"
+        assert result == ''
 
         # Test with message object that has content attribute
         mock_message = Mock()
@@ -379,8 +379,9 @@ class TestOpenAIVLLM:
         result = llm.format_image_in_message(image)
 
         assert result is not None
-        assert result['type'] == 'input_image'
-        assert result['image']['url'] == 'https://example.com/image.jpg'
+        assert len(result) == 1
+        assert result[0]['type'] == 'image_url'
+        assert result[0]['image_url']['url'] == 'https://example.com/image.jpg'
 
     @pytest.mark.asyncio
     @patch('flo_ai.llm.openai_llm.AsyncOpenAI')

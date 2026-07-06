@@ -154,6 +154,562 @@ async def test_get_roles(
 
 
 @pytest.mark.asyncio
+async def test_get_roles_composite_only(
+    test_client,
+    test_session: AsyncSession,
+    mock_auth_admin_functions,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    await create_session(test_session, test_user_id, test_session_id)
+
+    console_resource = Resource(
+        id=str(uuid.uuid4()),
+        key='console_resource',
+        value='viewer_resource',
+        description='Console resource',
+        scope=ResourceScope.CONSOLE,
+    )
+    data_resource = Resource(
+        id=str(uuid.uuid4()),
+        key='branch',
+        value='mumbai',
+        description='Data resource',
+        scope=ResourceScope.DATA,
+    )
+    single_resource_role = Role(
+        id=str(uuid.uuid4()),
+        name='single_resource_role',
+        description='Role with one resource',
+    )
+    composite_role = Role(
+        id=str(uuid.uuid4()),
+        name='composite_role',
+        description='Role with multiple resources',
+    )
+
+    async with test_session() as session:
+        session.add_all(
+            [console_resource, data_resource, single_resource_role, composite_role]
+        )
+        await session.commit()
+
+    async with test_session() as session:
+        session.add_all(
+            [
+                RoleResource(
+                    role_id=single_resource_role.id,
+                    resource_id=console_resource.id,
+                ),
+                RoleResource(
+                    role_id=composite_role.id,
+                    resource_id=console_resource.id,
+                ),
+                RoleResource(
+                    role_id=composite_role.id,
+                    resource_id=data_resource.id,
+                ),
+            ]
+        )
+        await session.commit()
+
+    response = test_client.get(
+        '/floware/v1/access/roles?composite_only=true',
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    role_names = {role['name'] for role in data['data']['roles']}
+    assert role_names == {'composite_role'}
+
+
+@pytest.mark.asyncio
+async def test_get_roles_composite_only_without_scopes(
+    test_client,
+    test_session: AsyncSession,
+    mock_auth_admin_functions,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    await create_session(test_session, test_user_id, test_session_id)
+
+    console_resource = Resource(
+        id=str(uuid.uuid4()),
+        key='console_resource',
+        value='viewer_resource',
+        description='Console resource',
+        scope=ResourceScope.CONSOLE,
+    )
+    route_resource = Resource(
+        id=str(uuid.uuid4()),
+        key='route',
+        value='agents',
+        description='Route resource',
+        scope=ResourceScope.ROUTE,
+    )
+    composite_role = Role(
+        id=str(uuid.uuid4()),
+        name='cross_scope_composite_role',
+        description='Role with resources across scopes',
+    )
+
+    async with test_session() as session:
+        session.add_all([console_resource, route_resource, composite_role])
+        await session.commit()
+
+    async with test_session() as session:
+        session.add_all(
+            [
+                RoleResource(
+                    role_id=composite_role.id,
+                    resource_id=console_resource.id,
+                ),
+                RoleResource(
+                    role_id=composite_role.id,
+                    resource_id=route_resource.id,
+                ),
+            ]
+        )
+        await session.commit()
+
+    response = test_client.get(
+        '/floware/v1/access/roles?composite_only=true',
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    role_names = {role['name'] for role in data['data']['roles']}
+    assert role_names == {'cross_scope_composite_role'}
+
+
+@pytest.mark.asyncio
+async def test_get_roles_composite_only_exact_scope_match(
+    test_client,
+    test_session: AsyncSession,
+    mock_auth_admin_functions,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    await create_session(test_session, test_user_id, test_session_id)
+
+    data_resource_one = Resource(
+        id=str(uuid.uuid4()),
+        key='branch',
+        value='mumbai',
+        description='Data resource',
+        scope=ResourceScope.DATA,
+    )
+    data_resource_two = Resource(
+        id=str(uuid.uuid4()),
+        key='branch',
+        value='delhi',
+        description='Data resource',
+        scope=ResourceScope.DATA,
+    )
+    dashboard_resource = Resource(
+        id=str(uuid.uuid4()),
+        key='dashboard',
+        value='sales',
+        description='Dashboard resource',
+        scope=ResourceScope.DASHBOARD,
+        meta='{"name": "Sales", "key": "sales", "priority": "1"}',
+    )
+
+    # Composite role whose resources are all DATA scoped.
+    data_only_role = Role(
+        id=str(uuid.uuid4()),
+        name='data_only_composite_role',
+        description='Composite role with only data resources',
+    )
+    # Composite role spanning DATA + DASHBOARD scopes.
+    data_dashboard_role = Role(
+        id=str(uuid.uuid4()),
+        name='data_dashboard_composite_role',
+        description='Composite role with data and dashboard resources',
+    )
+
+    async with test_session() as session:
+        session.add_all(
+            [
+                data_resource_one,
+                data_resource_two,
+                dashboard_resource,
+                data_only_role,
+                data_dashboard_role,
+            ]
+        )
+        await session.commit()
+
+    async with test_session() as session:
+        session.add_all(
+            [
+                RoleResource(
+                    role_id=data_only_role.id,
+                    resource_id=data_resource_one.id,
+                ),
+                RoleResource(
+                    role_id=data_only_role.id,
+                    resource_id=data_resource_two.id,
+                ),
+                RoleResource(
+                    role_id=data_dashboard_role.id,
+                    resource_id=data_resource_one.id,
+                ),
+                RoleResource(
+                    role_id=data_dashboard_role.id,
+                    resource_id=dashboard_resource.id,
+                ),
+            ]
+        )
+        await session.commit()
+
+    # Only DATA requested -> only the data-only composite role matches.
+    response = test_client.get(
+        '/floware/v1/access/roles?composite_only=true&scopes=data',
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 200
+    role_names = {role['name'] for role in response.json()['data']['roles']}
+    assert role_names == {'data_only_composite_role'}
+
+    # DATA + DASHBOARD requested -> only the role spanning exactly both matches.
+    response = test_client.get(
+        '/floware/v1/access/roles?composite_only=true&scopes=data&scopes=dashboard',
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 200
+    role_names = {role['name'] for role in response.json()['data']['roles']}
+    assert role_names == {'data_dashboard_composite_role'}
+
+    # ROUTE requested -> no composite role has only route resources.
+    response = test_client.get(
+        '/floware/v1/access/roles?composite_only=true&scopes=route',
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 200
+    assert response.json()['data']['roles'] == []
+
+
+@pytest.mark.asyncio
+async def test_get_roles_scope_filter_excludes_cross_scope_composite(
+    test_client,
+    test_session: AsyncSession,
+    mock_auth_admin_functions,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    """Without composite_only, a scope filter still returns single-resource roles
+    in that scope, but a composite role spanning multiple scopes is excluded."""
+    await create_session(test_session, test_user_id, test_session_id)
+
+    route_resource = Resource(
+        id=str(uuid.uuid4()),
+        key='route',
+        value='agents',
+        description='Route resource',
+        scope=ResourceScope.ROUTE,
+    )
+    data_resource = Resource(
+        id=str(uuid.uuid4()),
+        key='branch',
+        value='mumbai',
+        description='Data resource',
+        scope=ResourceScope.DATA,
+    )
+    dashboard_resource = Resource(
+        id=str(uuid.uuid4()),
+        key='dashboard',
+        value='sales',
+        description='Dashboard resource',
+        scope=ResourceScope.DASHBOARD,
+        meta='{"name": "Sales", "key": "sales", "priority": "1"}',
+    )
+
+    # Single-resource route role -> should appear under scopes=route.
+    route_only_role = Role(
+        id=str(uuid.uuid4()),
+        name='route_only_role',
+        description='Single route resource role',
+    )
+    # Composite role spanning route + data + dashboard -> should NOT appear
+    # under scopes=route.
+    cross_scope_role = Role(
+        id=str(uuid.uuid4()),
+        name='cross_scope_role',
+        description='Composite role spanning multiple scopes',
+    )
+
+    async with test_session() as session:
+        session.add_all(
+            [
+                route_resource,
+                data_resource,
+                dashboard_resource,
+                route_only_role,
+                cross_scope_role,
+            ]
+        )
+        await session.commit()
+
+    async with test_session() as session:
+        session.add_all(
+            [
+                RoleResource(role_id=route_only_role.id, resource_id=route_resource.id),
+                RoleResource(
+                    role_id=cross_scope_role.id, resource_id=route_resource.id
+                ),
+                RoleResource(role_id=cross_scope_role.id, resource_id=data_resource.id),
+                RoleResource(
+                    role_id=cross_scope_role.id, resource_id=dashboard_resource.id
+                ),
+            ]
+        )
+        await session.commit()
+
+    response = test_client.get(
+        '/floware/v1/access/roles?scopes=route',
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 200
+    role_names = {role['name'] for role in response.json()['data']['roles']}
+    assert role_names == {'route_only_role'}
+
+
+@pytest.mark.asyncio
+async def test_patch_role_resources_pure_console_role_rejected(
+    test_client,
+    test_session: AsyncSession,
+    mock_auth_admin_functions,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    """A single-resource role whose only resource is console-scoped is a console
+    role (UI identity marker) and its resources must not be editable."""
+    await create_session(test_session, test_user_id, test_session_id)
+
+    console_resource = Resource(
+        id=str(uuid.uuid4()),
+        key='console_resource',
+        value='viewer_resource',
+        description='Console resource',
+        scope=ResourceScope.CONSOLE,
+    )
+    data_resource = Resource(
+        id=str(uuid.uuid4()),
+        key='branch',
+        value='mumbai',
+        description='Data resource',
+        scope=ResourceScope.DATA,
+    )
+    console_role = Role(
+        id=str(uuid.uuid4()),
+        name='console_role',
+        description='Pure console role',
+    )
+
+    async with test_session() as session:
+        session.add_all([console_resource, data_resource, console_role])
+        await session.commit()
+
+    async with test_session() as session:
+        session.add(
+            RoleResource(role_id=console_role.id, resource_id=console_resource.id)
+        )
+        await session.commit()
+
+    response = test_client.patch(
+        f'/floware/v1/access/roles/{console_role.id}',
+        json={'resources': [data_resource.id]},
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 400
+    assert (
+        'cannot update resources of a console role'
+        in response.json()['meta']['error'].lower()
+    )
+
+
+@pytest.mark.asyncio
+async def test_patch_role_resources_composite_with_console_allowed(
+    test_client,
+    test_session: AsyncSession,
+    mock_auth_admin_functions,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    """A composite role (2+ resources) that merely includes a console resource is
+    not a console role and must remain editable."""
+    await create_session(test_session, test_user_id, test_session_id)
+
+    console_resource = Resource(
+        id=str(uuid.uuid4()),
+        key='console_resource',
+        value='viewer_resource',
+        description='Console resource',
+        scope=ResourceScope.CONSOLE,
+    )
+    data_resource = Resource(
+        id=str(uuid.uuid4()),
+        key='branch',
+        value='mumbai',
+        description='Data resource',
+        scope=ResourceScope.DATA,
+    )
+    route_resource = Resource(
+        id=str(uuid.uuid4()),
+        key='route',
+        value='agents',
+        description='Route resource',
+        scope=ResourceScope.ROUTE,
+    )
+    composite_role = Role(
+        id=str(uuid.uuid4()),
+        name='composite_role',
+        description='Composite role including a console resource',
+    )
+
+    async with test_session() as session:
+        session.add_all(
+            [console_resource, data_resource, route_resource, composite_role]
+        )
+        await session.commit()
+
+    async with test_session() as session:
+        session.add_all(
+            [
+                RoleResource(
+                    role_id=composite_role.id, resource_id=console_resource.id
+                ),
+                RoleResource(role_id=composite_role.id, resource_id=data_resource.id),
+            ]
+        )
+        await session.commit()
+
+    response = test_client.patch(
+        f'/floware/v1/access/roles/{composite_role.id}',
+        json={'resources': [data_resource.id, route_resource.id]},
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 200
+
+    async with test_session() as session:
+        result = await session.execute(
+            select(RoleResource.resource_id).where(
+                RoleResource.role_id == composite_role.id
+            )
+        )
+        resource_ids = {row[0] for row in result.all()}
+        assert resource_ids == {data_resource.id, route_resource.id}
+
+
+@pytest.mark.asyncio
+async def test_delete_role_pure_console_role_rejected(
+    test_client,
+    test_session: AsyncSession,
+    mock_auth_admin_functions,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    """A pure single console-resource role must not be deletable here."""
+    await create_session(test_session, test_user_id, test_session_id)
+
+    console_resource = Resource(
+        id=str(uuid.uuid4()),
+        key='console_resource',
+        value='viewer_resource',
+        description='Console resource',
+        scope=ResourceScope.CONSOLE,
+    )
+    console_role = Role(
+        id=str(uuid.uuid4()),
+        name='console_role',
+        description='Pure console role',
+    )
+
+    async with test_session() as session:
+        session.add_all([console_resource, console_role])
+        await session.commit()
+
+    async with test_session() as session:
+        session.add(
+            RoleResource(role_id=console_role.id, resource_id=console_resource.id)
+        )
+        await session.commit()
+
+    response = test_client.delete(
+        f'/floware/v1/access/roles/{console_role.id}',
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 400
+    assert 'cannot delete a console role' in response.json()['meta']['error'].lower()
+
+
+@pytest.mark.asyncio
+async def test_delete_role_composite_with_console_allowed(
+    test_client,
+    test_session: AsyncSession,
+    mock_auth_admin_functions,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    """A composite role that includes a console resource must remain deletable."""
+    await create_session(test_session, test_user_id, test_session_id)
+
+    console_resource = Resource(
+        id=str(uuid.uuid4()),
+        key='console_resource',
+        value='viewer_resource',
+        description='Console resource',
+        scope=ResourceScope.CONSOLE,
+    )
+    data_resource = Resource(
+        id=str(uuid.uuid4()),
+        key='branch',
+        value='mumbai',
+        description='Data resource',
+        scope=ResourceScope.DATA,
+    )
+    composite_role = Role(
+        id=str(uuid.uuid4()),
+        name='composite_role',
+        description='Composite role including a console resource',
+    )
+
+    async with test_session() as session:
+        session.add_all([console_resource, data_resource, composite_role])
+        await session.commit()
+
+    async with test_session() as session:
+        session.add_all(
+            [
+                RoleResource(
+                    role_id=composite_role.id, resource_id=console_resource.id
+                ),
+                RoleResource(role_id=composite_role.id, resource_id=data_resource.id),
+            ]
+        )
+        await session.commit()
+
+    response = test_client.delete(
+        f'/floware/v1/access/roles/{composite_role.id}',
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 200
+
+    async with test_session() as session:
+        result = await session.execute(select(Role).where(Role.id == composite_role.id))
+        assert result.scalar_one_or_none() is None
+
+
+@pytest.mark.asyncio
 async def test_create_role_invalid_resources(
     test_client,
     test_session: AsyncSession,

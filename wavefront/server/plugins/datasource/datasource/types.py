@@ -41,6 +41,7 @@ class DataSourceType(str, Enum):
     GCS = 'gcs'
     GCP_BIGQUERY = 'gcp_bigquery'
     MONGODB = 'mongodb'
+    MSSQL = 'mssql'
     MYSQL = 'mysql'
     ORACLE = 'oracle'
     POSTGRES = 'postgres'
@@ -91,7 +92,8 @@ class DataSourceABC(ABC):
         odata_data_params: Optional[Dict[str, Any]] = None,
         offset: Optional[int] = 0,
         limit: Optional[int] = 100,
-    ):
+        params: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         pass
 
     @abstractmethod

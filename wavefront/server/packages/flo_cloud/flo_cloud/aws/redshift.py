@@ -1,4 +1,7 @@
 import os
+import re
+import json
+import string
 import logging
 from typing import List, Dict, Any, Optional, Tuple
 from contextlib import contextmanager
@@ -157,31 +160,19 @@ class RedshiftClient:
                 logger.error(f'Query execution error: {e}')
                 raise
 
-    def execute_query_to_dict(
-        self,
-        projection: str = '*',
-        table_name: str = '',
-        where_clause: str = 'true',
-        params: Optional[Dict[str, Any]] = None,
-        limit: int = 20,
-        offset: int = 0,
-        order_by: Optional[str] = None,
-        group_by: Optional[str] = None,
+    def execute_query_as_dict(
+        self, query: str, params: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, Any]]:
         """
-        Execute a SELECT query and return results as dictionaries.
+        Execute a raw SQL query and return results as dictionaries.
 
         Args:
-            projection: Projection of the query
-            table_name: Table name
-            where_clause: Where clause of the query
+            query: SQL query to execute
             params: Query parameters (optional)
-            limit: Maximum number of rows to return
-            offset: Number of rows to skip
+
         Returns:
             List of dictionaries containing query results
         """
-        query = f'SELECT {projection} FROM {table_name} WHERE {where_clause} {group_by} {order_by} LIMIT {limit} OFFSET {offset}'
         with self.get_cursor() as cursor:
             try:
                 cursor.execute(query, params)
@@ -190,6 +181,114 @@ class RedshiftClient:
             except RedshiftError as e:
                 logger.error(f'Query execution error: {e}')
                 raise
+
+    def execute_query_to_dict(
+        self,
+        projection: str = '*',
+        table_prefix: str = '',
+        table_names: List[str] = [],
+        where_clause: str = 'true',
+        join_query: Optional[str] = None,
+        params: Optional[Dict[str, Any]] = None,
+        limit: int = 10,
+        offset: int = 0,
+        order_by: Optional[str] = None,
+        group_by: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Execute a SELECT query and return results as dictionaries, similar to the
+        BigQuery implementation.
+
+        Args:
+            projection: Projection of the query
+            table_prefix: Prefix for table names (e.g. 'db.schema.')
+            table_names: List of table names
+            where_clause: Where clause of the query
+            join_query: Join query string (optional)
+            params: Query parameters (optional)
+            limit: Maximum number of rows to return
+            offset: Number of rows to skip
+
+        Returns:
+            List of dictionaries containing query results
+        """
+        if not table_names:
+            raise ValueError('At least one table name must be provided')
+
+        base_table = f'{table_prefix}{table_names[0]}'
+        group_by_clause = f'GROUP BY {group_by}' if group_by else ''
+        order_by_clause = f'ORDER BY {order_by}' if order_by else ''
+
+        if join_query:
+            query = self.__get_join_query(
+                join_query,
+                table_names,
+                table_prefix,
+                projection,
+                where_clause,
+                limit,
+                offset,
+                order_by,
+                group_by=group_by,
+            )
+        else:
+            query = (
+                f'SELECT {projection} FROM {base_table} AS a '
+                f'WHERE {where_clause} {group_by_clause} {order_by_clause} '
+                f'LIMIT {limit} OFFSET {offset}'
+            )
+
+        try:
+            logger.debug(f'Executing query: {query}')
+            with self.get_cursor() as cursor:
+                cursor.execute(query, params)
+                columns = [desc[0] for desc in cursor.description]
+                return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        except RedshiftError as e:
+            logger.error(f'Redshift query execution error: {e}')
+            raise
+        except Exception as e:
+            logger.error(f'Unexpected error executing Redshift query: {e}')
+            raise
+
+    def __get_join_query(
+        self,
+        join_query: str,
+        table_names: List[str],
+        table_prefix: str,
+        projection: str,
+        where_clause: str,
+        limit: int,
+        offset: int,
+        order_by: Optional[str] = None,
+        group_by: Optional[str] = None,
+    ) -> str:
+        """
+        Build a join query with table prefix and aliases, mirroring BigQuery's
+        __get_join_query. Returns a flat SELECT (no nested ARRAY_AGG/STRUCT).
+        """
+        aliases = list(string.ascii_lowercase)
+        processed_join = join_query
+        processed_where = where_clause
+        for i, table_name in enumerate(table_names):
+            alias = aliases[i]
+            qualified = f'{table_prefix}{table_name}'
+            processed_join = processed_join.replace(
+                f'JOIN {table_name}',
+                f'LEFT JOIN {qualified} AS {alias}',
+            )
+            processed_join = processed_join.replace(f'{table_name}.', f'{alias}.')
+            processed_where = processed_where.replace(f'{table_name}.', f'{alias}.')
+
+        group_by_clause = f'GROUP BY {group_by}' if group_by else ''
+        order_by_clause = f'ORDER BY {order_by}' if order_by else ''
+        base_table = f'{table_prefix}{table_names[0]}'
+        return (
+            f'SELECT {projection} FROM {base_table} AS {aliases[0]} '
+            f'{processed_join} WHERE {processed_where} '
+            f'{group_by_clause} {order_by_clause} '
+            f'LIMIT {limit} OFFSET {offset}'
+        )
 
     def execute_command(
         self, command: str, params: Optional[Dict[str, Any]] = None
@@ -230,6 +329,142 @@ class RedshiftClient:
             except RedshiftError as e:
                 logger.error(f'Batch execution error: {e}')
                 raise
+
+    def _get_super_columns(self, table_name: str, columns: List[str]) -> set:
+        """Return the subset of *columns* that are SUPER-typed in the target table.
+
+        SUPER columns must be wrapped in JSON_PARSE on insert so that JSON
+        payloads are stored as parsed objects instead of escaped strings. If the
+        column types cannot be resolved, an empty set is returned so the insert
+        falls back to the previous string behaviour.
+        """
+        parts = table_name.split('.')
+        bare_table = parts[-1]
+        schema = parts[-2] if len(parts) >= 2 else None
+
+        query = (
+            'SELECT column_name, data_type '
+            'FROM information_schema.columns '
+            'WHERE table_name = :table_name'
+        )
+        params: Dict[str, Any] = {'table_name': bare_table}
+        if schema:
+            query += ' AND table_schema = :table_schema'
+            params['table_schema'] = schema
+
+        try:
+            rows = self.execute_query_as_dict(query, params)
+        except Exception as e:
+            logger.warning(
+                f'Could not resolve column types for {table_name!r}; '
+                f'SUPER columns will not be JSON_PARSE-d: {e}'
+            )
+            return set()
+
+        requested = set(columns)
+        return {
+            row['column_name']
+            for row in rows
+            if str(row.get('data_type', '')).lower() == 'super'
+            and row['column_name'] in requested
+        }
+
+    def insert_rows_json(self, table_name: str, data: List[Dict[str, Any]]) -> int:
+        """
+        Insert rows provided as a list of dictionaries into a table.
+
+        Dict/list values are serialized to JSON strings so they can be stored
+        in VARCHAR/SUPER columns. Rows are inserted via batched multi-row
+        INSERT statements (250 rows per round-trip).
+
+        Args:
+            table_name: Fully qualified target table name (e.g. 'db.schema.table')
+            data: List of dictionaries, each representing a row
+
+        Returns:
+            Number of rows inserted
+        """
+        if not data:
+            return 0
+
+        columns = list(data[0].keys())
+
+        identifier_pattern = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+
+        for part in table_name.split('.'):
+            if not identifier_pattern.match(part):
+                raise ValueError(f'Invalid table identifier: {table_name!r}')
+
+        for col in columns:
+            if not isinstance(col, str) or not identifier_pattern.match(col):
+                raise ValueError(f'Invalid column identifier: {col!r}')
+
+        # Columns are derived from the first row; require every other row to
+        # share the exact same keys so we never silently insert NULL for a
+        # missing key or drop an extra key from a later row.
+        expected_keys = set(columns)
+        for index, row in enumerate(data):
+            if set(row.keys()) != expected_keys:
+                raise ValueError(
+                    f'Row {index} keys {sorted(row.keys())} do not match '
+                    f'expected columns {sorted(columns)}'
+                )
+
+        super_columns = self._get_super_columns(table_name, columns)
+
+        def _serialize(col: str, value: Any):
+            if value is None:
+                return None
+            if col in super_columns:
+                if isinstance(value, str):
+                    return value
+                return json.dumps(value)
+            if isinstance(value, (dict, list)):
+                return json.dumps(value)
+            return value
+
+        serialized = [
+            {col: _serialize(col, row.get(col)) for col in columns} for row in data
+        ]
+
+        column_list = ', '.join(f'"{col}"' for col in columns)
+        chunk_size = 250
+        total_inserted = 0
+
+        with self.get_connection() as connection:
+            cursor = connection.cursor()
+            try:
+                for chunk_start in range(0, len(serialized), chunk_size):
+                    chunk = serialized[chunk_start : chunk_start + chunk_size]
+                    value_groups = []
+                    params: Dict[str, Any] = {}
+
+                    for row_index, row in enumerate(chunk):
+                        placeholders = []
+                        for col in columns:
+                            param_name = f'{col}_{row_index}'
+                            params[param_name] = row[col]
+                            if col in super_columns:
+                                placeholders.append(f'JSON_PARSE(:{param_name})')
+                            else:
+                                placeholders.append(f':{param_name}')
+                        value_groups.append(f'({", ".join(placeholders)})')
+
+                    command = (
+                        f'INSERT INTO {table_name} ({column_list}) VALUES '
+                        f'{", ".join(value_groups)}'
+                    )
+                    cursor.execute(command, params)
+                    total_inserted += cursor.rowcount
+
+                connection.commit()
+                return total_inserted
+            except RedshiftError as e:
+                connection.rollback()
+                logger.error(f'Insert error: {e}')
+                raise
+            finally:
+                cursor.close()
 
     def execute_transaction(
         self, commands: List[Tuple[str, Optional[Dict[str, Any]]]]
@@ -398,7 +633,7 @@ class RedshiftClient:
         ORDER BY c.ordinal_position
         """
 
-        columns = self.execute_query_to_dict(query, {'table_name': table_name})
+        columns = self.execute_query_as_dict(query, {'table_name': table_name})
 
         # Get table statistics
         stats_query = """
@@ -413,7 +648,7 @@ class RedshiftClient:
         WHERE tablename = :tablename
         """
 
-        stats = self.execute_query_to_dict(stats_query, {'tablename': table_name})
+        stats = self.execute_query_as_dict(stats_query, {'tablename': table_name})
 
         return {'table_name': table_name, 'columns': columns, 'statistics': stats}
 
@@ -460,7 +695,7 @@ class RedshiftClient:
         WHERE tablename = :tablename AND schemaname = :schemaname
         """
 
-        results = self.execute_query_to_dict(
+        results = self.execute_query_as_dict(
             query, {'tablename': table_name, 'schemaname': schema}
         )
 
@@ -471,7 +706,7 @@ class RedshiftClient:
             pg_total_relation_size(:tablename) as size_bytes
         """
 
-        size_results = self.execute_query_to_dict(
+        size_results = self.execute_query_as_dict(
             size_query,
             {
                 'tablename': f'{schema}.{table_name}',
@@ -582,7 +817,7 @@ class RedshiftClient:
         ORDER BY starttime DESC
         """
 
-        return self.execute_query_to_dict(query)
+        return self.execute_query_as_dict(query)
 
     def get_query_history(self, limit: int = 100) -> List[Dict[str, Any]]:
         """
@@ -608,7 +843,7 @@ class RedshiftClient:
         LIMIT :limit
         """
 
-        return self.execute_query_to_dict(query, {'limit': limit})
+        return self.execute_query_as_dict(query, {'limit': limit})
 
     def test_connection(self) -> bool:
         """
@@ -619,9 +854,12 @@ class RedshiftClient:
         """
         try:
             result = self.execute_query('SELECT 1')
-            return len(result) > 0 and result[0][0] == 1
+            success = len(result) > 0 and result[0][0] == 1
+            if success:
+                logger.info('Redshift connection test successful')
+            return success
         except Exception as e:
-            logger.error(f'Connection test failed: {e}')
+            logger.error(f'Redshift connection test failed: {e}')
             return False
 
     def get_cluster_info(self) -> Dict[str, Any]:

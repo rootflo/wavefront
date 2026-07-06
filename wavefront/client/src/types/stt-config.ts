@@ -1,12 +1,13 @@
 import { IApiResponse } from '@app/lib/axios';
 
-export type SttProvider = 'deepgram' | 'sarvam' | 'elevenlabs';
+export type SttProvider = 'deepgram' | 'sarvam' | 'elevenlabs' | 'azure';
 
 export interface SttConfig {
   id: string;
   display_name: string;
   description: string | null;
   provider: SttProvider;
+  region: string | null;
   is_deleted: boolean;
   created_at: string;
   updated_at: string;
@@ -17,12 +18,14 @@ export interface CreateSttConfigRequest {
   description?: string | null;
   provider: SttProvider;
   api_key: string;
+  region?: string | null;
 }
 
 export interface UpdateSttConfigRequest {
   display_name?: string;
   description?: string | null;
   api_key?: string;
+  region?: string | null;
 }
 
 export interface SttConfigData {
@@ -66,4 +69,10 @@ export interface ElevenLabsSttParameters {
   model?: string; // default: 'scribe_v2_realtime'
   language?: string; // ISO-639-1 code e.g. 'en', 'hi'
   sample_rate?: number; // default: 8000
+}
+
+// Azure STT specific parameters
+export interface AzureSttParameters {
+  endpoint_id?: string; // custom model endpoint ID
+  sample_rate?: number;
 }

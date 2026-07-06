@@ -15,7 +15,11 @@ import { ToolDetails, VoiceAgentTool, VoiceAgentToolWithAssociation } from '@app
 import { TtsConfig } from '@app/types/tts-config';
 import { IUser } from '@app/types/user';
 import { VoiceAgent } from '@app/types/voice-agent';
+import { ScheduledJob } from '@app/types/scheduled-job';
 import { WorkflowListItem, WorkflowPipelineListItem, WorkflowRunListData } from '@app/types/workflow';
+
+const SCHEDULED_JOBS_PAGE_SIZE = 20;
+const MAX_SCHEDULED_JOBS = 1000;
 
 const getAllAppsQueryFn = async () => {
   const {
@@ -396,12 +400,40 @@ const getAgentToolsQueryFn = async (agentId: string): Promise<VoiceAgentToolWith
   return [];
 };
 
-const getUsersQueryFn = async (): Promise<IUser[]> => {
+const getAppUsersQueryFn = async (): Promise<IUser[]> => {
+  const response = await floConsoleService.appUserService.listAppUsers();
+  if (response.data?.data?.users && Array.isArray(response.data.data.users)) {
+    return response.data.data.users;
+  }
+  return [];
+};
+
+const getConsoleUsersQueryFn = async (): Promise<IUser[]> => {
   const response = await floConsoleService.userService.listUsers();
   if (response.data?.data?.users && Array.isArray(response.data.data.users)) {
     return response.data.data.users;
   }
   return [];
+};
+
+const getScheduledJobsQueryFn = async (): Promise<ScheduledJob[]> => {
+  const jobs: ScheduledJob[] = [];
+  let offset = 0;
+
+  while (jobs.length < MAX_SCHEDULED_JOBS) {
+    const response = await floConsoleService.scheduledJobService.listScheduledJobs({
+      limit: SCHEDULED_JOBS_PAGE_SIZE,
+      offset,
+    });
+    const page = response.data.data?.jobs ?? [];
+    jobs.push(...page);
+    if (page.length < SCHEDULED_JOBS_PAGE_SIZE) {
+      break;
+    }
+    offset += SCHEDULED_JOBS_PAGE_SIZE;
+  }
+
+  return jobs.slice(0, MAX_SCHEDULED_JOBS);
 };
 
 export {
@@ -414,6 +446,7 @@ export {
   getApiServiceQueryFn,
   getApiServicesQueryFn,
   getAppByIdFn,
+  getAppUsersQueryFn,
   getAuthenticatorQueryFn,
   getAuthenticatorsQueryFn,
   getCurrentUserQueryFn,
@@ -440,7 +473,7 @@ export {
   getToolsQueryFn,
   getTtsConfigQueryFn,
   getTtsConfigsQueryFn,
-  getUsersQueryFn,
+  getConsoleUsersQueryFn,
   getVoiceAgentQueryFn,
   getVoiceAgentToolQueryFn,
   getVoiceAgentToolsQueryFn,
@@ -449,4 +482,5 @@ export {
   getWorkflowRunsQueryFn,
   getWorkflowsQueryFn,
   readYamlQueryFn,
+  getScheduledJobsQueryFn,
 };

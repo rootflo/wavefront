@@ -7,6 +7,7 @@ import AuthenticatorsPage from '@app/pages/apps/[appId]/authenticators';
 import AuthenticatorDetailPage from '@app/pages/apps/[appId]/authenticators/[authId]';
 import DatasourcesManagement from '@app/pages/apps/[appId]/datasources';
 import DatasourceDetail from '@app/pages/apps/[appId]/datasources/[datasourceId]';
+import ScheduledJobsPage from '@app/pages/apps/[appId]/scheduled-jobs';
 import FunctionsManagement from '@app/pages/apps/[appId]/functions';
 import FunctionDetail from '@app/pages/apps/[appId]/functions/[functionId]';
 import KnowledgeBaseDetailPage from '@app/pages/apps/[appId]/knowledge-bases/[kbId]';
@@ -98,6 +99,10 @@ const routes = {
         {
           path: 'datasources/:datasourceId',
           element: <DatasourceDetail />,
+        },
+        {
+          path: 'scheduled-jobs',
+          element: <ScheduledJobsPage />,
         },
         {
           path: 'model-inference',

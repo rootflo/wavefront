@@ -12,7 +12,6 @@ dependencies = [
     "common-module",
     "db-repo-module",
     "gold-module",
-    "insights-module",
     "knowledge-base-module",
     "user-management-module",
     "plugins-module",
@@ -23,6 +22,7 @@ dependencies = [
     "tools-module",
     "api-services-module",
     "voice-agents-module",
+    "triggers-module",
 
 
     "fastapi>=0.115.2,<1.0.0",
@@ -30,7 +30,9 @@ dependencies = [
     "dependency-injector>=4.42.0,<5.0.0",
     "python-multipart==0.0.9",
     "python-dotenv>=1.1.0,<2.0.0",
-    "pottery>=3.0.1,<4.0.0"
+    "pottery>=3.0.1,<4.0.0",
+    "psycopg2-binary>=2.9.10,<3.0.0",
+    "openpyxl>=3.1.5,<4.0.0",
 ]
 
 [tool.uv.sources]
@@ -38,7 +40,6 @@ auth-module = { workspace = true }
 common-module = { workspace = true }
 db-repo-module = { workspace = true }
 gold-module = { workspace = true }
-insights-module = { workspace = true }
 knowledge-base-module = { workspace = true }
 user-management-module = { workspace = true }
 plugins-module = {workspace = true}
@@ -49,6 +50,7 @@ llm-inference-config-module = {workspace = true}
 tools-module = {workspace = true}
 api-services-module = {workspace = true}
 voice-agents-module = {workspace = true}
+triggers-module = {workspace = true}
 
 [build-system]
 requires = ["hatchling"]

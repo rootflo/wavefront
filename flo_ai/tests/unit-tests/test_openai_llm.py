@@ -208,7 +208,7 @@ class TestOpenAI:
         mock_obj = Mock()
         del mock_obj.content
         result = llm.get_message_content(mock_obj)
-        assert result == str(mock_obj)
+        assert result == ''
 
     def test_openai_format_tool_for_llm(self):
         """Test format_tool_for_llm method."""
@@ -270,8 +270,9 @@ class TestOpenAI:
         result = llm.format_image_in_message(image)
 
         assert result is not None
-        assert result['type'] == 'input_image'
-        assert result['image']['url'] == 'https://example.com/image.jpg'
+        assert len(result) == 1
+        assert result[0]['type'] == 'image_url'
+        assert result[0]['image_url']['url'] == 'https://example.com/image.jpg'
 
     @pytest.mark.asyncio
     async def test_openai_generate_error_handling(self):

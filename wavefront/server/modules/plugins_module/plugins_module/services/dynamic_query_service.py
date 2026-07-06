@@ -3,16 +3,17 @@ import yaml
 from common_module.log.logger import logger
 from flo_cloud.cloud_storage import CloudStorageManager
 from db_repo_module.models.dynamic_query_yaml import DynamicQueryYaml
+from typing import Optional
 
 
 class DynamicQueryService:
     def __init__(
         self,
-        cloud_manager: CloudStorageManager,
+        cloud_storage_manager: CloudStorageManager,
         dynamic_query_repo: SQLAlchemyRepository[DynamicQueryYaml],
-        bucket_name: str = None,
+        bucket_name: Optional[str] = None,
     ):
-        self.cloud_manager = cloud_manager
+        self.cloud_storage_manager = cloud_storage_manager
         self.dynamic_query_repo = dynamic_query_repo
         self.bucket_name = bucket_name
         self.prefix = 'dynamic_query/v1'
@@ -40,7 +41,7 @@ class DynamicQueryService:
             file_content = yaml_string.encode('utf-8')
 
             # storing to s3bucket
-            self.cloud_manager.save_small_file(
+            self.cloud_storage_manager.save_small_file(
                 file_content=file_content, bucket_name=self.bucket_name, key=file_key
             )
 
@@ -70,7 +71,7 @@ class DynamicQueryService:
         Returns:
             dict: Contains yamls list, pagination info, and total count
         """
-        files_keys, has_more = self.cloud_manager.list_files(
+        files_keys, has_more = self.cloud_storage_manager.list_files(
             self.bucket_name, self.prefix, page_size, page_number
         )
         yamls = []
@@ -100,7 +101,7 @@ class DynamicQueryService:
             dict: Contains yaml query and their parameters
         """
         file_key = f'{self.prefix}/{query_id}.yaml'
-        file_content = self.cloud_manager.read_file(self.bucket_name, file_key)
+        file_content = self.cloud_storage_manager.read_file(self.bucket_name, file_key)
         yaml_query = yaml.safe_load(file_content.decode('utf-8'))
         if not yaml_query:
             raise ValueError('YAML file is invalid')
@@ -141,7 +142,7 @@ class DynamicQueryService:
                 raise ValueError(f'Query {query_id} not found')
 
             # deleting the file from the cloud storage
-            self.cloud_manager.delete_file(self.bucket_name, query.file_path)
+            self.cloud_storage_manager.delete_file(self.bucket_name, query.file_path)
             # deleting the record from the database
             await self.dynamic_query_repo.delete_all(name=query_id)
 

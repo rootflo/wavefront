@@ -35,13 +35,18 @@ class ParserFieldModel(BaseModel):
     """A field definition in a parser configuration."""
 
     name: str = Field(..., description='Field name')
-    type: Literal['str', 'int', 'bool', 'float', 'literal', 'object', 'array'] = Field(
-        ..., description='Field type'
-    )
+    type: Literal[
+        'str', 'int', 'bool', 'float', 'literal', 'enum', 'object', 'array'
+    ] = Field(..., description='Field type')
     description: str = Field(..., description='Field description')
     required: Optional[bool] = Field(None, description='Whether field is required')
-    values: Optional[List[LiteralValueModel]] = Field(
-        None, description='Values for literal type fields'
+    values: Optional[List[Union[LiteralValueModel, str, int, float]]] = Field(
+        None,
+        description=(
+            "Allowed values. For 'literal' type, use LiteralValueModel entries "
+            "(value + description [+ examples]). For 'enum' type, use plain "
+            'primitives (str/int/float) or LiteralValueModel entries.'
+        ),
     )
     items: Optional['ParserFieldModel'] = Field(
         None, description='Item type for array fields'
@@ -50,14 +55,18 @@ class ParserFieldModel(BaseModel):
         None, description='Nested fields for object type fields'
     )
     default_value_prompt: Optional[str] = Field(
-        None, description='Default value prompt for literal fields'
+        None, description='Default value prompt for literal/enum fields'
     )
 
     def model_post_init(self, __context):
-        """Validate that literal type fields have values."""
+        """Validate type-specific required attributes."""
         if self.type == 'literal' and not self.values:
             raise ValueError(
                 f"Field '{self.name}' of type 'literal' must specify 'values'."
+            )
+        if self.type == 'enum' and not self.values:
+            raise ValueError(
+                f"Field '{self.name}' of type 'enum' must specify 'values'."
             )
         if self.type == 'array' and not self.items:
             raise ValueError(
@@ -67,6 +76,17 @@ class ParserFieldModel(BaseModel):
             raise ValueError(
                 f"Field '{self.name}' of type 'object' must specify 'fields'."
             )
+
+        if self.type == 'literal' and self.values:
+            non_literal = [
+                v for v in self.values if not isinstance(v, LiteralValueModel)
+            ]
+            if non_literal:
+                raise ValueError(
+                    f"Field '{self.name}' of type 'literal' requires each value to be "
+                    "an object with 'value' and 'description'. Use type 'enum' for "
+                    'plain primitive values.'
+                )
 
 
 class ParserModel(BaseModel):
@@ -98,6 +118,7 @@ class LLMConfigModel(BaseModel):
         'vertexai',
         'rootflo',
         'openai_vllm',
+        'azure_openai',
     ] = Field(..., description='LLM provider')
     name: Optional[str] = Field(
         None, description='Model name (required for most providers)'
@@ -115,6 +136,13 @@ class LLMConfigModel(BaseModel):
     model_id: Optional[str] = Field(None, description='Model ID (for RootFlo)')
     # OpenAI vLLM specific
     api_key: Optional[str] = Field(None, description='API key (for openai_vllm)')
+    # Azure OpenAI specific
+    azure_endpoint: Optional[str] = Field(
+        None, description='Azure OpenAI endpoint (for azure_openai)'
+    )
+    azure_api_version: Optional[str] = Field(
+        None, description='Azure OpenAI API version (for azure_openai)'
+    )
 
     def model_post_init(self, __context):
         """Validate provider-specific requirements."""
@@ -151,6 +179,11 @@ class LLMConfigModel(BaseModel):
                 raise ValueError('openai_vllm provider requires "base_url" parameter')
             if not self.api_key:
                 raise ValueError('openai_vllm provider requires "api_key" parameter')
+
+        # Azure OpenAI requires name (azure_endpoint can come from env/kwargs at runtime)
+        if provider == 'azure_openai':
+            if not self.name:
+                raise ValueError('azure_openai provider requires "name" parameter')
 
 
 class SettingsModel(BaseModel):

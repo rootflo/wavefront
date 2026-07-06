@@ -29,12 +29,18 @@ import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
-const createTtsConfigSchema = z.object({
-  display_name: z.string().min(1, 'Display name is required').max(100, 'Display name must be 100 characters or less'),
-  description: z.string().max(500, 'Description must be 500 characters or less').optional(),
-  provider: z.enum(['elevenlabs', 'deepgram', 'cartesia', 'sarvam'] as [string, ...string[]]),
-  api_key: z.string().min(1, 'API key is required'),
-});
+const createTtsConfigSchema = z
+  .object({
+    display_name: z.string().min(1, 'Display name is required').max(100, 'Display name must be 100 characters or less'),
+    description: z.string().max(500, 'Description must be 500 characters or less').optional(),
+    provider: z.enum(['elevenlabs', 'deepgram', 'cartesia', 'sarvam', 'azure'] as [string, ...string[]]),
+    api_key: z.string().min(1, 'API key is required'),
+    region: z.string().optional(),
+  })
+  .refine((data) => data.provider !== 'azure' || (data.region && data.region.trim().length > 0), {
+    message: 'Region is required for Azure',
+    path: ['region'],
+  });
 
 type CreateTtsConfigInput = z.infer<typeof createTtsConfigSchema>;
 
@@ -55,8 +61,11 @@ const CreateTtsConfigDialog: React.FC<CreateTtsConfigDialogProps> = ({ isOpen, o
       description: '',
       provider: 'elevenlabs',
       api_key: '',
+      region: '',
     },
   });
+
+  const selectedProvider = form.watch('provider');
 
   // Reset form when dialog closes
   useEffect(() => {
@@ -66,6 +75,7 @@ const CreateTtsConfigDialog: React.FC<CreateTtsConfigDialogProps> = ({ isOpen, o
         description: '',
         provider: 'elevenlabs',
         api_key: '',
+        region: '',
       });
     }
   }, [isOpen, form]);
@@ -76,8 +86,9 @@ const CreateTtsConfigDialog: React.FC<CreateTtsConfigDialogProps> = ({ isOpen, o
       await floConsoleService.ttsConfigService.createTtsConfig({
         display_name: data.display_name.trim(),
         description: data.description?.trim() || null,
-        provider: data.provider as 'elevenlabs' | 'deepgram' | 'cartesia',
+        provider: data.provider as 'elevenlabs' | 'deepgram' | 'cartesia' | 'sarvam' | 'azure',
         api_key: data.api_key.trim(),
+        region: data.region?.trim() || null,
       });
       notifySuccess('TTS configuration created successfully');
       onSuccess?.();
@@ -184,6 +195,24 @@ const CreateTtsConfigDialog: React.FC<CreateTtsConfigDialogProps> = ({ isOpen, o
                 </FormItem>
               )}
             />
+
+            {selectedProvider === 'azure' && (
+              <FormField
+                control={form.control}
+                name="region"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      Region <span className="text-red-500">*</span>
+                    </FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g., eastus, westus2" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             <Alert variant="info">
               <AlertDescription>

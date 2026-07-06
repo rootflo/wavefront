@@ -5,9 +5,11 @@ from .types import AuthenticatorType, AuthenticatorABC
 from .email_password import EmailPasswordAuthenticator
 from .google_oauth import GoogleOAuthAuthenticator
 from .microsoft_oauth import MicrosoftOAuthAuthenticator
+from .microsoft_adfs import MicrosoftADFSAuthenticator
 from .email_password.config import EmailPasswordConfig
 from .google_oauth.config import GoogleOAuthConfig
 from .microsoft_oauth.config import MicrosoftOAuthConfig
+from .microsoft_adfs.config import MicrosoftADFSConfig
 
 
 class AuthenticatorFactory:
@@ -28,6 +30,7 @@ class AuthenticatorFactory:
         if not hasattr(self, '_initialized'):
             self._google_instances: Dict[str, GoogleOAuthAuthenticator] = {}
             self._microsoft_instances: Dict[str, MicrosoftOAuthAuthenticator] = {}
+            self._adfs_instances: Dict[str, MicrosoftADFSAuthenticator] = {}
             self._email_instances: Dict[str, EmailPasswordAuthenticator] = {}
             self._instances_lock = threading.Lock()
             self._initialized = True
@@ -85,6 +88,8 @@ class AuthenticatorFactory:
             return GoogleOAuthAuthenticator.validate_config_static(config)
         elif auth_type == AuthenticatorType.MICROSOFT_OAUTH:
             return MicrosoftOAuthAuthenticator.validate_config_static(config)
+        elif auth_type == AuthenticatorType.MICROSOFT_ADFS:
+            return MicrosoftADFSAuthenticator.validate_config_static(config)
         else:
             raise ValueError(f'Unsupported authenticator type: {auth_type}')
 
@@ -157,6 +162,7 @@ class AuthenticatorFactory:
             return (
                 len(self._google_instances)
                 + len(self._microsoft_instances)
+                + len(self._adfs_instances)
                 + len(self._email_instances)
             )
 
@@ -165,6 +171,7 @@ class AuthenticatorFactory:
         with self._instances_lock:
             self._google_instances.clear()
             self._microsoft_instances.clear()
+            self._adfs_instances.clear()
             self._email_instances.clear()
 
     def _get_cache_for_type(
@@ -175,6 +182,8 @@ class AuthenticatorFactory:
             return self._google_instances
         elif auth_type == AuthenticatorType.MICROSOFT_OAUTH:
             return self._microsoft_instances
+        elif auth_type == AuthenticatorType.MICROSOFT_ADFS:
+            return self._adfs_instances
         elif auth_type == AuthenticatorType.EMAIL_PASSWORD:
             return self._email_instances
         else:
@@ -195,6 +204,10 @@ class AuthenticatorFactory:
         elif auth_type == AuthenticatorType.MICROSOFT_OAUTH:
             typed_config = MicrosoftOAuthConfig(**config)
             return MicrosoftOAuthAuthenticator(typed_config)
+
+        elif auth_type == AuthenticatorType.MICROSOFT_ADFS:
+            typed_config = MicrosoftADFSConfig(**config)
+            return MicrosoftADFSAuthenticator(typed_config)
 
         else:
             raise ValueError(f'Unsupported authenticator type: {auth_type}')

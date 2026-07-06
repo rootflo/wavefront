@@ -3,7 +3,7 @@ import io
 from itertools import islice
 from google.cloud import storage
 from google.cloud.exceptions import NotFound
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, IO, ContextManager
 from .._types import CloudStorageHandler
 from ..exceptions import CloudStorageFileNotFoundError
 import re
@@ -152,7 +152,6 @@ class GCSStorage(CloudStorageHandler):
 
                 if hasattr(self.credentials, 'service_account_email'):
                     service_account_email = self.credentials.service_account_email
-                    print(f'service_account_email: {service_account_email}')
                 if hasattr(self.credentials, 'token'):
                     token = self.credentials.token
 
@@ -240,3 +239,21 @@ class GCSStorage(CloudStorageHandler):
             blob.delete()
         except Exception as e:
             raise Exception(f'Error deleting file from GCS: {str(e)}')
+
+    def open_text_writer(
+        self, bucket_name: str, key: str, content_type: Optional[str] = None
+    ) -> ContextManager[IO[str]]:
+        """
+        Open a text-mode writer to a GCS object using the native blob.open API.
+
+        Returns a context manager yielding a file-like object. Data written
+        to this object is streamed directly to GCS.
+        """
+        if not bucket_name:
+            raise ValueError('bucket_name cannot be None or empty')
+        if not key:
+            raise ValueError('key cannot be None or empty')
+
+        bucket = self.client.bucket(bucket_name)
+        blob = bucket.blob(key)
+        return blob.open('wt', content_type=content_type)

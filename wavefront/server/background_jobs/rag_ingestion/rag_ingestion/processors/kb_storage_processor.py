@@ -1,6 +1,7 @@
 from flo_cloud.cloud_storage import CloudStorageManager
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from typing import List
+from typing import List, Tuple
 from flo_utils.utils.log import logger
 from rag_ingestion.service.kb_rag_storage import KBRagStorage
 from rag_ingestion.embeddings.embed import EmbeddingFunc
@@ -54,6 +55,20 @@ class KbStorageProcessor(MessageProcessor):
         )
         return DocContent(content=content, document_type=document_type)
 
+    def __embed_single_insight(
+        self, kb_insight: ProcessingResult[KbStorageInsights]
+    ) -> Tuple[List[KnowledgeBaseEmbeddingObject], str, str, DocumentType]:
+        document_type = kb_insight.insights.doc_content.document_type
+        if document_type in (DocumentType.PDF, DocumentType.TEXT):
+            docs = self.kb_rag_storage.process_document(
+                [kb_insight.insights.doc_content.content]
+            )
+        elif document_type == DocumentType.IMAGE:
+            docs = [self.image_embedding.embed_image(kb_insight.insights.doc_content.content)]
+        else:
+            docs = []
+        return docs, kb_insight.insights.doc_id, kb_insight.insights.kb_id, document_type
+
     def __insert_kb_from_message(
         self, insights: List[ProcessingResult[KbStorageInsights]]
     ):
@@ -68,35 +83,23 @@ class KbStorageProcessor(MessageProcessor):
             None
         """
         try:
-            embeddings: List[EmbeddingsToStore] = []
-            for kb_insight in insights:
-                kb_id = kb_insight.insights.kb_id
-                doc_id = kb_insight.insights.doc_id
-                document_type = kb_insight.insights.doc_content.document_type
-
-                logger.info('Embeddings storing process is started')
-                if (
-                    document_type == DocumentType.PDF
-                    or document_type == DocumentType.TEXT
-                ):
-                    extracted_docs = [kb_insight.insights.doc_content.content]
-                    docs: List[KnowledgeBaseEmbeddingObject] = (
-                        self.kb_rag_storage.process_document(extracted_docs)
+            logger.info('Embeddings storing process is started')
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                futures = {
+                    executor.submit(self.__embed_single_insight, kb_insight): kb_insight
+                    for kb_insight in insights
+                }
+                embeddings: List[EmbeddingsToStore] = []
+                for future in as_completed(futures):
+                    docs, doc_id, kb_id, document_type = future.result()
+                    embeddings.append(
+                        EmbeddingsToStore(
+                            kb_embeddings=docs,
+                            doc_id=doc_id,
+                            kb_id=kb_id,
+                            file_type=document_type,
+                        )
                     )
-                elif document_type == DocumentType.IMAGE:
-                    image_data = [kb_insight.insights.doc_content.content]
-                    docs: List[KnowledgeBaseEmbeddingObject] = [
-                        self.image_embedding.embed_image(image_data)
-                        for image_data in image_data
-                    ]
-                embeddings.append(
-                    EmbeddingsToStore(
-                        kb_embeddings=docs,
-                        doc_id=doc_id,
-                        kb_id=kb_id,
-                        file_type=document_type,
-                    )
-                )
 
             self.kb_rag_storage.upload_embedding_with_retry(embeddings=embeddings)
             logger.info('Embeddings are stored in the db')

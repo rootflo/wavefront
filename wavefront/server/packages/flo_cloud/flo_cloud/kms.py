@@ -1,4 +1,5 @@
 from .aws.kms import AwsKMS
+from .azure.key_vault import AzureKMS
 from .gcp.kms import GcpKMS
 from ._types import CloudProvider, FloKMS
 
@@ -13,6 +14,8 @@ class FloKmsService(FloKMS):
             return AwsKMS()
         elif self.cloud_provider == CloudProvider.GCP.value:
             return GcpKMS()
+        elif self.cloud_provider == CloudProvider.AZURE.value:
+            return AzureKMS()
         else:
             raise ValueError(f'Unsupported cloud provider: {self.cloud_provider}')
 

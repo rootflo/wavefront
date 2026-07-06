@@ -1,5 +1,6 @@
 from ._types import CloudProvider, MessageQueue
 from .aws.sqs import SQSQueue
+from .azure.storage_queue import StorageQueue
 from .gcp.pubsub import PubSubQueue
 
 
@@ -13,6 +14,8 @@ class MessageQueueManager(MessageQueue):
             return SQSQueue()
         elif self.cloud_provider == CloudProvider.GCP.value:
             return PubSubQueue()
+        elif self.cloud_provider == CloudProvider.AZURE.value:
+            return StorageQueue()
         else:
             raise ValueError(f'Unsupported cloud provider: {self.cloud_provider}')
 

@@ -1,6 +1,8 @@
 import floConsoleService from '@app/api';
 import ChatBot from '@app/components/ChatBot';
 import { Button } from '@app/components/ui/button';
+import { Label } from '@app/components/ui/label';
+import { Switch } from '@app/components/ui/switch';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@app/components/ui/dialog';
 import { appEnv } from '@app/config/env';
 import { useNotifyStore } from '@app/store';
@@ -61,17 +63,17 @@ const WorkflowDetail: React.FC = () => {
     }>
   >([]);
   const [uploadingDocument, setUploadingDocument] = useState(false);
-
-  // JSON output state
+  const [outputJsonEnabled, setOutputJsonEnabled] = useState(false);
 
   // SSE state
   const [listenEventsEnabled, setListenEventsEnabled] = useState<boolean>(false);
-  const [abortController, setAbortController] = useState<AbortController | null>(null);
   const [streamingEvents, setStreamingEvents] = useState<WorkflowEvent[]>([]);
   const [isStreaming, setIsStreaming] = useState<boolean>(false);
 
   // Ref for auto-scrolling events container
   const eventsContainerRef = useRef<HTMLDivElement>(null);
+  // Ref for current abort controller - used so unmount cleanup doesn't depend on state
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const loadWorkflow = useCallback(async () => {
     if (!id) return;
@@ -187,15 +189,13 @@ const WorkflowDetail: React.FC = () => {
     });
   }, []);
 
-  // Cleanup fetchEventSource on unmount and when switching between SSE/normal inference
+  // Cleanup SSE request only on unmount (avoid aborting when abortController state changes)
   useEffect(() => {
     return () => {
-      if (abortController) {
-        abortController.abort();
-        setAbortController(null);
-      }
+      abortControllerRef.current?.abort();
+      abortControllerRef.current = null;
     };
-  }, [abortController]);
+  }, []);
   const handleDocumentUpload = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const files = event.target.files;
@@ -331,9 +331,9 @@ const WorkflowDetail: React.FC = () => {
     setRunningInference(true);
 
     // Abort any existing fetchEventSource
-    if (abortController) {
-      abortController.abort();
-      setAbortController(null);
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
     }
 
     // Clear previous results
@@ -369,6 +369,7 @@ const WorkflowDetail: React.FC = () => {
           const imageMessage = {
             image_base64: image.base64Content,
             mime_type: image.mimeType,
+            file_name: image.file.name,
           };
           messageInputs.push({ role: 'user', content: imageMessage });
           setChatHistory((prev) => [...prev, { role: 'user', content: imageMessage }]);
@@ -379,6 +380,7 @@ const WorkflowDetail: React.FC = () => {
         const imageMessage = {
           image_base64: imageBase64Content,
           mime_type: uploadedImage.mimeType,
+          file_name: uploadedImage.file?.name,
         };
         messageInputs.push({ role: 'user', content: imageMessage });
         setChatHistory((prev) => [...prev, { role: 'user', content: imageMessage }]);
@@ -391,6 +393,7 @@ const WorkflowDetail: React.FC = () => {
             document_type: doc.documentType,
             document_base64: doc.base64Content,
             mime_type: doc.mimeType,
+            file_name: doc.file.name,
             metadata: {
               filename: doc.file.name,
               size: doc.file.size,
@@ -421,7 +424,7 @@ const WorkflowDetail: React.FC = () => {
         await handleSSEInference(inputs, variables);
       } else {
         // Handle normal inference
-        const result = await floConsoleService.workflowService.runInference(id, inputs, variables);
+        const result = await floConsoleService.workflowService.runInference(id, inputs, variables, outputJsonEnabled);
         const resultContent = result.data?.data?.data?.result;
         if (resultContent) {
           setChatHistory((prev) => [...prev, { role: 'assistant', content: resultContent }]);
@@ -458,13 +461,14 @@ const WorkflowDetail: React.FC = () => {
         inputs,
         variables,
         listen_events: true,
+        output_json_enabled: outputJsonEnabled,
       };
 
       const url = `${baseUrl}/v1/${appId}/floware/v2/workflows/${id}/inference`;
 
       // Create abort controller for cleanup
       const controller = new AbortController();
-      setAbortController(controller);
+      abortControllerRef.current = controller;
 
       // RAW FETCH with immediate ReadableStream processing
       const response = await fetch(url, {
@@ -646,7 +650,7 @@ const WorkflowDetail: React.FC = () => {
     function cleanup() {
       setRunningInference(false);
       setIsStreaming(false);
-      setAbortController(null);
+      abortControllerRef.current = null;
     }
   };
 
@@ -679,6 +683,12 @@ const WorkflowDetail: React.FC = () => {
           </div>
 
           <div className="flex w-full flex-col gap-2">
+            <div className="flex items-center justify-between pb-2">
+              <Label htmlFor="output-json-toggle" className="text-sm text-gray-700">
+                JSON output
+              </Label>
+              <Switch id="output-json-toggle" checked={outputJsonEnabled} onCheckedChange={setOutputJsonEnabled} />
+            </div>
             <ChatBot
               chatHistory={chatHistory}
               runningInference={runningInference}
@@ -719,7 +729,7 @@ const WorkflowDetail: React.FC = () => {
           <DialogHeader>
             <DialogTitle>Edit Workflow Configuration</DialogTitle>
           </DialogHeader>
-          <div className="flex flex-col gap-3 py-4">
+          <div className="flex flex-col gap-3 overflow-auto py-4">
             <CodeMirror
               value={yamlContent}
               editable={true}

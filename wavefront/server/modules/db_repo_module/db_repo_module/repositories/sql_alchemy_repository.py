@@ -6,7 +6,7 @@ from sqlalchemy import insert
 from sqlalchemy import select
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.sql import text
 
 from ..database.base import Base
@@ -23,7 +23,7 @@ class SQLAlchemyRepository(Generic[T]):
         :param model: The Cassandra model class (subclass of cassandra.cqlengine.models.Model).
         """
         self.model: Type[T] = model
-        self.session: Session = db_client.session
+        self.session: async_sessionmaker[AsyncSession] = db_client.session
 
     async def create(self, **kwargs) -> T:
         """
@@ -116,7 +116,11 @@ class SQLAlchemyRepository(Generic[T]):
             return await session.scalar(query)
 
     async def find_one_and_update(
-        self, filters: dict[str, Any], refresh: bool = False, **update_data
+        self,
+        filters: dict[str, Any],
+        *,
+        refresh: bool = False,
+        **update_data: Any,
     ) -> T | None:
         """
         Find the first record in the database matching the given filters, and update it with the provided data.
@@ -143,12 +147,22 @@ class SQLAlchemyRepository(Generic[T]):
             else:
                 return None
 
-    async def delete_all(self, **filters) -> None:
+    async def delete_all(self, **filters) -> bool:
         """
         Delete all records in the database matching the given filters.
 
-        :param filters: The filters to apply to the query.
+        :param filters: The filters to apply to the query. Pass an optional
+            ``session`` (AsyncSession) to participate in an existing
+            transaction; the caller is then responsible for committing.
         """
+        session_param = filters.pop('session', None)
+        if isinstance(session_param, AsyncSession):
+            query = delete(self.model)
+            for key, value in filters.items():
+                query = query.where(getattr(self.model, key) == value)
+            await session_param.execute(query)
+            return True
+
         async with self.session() as session:
             session: AsyncSession
             query = delete(self.model)

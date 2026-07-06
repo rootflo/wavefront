@@ -291,7 +291,7 @@ async def execute_message_processor(
             ),
         )
 
-    required_inputs = inputs['required']
+    required_inputs = inputs.get('required') or []
     execution_inputs = {}
     for input in required_inputs:
         if input not in payload.input_data.keys():
@@ -301,7 +301,7 @@ async def execute_message_processor(
                     f'Input `{input}` is required but not provided'
                 ),
             )
-        execution_inputs[input] = payload.input_data[input]
+    execution_inputs = payload.input_data
 
     try:
         result = await processor_service.execute_message_processor(

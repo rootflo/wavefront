@@ -1,7 +1,7 @@
 import { IApiResponse } from '@app/lib/axios';
 
 // Authenticator type union matching API auth_type field
-export type AuthenticatorType = 'google_oauth' | 'microsoft_oauth' | 'email_password';
+export type AuthenticatorType = 'google_oauth' | 'microsoft_oauth' | 'microsoft_adfs' | 'email_password';
 
 // Main Authenticator entity interface
 export interface Authenticator {
@@ -74,6 +74,25 @@ export interface MicrosoftOAuthConfig {
   authority?: string;
   response_type?: string;
   response_mode?: string;
+}
+
+// Microsoft ADFS (OIDC) specific config interface
+export interface MicrosoftADFSConfig {
+  client_id: string;
+  client_secret: string;
+  authority: string;
+  redirect_uri: string;
+  client_redirect_success_url: string;
+  client_redirect_failure_url: string;
+  scopes: string[];
+  response_type?: string;
+  response_mode?: string;
+  authorize_path?: string;
+  token_path?: string;
+  jwks_path?: string;
+  expected_issuer?: string;
+  clock_skew_seconds?: number;
+  verify_ssl?: boolean;
 }
 
 // Email/Password specific config interface

@@ -40,6 +40,7 @@ class TtsConfigService:
         description: Optional[str] = None,
         provider: str = None,
         api_key: str = None,
+        region: Optional[str] = None,
     ) -> dict:
         """
         Create a new TTS configuration
@@ -49,6 +50,7 @@ class TtsConfigService:
             description: Optional description
             provider: TTS provider
             api_key: API key for the TTS provider
+            region: Region for the provider (e.g. Azure region)
 
         Returns:
             Created TTS config as dict
@@ -62,6 +64,7 @@ class TtsConfigService:
             description=description,
             provider=provider,
             api_key=api_key,
+            region=region,
         )
 
         # Convert to dict

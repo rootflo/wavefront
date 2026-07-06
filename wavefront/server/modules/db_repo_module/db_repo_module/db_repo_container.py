@@ -23,6 +23,8 @@ from db_repo_module.models.dynamic_query_yaml import DynamicQueryYaml
 from db_repo_module.models.model_schema import ModelSchema
 from db_repo_module.models.workflow_pipeline import WorkflowPipeline
 from db_repo_module.models.workflow_runs import WorkflowRuns
+from db_repo_module.models.scheduled_job import ScheduledJob
+from db_repo_module.models.scheduled_job_execution import ScheduledJobExecution
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from db_repo_module.models.image_search_models import (
     ReferenceImageFeatures,
@@ -33,6 +35,10 @@ from db_repo_module.models.namespace import Namespace
 from db_repo_module.models.agent import Agent
 from db_repo_module.models.workflow import Workflow
 from db_repo_module.models.api_services import ApiServices
+from db_repo_module.models.async_agentic_execution import AsyncAgenticExecution
+from db_repo_module.models.agentic_trigger_credential import AgenticTriggerCredential
+from db_repo_module.models.agentic_trigger import AgenticTrigger
+from db_repo_module.models.agentic_trigger_event import AgenticTriggerEvent
 from dependency_injector import containers
 from dependency_injector import providers
 
@@ -216,8 +222,42 @@ class DatabaseModuleContainer(containers.DeclarativeContainer):
         model=Datasource,
         db_client=db_client,
     )
+    scheduled_job_repository = providers.Singleton(
+        SQLAlchemyRepository[ScheduledJob],
+        model=ScheduledJob,
+        db_client=db_client,
+    )
+    scheduled_job_execution_repository = providers.Singleton(
+        SQLAlchemyRepository[ScheduledJobExecution],
+        model=ScheduledJobExecution,
+        db_client=db_client,
+    )
     knowledge_base_inference_repository = providers.Singleton(
         SQLAlchemyRepository[KnowledgeBaseInferences],
         model=KnowledgeBaseInferences,
+        db_client=db_client,
+    )
+
+    async_agentic_execution_repository = providers.Singleton(
+        SQLAlchemyRepository[AsyncAgenticExecution],
+        model=AsyncAgenticExecution,
+        db_client=db_client,
+    )
+
+    agentic_trigger_credential_repository = providers.Singleton(
+        SQLAlchemyRepository[AgenticTriggerCredential],
+        model=AgenticTriggerCredential,
+        db_client=db_client,
+    )
+
+    agentic_trigger_repository = providers.Singleton(
+        SQLAlchemyRepository[AgenticTrigger],
+        model=AgenticTrigger,
+        db_client=db_client,
+    )
+
+    agentic_trigger_event_repository = providers.Singleton(
+        SQLAlchemyRepository[AgenticTriggerEvent],
+        model=AgenticTriggerEvent,
         db_client=db_client,
     )

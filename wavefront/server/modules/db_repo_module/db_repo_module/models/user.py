@@ -18,6 +18,7 @@ class User(Base):
         primary_key=True, default=uuid.uuid4, index=True
     )
     email: Mapped[str] = mapped_column(nullable=False, unique=True)
+    username: Mapped[Optional[str]] = mapped_column(nullable=True, unique=True)
     password: Mapped[str] = mapped_column(nullable=False)
     first_name: Mapped[str] = mapped_column(nullable=False)
     last_name: Mapped[str] = mapped_column(nullable=False)
@@ -46,6 +47,7 @@ class User(Base):
         return {
             'id': str(self.id),
             'email': self.email,
+            'username': self.username,
             'first_name': self.first_name,
             'last_name': self.last_name,
         }

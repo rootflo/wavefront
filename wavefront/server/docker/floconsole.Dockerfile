@@ -17,8 +17,15 @@ COPY wavefront/server/packages/flo_cloud /app/packages/flo_cloud
 
 COPY wavefront/server/apps/floconsole /app/apps/floconsole
 
+COPY wavefront/server/scripts/console-server-init.sh /app/scripts/console-server-init.sh
+RUN chmod +x /app/scripts/console-server-init.sh
+
 RUN uv sync --package floconsole --frozen --no-dev
 
-WORKDIR /app/apps/floconsole/floconsole
+RUN useradd -m -u 1000 appuser && \
+    chown -R appuser:appuser /app
 
-CMD ["uv", "run", "server.py"]
+# Switch to the non-root user for all subsequent instructions
+USER appuser
+
+ENTRYPOINT ["/app/scripts/console-server-init.sh"]

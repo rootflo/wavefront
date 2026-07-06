@@ -15,6 +15,7 @@ import { TelephonyConfig } from '@app/types/telephony-config';
 import { ToolDetails, VoiceAgentTool, VoiceAgentToolWithAssociation } from '@app/types/tool';
 import { TtsConfig } from '@app/types/tts-config';
 import { VoiceAgent } from '@app/types/voice-agent';
+import { ScheduledJob } from '@app/types/scheduled-job';
 import { WorkflowListItem, WorkflowPipelineListItem, WorkflowRunListData } from '@app/types/workflow';
 import { UseQueryResult } from '@tanstack/react-query';
 
@@ -28,6 +29,7 @@ import {
   getApiServiceQueryFn,
   getApiServicesQueryFn,
   getAppByIdFn,
+  getAppUsersQueryFn,
   getAuthenticatorQueryFn,
   getAuthenticatorsQueryFn,
   getCurrentUserQueryFn,
@@ -54,7 +56,7 @@ import {
   getToolsQueryFn,
   getTtsConfigQueryFn,
   getTtsConfigsQueryFn,
-  getUsersQueryFn,
+  getConsoleUsersQueryFn,
   getVoiceAgentQueryFn,
   getVoiceAgentToolQueryFn,
   getVoiceAgentToolsQueryFn,
@@ -64,6 +66,7 @@ import {
   getWorkflowRunsQueryFn,
   getWorkflowsQueryFn,
   readYamlQueryFn,
+  getScheduledJobsQueryFn,
 } from './query-functions';
 import {
   getAgentKey,
@@ -74,6 +77,7 @@ import {
   getApiServiceKey,
   getApiServicesKey,
   getAppByIdKey,
+  getAppUsersKey,
   getAuthenticatorKey,
   getAuthenticatorsKey,
   getCurrentUserKey,
@@ -100,7 +104,7 @@ import {
   getToolsKey,
   getTtsConfigKey,
   getTtsConfigsKey,
-  getUsersKey,
+  getConsoleUsersKey,
   getVoiceAgentKey,
   getVoiceAgentToolKey,
   getVoiceAgentToolsKey,
@@ -110,6 +114,7 @@ import {
   getWorkflowRunsKey,
   getWorkflowsKey,
   readYamlKey,
+  getScheduledJobsKey,
 } from './query-keys';
 
 export const useGetAllApps = (enabled: boolean): UseQueryResult<App[], Error> => {
@@ -417,8 +422,16 @@ export const useGetAppById = (appId: string, enabled: boolean = true): UseQueryR
   return useQueryInit<App | undefined>(getAppByIdKey(appId), () => getAppByIdFn(appId), enabled);
 };
 
-export const useGetUsers = (): UseQueryResult<IUser[], Error> => {
-  return useQueryInit(getUsersKey(), getUsersQueryFn, true);
+export const useGetAppUsers = (appId: string | undefined): UseQueryResult<IUser[], Error> => {
+  return useQueryInit(getAppUsersKey(appId || ''), () => getAppUsersQueryFn(), !!appId);
+};
+
+export const useGetConsoleUsers = (): UseQueryResult<IUser[], Error> => {
+  return useQueryInit(getConsoleUsersKey(), getConsoleUsersQueryFn, true);
+};
+
+export const useGetScheduledJobs = (appId: string | undefined): UseQueryResult<ScheduledJob[], Error> => {
+  return useQueryInit(getScheduledJobsKey(appId || ''), getScheduledJobsQueryFn, !!appId);
 };
 
 // Voice Agent Tools Hooks

@@ -243,6 +243,7 @@ const InferencePopup: React.FC<InferencePopupProps> = ({ onClose, renderModal = 
         const imageMessage = {
           image_base64: imageBase64Content,
           mime_type: uploadedImage.mimeType,
+          file_name: uploadedImage.file.name,
         };
         messageInputs.push(imageMessage);
       }
@@ -254,6 +255,7 @@ const InferencePopup: React.FC<InferencePopupProps> = ({ onClose, renderModal = 
             document_type: doc.documentType,
             document_base64: doc.base64Content,
             mime_type: doc.mimeType,
+            file_name: doc.file.name,
             metadata: {
               filename: doc.file.name,
               size: doc.file.size,

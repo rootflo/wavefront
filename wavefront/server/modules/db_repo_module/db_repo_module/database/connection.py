@@ -3,6 +3,7 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -22,7 +23,9 @@ class DatabaseClient:
         self._engine = create_async_engine(
             f'postgresql+psycopg://{db_config.username}:{db_config.password}@{db_config.host}:{db_config.port}/{db_config.db_name}'
         )
-        self.session = async_sessionmaker(autocommit=False, bind=self._engine)
+        self.session: async_sessionmaker[AsyncSession] = async_sessionmaker(
+            autocommit=False, bind=self._engine
+        )
 
     async def close(self):
         if self._engine is None:

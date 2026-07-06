@@ -14,7 +14,6 @@ class ImageRagRetrieve:
             KnowledgeBaseEmbeddings
         ],
     ):
-        self.reranked_image = []
         self.query_generator = QueryGenerator()
         self.knowledge_base_embeddings_repository = knowledge_base_embeddings_repository
 
@@ -42,22 +41,24 @@ class ImageRagRetrieve:
             response = await client.post(internal_api_url, json=data)
             embedding = response.json().get('data', {}).get('response', [])
 
-        if embedding:
-            self.reranked_image = await self.image_retrieve(
-                embedding[0]['clip'], kb_id, threshold, top_k, query_filter
+        clip_embedding = next((e['clip'] for e in embedding if 'clip' in e), None)
+        dino_embedding = next((e['dino'] for e in embedding if 'dino' in e), None)
+
+        if clip_embedding and dino_embedding:
+            clip_results = await self.image_retrieve(
+                clip_embedding, kb_id, threshold, top_k, query_filter
             )
-            reference_id_list = [
-                str(data['document_id']) for data in self.reranked_image
-            ]
-            self.reranked_image = await self.image_retrieve_dino(
-                embedding[1]['dino'],
+            if not clip_results:
+                return []
+            reference_id_list = [str(data['document_id']) for data in clip_results]
+            return await self.image_retrieve_dino(
+                dino_embedding,
                 kb_id,
                 reference_id_list,
                 query_filter,
                 offset,
                 limit,
             )
-            return self.reranked_image
         else:
             return []
 

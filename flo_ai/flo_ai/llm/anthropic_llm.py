@@ -2,7 +2,9 @@ from typing import Dict, Any, List, Optional, AsyncIterator
 from anthropic import AsyncAnthropic
 import json
 
-from flo_ai.models.chat_message import ImageMessageContent
+import base64 as _base64
+
+from flo_ai.models.chat_message import DocumentMessageContent, ImageMessageContent
 from .base_llm import BaseLLM
 from flo_ai.tool.base_tool import Tool
 from flo_ai.telemetry.instrumentation import (
@@ -25,7 +27,12 @@ class Anthropic(BaseLLM):
         custom_headers: Optional[Dict[str, str]] = None,
         **kwargs,
     ):
-        super().__init__(model, api_key, temperature, **kwargs)
+        super().__init__(
+            model=model,
+            api_key=api_key,
+            temperature=temperature,
+            **kwargs,
+        )
 
         # Filter out keys that are already passed explicitly to avoid duplicate keyword arguments
         filtered_kwargs = {
@@ -248,6 +255,51 @@ class Anthropic(BaseLLM):
     def format_image_in_message(self, image: ImageMessageContent) -> str:
         """Format a image in the message"""
         raise NotImplementedError('Not implemented image for LLM Anthropic')
+
+    async def format_document_in_message(
+        self, document: DocumentMessageContent
+    ) -> List[Dict[str, Any]]:
+        """Return a native Claude document content block.
+
+        Claude accepts PDFs directly as base64-encoded document blocks, so we
+        skip any local PDF parsing entirely.
+        """
+        cache_key = self.__class__.__name__
+        cache = getattr(document, '_formatted_cache', None)
+        if isinstance(cache, dict) and cache_key in cache:
+            return cache[cache_key]
+
+        mime = document.mime_type or 'application/pdf'
+        if document.base64:
+            b64 = document.base64
+        elif document.bytes:
+            b64 = _base64.b64encode(document.bytes).decode('utf-8')
+        elif document.url:
+            block = [
+                {
+                    'type': 'document',
+                    'source': {'type': 'url', 'url': document.url},
+                }
+            ]
+            if isinstance(cache, dict):
+                cache[cache_key] = block
+            return block
+        else:
+            raise ValueError('DocumentMessageContent has no bytes, base64, or url')
+
+        block = [
+            {
+                'type': 'document',
+                'source': {
+                    'type': 'base64',
+                    'media_type': mime,
+                    'data': b64,
+                },
+            }
+        ]
+        if isinstance(cache, dict):
+            cache[cache_key] = block
+        return block
 
     def get_assistant_message_for_tool_call(
         self, response: Dict[str, Any]

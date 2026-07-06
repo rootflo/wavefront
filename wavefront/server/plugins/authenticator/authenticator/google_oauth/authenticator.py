@@ -151,15 +151,12 @@ class GoogleOAuthAuthenticator(AuthenticatorABC):
         except Exception:
             return False
 
-    def get_authorization_url(self, state: Optional[str] = None) -> Optional[str]:
+    def get_authorization_url(
+        self, state: Optional[str] = None, nonce: Optional[str] = None
+    ) -> Optional[str]:
         """Get the Google OAuth authorization URL."""
         if not state:
             raise ValueError("State doesn't exist Google Oauth")
-
-        state_obj = json.loads(state)
-
-        if state_obj['auth_id'] is None:
-            raise ValueError("Auth Id doesn't exist in Google Oauth state")
 
         params = {
             'response_type': 'code',
@@ -171,13 +168,24 @@ class GoogleOAuthAuthenticator(AuthenticatorABC):
             'prompt': self.config.prompt,
         }
 
+        if nonce:
+            params['nonce'] = nonce
+
         if self.config.hosted_domain:
             params['hd'] = self.config.hosted_domain
 
         return f'{self.auth_url}?{urlencode(params)}'
 
-    def handle_callback(self, callback_data: Dict[str, Any]) -> AuthResult:
-        """Handle Google OAuth callback."""
+    def handle_callback(
+        self, callback_data: Dict[str, Any], expected_nonce: Optional[str] = None
+    ) -> AuthResult:
+        """Handle Google OAuth callback.
+
+        Identity comes from Google's userinfo endpoint (not an id_token), so
+        `expected_nonce` is accepted for ABC compatibility but not enforced.
+        State CSRF protection is performed by the controller before this is
+        called.
+        """
         return self.authenticate(callback_data)
 
     def refresh_token(self, refresh_token: str) -> TokenResult:

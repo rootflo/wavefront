@@ -1,5 +1,6 @@
 import glob
 import os
+from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -22,14 +23,22 @@ from inference_app.controllers.inference_controller import inference_app_router
 
 # Initialize dependency containers
 common_container = CommonContainer(cache_manager=None)
-inference_app_container = InferenceAppContainer(
-    cache_manager=None,
-)
+inference_app_container = InferenceAppContainer()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info('Preloading ML models...')
+    inference_app_container.image_embedding()
+    logger.info('ML models loaded and ready.')
+    yield
+
 
 app = FastAPI(
     title='FloConsole API',
     description='Console application for RootFlo platform',
     version='1.0.0',
+    lifespan=lifespan,
 )
 
 

@@ -137,9 +137,6 @@ async def agent_inference_v2(
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
     ),
-    llm_inference_config_service: LlmInferenceConfigService = Depends(
-        Provide[LlmInferenceConfigContainer.llm_inference_config_service]
-    ),
 ):
     """
     Run inference using a flo_ai agent (v2 - UUID-based)
@@ -150,6 +147,11 @@ async def agent_inference_v2(
     3. Creates an agent instance from the YAML using flo_ai.AgentBuilder
     4. Runs inference with the provided variables
     5. Returns the result along with execution metadata
+
+    The LLM is resolved from the agent YAML. When `agent.model.provider` is
+    `rootflo`, the `model_id` is treated as a LlmInferenceConfig UUID and the
+    LLM is built from that config. Any `llm_inference_config_id` on the payload
+    is ignored in v2.
 
     Args:
         agent_id: The UUID of the agent
@@ -162,22 +164,6 @@ async def agent_inference_v2(
 
     # Extract authentication credentials
     access_token, app_key = extract_auth_credentials(request)
-
-    # Fetch LLM config if provided
-    llm_config = None
-    if agent_inference_payload.llm_inference_config_id:
-        llm_config_dict = await llm_inference_config_service.get_config(
-            agent_inference_payload.llm_inference_config_id
-        )
-        if not llm_config_dict:
-            return JSONResponse(
-                status_code=status.HTTP_404_NOT_FOUND,
-                content=response_formatter.buildErrorResponse(
-                    f'LLM inference configuration not found: {agent_inference_payload.llm_inference_config_id}'
-                ),
-            )
-        else:
-            llm_config = LlmInferenceConfig(**llm_config_dict)
 
     # Process inputs using common utility function
     resolved_inputs = process_inference_inputs(agent_inference_payload.inputs)
@@ -194,7 +180,6 @@ async def agent_inference_v2(
             inputs=resolved_inputs
             if isinstance(resolved_inputs, list)
             else [resolved_inputs],
-            llm_config=llm_config,
             output_json_enabled=agent_inference_payload.output_json_enabled,
             access_token=access_token,
             app_key=app_key,

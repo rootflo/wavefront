@@ -2,7 +2,7 @@ from rag_ingestion.stream.rag_streamer import RagStreamListener
 from rag_ingestion.processors.kb_storage_processor import KbStorageProcessor
 from db_repo_module.cache.cache_manager import CacheManager
 from flo_cloud.kms import FloKmsService
-from rag_ingestion.env import CLOUD_PROVIDER, RETRY_COUNT
+from rag_ingestion.env import CLOUD_PROVIDER, RETRY_COUNT, STREAMING_BATCH_SIZE
 from flo_cloud.cloud_storage import CloudStorageManager
 from flo_cloud.message_queue import MessageQueueManager
 import os
@@ -15,17 +15,22 @@ def main():
     cache_manager = CacheManager(namespace='rag')
     encryption_service = None
     if (
-        (CLOUD_PROVIDER == 'aws' and os.getenv('AWS_KMS_ARN') is not None)
-        or CLOUD_PROVIDER == 'gcp'
-        and (
-            os.getenv('GCP_KMS_KEY_RING') is not None
-            and os.getenv('GCP_KMS_CRYPTO_KEY') is not None
+        (CLOUD_PROVIDER == 'aws' and os.getenv('AWS_KMS_ARN'))
+        or (
+            CLOUD_PROVIDER == 'gcp'
+            and (os.getenv('GCP_KMS_KEY_RING') and os.getenv('GCP_KMS_CRYPTO_KEY'))
+        )
+        or (
+            CLOUD_PROVIDER == 'azure'
+            and os.getenv('AZURE_KEY_VAULT_URL')
+            and os.getenv('AZURE_KEY_VAULT_KEY_NAME')
         )
     ):
         encryption_service = FloKmsService(cloud_provider=CLOUD_PROVIDER)
 
     # Initialize stream listener
     listener = RagStreamListener(
+        streaming_batch_size=STREAMING_BATCH_SIZE,
         event_manager=event_manager,
         processor=KbStorageProcessor(
             storage_manager,

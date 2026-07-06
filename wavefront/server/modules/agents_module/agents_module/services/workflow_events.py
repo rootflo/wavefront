@@ -6,75 +6,36 @@ from agents_module.models.workflow_schemas import WorkflowEventMessage
 
 
 class WorkflowEventStreamer:
-    """Manager for HTTP streaming workflow events with user isolation using asyncio.Queue"""
+    """Manager for HTTP streaming workflow events, isolated per execution."""
 
     def __init__(self):
-        # Store event queues by user-specific workflow key (user_id_namespace_workflow_id)
         self.event_queues: Dict[str, asyncio.Queue] = {}
 
-    def get_workflow_key(self, user_id: str, namespace: str, workflow_id: str) -> str:
-        """Generate unique key for user-specific workflow"""
-        return f'{user_id}_{namespace}_{workflow_id}'
+    def create_queue(self, execution_id: str) -> asyncio.Queue:
+        queue: asyncio.Queue = asyncio.Queue()
+        self.event_queues[execution_id] = queue
+        logger.info(f'Created event queue for execution {execution_id}')
+        return queue
 
-    def get_or_create_queue(
-        self, user_id: str, namespace: str, workflow_id: str
-    ) -> asyncio.Queue:
-        """Get or create event queue for user-specific workflow"""
-        workflow_key = self.get_workflow_key(user_id, namespace, workflow_id)
-
-        if workflow_key not in self.event_queues:
-            self.event_queues[workflow_key] = asyncio.Queue()
-            logger.info(
-                f'Created event queue for user {user_id}, workflow {namespace}/{workflow_id}'
-            )
-
-        return self.event_queues[workflow_key]
-
-    async def add_event(
-        self,
-        user_id: str,
-        namespace: str,
-        workflow_id: str,
-        event_message: WorkflowEventMessage,
-    ):
-        """Add event to the queue for user-specific workflow"""
-        workflow_key = self.get_workflow_key(user_id, namespace, workflow_id)
-
-        if workflow_key not in self.event_queues:
-            # Create queue if it doesn't exist (workflow started before streaming)
-            self.event_queues[workflow_key] = asyncio.Queue()
-            logger.info(
-                f'Created event queue for user {user_id}, workflow {namespace}/{workflow_id}'
-            )
-
+    async def add_event(self, execution_id: str, event_message: WorkflowEventMessage):
+        queue = self.event_queues.get(execution_id)
+        if queue is None:
+            return
         try:
-            # Convert event message to dict for JSON serialization
-            event_dict = event_message.model_dump()
-            await self.event_queues[workflow_key].put(event_dict)
-            logger.debug(
-                f"Event queued for user {user_id}, workflow {namespace}/{workflow_id}: {event_dict['event_type']}"
-            )
+            await queue.put(event_message.model_dump())
         except Exception as e:
-            logger.error(
-                f'Error queuing event for user {user_id}, workflow {namespace}/{workflow_id}: {e}'
-            )
+            logger.error(f'Error queuing event for execution {execution_id}: {e}')
 
-    def cleanup_queue(self, user_id: str, namespace: str, workflow_id: str):
-        """Remove event queue for user-specific workflow"""
-        workflow_key = self.get_workflow_key(user_id, namespace, workflow_id)
-
-        if workflow_key in self.event_queues:
-            del self.event_queues[workflow_key]
-            logger.info(
-                f'Cleaned up event queue for user {user_id}, workflow {namespace}/{workflow_id}'
-            )
+    def cleanup_queue(self, execution_id: str):
+        if execution_id in self.event_queues:
+            del self.event_queues[execution_id]
+            logger.info(f'Cleaned up event queue for execution {execution_id}')
 
 
 # Global event streamer instance
 event_streamer = WorkflowEventStreamer()
 
 
-# Hardcoded events filter - listen to all event types
 DEFAULT_EVENTS_FILTER: List[AriumEventType] = [
     AriumEventType.WORKFLOW_STARTED,
     AriumEventType.WORKFLOW_COMPLETED,
@@ -88,26 +49,21 @@ DEFAULT_EVENTS_FILTER: List[AriumEventType] = [
 
 
 def create_workflow_event_callback(
-    user_id: str, namespace: str, workflow_id: str
+    execution_id: str,
+    namespace: str,
+    workflow_id: str,
 ) -> Callable[[AriumEvent], None]:
     """
-    Create a hardcoded event callback function for user-specific HTTP streaming
-
-    Args:
-        user_id: User ID from authenticated session
-        namespace: Workflow namespace
-        workflow_id: Workflow ID
-
-    Returns:
-        Event callback function that queues events for HTTP streaming
+    Create an event callback scoped to a single execution_id so concurrent
+    runs of the same workflow never share a queue.
     """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
 
     def event_callback(event: AriumEvent) -> None:
-        """
-        Hardcoded callback that converts AriumEvent to WorkflowEventMessage and queues for HTTP streaming
-        """
         try:
-            # Convert AriumEvent to WorkflowEventMessage
             event_message = WorkflowEventMessage(
                 event_type=event.event_type.value,
                 timestamp=event.timestamp,
@@ -118,19 +74,28 @@ def create_workflow_event_callback(
                 execution_time=event.execution_time,
                 error=event.error,
                 router_choice=event.router_choice,
+                node_output=event.node_output,
                 metadata=event.metadata,
             )
+            running_loop = loop
+            try:
+                running_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                pass
 
-            # Queue event for HTTP streaming (async operation, we'll queue it)
-            asyncio.create_task(
-                event_streamer.add_event(user_id, namespace, workflow_id, event_message)
-            )
-
-            logger.debug(
-                f'Workflow event queued: {event.event_type.value} for user {user_id}, workflow {namespace}/{workflow_id}'
-            )
-
+            if running_loop is not None:
+                asyncio.ensure_future(
+                    event_streamer.add_event(execution_id, event_message),
+                    loop=running_loop,
+                )
+            else:
+                logger.warning(
+                    f'No event loop available to queue event {event.event_type.value} '
+                    f'for execution {execution_id}'
+                )
         except Exception as e:
-            logger.error(f'Error in workflow event callback for user {user_id}: {e}')
+            logger.error(
+                f'Error in workflow event callback for execution {execution_id}: {e}'
+            )
 
     return event_callback

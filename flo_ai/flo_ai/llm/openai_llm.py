@@ -1,4 +1,3 @@
-import base64
 from typing import Dict, Any, List, AsyncIterator, Optional
 from openai import AsyncOpenAI
 from .base_llm import BaseLLM
@@ -25,7 +24,10 @@ class OpenAI(BaseLLM):
         **kwargs,
     ):
         super().__init__(
-            model=model, api_key=api_key, temperature=temperature, **kwargs
+            model=model,
+            api_key=api_key,
+            temperature=temperature,
+            **kwargs,
         )
 
         self.client = AsyncOpenAI(
@@ -154,7 +156,7 @@ class OpenAI(BaseLLM):
             return response
         if hasattr(response, 'content') and response.content is not None:
             return str(response.content)
-        return str(response)
+        return ''
 
     def format_tool_for_llm(self, tool: 'Tool') -> Dict[str, Any]:
         """Format a single tool for OpenAI's API"""
@@ -183,28 +185,44 @@ class OpenAI(BaseLLM):
         """Format tools for OpenAI's API"""
         return [self.format_tool_for_llm(tool) for tool in tools]
 
-    def format_image_in_message(self, image: ImageMessageContent) -> dict:
+    def format_image_in_message(self, image: ImageMessageContent) -> list[dict]:
         """Format a image in the message"""
+        # OpenAI Chat Completions multimodal format:
+        # {"type":"image_url","image_url":{"url":"https://..."}} or data URLs.
         if image.url:
-            return {
-                'type': 'input_image',
-                'image': {
-                    'url': image.url,
-                    'mime_type': image.mime_type,
-                },
-            }
-        elif image.base64:
-            image_bytes = base64.b64decode(image.base64)
-        else:
-            raise NotImplementedError(
-                f'Image formatting for OpenAI LLM requires either url or base64 data. Received: url={image.url}, base64={bool(image.base64)}'
-            )
-        image_64 = base64.b64encode(image_bytes).decode('utf-8')
+            return [
+                {
+                    'type': 'image_url',
+                    'image_url': {
+                        'url': image.url,
+                    },
+                }
+            ]
 
-        return {
-            'type': 'input_image',
-            'image': {
-                'data': image_64,
-                'mime_type': image.mime_type,
-            },
-        }
+        if image.base64 or image.bytes:
+            if not image.mime_type:
+                raise ValueError(
+                    'Image mime type is required for OpenAI image messages'
+                )
+
+            import base64
+
+            if image.base64:
+                b64 = image.base64
+            else:
+                b64 = base64.b64encode(image.bytes or b'').decode('utf-8')
+
+            data_url = f'data:{image.mime_type};base64,{b64}'
+            return [
+                {
+                    'type': 'image_url',
+                    'image_url': {
+                        'url': data_url,
+                    },
+                }
+            ]
+
+        raise NotImplementedError(
+            f'Image formatting for OpenAI LLM requires either url, base64 data, or bytes. '
+            f'Received: url={image.url}, base64={bool(image.base64)}, bytes={bool(image.bytes)}'
+        )

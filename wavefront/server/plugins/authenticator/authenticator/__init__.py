@@ -11,6 +11,7 @@ from .types import (
 from .email_password.config import EmailPasswordConfig
 from .google_oauth.config import GoogleOAuthConfig
 from .microsoft_oauth.config import MicrosoftOAuthConfig
+from .microsoft_adfs.config import MicrosoftADFSConfig
 
 __all__ = [
     'AuthenticatorFactory',
@@ -24,4 +25,5 @@ __all__ = [
     'EmailPasswordConfig',
     'GoogleOAuthConfig',
     'MicrosoftOAuthConfig',
+    'MicrosoftADFSConfig',
 ]

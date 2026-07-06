@@ -6,5 +6,6 @@ export { default as ModelRepositoryIcon } from './model-repository-icon';
 export { default as PermissionIcon } from './permission-icon';
 export { PhoneActiveIcon, PhoneIcon } from './phone-icon';
 export { default as RagIcon } from './rag-icon';
+export { default as ScheduledJobsIcon } from './scheduled-jobs-icon';
 export { default as RootfloIcon } from './rootflo-icon';
 export { default as WorkflowIcon } from './workflow-icon';

@@ -1,5 +1,8 @@
+from typing import Dict, Any
 from datasource.bigquery.config import BigQueryConfig
 from datasource.redshift.config import RedshiftConfig
+from datasource.postgres.config import PostgresConfig
+from datasource.mssql.config import MSSQLConfig
 from dependency_injector.wiring import inject
 import json
 from dependency_injector.wiring import Provide
@@ -19,7 +22,6 @@ from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyReposit
 from datasource import DatasourcePlugin
 from datasource.types import DataSourceType, QueryResult, TableListResult
 from plugins_module.services.datasource_services import (
-    check_admin,
     check_is_valid_resource,
     fetch_data_filters,
     get_datasource_config,
@@ -33,16 +35,24 @@ from plugins_module.utils.helper import (
 from plugins_module.plugins_container import PluginsContainer
 from user_management_module.user_container import UserContainer
 from user_management_module.services.user_service import UserService
+from flo_cloud.cloud_storage import CloudStorageManager
 from fastapi import HTTPException
+from user_management_module.utils.user_utils import check_is_admin
 from user_management_module.utils.user_utils import get_current_user
 from plugins_module.services.dynamic_query_service import DynamicQueryService
 from db_repo_module.cache.cache_manager import CacheManager
-from ..utils.helper import generate_cache_key, validate_yaml_query
+from ..utils.helper import (
+    generate_cache_key,
+    generate_export_filename_hash,
+    validate_yaml_query,
+)
+import csv
 import yaml
 from ..utils.helper import DynamicQueryRequest
 from ..utils.helper import DynamicQueryExecuteRequest
 from datetime import datetime
 
+EXPORT_RATE_LIMIT_SECONDS = 5  # 5 seconds between exports per user
 
 datasource_router = APIRouter()
 
@@ -61,7 +71,7 @@ async def add_datasource(
 ):
     role_id = request.state.session.role_id
 
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -82,6 +92,10 @@ async def add_datasource(
         config = BigQueryConfig(**config_json)
     elif add_datasource_payload.type == DataSourceType.AWS_REDSHIFT:
         config = RedshiftConfig(**config_json)
+    elif add_datasource_payload.type == DataSourceType.POSTGRES:
+        config = PostgresConfig(**config_json)
+    elif add_datasource_payload.type == DataSourceType.MSSQL:
+        config = MSSQLConfig(**config_json)
     else:
         raise ValueError(f'Invalid datasource type: {add_datasource_payload.type}')
 
@@ -130,7 +144,7 @@ async def update_datasource(
 ):
     role_id = request.state.session.role_id
 
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -173,6 +187,10 @@ async def update_datasource(
                 config = BigQueryConfig(**payload_config)
             elif datasource_type == DataSourceType.AWS_REDSHIFT:
                 config = RedshiftConfig(**payload_config)
+            elif datasource_type == DataSourceType.POSTGRES:
+                config = PostgresConfig(**payload_config)
+            elif datasource_type == DataSourceType.MSSQL:
+                config = MSSQLConfig(**payload_config)
             else:
                 raise ValueError(f'Invalid datasource type: {datasource_type}')
 
@@ -231,7 +249,7 @@ async def delete_datasource(
     ),
 ):
     role_id = request.state.session.role_id
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
 
     if not is_admin:
         return JSONResponse(
@@ -277,7 +295,7 @@ async def get_datasources(
     ),
 ):
     role_id = request.state.session.role_id
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -306,7 +324,7 @@ async def get_datasource(
     ),
 ):
     role_id = request.state.session.role_id
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -337,7 +355,7 @@ async def test_datasource_connection(
     ),
 ):
     role_id = request.state.session.role_id
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -372,7 +390,7 @@ async def get_tables(
 ):
     role_id = request.state.session.role_id
 
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -435,7 +453,7 @@ async def query_datasource(
 
     rls_filters = []
     filter = query_filter
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         rls_filters = await user_service.get_user_resources(
             user_id=user_id, scope=ResourceScope.DATA
@@ -538,7 +556,7 @@ async def create_dynamic_query(
     ),
 ):
     role_id, _, _ = get_current_user(request)
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         raise HTTPException(status_code=401, detail='Unauthorized')
 
@@ -575,7 +593,7 @@ async def get_all_dynamic_query_yaml(
     ),
 ):
     role_id, _, _ = get_current_user(request)
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         raise HTTPException(status_code=401, detail='Unauthorized')
 
@@ -608,7 +626,7 @@ async def get_dynamic_query(
     ),
 ):
     role_id, _, _ = get_current_user(request)
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         raise HTTPException(status_code=401, detail='Unauthorized')
 
@@ -666,7 +684,7 @@ async def execute_dynamic_query(
     yaml_query, _ = await dynamic_query_yaml_service.get_dynamic_yaml_query(query_id)
 
     rls_filter_str = None
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         rls_filters = await user_service.get_user_resources(
             user_id=user_id, scope=ResourceScope.DATA
@@ -718,6 +736,180 @@ async def execute_dynamic_query(
     )
 
 
+@datasource_router.post('/v1/{datasource_id}/dynamic-queries/{query_id}/export')
+@inject
+async def export_dynamic_query_csv(
+    request: Request,
+    datasource_id: str,
+    query_id: str,
+    filter: str | None = Query(None, alias='$filter'),
+    offset: int | None = 0,
+    limit: int | None = 100,
+    dynamic_query_params: DynamicQueryExecuteRequest = None,
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+    dynamic_query_yaml_service: DynamicQueryService = Depends(
+        Provide[PluginsContainer.dynamic_query_service]
+    ),
+    user_service: UserService = Depends(Provide[UserContainer.user_service]),
+    cloud_storage_manager: CloudStorageManager = Depends(
+        Provide[PluginsContainer.cloud_storage_manager]
+    ),
+    config: dict = Depends(Provide[PluginsContainer.config]),
+    cache_manager: CacheManager = Depends(Provide[PluginsContainer.cache_manager]),
+    force_fetch: int = Query(0),
+):
+    """Execute the dynamic query and return results as a downloadable CSV file."""
+    role_id, user_id, _ = get_current_user(request)
+
+    # Block multiple exports per user within a 2-minute window (Redis)
+    export_rate_key = f'dynamic_query_export_rate:{user_id}'
+    if not cache_manager.add(
+        export_rate_key, '1', expiry=EXPORT_RATE_LIMIT_SECONDS, nx=True
+    ):
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            content=response_formatter.buildErrorResponse(
+                f'Export rate limit: one export per user every {EXPORT_RATE_LIMIT_SECONDS // 60} minutes. Please try again later.'
+            ),
+        )
+    datasource_type, datasource_config = await get_datasource_config(datasource_id)
+    if not datasource_config:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse(
+                f'Datasource not found: {datasource_id}'
+            ),
+        )
+    yaml_query, _ = await dynamic_query_yaml_service.get_dynamic_yaml_query(query_id)
+    if not yaml_query:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse(
+                f'Dynamic query not found: {query_id}'
+            ),
+        )
+
+    rls_filter_str = None
+    is_admin = await check_is_admin(role_id)
+    if not is_admin:
+        rls_filters = await user_service.get_user_resources(
+            user_id=user_id, scope=ResourceScope.DATA
+        )
+        if len(rls_filters) == 0:
+            return JSONResponse(
+                status_code=status.HTTP_403_FORBIDDEN,
+                content=response_formatter.buildErrorResponse(
+                    'Data access not set for non-admin user'
+                ),
+            )
+        rls_filters = fetch_data_filters(rls_filters)
+        rls_filter_str = f"{ ' $and '.join(rls_filters)}"
+
+    # Bucket and filename: hash of $filter, limit, offset, dynamic_query_params
+    bucket_name = config['floware']['asset_storage_bucket']
+    export_hash = generate_export_filename_hash(
+        filter=filter,
+        limit=limit,
+        offset=offset,
+        params=dynamic_query_params.params if dynamic_query_params else None,
+        rls_filter_str=rls_filter_str,
+    )
+    filename = f'export_{query_id}_{export_hash}.csv'
+    file_key = f'dynamic_query_exports/{filename}'
+
+    # If not force_fetch, return existing file from bucket if present
+    if not force_fetch:
+        existing_keys, _ = cloud_storage_manager.list_files(
+            bucket_name=bucket_name,
+            prefix=file_key,
+            page_size=1,
+            page_number=1,
+        )
+        if existing_keys and existing_keys[0] == file_key:
+            signed_url = cloud_storage_manager.generate_presigned_url(
+                bucket_name=bucket_name, key=file_key, type='GET'
+            )
+            return JSONResponse(
+                status_code=status.HTTP_200_OK,
+                content=response_formatter.buildSuccessResponse(
+                    {'export_url': signed_url}
+                ),
+            )
+
+    datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
+    res: Dict[str, Any] = await datasource_plugin.execute_dynamic_query(
+        yaml_query,
+        rls_filter_str,
+        filter,
+        offset,
+        limit,
+        dynamic_query_params.params if dynamic_query_params else None,
+    )
+
+    if not res:
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content=response_formatter.buildErrorResponse(
+                f'Unexpected dynamic query result format for query_id {query_id}, no results'
+            ),
+        )
+
+    first_key = next(iter(res))
+    if res[first_key].get('status') != 'success':
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content=response_formatter.buildErrorResponse(
+                f'Unexpected dynamic query result format for query_id {query_id}, no results'
+            ),
+        )
+
+    serialized_res = serialize_values(res[first_key]['result'])
+
+    # Stream rows to CSV directly in GCS/S3 to avoid building the full CSV in memory
+    rows = serialized_res or []
+    if not isinstance(rows, list):
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content=response_formatter.buildErrorResponse(
+                f'Unexpected dynamic query result format for query_id {query_id}, invalid rows'
+            ),
+        )
+
+    if rows:
+        fieldnames = list(rows[0].keys())
+        for row in rows[1:]:
+            for k in row:
+                if k not in fieldnames:
+                    fieldnames.append(k)
+    else:
+        fieldnames = []
+
+    def _cell_value(v):
+        if isinstance(v, (dict, list)):
+            return json.dumps(v)
+        return v if v is None or isinstance(v, str) else str(v)
+
+    with cloud_storage_manager.open_text_writer(
+        bucket_name=bucket_name, key=file_key, content_type='text/csv'
+    ) as f:
+        if fieldnames:
+            writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({k: _cell_value(row.get(k)) for k in fieldnames})
+
+    signed_url = cloud_storage_manager.generate_presigned_url(
+        bucket_name=bucket_name, key=file_key, type='GET'
+    )
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse({'export_url': signed_url}),
+    )
+
+
 @datasource_router.delete('/v1/{datasource_id}/dynamic-queries/{query_id}')
 @inject
 async def delete_dynamic_query(
@@ -732,7 +924,7 @@ async def delete_dynamic_query(
     ),
 ):
     role_id, _, _ = get_current_user(request)
-    is_admin = await check_admin(role_id)
+    is_admin = await check_is_admin(role_id)
     if not is_admin:
         raise HTTPException(status_code=401, detail='Unauthorized')
     await dynamic_query_yaml_service.delete_dynamic_query(datasource_id, query_id)

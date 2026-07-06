@@ -13,7 +13,9 @@ dependencies = [
     "flo-utils",
     "tools-module",
     "api-services-module",
-    "flo-ai==1.1.0-rc7",
+    "llm-inference-config-module",
+    "flo-ai==1.1.6",
+    "celery[redis]>=5.4.0,<6.0.0",
 ]
 
 [tool.uv.sources]
@@ -22,6 +24,7 @@ flo-utils = { workspace = true }
 flo-cloud = { workspace = true }
 tools-module = {workspace = true}
 api-services-module = {workspace = true}
+llm-inference-config-module = {workspace = true}
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
