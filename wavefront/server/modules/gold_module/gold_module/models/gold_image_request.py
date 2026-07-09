@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 
 class Item(BaseModel):
@@ -18,7 +18,7 @@ class Item(BaseModel):
 
 class ImageMetadata(BaseModel):
     customer_id: Optional[str] = None
-    loan_id: Optional[str] = None
+    loan_id: str
 
     branch: Optional[str] = None
     city: Optional[str] = None
@@ -59,6 +59,13 @@ class ImageMetadata(BaseModel):
     filter_5: Optional[str] = None
 
     model_config = ConfigDict(extra='allow')
+
+    @field_validator('loan_id')
+    @classmethod
+    def loan_id_must_not_be_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError('loan_id must not be empty')
+        return v
 
     @model_validator(mode='after')
     def validate_loan_type_fields(self):
@@ -104,3 +111,10 @@ class ImageAnalysisRequest(BaseModel):
 class AdhocImageUploadRequest(BaseModel):
     image: str
     loan_id: str
+
+    @field_validator('loan_id')
+    @classmethod
+    def loan_id_must_not_be_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError('loan_id must not be empty')
+        return v
