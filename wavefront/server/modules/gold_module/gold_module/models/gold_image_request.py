@@ -34,9 +34,9 @@ class ImageMetadata(BaseModel):
     gold_loan_category: str = None
     loan_tenure: int = None
     loan_amount: float = None
-    loan_type: Literal['new', 'top_up'] = None
-    pos: float = None
-    parent_loan_id: str = None
+    loan_type: Optional[Literal['new', 'top_up']] = None
+    pos: Optional[float] = None
+    parent_loan_id: Optional[str] = None
 
     gross_weight: float = None
     stone_weight: float = None
