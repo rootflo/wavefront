@@ -1,14 +1,20 @@
 import floConsoleService from '@app/api';
 import ChatBot from '@app/components/ChatBot';
+import VersionsDialog from '@app/components/VersionsDialog';
+import { Badge } from '@app/components/ui/badge';
 import { Button } from '@app/components/ui/button';
 import { Label } from '@app/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Switch } from '@app/components/ui/switch';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@app/components/ui/dialog';
 import { appEnv } from '@app/config/env';
+import { useGetWorkflowVersions, usePromoteWorkflowVersion, useDeleteWorkflowVersion } from '@app/hooks';
+import { getWorkflowVersionsKey } from '@app/hooks/data/query-keys';
 import { useNotifyStore } from '@app/store';
 import { ChatMessage, ChatMessageContent } from '@app/types/chat-message';
 import { Workflow, WorkflowEvent } from '@app/types/workflow';
 import { scrollToBottom } from '@app/utils/scroll';
+import { useQueryClient } from '@tanstack/react-query';
 import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeMirror from '@uiw/react-codemirror';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -20,10 +26,22 @@ type MessageInput = { role: 'user' | 'assistant'; content: ChatMessageContent };
 const WorkflowDetail: React.FC = () => {
   const { app: appId, id } = useParams<{ app: string; id: string }>();
   const { notifySuccess, notifyError } = useNotifyStore();
+  const queryClient = useQueryClient();
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
   const [yamlContent, setYamlContent] = useState('');
   const [saving, setSaving] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editSubmitAction, setEditSubmitAction] = useState<'save' | 'new' | null>(null);
+  const [versionsDialogOpen, setVersionsDialogOpen] = useState(false);
+  // undefined = current_version
+  const [selectedVersion, setSelectedVersion] = useState<number | undefined>(undefined);
+
+  const { data: workflowVersions = [], isLoading: versionsLoading } = useGetWorkflowVersions(appId, id);
+  const promoteVersionMutation = usePromoteWorkflowVersion(appId, id);
+  const deleteVersionMutation = useDeleteWorkflowVersion(appId, id);
+
+  // Version currently shown (falls back to the workflow's current_version).
+  const displayVersion = selectedVersion ?? workflow?.current_version;
 
   // Inference state
   const [inferenceInput, setInferenceInput] = useState('');
@@ -75,27 +93,32 @@ const WorkflowDetail: React.FC = () => {
   // Ref for current abort controller - used so unmount cleanup doesn't depend on state
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const loadWorkflow = useCallback(async () => {
-    if (!id) return;
+  const loadWorkflow = useCallback(
+    async (version?: number) => {
+      if (!id) return;
 
-    try {
-      const response = await floConsoleService.workflowService.getWorkflow(id);
-      if (response.data?.meta?.status === 'success' && response.data.data?.data) {
-        const workflowData: Workflow = {
-          id: response.data.data.data.id,
-          name: response.data.data.data.name,
-          namespace: response.data.data.data.namespace,
-          created_at: response.data.data.data.created_at,
-          updated_at: response.data.data.data.updated_at,
-          yaml_content: response.data.data.data.yaml_content || '',
-        };
-        setWorkflow(workflowData);
-        setYamlContent(response.data.data.data.yaml_content || '');
+      try {
+        const response = await floConsoleService.workflowService.getWorkflow(id, version);
+        if (response.data?.meta?.status === 'success' && response.data.data?.data) {
+          const workflowData: Workflow = {
+            id: response.data.data.data.id,
+            name: response.data.data.data.name,
+            namespace: response.data.data.data.namespace,
+            created_at: response.data.data.data.created_at,
+            updated_at: response.data.data.data.updated_at,
+            yaml_content: response.data.data.data.yaml_content || '',
+            version: response.data.data.data.version,
+            current_version: response.data.data.data.current_version,
+          };
+          setWorkflow(workflowData);
+          setYamlContent(response.data.data.data.yaml_content || '');
+        }
+      } catch (error) {
+        console.error('Error loading workflow:', error);
       }
-    } catch (error) {
-      console.error('Error loading workflow:', error);
-    }
-  }, [id]);
+    },
+    [id]
+  );
 
   const handleImageUpload = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -271,24 +294,51 @@ const WorkflowDetail: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    loadWorkflow();
+    loadWorkflow(selectedVersion);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, selectedVersion]);
 
-  const handleSave = async () => {
+  const handleSave = async (createNewVersion: boolean = false) => {
     if (!id || !workflow) return;
 
     setSaving(true);
     try {
-      await floConsoleService.workflowService.updateWorkflow(id, yamlContent);
-      setWorkflow({ ...workflow, yaml_content: yamlContent });
+      await floConsoleService.workflowService.updateWorkflow(id, yamlContent, displayVersion, createNewVersion);
       setEditDialogOpen(false);
-      notifySuccess('Workflow updated successfully');
+      // Refetch versions and reload the workflow so version metadata stays in sync.
+      queryClient.invalidateQueries({
+        queryKey: getWorkflowVersionsKey(appId || '', id || ''),
+      });
+      await loadWorkflow(selectedVersion);
+      notifySuccess(
+        createNewVersion
+          ? 'New version created (not promoted — promote it from Versions to make it live)'
+          : 'Workflow updated successfully'
+      );
     } catch (error) {
       console.error('Error updating workflow:', error);
     } finally {
       setSaving(false);
+      setEditSubmitAction(null);
     }
+  };
+
+  const handlePromoteVersion = (version: number) => {
+    promoteVersionMutation.mutate(
+      { workflowId: id!, version },
+      {
+        onSuccess: () => loadWorkflow(selectedVersion),
+      }
+    );
+  };
+
+  const handleDeleteVersion = (version: number) => {
+    deleteVersionMutation.mutate({ workflowId: id!, version });
+  };
+
+  const handleViewVersion = (version: number) => {
+    setSelectedVersion(version);
+    setVersionsDialogOpen(false);
   };
 
   const handleEditDialogOpen = () => {
@@ -424,7 +474,13 @@ const WorkflowDetail: React.FC = () => {
         await handleSSEInference(inputs, variables);
       } else {
         // Handle normal inference
-        const result = await floConsoleService.workflowService.runInference(id, inputs, variables, outputJsonEnabled);
+        const result = await floConsoleService.workflowService.runInference(
+          id,
+          inputs,
+          variables,
+          outputJsonEnabled,
+          selectedVersion
+        );
         const resultContent = result.data?.data?.data?.result;
         if (resultContent) {
           setChatHistory((prev) => [...prev, { role: 'assistant', content: resultContent }]);
@@ -464,7 +520,10 @@ const WorkflowDetail: React.FC = () => {
         output_json_enabled: outputJsonEnabled,
       };
 
-      const url = `${baseUrl}/v1/${appId}/floware/v2/workflows/${id}/inference`;
+      const url =
+        selectedVersion !== undefined
+          ? `${baseUrl}/v1/${appId}/floware/v2/workflows/${id}/inference?version=${selectedVersion}`
+          : `${baseUrl}/v1/${appId}/floware/v2/workflows/${id}/inference`;
 
       // Create abort controller for cleanup
       const controller = new AbortController();
@@ -659,7 +718,33 @@ const WorkflowDetail: React.FC = () => {
       <div className="flex h-full w-full flex-col gap-10">
         <div className="flex items-center justify-between">
           <p className="text-2xl leading-normal font-semibold text-black">{workflow?.name}</p>
-          <div className="flex gap-4">
+          <div className="flex items-center gap-4">
+            {workflowVersions.length > 0 && (
+              <Select
+                value={displayVersion !== undefined ? String(displayVersion) : ''}
+                onValueChange={(val) => setSelectedVersion(Number(val))}
+              >
+                <SelectTrigger className="w-[150px]">
+                  <SelectValue placeholder="Version" />
+                </SelectTrigger>
+                <SelectContent>
+                  {[...workflowVersions]
+                    .sort((a, b) => a.version - b.version)
+                    .map((v) => (
+                      <SelectItem key={v.id} value={String(v.version)}>
+                        v{v.version}
+                        {v.is_current ? ' (current)' : ''}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            )}
+            {workflow?.current_version !== undefined && (
+              <Badge variant="secondary">Current: v{workflow.current_version}</Badge>
+            )}
+            <Button variant="outline" onClick={() => setVersionsDialogOpen(true)}>
+              Versions
+            </Button>
             <Button variant="outline" onClick={handleEditDialogOpen}>
               Edit
             </Button>
@@ -747,12 +832,43 @@ const WorkflowDetail: React.FC = () => {
             <Button variant="outline" onClick={handleEditDialogClose} disabled={saving}>
               Cancel
             </Button>
-            <Button onClick={handleSave} loading={saving}>
+            <Button
+              variant="outline"
+              disabled={saving}
+              loading={saving && editSubmitAction === 'save'}
+              onClick={() => {
+                setEditSubmitAction('save');
+                handleSave(false);
+              }}
+            >
               Save
+            </Button>
+            <Button
+              disabled={saving}
+              loading={saving && editSubmitAction === 'new'}
+              onClick={() => {
+                setEditSubmitAction('new');
+                handleSave(true);
+              }}
+            >
+              Save as new version
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <VersionsDialog
+        isOpen={versionsDialogOpen}
+        onOpenChange={setVersionsDialogOpen}
+        entityLabel="workflow"
+        versions={workflowVersions}
+        loading={versionsLoading}
+        selectedVersion={displayVersion}
+        onView={handleViewVersion}
+        onPromote={handlePromoteVersion}
+        onDelete={handleDeleteVersion}
+        actionPending={promoteVersionMutation.isPending || deleteVersionMutation.isPending}
+      />
     </div>
   );
 };

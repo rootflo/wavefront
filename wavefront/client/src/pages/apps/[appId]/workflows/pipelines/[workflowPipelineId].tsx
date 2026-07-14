@@ -17,15 +17,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@app/components/ui/dialog';
+import { Badge } from '@app/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
-import { useGetWorkflowRuns } from '@app/hooks';
-import { getWorkflowRunsKey } from '@app/hooks/data/query-keys';
+import { useGetWorkflowPipelines, useGetWorkflowRuns } from '@app/hooks';
+import { getWorkflowPipelinesKey, getWorkflowRunsKey } from '@app/hooks/data/query-keys';
 import { WorkflowRun } from '@app/types/workflow';
 import { useQueryClient } from '@tanstack/react-query';
 import { ColumnDef, flexRender, getCoreRowModel, getPaginationRowModel, useReactTable } from '@tanstack/react-table';
 import dayjs from 'dayjs';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
+import EditWorkflowPipelineDialog from './EditWorkflowPipelineDialog';
 
 const PAGE_SIZE = 10;
 
@@ -41,6 +43,11 @@ const WorkflowPipelineDetail = () => {
 
   // Inference popup state
   const [isInferencePopupOpen, setIsInferencePopupOpen] = useState(false);
+  const [isEditPipelineOpen, setIsEditPipelineOpen] = useState(false);
+
+  // Pipeline metadata (from the list) — used for the version pin + edit dialog
+  const { data: workflowPipelines = [] } = useGetWorkflowPipelines(appId);
+  const pipeline = workflowPipelines.find((p) => p.id === workflowPipelineId);
 
   // Polling state
   const [activeRunIds, setActiveRunIds] = useState<Set<string>>(new Set());
@@ -360,8 +367,18 @@ const WorkflowPipelineDetail = () => {
       </Breadcrumb>
 
       <div className="mb-6 flex justify-between gap-4">
-        <h2 className="text-2xl font-semibold text-gray-900">Workflow Pipeline Runs</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-2xl font-semibold text-gray-900">Workflow Pipeline Runs</h2>
+          {pipeline?.workflow_version !== undefined && (
+            <Badge variant="secondary">workflow v{pipeline.workflow_version}</Badge>
+          )}
+        </div>
         <div className="flex items-center gap-2">
+          {pipeline && (
+            <Button variant="outline" onClick={() => setIsEditPipelineOpen(true)}>
+              Edit Pipeline
+            </Button>
+          )}
           <Button onClick={downloadCsv}>Download as CSV</Button>
           <Button onClick={() => setIsInferencePopupOpen(true)}>Publish To Pipeline</Button>
         </div>
@@ -471,6 +488,21 @@ const WorkflowPipelineDetail = () => {
           />
         </DialogContent>
       </Dialog>
+
+      {/* Edit Pipeline Dialog */}
+      {appId && pipeline && (
+        <EditWorkflowPipelineDialog
+          isOpen={isEditPipelineOpen}
+          onOpenChange={setIsEditPipelineOpen}
+          appId={appId}
+          pipeline={pipeline}
+          onSuccess={() =>
+            queryClient.invalidateQueries({
+              queryKey: getWorkflowPipelinesKey(appId || ''),
+            })
+          }
+        />
+      )}
 
       {/* Output Dialog */}
       <Dialog open={isOutputPopupOpen} onOpenChange={setIsOutputPopupOpen}>

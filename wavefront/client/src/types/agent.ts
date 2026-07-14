@@ -7,6 +7,8 @@ export interface AgentApi {
   created_at: string;
   updated_at: string;
   yaml_content: string;
+  version?: number;
+  current_version?: number;
 }
 
 export interface InferenceData {
@@ -35,6 +37,8 @@ export interface AgentData {
     created_at: string;
     updated_at: string;
     yaml_content?: string;
+    version?: number;
+    current_version?: number;
   };
 }
 
@@ -54,6 +58,7 @@ export interface AgentListItem {
   namespace: string;
   created_at: string;
   updated_at: string;
+  current_version?: number;
 }
 
 export interface AgentListData {

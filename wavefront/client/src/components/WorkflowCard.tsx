@@ -22,6 +22,14 @@ const WorkflowCardNew: React.FC<WorkflowCardNewProps> = ({ workflow, onClick, on
     },
   ];
 
+  if (workflow.current_version !== undefined) {
+    metadata.push({
+      label: 'Version',
+      value: `v${workflow.current_version}`,
+      className: 'bg-purple-50 text-purple-700',
+    });
+  }
+
   return (
     <ResourceCard
       title={workflow.name}

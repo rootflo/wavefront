@@ -50,8 +50,14 @@ interface EditAgentDialogProps {
   yamlContent: string;
   selectedTools: { id: string; value: string }[];
   toolsDetails: ToolsDetailsData[];
-  onSave: (yamlContent: string, selectedTools: { id: string; value: string }[]) => Promise<void>;
+  onSave: (
+    yamlContent: string,
+    selectedTools: { id: string; value: string }[],
+    options: { createNewVersion: boolean }
+  ) => Promise<void>;
   saving: boolean;
+  /** The version currently being edited (for context in the header). */
+  editingVersion?: number;
 }
 
 const EditAgentDialog: React.FC<EditAgentDialogProps> = ({
@@ -62,10 +68,12 @@ const EditAgentDialog: React.FC<EditAgentDialogProps> = ({
   toolsDetails,
   onSave,
   saving,
+  editingVersion,
 }) => {
   const [localYamlContent, setLocalYamlContent] = useState(initialYamlContent);
   const [localSelectedTools, setLocalSelectedTools] = useState(initialSelectedTools);
   const [toolsComboboxOpen, setToolsComboboxOpen] = useState(false);
+  const [submitAction, setSubmitAction] = useState<'save' | 'new' | null>(null);
   const { notifyError } = useNotifyStore();
 
   const form = useForm<EditAgentInput>({
@@ -134,7 +142,9 @@ const EditAgentDialog: React.FC<EditAgentDialogProps> = ({
   }, [localSelectedTools, toolsDetails]);
 
   const onSubmit = async (data: EditAgentInput) => {
-    await onSave(data.yamlContent, data.selectedTools || []);
+    const createNewVersion = submitAction === 'new';
+    await onSave(data.yamlContent, data.selectedTools || [], { createNewVersion });
+    setSubmitAction(null);
     onOpenChange(false);
   };
 
@@ -146,8 +156,11 @@ const EditAgentDialog: React.FC<EditAgentDialogProps> = ({
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] w-full overflow-y-auto lg:max-w-5xl">
         <DialogHeader>
-          <DialogTitle>Edit Agent</DialogTitle>
-          <DialogDescription>Update the agent configuration and tools.</DialogDescription>
+          <DialogTitle>Edit Agent{editingVersion !== undefined ? ` (v${editingVersion})` : ''}</DialogTitle>
+          <DialogDescription>
+            Update the agent configuration and tools. Use &quot;Save&quot; to overwrite this version, or &quot;Save as
+            new version&quot; to branch a new, unpromoted version.
+          </DialogDescription>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="w-full space-y-6">
@@ -249,11 +262,25 @@ const EditAgentDialog: React.FC<EditAgentDialogProps> = ({
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={handleClose}>
+              <Button type="button" variant="outline" onClick={handleClose} disabled={saving}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={saving} loading={saving}>
+              <Button
+                type="submit"
+                variant="outline"
+                disabled={saving}
+                loading={saving && submitAction === 'save'}
+                onClick={() => setSubmitAction('save')}
+              >
                 Save
+              </Button>
+              <Button
+                type="submit"
+                disabled={saving}
+                loading={saving && submitAction === 'new'}
+                onClick={() => setSubmitAction('new')}
+              >
+                Save as new version
               </Button>
             </DialogFooter>
           </form>

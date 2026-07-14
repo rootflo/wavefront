@@ -22,6 +22,14 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onClick, onDeleteClick }) 
     },
   ];
 
+  if (agent.current_version !== undefined) {
+    metadata.push({
+      label: 'Version',
+      value: `v${agent.current_version}`,
+      className: 'bg-purple-50 text-purple-700',
+    });
+  }
+
   return (
     <ResourceCard
       title={agent.name}
