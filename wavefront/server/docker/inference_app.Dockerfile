@@ -21,11 +21,9 @@ RUN uv sync --package inference-app --frozen --no-dev
 
 WORKDIR /app/apps/inference_app/inference_app
 
-# Create a non-root user 'appuser' with a home directory
-RUN useradd -m appuser
-
-# Change ownership of the /app directory to 'appuser' to ensure permission
-RUN chown -R appuser:appuser /app
+# Create a non-root user and change ownership of the /app directory
+RUN useradd -m -u 1000 appuser && \
+    chown -R appuser:appuser /app
 
 # Ensure subsequent actions run as 'appuser'
 USER appuser
