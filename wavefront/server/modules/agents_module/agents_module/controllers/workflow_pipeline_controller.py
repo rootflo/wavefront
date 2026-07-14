@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from dependency_injector.wiring import inject, Provide
 
 from agents_module.agents_container import AgentsContainer
+from agents_module.services.workflow_crud_service import WorkflowCrudService
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from db_repo_module.models.workflow_pipeline import WorkflowPipeline
 from db_repo_module.models.workflow_runs import WorkflowRuns
@@ -24,6 +25,7 @@ class CreateWorkflowPipelinePayload(BaseModel):
     name: str
     description: Optional[str] = None
     workflow_id: uuid.UUID
+    workflow_version: Optional[int] = None
     retry_policy: Optional[str] = None
     timeout: Optional[int] = None
     concurrency_limit: Optional[int] = None
@@ -33,6 +35,7 @@ class UpdateWorkflowPipelinePayload(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     workflow_id: Optional[uuid.UUID] = None
+    workflow_version: Optional[int] = None
     retry_policy: Optional[str] = None
     timeout: Optional[int] = None
     concurrency_limit: Optional[int] = None
@@ -87,10 +90,18 @@ async def create_workflow_pipeline(
             ),
         )
 
+    # Pin to the explicitly requested version, or the workflow's current_version
+    # at creation time - this pin never floats afterward, even if the workflow's
+    # current_version is later promoted.
+    workflow_version = (
+        create_workflow_pipeline_payload.workflow_version or workflow.current_version
+    )
+
     created_workflow_pipeline = await workflow_pipeline_repository.create(
         name=create_workflow_pipeline_payload.name,
         description=create_workflow_pipeline_payload.description,
         workflow_id=create_workflow_pipeline_payload.workflow_id,
+        workflow_version=workflow_version,
         retry_policy=create_workflow_pipeline_payload.retry_policy,
         timeout=create_workflow_pipeline_payload.timeout,
         concurrency_limit=create_workflow_pipeline_payload.concurrency_limit,
@@ -117,8 +128,8 @@ async def submit_workflow_to_pipeline(
     workflow_run_repository: SQLAlchemyRepository[WorkflowRuns] = Depends(
         Provide[AgentsContainer.workflow_runs_repository]
     ),
-    workflow_repository: SQLAlchemyRepository[Workflow] = Depends(
-        Provide[AgentsContainer.workflow_repository]
+    workflow_crud_service: WorkflowCrudService = Depends(
+        Provide[AgentsContainer.workflow_crud_service]
     ),
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
@@ -140,9 +151,14 @@ async def submit_workflow_to_pipeline(
             ),
         )
 
-    workflow = await workflow_repository.find_one(id=workflow_pipeline.workflow_id)
-
-    if not workflow:
+    # Resolve to the pipeline's pinned version specifically (not whatever the
+    # workflow's current_version happens to be right now) - this is what makes
+    # promoting a workflow's current_version not silently change pipeline behavior.
+    try:
+        workflow_data = await workflow_crud_service.get_workflow(
+            workflow_pipeline.workflow_id, version=workflow_pipeline.workflow_version
+        )
+    except ValueError:
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND,
             content=response_formatter.buildErrorResponse(
@@ -164,7 +180,7 @@ async def submit_workflow_to_pipeline(
             'workflow_run_id': workflow_run_id,
             'workflow_pipeline_id': workflow_pipeline_id,
             'pipeline_job': pipeline_job_payload['pipeline_job'],
-            'workflow_data': workflow.to_dict(),
+            'workflow_data': workflow_data,
         },
         topic_name_or_queue_url=config['workflow']['worker_topic'],
     )
@@ -258,11 +274,12 @@ async def update_workflow_pipeline(
         )
 
     # If workflow_id is being updated, verify it exists
+    new_workflow = None
     if update_workflow_pipeline_payload.workflow_id:
-        workflow = await workflow_repository.find_one(
+        new_workflow = await workflow_repository.find_one(
             id=update_workflow_pipeline_payload.workflow_id
         )
-        if not workflow:
+        if not new_workflow:
             return JSONResponse(
                 status_code=status.HTTP_404_NOT_FOUND,
                 content=response_formatter.buildErrorResponse(
@@ -270,14 +287,30 @@ async def update_workflow_pipeline(
                 ),
             )
 
+    # name, workflow_id, and workflow_version are all NOT NULL columns, so none of
+    # them may be passed through as a bare None for an omitted field - only include
+    # them in update_kwargs when the caller actually supplied a value. The other
+    # fields below are nullable, so an omitted (None) value legitimately clears them.
+    update_kwargs = {
+        'description': update_workflow_pipeline_payload.description,
+        'retry_policy': update_workflow_pipeline_payload.retry_policy,
+        'timeout': update_workflow_pipeline_payload.timeout,
+        'concurrency_limit': update_workflow_pipeline_payload.concurrency_limit,
+    }
+    if update_workflow_pipeline_payload.name is not None:
+        update_kwargs['name'] = update_workflow_pipeline_payload.name
+    if update_workflow_pipeline_payload.workflow_id is not None:
+        update_kwargs['workflow_id'] = update_workflow_pipeline_payload.workflow_id
+    if update_workflow_pipeline_payload.workflow_version is not None:
+        update_kwargs['workflow_version'] = (
+            update_workflow_pipeline_payload.workflow_version
+        )
+    elif new_workflow is not None:
+        update_kwargs['workflow_version'] = new_workflow.current_version
+
     await workflow_pipeline_repository.find_one_and_update(
         filters={'id': workflow_pipeline_id},
-        name=update_workflow_pipeline_payload.name,
-        description=update_workflow_pipeline_payload.description,
-        workflow_id=update_workflow_pipeline_payload.workflow_id,
-        retry_policy=update_workflow_pipeline_payload.retry_policy,
-        timeout=update_workflow_pipeline_payload.timeout,
-        concurrency_limit=update_workflow_pipeline_payload.concurrency_limit,
+        **update_kwargs,
     )
     return JSONResponse(
         status_code=status.HTTP_200_OK,

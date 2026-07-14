@@ -3,18 +3,19 @@ Utility functions for agent operations
 """
 
 
-def get_agent_yaml_key(namespace: str, agent_name: str) -> str:
+def get_agent_yaml_key(namespace: str, agent_name: str, version: int) -> str:
     """
-    Generate the YAML storage key for an agent
+    Generate the YAML storage key for a specific version of an agent
 
     Args:
         namespace: The namespace of the agent
         agent_name: The unique identifier for the agent
+        version: The version number of the agent
 
     Returns:
         str: The storage key for the agent YAML file
     """
-    return f'agents/{namespace}/{agent_name}.yaml'
+    return f'agents/{namespace}/{agent_name}/{version}.yaml'
 
 
 def get_agent_prefix(namespace: str = None) -> str:

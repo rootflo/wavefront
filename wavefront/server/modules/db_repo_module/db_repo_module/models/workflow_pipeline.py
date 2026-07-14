@@ -20,6 +20,7 @@ class WorkflowPipeline(Base):
     workflow_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey('workflows.id'), nullable=False, index=True
     )
+    workflow_version: Mapped[int] = mapped_column(nullable=False)
     retry_policy: Mapped[str] = mapped_column(nullable=True)
     timeout: Mapped[int] = mapped_column(nullable=True)
     concurrency_limit: Mapped[int] = mapped_column(nullable=True, default=1)
@@ -44,6 +45,7 @@ class WorkflowPipeline(Base):
             'name': self.name,
             'description': self.description,
             'workflow_id': str(self.workflow_id),
+            'workflow_version': self.workflow_version,
             'retry_policy': self.retry_policy,
             'timeout': self.timeout,
             'concurrency_limit': self.concurrency_limit,

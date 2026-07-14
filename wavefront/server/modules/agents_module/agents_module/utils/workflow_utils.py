@@ -3,18 +3,19 @@ Utility functions for workflow operations
 """
 
 
-def get_workflow_yaml_key(namespace: str, workflow_name: str) -> str:
+def get_workflow_yaml_key(namespace: str, workflow_name: str, version: int) -> str:
     """
-    Generate the YAML storage key for a workflow
+    Generate the YAML storage key for a specific version of a workflow
 
     Args:
         namespace: The namespace of the workflow
         workflow_name: The unique identifier for the workflow
+        version: The version number of the workflow
 
     Returns:
         str: The storage key for the workflow YAML file
     """
-    return f'workflows/{namespace}/{workflow_name}.yaml'
+    return f'workflows/{namespace}/{workflow_name}/{version}.yaml'
 
 
 def get_workflow_id_and_namespace_from_yaml_key(yaml_key: str) -> tuple[str, str]:

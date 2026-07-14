@@ -4,11 +4,20 @@ from typing import Any, Dict, List, Optional, Callable
 import yaml
 
 from db_repo_module.cache.cache_manager import CacheManager
+from db_repo_module.models.workflow import Workflow
+from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from flo_ai import AriumBuilder, BaseMessage, FloUtils, Arium, AgentBuilder, Agent
 from flo_cloud.cloud_storage import CloudStorageManager
 from common_module.log.logger import logger
 from agents_module.utils.workflow_utils import get_workflow_yaml_key
-from agents_module.utils.cache_utils import get_workflow_yaml_cache_key
+from agents_module.utils.cache_utils import (
+    get_workflow_current_version_cache_key,
+    get_workflow_yaml_cache_key,
+)
+from agents_module.utils.version_reference_utils import (
+    parse_versioned_reference,
+    resolve_entity_current_version,
+)
 from flo_ai.arium import AriumEventType, AriumEvent, MessageMemoryItem
 from agents_module.services.agent_crud_service import AgentCrudService
 from tools_module.registry.tool_loader import ToolLoader
@@ -23,6 +32,7 @@ class WorkflowInferenceService:
         cloud_storage_manager: CloudStorageManager,
         cache_manager: CacheManager,
         bucket_name: str,
+        workflow_repository: Optional[SQLAlchemyRepository[Workflow]] = None,
         agent_crud_service: Optional[AgentCrudService] = None,
         tool_loader: Optional[ToolLoader] = None,
     ):
@@ -33,39 +43,74 @@ class WorkflowInferenceService:
             cloud_storage_manager: Cloud storage manager instance
             cache_manager: Cache manager instance
             bucket_name: Name of the bucket containing workflow YAML files
+            workflow_repository: Workflow repository, used to resolve current_version
+                for name-based lookups (i.e. no explicit version given)
             agent_crud_service: Agent CRUD service for fetching agent YAMLs
             tool_loader: Tool loader for loading agent tools
         """
         self.cloud_storage_manager = cloud_storage_manager
         self.bucket_name = bucket_name
         self.cache_manager = cache_manager
+        self.workflow_repository = workflow_repository
         self.agent_crud_service = agent_crud_service
         self.tool_loader = tool_loader
+        self.current_version_cache_ttl = (
+            60  # short TTL for name-based version resolution
+        )
 
-    async def fetch_workflow_yaml(self, workflow_name: str, namespace: str) -> str:
+    async def _resolve_workflow_current_version(
+        self, workflow_name: str, namespace: str
+    ) -> int:
+        """
+        Resolve current_version for a workflow by name+namespace, via a short-TTL
+        cache so name-based lookups (no explicit version) don't hit the DB on every call.
+        """
+        return await resolve_entity_current_version(
+            cache_manager=self.cache_manager,
+            repository=self.workflow_repository,
+            namespace=namespace,
+            name=workflow_name,
+            cache_key=get_workflow_current_version_cache_key(namespace, workflow_name),
+            ttl=self.current_version_cache_ttl,
+            not_found_message=f'Workflow not found: {namespace}/{workflow_name}',
+            use_to_thread=True,
+        )
+
+    async def fetch_workflow_yaml(
+        self, workflow_name: str, namespace: str, version: Optional[int] = None
+    ) -> str:
         """
         Fetch workflow YAML configuration from cloud storage
 
         Args:
             workflow_name: The name of the workflow
             namespace: The namespace of the workflow
+            version: Specific version to fetch; defaults to the workflow's current_version
 
         Returns:
             str: YAML content as string
         """
-        yaml_key = get_workflow_yaml_key(namespace, workflow_name)
-        cache_key = get_workflow_yaml_cache_key(namespace, workflow_name)
+        resolved_version = version
+        if resolved_version is None:
+            resolved_version = await self._resolve_workflow_current_version(
+                workflow_name, namespace
+            )
+
+        yaml_key = get_workflow_yaml_key(namespace, workflow_name, resolved_version)
+        cache_key = get_workflow_yaml_cache_key(
+            namespace, workflow_name, resolved_version
+        )
 
         # Try to get from cache first
         cached_result = await asyncio.to_thread(self.cache_manager.get_str, cache_key)
         if cached_result:
             logger.info(
-                f'Cache hit fetching workflow YAML for namespace: {namespace}, workflow: {workflow_name}'
+                f'Cache hit fetching workflow YAML for namespace: {namespace}, workflow: {workflow_name}, version: {resolved_version}'
             )
             return cached_result
 
         logger.info(
-            f'Fetching workflow YAML for namespace: {namespace}, workflow: {workflow_name}'
+            f'Fetching workflow YAML for namespace: {namespace}, workflow: {workflow_name}, version: {resolved_version}'
         )
         yaml_bytes: bytes = await asyncio.to_thread(
             self.cloud_storage_manager.read_file, self.bucket_name, yaml_key
@@ -77,7 +122,7 @@ class WorkflowInferenceService:
         )
 
         logger.info(
-            f'Successfully fetched workflow YAML for namespace: {namespace}, workflow: {workflow_name}'
+            f'Successfully fetched workflow YAML for namespace: {namespace}, workflow: {workflow_name}, version: {resolved_version}'
         )
         return yaml_content
 
@@ -165,16 +210,16 @@ class WorkflowInferenceService:
 
                 parts = agent_ref.split('/', 1)
                 namespace = parts[0]
-                agent_name = parts[1]
+                agent_name, version = parse_versioned_reference(parts[1])
 
                 logger.info(
-                    f'Fetching and building agent: namespace={namespace}, agent_name={agent_name}'
+                    f'Fetching and building agent: namespace={namespace}, agent_name={agent_name}, version={version}'
                 )
 
                 # Use AgentCrudService to fetch agent YAML (handles caching automatically)
                 agent_yaml_content = (
                     await self.agent_crud_service.get_agent_yaml_from_bucket(
-                        agent_name, namespace
+                        agent_name, namespace, version=version
                     )
                 )
 
@@ -239,13 +284,13 @@ class WorkflowInferenceService:
         for ref in subworkflow_references:
             parts = ref.split('/', 1)
             namespace = parts[0]
-            workflow_name = parts[1]
+            workflow_name, version = parse_versioned_reference(parts[1])
 
             logger.info(f'Fetching subworkflow YAML for inlining: {ref}')
 
             # Fetch the subworkflow YAML using existing fetch method
             subworkflow_yaml_content = await self.fetch_workflow_yaml(
-                workflow_name, namespace
+                workflow_name, namespace, version=version
             )
 
             # Parse and extract the arium config
@@ -270,8 +315,9 @@ class WorkflowInferenceService:
                 if 'inherit_variables' in arium_def:
                     inline_config['inherit_variables'] = arium_def['inherit_variables']
 
-                # Update the name to be local (remove namespace prefix)
-                inline_config['name'] = arium_name.split('/')[-1]
+                # Update the name to be local (remove namespace prefix and any @version)
+                local_name, _ = parse_versioned_reference(arium_name.split('/')[-1])
+                inline_config['name'] = local_name
 
                 updated_ariums.append(inline_config)
             else:
@@ -408,6 +454,7 @@ class WorkflowInferenceService:
         events_filter: Optional[List[AriumEventType]] = None,
         access_token: Optional[str] = None,
         app_key: Optional[str] = None,
+        version: Optional[int] = None,
     ) -> tuple[str, float]:
         """
         Complete inference workflow: fetch YAML, create workflow, run inference
@@ -420,13 +467,14 @@ class WorkflowInferenceService:
             output_json_enabled: Whether to extract JSON from the response
             event_callback: Optional callback function for workflow events
             events_filter: Optional list of event types to filter
+            version: Specific version to run; defaults to the workflow's current_version
 
         Returns:
             tuple: (result, execution_time)
         """
 
         # Fetch workflow YAML
-        yaml_content = await self.fetch_workflow_yaml(workflow_name, namespace)
+        yaml_content = await self.fetch_workflow_yaml(workflow_name, namespace, version)
 
         # Create workflow from YAML
         workflow = await self.create_workflow_from_yaml(
@@ -461,7 +509,14 @@ class WorkflowInferenceService:
         Complete inference workflow (v2): use pre-fetched workflow data, run inference
 
         Args:
-            workflow_data: Pre-fetched workflow data dict from workflow_crud_service.get_workflow()
+            workflow_data: Workflow data dict, typically from workflow_crud_service.get_workflow().
+                If it already contains 'yaml_content' (i.e. the caller resolved a
+                specific version up front - e.g. a pipeline's pinned
+                workflow_version), that content is used directly rather than
+                re-fetched, so inference runs exactly the version workflow_data
+                was resolved to. Otherwise YAML is fetched by name+namespace,
+                honoring workflow_data['version'] if present or falling back to
+                current_version.
             variables: Variables to pass to the workflow
             inputs: Inputs to use for inference
             output_json_enabled: Whether to extract JSON from the response
@@ -475,12 +530,18 @@ class WorkflowInferenceService:
         namespace = workflow_data['namespace']
         workflow_name = workflow_data['name']
         workflow_id = workflow_data['id']
+        version = workflow_data.get('version')
 
         logger.info(
-            f'Starting v2 inference - namespace: {namespace}, name: {workflow_name}, workflow_id: {workflow_id}'
+            f'Starting v2 inference - namespace: {namespace}, name: {workflow_name}, workflow_id: {workflow_id}, version: {version}'
         )
 
-        yaml_content = await self.fetch_workflow_yaml(workflow_name, namespace)
+        if 'yaml_content' in workflow_data:
+            yaml_content = workflow_data['yaml_content']
+        else:
+            yaml_content = await self.fetch_workflow_yaml(
+                workflow_name, namespace, version
+            )
 
         # Create workflow from YAML
         workflow = await self.create_workflow_from_yaml(

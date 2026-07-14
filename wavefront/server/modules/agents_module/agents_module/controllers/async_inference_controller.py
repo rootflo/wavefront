@@ -32,6 +32,9 @@ async def async_agent_inference(
     request: Request,
     agent_id: UUID,
     payload: AgentInferenceRequest,
+    version: Optional[int] = Query(
+        None, description='Specific agent version to run; defaults to current_version'
+    ),
     async_agentic_execution_service: AsyncAgenticExecutionService = Depends(
         Provide[AgentsContainer.async_agentic_execution_service]
     ),
@@ -42,7 +45,9 @@ async def async_agent_inference(
         Provide[CommonContainer.response_formatter]
     ),
 ):
-    logger.info(f'Async agent inference requested for agent_id: {agent_id}')
+    logger.info(
+        f'Async agent inference requested for agent_id: {agent_id}, version: {version}'
+    )
 
     access_token, app_key = extract_auth_credentials(request)
 
@@ -69,6 +74,7 @@ async def async_agent_inference(
             access_token=access_token,
             app_key=app_key,
             llm_config=llm_config,
+            version=version,
         )
     except ValueError as e:
         return JSONResponse(
@@ -96,6 +102,10 @@ async def async_workflow_inference(
     request: Request,
     workflow_id: UUID,
     payload: WorkflowInferenceRequest,
+    version: Optional[int] = Query(
+        None,
+        description='Specific workflow version to run; defaults to current_version',
+    ),
     async_agentic_execution_service: AsyncAgenticExecutionService = Depends(
         Provide[AgentsContainer.async_agentic_execution_service]
     ),
@@ -106,12 +116,16 @@ async def async_workflow_inference(
         Provide[CommonContainer.response_formatter]
     ),
 ):
-    logger.info(f'Async workflow inference requested for workflow_id: {workflow_id}')
+    logger.info(
+        f'Async workflow inference requested for workflow_id: {workflow_id}, version: {version}'
+    )
 
     access_token, app_key = extract_auth_credentials(request)
 
     try:
-        workflow_data = await workflow_crud_service.get_workflow(workflow_id)
+        workflow_data = await workflow_crud_service.get_workflow(
+            workflow_id, version=version
+        )
     except ValueError as e:
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -128,6 +142,7 @@ async def async_workflow_inference(
             output_json_enabled=payload.output_json_enabled,
             access_token=access_token,
             app_key=app_key,
+            version=workflow_data.get('version'),
         )
     except ValueError as e:
         return JSONResponse(

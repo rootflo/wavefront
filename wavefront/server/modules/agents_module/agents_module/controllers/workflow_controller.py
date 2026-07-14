@@ -1,3 +1,4 @@
+from typing import Optional
 from uuid import UUID
 from agents_module.utils.input_processing_utils import process_inference_inputs
 from agents_module.utils.auth_utils import extract_auth_credentials
@@ -44,6 +45,10 @@ async def workflow_inference(
     request_body: WorkflowInferenceRequest = ...,
     listen_events: bool = Query(
         False, description='Enable real-time event streaming via WebSocket'
+    ),
+    version: Optional[int] = Query(
+        None,
+        description='Specific workflow version to run; defaults to current_version',
     ),
     workflow_inference_service: WorkflowInferenceService = Depends(
         Provide[AgentsContainer.workflow_inference_service]
@@ -121,6 +126,7 @@ async def workflow_inference(
                         events_filter=events_filter,
                         access_token=access_token,
                         app_key=app_key,
+                        version=version,
                     )
                 )
 
@@ -199,6 +205,7 @@ async def workflow_inference(
             events_filter=events_filter,
             access_token=access_token,
             app_key=app_key,
+            version=version,
         )
 
         response_data = WorkflowInferenceResponse(
@@ -237,6 +244,10 @@ async def workflow_inference_v2(
     listen_events: bool = Query(
         False, description='Enable real-time event streaming via WebSocket'
     ),
+    version: Optional[int] = Query(
+        None,
+        description='Specific workflow version to run; defaults to current_version',
+    ),
     workflow_inference_service: WorkflowInferenceService = Depends(
         Provide[AgentsContainer.workflow_inference_service]
     ),
@@ -263,18 +274,22 @@ async def workflow_inference_v2(
         workflow_id: The UUID of the workflow
         request_body: Request containing variables and inputs for the workflow
         listen_events: Whether to enable real-time event streaming
+        version: Specific workflow version to run; defaults to current_version
 
     Returns:
         WorkflowInferenceResponse: Contains the inference result and metadata
     """
     logger.info(
-        f'Starting v2 inference for workflow_id: {workflow_id}, listen_events: {listen_events}'
+        f'Starting v2 inference for workflow_id: {workflow_id}, listen_events: {listen_events}, version: {version}'
     )
     # Extract authentication credentials
     access_token, app_key = extract_auth_credentials(request)
 
-    # Fetch workflow from DB first to get namespace and name
-    workflow_data = await workflow_crud_service.get_workflow(workflow_id)
+    # Fetch workflow from DB first (resolved to the requested/current version,
+    # including its yaml_content, which perform_inference_v2 uses directly)
+    workflow_data = await workflow_crud_service.get_workflow(
+        workflow_id, version=version
+    )
     namespace = workflow_data['namespace']
     workflow_name = workflow_data['name']
 
@@ -475,6 +490,9 @@ async def create_workflow(
 @inject
 async def get_workflow(
     workflow_id: UUID = Path(..., description='The UUID of the workflow to retrieve'),
+    version: Optional[int] = Query(
+        None, description='Specific version to fetch; defaults to current_version'
+    ),
     workflow_crud_service: WorkflowCrudService = Depends(
         Provide[AgentsContainer.workflow_crud_service]
     ),
@@ -487,13 +505,14 @@ async def get_workflow(
 
     Args:
         workflow_id: The workflow UUID
+        version: Specific version to fetch; defaults to current_version
 
     Returns:
         JSONResponse: Workflow details including YAML content
     """
-    logger.info(f'Getting workflow by ID: {workflow_id}')
+    logger.info(f'Getting workflow by ID: {workflow_id}, version: {version}')
 
-    workflow = await workflow_crud_service.get_workflow(workflow_id)
+    workflow = await workflow_crud_service.get_workflow(workflow_id, version=version)
 
     logger.info(f'Successfully retrieved workflow - ID: {workflow_id}')
     return JSONResponse(
@@ -507,11 +526,10 @@ async def get_workflow(
     )
 
 
-@workflows_router.put('/v1/workflow-management/workflows/{workflow_id}')
+@workflows_router.get('/v1/workflow-management/workflows/{workflow_id}/versions')
 @inject
-async def update_workflow(
-    request: Request,
-    workflow_id: UUID = Path(..., description='The UUID of the workflow to update'),
+async def list_workflow_versions(
+    workflow_id: UUID = Path(..., description='The UUID of the workflow'),
     workflow_crud_service: WorkflowCrudService = Depends(
         Provide[AgentsContainer.workflow_crud_service]
     ),
@@ -520,16 +538,151 @@ async def update_workflow(
     ),
 ):
     """
-    Update existing workflow YAML configuration
+    List every live version of a workflow
+
+    Args:
+        workflow_id: The workflow UUID
+
+    Returns:
+        JSONResponse: List of versions, each annotated with is_current
+    """
+    logger.info(f'Listing versions for workflow - ID: {workflow_id}')
+
+    versions = await workflow_crud_service.list_workflow_versions(workflow_id)
+
+    logger.info(
+        f'Successfully retrieved {len(versions)} versions for workflow - ID: {workflow_id}'
+    )
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            {
+                'message': 'Workflow versions retrieved successfully',
+                'data': {'versions': versions, 'count': len(versions)},
+            }
+        ),
+    )
+
+
+@workflows_router.patch(
+    '/v1/workflow-management/workflows/{workflow_id}/current-version'
+)
+@inject
+async def promote_workflow_version(
+    workflow_id: UUID = Path(..., description='The UUID of the workflow'),
+    version: int = Query(..., description='The version to promote to current_version'),
+    workflow_crud_service: WorkflowCrudService = Depends(
+        Provide[AgentsContainer.workflow_crud_service]
+    ),
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+):
+    """
+    Promote an existing version to be the workflow's current_version
+
+    Args:
+        workflow_id: The workflow UUID
+        version: The version to promote
+
+    Returns:
+        JSONResponse: Updated workflow details
+    """
+    logger.info(f'Promoting workflow {workflow_id} to version {version}')
+
+    workflow = await workflow_crud_service.promote_workflow_version(
+        workflow_id, version
+    )
+
+    logger.info(f'Successfully promoted workflow {workflow_id} to version {version}')
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            {
+                'message': 'Workflow version promoted successfully',
+                'data': workflow,
+            }
+        ),
+    )
+
+
+@workflows_router.delete(
+    '/v1/workflow-management/workflows/{workflow_id}/versions/{version}'
+)
+@inject
+async def delete_workflow_version(
+    workflow_id: UUID = Path(..., description='The UUID of the workflow'),
+    version: int = Path(..., description='The version to delete'),
+    workflow_crud_service: WorkflowCrudService = Depends(
+        Provide[AgentsContainer.workflow_crud_service]
+    ),
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+):
+    """
+    Delete a single version of a workflow (soft delete; version numbers are never reused)
+
+    Args:
+        workflow_id: The workflow UUID
+        version: The version to delete
+
+    Returns:
+        JSONResponse: Success response
+
+    Raises:
+        Rejected if `version` is the workflow's current_version
+    """
+    logger.info(f'Deleting workflow {workflow_id} version {version}')
+
+    await workflow_crud_service.delete_workflow_version(workflow_id, version)
+
+    logger.info(f'Successfully deleted workflow {workflow_id} version {version}')
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            {
+                'message': 'Workflow version deleted successfully',
+                'data': {'workflow_id': str(workflow_id), 'version': version},
+            }
+        ),
+    )
+
+
+@workflows_router.put('/v1/workflow-management/workflows/{workflow_id}')
+@inject
+async def update_workflow(
+    request: Request,
+    workflow_id: UUID = Path(..., description='The UUID of the workflow to update'),
+    version: Optional[int] = Query(
+        None,
+        description='Which existing version to edit/branch from; defaults to current_version',
+    ),
+    create_new_version: bool = Query(
+        False, description='If true, create a new version instead of editing in place'
+    ),
+    workflow_crud_service: WorkflowCrudService = Depends(
+        Provide[AgentsContainer.workflow_crud_service]
+    ),
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+):
+    """
+    Update existing workflow YAML configuration - in place, or as a new version
 
     Args:
         workflow_id: The workflow UUID
         request: Request containing raw YAML content as text/plain
+        version: Which existing version to edit/branch from; defaults to current_version
+        create_new_version: If true, create a new version instead of editing in place
 
     Returns:
         JSONResponse: Success or error response with updated workflow details
     """
-    logger.info(f'Updating workflow - ID: {workflow_id}')
+    logger.info(
+        f'Updating workflow - ID: {workflow_id}, version: {version}, create_new_version: {create_new_version}'
+    )
 
     # Extract authentication credentials
     access_token, app_key = extract_auth_credentials(request)
@@ -542,6 +695,8 @@ async def update_workflow(
         yaml_content=yaml_content,
         access_token=access_token,
         app_key=app_key,
+        version=version,
+        create_new_version=create_new_version,
     )
 
     logger.info(f'Successfully updated workflow - ID: {workflow_id}')
