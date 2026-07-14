@@ -300,7 +300,10 @@ class AgentCrudService:
         yaml_key = get_agent_yaml_key(namespace, name, 1)
         yaml_bytes = yaml_content.encode('utf-8')
         self.cloud_storage_manager.save_small_file(
-            file_content=yaml_bytes, bucket_name=self.bucket_name, key=yaml_key
+            file_content=yaml_bytes,
+            bucket_name=self.bucket_name,
+            key=yaml_key,
+            disable_cache=True,
         )
 
         # Build response with YAML content
@@ -607,7 +610,10 @@ class AgentCrudService:
         yaml_key = get_agent_yaml_key(agent.namespace, agent.name, write_version)
         yaml_bytes = yaml_content.encode('utf-8')
         self.cloud_storage_manager.save_small_file(
-            file_content=yaml_bytes, bucket_name=self.bucket_name, key=yaml_key
+            file_content=yaml_bytes,
+            bucket_name=self.bucket_name,
+            key=yaml_key,
+            disable_cache=True,
         )
 
         # Invalidate caches

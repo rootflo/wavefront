@@ -133,6 +133,7 @@ class CloudStorageManager:
         bucket_name: str,
         key: str,
         content_type: Optional[str] = None,
+        disable_cache: bool = False,
     ) -> None:
         """
         Save small file to cloud storage using direct upload.
@@ -143,11 +144,15 @@ class CloudStorageManager:
             key: Object key/path for the file in the bucket
             content_type: MIME type of the file (e.g., 'image/jpeg', 'application/pdf').
                          If None, the cloud provider will use its default.
+            disable_cache: If True, mark the object as non-cacheable so an
+                         overwrite at the same key is read back immediately.
 
         Returns:
             None
         """
-        self.handler.save_small_file(file_content, bucket_name, key, content_type)
+        self.handler.save_small_file(
+            file_content, bucket_name, key, content_type, disable_cache
+        )
 
     def file_protocol(self) -> Optional[str]:
         if self.provider == CloudProvider.AWS:

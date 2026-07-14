@@ -90,6 +90,7 @@ class GCSStorage(CloudStorageHandler):
         bucket_name: str,
         key: str,
         content_type: Optional[str] = None,
+        disable_cache: bool = False,
     ) -> None:
         """GCS implementation of small file upload using upload_from_string."""
         try:
@@ -102,6 +103,12 @@ class GCSStorage(CloudStorageHandler):
 
             bucket = self.client.bucket(bucket_name)
             blob = bucket.blob(key)
+
+            # Mark the object non-cacheable so an overwrite at the same key is
+            # read back immediately. Without this, GCS can serve a previously
+            # cached generation for up to ~1h after an overwrite.
+            if disable_cache:
+                blob.cache_control = 'no-store'
 
             if content_type is not None:
                 blob.upload_from_string(file_content, content_type=content_type)
