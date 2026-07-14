@@ -11,21 +11,18 @@ RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY wavefront/server/pyproject.toml wavefront/server/uv.lock wavefront/server/.python-version ./
+# Create user early so uv sync runs as appuser — avoids Python binary landing in /root/.local
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 
-COPY wavefront/server/modules/common_module /app/modules/common_module
-COPY wavefront/server/packages/flo_cloud /app/packages/flo_cloud
-COPY wavefront/server/apps/inference_app /app/apps/inference_app
+COPY --chown=appuser:appuser wavefront/server/pyproject.toml wavefront/server/uv.lock wavefront/server/.python-version ./
+COPY --chown=appuser:appuser wavefront/server/modules/common_module /app/modules/common_module
+COPY --chown=appuser:appuser wavefront/server/packages/flo_cloud /app/packages/flo_cloud
+COPY --chown=appuser:appuser wavefront/server/apps/inference_app /app/apps/inference_app
+
+USER appuser
 
 RUN uv sync --package inference-app --frozen --no-dev
 
 WORKDIR /app/apps/inference_app/inference_app
-
-# Create a non-root user and change ownership of the /app directory
-RUN useradd -m -u 1000 appuser && \
-    chown -R appuser:appuser /app
-
-# Ensure subsequent actions run as 'appuser'
-USER appuser
 
 CMD ["uv", "run", "server.py"]
