@@ -5,6 +5,7 @@ import yaml
 
 from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.models.workflow import Workflow
+from db_repo_module.models.workflow_version import WorkflowVersion
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from flo_ai import AriumBuilder, BaseMessage, FloUtils, Arium, AgentBuilder, Agent
 from flo_cloud.cloud_storage import CloudStorageManager
@@ -33,6 +34,9 @@ class WorkflowInferenceService:
         cache_manager: CacheManager,
         bucket_name: str,
         workflow_repository: Optional[SQLAlchemyRepository[Workflow]] = None,
+        workflow_version_repository: Optional[
+            SQLAlchemyRepository[WorkflowVersion]
+        ] = None,
         agent_crud_service: Optional[AgentCrudService] = None,
         tool_loader: Optional[ToolLoader] = None,
     ):
@@ -45,6 +49,8 @@ class WorkflowInferenceService:
             bucket_name: Name of the bucket containing workflow YAML files
             workflow_repository: Workflow repository, used to resolve current_version
                 for name-based lookups (i.e. no explicit version given)
+            workflow_version_repository: WorkflowVersion repository, used to reject
+                explicitly requested versions that don't exist or are soft-deleted
             agent_crud_service: Agent CRUD service for fetching agent YAMLs
             tool_loader: Tool loader for loading agent tools
         """
@@ -52,6 +58,7 @@ class WorkflowInferenceService:
         self.bucket_name = bucket_name
         self.cache_manager = cache_manager
         self.workflow_repository = workflow_repository
+        self.workflow_version_repository = workflow_version_repository
         self.agent_crud_service = agent_crud_service
         self.tool_loader = tool_loader
         self.current_version_cache_ttl = (
@@ -95,6 +102,25 @@ class WorkflowInferenceService:
             resolved_version = await self._resolve_workflow_current_version(
                 workflow_name, namespace
             )
+        elif (
+            self.workflow_version_repository is not None
+            and self.workflow_repository is not None
+        ):
+            # Explicit version: reject it if it doesn't exist or was soft-deleted,
+            # so a deleted version can't be run just because its YAML still lives
+            # in the bucket (delete-version is a soft delete).
+            workflow = await self.workflow_repository.find_one(
+                name=workflow_name, namespace=namespace
+            )
+            if not workflow:
+                raise ValueError(f'Workflow not found: {namespace}/{workflow_name}')
+            version_row = await self.workflow_version_repository.find_one(
+                workflow_id=workflow.id, version=resolved_version
+            )
+            if not version_row or version_row.is_deleted:
+                raise ValueError(
+                    f'Workflow YAML not found for workflow: {namespace}/{workflow_name}, version: {resolved_version}'
+                )
 
         yaml_key = get_workflow_yaml_key(namespace, workflow_name, resolved_version)
         cache_key = get_workflow_yaml_cache_key(

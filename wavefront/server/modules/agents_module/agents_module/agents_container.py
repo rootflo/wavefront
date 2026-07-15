@@ -95,6 +95,7 @@ class AgentsContainer(containers.DeclarativeContainer):
         cache_manager=cache_manager,
         bucket_name=config.agents.agent_yaml_bucket,
         workflow_repository=workflow_repository,
+        workflow_version_repository=workflow_version_repository,
         agent_crud_service=agent_crud_service,
         tool_loader=tool_loader,
     )

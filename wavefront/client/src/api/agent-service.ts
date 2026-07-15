@@ -89,8 +89,8 @@ export class AgentService {
 
   async runInference(
     id: string,
-    variables: Record<string, unknown> = {},
     inputs: string | string[],
+    variables: Record<string, unknown> = {},
     llmInferenceConfigId?: string,
     toolNames?: string[],
     version?: number

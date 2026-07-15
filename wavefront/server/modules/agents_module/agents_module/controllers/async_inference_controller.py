@@ -12,6 +12,7 @@ from agents_module.agents_container import AgentsContainer
 from agents_module.services.async_agentic_execution_service import (
     AsyncAgenticExecutionService,
 )
+from agents_module.services.agent_crud_service import AgentCrudService
 from agents_module.services.workflow_crud_service import WorkflowCrudService
 from agents_module.models.agent_schemas import AgentInferenceRequest
 from agents_module.models.workflow_schemas import WorkflowInferenceRequest
@@ -38,6 +39,9 @@ async def async_agent_inference(
     async_agentic_execution_service: AsyncAgenticExecutionService = Depends(
         Provide[AgentsContainer.async_agentic_execution_service]
     ),
+    agent_crud_service: AgentCrudService = Depends(
+        Provide[AgentsContainer.agent_crud_service]
+    ),
     llm_inference_config_service: LlmInferenceConfigService = Depends(
         Provide[LlmInferenceConfigContainer.llm_inference_config_service]
     ),
@@ -50,6 +54,18 @@ async def async_agent_inference(
     )
 
     access_token, app_key = extract_auth_credentials(request)
+
+    # Resolve the concrete version now (rejecting a missing/deleted explicit
+    # version) so the enqueued job runs the version observed by this request,
+    # not whatever is current when the worker later picks it up.
+    try:
+        agent_data = await agent_crud_service.get_agent(agent_id, version=version)
+    except ValueError as e:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
+    resolved_version = agent_data['version']
 
     llm_config: Optional[dict] = None
     if payload.llm_inference_config_id:
@@ -74,7 +90,7 @@ async def async_agent_inference(
             access_token=access_token,
             app_key=app_key,
             llm_config=llm_config,
-            version=version,
+            version=resolved_version,
         )
     except ValueError as e:
         return JSONResponse(

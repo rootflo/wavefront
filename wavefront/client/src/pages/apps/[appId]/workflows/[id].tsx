@@ -333,7 +333,18 @@ const WorkflowDetail: React.FC = () => {
   };
 
   const handleDeleteVersion = (version: number) => {
-    deleteVersionMutation.mutate({ workflowId: id!, version });
+    // If we're viewing the version being deleted, fall back to current_version so
+    // the page doesn't keep showing / refetch a now-deleted version.
+    const wasViewingDeleted = version === selectedVersion;
+    if (wasViewingDeleted) {
+      setSelectedVersion(undefined);
+    }
+    deleteVersionMutation.mutate(
+      { workflowId: id!, version },
+      {
+        onSuccess: () => loadWorkflow(wasViewingDeleted ? undefined : selectedVersion),
+      }
+    );
   };
 
   const handleViewVersion = (version: number) => {

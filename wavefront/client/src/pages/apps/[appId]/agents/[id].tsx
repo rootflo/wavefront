@@ -376,6 +376,11 @@ const AgentDetail: React.FC = () => {
   };
 
   const handleDeleteVersion = (version: number) => {
+    // If we're viewing the version being deleted, fall back to current_version so
+    // the page doesn't try to refetch a now-deleted version.
+    if (version === selectedVersion) {
+      setSelectedVersion(undefined);
+    }
     deleteVersionMutation.mutate({ agentId: id!, version });
   };
 
@@ -502,8 +507,8 @@ const AgentDetail: React.FC = () => {
       }
       const result = await floConsoleService.agentService.runInference(
         id,
-        variables,
         inputs,
+        variables,
         selectedLLMConfigId || undefined,
         selectedTools.length > 0 ? selectedTools.map((tool) => tool.value) : undefined,
         selectedVersion

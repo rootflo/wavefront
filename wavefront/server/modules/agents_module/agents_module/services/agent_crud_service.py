@@ -296,15 +296,25 @@ class AgentCrudService:
             await self.agent_repository.delete_all(id=agent.id)
             raise
 
-        # Upload YAML to cloud storage
+        # Upload YAML to cloud storage. If this fails, roll back the identity and
+        # version rows (the FK cascade removes the version row) so a failed upload
+        # doesn't leave an orphaned, YAML-less agent that blocks this (name,
+        # namespace) pair.
         yaml_key = get_agent_yaml_key(namespace, name, 1)
         yaml_bytes = yaml_content.encode('utf-8')
-        self.cloud_storage_manager.save_small_file(
-            file_content=yaml_bytes,
-            bucket_name=self.bucket_name,
-            key=yaml_key,
-            disable_cache=True,
-        )
+        try:
+            self.cloud_storage_manager.save_small_file(
+                file_content=yaml_bytes,
+                bucket_name=self.bucket_name,
+                key=yaml_key,
+                disable_cache=True,
+            )
+        except Exception:
+            logger.error(
+                f'Failed to upload YAML for new agent {agent.id} - rolling back identity and version rows'
+            )
+            await self.agent_repository.delete_all(id=agent.id)
+            raise
 
         # Build response with YAML content
         agent_dict = agent.to_dict()
@@ -606,15 +616,28 @@ class AgentCrudService:
                 )
             write_version = target_version
 
-        # Write YAML to cloud storage at the resolved version's key
+        # Write YAML to cloud storage at the resolved version's key. If this fails
+        # while branching a new version, roll back only that newly created version
+        # row (leaving prior versions untouched); an in-place edit has no new row
+        # to remove.
         yaml_key = get_agent_yaml_key(agent.namespace, agent.name, write_version)
         yaml_bytes = yaml_content.encode('utf-8')
-        self.cloud_storage_manager.save_small_file(
-            file_content=yaml_bytes,
-            bucket_name=self.bucket_name,
-            key=yaml_key,
-            disable_cache=True,
-        )
+        try:
+            self.cloud_storage_manager.save_small_file(
+                file_content=yaml_bytes,
+                bucket_name=self.bucket_name,
+                key=yaml_key,
+                disable_cache=True,
+            )
+        except Exception:
+            if create_new_version:
+                logger.error(
+                    f'Failed to upload YAML for new version {write_version} of agent {agent_id} - rolling back the new version row'
+                )
+                await self.agent_version_repository.delete_all(
+                    agent_id=agent.id, version=write_version
+                )
+            raise
 
         # Invalidate caches
         yaml_cache_key = get_agent_yaml_cache_key(

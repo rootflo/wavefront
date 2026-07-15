@@ -141,8 +141,10 @@ const EditAgentDialog: React.FC<EditAgentDialogProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localSelectedTools, toolsDetails]);
 
-  const onSubmit = async (data: EditAgentInput) => {
-    const createNewVersion = submitAction === 'new';
+  // createNewVersion is passed in directly by the clicked button (not read from
+  // submitAction state), so react-hook-form's async submit can't act on a stale
+  // value. submitAction is kept only to drive the per-button loading spinner.
+  const onSubmit = async (data: EditAgentInput, createNewVersion: boolean) => {
     await onSave(data.yamlContent, data.selectedTools || [], { createNewVersion });
     setSubmitAction(null);
     onOpenChange(false);
@@ -163,7 +165,7 @@ const EditAgentDialog: React.FC<EditAgentDialogProps> = ({
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="w-full space-y-6">
+          <form onSubmit={form.handleSubmit((data) => onSubmit(data, false))} className="w-full space-y-6">
             <div className="grid w-full grid-cols-4 gap-6">
               <FormField
                 control={form.control}
@@ -275,10 +277,13 @@ const EditAgentDialog: React.FC<EditAgentDialogProps> = ({
                 Save
               </Button>
               <Button
-                type="submit"
+                type="button"
                 disabled={saving}
                 loading={saving && submitAction === 'new'}
-                onClick={() => setSubmitAction('new')}
+                onClick={() => {
+                  setSubmitAction('new');
+                  form.handleSubmit((data) => onSubmit(data, true))();
+                }}
               >
                 Save as new version
               </Button>
