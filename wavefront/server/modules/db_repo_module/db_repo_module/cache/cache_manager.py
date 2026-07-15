@@ -108,6 +108,12 @@ class CacheManager(CommonCache):
                 'health_check_interval': 30,
                 'encoding': 'utf-8',
                 'decode_responses': True,
+                # Azure Managed Redis drops the connection on CLIENT SETINFO rather
+                # than returning a RESP error, which redis-py 5.x doesn't handle —
+                # the dropped socket triggers a reconnect loop that hits Python's
+                # recursion limit. Empty strings skip the command entirely.
+                'lib_name': '',
+                'lib_version': '',
             }
 
             if cloud_provider == 'azure' and not password:
