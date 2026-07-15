@@ -87,12 +87,17 @@ class S3Storage(CloudStorageHandler):
         bucket_name: str,
         key: str,
         content_type: Optional[str] = None,
+        disable_cache: bool = False,
     ) -> None:
         """S3 implementation of small file upload using put_object."""
         try:
             kwargs = {'Bucket': bucket_name, 'Key': key, 'Body': file_content}
             if content_type is not None:
                 kwargs['ContentType'] = content_type
+            # Mark the object non-cacheable so an overwrite at the same key is
+            # read back immediately instead of serving a cached copy.
+            if disable_cache:
+                kwargs['CacheControl'] = 'no-store'
 
             self.s3_client.put_object(**kwargs)
         except Exception as e:

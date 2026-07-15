@@ -157,6 +157,7 @@ class AzureBlobStorage(CloudStorageHandler):
         bucket_name: str,
         key: str,
         content_type: Optional[str] = None,
+        disable_cache: bool = False,
     ) -> None:
         """
         Upload a small file to Azure Blob Storage in a single operation.
@@ -166,12 +167,17 @@ class AzureBlobStorage(CloudStorageHandler):
             bucket_name: Name of the Azure container.
             key: Blob name / path inside the container.
             content_type: MIME type of the file (optional).
+            disable_cache: If True, mark the blob non-cacheable so an overwrite
+                at the same key is read back immediately.
         """
         try:
             blob_client = self.client.get_blob_client(container=bucket_name, blob=key)
             kwargs = {'overwrite': True}
-            if content_type is not None:
-                kwargs['content_settings'] = _content_settings(content_type)
+            cache_control = 'no-store' if disable_cache else None
+            if content_type is not None or cache_control is not None:
+                kwargs['content_settings'] = _content_settings(
+                    content_type, cache_control=cache_control
+                )
 
             blob_client.upload_blob(file_content, **kwargs)
         except Exception as e:
@@ -348,11 +354,11 @@ class AzureBlobStorage(CloudStorageHandler):
 # ------------------------------------------------------------------
 
 
-def _content_settings(content_type: str):
-    """Build a ContentSettings object for the given MIME type."""
+def _content_settings(content_type: Optional[str], cache_control: Optional[str] = None):
+    """Build a ContentSettings object for the given MIME type / cache policy."""
     from azure.storage.blob import ContentSettings
 
-    return ContentSettings(content_type=content_type)
+    return ContentSettings(content_type=content_type, cache_control=cache_control)
 
 
 def _sas_permissions(method: str) -> BlobSasPermissions:

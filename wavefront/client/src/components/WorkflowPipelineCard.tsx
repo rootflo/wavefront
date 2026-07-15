@@ -28,6 +28,14 @@ const WorkflowPipelineCardNew: React.FC<WorkflowPipelineCardNewProps> = ({ pipel
     },
   ];
 
+  if (pipeline.workflow_version !== undefined) {
+    metadata.push({
+      label: 'Workflow Version',
+      value: `v${pipeline.workflow_version}`,
+      className: 'bg-purple-50 text-purple-700',
+    });
+  }
+
   if (pipeline.timeout) {
     metadata.push({
       label: 'Timeout',

@@ -17,6 +17,7 @@ import { IUser } from '@app/types/user';
 import { VoiceAgent } from '@app/types/voice-agent';
 import { ScheduledJob } from '@app/types/scheduled-job';
 import { WorkflowListItem, WorkflowPipelineListItem, WorkflowRunListData } from '@app/types/workflow';
+import { EntityVersion } from '@app/types/version';
 
 const SCHEDULED_JOBS_PAGE_SIZE = 20;
 const MAX_SCHEDULED_JOBS = 1000;
@@ -284,8 +285,8 @@ const getTelephonyConfigQueryFn = async (configId: string): Promise<TelephonyCon
   return null;
 };
 
-const getAgentQueryFn = async (agentId: string): Promise<AgentApi | null> => {
-  const response = await floConsoleService.agentService.getAgent(agentId);
+const getAgentQueryFn = async (agentId: string, version?: number): Promise<AgentApi | null> => {
+  const response = await floConsoleService.agentService.getAgent(agentId, version);
   if (response.data?.data?.data) {
     return {
       id: response.data.data.data.id,
@@ -294,9 +295,27 @@ const getAgentQueryFn = async (agentId: string): Promise<AgentApi | null> => {
       created_at: response.data.data.data.created_at,
       updated_at: response.data.data.data.updated_at,
       yaml_content: response.data.data.data.yaml_content || '',
+      version: response.data.data.data.version,
+      current_version: response.data.data.data.current_version,
     };
   }
   return null;
+};
+
+const getAgentVersionsQueryFn = async (agentId: string): Promise<EntityVersion[]> => {
+  const response = await floConsoleService.agentService.listAgentVersions(agentId);
+  if (response.data?.meta?.status === 'success' && response.data.data?.data) {
+    return response.data.data.data.versions;
+  }
+  return [];
+};
+
+const getWorkflowVersionsQueryFn = async (workflowId: string): Promise<EntityVersion[]> => {
+  const response = await floConsoleService.workflowService.listWorkflowVersions(workflowId);
+  if (response.data?.meta?.status === 'success' && response.data.data?.data) {
+    return response.data.data.data.versions;
+  }
+  return [];
 };
 
 const getToolsQueryFn = async (): Promise<ToolDetails[]> => {
@@ -438,6 +457,8 @@ const getScheduledJobsQueryFn = async (): Promise<ScheduledJob[]> => {
 
 export {
   getAgentQueryFn,
+  getAgentVersionsQueryFn,
+  getWorkflowVersionsQueryFn,
   getAgentsQueryFn,
   getAgentToolsQueryFn,
   getAllAppsQueryFn,

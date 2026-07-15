@@ -1,6 +1,7 @@
 import floConsoleService from '@app/api';
 import ChatBot from '@app/components/ChatBot';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
+import VersionsDialog from '@app/components/VersionsDialog';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -9,10 +10,12 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@app/components/ui/breadcrumb';
+import { Badge } from '@app/components/ui/badge';
 import { Button } from '@app/components/ui/button';
-import { useDeleteAgent } from '@app/hooks';
-import { useGetAgent, useGetLLMConfigs, useGetTools } from '@app/hooks/data/fetch-hooks';
-import { getAgentKey } from '@app/hooks/data/query-keys';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
+import { useDeleteAgent, usePromoteAgentVersion, useDeleteAgentVersion } from '@app/hooks';
+import { useGetAgent, useGetAgentVersions, useGetLLMConfigs, useGetTools } from '@app/hooks/data/fetch-hooks';
+import { getAgentKey, getAgentVersionsKey } from '@app/hooks/data/query-keys';
 import { useNotifyStore } from '@app/store';
 import { ChatMessage, ChatMessageContent } from '@app/types/chat-message';
 import { scrollToBottom } from '@app/utils/scroll';
@@ -33,6 +36,9 @@ const AgentDetail: React.FC = () => {
   const [yamlContent, setYamlContent] = useState('');
   const [saving, setSaving] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [versionsDialogOpen, setVersionsDialogOpen] = useState(false);
+  // undefined = current_version
+  const [selectedVersion, setSelectedVersion] = useState<number | undefined>(undefined);
   const [deleteItem, setDeleteItem] = useState<{
     id: string;
     name: string;
@@ -75,10 +81,16 @@ const AgentDetail: React.FC = () => {
   const isUpdatingYamlRef = useRef(false);
 
   // Fetch data using hooks
-  const { data: agent, isLoading: agentLoading } = useGetAgent(appId, id);
+  const { data: agent, isLoading: agentLoading } = useGetAgent(appId, id, selectedVersion);
+  const { data: agentVersions = [], isLoading: versionsLoading } = useGetAgentVersions(appId, id);
   const { data: llmConfigs = [], isLoading: loadingConfigs } = useGetLLMConfigs(appId);
   const { data: availableTools = [] } = useGetTools(appId);
   const deleteAgentMutation = useDeleteAgent(appId);
+  const promoteVersionMutation = usePromoteAgentVersion(appId, id);
+  const deleteVersionMutation = useDeleteAgentVersion(appId, id);
+
+  // Version currently shown (falls back to the agent's current_version).
+  const displayVersion = selectedVersion ?? agent?.current_version;
 
   // Update yaml content when agent data changes
   useEffect(() => {
@@ -334,22 +346,47 @@ const AgentDetail: React.FC = () => {
     setUploadedDocuments((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
-  const handleSave = async (yamlContent: string) => {
+  const handleSave = async (yamlContent: string, options: { createNewVersion: boolean }) => {
     if (!appId || !id || !agent) return;
 
     setSaving(true);
     try {
-      await floConsoleService.agentService.updateAgent(id, yamlContent);
-      // Invalidate agent query to refetch updated data
+      await floConsoleService.agentService.updateAgent(id, yamlContent, displayVersion, options.createNewVersion);
+      // Invalidate agent + versions queries to refetch updated data
       queryClient.invalidateQueries({
         queryKey: getAgentKey(appId || '', id || ''),
       });
-      notifySuccess('Agent updated successfully');
+      queryClient.invalidateQueries({
+        queryKey: getAgentVersionsKey(appId || '', id || ''),
+      });
+      notifySuccess(
+        options.createNewVersion
+          ? 'New version created (not promoted — promote it from Versions to make it live)'
+          : 'Agent updated successfully'
+      );
     } catch (error) {
       console.error('Error updating agent:', error);
     } finally {
       setSaving(false);
     }
+  };
+
+  const handlePromoteVersion = (version: number) => {
+    promoteVersionMutation.mutate({ agentId: id!, version });
+  };
+
+  const handleDeleteVersion = (version: number) => {
+    // If we're viewing the version being deleted, fall back to current_version so
+    // the page doesn't try to refetch a now-deleted version.
+    if (version === selectedVersion) {
+      setSelectedVersion(undefined);
+    }
+    deleteVersionMutation.mutate({ agentId: id!, version });
+  };
+
+  const handleViewVersion = (version: number) => {
+    setSelectedVersion(version);
+    setVersionsDialogOpen(false);
   };
 
   const handleDeleteClick = () => {
@@ -470,10 +507,11 @@ const AgentDetail: React.FC = () => {
       }
       const result = await floConsoleService.agentService.runInference(
         id,
-        variables,
         inputs,
+        variables,
         selectedLLMConfigId || undefined,
-        selectedTools.length > 0 ? selectedTools.map((tool) => tool.value) : undefined
+        selectedTools.length > 0 ? selectedTools.map((tool) => tool.value) : undefined,
+        selectedVersion
       );
       const responseData = (result as { data?: { data?: { data?: { result?: string | object } } } }).data?.data?.data;
       const agentResponse =
@@ -532,7 +570,33 @@ const AgentDetail: React.FC = () => {
           <div className="flex w-full flex-1 flex-col gap-10">
             <div className="flex items-start justify-between">
               <p className="text-2xl leading-normal font-semibold text-black">{agent.name}</p>
-              <div className="flex gap-4">
+              <div className="flex items-center gap-4">
+                {agentVersions.length > 0 && (
+                  <Select
+                    value={displayVersion !== undefined ? String(displayVersion) : ''}
+                    onValueChange={(val) => setSelectedVersion(Number(val))}
+                  >
+                    <SelectTrigger className="w-[150px]">
+                      <SelectValue placeholder="Version" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[...agentVersions]
+                        .sort((a, b) => a.version - b.version)
+                        .map((v) => (
+                          <SelectItem key={v.id} value={String(v.version)}>
+                            v{v.version}
+                            {v.is_current ? ' (current)' : ''}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {agent.current_version !== undefined && (
+                  <Badge variant="secondary">Current: v{agent.current_version}</Badge>
+                )}
+                <Button variant="outline" onClick={() => setVersionsDialogOpen(true)}>
+                  Versions
+                </Button>
                 <Button variant="outline" onClick={() => setEditDialogOpen(true)}>
                   Edit
                 </Button>
@@ -576,12 +640,27 @@ const AgentDetail: React.FC = () => {
             yamlContent={yamlContent}
             selectedTools={selectedTools}
             toolsDetails={toolsDetails}
-            onSave={async (updatedYamlContent, updatedSelectedTools) => {
+            editingVersion={displayVersion}
+            onSave={async (updatedYamlContent, updatedSelectedTools, options) => {
               setYamlContent(updatedYamlContent);
               setSelectedTools(updatedSelectedTools);
-              handleSave(updatedYamlContent);
+              handleSave(updatedYamlContent, options);
             }}
             saving={saving}
+          />
+
+          {/* Versions Dialog */}
+          <VersionsDialog
+            isOpen={versionsDialogOpen}
+            onOpenChange={setVersionsDialogOpen}
+            entityLabel="agent"
+            versions={agentVersions}
+            loading={versionsLoading}
+            selectedVersion={displayVersion}
+            onView={handleViewVersion}
+            onPromote={handlePromoteVersion}
+            onDelete={handleDeleteVersion}
+            actionPending={promoteVersionMutation.isPending || deleteVersionMutation.isPending}
           />
 
           {/* Delete Confirmation Dialog */}
