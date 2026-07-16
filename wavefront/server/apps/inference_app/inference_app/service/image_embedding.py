@@ -1,28 +1,41 @@
 import torch
+from pathlib import Path
 from transformers import CLIPProcessor, CLIPModel, AutoImageProcessor, AutoModel
 from PIL import Image
 import io
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Union
 from common_module.log.logger import logger
-
-CLIP_MODEL_NAME = 'openai/clip-vit-base-patch32'
-DINO_MODEL_NAME = 'facebook/dinov3-vitl16-pretrain-lvd1689m'
 
 
 class ImageEmbedding:
-    def __init__(self):
+    """
+    Loads CLIP and DINOv3 models from local synced directories.
+
+    Both model dirs must be full Hugging Face snapshots (from_pretrained-compatible).
+    Use model_sync.sync_embedding_models() to sync from cloud storage before
+    constructing this class.
+    """
+
+    def __init__(
+        self,
+        clip_model_dir: Union[str, Path],
+        dino_model_dir: Union[str, Path],
+    ):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         logger.info(f'Using device: {self.device}')
 
-        self.clip_processor = CLIPProcessor.from_pretrained(CLIP_MODEL_NAME)
-        self.clip_model = CLIPModel.from_pretrained(CLIP_MODEL_NAME).to(
-            self.device
-        )
+        clip_path = str(Path(clip_model_dir))
+        dino_path = str(Path(dino_model_dir))
+
+        logger.info('Loading CLIP model from %s', clip_path)
+        self.clip_processor = CLIPProcessor.from_pretrained(clip_path)
+        self.clip_model = CLIPModel.from_pretrained(clip_path).to(self.device)
         self.clip_model.eval()
 
-        self.dino_processor = AutoImageProcessor.from_pretrained(DINO_MODEL_NAME)
+        logger.info('Loading DINOv3 model from %s', dino_path)
+        self.dino_processor = AutoImageProcessor.from_pretrained(dino_path)
         self.dino_model = AutoModel.from_pretrained(
-            DINO_MODEL_NAME, trust_remote_code=True
+            dino_path, trust_remote_code=True
         ).to(self.device)
         self.dino_model.eval()
 

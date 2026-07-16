@@ -1,6 +1,7 @@
 import glob
 import os
 from contextlib import asynccontextmanager
+from dependency_injector import providers
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -20,6 +21,8 @@ from fastapi.responses import JSONResponse
 
 from inference_app.inference_app_container import InferenceAppContainer
 from inference_app.controllers.inference_controller import inference_app_router
+from inference_app.model_sync import sync_embedding_models
+from inference_app.service.image_embedding import ImageEmbedding
 
 # Initialize dependency containers
 common_container = CommonContainer(cache_manager=None)
@@ -28,7 +31,12 @@ inference_app_container = InferenceAppContainer()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info('Preloading ML models...')
+    logger.info('Syncing embedding models from cloud storage...')
+    clip_dir, dino_dir = sync_embedding_models()
+    logger.info('Cloud sync complete. Preloading ML models...')
+    inference_app_container.image_embedding.override(
+        providers.Singleton(ImageEmbedding, clip_model_dir=clip_dir, dino_model_dir=dino_dir)
+    )
     inference_app_container.image_embedding()
     logger.info('ML models loaded and ready.')
     yield
