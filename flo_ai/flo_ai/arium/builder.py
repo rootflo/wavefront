@@ -5,6 +5,7 @@ from flo_ai.arium.nodes import AriumNode, ForEachNode
 from flo_ai.models import BaseMessage, UserMessage
 from flo_ai.agent.agent import Agent, resolve_variables
 from flo_ai.tool.base_tool import Tool
+from flo_ai.tool.tool_config import ToolConfig
 import yaml
 from flo_ai.agent import AgentBuilder
 from flo_ai.llm import BaseLLM
@@ -896,17 +897,38 @@ class AriumBuilder:
                 # Handle both string tool names and ToolConfigModel instances
                 if isinstance(tool_item, str):
                     tool_name = tool_item
+                    prefilled_params = None
+                    name_override = None
+                    description_override = None
                 else:
-                    # ToolConfigModel - extract name
+                    # ToolConfigModel - extract name and pre-filled configuration
                     tool_name = tool_item.name
+                    prefilled_params = tool_item.prefilled_params
+                    name_override = tool_item.name_override
+                    description_override = tool_item.description_override
 
-                if tool_name in available_tools:
-                    agent_tools.append(available_tools[tool_name])
-                else:
+                if tool_name not in available_tools:
                     raise ValueError(
                         f'Tool {tool_name} for agent {name} not found in available tools. '
                         f'Available: {list(available_tools.keys())}'
                     )
+
+                base_tool = available_tools[tool_name]
+                if prefilled_params or name_override or description_override:
+                    # Wrap in a PartialTool so prefilled_params (e.g. kb_id,
+                    # datasource_id) are hidden from the model and locked to
+                    # the configured value, instead of being left as regular,
+                    # model-suppliable parameters.
+                    agent_tools.append(
+                        ToolConfig(
+                            tool=base_tool,
+                            prefilled_params=prefilled_params,
+                            name_override=name_override,
+                            description_override=description_override,
+                        ).to_tool()
+                    )
+                else:
+                    agent_tools.append(base_tool)
 
         # Handle parser configuration if present
         output_schema: Optional[Dict[str, Any]] = None
