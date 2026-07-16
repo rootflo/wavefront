@@ -11,7 +11,7 @@ Function nodes expect this signature:
         **kwargs,
     ) -> str:
 
-Registry functions have their own signatures (e.g., async def bigquery_test_connection(datasource_id: str) -> str)
+Registry functions have their own signatures (e.g., async def datasource_insert_rows(datasource_id: str, table_name: str, data, single_row: bool = False) -> str)
 
 This adapter extracts parameters from inputs/variables and calls the original function.
 """

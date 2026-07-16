@@ -33,7 +33,7 @@ class AgentInferenceRequest(BaseModel):
     tool_names: Optional[List[str]] = Field(
         default=None,
         description='Optional list of tool names to load and make available to the agent during inference',
-        example=['bigquery_test_connection', 'bigquery_fetch_data'],
+        example=['datasource_insert_rows', 'querying_knowlegebase'],
     )
 
 

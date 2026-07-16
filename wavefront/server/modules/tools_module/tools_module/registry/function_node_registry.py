@@ -9,7 +9,7 @@ Usage:
     from tools_module.registry.function_node_registry import FUNCTION_NODE_REGISTRY
 
     # Get an adapted function
-    adapted_fn = FUNCTION_NODE_REGISTRY.get('bigquery_test_connection')
+    adapted_fn = FUNCTION_NODE_REGISTRY.get('datasource_insert_rows')
 
     # Use it as a function node
     result = await adapted_fn(
