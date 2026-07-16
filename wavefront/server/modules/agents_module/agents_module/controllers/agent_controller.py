@@ -1,3 +1,4 @@
+from typing import Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, status, Path, Request, Query
 from fastapi.responses import JSONResponse
@@ -35,6 +36,9 @@ async def agent_inference(
     namespace: str = Path(..., description='The namespace of the agent'),
     agent_id: str = Path(..., description='The ID of the agent to run inference with'),
     agent_inference_payload: AgentInferenceRequest = ...,
+    version: Optional[int] = Query(
+        None, description='Specific agent version to run; defaults to current_version'
+    ),
     agent_inference_service: AgentInferenceService = Depends(
         Provide[AgentsContainer.agent_inference_service]
     ),
@@ -97,6 +101,7 @@ async def agent_inference(
         output_json_enabled=agent_inference_payload.output_json_enabled,
         access_token=access_token,
         app_key=app_key,
+        version=version,
     )
 
     response_data = AgentInferenceResponse(
@@ -130,6 +135,9 @@ async def agent_inference_v2(
     agent_inference_payload: AgentInferenceRequest,
     agent_id: UUID = Path(
         ..., description='The UUID of the agent to run inference with'
+    ),
+    version: Optional[int] = Query(
+        None, description='Specific agent version to run; defaults to current_version'
     ),
     agent_inference_service: AgentInferenceService = Depends(
         Provide[AgentsContainer.agent_inference_service]
@@ -183,6 +191,7 @@ async def agent_inference_v2(
             output_json_enabled=agent_inference_payload.output_json_enabled,
             access_token=access_token,
             app_key=app_key,
+            version=version,
         )
     except ValueError as e:
         return JSONResponse(
@@ -273,6 +282,9 @@ async def create_agent(
 @inject
 async def get_agent(
     agent_id: UUID = Path(..., description='The UUID of the agent to retrieve'),
+    version: Optional[int] = Query(
+        None, description='Specific version to fetch; defaults to current_version'
+    ),
     agent_crud_service: AgentCrudService = Depends(
         Provide[AgentsContainer.agent_crud_service]
     ),
@@ -285,13 +297,14 @@ async def get_agent(
 
     Args:
         agent_id: The agent UUID
+        version: Specific version to fetch; defaults to current_version
 
     Returns:
         JSONResponse: Agent details including YAML content
     """
-    logger.info(f'Getting agent by ID: {agent_id}')
+    logger.info(f'Getting agent by ID: {agent_id}, version: {version}')
 
-    agent = await agent_crud_service.get_agent(agent_id)
+    agent = await agent_crud_service.get_agent(agent_id, version=version)
 
     logger.info(f'Successfully retrieved agent - ID: {agent_id}')
     return JSONResponse(
@@ -305,11 +318,135 @@ async def get_agent(
     )
 
 
+@agents_router.get('/v1/agent-management/agents/{agent_id}/versions')
+@inject
+async def list_agent_versions(
+    agent_id: UUID = Path(..., description='The UUID of the agent'),
+    agent_crud_service: AgentCrudService = Depends(
+        Provide[AgentsContainer.agent_crud_service]
+    ),
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+):
+    """
+    List every live version of an agent
+
+    Args:
+        agent_id: The agent UUID
+
+    Returns:
+        JSONResponse: List of versions, each annotated with is_current
+    """
+    logger.info(f'Listing versions for agent - ID: {agent_id}')
+
+    versions = await agent_crud_service.list_agent_versions(agent_id)
+
+    logger.info(
+        f'Successfully retrieved {len(versions)} versions for agent - ID: {agent_id}'
+    )
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            {
+                'message': 'Agent versions retrieved successfully',
+                'data': {'versions': versions, 'count': len(versions)},
+            }
+        ),
+    )
+
+
+@agents_router.patch('/v1/agent-management/agents/{agent_id}/current-version')
+@inject
+async def promote_agent_version(
+    agent_id: UUID = Path(..., description='The UUID of the agent'),
+    version: int = Query(..., description='The version to promote to current_version'),
+    agent_crud_service: AgentCrudService = Depends(
+        Provide[AgentsContainer.agent_crud_service]
+    ),
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+):
+    """
+    Promote an existing version to be the agent's current_version
+
+    Args:
+        agent_id: The agent UUID
+        version: The version to promote
+
+    Returns:
+        JSONResponse: Updated agent details
+    """
+    logger.info(f'Promoting agent {agent_id} to version {version}')
+
+    agent = await agent_crud_service.promote_agent_version(agent_id, version)
+
+    logger.info(f'Successfully promoted agent {agent_id} to version {version}')
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            {
+                'message': 'Agent version promoted successfully',
+                'data': agent,
+            }
+        ),
+    )
+
+
+@agents_router.delete('/v1/agent-management/agents/{agent_id}/versions/{version}')
+@inject
+async def delete_agent_version(
+    agent_id: UUID = Path(..., description='The UUID of the agent'),
+    version: int = Path(..., description='The version to delete'),
+    agent_crud_service: AgentCrudService = Depends(
+        Provide[AgentsContainer.agent_crud_service]
+    ),
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+):
+    """
+    Delete a single version of an agent (soft delete; version numbers are never reused)
+
+    Args:
+        agent_id: The agent UUID
+        version: The version to delete
+
+    Returns:
+        JSONResponse: Success response
+
+    Raises:
+        Rejected if `version` is the agent's current_version
+    """
+    logger.info(f'Deleting agent {agent_id} version {version}')
+
+    await agent_crud_service.delete_agent_version(agent_id, version)
+
+    logger.info(f'Successfully deleted agent {agent_id} version {version}')
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            {
+                'message': 'Agent version deleted successfully',
+                'data': {'agent_id': str(agent_id), 'version': version},
+            }
+        ),
+    )
+
+
 @agents_router.put('/v1/agent-management/agents/{agent_id}')
 @inject
 async def update_agent(
     request: Request,
     agent_id: UUID = Path(..., description='The UUID of the agent to update'),
+    version: Optional[int] = Query(
+        None,
+        description='Which existing version to edit/branch from; defaults to current_version',
+    ),
+    create_new_version: bool = Query(
+        False, description='If true, create a new version instead of editing in place'
+    ),
     agent_crud_service: AgentCrudService = Depends(
         Provide[AgentsContainer.agent_crud_service]
     ),
@@ -319,16 +456,20 @@ async def update_agent(
     tool_loader: ToolLoader = Depends(Provide[AgentsContainer.tool_loader]),
 ):
     """
-    Update existing agent YAML configuration
+    Update existing agent YAML configuration - in place, or as a new version
 
     Args:
         agent_id: The agent UUID
         request: Request containing raw YAML content as text/plain
+        version: Which existing version to edit/branch from; defaults to current_version
+        create_new_version: If true, create a new version instead of editing in place
 
     Returns:
         JSONResponse: Success or error response with updated agent details
     """
-    logger.info(f'Updating agent - ID: {agent_id}')
+    logger.info(
+        f'Updating agent - ID: {agent_id}, version: {version}, create_new_version: {create_new_version}'
+    )
 
     # Extract authentication credentials
     access_token, app_key = extract_auth_credentials(request)
@@ -342,6 +483,8 @@ async def update_agent(
         tool_available=tool_loader.load_all_tools(),
         access_token=access_token,
         app_key=app_key,
+        version=version,
+        create_new_version=create_new_version,
     )
 
     logger.info(f'Successfully updated agent - ID: {agent_id}')

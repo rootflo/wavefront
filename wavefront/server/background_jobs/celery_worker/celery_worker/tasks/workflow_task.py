@@ -37,6 +37,7 @@ async def _run(task, payload: Dict) -> None:
                 'id': payload['entity_id'],
                 'name': payload['workflow_name'],
                 'namespace': payload['namespace'],
+                'version': payload.get('version'),
             },
             variables=payload.get('variables') or {},
             inputs=inputs if isinstance(inputs, list) else [inputs],

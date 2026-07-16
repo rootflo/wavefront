@@ -52,6 +52,7 @@ class CloudStorageHandler(ABC):
         bucket_name: str,
         key: str,
         content_type: Optional[str] = None,
+        disable_cache: bool = False,
     ) -> None:
         """
         Save small file to cloud storage using direct upload.
@@ -65,6 +66,10 @@ class CloudStorageHandler(ABC):
             key: Object key/path for the file in the bucket
             content_type: MIME type of the file (e.g., 'image/jpeg', 'application/pdf').
                          If None, the cloud provider will use its default.
+            disable_cache: If True, mark the object as non-cacheable
+                         (Cache-Control: no-store) so that an overwrite at the
+                         same key is read back immediately instead of serving a
+                         previously cached generation.
 
         Raises:
             Exception: If upload fails

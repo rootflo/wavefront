@@ -17,11 +17,14 @@ import { TtsConfig } from '@app/types/tts-config';
 import { VoiceAgent } from '@app/types/voice-agent';
 import { ScheduledJob } from '@app/types/scheduled-job';
 import { WorkflowListItem, WorkflowPipelineListItem, WorkflowRunListData } from '@app/types/workflow';
+import { EntityVersion } from '@app/types/version';
 import { UseQueryResult } from '@tanstack/react-query';
 
 import { IUser } from '@app/types/user';
 import {
   getAgentQueryFn,
+  getAgentVersionsQueryFn,
+  getWorkflowVersionsQueryFn,
   getAgentsQueryFn,
   getAllAppsQueryFn,
   getAllDatasourcesQueryFn,
@@ -70,6 +73,8 @@ import {
 } from './query-functions';
 import {
   getAgentKey,
+  getAgentVersionsKey,
+  getWorkflowVersionsKey,
   getAgentsKey,
   getAllAppsKey,
   getAllDatasourcesKey,
@@ -352,9 +357,36 @@ export const useGetTelephonyConfig = (
 
 export const useGetAgent = (
   appId: string | undefined,
-  agentId: string | undefined
+  agentId: string | undefined,
+  version?: number
 ): UseQueryResult<AgentApi | null, Error> => {
-  return useQueryInit(getAgentKey(appId || '', agentId || ''), () => getAgentQueryFn(agentId!), !!appId && !!agentId);
+  return useQueryInit(
+    getAgentKey(appId || '', agentId || '', version),
+    () => getAgentQueryFn(agentId!, version),
+    !!appId && !!agentId
+  );
+};
+
+export const useGetAgentVersions = (
+  appId: string | undefined,
+  agentId: string | undefined
+): UseQueryResult<EntityVersion[], Error> => {
+  return useQueryInit(
+    getAgentVersionsKey(appId || '', agentId || ''),
+    () => getAgentVersionsQueryFn(agentId!),
+    !!appId && !!agentId
+  );
+};
+
+export const useGetWorkflowVersions = (
+  appId: string | undefined,
+  workflowId: string | undefined
+): UseQueryResult<EntityVersion[], Error> => {
+  return useQueryInit(
+    getWorkflowVersionsKey(appId || '', workflowId || ''),
+    () => getWorkflowVersionsQueryFn(workflowId!),
+    !!appId && !!workflowId
+  );
 };
 
 export const useGetTools = (appId: string | undefined): UseQueryResult<ToolDetails[], Error> => {

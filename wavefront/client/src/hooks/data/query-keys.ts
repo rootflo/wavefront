@@ -48,7 +48,10 @@ const getVoiceAgentKey = (appId: string, agentId: string) => ['voice-agent', app
 const getTtsConfigKey = (appId: string, configId: string) => ['tts-config', appId, configId];
 const getSttConfigKey = (appId: string, configId: string) => ['stt-config', appId, configId];
 const getTelephonyConfigKey = (appId: string, configId: string) => ['telephony-config', appId, configId];
-const getAgentKey = (appId: string, agentId: string) => ['agent', appId, agentId];
+const getAgentKey = (appId: string, agentId: string, version?: number) =>
+  version !== undefined ? ['agent', appId, agentId, version] : ['agent', appId, agentId];
+const getAgentVersionsKey = (appId: string, agentId: string) => ['agent-versions', appId, agentId];
+const getWorkflowVersionsKey = (appId: string, workflowId: string) => ['workflow-versions', appId, workflowId];
 const getToolsKey = (appId: string) => ['tools', appId];
 const getApiServiceKey = (appId: string, serviceId: string) => ['api-service', appId, serviceId];
 const getMessageProcessorsKey = (appId: string) => ['message-processors', appId];
@@ -72,6 +75,8 @@ const getScheduledJobsKey = (appId: string) => ['scheduled-jobs', appId];
 
 export {
   getAgentKey,
+  getAgentVersionsKey,
+  getWorkflowVersionsKey,
   getAgentsKey,
   getAgentToolsKey,
   getAllAppsKey,

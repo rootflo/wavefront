@@ -7,6 +7,7 @@ import {
   InferenceData,
   InferenceResponse,
 } from '@app/types/agent';
+import { VersionListData, VersionListResponse } from '@app/types/version';
 import { AxiosInstance } from 'axios';
 
 export class AgentService {
@@ -28,14 +29,26 @@ export class AgentService {
     return response;
   }
 
-  async getAgent(id: string): Promise<AgentResponse> {
+  async getAgent(id: string, version?: number): Promise<AgentResponse> {
     const response: IApiResponse<AgentData> = await this.http.get(
-      `/v1/:appId/floware/v1/agent-management/agents/${id}`
+      `/v1/:appId/floware/v1/agent-management/agents/${id}`,
+      {
+        params: version !== undefined ? { version } : undefined,
+      }
     );
     return response;
   }
 
-  async updateAgent(id: string, yamlContent: string): Promise<AgentResponse> {
+  async updateAgent(
+    id: string,
+    yamlContent: string,
+    version?: number,
+    createNewVersion: boolean = false
+  ): Promise<AgentResponse> {
+    const params: { version?: number; create_new_version?: boolean } = {};
+    if (version !== undefined) params.version = version;
+    if (createNewVersion) params.create_new_version = true;
+
     const response: IApiResponse<AgentData> = await this.http.put(
       `/v1/:appId/floware/v1/agent-management/agents/${id}`,
       yamlContent,
@@ -43,17 +56,44 @@ export class AgentService {
         headers: {
           'Content-Type': 'text/plain',
         },
+        params: Object.keys(params).length > 0 ? params : undefined,
       }
+    );
+    return response;
+  }
+
+  async listAgentVersions(id: string): Promise<VersionListResponse> {
+    const response: IApiResponse<VersionListData> = await this.http.get(
+      `/v1/:appId/floware/v1/agent-management/agents/${id}/versions`
+    );
+    return response;
+  }
+
+  async promoteAgentVersion(id: string, version: number): Promise<AgentResponse> {
+    const response: IApiResponse<AgentData> = await this.http.patch(
+      `/v1/:appId/floware/v1/agent-management/agents/${id}/current-version`,
+      undefined,
+      {
+        params: { version },
+      }
+    );
+    return response;
+  }
+
+  async deleteAgentVersion(id: string, version: number): Promise<AgentResponse> {
+    const response: IApiResponse<AgentData> = await this.http.delete(
+      `/v1/:appId/floware/v1/agent-management/agents/${id}/versions/${version}`
     );
     return response;
   }
 
   async runInference(
     id: string,
-    variables: Record<string, unknown> = {},
     inputs: string | string[],
+    variables: Record<string, unknown> = {},
     llmInferenceConfigId?: string,
-    toolNames?: string[]
+    toolNames?: string[],
+    version?: number
   ): Promise<InferenceResponse> {
     const requestBody: {
       variables: Record<string, unknown>;
@@ -77,7 +117,10 @@ export class AgentService {
 
     const response: IApiResponse<InferenceData> = await this.http.post(
       `/v1/:appId/floware/v2/agents/${id}/inference`,
-      requestBody
+      requestBody,
+      {
+        params: version !== undefined ? { version } : undefined,
+      }
     );
     return response;
   }

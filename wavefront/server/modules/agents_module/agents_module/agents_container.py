@@ -28,8 +28,10 @@ class AgentsContainer(containers.DeclarativeContainer):
     namespace_repository = providers.Dependency()
 
     agent_repository = providers.Dependency()
+    agent_version_repository = providers.Dependency()
 
     workflow_repository = providers.Dependency()
+    workflow_version_repository = providers.Dependency()
 
     message_processor_repository = providers.Dependency()
 
@@ -52,6 +54,7 @@ class AgentsContainer(containers.DeclarativeContainer):
     agent_crud_service = providers.Singleton(
         AgentCrudService,
         agent_repository=agent_repository,
+        agent_version_repository=agent_version_repository,
         namespace_service=namespace_service,
         cloud_storage_manager=cloud_storage_manager,
         cache_manager=cache_manager,
@@ -77,6 +80,7 @@ class AgentsContainer(containers.DeclarativeContainer):
     workflow_crud_service = providers.Singleton(
         WorkflowCrudService,
         workflow_repository=workflow_repository,
+        workflow_version_repository=workflow_version_repository,
         namespace_service=namespace_service,
         cloud_storage_manager=cloud_storage_manager,
         cache_manager=cache_manager,
@@ -90,6 +94,8 @@ class AgentsContainer(containers.DeclarativeContainer):
         cloud_storage_manager=cloud_storage_manager,
         cache_manager=cache_manager,
         bucket_name=config.agents.agent_yaml_bucket,
+        workflow_repository=workflow_repository,
+        workflow_version_repository=workflow_version_repository,
         agent_crud_service=agent_crud_service,
         tool_loader=tool_loader,
     )

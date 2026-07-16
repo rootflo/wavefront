@@ -174,6 +174,7 @@ class AsyncAgenticExecutionService:
         access_token: Optional[str],
         app_key: Optional[str],
         llm_config: Optional[Dict] = None,
+        version: Optional[int] = None,
     ) -> AsyncInferenceResponse:
         execution_id = uuid.uuid4()
         prefix = f'executions/agents/{agent_id}/{execution_id}/'
@@ -204,6 +205,7 @@ class AsyncAgenticExecutionService:
             'app_key': app_key,
             'execution_bucket': self.bucket,
             'output_prefix': prefix,
+            'version': version,
         }
 
         try:
@@ -241,6 +243,7 @@ class AsyncAgenticExecutionService:
         output_json_enabled: bool,
         access_token: Optional[str],
         app_key: Optional[str],
+        version: Optional[int] = None,
     ) -> AsyncInferenceResponse:
         execution_id = uuid.uuid4()
         prefix = f'executions/workflows/{workflow_id}/{execution_id}/'
@@ -273,6 +276,7 @@ class AsyncAgenticExecutionService:
             'app_key': app_key,
             'execution_bucket': self.bucket,
             'output_prefix': prefix,
+            'version': version,
         }
 
         try:

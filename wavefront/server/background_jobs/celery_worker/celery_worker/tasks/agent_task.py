@@ -114,6 +114,7 @@ async def _run(task, payload: Dict) -> None:
             output_json_enabled=payload.get('output_json_enabled', True),
             access_token=payload.get('access_token'),
             app_key=payload.get('app_key'),
+            version=payload.get('version'),
         )
 
         final_result = result[-1].content if isinstance(result, list) else result

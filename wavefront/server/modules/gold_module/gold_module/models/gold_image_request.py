@@ -1,64 +1,71 @@
 from datetime import datetime
-from typing import List, Literal
+from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 
 class Item(BaseModel):
-    item_id: str = None
-    item_type: str = None
-    item_count: int = None
-    item_description: str = None
-    item_gross_weight: float = None
-    item_stone_weight: float = None
-    item_net_weight: float = None
-    item_purity: float = None
+    item_id: Optional[str] = None
+    item_type: Optional[str] = None
+    item_count: Optional[int] = None
+    item_description: Optional[str] = None
+    item_gross_weight: Optional[float] = None
+    item_stone_weight: Optional[float] = None
+    item_net_weight: Optional[float] = None
+    item_purity: Optional[float] = None
     model_config = ConfigDict(extra='ignore')
 
 
 class ImageMetadata(BaseModel):
-    customer_id: str = None
-    loan_id: str = None
+    customer_id: Optional[str] = None
+    loan_id: str
 
-    branch: str = None
-    city: str = None
-    region: str = None
-    zone: str = None
-    category: str = None
+    branch: Optional[str] = None
+    city: Optional[str] = None
+    region: Optional[str] = None
+    zone: Optional[str] = None
+    category: Optional[str] = None
 
-    agent_id: str = None
-    item_id: str = None  # Unique indentifier for gold image
+    agent_id: Optional[str] = None
+    item_id: Optional[str] = None  # Unique indentifier for gold image
 
-    timestamp: datetime = None
+    timestamp: Optional[datetime] = None
     loan_date: datetime
-    gold_loan_category: str = None
-    loan_tenure: int = None
-    loan_amount: float = None
-    loan_type: Literal['new', 'top_up'] = None
-    pos: float = None
-    parent_loan_id: str = None
+    gold_loan_category: Optional[str] = None
+    loan_tenure: Optional[int] = None
+    loan_amount: Optional[float] = None
+    loan_type: Optional[Literal['new', 'top_up']] = None
+    pos: Optional[float] = None
+    parent_loan_id: Optional[str] = None
 
-    gross_weight: float = None
-    stone_weight: float = None
-    net_weight: float = None
-    jewellery_items_count: int = None
-    gold_purity: float = None
+    gross_weight: Optional[float] = None
+    stone_weight: Optional[float] = None
+    net_weight: Optional[float] = None
+    jewellery_items_count: Optional[int] = None
+    gold_purity: Optional[float] = None
 
-    items: List[Item] = None
+    items: Optional[List[Item]] = None
 
-    metadata_1: dict = None
-    metadata_2: dict = None
-    metadata_3: dict = None
-    metadata_4: dict = None
-    metadata_5: dict = None
+    metadata_1: Optional[dict] = None
+    metadata_2: Optional[dict] = None
+    metadata_3: Optional[dict] = None
+    metadata_4: Optional[dict] = None
+    metadata_5: Optional[dict] = None
 
-    filter_1: str = None
-    filter_2: str = None
-    filter_3: str = None
-    filter_4: str = None
-    filter_5: str = None
+    filter_1: Optional[str] = None
+    filter_2: Optional[str] = None
+    filter_3: Optional[str] = None
+    filter_4: Optional[str] = None
+    filter_5: Optional[str] = None
 
     model_config = ConfigDict(extra='allow')
+
+    @field_validator('loan_id')
+    @classmethod
+    def loan_id_must_not_be_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError('loan_id must not be empty')
+        return v
 
     @model_validator(mode='after')
     def validate_loan_type_fields(self):
@@ -104,3 +111,10 @@ class ImageAnalysisRequest(BaseModel):
 class AdhocImageUploadRequest(BaseModel):
     image: str
     loan_id: str
+
+    @field_validator('loan_id')
+    @classmethod
+    def loan_id_must_not_be_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError('loan_id must not be empty')
+        return v

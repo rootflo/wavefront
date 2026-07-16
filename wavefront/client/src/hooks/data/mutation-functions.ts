@@ -18,6 +18,49 @@ export const updateAgentMutationFn = async ({
   await floConsoleService.agentService.updateAgent(agentId, yamlContent);
 };
 
+/**
+ * Agent / Workflow version management mutation functions
+ */
+export const promoteAgentVersionMutationFn = async ({
+  agentId,
+  version,
+}: {
+  agentId: string;
+  version: number;
+}): Promise<void> => {
+  await floConsoleService.agentService.promoteAgentVersion(agentId, version);
+};
+
+export const deleteAgentVersionMutationFn = async ({
+  agentId,
+  version,
+}: {
+  agentId: string;
+  version: number;
+}): Promise<void> => {
+  await floConsoleService.agentService.deleteAgentVersion(agentId, version);
+};
+
+export const promoteWorkflowVersionMutationFn = async ({
+  workflowId,
+  version,
+}: {
+  workflowId: string;
+  version: number;
+}): Promise<void> => {
+  await floConsoleService.workflowService.promoteWorkflowVersion(workflowId, version);
+};
+
+export const deleteWorkflowVersionMutationFn = async ({
+  workflowId,
+  version,
+}: {
+  workflowId: string;
+  version: number;
+}): Promise<void> => {
+  await floConsoleService.workflowService.deleteWorkflowVersion(workflowId, version);
+};
+
 export const updateAppFn = async (data: {
   appId: string;
   appName: string;

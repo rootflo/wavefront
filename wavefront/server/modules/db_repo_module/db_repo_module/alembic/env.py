@@ -39,6 +39,12 @@ from db_repo_module.models.async_agentic_execution import AsyncAgenticExecution
 from db_repo_module.models.agentic_trigger_credential import AgenticTriggerCredential
 from db_repo_module.models.agentic_trigger import AgenticTrigger
 from db_repo_module.models.agentic_trigger_event import AgenticTriggerEvent
+from db_repo_module.models.agent import Agent
+from db_repo_module.models.agent_version import AgentVersion
+from db_repo_module.models.workflow import Workflow
+from db_repo_module.models.workflow_version import WorkflowVersion
+from db_repo_module.models.workflow_pipeline import WorkflowPipeline
+from db_repo_module.models.workflow_runs import WorkflowRuns
 from dotenv import load_dotenv
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
@@ -88,6 +94,12 @@ models = [
     AgenticTriggerCredential,
     AgenticTrigger,
     AgenticTriggerEvent,
+    Agent,
+    AgentVersion,
+    Workflow,
+    WorkflowVersion,
+    WorkflowPipeline,
+    WorkflowRuns,
 ]
 target_metadata = Base.metadata
 

@@ -33,7 +33,9 @@ from db_repo_module.models.image_search_models import (
 from db_repo_module.models.ikb_models import ImageKnowledgeBase
 from db_repo_module.models.namespace import Namespace
 from db_repo_module.models.agent import Agent
+from db_repo_module.models.agent_version import AgentVersion
 from db_repo_module.models.workflow import Workflow
+from db_repo_module.models.workflow_version import WorkflowVersion
 from db_repo_module.models.api_services import ApiServices
 from db_repo_module.models.async_agentic_execution import AsyncAgenticExecution
 from db_repo_module.models.agentic_trigger_credential import AgenticTriggerCredential
@@ -205,9 +207,21 @@ class DatabaseModuleContainer(containers.DeclarativeContainer):
         db_client=db_client,
     )
 
+    agent_version_repository = providers.Singleton(
+        SQLAlchemyRepository[AgentVersion],
+        model=AgentVersion,
+        db_client=db_client,
+    )
+
     workflow_repository = providers.Singleton(
         SQLAlchemyRepository[Workflow],
         model=Workflow,
+        db_client=db_client,
+    )
+
+    workflow_version_repository = providers.Singleton(
+        SQLAlchemyRepository[WorkflowVersion],
+        model=WorkflowVersion,
         db_client=db_client,
     )
 

@@ -7,6 +7,8 @@ export interface Workflow {
   created_at: string;
   updated_at: string;
   yaml_content: string;
+  version?: number;
+  current_version?: number;
 }
 
 export interface WorkflowInferenceData {
@@ -28,6 +30,8 @@ export interface WorkflowData {
     created_at: string;
     updated_at: string;
     yaml_content?: string;
+    version?: number;
+    current_version?: number;
   };
 }
 
@@ -37,6 +41,7 @@ export interface WorkflowListItem {
   namespace: string;
   created_at: string;
   updated_at: string;
+  current_version?: number;
 }
 
 export interface WorkflowPipelineListItem {
@@ -45,6 +50,7 @@ export interface WorkflowPipelineListItem {
   description: string | null;
   location: string;
   workflow_id?: string;
+  workflow_version?: number;
   retry_policy: string | null;
   timeout: string | null;
   concurrency_limit: number;

@@ -20,6 +20,7 @@ class Workflow(Base):
     namespace: Mapped[str] = mapped_column(
         ForeignKey('namespaces.name'), nullable=False, index=True
     )
+    current_version: Mapped[int] = mapped_column(nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         default=func.now(), onupdate=func.now()
@@ -34,6 +35,7 @@ class Workflow(Base):
             'id': str(self.id),
             'name': self.name,
             'namespace': self.namespace,
+            'current_version': self.current_version,
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat(),
         }

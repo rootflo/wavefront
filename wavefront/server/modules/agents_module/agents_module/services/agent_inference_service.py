@@ -283,6 +283,7 @@ class AgentInferenceService:
         output_json_enabled: bool = True,
         access_token: Optional[str] = None,
         app_key: Optional[str] = None,
+        version: Optional[int] = None,
     ) -> tuple[str, float]:
         """
         Complete inference workflow: fetch YAML, create agent, run inference
@@ -294,6 +295,7 @@ class AgentInferenceService:
             inputs: Inputs to use for inference
             llm_config: Optional LLM configuration to override agent's default LLM
             output_json_enabled: Whether to extract JSON from the response
+            version: Specific version to run; defaults to the agent's current_version
 
         Returns:
             tuple: (result, execution_time)
@@ -301,7 +303,7 @@ class AgentInferenceService:
 
         # Fetch agent YAML using CRUD service
         yaml_content = await self.agent_crud_service.get_agent_yaml_from_bucket(
-            agent_id, namespace
+            agent_id, namespace, version=version
         )
 
         # Create agent from YAML with optional LLM override and tools
@@ -374,6 +376,7 @@ class AgentInferenceService:
         access_token: Optional[str] = None,
         app_key: Optional[str] = None,
         llm_config: Optional[LlmInferenceConfig] = None,
+        version: Optional[int] = None,
     ) -> tuple[List[BaseMessage], float, str]:
         """
         Complete inference workflow (v2): fetch agent from DB + cloud storage, run inference
@@ -389,6 +392,7 @@ class AgentInferenceService:
             variables: Variables to pass to the agent
             inputs: Inputs to use for inference
             output_json_enabled: Whether to extract JSON from the response
+            version: Specific version to run; defaults to the agent's current_version
 
         Returns:
             tuple: (result, execution_time, namespace)
@@ -402,10 +406,12 @@ class AgentInferenceService:
                 'agent_crud_service not initialized. Required for v2 inference.'
             )
 
-        logger.info(f'Starting v2 inference for agent_id: {agent_id}')
+        logger.info(
+            f'Starting v2 inference for agent_id: {agent_id}, version: {version}'
+        )
 
         # Fetch agent from DB + cloud storage (includes YAML content)
-        agent_data = await self.agent_crud_service.get_agent(agent_id)
+        agent_data = await self.agent_crud_service.get_agent(agent_id, version=version)
 
         # Extract details
         namespace = agent_data['namespace']

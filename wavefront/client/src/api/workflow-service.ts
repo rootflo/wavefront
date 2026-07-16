@@ -13,6 +13,7 @@ import {
   WorkflowRunListResponse,
   WorkflowRunResponse,
 } from '@app/types/workflow';
+import { VersionListData, VersionListResponse } from '@app/types/version';
 import { AxiosInstance } from 'axios';
 
 export class WorkflowService {
@@ -34,14 +35,26 @@ export class WorkflowService {
     return response;
   }
 
-  async getWorkflow(id: string): Promise<WorkflowResponse> {
+  async getWorkflow(id: string, version?: number): Promise<WorkflowResponse> {
     const response: IApiResponse<WorkflowData> = await this.http.get(
-      `/v1/:appId/floware/v1/workflow-management/workflows/${id}`
+      `/v1/:appId/floware/v1/workflow-management/workflows/${id}`,
+      {
+        params: version !== undefined ? { version } : undefined,
+      }
     );
     return response;
   }
 
-  async updateWorkflow(id: string, yamlContent: string): Promise<WorkflowResponse> {
+  async updateWorkflow(
+    id: string,
+    yamlContent: string,
+    version?: number,
+    createNewVersion: boolean = false
+  ): Promise<WorkflowResponse> {
+    const params: { version?: number; create_new_version?: boolean } = {};
+    if (version !== undefined) params.version = version;
+    if (createNewVersion) params.create_new_version = true;
+
     const response: IApiResponse<WorkflowData> = await this.http.put(
       `/v1/:appId/floware/v1/workflow-management/workflows/${id}`,
       yamlContent,
@@ -49,7 +62,33 @@ export class WorkflowService {
         headers: {
           'Content-Type': 'text/plain',
         },
+        params: Object.keys(params).length > 0 ? params : undefined,
       }
+    );
+    return response;
+  }
+
+  async listWorkflowVersions(id: string): Promise<VersionListResponse> {
+    const response: IApiResponse<VersionListData> = await this.http.get(
+      `/v1/:appId/floware/v1/workflow-management/workflows/${id}/versions`
+    );
+    return response;
+  }
+
+  async promoteWorkflowVersion(id: string, version: number): Promise<WorkflowResponse> {
+    const response: IApiResponse<WorkflowData> = await this.http.patch(
+      `/v1/:appId/floware/v1/workflow-management/workflows/${id}/current-version`,
+      undefined,
+      {
+        params: { version },
+      }
+    );
+    return response;
+  }
+
+  async deleteWorkflowVersion(id: string, version: number): Promise<WorkflowResponse> {
+    const response: IApiResponse<WorkflowData> = await this.http.delete(
+      `/v1/:appId/floware/v1/workflow-management/workflows/${id}/versions/${version}`
     );
     return response;
   }
@@ -58,7 +97,8 @@ export class WorkflowService {
     id: string,
     inputs: string | unknown[],
     variables: Record<string, unknown> = {},
-    outputJsonEnabled: boolean = false
+    outputJsonEnabled: boolean = false,
+    version?: number
   ): Promise<WorkflowInferenceResponse> {
     const requestBody: Record<string, unknown> = {
       inputs,
@@ -68,7 +108,10 @@ export class WorkflowService {
 
     const response: IApiResponse<WorkflowInferenceData> = await this.http.post(
       `/v1/:appId/floware/v2/workflows/${id}/inference`,
-      requestBody
+      requestBody,
+      {
+        params: version !== undefined ? { version } : undefined,
+      }
     );
     return response;
   }
@@ -90,14 +133,32 @@ export class WorkflowService {
     return response;
   }
 
-  async createWorkflowPipeline(workflowId: string, name: string): Promise<WorkflowResponse> {
-    const requestBody: Record<string, string> = {
+  async createWorkflowPipeline(workflowId: string, name: string, workflowVersion?: number): Promise<WorkflowResponse> {
+    const requestBody: Record<string, string | number> = {
       name,
       workflow_id: workflowId,
     };
+    if (workflowVersion !== undefined) {
+      requestBody.workflow_version = workflowVersion;
+    }
     const response: IApiResponse<WorkflowData> = await this.http.post(
       `/v1/:appId/floware/v1/workflow-pipelines`,
       requestBody
+    );
+    return response;
+  }
+
+  async updateWorkflowPipeline(
+    pipelineId: string,
+    payload: {
+      name?: string;
+      workflow_id?: string;
+      workflow_version?: number;
+    }
+  ): Promise<WorkflowResponse> {
+    const response: IApiResponse<WorkflowData> = await this.http.patch(
+      `/v1/:appId/floware/v1/workflow-pipelines/${pipelineId}`,
+      payload
     );
     return response;
   }

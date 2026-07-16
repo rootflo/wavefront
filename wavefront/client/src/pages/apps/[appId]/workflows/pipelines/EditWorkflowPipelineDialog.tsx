@@ -9,11 +9,11 @@ import {
   DialogTitle,
 } from '@app/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
-import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { useGetWorkflows, useGetWorkflowVersions } from '@app/hooks/data/fetch-hooks';
 import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
+import { WorkflowPipelineListItem } from '@app/types/workflow';
 import { zodResolver } from '@hookform/resolvers/zod';
 import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -21,81 +21,79 @@ import { z } from 'zod';
 
 const CURRENT_VERSION_VALUE = 'current';
 
-const createWorkflowPipelineSchema = z.object({
-  pipeline_name: z.string().min(1, 'Pipeline name is required'),
+const editWorkflowPipelineSchema = z.object({
   workflow_id: z.string().min(1, 'Workflow is required'),
   workflow_version: z.string().optional(),
 });
 
-type CreateWorkflowPipelineInput = z.infer<typeof createWorkflowPipelineSchema>;
+type EditWorkflowPipelineInput = z.infer<typeof editWorkflowPipelineSchema>;
 
-interface CreateWorkflowPipelineDialogProps {
+interface EditWorkflowPipelineDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   appId: string;
+  pipeline: WorkflowPipelineListItem;
   onSuccess?: () => void;
 }
 
-const CreateWorkflowPipelineDialog: React.FC<CreateWorkflowPipelineDialogProps> = ({
+const EditWorkflowPipelineDialog: React.FC<EditWorkflowPipelineDialogProps> = ({
   isOpen,
   onOpenChange,
   appId,
+  pipeline,
   onSuccess,
 }) => {
   const { notifySuccess, notifyError } = useNotifyStore();
   const [loading, setLoading] = useState(false);
 
-  // Fetch workflows for the select dropdown
   const { data: workflows = [], isLoading: workflowsLoading } = useGetWorkflows(appId, undefined);
 
-  const form = useForm<CreateWorkflowPipelineInput>({
-    resolver: zodResolver(createWorkflowPipelineSchema),
+  const form = useForm<EditWorkflowPipelineInput>({
+    resolver: zodResolver(editWorkflowPipelineSchema),
     defaultValues: {
-      pipeline_name: '',
-      workflow_id: '',
-      workflow_version: CURRENT_VERSION_VALUE,
+      workflow_id: pipeline.workflow_id || '',
+      workflow_version:
+        pipeline.workflow_version !== undefined ? String(pipeline.workflow_version) : CURRENT_VERSION_VALUE,
     },
   });
 
-  // Fetch versions for the currently selected workflow (for the version dropdown)
   const selectedWorkflowId = form.watch('workflow_id');
   const { data: workflowVersions = [] } = useGetWorkflowVersions(appId, selectedWorkflowId || undefined);
 
-  // Reset form when dialog closes
+  // Reset the form to the pipeline's current pin whenever it opens.
   useEffect(() => {
-    if (!isOpen) {
+    if (isOpen) {
       form.reset({
-        pipeline_name: '',
-        workflow_id: '',
-        workflow_version: CURRENT_VERSION_VALUE,
+        workflow_id: pipeline.workflow_id || '',
+        workflow_version:
+          pipeline.workflow_version !== undefined ? String(pipeline.workflow_version) : CURRENT_VERSION_VALUE,
       });
     }
-  }, [isOpen, form]);
+  }, [isOpen, pipeline, form]);
 
-  const onSubmit = async (data: CreateWorkflowPipelineInput) => {
+  const onSubmit = async (data: EditWorkflowPipelineInput) => {
     setLoading(true);
     try {
       const workflowVersion =
         data.workflow_version && data.workflow_version !== CURRENT_VERSION_VALUE
           ? Number(data.workflow_version)
           : undefined;
-      const response = await floConsoleService.workflowService.createWorkflowPipeline(
-        data.workflow_id,
-        data.pipeline_name.trim(),
-        workflowVersion
-      );
+
+      const response = await floConsoleService.workflowService.updateWorkflowPipeline(pipeline.id, {
+        workflow_id: data.workflow_id,
+        workflow_version: workflowVersion,
+      });
 
       if (response.data?.meta?.status === 'success') {
-        notifySuccess('Pipeline created successfully');
+        notifySuccess('Pipeline updated successfully');
         onSuccess?.();
         onOpenChange(false);
       } else {
-        notifyError('Failed to create pipeline');
+        notifyError('Failed to update pipeline');
       }
     } catch (error) {
-      console.error('Error creating pipeline:', error);
-      const errorMessage = extractErrorMessage(error);
-      notifyError(errorMessage || 'Failed to create pipeline');
+      console.error('Error updating pipeline:', error);
+      notifyError(extractErrorMessage(error) || 'Failed to update pipeline');
     } finally {
       setLoading(false);
     }
@@ -105,40 +103,23 @@ const CreateWorkflowPipelineDialog: React.FC<CreateWorkflowPipelineDialogProps> 
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Create Pipeline</DialogTitle>
-          <DialogDescription>Create a new workflow pipeline</DialogDescription>
+          <DialogTitle>Edit Pipeline</DialogTitle>
+          <DialogDescription>Repoint this pipeline to a different workflow or version.</DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <FormField
               control={form.control}
-              name="pipeline_name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    Pipeline Name <span className="text-red-500">*</span>
-                  </FormLabel>
-                  <FormControl>
-                    <Input placeholder="Enter pipeline name" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
               name="workflow_id"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    Select Workflow <span className="text-red-500">*</span>
+                    Workflow <span className="text-red-500">*</span>
                   </FormLabel>
                   <Select
                     onValueChange={(val) => {
                       field.onChange(val);
-                      // Reset version pin when the workflow changes
                       form.setValue('workflow_version', CURRENT_VERSION_VALUE);
                     }}
                     value={field.value}
@@ -198,7 +179,7 @@ const CreateWorkflowPipelineDialog: React.FC<CreateWorkflowPipelineDialogProps> 
                 Cancel
               </Button>
               <Button type="submit" loading={loading}>
-                Create Pipeline
+                Save
               </Button>
             </DialogFooter>
           </form>
@@ -208,4 +189,4 @@ const CreateWorkflowPipelineDialog: React.FC<CreateWorkflowPipelineDialogProps> 
   );
 };
 
-export default CreateWorkflowPipelineDialog;
+export default EditWorkflowPipelineDialog;

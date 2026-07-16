@@ -1,5 +1,14 @@
 import { QueryClient, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getAgentKey, getAgentsKey, getAppByIdKey, getConsoleUsersKey, getUserKey } from './query-keys';
+import {
+  getAgentKey,
+  getAgentsKey,
+  getAgentVersionsKey,
+  getWorkflowVersionsKey,
+  getWorkflowsKey,
+  getAppByIdKey,
+  getConsoleUsersKey,
+  getUserKey,
+} from './query-keys';
 import {
   createUserMutationFn,
   deleteAgentMutationFn,
@@ -7,6 +16,10 @@ import {
   updateAgentMutationFn,
   updateAppFn,
   updateUserMutationFn,
+  promoteAgentVersionMutationFn,
+  deleteAgentVersionMutationFn,
+  promoteWorkflowVersionMutationFn,
+  deleteWorkflowVersionMutationFn,
 } from './mutation-functions';
 import { useNotifyStore } from '@app/store';
 import { extractErrorMessage } from '@app/lib/utils';
@@ -56,6 +69,92 @@ export const useUpdateAgent = (appId: string | undefined, agentId: string | unde
     onError: (error) => {
       console.error('Error updating agent:', error);
       notifyError('Failed to update agent');
+    },
+  });
+};
+
+/**
+ * Agent version management hooks
+ */
+export const usePromoteAgentVersion = (appId: string | undefined, agentId: string | undefined) => {
+  const queryClient = useQueryClient();
+  const { notifySuccess, notifyError } = useNotifyStore();
+
+  return useMutation({
+    mutationFn: promoteAgentVersionMutationFn,
+    onSuccess: () => {
+      notifySuccess('Version promoted successfully');
+      if (appId && agentId) {
+        queryClient.invalidateQueries({ queryKey: getAgentVersionsKey(appId, agentId) });
+        queryClient.invalidateQueries({ queryKey: getAgentKey(appId, agentId) });
+        queryClient.invalidateQueries({ queryKey: getAgentsKey(appId) });
+      }
+    },
+    onError: (error) => {
+      console.error('Error promoting agent version:', error);
+      notifyError(extractErrorMessage(error) || 'Failed to promote version');
+    },
+  });
+};
+
+export const useDeleteAgentVersion = (appId: string | undefined, agentId: string | undefined) => {
+  const queryClient = useQueryClient();
+  const { notifySuccess, notifyError } = useNotifyStore();
+
+  return useMutation({
+    mutationFn: deleteAgentVersionMutationFn,
+    onSuccess: () => {
+      notifySuccess('Version deleted successfully');
+      if (appId && agentId) {
+        queryClient.invalidateQueries({ queryKey: getAgentVersionsKey(appId, agentId) });
+        queryClient.invalidateQueries({ queryKey: getAgentKey(appId, agentId) });
+      }
+    },
+    onError: (error) => {
+      console.error('Error deleting agent version:', error);
+      notifyError(extractErrorMessage(error) || 'Failed to delete version');
+    },
+  });
+};
+
+/**
+ * Workflow version management hooks
+ */
+export const usePromoteWorkflowVersion = (appId: string | undefined, workflowId: string | undefined) => {
+  const queryClient = useQueryClient();
+  const { notifySuccess, notifyError } = useNotifyStore();
+
+  return useMutation({
+    mutationFn: promoteWorkflowVersionMutationFn,
+    onSuccess: () => {
+      notifySuccess('Version promoted successfully');
+      if (appId && workflowId) {
+        queryClient.invalidateQueries({ queryKey: getWorkflowVersionsKey(appId, workflowId) });
+        queryClient.invalidateQueries({ queryKey: getWorkflowsKey(appId) });
+      }
+    },
+    onError: (error) => {
+      console.error('Error promoting workflow version:', error);
+      notifyError(extractErrorMessage(error) || 'Failed to promote version');
+    },
+  });
+};
+
+export const useDeleteWorkflowVersion = (appId: string | undefined, workflowId: string | undefined) => {
+  const queryClient = useQueryClient();
+  const { notifySuccess, notifyError } = useNotifyStore();
+
+  return useMutation({
+    mutationFn: deleteWorkflowVersionMutationFn,
+    onSuccess: () => {
+      notifySuccess('Version deleted successfully');
+      if (appId && workflowId) {
+        queryClient.invalidateQueries({ queryKey: getWorkflowVersionsKey(appId, workflowId) });
+      }
+    },
+    onError: (error) => {
+      console.error('Error deleting workflow version:', error);
+      notifyError(extractErrorMessage(error) || 'Failed to delete version');
     },
   });
 };
