@@ -1,28 +1,32 @@
-"""Sync Hugging Face-style model folders from cloud blob storage to a local cache.
+"""Resolve and sync model directories for CLIP and DINOv3.
 
-Mirrors the pattern in packages/utility/utility/model_resolver.py but is
-self-contained inside inference_app so it has no cross-repo dependency.
+Each model source (CLIP_VIT_BASE_PATCH32_MODEL_URI, DINOV3_VITL16_HF_MODEL_URI) can be:
+- A cloud URI (gs://, s3://, azure://) — synced to MODEL_CACHE_DIR on startup.
+- A local directory path — used directly with no download.
+
+Cloud sync is skipped when a .sync_complete marker exists in the cache dir.
 """
 
 from __future__ import annotations
 
 import hashlib
-import os
 import re
 from pathlib import Path
 
 from flo_cloud.cloud_storage import CloudStorageManager
 from common_module.log.logger import logger
 
+from inference_app.env import (
+    CLOUD_PROVIDER,
+    CLIP_VIT_BASE_PATCH32_MODEL_URI,
+    DINOV3_VITL16_HF_MODEL_URI,
+    MODEL_CACHE_DIR,
+)
+
 _CLOUD_URI_PATTERN = re.compile(
     r"^(?:gs://|s3://|azure://).+",
     re.IGNORECASE,
 )
-
-CLOUD_PROVIDER = os.getenv("CLOUD_PROVIDER", "")
-CLIP_MODEL_URI = os.getenv("CLIP_MODEL_URI", "")
-DINO_MODEL_URI = os.getenv("DINO_MODEL_URI", "")
-MODEL_CACHE_DIR = os.getenv("MODEL_CACHE_DIR", "/tmp/model-cache")
 
 
 def is_cloud_uri(uri: str) -> bool:
@@ -116,21 +120,45 @@ def sync_cloud_model(uri: str, *, provider: str, cache_root: Path) -> Path:
     return dest_dir
 
 
-def _require_cloud_uri(name: str, uri: str) -> str:
+def resolve_model_dir(name: str, uri: str, cache_root: Path) -> Path:
+    """
+    Resolve a model source to a local directory.
+
+    Accepts:
+    - Cloud URI (gs://, s3://, azure://) — downloads to cache_root and returns
+      the local dir. Skips download if .sync_complete already exists.
+    - Local directory path — returned directly with no download.
+
+    Args:
+        name: Env var name, used in error messages.
+        uri: Cloud URI or local path string.
+        cache_root: Parent directory for synced model folders (used for cloud only).
+
+    Returns:
+        Path to a local directory ready for from_pretrained().
+
+    Raises:
+        ValueError: If uri is empty, not a cloud URI, and not an existing local dir.
+    """
     if not uri:
         raise ValueError(f"{name} env var is required but not set")
-    if not is_cloud_uri(uri):
-        raise ValueError(
-            f"{name} must be a cloud URI (gs://, s3://, or azure://); got {uri!r}"
-        )
-    return uri
 
+    if is_cloud_uri(uri):
+        if not CLOUD_PROVIDER:
+            raise ValueError(
+                "CLOUD_PROVIDER env var is required when using a cloud URI"
+            )
+        return sync_cloud_model(uri, provider=CLOUD_PROVIDER, cache_root=cache_root)
 
-def _validate_cloud_config() -> None:
-    if not CLOUD_PROVIDER:
-        raise ValueError("CLOUD_PROVIDER env var is required but not set")
-    _require_cloud_uri("CLIP_MODEL_URI", CLIP_MODEL_URI)
-    _require_cloud_uri("DINO_MODEL_URI", DINO_MODEL_URI)
+    local = Path(uri)
+    if local.is_dir():
+        logger.info("Using local model dir for %s: %s", name, local)
+        return local
+
+    raise ValueError(
+        f"{name}={uri!r} is neither a cloud URI (gs://, s3://, azure://)"
+        f" nor an existing local directory"
+    )
 
 
 def _ensure_cache_dir() -> Path:
@@ -139,27 +167,20 @@ def _ensure_cache_dir() -> Path:
     return cache_root
 
 
-def _sync_clip(cache_root: Path) -> Path:
-    return sync_cloud_model(CLIP_MODEL_URI, provider=CLOUD_PROVIDER, cache_root=cache_root)
-
-
-def _sync_dino(cache_root: Path) -> Path:
-    return sync_cloud_model(DINO_MODEL_URI, provider=CLOUD_PROVIDER, cache_root=cache_root)
-
-
 def sync_embedding_models() -> tuple[Path, Path]:
     """
-    Validate env vars, ensure cache dir, and sync CLIP + DINO from cloud storage.
+    Resolve CLIP and DINO model directories from env vars.
+
+    Each URI can be a cloud URI (gs://, s3://, azure://) or a local directory path.
+    Cloud sources are synced to MODEL_CACHE_DIR; local paths are used directly.
 
     Returns:
-        (clip_model_dir, dino_model_dir) — local synced directories ready for
-        from_pretrained().
+        (clip_model_dir, dino_model_dir) — local directories ready for from_pretrained().
 
     Raises:
-        ValueError: If required env vars are missing or not valid cloud URIs.
+        ValueError: If required env vars are missing or point to invalid sources.
     """
-    _validate_cloud_config()
     cache_root = _ensure_cache_dir()
-    clip_dir = _sync_clip(cache_root)
-    dino_dir = _sync_dino(cache_root)
+    clip_dir = resolve_model_dir("CLIP_VIT_BASE_PATCH32_MODEL_URI", CLIP_VIT_BASE_PATCH32_MODEL_URI, cache_root)
+    dino_dir = resolve_model_dir("DINOV3_VITL16_HF_MODEL_URI", DINOV3_VITL16_HF_MODEL_URI, cache_root)
     return clip_dir, dino_dir
