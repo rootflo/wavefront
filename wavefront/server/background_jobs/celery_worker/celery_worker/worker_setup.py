@@ -15,6 +15,7 @@ from api_services_module.api_services_container import (
     create_api_services_container,
 )
 from agents_module.agents_container import AgentsContainer
+from llm_inference_config_module.container import LlmInferenceConfigContainer
 from agents_module.services.agent_inference_service import AgentInferenceService
 from agents_module.services.workflow_inference_service import WorkflowInferenceService
 from common_module.common_container import CommonContainer
@@ -124,6 +125,11 @@ def get_services() -> WorkerServices:
             message_processor_bucket_name=bucket_name,
         )
 
+        llm_inference_config_container = LlmInferenceConfigContainer(
+            db_client=db_repo_container.db_client,
+            cache_manager=db_repo_container.cache_manager,
+        )
+
         agents_container = AgentsContainer(
             db_client=db_repo_container.db_client,
             cloud_storage_manager=common_container.cloud_storage_manager,
@@ -141,6 +147,7 @@ def get_services() -> WorkerServices:
             api_services_manager=api_services_container.api_service_manager,
             async_agentic_execution_repository=db_repo_container.async_agentic_execution_repository,
             executions_bucket=AGENTIC_EXECUTIONS_BUCKET,
+            llm_inference_config_service=llm_inference_config_container.llm_inference_config_service,
         )
 
         # Inject config values from env vars so services like AgentCrudService
@@ -164,6 +171,7 @@ def get_services() -> WorkerServices:
             agent_repository=db_repo_container.agent_repository,
             workflow_repository=db_repo_container.workflow_repository,
             async_agentic_execution_service=agents_container.async_agentic_execution_service,
+            cache_manager=db_repo_container.cache_manager,
         )
         triggers_container.config.from_dict(
             {

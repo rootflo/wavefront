@@ -16,6 +16,7 @@ dependencies = [
     "api-services-module",
     "common-module",
     "triggers-module",
+    "llm-inference-config-module",
     "celery[redis]>=5.4.0,<6.0.0",
     "python-dotenv>=1.1.0,<2.0.0",
 ]
@@ -28,7 +29,8 @@ flo-utils           = { workspace = true }
 tools-module        = { workspace = true }
 api-services-module = { workspace = true }
 common-module       = { workspace = true }
-triggers-module     = { workspace = true }
+triggers-module               = { workspace = true }
+llm-inference-config-module   = { workspace = true }
 
 [tool.uv]
 package = true

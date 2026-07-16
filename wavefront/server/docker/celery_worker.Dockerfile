@@ -42,4 +42,4 @@ USER celery
 
 WORKDIR /app/background_jobs/celery_worker
 
-CMD ["uv", "run", "celery", "-A", "celery_worker.celery_app", "worker", "--loglevel=info", "--pool=solo"]
+CMD ["uv", "run", "celery", "-A", "celery_worker.celery_app", "worker", "--loglevel=info", "--pool=solo", "--without-mingle", "--without-gossip"]

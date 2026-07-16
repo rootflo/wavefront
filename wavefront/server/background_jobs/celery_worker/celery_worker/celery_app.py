@@ -1,6 +1,15 @@
 from celery import Celery
+from celery.signals import worker_process_init
 
 from celery_worker.env import CELERY_BROKER_URL, CELERY_RESULT_BACKEND
+
+
+@worker_process_init.connect
+def setup_azure_redis_auth(**kwargs):
+    from db_repo_module.cache.azure_redis_auth import patch_redis_for_azure
+
+    patch_redis_for_azure()
+
 
 app = Celery('async_executor')
 app.conf.update(
@@ -20,4 +29,11 @@ app.conf.update(
     task_reject_on_worker_lost=True,  # Re-queue on worker crash
     worker_prefetch_multiplier=1,  # Fair task distribution
     task_track_started=True,
+    task_default_queue='{celery}',
+    worker_enable_remote_control=False,
+    broker_transport_options={
+        'unacked_key': '{celery}.unacked',
+        'unacked_index_key': '{celery}.unacked_index',
+        'unacked_mutex_key': '{celery}.unacked_mutex',
+    },
 )
