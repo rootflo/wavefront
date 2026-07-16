@@ -24,9 +24,9 @@ class ToolsListData(BaseModel):
         description='Dictionary mapping tool names to their metadata',
         examples=[
             {
-                'bigquery_test_connection': {
-                    'name': 'bigquery_test_connection',
-                    'description': 'Test BigQuery connection',
+                'datasource_insert_rows': {
+                    'name': 'datasource_insert_rows',
+                    'description': 'Insert rows into a datasource table',
                     'category': 'datasource',
                     'parameters': {},
                     'required': [],
@@ -42,7 +42,7 @@ class ToolNamesData(BaseModel):
     tool_names: List[str] = Field(
         ...,
         description='List of available tool names',
-        examples=[['bigquery_test_connection', 'bigquery_fetch_data']],
+        examples=[['datasource_insert_rows', 'querying_knowlegebase']],
     )
     count: int = Field(..., description='Total number of tools', examples=[2])
 
@@ -78,8 +78,8 @@ class ToolMetadataData(BaseModel):
         description='Metadata for a specific tool',
         examples=[
             {
-                'name': 'bigquery_test_connection',
-                'description': 'Test BigQuery connection',
+                'name': 'datasource_insert_rows',
+                'description': 'Insert rows into a datasource table',
                 'category': 'datasource',
                 'parameters': {},
                 'required': [],
@@ -109,6 +109,6 @@ class ValidateToolsRequest(BaseModel):
     tool_names: List[str] = Field(
         ...,
         description='List of tool names to validate',
-        examples=[['bigquery_test_connection', 'bigquery_fetch_data']],
+        examples=[['datasource_insert_rows', 'querying_knowlegebase']],
         min_length=1,
     )
