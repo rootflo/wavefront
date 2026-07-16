@@ -1,7 +1,8 @@
 import os
+from urllib.parse import quote
 import httpx
 
-FLOWARE_BASE_URL = os.getenv('FLOWARE_BASE_URL', 'http://localhost:8001')
+FLOWARE_BASE_URL = os.getenv('FLOWARE_BASE_URL', 'http://localhost:8001').rstrip('/')
 
 
 async def datasource_insert_rows(
@@ -16,7 +17,10 @@ async def datasource_insert_rows(
     """
     rows = [data] if single_row else data
 
-    url = f'{FLOWARE_BASE_URL}/floware/v1/datasources/{datasource_id}/resources/{table_name}'
+    url = (
+        f'{FLOWARE_BASE_URL}/floware/v1/datasources/'
+        f'{quote(datasource_id, safe="")}/resources/{quote(table_name, safe="")}'
+    )
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(
