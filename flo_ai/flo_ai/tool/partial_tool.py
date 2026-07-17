@@ -45,9 +45,14 @@ class PartialTool(Tool):
     async def execute(self, **kwargs) -> Any:
         """Execute the tool with pre-filled parameters merged with AI-provided ones."""
         try:
-            # Merge pre-filled params with AI-provided params
-            # AI params take precedence over pre-filled ones
-            merged_params = {**self.prefilled_params, **kwargs}
+            # Merge pre-filled params with AI-provided params.
+            # Pre-filled params always win: they are deliberately stripped from
+            # the parameter schema shown to the model (see __init__ above), so
+            # they must not be overridable by anything the model returns —
+            # including keys the model emits that aren't even in its schema
+            # (a real occurrence, not hypothetical: some providers/reasoning
+            # loops return extra keys beyond the declared parameters).
+            merged_params = {**kwargs, **self.prefilled_params}
 
             logger.info(
                 f'Executing partial tool {self.name} with merged params: {merged_params}'

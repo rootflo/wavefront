@@ -119,8 +119,15 @@ class TestPartialTool:
         assert result == 'test_result'
 
     @pytest.mark.asyncio
-    async def test_partial_tool_execution_ai_params_override_prefilled(self):
-        """Test that AI-provided parameters override pre-filled ones."""
+    async def test_partial_tool_execution_prefilled_params_override_ai(self):
+        """Test that pre-filled parameters always win over AI-provided ones.
+
+        Pre-filled params are deliberately stripped from the schema shown to
+        the model (see PartialTool.__init__), so they must not be
+        overridable by anything the model returns — including keys the
+        model emits that aren't even in its declared schema, which some
+        providers/reasoning loops do in practice.
+        """
         mock_function = AsyncMock(return_value='test_result')
         base_tool = Tool(
             name='test_tool',
@@ -144,16 +151,18 @@ class TestPartialTool:
             base_tool=base_tool, prefilled_params={'datasource_id': 'ds_123'}
         )
 
-        # Execute with AI-provided datasource_id that should override pre-filled one
+        # Execute with an AI-provided datasource_id that must NOT override
+        # the pre-filled one, even though datasource_id was stripped from
+        # the schema shown to the model (partial_tool.parameters).
         await partial_tool.execute(
             query='SELECT * FROM users',
-            datasource_id='ds_456',  # This should override the pre-filled "ds_123"
+            datasource_id='ds_456',  # attempted override, must be ignored
         )
 
-        # Verify the function was called with AI-provided datasource_id
+        # Verify the function was called with the pre-filled datasource_id
         mock_function.assert_called_once_with(
             query='SELECT * FROM users',
-            datasource_id='ds_456',  # AI-provided value should take precedence
+            datasource_id='ds_123',  # pre-filled value must take precedence
         )
 
     def test_partial_tool_parameter_management(self):
