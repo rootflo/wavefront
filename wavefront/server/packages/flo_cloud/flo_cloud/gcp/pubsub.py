@@ -28,7 +28,7 @@ class PubSubQueue(MessageQueue):
 
     def receive_messages(
         self, max_messages=10, wait_time_sec=20
-    ) -> List[MessageQueueDict] | None:
+    ) -> List[MessageQueueDict]:
         try:
             response = self.subscriber.pull(
                 request={

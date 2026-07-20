@@ -14,7 +14,7 @@ class SQSQueue(MessageQueue):
 
     def receive_messages(
         self, max_messages=10, wait_time_sec=20, **kwargs
-    ) -> List[MessageQueueDict] | None:
+    ) -> List[MessageQueueDict]:
         try:
             response = self.sqs_client.receive_message(
                 QueueUrl=self.queue_url,
@@ -23,11 +23,8 @@ class SQSQueue(MessageQueue):
                 VisibilityTimeout=kwargs.get('visibility_timeout', 300),
             )
 
-            if 'Messages' not in response:
-                return None
-
             messages = []
-            for message in response['Messages']:
+            for message in response.get('Messages', []):
                 body = json.loads(message['Body'])
                 messages.append(
                     MessageQueueDict(
