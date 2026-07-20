@@ -25,13 +25,15 @@ jobs:
       - name: "Checkout"
         uses: "actions/checkout@v3"
 
-      - name: Get commit hash
-        id: get-commit-hash
-        run: echo "::set-output name=commit-hash::$(git rev-parse --short HEAD)"
-
-      - name: Get timestamp
-        id: get-timestamp
-        run: echo "::set-output name=timestamp::$(date +'%Y-%m-%d-%H-%M')"
+      - name: Determine image tag
+        id: determine-tag
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            IMAGE_TAG="${GITHUB_REF_NAME//\//-}"
+          else
+            IMAGE_TAG="$(git rev-parse --short HEAD)-$(date +'%Y-%m-%d-%H-%M')"
+          fi
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
 
       - name: Cache Docker layers
         id: cache-docker-layers
@@ -48,8 +50,7 @@ jobs:
       - name: Build Docker Image
         id: build-image
         run: |
-          docker build -f wavefront/server/docker/rag_ingestion.Dockerfile -t rootflo:${{ steps.get-commit-hash.outputs.commit-hash }}-${{ steps.get-timestamp.outputs.timestamp }} .
-          echo "IMAGE_TAG=${{ steps.get-commit-hash.outputs.commit-hash }}-${{ steps.get-timestamp.outputs.timestamp }}" >> $GITHUB_ENV
+          docker build -f wavefront/server/docker/rag_ingestion.Dockerfile -t rootflo:${{ env.IMAGE_TAG }} .
 
       - id: "Auth-to-GCP"
         uses: "google-github-actions/auth@v1"
