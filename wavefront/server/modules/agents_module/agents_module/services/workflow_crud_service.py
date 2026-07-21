@@ -26,6 +26,10 @@ from agents_module.utils.version_reference_utils import (
     parse_versioned_reference,
     resolve_entity_current_version,
 )
+from agents_module.utils.workflow_reference_utils import (
+    extract_agent_references,
+    inline_subworkflow_references,
+)
 from flo_ai import AriumBuilder, AgentBuilder, Agent
 from agents_module.services.agent_crud_service import AgentCrudService
 from tools_module.registry.tool_loader import ToolLoader
@@ -71,70 +75,6 @@ class WorkflowCrudService:
         self.current_version_cache_ttl = (
             60  # short TTL for name-based version resolution
         )
-
-    def _extract_agent_references(self, yaml_content: str) -> List[str]:
-        """
-        Extract agent references (namespace/agent_name) from workflow YAML
-
-        Args:
-            yaml_content: YAML configuration content
-
-        Returns:
-            List of agent references in format 'namespace/agent_name'
-        """
-        try:
-            yaml_data = yaml.safe_load(yaml_content)
-            arium_config = yaml_data.get('arium', {})
-            agents_config = arium_config.get('agents', [])
-
-            agent_references = []
-            for agent_def in agents_config:
-                agent_name = agent_def.get('name', '')
-                # If agent name contains '/', it's a reference to cloud storage
-                if '/' in agent_name:
-                    agent_references.append(agent_name)
-                    logger.info(f'Found agent reference: {agent_name}')
-
-            return agent_references
-        except Exception as e:
-            logger.error(f'Error extracting agent references from YAML: {str(e)}')
-            return []
-
-    def _extract_subworkflow_references(self, yaml_content: str) -> List[str]:
-        """
-        Extract subworkflow references (namespace/workflow_name) from workflow YAML
-
-        Args:
-            yaml_content: YAML configuration content
-
-        Returns:
-            List of subworkflow references in format 'namespace/workflow_name'
-        """
-        try:
-            yaml_data = yaml.safe_load(yaml_content)
-            arium_config = yaml_data.get('arium', {})
-            ariums_config = arium_config.get('ariums', [])
-
-            subworkflow_references = []
-            for arium_def in ariums_config:
-                arium_name = arium_def.get('name', '')
-                # If arium name contains '/', it's a reference to cloud storage
-                if '/' in arium_name:
-                    # Check if this is a reference (not an inline definition)
-                    # If it has agents, workflow, etc., it's inline, not a reference
-                    if (
-                        arium_def.get('agents') is None
-                        and arium_def.get('workflow') is None
-                        and arium_def.get('function_nodes') is None
-                        and arium_def.get('yaml_file') is None
-                    ):
-                        subworkflow_references.append(arium_name)
-                        logger.info(f'Found subworkflow reference: {arium_name}')
-
-            return subworkflow_references
-        except Exception as e:
-            logger.error(f'Error extracting subworkflow references from YAML: {str(e)}')
-            return []
 
     async def _build_referenced_agents(
         self,
@@ -302,79 +242,6 @@ class WorkflowCrudService:
         )
         return yaml_content
 
-    async def _inline_subworkflow_references(
-        self,
-        yaml_content: str,
-        subworkflow_references: List[str],
-    ) -> str:
-        """
-        Fetch subworkflow YAML and inline them into the parent workflow YAML
-
-        Args:
-            yaml_content: Original YAML configuration content
-            subworkflow_references: List of subworkflow references to inline
-
-        Returns:
-            Modified YAML content with inlined subworkflow definitions
-        """
-        if not subworkflow_references:
-            return yaml_content
-
-        yaml_data = yaml.safe_load(yaml_content)
-        arium_config = yaml_data.get('arium', {})
-        ariums_config = arium_config.get('ariums', [])
-
-        # Build a dict to quickly look up subworkflow configs
-        subworkflow_configs = {}
-        for ref in subworkflow_references:
-            parts = ref.split('/', 1)
-            namespace = parts[0]
-            workflow_name, version = parse_versioned_reference(parts[1])
-
-            logger.info(f'Fetching subworkflow YAML for inlining: {ref}')
-
-            # Fetch the subworkflow YAML
-            subworkflow_yaml_content = await self.get_workflow_yaml_from_bucket(
-                workflow_name, namespace, version=version
-            )
-
-            # Parse and extract the arium config
-            subworkflow_data = yaml.safe_load(subworkflow_yaml_content)
-            subworkflow_arium = subworkflow_data.get('arium', {})
-
-            subworkflow_configs[ref] = subworkflow_arium
-
-        # Replace references with inline definitions
-        updated_ariums = []
-        for arium_def in ariums_config:
-            arium_name = arium_def.get('name', '')
-
-            if arium_name in subworkflow_configs:
-                # This is a reference - inline it
-                logger.info(f'Inlining subworkflow: {arium_name}')
-
-                # Get the fetched subworkflow config
-                inline_config = subworkflow_configs[arium_name].copy()
-
-                # Preserve inherit_variables from the reference
-                if 'inherit_variables' in arium_def:
-                    inline_config['inherit_variables'] = arium_def['inherit_variables']
-
-                # Update the name to be local (remove namespace prefix and any @version)
-                local_name, _ = parse_versioned_reference(arium_name.split('/')[-1])
-                inline_config['name'] = local_name
-
-                updated_ariums.append(inline_config)
-            else:
-                # Not a reference - keep as is
-                updated_ariums.append(arium_def)
-
-        # Update the YAML data
-        yaml_data['arium']['ariums'] = updated_ariums
-
-        # Convert back to YAML string
-        return yaml.dump(yaml_data, default_flow_style=False, sort_keys=False)
-
     async def _validate_yaml_content(
         self,
         yaml_content: str,
@@ -395,18 +262,21 @@ class WorkflowCrudService:
             ValueError: If YAML is invalid or workflow cannot be built
         """
         try:
-            # Extract and inline subworkflow references
-            subworkflow_references = self._extract_subworkflow_references(yaml_content)
-            if subworkflow_references:
-                logger.info(
-                    f'Inlining {len(subworkflow_references)} referenced subworkflows for validation'
-                )
-                yaml_content = await self._inline_subworkflow_references(
-                    yaml_content, subworkflow_references
+            # Recursively inline subworkflow references at any nesting depth, then
+            # rebuild the YAML string the AriumBuilder validates.
+            yaml_data = yaml.safe_load(yaml_content) or {}
+            arium_config = yaml_data.get('arium', {}) or {}
+            inlined_arium = await inline_subworkflow_references(
+                arium_config, self.get_workflow_yaml_from_bucket
+            )
+            if inlined_arium is not arium_config:
+                yaml_data['arium'] = inlined_arium
+                yaml_content = yaml.dump(
+                    yaml_data, default_flow_style=False, sort_keys=False
                 )
 
-            # Extract and build referenced agents
-            agent_references = self._extract_agent_references(yaml_content)
+            # Extract and build referenced agents (at any nesting depth)
+            agent_references = extract_agent_references(inlined_arium)
             agents_dict = {}
 
             if agent_references:
