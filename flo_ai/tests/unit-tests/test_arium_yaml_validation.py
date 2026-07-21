@@ -419,6 +419,48 @@ class TestAriumConfigModel:
         assert config.iterators is not None
         assert len(config.iterators) == 1
 
+    def test_foreach_config_forward_all_results_and_input_filter(self):
+        """ForEach config accepts forward_all_results and input_filter."""
+        # Defaults preserve original behavior.
+        default_cfg = ForEachNodeConfigModel(name='batch', execute_node='processor')
+        assert default_cfg.forward_all_results is False
+        assert default_cfg.input_filter is None
+
+        cfg = ForEachNodeConfigModel(
+            name='batch',
+            execute_node='processor',
+            input_filter=['input'],
+            forward_all_results=True,
+        )
+        assert cfg.forward_all_results is True
+        assert cfg.input_filter == ['input']
+
+    def test_agent_config_input_filter(self):
+        """Arium agent config accepts an input_filter."""
+        agent = AriumAgentConfigModel(
+            name='merger',
+            job='Merge the per-document extractions',
+            model=LLMConfigModel(provider='openai', name='gpt-4o-mini'),
+            input_filter=['process_docs'],
+        )
+        assert agent.input_filter == ['process_docs']
+
+    def test_arium_node_config_input_filter(self):
+        """Nested arium node config accepts an input_filter."""
+        node = AriumNodeConfigModel(
+            name='sub',
+            input_filter=['process_docs'],
+            workflow=WorkflowConfigModel(start='a', edges=[], end=['a']),
+            agents=[
+                AriumAgentConfigModel(
+                    name='a',
+                    job='do',
+                    model=LLMConfigModel(provider='openai', name='gpt-4o-mini'),
+                )
+            ],
+        )
+        assert node.input_filter == ['process_docs']
+
     def test_arium_config_foreach_nodes_alias(self):
         """Test that foreach_nodes and iterators are aliases."""
         config_dict = {

@@ -64,15 +64,24 @@ class ForEachNode:
         name: str,
         execute_node: 'AriumNodeType',
         input_filter: Optional[List[str]] = None,
+        forward_all_results: bool = False,
     ):
         """
         Args:
             name: Node name
             execute_node: Node to execute on each item
+            input_filter: Optional list of node names whose outputs this node
+                iterates over (defaults to all items in memory)
+            forward_all_results: When True, every per-item result is forwarded
+                into workflow memory (each tagged with this node's name) so a
+                downstream node can consume the whole collection via its own
+                input_filter. When False (default), only the last item's result
+                is forwarded, preserving the original behavior.
         """
         self.name = name
         self.execute_node = execute_node
         self.input_filter: Optional[List[str]] = input_filter
+        self.forward_all_results: bool = forward_all_results
 
     async def _execute_item(
         self,

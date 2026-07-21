@@ -270,9 +270,28 @@ class Arium(BaseArium):
             )
 
             if isinstance(result, List):  # for each node will give results array
-                self._add_to_memory(
-                    MessageMemoryItem(node=current_node.name, result=result[-1])
-                )
+                # `current_node` is the node that just executed, so for a ForEach
+                # this is the ForEach node itself and `current_node.name` is its
+                # node name (e.g. "process_docs").
+                if (
+                    isinstance(current_node, ForEachNode)
+                    and current_node.forward_all_results
+                ):
+                    # Forward every per-item result, each tagged with the ForEach
+                    # node's name, so a downstream node can consume the whole
+                    # collection via input_filter instead of only the last item.
+                    foreach_node_name = current_node.name
+                    for item_result in result:
+                        if item_result is not None:
+                            self._add_to_memory(
+                                MessageMemoryItem(
+                                    node=foreach_node_name, result=item_result
+                                )
+                            )
+                else:
+                    self._add_to_memory(
+                        MessageMemoryItem(node=current_node.name, result=result[-1])
+                    )
             else:
                 # update results to memory
                 if result:

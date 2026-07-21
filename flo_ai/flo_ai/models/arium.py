@@ -31,6 +31,11 @@ class AriumAgentConfigModel(AgentConfigModel):
     yaml_file: Optional[str] = Field(
         None, description='Path to YAML file containing agent configuration'
     )
+    input_filter: Optional[List[str]] = Field(
+        None,
+        description='List of node names whose outputs this agent reads '
+        '(defaults to all items in memory)',
+    )
 
     def model_post_init(self, __context):
         """Validate agent configuration methods for arium context.
@@ -236,6 +241,11 @@ class AriumNodeConfigModel(BaseModel):
     inherit_variables: Optional[bool] = Field(
         True, description='Whether to inherit parent variables'
     )
+    input_filter: Optional[List[str]] = Field(
+        None,
+        description='List of node names whose outputs this sub-workflow reads '
+        '(defaults to all items in memory)',
+    )
     yaml_file: Optional[str] = Field(
         None, description='Path to YAML file containing nested arium configuration'
     )
@@ -292,6 +302,17 @@ class ForEachNodeConfigModel(BaseModel):
 
     name: str = Field(..., description='ForEach node name')
     execute_node: str = Field(..., description='Name of node to execute on each item')
+    input_filter: Optional[List[str]] = Field(
+        None,
+        description='List of node names whose outputs this ForEach iterates over '
+        '(defaults to all items in memory)',
+    )
+    forward_all_results: Optional[bool] = Field(
+        False,
+        description='Forward every per-item result into memory (each tagged with '
+        'this node name) so a downstream node can consume the whole collection via '
+        'input_filter. Default False forwards only the last item.',
+    )
 
 
 class AriumConfigModel(BaseModel):

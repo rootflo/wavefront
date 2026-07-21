@@ -1117,5 +1117,77 @@ class TestAriumYamlBuilder:
         assert builder._function_nodes[0].name == 'calculator_function_node'
 
 
+class TestAriumYamlForEachCollect:
+    """Execution tests for ForEach forward_all_results + input_filter collection."""
+
+    @staticmethod
+    def _content(msg):
+        return getattr(msg, 'content', msg)
+
+    def _build(self, forward_all_results: bool):
+        # execute_node is a nested arium (mirrors the real classify_extract_one_doc
+        # design); a bare function/agent used as execute_node would be flagged as
+        # an orphan graph node.
+        yaml_config = f"""
+        arium:
+          function_nodes:
+            - name: collect
+              function_name: collect
+              input_filter: [batch]
+          ariums:
+            - name: process_one
+              function_nodes:
+                - name: inner_fn
+                  function_name: process_one
+              workflow:
+                start: inner_fn
+                edges: []
+                end: [inner_fn]
+          iterators:
+            - name: batch
+              execute_node: process_one
+              input_filter: [input]
+              forward_all_results: {str(forward_all_results).lower()}
+          workflow:
+            start: batch
+            edges:
+              - from: batch
+                to: [collect]
+            end: [collect]
+        """
+
+        def process_one(inputs, variables=None, **kwargs):
+            return f'p:{self._content(inputs[0])}'
+
+        def collect(inputs, variables=None, **kwargs):
+            return [self._content(i) for i in inputs]
+
+        function_registry = {'process_one': process_one, 'collect': collect}
+        arium = AriumBuilder.from_yaml(
+            yaml_str=yaml_config, function_registry=function_registry
+        ).build()
+        arium.compile()
+        return arium
+
+    @pytest.mark.asyncio
+    async def test_forward_all_results_collects_every_item(self):
+        """With forward_all_results, the downstream node sees ALL N results."""
+        from flo_ai.models import UserMessage
+
+        arium = self._build(forward_all_results=True)
+        result = await arium.run([UserMessage('a'), UserMessage('b'), UserMessage('c')])
+        # Final node is `collect`; it received all three foreach outputs.
+        assert result[-1].result.content == ['p:a', 'p:b', 'p:c']
+
+    @pytest.mark.asyncio
+    async def test_default_forwards_only_last_item(self):
+        """Default behavior (flag off) forwards only the last foreach result."""
+        from flo_ai.models import UserMessage
+
+        arium = self._build(forward_all_results=False)
+        result = await arium.run([UserMessage('a'), UserMessage('b'), UserMessage('c')])
+        assert result[-1].result.content == ['p:c']
+
+
 if __name__ == '__main__':
     pytest.main([__file__])
