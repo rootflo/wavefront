@@ -153,6 +153,7 @@ class RouterConfigModel(BaseModel):
         'conversation_analysis',
         'reflection',
         'plan_execute',
+        'field_match',
     ] = Field(..., description='Router type')
     model: Optional[LLMConfigModel] = Field(
         None, description='LLM model configuration for router'
@@ -177,6 +178,19 @@ class RouterConfigModel(BaseModel):
     # Plan-execute router fields
     agents: Optional[Dict[str, str]] = Field(
         None, description='Agent descriptions for plan_execute router'
+    )
+    # Field-match (deterministic, no LLM) router fields
+    field: Optional[str] = Field(
+        None,
+        description="JSON field to read from the previous node's output (field_match router)",
+    )
+    routes: Optional[Dict[str, str]] = Field(
+        None,
+        description='Mapping of field value -> target node name (field_match router)',
+    )
+    default: Optional[str] = Field(
+        None,
+        description='Fallback target node when the value is missing/unmapped (field_match router)',
     )
 
     def model_post_init(self, __context):
@@ -205,6 +219,11 @@ class RouterConfigModel(BaseModel):
             if not self.agents:
                 raise ValueError(
                     f"Plan-Execute router '{self.name}' must specify 'agents'"
+                )
+        elif self.type == 'field_match':
+            if not self.field or not self.routes:
+                raise ValueError(
+                    f"Field-match router '{self.name}' must specify 'field' and 'routes'"
                 )
 
 

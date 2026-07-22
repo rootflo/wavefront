@@ -1189,5 +1189,81 @@ class TestAriumYamlForEachCollect:
         assert result[-1].result.content == ['p:c']
 
 
+class TestAriumYamlFieldMatchRouter:
+    """Execution tests for the deterministic field_match router."""
+
+    @staticmethod
+    def _content(msg):
+        return getattr(msg, 'content', msg)
+
+    def _build(self):
+        yaml_config = """
+        arium:
+          function_nodes:
+            - name: classifier
+              function_name: classify
+            - name: route_a
+              function_name: handler_a
+            - name: route_b
+              function_name: handler_b
+          routers:
+            - name: field_router
+              type: field_match
+              field: kind
+              routes:
+                alpha: route_a
+                beta: route_b
+              default: route_a
+          workflow:
+            start: classifier
+            edges:
+              - from: classifier
+                to: [route_a, route_b]
+                router: field_router
+            end: [route_a, route_b]
+        """
+
+        import json
+
+        def classify(inputs, variables=None, **kwargs):
+            return json.dumps({'kind': self._content(inputs[-1])})
+
+        def handler_a(inputs, variables=None, **kwargs):
+            return 'A'
+
+        def handler_b(inputs, variables=None, **kwargs):
+            return 'B'
+
+        registry = {
+            'classify': classify,
+            'handler_a': handler_a,
+            'handler_b': handler_b,
+        }
+        arium = AriumBuilder.from_yaml(
+            yaml_str=yaml_config, function_registry=registry
+        ).build()
+        arium.compile()
+        return arium
+
+    @pytest.mark.asyncio
+    async def test_routes_on_field_value(self):
+        from flo_ai.models import UserMessage
+
+        assert (await self._build().run([UserMessage('beta')]))[
+            -1
+        ].result.content == 'B'
+        assert (await self._build().run([UserMessage('alpha')]))[
+            -1
+        ].result.content == 'A'
+
+    @pytest.mark.asyncio
+    async def test_unmapped_value_uses_default(self):
+        from flo_ai.models import UserMessage
+
+        # 'zzz' is not in routes -> default (route_a -> 'A')
+        result = await self._build().run([UserMessage('zzz')])
+        assert result[-1].result.content == 'A'
+
+
 if __name__ == '__main__':
     pytest.main([__file__])

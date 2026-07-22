@@ -182,6 +182,34 @@ class TestRouterConfigModel:
                 type='smart',
             )
 
+    def test_valid_field_match_router(self):
+        """Test valid deterministic field_match router configuration."""
+        router = RouterConfigModel(
+            name='category_router',
+            type='field_match',
+            field='category',
+            routes={
+                'a': 'node_a',
+                'b': 'node_b',
+            },
+            default='node_default',
+        )
+        assert router.type == 'field_match'
+        assert router.field == 'category'
+        assert router.routes['b'] == 'node_b'
+        assert router.default == 'node_default'
+
+    def test_field_match_router_missing_field_or_routes(self):
+        """Test that field_match router must specify field and routes."""
+        with pytest.raises(ValueError, match="must specify 'field' and 'routes'"):
+            RouterConfigModel(
+                name='invalid_router', type='field_match', field='category'
+            )
+        with pytest.raises(ValueError, match="must specify 'field' and 'routes'"):
+            RouterConfigModel(
+                name='invalid_router', type='field_match', routes={'a': 'node_a'}
+            )
+
     def test_reflection_router_missing_flow_pattern(self):
         """Test that reflection router must have flow_pattern."""
         with pytest.raises(ValueError, match="must specify 'flow_pattern'"):

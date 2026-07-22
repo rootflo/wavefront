@@ -10,6 +10,7 @@ import yaml
 from flo_ai.agent import AgentBuilder
 from flo_ai.llm import BaseLLM
 from flo_ai.arium.llm_router import create_llm_router
+from flo_ai.arium.field_router import create_field_match_router
 from flo_ai.arium.nodes import FunctionNode
 from flo_ai.arium.base import AriumNodeType
 from flo_ai.models.arium import AriumYamlModel, AriumAgentConfigModel
@@ -563,6 +564,19 @@ class AriumBuilder:
                     agents=router.agents,
                     llm=router_llm,
                     **settings,
+                )
+            elif router_type == 'field_match':
+                # Deterministic, no-LLM router: branch on a field of the previous
+                # node's JSON output.
+                if not router.field or not router.routes:
+                    raise ValueError(
+                        f"field_match router {router.name} must specify 'field' and 'routes'"
+                    )
+
+                router_fn = create_field_match_router(
+                    field=router.field,
+                    routes=router.routes,
+                    default=router.default,
                 )
             else:
                 raise ValueError(
