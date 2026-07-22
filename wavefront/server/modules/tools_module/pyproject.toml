@@ -13,6 +13,10 @@ dependencies = [
 ]
 
 [tool.uv.sources]
+# Pinned to a custom flo-ai branch (ForEach forward_all_results / subworkflow
+# references) until it's published to PyPI. uv.lock resolves the branch to a
+# commit SHA; the Docker build fetches it over git (no local source needed).
+flo-ai = { git = "https://github.com/rootflo/flo-ai.git", subdirectory = "flo_ai", branch = "CU-86d3rqjgt-support-subworkflow-references-foreachnode-forwardallresults-bool" }
 flo-cloud = { workspace = true }
 common-module = { workspace = true }
 plugins-module = { workspace = true }

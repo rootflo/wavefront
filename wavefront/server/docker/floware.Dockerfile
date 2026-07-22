@@ -7,6 +7,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.8.6 /uv /uvx /bin/
 RUN apt-get update && apt-get install -y \
     libpq-dev \
     gcc \
+    git \
     libgl1 \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
@@ -40,6 +41,8 @@ COPY wavefront/server/apps/floware /app/apps/floware
 COPY wavefront/server/scripts/floware-init.sh /app/scripts/floware-init.sh
 RUN chmod +x /app/scripts/floware-init.sh
 
+# flo-ai resolves from a git branch pinned in uv.lock (see modules'
+# [tool.uv.sources]); uv fetches it over git during the --frozen sync.
 RUN uv sync --package floware --frozen --no-dev
 
 # Create a non-root user and change ownership of the /app directory
