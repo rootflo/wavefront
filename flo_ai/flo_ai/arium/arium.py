@@ -289,9 +289,10 @@ class Arium(BaseArium):
                                 )
                             )
                 else:
-                    self._add_to_memory(
-                        MessageMemoryItem(node=current_node.name, result=result[-1])
-                    )
+                    if result:
+                        self._add_to_memory(
+                            MessageMemoryItem(node=current_node.name, result=result[-1])
+                        )
             else:
                 # update results to memory
                 if result:

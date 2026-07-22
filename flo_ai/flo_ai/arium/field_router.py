@@ -55,7 +55,10 @@ def create_field_match_router(
             if isinstance(data, dict):
                 value = data.get(field)
 
-        target = routes.get(value, default)
+        # Only a string value can match a route key; a non-scalar value (list /
+        # object) is even unhashable and would raise in dict.get - so treat any
+        # non-string value as unmapped and fall back to default.
+        target = routes.get(value, default) if isinstance(value, str) else default
         if target is None:
             raise ValueError(
                 f"field_match router: value {value!r} for field '{field}' is not in "
