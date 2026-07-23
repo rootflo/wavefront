@@ -29,6 +29,27 @@
     ],
     "category": "datasource"
   },
+  "datasource_insert_multi": {
+    "name": "datasource_insert_multi",
+    "description": "Insert rows into MULTIPLE tables of one datasource atomically, in a single all-or-nothing transaction (any failure rolls back every table). Currently supported for Postgres datasources only. Returns a descriptive string confirming success or detailing any errors.",
+    "parameters": {
+      "datasource_id": {
+        "type": "string",
+        "description": "UUID of the configured datasource"
+      },
+      "inserts": {
+        "type": "TYPE_UNSPECIFIED",
+        "description": "An array of per-table insert specs. Each item is an object {\"table_name\": string, \"data\": row-or-rows, \"single_row\": boolean}. 'data' is a single row object when single_row is true, otherwise an array of row objects. All tables are written in one transaction, so order parents before children for FK constraints."
+      }
+    },
+    "prefill_values": [
+      "datasource_id"
+    ],
+    "required": [
+      "inserts"
+    ],
+    "category": "datasource"
+  },
   "querying_knowlegebase": {
     "name": "querying_knowlegebase",
     "description": "Query the knowlegebase using the configured datasource. Returns a descriptive string indicating success or failure with connection details.",

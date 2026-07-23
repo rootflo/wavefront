@@ -28,6 +28,7 @@ from plugins_module.services.datasource_services import (
     validate_datasource_payload,
 )
 from plugins_module.utils.helper import (
+    InsertRowsJsonMultiPayload,
     AddDatasourcePayload,
     UpdateDatasourcePayload,
     InsertRowsJsonPayload,
@@ -537,6 +538,62 @@ async def insert_rows_json(
         content=response_formatter.buildSuccessResponse(
             {
                 'message': f'Inserted {len(insert_rows_json_payload.data)} rows successfully'
+            }
+        ),
+    )
+
+
+@datasource_router.post('/v1/datasources/{datasource_id}/resources')
+@inject
+async def insert_rows_json_multi(
+    request: Request,
+    datasource_id: str,
+    insert_rows_json_multi_payload: InsertRowsJsonMultiPayload,
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+):
+    """Insert rows into multiple tables of one datasource atomically.
+
+    All tables are written in a single transaction (all-or-nothing). Currently
+    only Postgres supports this; other datasource types return 501.
+    """
+    datasource_type, datasource_config = await get_datasource_config(datasource_id)
+    if not datasource_config:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse(
+                f'Datasource not found: {datasource_id}'
+            ),
+        )
+
+    datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
+
+    prepared = []
+    for insert in insert_rows_json_multi_payload.inserts:
+        rows = [insert.data] if insert.single_row else insert.data
+        rows_with_created_at = [
+            {**row, 'created_at': datetime.now().isoformat()} for row in rows
+        ]
+        prepared.append({'table_name': insert.table_name, 'data': rows_with_created_at})
+
+    try:
+        datasource_plugin.insert_rows_json_multi(prepared)
+    except NotImplementedError as e:
+        return JSONResponse(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
+
+    total_rows = sum(len(p['data']) for p in prepared)
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            {
+                'message': (
+                    f'Inserted {total_rows} rows across '
+                    f'{len(prepared)} table(s) successfully'
+                )
             }
         ),
     )
