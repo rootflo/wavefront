@@ -4,6 +4,7 @@ from datasource.redshift.config import RedshiftConfig
 from datasource.postgres.config import PostgresConfig
 from datasource.mssql.config import MSSQLConfig
 from dependency_injector.wiring import inject
+import asyncio
 import json
 from dependency_injector.wiring import Provide
 from fastapi import Depends
@@ -532,7 +533,9 @@ async def insert_rows_json(
         {**row, 'created_at': datetime.now().isoformat()}
         for row in insert_rows_json_payload.data
     ]
-    datasource_plugin.insert_rows_json(resource_id, rows_with_created_at)
+    await asyncio.to_thread(
+        datasource_plugin.insert_rows_json, resource_id, rows_with_created_at
+    )
     return JSONResponse(
         status_code=status.HTTP_200_OK,
         content=response_formatter.buildSuccessResponse(
@@ -578,7 +581,7 @@ async def insert_rows_json_multi(
         prepared.append({'table_name': insert.table_name, 'data': rows_with_created_at})
 
     try:
-        datasource_plugin.insert_rows_json_multi(prepared)
+        await asyncio.to_thread(datasource_plugin.insert_rows_json_multi, prepared)
     except NotImplementedError as e:
         return JSONResponse(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
