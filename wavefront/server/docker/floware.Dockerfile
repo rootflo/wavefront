@@ -9,7 +9,18 @@ RUN apt-get update && apt-get install -y \
     gcc \
     libgl1 \
     libglib2.0-0 \
+    unixodbc \
+    unixodbc-dev \
+    curl \
+    gnupg \
     && rm -rf /var/lib/apt/lists/*
+
+# Add Microsoft's ODBC driver repository and install msodbcsql
+RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - && \
+    curl https://packages.microsoft.com/config/ubuntu/22.04/prod.list > /etc/apt/sources.list.d/mssql-release.list && \
+    apt-get update && \
+    ACCEPT_EULA=Y apt-get install -y msodbcsql18 && \
+    rm -rf /var/lib/apt/lists/*
 
 COPY wavefront/server/pyproject.toml wavefront/server/uv.lock ./
 
