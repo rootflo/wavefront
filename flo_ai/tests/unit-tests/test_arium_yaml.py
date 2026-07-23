@@ -1117,5 +1117,153 @@ class TestAriumYamlBuilder:
         assert builder._function_nodes[0].name == 'calculator_function_node'
 
 
+class TestAriumYamlForEachCollect:
+    """Execution tests for ForEach forward_all_results + input_filter collection."""
+
+    @staticmethod
+    def _content(msg):
+        return getattr(msg, 'content', msg)
+
+    def _build(self, forward_all_results: bool):
+        # execute_node is a nested arium (mirrors the real classify_extract_one_doc
+        # design); a bare function/agent used as execute_node would be flagged as
+        # an orphan graph node.
+        yaml_config = f"""
+        arium:
+          function_nodes:
+            - name: collect
+              function_name: collect
+              input_filter: [batch]
+          ariums:
+            - name: process_one
+              function_nodes:
+                - name: inner_fn
+                  function_name: process_one
+              workflow:
+                start: inner_fn
+                edges: []
+                end: [inner_fn]
+          iterators:
+            - name: batch
+              execute_node: process_one
+              input_filter: [input]
+              forward_all_results: {str(forward_all_results).lower()}
+          workflow:
+            start: batch
+            edges:
+              - from: batch
+                to: [collect]
+            end: [collect]
+        """
+
+        def process_one(inputs, variables=None, **kwargs):
+            return f'p:{self._content(inputs[0])}'
+
+        def collect(inputs, variables=None, **kwargs):
+            return [self._content(i) for i in inputs]
+
+        function_registry = {'process_one': process_one, 'collect': collect}
+        arium = AriumBuilder.from_yaml(
+            yaml_str=yaml_config, function_registry=function_registry
+        ).build()
+        arium.compile()
+        return arium
+
+    @pytest.mark.asyncio
+    async def test_forward_all_results_collects_every_item(self):
+        """With forward_all_results, the downstream node sees ALL N results."""
+        from flo_ai.models import UserMessage
+
+        arium = self._build(forward_all_results=True)
+        result = await arium.run([UserMessage('a'), UserMessage('b'), UserMessage('c')])
+        # Final node is `collect`; it received all three foreach outputs.
+        assert result[-1].result.content == ['p:a', 'p:b', 'p:c']
+
+    @pytest.mark.asyncio
+    async def test_default_forwards_only_last_item(self):
+        """Default behavior (flag off) forwards only the last foreach result."""
+        from flo_ai.models import UserMessage
+
+        arium = self._build(forward_all_results=False)
+        result = await arium.run([UserMessage('a'), UserMessage('b'), UserMessage('c')])
+        assert result[-1].result.content == ['p:c']
+
+
+class TestAriumYamlFieldMatchRouter:
+    """Execution tests for the deterministic field_match router."""
+
+    @staticmethod
+    def _content(msg):
+        return getattr(msg, 'content', msg)
+
+    def _build(self):
+        yaml_config = """
+        arium:
+          function_nodes:
+            - name: classifier
+              function_name: classify
+            - name: route_a
+              function_name: handler_a
+            - name: route_b
+              function_name: handler_b
+          routers:
+            - name: field_router
+              type: field_match
+              field: kind
+              routes:
+                alpha: route_a
+                beta: route_b
+              default: route_a
+          workflow:
+            start: classifier
+            edges:
+              - from: classifier
+                to: [route_a, route_b]
+                router: field_router
+            end: [route_a, route_b]
+        """
+
+        import json
+
+        def classify(inputs, variables=None, **kwargs):
+            return json.dumps({'kind': self._content(inputs[-1])})
+
+        def handler_a(inputs, variables=None, **kwargs):
+            return 'A'
+
+        def handler_b(inputs, variables=None, **kwargs):
+            return 'B'
+
+        registry = {
+            'classify': classify,
+            'handler_a': handler_a,
+            'handler_b': handler_b,
+        }
+        arium = AriumBuilder.from_yaml(
+            yaml_str=yaml_config, function_registry=registry
+        ).build()
+        arium.compile()
+        return arium
+
+    @pytest.mark.asyncio
+    async def test_routes_on_field_value(self):
+        from flo_ai.models import UserMessage
+
+        assert (await self._build().run([UserMessage('beta')]))[
+            -1
+        ].result.content == 'B'
+        assert (await self._build().run([UserMessage('alpha')]))[
+            -1
+        ].result.content == 'A'
+
+    @pytest.mark.asyncio
+    async def test_unmapped_value_uses_default(self):
+        from flo_ai.models import UserMessage
+
+        # 'zzz' is not in routes -> default (route_a -> 'A')
+        result = await self._build().run([UserMessage('zzz')])
+        assert result[-1].result.content == 'A'
+
+
 if __name__ == '__main__':
     pytest.main([__file__])

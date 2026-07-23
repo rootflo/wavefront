@@ -31,6 +31,11 @@ class AriumAgentConfigModel(AgentConfigModel):
     yaml_file: Optional[str] = Field(
         None, description='Path to YAML file containing agent configuration'
     )
+    input_filter: Optional[List[str]] = Field(
+        None,
+        description='List of node names whose outputs this agent reads '
+        '(defaults to all items in memory)',
+    )
 
     def model_post_init(self, __context):
         """Validate agent configuration methods for arium context.
@@ -148,6 +153,7 @@ class RouterConfigModel(BaseModel):
         'conversation_analysis',
         'reflection',
         'plan_execute',
+        'field_match',
     ] = Field(..., description='Router type')
     model: Optional[LLMConfigModel] = Field(
         None, description='LLM model configuration for router'
@@ -172,6 +178,19 @@ class RouterConfigModel(BaseModel):
     # Plan-execute router fields
     agents: Optional[Dict[str, str]] = Field(
         None, description='Agent descriptions for plan_execute router'
+    )
+    # Field-match (deterministic, no LLM) router fields
+    field: Optional[str] = Field(
+        None,
+        description="JSON field to read from the previous node's output (field_match router)",
+    )
+    routes: Optional[Dict[str, str]] = Field(
+        None,
+        description='Mapping of field value -> target node name (field_match router)',
+    )
+    default: Optional[str] = Field(
+        None,
+        description='Fallback target node when the value is missing/unmapped (field_match router)',
     )
 
     def model_post_init(self, __context):
@@ -200,6 +219,11 @@ class RouterConfigModel(BaseModel):
             if not self.agents:
                 raise ValueError(
                     f"Plan-Execute router '{self.name}' must specify 'agents'"
+                )
+        elif self.type == 'field_match':
+            if not self.field or not self.routes:
+                raise ValueError(
+                    f"Field-match router '{self.name}' must specify 'field' and 'routes'"
                 )
 
 
@@ -235,6 +259,11 @@ class AriumNodeConfigModel(BaseModel):
     name: str = Field(..., description='Arium node name')
     inherit_variables: Optional[bool] = Field(
         True, description='Whether to inherit parent variables'
+    )
+    input_filter: Optional[List[str]] = Field(
+        None,
+        description='List of node names whose outputs this sub-workflow reads '
+        '(defaults to all items in memory)',
     )
     yaml_file: Optional[str] = Field(
         None, description='Path to YAML file containing nested arium configuration'
@@ -292,6 +321,17 @@ class ForEachNodeConfigModel(BaseModel):
 
     name: str = Field(..., description='ForEach node name')
     execute_node: str = Field(..., description='Name of node to execute on each item')
+    input_filter: Optional[List[str]] = Field(
+        None,
+        description='List of node names whose outputs this ForEach iterates over '
+        '(defaults to all items in memory)',
+    )
+    forward_all_results: Optional[bool] = Field(
+        False,
+        description='Forward every per-item result into memory (each tagged with '
+        'this node name) so a downstream node can consume the whole collection via '
+        'input_filter. Default False forwards only the last item.',
+    )
 
 
 class AriumConfigModel(BaseModel):

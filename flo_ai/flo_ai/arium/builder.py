@@ -10,6 +10,7 @@ import yaml
 from flo_ai.agent import AgentBuilder
 from flo_ai.llm import BaseLLM
 from flo_ai.arium.llm_router import create_llm_router
+from flo_ai.arium.field_router import create_field_match_router
 from flo_ai.arium.nodes import FunctionNode
 from flo_ai.arium.base import AriumNodeType
 from flo_ai.models.arium import AriumYamlModel, AriumAgentConfigModel
@@ -564,6 +565,19 @@ class AriumBuilder:
                     llm=router_llm,
                     **settings,
                 )
+            elif router_type == 'field_match':
+                # Deterministic, no-LLM router: branch on a field of the previous
+                # node's JSON output.
+                if not router.field or not router.routes:
+                    raise ValueError(
+                        f"field_match router {router.name} must specify 'field' and 'routes'"
+                    )
+
+                router_fn = create_field_match_router(
+                    field=router.field,
+                    routes=router.routes,
+                    default=router.default,
+                )
             else:
                 raise ValueError(
                     f'Unknown router type: {router_type}. Supported types: smart, task_classifier, conversation_analysis, reflection, plan_execute'
@@ -587,6 +601,7 @@ class AriumBuilder:
                 if arium_node.inherit_variables is not None
                 else True
             )
+            node_input_filter = arium_node.input_filter
 
             # Method 1: External YAML file reference
             if arium_node.yaml_file is not None:
@@ -647,7 +662,10 @@ class AriumBuilder:
 
             # Wrap in AriumNode
             arium_node = AriumNode(
-                name=arium_node.name, arium=nested_arium, inherit_variables=inherit_vars
+                name=arium_node.name,
+                arium=nested_arium,
+                inherit_variables=inherit_vars,
+                input_filter=node_input_filter,
             )
 
             arium_nodes_dict[arium_node.name] = arium_node
@@ -665,6 +683,8 @@ class AriumBuilder:
             foreach_nodes_dict[foreach_name] = {
                 'name': foreach_name,
                 'execute_node_name': execute_node_name,
+                'input_filter': foreach_config.input_filter,
+                'forward_all_results': bool(foreach_config.forward_all_results),
             }
 
         # Resolve ForEachNode references now that all nodes exist
@@ -692,7 +712,12 @@ class AriumBuilder:
                 )
 
             # Create ForEachNode
-            foreach_node = ForEachNode(name=foreach_name, execute_node=execute_node)
+            foreach_node = ForEachNode(
+                name=foreach_name,
+                execute_node=execute_node,
+                input_filter=foreach_config['input_filter'],
+                forward_all_results=foreach_config['forward_all_results'],
+            )
 
             foreach_nodes_dict[foreach_name] = foreach_node
             builder._foreach_nodes.append(foreach_node)
@@ -957,6 +982,10 @@ class AriumBuilder:
             builder.with_actas(act_as)
 
         agent = builder.build()
+
+        # Scope which prior node outputs this agent reads, if configured.
+        if agent_config.input_filter is not None:
+            agent.input_filter = agent_config.input_filter
 
         return agent
 
