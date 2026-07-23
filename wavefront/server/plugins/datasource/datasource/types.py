@@ -82,6 +82,18 @@ class DataSourceABC(ABC):
     def insert_rows_json(self, table_name: str, data: List[Dict[str, Any]]) -> None:
         pass
 
+    def insert_rows_json_multi(self, inserts: List[Dict[str, Any]]) -> None:
+        """Insert into multiple tables atomically, in a single transaction.
+
+        ``inserts``: list of ``{"table_name": str, "data": List[Dict]}``. Concrete
+        (not abstract) with a NotImplementedError default, so datasource types that
+        don't support transactional multi-table insert stay instantiable; plugins
+        that do (e.g. Postgres) override this.
+        """
+        raise NotImplementedError(
+            f'{type(self).__name__} does not support transactional multi-table insert'
+        )
+
     @abstractmethod
     async def execute_dynamic_query(
         self,
