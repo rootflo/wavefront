@@ -42,7 +42,7 @@ async def datasource_insert_rows(
 async def datasource_insert_multi(datasource_id: str, inserts) -> str:
     """Insert rows into MULTIPLE tables of one datasource atomically (a single
     transaction — all-or-nothing) via wavefront's own REST API
-    (POST /v1/datasources/{datasource_id}/resources).
+    (POST /v1/datasources/{datasource_id}/resources/insert).
 
     inserts: a list of per-table specs, each
         {"table_name": str, "data": <single row dict or list of row dicts>,
@@ -53,7 +53,7 @@ async def datasource_insert_multi(datasource_id: str, inserts) -> str:
     """
     url = (
         f'{FLOWARE_BASE_URL}/floware/v1/datasources/'
-        f'{quote(datasource_id, safe="")}/resources'
+        f'{quote(datasource_id, safe="")}/resources/insert'
     )
     async with httpx.AsyncClient() as client:
         try:

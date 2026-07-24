@@ -508,45 +508,7 @@ async def query_datasource(
     )
 
 
-@datasource_router.post('/v1/datasources/{datasource_id}/resources/{resource_id}')
-@inject
-async def insert_rows_json(
-    request: Request,
-    datasource_id: str,
-    resource_id: str,
-    insert_rows_json_payload: InsertRowsJsonPayload,
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter]
-    ),
-):
-    datasource_type, datasource_config = await get_datasource_config(datasource_id)
-    if not datasource_config:
-        return JSONResponse(
-            status_code=status.HTTP_404_NOT_FOUND,
-            content=response_formatter.buildErrorResponse(
-                f'Datasource not found: {datasource_id}'
-            ),
-        )
-
-    datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
-    rows_with_created_at = [
-        {**row, 'created_at': datetime.now().isoformat()}
-        for row in insert_rows_json_payload.data
-    ]
-    await asyncio.to_thread(
-        datasource_plugin.insert_rows_json, resource_id, rows_with_created_at
-    )
-    return JSONResponse(
-        status_code=status.HTTP_200_OK,
-        content=response_formatter.buildSuccessResponse(
-            {
-                'message': f'Inserted {len(insert_rows_json_payload.data)} rows successfully'
-            }
-        ),
-    )
-
-
-@datasource_router.post('/v1/datasources/{datasource_id}/resources')
+@datasource_router.post('/v1/datasources/{datasource_id}/resources/insert')
 @inject
 async def insert_rows_json_multi(
     request: Request,
@@ -597,6 +559,44 @@ async def insert_rows_json_multi(
                     f'Inserted {total_rows} rows across '
                     f'{len(prepared)} table(s) successfully'
                 )
+            }
+        ),
+    )
+
+
+@datasource_router.post('/v1/datasources/{datasource_id}/resources/{resource_id}')
+@inject
+async def insert_rows_json(
+    request: Request,
+    datasource_id: str,
+    resource_id: str,
+    insert_rows_json_payload: InsertRowsJsonPayload,
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+):
+    datasource_type, datasource_config = await get_datasource_config(datasource_id)
+    if not datasource_config:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse(
+                f'Datasource not found: {datasource_id}'
+            ),
+        )
+
+    datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
+    rows_with_created_at = [
+        {**row, 'created_at': datetime.now().isoformat()}
+        for row in insert_rows_json_payload.data
+    ]
+    await asyncio.to_thread(
+        datasource_plugin.insert_rows_json, resource_id, rows_with_created_at
+    )
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            {
+                'message': f'Inserted {len(insert_rows_json_payload.data)} rows successfully'
             }
         ),
     )
