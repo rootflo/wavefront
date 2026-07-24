@@ -22,6 +22,17 @@ class InsertRowsJsonPayload(BaseModel):
     data: List[Dict[str, Any]]
 
 
+class TableInsert(BaseModel):
+    table_name: str
+    # A single row dict if single_row=True, otherwise a list of row dicts.
+    data: Any
+    single_row: bool = False
+
+
+class InsertRowsJsonMultiPayload(BaseModel):
+    inserts: List[TableInsert]
+
+
 class DynamicQueryRequest(BaseModel):
     dynamic_query: str
 

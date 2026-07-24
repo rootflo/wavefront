@@ -337,9 +337,14 @@ class PostgresClient:
             logger.error(f'Postgres connection test failed: {e}')
             return False
 
-    def insert_rows_json(self, table_name: str, data: List[Dict[str, Any]]) -> None:
-        if not data:
-            return
+    def _build_insert(
+        self, table_name: str, data: List[Dict[str, Any]]
+    ) -> Tuple[Any, List[Dict[str, Any]]]:
+        """Build the parameterized INSERT and the serialized rows for ``data``.
+
+        dict/list column values are wrapped in ``psycopg2.extras.Json``. Assumes
+        ``data`` is non-empty (callers guard for that).
+        """
         serialized = [
             {
                 k: psycopg2.extras.Json(v) if isinstance(v, (dict, list)) else v
@@ -353,6 +358,12 @@ class PostgresClient:
             cols=sql.SQL(', ').join(map(sql.Identifier, columns)),
             vals=sql.SQL(', ').join(sql.Placeholder(name=col) for col in columns),
         )
+        return query, serialized
+
+    def insert_rows_json(self, table_name: str, data: List[Dict[str, Any]]) -> None:
+        if not data:
+            return
+        query, serialized = self._build_insert(table_name, data)
         with self.get_connection() as conn:
             cursor = conn.cursor()
             try:
@@ -361,6 +372,33 @@ class PostgresClient:
             except psycopg2.Error as e:
                 conn.rollback()
                 logger.error(f'Insert error: {e}')
+                raise
+            finally:
+                cursor.close()
+
+    def insert_rows_json_multi(self, inserts: List[Dict[str, Any]]) -> None:
+        """Insert into multiple tables atomically, in a single transaction.
+
+        ``inserts`` is a list of ``{"table_name": str, "data": List[Dict]}``. All
+        tables are written on one connection and committed once; any failure rolls
+        back every table (all-or-nothing). Entries with empty ``data`` are skipped.
+        """
+        prepared = [
+            self._build_insert(spec['table_name'], spec['data'])
+            for spec in inserts
+            if spec.get('data')
+        ]
+        if not prepared:
+            return
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            try:
+                for query, serialized in prepared:
+                    cursor.executemany(query, serialized)
+                conn.commit()
+            except psycopg2.Error as e:
+                conn.rollback()
+                logger.error(f'Multi-insert error: {e}')
                 raise
             finally:
                 cursor.close()
