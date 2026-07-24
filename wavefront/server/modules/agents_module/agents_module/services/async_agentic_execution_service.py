@@ -307,12 +307,16 @@ class AsyncAgenticExecutionService:
         )
 
     def _build_status_response(
-        self, record_dict: Dict
+        self, record_dict: Dict, generate_urls: bool = True
     ) -> AgenticExecutionStatusResponse:
         output_url = None
         history_url = None
 
-        if record_dict.get('output_file') and record_dict.get('input_bucket'):
+        if (
+            generate_urls
+            and record_dict.get('output_file')
+            and record_dict.get('input_bucket')
+        ):
             try:
                 output_url = self.cloud_storage.generate_presigned_url(
                     bucket_name=record_dict['input_bucket'],
@@ -323,7 +327,11 @@ class AsyncAgenticExecutionService:
             except Exception as e:
                 logger.warning(f'Failed to generate output presigned URL: {e}')
 
-        if record_dict.get('history_file') and record_dict.get('input_bucket'):
+        if (
+            generate_urls
+            and record_dict.get('history_file')
+            and record_dict.get('input_bucket')
+        ):
             try:
                 history_url = self.cloud_storage.generate_presigned_url(
                     bucket_name=record_dict['input_bucket'],
@@ -340,6 +348,20 @@ class AsyncAgenticExecutionService:
                 input_files = json.loads(record_dict['input_files'])
             except Exception:
                 pass
+
+        if generate_urls and input_files and record_dict.get('input_bucket'):
+            for input_file in input_files:
+                if not isinstance(input_file, dict) or not input_file.get('key'):
+                    continue
+                try:
+                    input_file['url'] = self.cloud_storage.generate_presigned_url(
+                        bucket_name=record_dict['input_bucket'],
+                        key=input_file['key'],
+                        type='get',
+                        expiresIn=900,
+                    )
+                except Exception as e:
+                    logger.warning(f'Failed to generate input presigned URL: {e}')
 
         return AgenticExecutionStatusResponse(
             id=uuid.UUID(record_dict['id']),
@@ -404,4 +426,7 @@ class AsyncAgenticExecutionService:
         records = await self.repo.find(**filters, limit=offset + limit)
         records = records[offset:]
 
-        return [self._build_status_response(r.to_dict()) for r in records]
+        return [
+            self._build_status_response(r.to_dict(), generate_urls=False)
+            for r in records
+        ]
