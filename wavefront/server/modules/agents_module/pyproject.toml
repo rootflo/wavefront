@@ -14,7 +14,7 @@ dependencies = [
     "tools-module",
     "api-services-module",
     "llm-inference-config-module",
-    "flo-ai==1.1.7",
+    "flo-ai==1.1.8",
     "celery[redis]>=5.4.0,<6.0.0",
 ]
 
