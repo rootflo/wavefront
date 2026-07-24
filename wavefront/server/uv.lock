@@ -86,7 +86,7 @@ requires-dist = [
     { name = "api-services-module", editable = "modules/api_services_module" },
     { name = "celery", extras = ["redis"], specifier = ">=5.4.0,<6.0.0" },
     { name = "common-module", editable = "modules/common_module" },
-    { name = "flo-ai", specifier = "==1.1.7" },
+    { name = "flo-ai", specifier = "==1.1.8" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "flo-utils", editable = "packages/flo_utils" },
     { name = "llm-inference-config-module", editable = "modules/llm_inference_config_module" },
@@ -1474,7 +1474,7 @@ wheels = [
 
 [[package]]
 name = "flo-ai"
-version = "1.1.7"
+version = "1.1.8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1495,9 +1495,9 @@ dependencies = [
     { name = "pymupdf" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/79/a4/cf5886aa04cb2cce900283afe986249ec44dabf6ff3614d1a0f3a28177a8/flo_ai-1.1.7.tar.gz", hash = "sha256:a6098b48bde552435ed92fc424f03a4c518d49219029057e762b364b1e22c684", size = 98733, upload-time = "2026-07-17T03:57:19.961Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e8/df/585c44af70ab68094dbc7cc272476a372eb1ac731a86b674d164ab30f49d/flo_ai-1.1.8.tar.gz", hash = "sha256:0b0dc0b6552950a2c5e57cb6014787e44225b82b09c05bf8c734c3de9c10922e", size = 114857, upload-time = "2026-07-24T07:50:01.908Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3c/cb/dab6c933cd1ecae81450bc08d4822d92df4544d668f9b921f5c853b9f961/flo_ai-1.1.7-py3-none-any.whl", hash = "sha256:f368aec3b830d3ae0c43d208d5e784b245c6ab8ca61a85dccd0ff6af6666a5ac", size = 126453, upload-time = "2026-07-17T03:57:21.673Z" },
+    { url = "https://files.pythonhosted.org/packages/16/97/7e60f9b11dc2116ed5c1db84683cccce5009798d553988f87ce4d7b60167/flo_ai-1.1.8-py3-none-any.whl", hash = "sha256:394cb699ad17e44775de40d983bbc5b3056b0dd04e6561e764b853589aaea279", size = 200578, upload-time = "2026-07-24T07:50:00.55Z" },
 ]
 
 [[package]]
@@ -2667,7 +2667,7 @@ dev = [
 requires-dist = [
     { name = "boto3", specifier = "<=1.38.40" },
     { name = "datasource", editable = "plugins/datasource" },
-    { name = "flo-ai", specifier = "==1.1.7" },
+    { name = "flo-ai", specifier = "==1.1.8" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "google-cloud-pubsub", specifier = "~=2.30.0" },
     { name = "numpy", specifier = ">=1.24,<2.0" },
@@ -5716,7 +5716,7 @@ dev = [
 requires-dist = [
     { name = "common-module", editable = "modules/common_module" },
     { name = "datasource", editable = "plugins/datasource" },
-    { name = "flo-ai", specifier = "==1.1.7" },
+    { name = "flo-ai", specifier = "==1.1.8" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "knowledge-base-module", editable = "modules/knowledge_base_module" },
     { name = "plugins-module", editable = "modules/plugins_module" },
