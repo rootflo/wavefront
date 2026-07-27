@@ -231,7 +231,7 @@ async def list_executions(
         Provide[CommonContainer.response_formatter]
     ),
 ):
-    results = await async_agentic_execution_service.list_executions(
+    results, total = await async_agentic_execution_service.list_executions(
         entity_id=entity_id,
         entity_type=entity_type,
         status=execution_status,
@@ -247,6 +247,9 @@ async def list_executions(
                 'data': {
                     'executions': [r.model_dump(mode='json') for r in results],
                     'count': len(results),
+                    'total': total,
+                    'offset': offset,
+                    'limit': limit,
                 },
             }
         ),

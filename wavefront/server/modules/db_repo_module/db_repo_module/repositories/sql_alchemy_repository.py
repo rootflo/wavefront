@@ -71,13 +71,31 @@ class SQLAlchemyRepository(Generic[T]):
                 await session.commit()
                 return records
 
-    async def find(self, limit: int = 100, **filters) -> list[T]:
+    async def find(
+        self,
+        limit: int = 100,
+        order_by: str | tuple[str, str] | None = None,
+        **filters,
+    ) -> list[T]:
         """
         Find all records in the database matching the given filters.
 
         :param filters: The filters to apply to the query.
+        :param order_by: Column name to sort by, or a (column, direction) tuple
+            where direction is 'asc' or 'desc'. Defaults to ascending.
         :return: A list of matching model instances.
         """
+
+        def _apply_order(query):
+            if order_by is None:
+                return query
+            if isinstance(order_by, tuple):
+                column, direction = order_by
+            else:
+                column, direction = order_by, 'asc'
+            col = getattr(self.model, column)
+            return query.order_by(col.desc() if direction == 'desc' else col.asc())
+
         if 'session' in filters and isinstance(filters['session'], AsyncSession):
             session = filters['session']
             del filters['session']
@@ -87,7 +105,7 @@ class SQLAlchemyRepository(Generic[T]):
                     query = query.where(getattr(self.model, key).in_(value))
                 else:
                     query = query.where(getattr(self.model, key) == value)
-            query = query.limit(limit)
+            query = _apply_order(query).limit(limit)
             return (await session.scalars(query)).all()
 
         async with self.session() as session:
@@ -98,7 +116,7 @@ class SQLAlchemyRepository(Generic[T]):
                     query = query.where(getattr(self.model, key).in_(value))
                 else:
                     query = query.where(getattr(self.model, key) == value)
-            query = query.limit(limit)
+            query = _apply_order(query).limit(limit)
             return (await session.scalars(query)).all()
 
     async def find_one(self, **filters) -> T | None:

@@ -414,7 +414,7 @@ class AsyncAgenticExecutionService:
         status: Optional[str] = None,
         offset: int = 0,
         limit: int = 50,
-    ) -> List[AgenticExecutionStatusResponse]:
+    ) -> Tuple[List[AgenticExecutionStatusResponse], int]:
         filters: Dict[str, Any] = {}
         if entity_id:
             filters['entity_id'] = entity_id
@@ -423,10 +423,17 @@ class AsyncAgenticExecutionService:
         if status:
             filters['status'] = status
 
-        records = await self.repo.find(**filters, limit=offset + limit)
+        total = await self.repo.count(**filters)
+
+        records = await self.repo.find(
+            **filters,
+            limit=offset + limit,
+            order_by=('created_at', 'desc'),
+        )
         records = records[offset:]
 
-        return [
+        results = [
             self._build_status_response(r.to_dict(), generate_urls=False)
             for r in records
         ]
+        return results, total
