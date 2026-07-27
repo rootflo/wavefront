@@ -85,13 +85,34 @@ class MSSQLClient:
                     cursor.close()
 
     @staticmethod
+    def _maybe_parse_json(value: Any) -> Any:
+        """Best-effort JSON parse for string values that look like a JSON
+        object/array. MSSQL has no native JSON type — JSON is stored as plain
+        NVARCHAR text — so this is the only signal available to tell JSON
+        strings apart from ordinary text without extra schema/config."""
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped[:1] in ('{', '['):
+                try:
+                    return json.loads(stripped)
+                except (ValueError, TypeError):
+                    return value
+        return value
+
+    @staticmethod
     def _rows_as_dicts(cursor) -> List[Dict[str, Any]]:
         # DML statements (INSERT/UPDATE/DELETE) produce no result set, so
         # cursor.description is None — return an empty list instead of raising.
         if not cursor.description:
             return []
         columns = [desc[0] for desc in cursor.description]
-        return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        return [
+            {
+                col: MSSQLClient._maybe_parse_json(value)
+                for col, value in zip(columns, row)
+            }
+            for row in cursor.fetchall()
+        ]
 
     def execute_query(
         self, query: str, params: Optional[Dict[str, Any]] = None
