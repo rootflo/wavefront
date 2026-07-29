@@ -17,7 +17,7 @@ dependencies = [
     "pandas~=2.2.3",
     "ollama~=0.4.8",
     "textract~=1.6.5",
-    "flo-ai==1.1.7",
+    "flo-ai==1.1.8",
     "google-cloud-pubsub~=2.30.0",
     "boto3<=1.38.40",
     "pyyaml>=6.0.3,<7",
@@ -29,7 +29,7 @@ dependencies = [
 # Pinned to a custom flo-ai branch (ForEach forward_all_results / subworkflow
 # references) until it's published to PyPI. uv.lock resolves the branch to a
 # commit SHA; the Docker build fetches it over git (no local source needed).
-flo-ai = { git = "https://github.com/rootflo/flo-ai.git", subdirectory = "flo_ai", branch = "CU-86d3rqjgt-support-subworkflow-references-foreachnode-forwardallresults-bool" }
+flo-ai = { git = "https://github.com/rootflo/flo-ai.git", subdirectory = "flo_ai", branch = "CU-86d3v9qck-make-functionnodes-receive-vars-msgs-carry-their-producing-node" }
 flo-cloud = { workspace = true }
 auth-module = { workspace = true }
 common-module = { workspace = true }

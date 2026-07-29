@@ -220,8 +220,15 @@ class Arium(BaseArium):
         variables: Optional[Dict[str, Any]] = None,
     ):
         variables = variables if variables is not None else {}
+        # retag=False: these messages are received, not produced here. A parent
+        # passes its nodes' outputs straight into a sub-workflow, so the same
+        # BaseMessage objects land in this memory as 'input' — retagging them
+        # would erase the producer the parent recorded, and any input_filter
+        # reading provenance downstream would see 'input' for everything.
         [
-            self.memory.add(MessageMemoryItem(node='input', occurrence=0, result=msg))
+            self.memory.add(
+                MessageMemoryItem(node='input', occurrence=0, result=msg, retag=False)
+            )
             for msg in inputs
         ]
 
@@ -624,7 +631,10 @@ class Arium(BaseArium):
             if isinstance(node, Agent):
                 return await node.run(inputs, variables={})
             if isinstance(node, FunctionNode):
-                return await node.run(inputs, variables=None)
+                # Agents get {} because their prompts were already resolved against
+                # the variables in _resolve_agent_prompts. Function nodes have no
+                # such earlier pass, so they need the real mapping here.
+                return await node.run(inputs, variables=variables)
             if isinstance(node, ForEachNode):
                 foreach_results: List[MessageMemoryItem | BaseMessage] = await node.run(
                     inputs,

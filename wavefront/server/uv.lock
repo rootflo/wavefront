@@ -86,7 +86,7 @@ requires-dist = [
     { name = "api-services-module", editable = "modules/api_services_module" },
     { name = "celery", extras = ["redis"], specifier = ">=5.4.0,<6.0.0" },
     { name = "common-module", editable = "modules/common_module" },
-    { name = "flo-ai", git = "https://github.com/rootflo/flo-ai.git?subdirectory=flo_ai&branch=CU-86d3rqjgt-support-subworkflow-references-foreachnode-forwardallresults-bool" },
+    { name = "flo-ai", git = "https://github.com/rootflo/flo-ai.git?subdirectory=flo_ai&branch=CU-86d3v9qck-make-functionnodes-receive-vars-msgs-carry-their-producing-node" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "flo-utils", editable = "packages/flo_utils" },
     { name = "llm-inference-config-module", editable = "modules/llm_inference_config_module" },
@@ -1474,8 +1474,8 @@ wheels = [
 
 [[package]]
 name = "flo-ai"
-version = "1.1.7"
-source = { git = "https://github.com/rootflo/flo-ai.git?subdirectory=flo_ai&branch=CU-86d3rqjgt-support-subworkflow-references-foreachnode-forwardallresults-bool#ccfda774381a3d8e43a15baa559eac48744e065f" }
+version = "1.1.8"
+source = { git = "https://github.com/rootflo/flo-ai.git?subdirectory=flo_ai&branch=CU-86d3v9qck-make-functionnodes-receive-vars-msgs-carry-their-producing-node#2077217f47a19e1929e296a276d5f1d84689670d" }
 dependencies = [
     { name = "aiohttp" },
     { name = "anthropic" },
@@ -2663,7 +2663,7 @@ dev = [
 requires-dist = [
     { name = "boto3", specifier = "<=1.38.40" },
     { name = "datasource", editable = "plugins/datasource" },
-    { name = "flo-ai", git = "https://github.com/rootflo/flo-ai.git?subdirectory=flo_ai&branch=CU-86d3rqjgt-support-subworkflow-references-foreachnode-forwardallresults-bool" },
+    { name = "flo-ai", git = "https://github.com/rootflo/flo-ai.git?subdirectory=flo_ai&branch=CU-86d3v9qck-make-functionnodes-receive-vars-msgs-carry-their-producing-node" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "google-cloud-pubsub", specifier = "~=2.30.0" },
     { name = "numpy", specifier = ">=1.24,<2.0" },
@@ -5712,7 +5712,7 @@ dev = [
 requires-dist = [
     { name = "common-module", editable = "modules/common_module" },
     { name = "datasource", editable = "plugins/datasource" },
-    { name = "flo-ai", git = "https://github.com/rootflo/flo-ai.git?subdirectory=flo_ai&branch=CU-86d3rqjgt-support-subworkflow-references-foreachnode-forwardallresults-bool" },
+    { name = "flo-ai", git = "https://github.com/rootflo/flo-ai.git?subdirectory=flo_ai&branch=CU-86d3v9qck-make-functionnodes-receive-vars-msgs-carry-their-producing-node" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "knowledge-base-module", editable = "modules/knowledge_base_module" },
     { name = "plugins-module", editable = "modules/plugins_module" },

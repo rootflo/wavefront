@@ -16,6 +16,7 @@ from common_module.common_container import CommonContainer
 from agents_module.agents_container import AgentsContainer
 from agents_module.services.workflow_crud_service import WorkflowCrudService
 from agents_module.services.workflow_inference_service import WorkflowInferenceService
+from agents_module.utils.execution_variable_utils import with_execution_variables
 from agents_module.services.workflow_events import (
     event_streamer,
     create_workflow_event_callback,
@@ -92,8 +93,11 @@ async def workflow_inference(
     event_callback = None
     events_filter = None
 
+    # Minted for every run, not only streaming ones: it is passed into the
+    # workflow as a variable so nodes can stamp their outputs with the run id.
+    execution_id = str(uuid.uuid4())
+
     if listen_events or request_body.listen_events:
-        execution_id = str(uuid.uuid4())
         event_callback = create_workflow_event_callback(
             execution_id, namespace, workflow_id
         )
@@ -117,7 +121,9 @@ async def workflow_inference(
                     workflow_inference_service.perform_inference(
                         workflow_name=workflow_id,
                         namespace=namespace,
-                        variables=request_body.variables or {},
+                        variables=with_execution_variables(
+                            request_body.variables, execution_id
+                        ),
                         inputs=resolved_inputs
                         if isinstance(resolved_inputs, list)
                         else [resolved_inputs],
@@ -196,7 +202,7 @@ async def workflow_inference(
         result, execution_time = await workflow_inference_service.perform_inference(
             workflow_name=workflow_id,
             namespace=namespace,
-            variables=request_body.variables or {},
+            variables=with_execution_variables(request_body.variables, execution_id),
             inputs=resolved_inputs
             if isinstance(resolved_inputs, list)
             else [resolved_inputs],
@@ -300,8 +306,11 @@ async def workflow_inference_v2(
     event_callback = None
     events_filter = None
 
+    # Minted for every run, not only streaming ones: it is passed into the
+    # workflow as a variable so nodes can stamp their outputs with the run id.
+    execution_id = str(uuid.uuid4())
+
     if listen_events or request_body.listen_events:
-        execution_id = str(uuid.uuid4())
         event_callback = create_workflow_event_callback(
             execution_id, namespace, workflow_name
         )
@@ -324,7 +333,9 @@ async def workflow_inference_v2(
                 inference_task = asyncio.create_task(
                     workflow_inference_service.perform_inference_v2(
                         workflow_data=workflow_data,
-                        variables=request_body.variables or {},
+                        variables=with_execution_variables(
+                            request_body.variables, execution_id
+                        ),
                         inputs=resolved_inputs
                         if isinstance(resolved_inputs, list)
                         else [resolved_inputs],
@@ -401,7 +412,7 @@ async def workflow_inference_v2(
         # Non-streaming mode - normal JSON response
         result, execution_time = await workflow_inference_service.perform_inference_v2(
             workflow_data=workflow_data,
-            variables=request_body.variables or {},
+            variables=with_execution_variables(request_body.variables, execution_id),
             inputs=resolved_inputs
             if isinstance(resolved_inputs, list)
             else [resolved_inputs],
