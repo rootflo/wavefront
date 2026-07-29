@@ -1,3 +1,4 @@
+import copy
 from abc import ABC, abstractmethod
 from typing import TypeVar, Generic, List, Dict, Optional, Any
 from dataclasses import dataclass, field
@@ -38,27 +39,45 @@ class MessageMemoryItem:
         """
         self.node: str = node
         self.occurrence: int = occurrence
-        self.result: BaseMessage = result
+        self.result: BaseMessage = self._tag(result, node, retag)
 
-        # Also record the producing node on the message itself, so provenance
-        # survives being unwrapped from this container. Arium hands nodes
-        # `[item.result for item in memory_items]`, and _flatten_results strips
-        # this wrapper whenever a sub-workflow or ForEach returns — a tag held
-        # only here would be lost in both cases. Downstream readers (e.g. the
-        # wavefront function-node adapter) use it to tell apart the outputs of
-        # several nodes selected by one input_filter.
-        #
-        # A message object is shared across memories: passing a node's result
-        # into a sub-workflow puts the SAME BaseMessage into that sub-workflow's
-        # memory. Overwriting the tag there would erase the producer the parent
-        # recorded, so `retag=False` marks the case where this item is merely
-        # receiving a message someone else produced. Storing a node's own output
-        # does retag, which is what lets a sub-workflow result take the parent's
-        # node name as it bubbles up.
-        if hasattr(result, 'metadata'):
-            metadata = result.metadata or {}
-            if retag or 'node' not in metadata:
-                result.metadata = {**metadata, 'node': node}
+    @staticmethod
+    def _tag(result: BaseMessage, node: str, retag: bool) -> BaseMessage:
+        """Record the producing node on the message, returning what to store.
+
+        The tag goes on the message itself, not just on this container, so that
+        provenance survives being unwrapped from it. Arium hands nodes
+        `[item.result for item in memory_items]`, and _flatten_results strips this
+        wrapper whenever a sub-workflow or ForEach returns — a tag held only here
+        would be lost in both cases. Downstream readers (e.g. the wavefront
+        function-node adapter) use it to tell apart the outputs of several nodes
+        selected by one input_filter.
+
+        A message object is shared: passing a node's result into a sub-workflow
+        puts the SAME BaseMessage into that sub-workflow's memory, and `run`
+        hands its results back to the caller, who may feed them into another
+        workflow. So reassigning a producer is done on a copy — the original
+        keeps the tag whoever else holds it is relying on, and only this memory
+        sees the new one. `retag=False` declines the reassignment altogether,
+        marking an item that is merely receiving a message someone else made.
+        """
+        if not hasattr(result, 'metadata'):
+            return result
+
+        metadata = result.metadata or {}
+        existing = metadata.get('node')
+
+        if existing is None:
+            # No producer to displace, so stamping in place loses nothing.
+            result.metadata = {**metadata, 'node': node}
+            return result
+
+        if not retag or existing == node:
+            return result
+
+        tagged = copy.copy(result)
+        tagged.metadata = {**metadata, 'node': node}
+        return tagged
 
     def to_dict(self) -> Dict[str, Any]:
         return {

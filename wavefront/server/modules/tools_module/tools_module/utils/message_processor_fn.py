@@ -37,13 +37,16 @@ async def execute_message_processor_fn(message_processor_id: str, **kwargs) -> s
         for k, v in kwargs.items()
         if k not in ('message_processor_id', 'input_list')
     }
-    nested_input = input_data.get('kwargs') or {}
-    flat_input = {k: v for k, v in input_data.items() if k != 'kwargs'}
-    processor_input = (
-        {**flat_input, **nested_input}
-        if isinstance(nested_input, dict)
-        else nested_input
-    )
+    # Only a dict-valued 'kwargs' is the legacy wrapper. Any other value is just
+    # a parameter a processor happens to have named 'kwargs', so it stays where
+    # it is — unwrapping it would send that one value as the whole payload and
+    # drop the variables and node_outputs alongside it.
+    nested_input = input_data.get('kwargs')
+    if isinstance(nested_input, dict):
+        flat_input = {k: v for k, v in input_data.items() if k != 'kwargs'}
+        processor_input = {**flat_input, **nested_input}
+    else:
+        processor_input = input_data
 
     body = {'input_data': processor_input}
     payload_bytes = len(json.dumps(body, default=str))

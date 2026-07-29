@@ -35,14 +35,33 @@ class TestMessageProvenanceTag:
         """A nested result re-stored by a parent takes the parent's node name.
 
         The tag must describe the memory doing the filtering, so that
-        `input_filter` values and tags always agree.
+        `input_filter` values and tags always agree. The parent reads it off its
+        own item, which is the only view that has to be right.
         """
         message = UserMessage(content='{}')
 
-        MessageMemoryItem(node='inner_node', result=message)
-        MessageMemoryItem(node='outer_node', result=message)
+        inner = MessageMemoryItem(node='inner_node', result=message)
+        outer = MessageMemoryItem(node='outer_node', result=message)
 
-        assert message.metadata['node'] == 'outer_node'
+        assert outer.result.metadata['node'] == 'outer_node'
+        # The inner memory still describes what it actually produced.
+        assert inner.result.metadata['node'] == 'inner_node'
+
+    def test_reassigning_a_producer_does_not_mutate_the_shared_message(self):
+        """`run` hands its results back to the caller, who may pass them into
+        another workflow. Retagging in place there would rewrite the tags inside
+        the results the caller is still holding, so the new tag goes on a copy.
+        """
+        message = UserMessage(content='{}', metadata={'source': 'upload'})
+        MessageMemoryItem(node='node_a', result=message)
+
+        item = MessageMemoryItem(node='node_b', result=message)
+
+        assert item.result is not message
+        assert message.metadata['node'] == 'node_a'
+        assert item.result.metadata == {'source': 'upload', 'node': 'node_b'}
+        # The copy is shallow: the payload is shared, only the tag differs.
+        assert item.result.content is message.content
 
     def test_tolerates_result_without_metadata(self):
         """`.result` is occasionally a plain str, which has no metadata."""
@@ -114,6 +133,21 @@ class TestMessageProvenanceTag:
         assert [i.result.metadata['node'] for i in parent.memory.get()] == [
             'classifier'
         ]
+
+    def test_a_top_level_input_is_retagged(self):
+        """Preserving provenance is only correct for a parent handing inputs
+        down. A caller can pass a message that already carries a tag — feeding
+        one workflow's results into another, or reusing a message object — and
+        that tag names a node in some other workflow. It must not survive into
+        this one, where it would drive filtering and routing.
+        """
+        message = UserMessage(content='{}', metadata={'node': 'other_workflow_node'})
+
+        item = MessageMemoryItem(node='input', result=message, retag=True)
+
+        assert item.result.metadata['node'] == 'input'
+        # ...and the caller's copy is left as they gave it.
+        assert message.metadata['node'] == 'other_workflow_node'
 
 
 class TestFunctionNodeReceivesVariables:

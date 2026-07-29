@@ -68,23 +68,33 @@ def extract_function_params(
         by_node: Dict[str, List[Any]] = {}
         ordered: List[Any] = []
 
-        for message in inputs:
-            if not (hasattr(message, 'content') and isinstance(message.content, str)):
+        last_index = len(inputs) - 1
+
+        # The last message is the one the node is contractually fed, so anything
+        # that stops it being read has to fail loudly — proceeding would call the
+        # function with only the earlier messages' params, i.e. on stale or empty
+        # data, and surface as a confusing error somewhere further in. Earlier
+        # messages may legitimately be unreadable now that a wider input_filter
+        # can select the raw workflow inputs (e.g. an uploaded document, whose
+        # content is a DocumentMessageContent rather than text), which were never
+        # looked at before; those are skipped.
+        for index, message in enumerate(inputs):
+            content = getattr(message, 'content', None)
+
+            if not isinstance(content, str):
+                if index == last_index:
+                    raise ValueError(
+                        f'Function node input must be a JSON object, but the last '
+                        f'input has content of type {type(content).__name__}.'
+                    )
                 continue
 
             try:
-                parsed = FloUtils.extract_jsons_from_string(
-                    message.content, strict=True
-                )
+                parsed = FloUtils.extract_jsons_from_string(content, strict=True)
             except (json.JSONDecodeError, TypeError, ValueError):
-                # The last message is the one the node is contractually fed, so
-                # it must still fail loudly. Earlier messages may legitimately be
-                # non-JSON now that a wider input_filter can select the raw
-                # workflow inputs (e.g. uploaded documents), which were never
-                # read before.
-                if message is inputs[-1]:
+                if index == last_index:
                     raise ValueError(
-                        f'Invalid JSON: {message.content}. Function node input must be a JSON object.'
+                        f'Invalid JSON: {content}. Function node input must be a JSON object.'
                     )
                 continue
 
