@@ -20,10 +20,45 @@ class StepStatus(Enum):
 
 
 class MessageMemoryItem:
-    def __init__(self, node: str, result: BaseMessage, occurrence: int = 0):
+    def __init__(
+        self,
+        node: str,
+        result: BaseMessage,
+        occurrence: int = 0,
+        retag: bool = True,
+    ):
+        """
+        Args:
+            node: Name of the node this result belongs to.
+            result: The message itself.
+            occurrence: Set by MessageMemory.add; how many times `node` has run.
+            retag: Whether to overwrite an existing provenance tag on `result`.
+                Pass False when the message is being *received* rather than
+                produced — see below.
+        """
         self.node: str = node
         self.occurrence: int = occurrence
         self.result: BaseMessage = result
+
+        # Also record the producing node on the message itself, so provenance
+        # survives being unwrapped from this container. Arium hands nodes
+        # `[item.result for item in memory_items]`, and _flatten_results strips
+        # this wrapper whenever a sub-workflow or ForEach returns — a tag held
+        # only here would be lost in both cases. Downstream readers (e.g. the
+        # wavefront function-node adapter) use it to tell apart the outputs of
+        # several nodes selected by one input_filter.
+        #
+        # A message object is shared across memories: passing a node's result
+        # into a sub-workflow puts the SAME BaseMessage into that sub-workflow's
+        # memory. Overwriting the tag there would erase the producer the parent
+        # recorded, so `retag=False` marks the case where this item is merely
+        # receiving a message someone else produced. Storing a node's own output
+        # does retag, which is what lets a sub-workflow result take the parent's
+        # node name as it bubbles up.
+        if hasattr(result, 'metadata'):
+            metadata = result.metadata or {}
+            if retag or 'node' not in metadata:
+                result.metadata = {**metadata, 'node': node}
 
     def to_dict(self) -> Dict[str, Any]:
         return {
