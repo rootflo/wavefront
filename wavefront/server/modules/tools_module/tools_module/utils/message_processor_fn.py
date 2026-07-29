@@ -20,7 +20,7 @@ async def execute_message_processor_fn(message_processor_id: str, **kwargs) -> s
     # Everything except the processor id is the processor's input_data, and it
     # arrives in two shapes at once:
     #   - nested under 'kwargs' when an upstream agent's parser wrapped the
-    #     payload in a top-level `kwargs` object (see person_multi_insert_mp)
+    #     payload in a top-level `kwargs` object
     #   - flat, for workflow variables and the adapter's `node_outputs` key,
     #     which the adapter forwards because this function declares **kwargs
     # Both are merged so a processor can use either; nested wins on conflict,

@@ -7,7 +7,7 @@ wanted. This node runs after it and puts the real result back:
 
     - name: final_result
       function_name: passthrough
-      input_filter: [quote_generator]   # whose output to re-emit
+      input_filter: [some_upstream_node]   # whose output to re-emit
 
 Being a function node it makes no model call, so the value is never re-derived or
 re-typed on the way through.

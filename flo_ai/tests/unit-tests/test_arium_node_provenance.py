@@ -98,7 +98,7 @@ class TestMessageProvenanceTag:
         node reading provenance saw 'input' instead of the node that made it.
         """
         parent = Arium(memory=MessageMemory())
-        produced = UserMessage(content='{"doc_type": "broker_submission"}')
+        produced = UserMessage(content='{"label": "classified"}')
         parent.memory.add(MessageMemoryItem(node='classifier', result=produced))
 
         # What an AriumNode does: hand the parent's memory to a nested workflow.
