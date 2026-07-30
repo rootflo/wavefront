@@ -28,5 +28,15 @@ WORKDIR /app/background_jobs/rag_ingestion
 # Make startup script executable
 RUN chmod +x startup-rag-ingestion.sh
 
+# Create a non-root user with UID 1000 and ensure files are owned by that user
+# This allows Kubernetes pods using securityContext.runAsUser: 1000 to work
+RUN set -eux \
+    && groupadd -g 1000 appuser || true \
+    && useradd -u 1000 -g 1000 -m -s /usr/sbin/nologin appuser || true \
+    && chown -R 1000:1000 /app /root/.cache/tiktoken || true
+
+# Switch to the non-root user (UID 1000) so containers can run with securityContext 1000
+USER 1000
+
 # Set entrypoint to run startup script
-CMD ["./startup-rag-ingestion.sh"] 
+CMD ["./startup-rag-ingestion.sh"]
