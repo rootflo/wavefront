@@ -45,9 +45,12 @@ class AriumNode:
         )
 
         # Execute the nested Arium with isolated memory
+        # These inputs are this parent's node outputs, so the sub-workflow keeps
+        # the producer already recorded on them rather than resetting it.
         result = await self.arium.run(
             inputs=inputs,
             variables=execution_variables,
+            forwarded_from_parent=True,
         )
         return result
 

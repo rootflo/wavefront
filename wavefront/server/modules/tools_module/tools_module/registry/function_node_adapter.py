@@ -36,10 +36,26 @@ def extract_function_params(
     Parameters are extracted with this priority (higher priority overrides lower):
     1. kwargs (highest priority)
     2. variables dict
-    3. inputs (lowest priority - extracted from last message as JSON)
+    3. inputs (lowest priority - every message parsed as JSON, in order, last wins)
+
+    Every message in ``inputs`` is parsed, not just the last one: a node with
+    ``input_filter: [a, b]`` is handed both nodes' outputs, and reading only the
+    last would silently discard the rest. Two extra keys are added for nodes that
+    need to tell those outputs apart:
+
+    - ``node_outputs``: ``{producing_node_name: [parsed, ...]}``. List-valued
+      because a ForEach with ``forward_all_results`` emits N results all tagged
+      with the ForEach node's own name. Requires the ``metadata['node']`` tag
+      that ``MessageMemoryItem`` stamps onto each message.
+    - ``input_list``: the same parsed payloads in execution order.
+
+    The flat merge is kept so existing function nodes are unaffected — they read
+    their arguments straight out of the upstream node's JSON, and because the
+    merge iterates in order with last-wins, a single-input node produces exactly
+    the same params as before.
 
     Args:
-        inputs: List of BaseMessage objects, typically the last one contains function params
+        inputs: List of BaseMessage objects carrying function params as JSON
         variables: Dictionary of variables that may contain function parameters
         **kwargs: Additional keyword arguments (highest priority)
 
@@ -49,16 +65,49 @@ def extract_function_params(
     params = {}
 
     if inputs:
-        last_input = inputs[-1]
-        if hasattr(last_input, 'content') and isinstance(last_input.content, str):
+        by_node: Dict[str, List[Any]] = {}
+        ordered: List[Any] = []
+
+        last_index = len(inputs) - 1
+
+        # The last message is the one the node is contractually fed, so anything
+        # that stops it being read has to fail loudly — proceeding would call the
+        # function with only the earlier messages' params, i.e. on stale or empty
+        # data, and surface as a confusing error somewhere further in. Earlier
+        # messages may legitimately be unreadable now that a wider input_filter
+        # can select the raw workflow inputs (e.g. an uploaded document, whose
+        # content is a DocumentMessageContent rather than text), which were never
+        # looked at before; those are skipped.
+        for index, message in enumerate(inputs):
+            content = getattr(message, 'content', None)
+
+            if not isinstance(content, str):
+                if index == last_index:
+                    raise ValueError(
+                        f'Function node input must be a JSON object, but the last '
+                        f'input has content of type {type(content).__name__}.'
+                    )
+                continue
+
             try:
-                params.update(
-                    FloUtils.extract_jsons_from_string(last_input.content, strict=True)
-                )
+                parsed = FloUtils.extract_jsons_from_string(content, strict=True)
             except (json.JSONDecodeError, TypeError, ValueError):
-                raise ValueError(
-                    f'Invalid JSON: {last_input.content}. Function node input must be a JSON object.'
-                )
+                if index == last_index:
+                    raise ValueError(
+                        f'Invalid JSON: {content}. Function node input must be a JSON object.'
+                    )
+                continue
+
+            ordered.append(parsed)
+            producing_node = (getattr(message, 'metadata', None) or {}).get('node')
+            if producing_node:
+                by_node.setdefault(producing_node, []).append(parsed)
+
+        for parsed in ordered:
+            params.update(parsed)
+
+        params['node_outputs'] = by_node
+        params['input_list'] = ordered
 
     if variables:
         params.update(variables)
@@ -72,8 +121,15 @@ def _build_call_kwargs(
     all_params: Dict[str, Any],
     kwargs: Dict[str, Any],
     excluded_params: set,
+    accepts_var_keyword: bool = False,
 ) -> Dict[str, Any]:
-    """Build keyword arguments for calling the original function."""
+    """Build keyword arguments for calling the original function.
+
+    Only parameters the signature names are forwarded, unless the function
+    declares ``**kwargs`` — those take arbitrary dynamic parameters (the message
+    processor and API service tools build their payload from whatever they are
+    given), so everything else collected is passed through to them as well.
+    """
     call_kwargs = {}
     for param_name in param_names:
         if param_name in excluded_params:
@@ -82,6 +138,13 @@ def _build_call_kwargs(
             call_kwargs[param_name] = kwargs[param_name]
         elif param_name in all_params:
             call_kwargs[param_name] = all_params[param_name]
+
+    if accepts_var_keyword:
+        for param_name, value in all_params.items():
+            if param_name in excluded_params:
+                continue
+            call_kwargs.setdefault(param_name, value)
+
     return call_kwargs
 
 
@@ -91,11 +154,18 @@ def _validate_required_params(
     function_name: str,
     excluded_params: set,
 ) -> None:
-    """Validate that all required parameters are present."""
+    """Validate that all required parameters are present.
+
+    Variadic parameters (``*args`` / ``**kwargs``) report no default, so they
+    would otherwise be reported as missing required arguments — they are not,
+    they simply collect whatever else is passed.
+    """
+    variadic = (inspect.Parameter.VAR_KEYWORD, inspect.Parameter.VAR_POSITIONAL)
     required_params = [
         param_name
         for param_name, param in sig.parameters.items()
         if param_name not in excluded_params
+        and param.kind not in variadic
         and param.default == inspect.Parameter.empty
     ]
 
@@ -147,6 +217,9 @@ def create_function_node_adapter(
     param_names = list(sig.parameters.keys())
     excluded_params = {'inputs', 'variables'}
     is_async = inspect.iscoroutinefunction(original_function)
+    accepts_var_keyword = any(
+        param.kind == inspect.Parameter.VAR_KEYWORD for param in sig.parameters.values()
+    )
 
     async def adapted_function(
         inputs: Optional[List[BaseMessage]] = None,
@@ -167,7 +240,11 @@ def create_function_node_adapter(
         try:
             all_params = extract_function_params(inputs, variables, **kwargs)
             call_kwargs = _build_call_kwargs(
-                param_names, all_params, kwargs, excluded_params
+                param_names,
+                all_params,
+                kwargs,
+                excluded_params,
+                accepts_var_keyword,
             )
             _validate_required_params(sig, call_kwargs, function_name, excluded_params)
 

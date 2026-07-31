@@ -38,6 +38,7 @@ class Arium(BaseArium):
         variables: Optional[Dict[str, Any]] = None,
         event_callback: Optional[Callable[[AriumEvent], None]] = None,
         events_filter: Optional[List[AriumEventType]] = None,
+        forwarded_from_parent: bool = False,
     ):
         """
         Execute the Arium workflow with optional event monitoring.
@@ -47,6 +48,10 @@ class Arium(BaseArium):
             variables: Variable substitutions for templated prompts
             event_callback: Function to call for each event (if None, no events are emitted)
             events_filter: List of event types to listen for (defaults to all)
+            forwarded_from_parent: Set by AriumNode, not by callers. Marks these
+                inputs as a parent workflow's node outputs being handed down, so
+                their recorded producer is kept instead of being reset to
+                'input'. A top-level caller's messages are always retagged.
 
         Returns:
             List of workflow execution results
@@ -98,7 +103,11 @@ class Arium(BaseArium):
 
                     # Execute the workflow with event support
                     result = await self._execute_graph(
-                        resolved_inputs, event_callback, events_filter, variables
+                        resolved_inputs,
+                        event_callback,
+                        events_filter,
+                        variables,
+                        forwarded_from_parent,
                     )
 
                     # Record successful workflow execution
@@ -156,7 +165,11 @@ class Arium(BaseArium):
 
                 # Execute the workflow with event support
                 result = await self._execute_graph(
-                    resolved_inputs, event_callback, events_filter, variables
+                    resolved_inputs,
+                    event_callback,
+                    events_filter,
+                    variables,
+                    forwarded_from_parent,
                 )
 
                 # Emit workflow completed event
@@ -204,12 +217,13 @@ class Arium(BaseArium):
         event_callback: Optional[Callable[[AriumEvent], None]] = None,
         events_filter: Optional[List[AriumEventType]] = None,
         variables: Optional[Dict[str, Any]] = None,
+        forwarded_from_parent: bool = False,
     ):
         async with aprofile(
             f'arium.execute_graph[{getattr(self, "name", "unnamed_workflow")}]'
         ):
             return await self._execute_graph_impl(
-                inputs, event_callback, events_filter, variables
+                inputs, event_callback, events_filter, variables, forwarded_from_parent
             )
 
     async def _execute_graph_impl(
@@ -218,10 +232,29 @@ class Arium(BaseArium):
         event_callback: Optional[Callable[[AriumEvent], None]] = None,
         events_filter: Optional[List[AriumEventType]] = None,
         variables: Optional[Dict[str, Any]] = None,
+        forwarded_from_parent: bool = False,
     ):
         variables = variables if variables is not None else {}
+        # A parent hands its nodes' outputs straight to a sub-workflow, so the
+        # same BaseMessage objects land in this memory as 'input'. Retagging them
+        # there would erase the producer the parent recorded, and an input_filter
+        # reading provenance downstream would see 'input' for everything — hence
+        # retag=False on that path only.
+        #
+        # Top-level inputs are always retagged. A caller can legitimately pass a
+        # message that already carries a tag — feeding one workflow's results
+        # into another, or reusing a message object — and that tag names a node
+        # in a workflow that is not this one. Keeping it would let an unrelated
+        # (or caller-chosen) name drive this workflow's routing and filtering.
         [
-            self.memory.add(MessageMemoryItem(node='input', occurrence=0, result=msg))
+            self.memory.add(
+                MessageMemoryItem(
+                    node='input',
+                    occurrence=0,
+                    result=msg,
+                    retag=not forwarded_from_parent,
+                )
+            )
             for msg in inputs
         ]
 
@@ -624,7 +657,10 @@ class Arium(BaseArium):
             if isinstance(node, Agent):
                 return await node.run(inputs, variables={})
             if isinstance(node, FunctionNode):
-                return await node.run(inputs, variables=None)
+                # Agents get {} because their prompts were already resolved against
+                # the variables in _resolve_agent_prompts. Function nodes have no
+                # such earlier pass, so they need the real mapping here.
+                return await node.run(inputs, variables=variables)
             if isinstance(node, ForEachNode):
                 foreach_results: List[MessageMemoryItem | BaseMessage] = await node.run(
                     inputs,

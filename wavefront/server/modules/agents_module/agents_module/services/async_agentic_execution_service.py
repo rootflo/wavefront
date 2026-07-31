@@ -18,6 +18,7 @@ from agents_module.models.async_agentic_execution_schemas import (
     AgenticExecutionStatusResponse,
 )
 from agents_module.utils.celery_client import get_celery_client
+from agents_module.utils.execution_variable_utils import with_execution_variables
 
 _MIME_TO_EXT = {
     'application/pdf': '.pdf',
@@ -197,7 +198,7 @@ class AsyncAgenticExecutionService:
             'execution_id': str(execution_id),
             'entity_id': str(agent_id),
             'entity_type': 'agent',
-            'variables': variables or {},
+            'variables': with_execution_variables(variables, execution_id),
             'inputs': clean_inputs,
             'llm_config': llm_config,
             'output_json_enabled': output_json_enabled,
@@ -268,7 +269,7 @@ class AsyncAgenticExecutionService:
             'entity_type': 'workflow',
             'workflow_name': workflow_name,
             'namespace': namespace,
-            'variables': variables or {},
+            'variables': with_execution_variables(variables, execution_id),
             'inputs': clean_inputs,
             'llm_config': None,
             'output_json_enabled': output_json_enabled,
