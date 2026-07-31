@@ -106,6 +106,52 @@ class DatasourcePlugin:
     def insert_rows_json_multi(self, inserts: List[Dict[str, Any]]):
         return self.datasource.insert_rows_json_multi(inserts)
 
+    def update_rows_json(
+        self, table_name: str, data: Dict[str, Any], filter: str
+    ) -> int:
+        """Update the rows matching the OData ``filter``, returning how many changed.
+
+        Unlike ``fetch_data``, which falls back to a '1=1' no-op predicate when no
+        filter is given, an absent or unparseable filter is an error here: an
+        UPDATE with no WHERE rewrites the whole table, so it must never be
+        reachable by omission.
+        """
+        where_clause, params = self.odata_parser.prepare_odata_filter(filter)
+        if not where_clause:
+            raise ValueError('A filter is required to update rows')
+        return self.datasource.update_rows_json(
+            table_name, data, where_clause, params or {}
+        )
+
+    def update_rows_json_multi(
+        self, updates: List[Dict[str, Any]], require_all_matched: bool = True
+    ) -> List[Dict[str, Any]]:
+        """Update rows across several tables atomically.
+
+        ``updates``: list of ``{"table_name", "data", "filter"}``, where ``filter``
+        is OData. Each entry carries its own filter — the tables are related, not
+        identical, so one predicate could not address them all.
+        """
+        prepared = []
+        for update in updates:
+            where_clause, params = self.odata_parser.prepare_odata_filter(
+                update.get('filter')
+            )
+            if not where_clause:
+                raise ValueError(
+                    'A filter is required to update rows, missing for table '
+                    f'{update.get("table_name")}'
+                )
+            prepared.append(
+                {
+                    'table_name': update['table_name'],
+                    'data': update['data'],
+                    'where_clause': where_clause,
+                    'params': params or {},
+                }
+            )
+        return self.datasource.update_rows_json_multi(prepared, require_all_matched)
+
     async def execute_query(
         self, query: str, use_legacy_sql: bool = False, dry_run: bool = False, **kwargs
     ) -> Any:
