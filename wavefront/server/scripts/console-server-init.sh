@@ -26,4 +26,4 @@ conn.close()
 "
 
 cd /app/apps/floconsole/floconsole
-exec uv run server.py
+exec uv run --frozen --no-sync server.py
