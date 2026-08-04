@@ -1,3 +1,3 @@
-from .postgres import PostgresClient
+from .postgres import NoRowsMatchedError, PostgresClient
 
-__all__ = ['PostgresClient']
+__all__ = ['NoRowsMatchedError', 'PostgresClient']

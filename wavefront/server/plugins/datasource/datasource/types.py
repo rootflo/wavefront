@@ -94,6 +94,38 @@ class DataSourceABC(ABC):
             f'{type(self).__name__} does not support transactional multi-table insert'
         )
 
+    def update_rows_json(
+        self,
+        table_name: str,
+        data: Dict[str, Any],
+        where_clause: str,
+        params: Dict[str, Any],
+    ) -> int:
+        """Update the rows matching ``where_clause``, returning how many changed.
+
+        ``data`` maps column name to new value; ``where_clause`` is a parameterized
+        SQL predicate and ``params`` its values. Concrete (not abstract) with a
+        NotImplementedError default, for the same reason as
+        ``insert_rows_json_multi``: datasource types that don't support it stay
+        instantiable.
+        """
+        raise NotImplementedError(
+            f'{type(self).__name__} does not support updating rows'
+        )
+
+    def update_rows_json_multi(
+        self, updates: List[Dict[str, Any]], require_all_matched: bool = True
+    ) -> List[Dict[str, Any]]:
+        """Update rows across multiple tables atomically, in one transaction.
+
+        ``updates``: list of ``{"table_name", "data", "where_clause", "params"}``.
+        Concrete with a NotImplementedError default, for the same reason as
+        ``insert_rows_json_multi``.
+        """
+        raise NotImplementedError(
+            f'{type(self).__name__} does not support transactional multi-table update'
+        )
+
     @abstractmethod
     async def execute_dynamic_query(
         self,

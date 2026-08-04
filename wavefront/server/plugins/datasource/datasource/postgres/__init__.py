@@ -65,6 +65,20 @@ class PostgresPlugin(DataSourceABC):
     def insert_rows_json_multi(self, inserts: List[Dict[str, Any]]) -> None:
         self.client.insert_rows_json_multi(inserts)
 
+    def update_rows_json(
+        self,
+        table_name: str,
+        data: Dict[str, Any],
+        where_clause: str,
+        params: Dict[str, Any],
+    ) -> int:
+        return self.client.update_rows_json(table_name, data, where_clause, params)
+
+    def update_rows_json_multi(
+        self, updates: List[Dict[str, Any]], require_all_matched: bool = True
+    ) -> List[Dict[str, Any]]:
+        return self.client.update_rows_json_multi(updates, require_all_matched)
+
     async def execute_query(
         self, query: str, use_legacy_sql: bool = False, dry_run: bool = False, **kwargs
     ) -> Any:

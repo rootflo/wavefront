@@ -11,6 +11,15 @@ from psycopg2 import sql
 logger = logging.getLogger(__name__)
 
 
+class NoRowsMatchedError(Exception):
+    """An atomic multi-table update had an entry whose filter matched nothing.
+
+    Distinct from a psycopg2 error: the statements were all valid and ran fine,
+    but one addressed a row that does not exist. The transaction is rolled back
+    before this is raised, so nothing was written.
+    """
+
+
 class PostgresClient:
     def __init__(
         self,
@@ -372,6 +381,155 @@ class PostgresClient:
             except psycopg2.Error as e:
                 conn.rollback()
                 logger.error(f'Insert error: {e}')
+                raise
+            finally:
+                cursor.close()
+
+    def _build_update(
+        self,
+        table_name: str,
+        data: Dict[str, Any],
+        where_clause: str,
+        params: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[Any, Dict[str, Any]]:
+        """Build the parameterized UPDATE and its merged parameters.
+
+        ``data`` maps column to new value, with dict/list values wrapped in
+        ``psycopg2.extras.Json`` exactly as ``_build_insert`` does — a jsonb column
+        needs it, or the value lands as a quoted text scalar.
+
+        ``where_clause`` is a parameterized predicate (from the OData parser) using
+        ``:name`` placeholders, and ``params`` holds its values. Both sides of the
+        statement share one parameter dict, so the SET placeholders are prefixed
+        ``set_``: the parser names its parameters after the field it filtered on,
+        and an unprefixed collision would silently feed one side of the statement
+        the other side's value.
+
+        An empty ``where_clause`` is refused. Callers should never construct one —
+        this is the last line of defence against an UPDATE that rewrites the whole
+        table.
+        """
+        if not data:
+            raise ValueError('No columns to update')
+        if not where_clause or not where_clause.strip():
+            raise ValueError('A where clause is required to update rows')
+
+        set_params = {
+            f'set_{col}': psycopg2.extras.Json(value)
+            if isinstance(value, (dict, list))
+            else value
+            for col, value in data.items()
+        }
+
+        # The parser emits ':name'; psycopg2 wants '%(name)s'. Convert the
+        # predicate on its own, then compose it in as a trusted SQL fragment.
+        converted_where, _ = self._convert_named_params(where_clause, params or {})
+
+        query = sql.SQL('UPDATE {table} SET {assignments} WHERE {where}').format(
+            table=sql.Identifier(*table_name.split('.')),
+            assignments=sql.SQL(', ').join(
+                sql.SQL('{col} = {val}').format(
+                    col=sql.Identifier(col), val=sql.Placeholder(name=f'set_{col}')
+                )
+                for col in data
+            ),
+            where=sql.SQL(converted_where),
+        )
+
+        return query, {**set_params, **(params or {})}
+
+    def update_rows_json(
+        self,
+        table_name: str,
+        data: Dict[str, Any],
+        where_clause: str,
+        params: Optional[Dict[str, Any]] = None,
+    ) -> int:
+        """Update the rows matching ``where_clause``, returning how many changed."""
+        query, merged_params = self._build_update(
+            table_name, data, where_clause, params
+        )
+
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute(query, merged_params)
+                updated_rows = cursor.rowcount
+                conn.commit()
+                return updated_rows
+            except psycopg2.Error as e:
+                conn.rollback()
+                logger.error(f'Update error: {e}')
+                raise
+            finally:
+                cursor.close()
+
+    def update_rows_json_multi(
+        self,
+        updates: List[Dict[str, Any]],
+        require_all_matched: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """Update rows across multiple tables atomically, in one transaction.
+
+        ``updates`` is a list of
+        ``{"table_name": str, "data": Dict, "where_clause": str, "params": Dict}``.
+        All tables are written on one connection and committed once; any failure
+        rolls back every table (all-or-nothing).
+
+        ``require_all_matched`` is the reason this is not just a loop over
+        ``update_rows_json``. The single-table endpoint treats "matched 0 rows" as
+        a success, which is right when the caller may not know whether a row
+        exists. Here the whole premise is that these rows move *together*, so a
+        target that does not exist means the premise is false — committing the
+        other half would leave exactly the inconsistency the transaction was meant
+        to prevent. Default is therefore to roll back and raise; pass False for
+        best-effort semantics.
+
+        Returns one ``{"table_name": str, "updated_rows": int}`` per entry, in
+        order.
+        """
+        if not updates:
+            return []
+
+        prepared = [
+            (
+                spec['table_name'],
+                self._build_update(
+                    spec['table_name'],
+                    spec['data'],
+                    spec['where_clause'],
+                    spec.get('params'),
+                ),
+            )
+            for spec in updates
+        ]
+
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            try:
+                results = []
+                for table_name, (query, merged_params) in prepared:
+                    cursor.execute(query, merged_params)
+                    results.append(
+                        {'table_name': table_name, 'updated_rows': cursor.rowcount}
+                    )
+
+                if require_all_matched:
+                    unmatched = [
+                        r['table_name'] for r in results if not r['updated_rows']
+                    ]
+                    if unmatched:
+                        conn.rollback()
+                        raise NoRowsMatchedError(
+                            'No rows matched the filter for: '
+                            f'{", ".join(unmatched)}. Nothing was updated.'
+                        )
+
+                conn.commit()
+                return results
+            except psycopg2.Error as e:
+                conn.rollback()
+                logger.error(f'Multi-update error: {e}')
                 raise
             finally:
                 cursor.close()

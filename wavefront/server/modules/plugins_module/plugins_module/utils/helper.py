@@ -22,6 +22,33 @@ class InsertRowsJsonPayload(BaseModel):
     data: List[Dict[str, Any]]
 
 
+class UpdateRowsJsonPayload(BaseModel):
+    # OData filter naming the rows to update, e.g. "id eq 'a0468a96-...'".
+    # Required: an UPDATE with no WHERE rewrites the whole table, so omitting it
+    # is a schema violation rather than a check the controller has to remember.
+    filter: str
+    # Column -> new value.
+    data: Dict[str, Any]
+
+
+class TableUpdate(BaseModel):
+    table_name: str
+    # OData filter naming the rows to update in THIS table. Per-entry rather than
+    # shared: the tables are related, not identical, so one predicate could not
+    # address them all.
+    filter: str
+    data: Dict[str, Any]
+
+
+class UpdateRowsJsonMultiPayload(BaseModel):
+    updates: List[TableUpdate]
+    # Abort the whole transaction if any entry's filter matches nothing. The
+    # premise of an atomic multi-table update is that these rows move together,
+    # so a target that does not exist means the premise is false — committing the
+    # rest would leave the inconsistency the transaction was meant to prevent.
+    require_all_matched: bool = True
+
+
 class TableInsert(BaseModel):
     table_name: str
     # A single row dict if single_row=True, otherwise a list of row dicts.

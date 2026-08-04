@@ -33,7 +33,10 @@ from plugins_module.utils.helper import (
     AddDatasourcePayload,
     UpdateDatasourcePayload,
     InsertRowsJsonPayload,
+    UpdateRowsJsonPayload,
+    UpdateRowsJsonMultiPayload,
 )
+from flo_cloud.postgres import NoRowsMatchedError
 from plugins_module.plugins_container import PluginsContainer
 from user_management_module.user_container import UserContainer
 from user_management_module.services.user_service import UserService
@@ -597,6 +600,181 @@ async def insert_rows_json(
         content=response_formatter.buildSuccessResponse(
             {
                 'message': f'Inserted {len(insert_rows_json_payload.data)} rows successfully'
+            }
+        ),
+    )
+
+
+# Registered BEFORE the single-table PATCH below: FastAPI matches in declaration
+# order, so the '{resource_id}' route would otherwise swallow this one with
+# resource_id='update'. (Same reason '/resources/insert' precedes its own
+# catch-all. It does mean a table literally named 'update' cannot be reached by
+# the single-table endpoint — as is already true for one named 'insert'.)
+@datasource_router.patch('/v1/datasources/{datasource_id}/resources/update')
+@inject
+async def update_rows_json_multi(
+    request: Request,
+    datasource_id: str,
+    update_rows_json_multi_payload: UpdateRowsJsonMultiPayload,
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+):
+    """Update rows across multiple tables of one datasource atomically.
+
+    All tables are written in a single transaction (all-or-nothing). By default a
+    filter that matches nothing aborts the whole update: the premise here is that
+    these rows move together, so a target that does not exist means the premise is
+    false. Pass `require_all_matched: false` for best-effort semantics.
+
+    Currently only Postgres supports this; other datasource types return 501.
+    """
+    if not update_rows_json_multi_payload.updates:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse('No updates provided'),
+        )
+
+    for update in update_rows_json_multi_payload.updates:
+        if not update.filter.strip():
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content=response_formatter.buildErrorResponse(
+                    'A non-empty filter is required to update rows, missing for '
+                    f'table {update.table_name}'
+                ),
+            )
+        if not update.data:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content=response_formatter.buildErrorResponse(
+                    f'No columns to update for table {update.table_name}'
+                ),
+            )
+
+    datasource_type, datasource_config = await get_datasource_config(datasource_id)
+    if not datasource_config:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse(
+                f'Datasource not found: {datasource_id}'
+            ),
+        )
+
+    datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
+
+    try:
+        results = await asyncio.to_thread(
+            datasource_plugin.update_rows_json_multi,
+            [update.model_dump() for update in update_rows_json_multi_payload.updates],
+            update_rows_json_multi_payload.require_all_matched,
+        )
+    except NotImplementedError as e:
+        return JSONResponse(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
+    except NoRowsMatchedError as e:
+        # 409, not 404: the request was well formed and every statement was valid,
+        # but the database is not in the state the caller expected. Nothing was
+        # written — the transaction was rolled back before this was raised.
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
+    except ValueError as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
+
+    total_rows = sum(result['updated_rows'] for result in results)
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            {
+                'message': (
+                    f'Updated {total_rows} rows across '
+                    f'{len(results)} table(s) successfully'
+                ),
+                'updated_rows': total_rows,
+                'results': results,
+            }
+        ),
+    )
+
+
+@datasource_router.patch('/v1/datasources/{datasource_id}/resources/{resource_id}')
+@inject
+async def update_rows_json(
+    request: Request,
+    datasource_id: str,
+    resource_id: str,
+    update_rows_json_payload: UpdateRowsJsonPayload,
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+):
+    """Update the rows of one table matching an OData filter.
+
+    The filter travels in the body rather than as a `$filter` query param (the
+    shape the read endpoint uses, because a GET has no body): a mutation's
+    predicate should not end up in access logs or a Referer header, and putting
+    it in the body spares the caller from URL-encoding the quotes and spaces in
+    `id eq '...'`.
+
+    Currently only Postgres supports this; other datasource types return 501.
+    """
+    if not update_rows_json_payload.filter.strip():
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                'A non-empty filter is required to update rows'
+            ),
+        )
+
+    if not update_rows_json_payload.data:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse('No columns to update'),
+        )
+
+    datasource_type, datasource_config = await get_datasource_config(datasource_id)
+    if not datasource_config:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse(
+                f'Datasource not found: {datasource_id}'
+            ),
+        )
+
+    datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
+
+    try:
+        updated_rows = await asyncio.to_thread(
+            datasource_plugin.update_rows_json,
+            resource_id,
+            update_rows_json_payload.data,
+            update_rows_json_payload.filter,
+        )
+    except NotImplementedError as e:
+        return JSONResponse(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
+    except ValueError as e:
+        # Unparseable filter, or one that resolved to nothing.
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            {
+                'message': f'Updated {updated_rows} rows successfully',
+                'updated_rows': updated_rows,
             }
         ),
     )
