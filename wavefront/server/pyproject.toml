@@ -32,6 +32,19 @@ override-dependencies = [
     "torch>=2.6.0 ; sys_platform != 'darwin'",
 ]
 
+# No workspace member currently runs torch/torchvision on GPU nodes
+# (inference_use_gpu and equivalents are false in every deployed environment;
+# gold-weight-ratio's GPU service lives in a separate repo/image) — CPU-only
+# wheels avoid pulling ~2GB of unused nvidia-*-cu12 CUDA libraries into images.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform != 'darwin'" }]
+torchvision = [{ index = "pytorch-cpu", marker = "sys_platform != 'darwin'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
