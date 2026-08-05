@@ -25,4 +25,4 @@ RUN useradd -m appuser
 RUN chown -R appuser /app
 USER appuser
 
-CMD ["uv", "run", "server.py"]
+CMD ["uv", "run", "--frozen", "--no-sync", "server.py"]

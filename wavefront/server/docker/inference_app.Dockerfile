@@ -25,4 +25,4 @@ RUN uv sync --package inference-app --frozen --no-dev
 
 WORKDIR /app/apps/inference_app/inference_app
 
-CMD ["uv", "run", "server.py"]
+CMD ["uv", "run", "--frozen", "--no-sync", "server.py"]

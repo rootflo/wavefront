@@ -42,4 +42,4 @@ WORKDIR /app/background_jobs/workflow_job/workflow_job
 # Switch to the non-root user before running the command
 USER appuser
 
-CMD ["uv", "run", "main.py"]
+CMD ["uv", "run", "--frozen", "--no-sync", "main.py"]
