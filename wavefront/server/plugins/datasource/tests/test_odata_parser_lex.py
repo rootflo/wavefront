@@ -72,7 +72,7 @@ def test_date_comparison():
 
 def test_contains_operator():
     filter_expr = "description contains 'test'"
-    expected_sql = 'description LIKE @description'
+    expected_sql = 'LOWER(description) LIKE LOWER(@description)'
     expected_params = {'description': '%test%'}
     sql_expr, params = parser.prepare_odata_filter(filter_expr)
     assert sql_expr == expected_sql
@@ -179,7 +179,14 @@ def test_multiple_conditions_with_same_field_filling():
 
 def test_multiple_conditions_with_loan_amt():
     filter_expr = "created_at gt 2025-07-23T07:42:44 $and (loan_id contains '96444' $or branch contains '96444' $or region contains '96444' $or zone contains '96444' $or loan_amount eq '96444')"
-    expected_sql = "created_at > @created_at AND (loan_id LIKE '%96444%' OR branch LIKE '%96444%' OR region LIKE '%96444%' OR zone LIKE '%96444%' OR loan_amount = '96444')"
+    expected_sql = (
+        'created_at > @created_at AND ('
+        "LOWER(loan_id) LIKE LOWER('%96444%') OR "
+        "LOWER(branch) LIKE LOWER('%96444%') OR "
+        "LOWER(region) LIKE LOWER('%96444%') OR "
+        "LOWER(zone) LIKE LOWER('%96444%') OR "
+        "loan_amount = '96444')"
+    )
     sql_expr, params = parser.prepare_odata_filter(filter_expr)
     fill_odata = fill_odata_query(sql_expr, params)
     assert fill_odata == expected_sql
@@ -231,7 +238,10 @@ def test_join_filter_with_multiple_conditions():
 
 def test_join_filter_with_contains_operator():
     filter_expr = "a.name contains 'John' $and b.description contains 'test'"
-    expected_sql = 'a.name LIKE @a_name AND b.description LIKE @b_description'
+    expected_sql = (
+        'LOWER(a.name) LIKE LOWER(@a_name) '
+        'AND LOWER(b.description) LIKE LOWER(@b_description)'
+    )
     expected_params = {'a_name': '%John%', 'b_description': '%test%'}
     sql_expr, params = parser.prepare_odata_filter(filter_expr)
     assert sql_expr == expected_sql
@@ -254,3 +264,25 @@ def test_join_filter_with_same_field_different_tables():
     sql_expr, params = parser.prepare_odata_filter(filter_expr)
     assert sql_expr == expected_sql
     assert params == expected_params
+
+
+def test_param_prefix_namespaces_generated_names():
+    sql_expr, params = parser.prepare_odata_filter("region eq 'south'", 'flt_')
+    assert sql_expr == 'region = @flt_region'
+    assert params == {'flt_region': 'south'}
+
+
+def test_prefixes_keep_separately_parsed_filters_from_colliding():
+    filter_sql, filter_params = parser.prepare_odata_filter("region eq 'south'", 'flt_')
+    rls_sql, rls_params = parser.prepare_odata_filter(
+        "region eq 'north' $or region eq 'east'", 'rls_'
+    )
+
+    assert filter_sql == 'region = @flt_region'
+    assert rls_sql == 'region = @rls_region OR region = @rls_region_1'
+    assert not filter_params.keys() & rls_params.keys()
+    assert {**filter_params, **rls_params} == {
+        'flt_region': 'south',
+        'rls_region': 'north',
+        'rls_region_1': 'east',
+    }
