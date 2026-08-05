@@ -1,3 +1,4 @@
+import asyncio
 import httpx
 from typing import Optional
 import uuid
@@ -45,16 +46,11 @@ class ImageRagRetrieve:
         dino_embedding = next((e['dino'] for e in embedding if 'dino' in e), None)
 
         if clip_embedding and dino_embedding:
-            clip_results = await self.image_retrieve(
-                clip_embedding, kb_id, threshold, top_k, query_filter
-            )
-            if not clip_results:
-                return []
-            reference_id_list = [str(data['document_id']) for data in clip_results]
-            return await self.image_retrieve_dino(
+            return await self.image_retrieve_fused(
+                clip_embedding,
                 dino_embedding,
                 kb_id,
-                reference_id_list,
+                top_k,
                 query_filter,
                 offset,
                 limit,
@@ -62,52 +58,122 @@ class ImageRagRetrieve:
         else:
             return []
 
-    async def image_retrieve(self, embedding, kb_id, threshold, top_k, query_filter):
-        """Search for similar images in the vector database"""
-
-        # Use L2 distance for similarity search
+    async def image_retrieve_clip(
+        self,
+        clip_embedding,
+        kb_id,
+        top_k,
+        query_filter,
+    ):
+        """Search for similar images using the CLIP embedding only."""
         params = {
-            'threshold': threshold or 0.5,
-            'top_k': top_k or 50,
             'kb_id': kb_id,
+            'top_k': top_k,
         }
         try:
-            # Get and execute the combined search query
-            sql_query, query_params = self.query_generator.get_image_embedding(
-                embedding, params, query_filter
+            sql_query, query_params = self.query_generator.get_image_embedding_clip(
+                clip_embedding, params, query_filter
             )
-            retrieved_docs = (
-                await self.knowledge_base_embeddings_repository.execute_query(
-                    sql_query, query_params
-                )
+            return await self.knowledge_base_embeddings_repository.execute_query(
+                sql_query,
+                query_params,
+                ef_search=query_params.get('ef_search'),
             )
-            return retrieved_docs
-
         except SQLAlchemyError as e:
-            # self.logger.error(f'Database error: {e}')
             raise RuntimeError(f'Failed to execute the query for retrieval images: {e}')
 
     async def image_retrieve_dino(
-        self, embedding, kb_id, reference_id_list, query_filter, offset=None, limit=None
+        self,
+        dino_embedding,
+        kb_id,
+        top_k,
+        query_filter,
     ):
-        """Search for similar images in the vector database"""
-
-        # Use L2 distance for similarity search
+        """
+        Search for similar images using the DINO embedding only. Called with
+        an empty reference list so it runs as its own independent, KB-scoped
+        nearest-neighbor search rather than post-filtering a CLIP shortlist.
+        """
         params = {
             'kb_id': kb_id,
-            'reference_id_list': reference_id_list,
+            'top_k': top_k,
+            'reference_id_list': [],
         }
         try:
-            # Get and execute the combined search query
             sql_query, query_params = self.query_generator.get_image_embedding_dino(
-                embedding, params, query_filter, offset, limit
+                dino_embedding, params, query_filter, offset=0, limit=top_k
             )
-            retrieved_docs = (
-                await self.knowledge_base_embeddings_repository.execute_query(
-                    sql_query, query_params
-                )
+            return await self.knowledge_base_embeddings_repository.execute_query(
+                sql_query,
+                query_params,
+                ef_search=query_params.get('ef_search'),
             )
-            return retrieved_docs
-
         except SQLAlchemyError as e:
             raise RuntimeError(f'Failed to execute the query for retrieval images: {e}')
+
+    async def image_retrieve_fused(
+        self,
+        clip_embedding,
+        dino_embedding,
+        kb_id,
+        top_k,
+        query_filter,
+        offset: Optional[int] = None,
+        limit: Optional[int] = None,
+        clip_weight: float = 0.5,
+        dino_weight: float = 0.5,
+    ):
+        """
+        Search for similar images by fusing independent CLIP and DINO
+        nearest-neighbor searches (each KB-scoped and index-friendly), so a
+        document surfaces if it ranks well under either embedding model
+        rather than being required to independently survive both stages.
+
+        The two searches run concurrently and are merged here in Python
+        (instead of a single fused SQL query), which keeps each query's
+        output shape identical to its standalone form and lets us control
+        the final response shape explicitly -- including restoring a
+        `similarity` field for callers that expect one.
+        """
+        effective_limit = limit if limit is not None else int(top_k or 10)
+        effective_offset = offset or 0
+        candidate_k = max(effective_limit * 5, 50)
+
+        clip_rows, dino_rows = await asyncio.gather(
+            self.image_retrieve_clip(clip_embedding, kb_id, candidate_k, query_filter),
+            self.image_retrieve_dino(dino_embedding, kb_id, candidate_k, query_filter),
+        )
+
+        merged: dict = {}
+
+        for row in clip_rows:
+            doc_id = row['document_id']
+            entry = merged.setdefault(doc_id, {**row, 'clip_score': 0, 'dino_score': 0})
+            entry.update(row)
+            entry['clip_score'] = row.get('clip_score', 0) or 0
+
+        for row in dino_rows:
+            doc_id = row['document_id']
+            entry = merged.setdefault(doc_id, {**row, 'clip_score': 0, 'dino_score': 0})
+            # Only fill in fields the clip row didn't already provide
+            # (e.g. embedding_id/chunk_text/file_path when a document only
+            # surfaced via DINO), and never let DINO's own "similarity"
+            # column leak through -- it's remapped to dino_score below and
+            # "similarity" is recomputed as the final combined_score.
+            for key, value in row.items():
+                if key != 'similarity':
+                    entry.setdefault(key, value)
+            entry['dino_score'] = row.get('similarity', 0) or 0
+
+        results = []
+        for entry in merged.values():
+            combined_score = (
+                entry.get('clip_score', 0) * clip_weight
+                + entry.get('dino_score', 0) * dino_weight
+            )
+            entry['combined_score'] = combined_score
+            entry['similarity'] = combined_score
+            results.append(entry)
+
+        results.sort(key=lambda r: r['combined_score'], reverse=True)
+        return results[effective_offset : effective_offset + effective_limit]

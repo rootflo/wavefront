@@ -115,7 +115,9 @@ class KBRagResponse:
                 )
                 retrieved_docs = (
                     await self.knowledge_base_embeddings_repository.execute_query(
-                        sql_query, query_params
+                        sql_query,
+                        query_params,
+                        ef_search=query_params.get('ef_search'),
                     )
                 )
                 return retrieved_docs
