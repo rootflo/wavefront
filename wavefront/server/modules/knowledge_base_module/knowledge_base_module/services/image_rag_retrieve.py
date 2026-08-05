@@ -46,7 +46,7 @@ class ImageRagRetrieve:
         dino_embedding = next((e['dino'] for e in embedding if 'dino' in e), None)
 
         if clip_embedding and dino_embedding:
-            return await self.image_retrieve_fused(
+            return await self.image_retrieve_clip_dino_union(
                 clip_embedding,
                 dino_embedding,
                 kb_id,
@@ -74,10 +74,11 @@ class ImageRagRetrieve:
             sql_query, query_params = self.query_generator.get_image_embedding_clip(
                 clip_embedding, params, query_filter
             )
+            ef_search = self.query_generator.compute_ef_search(top_k)
             return await self.knowledge_base_embeddings_repository.execute_query(
                 sql_query,
                 query_params,
-                ef_search=query_params.get('ef_search'),
+                ef_search=ef_search,
             )
         except SQLAlchemyError as e:
             raise RuntimeError(f'Failed to execute the query for retrieval images: {e}')
@@ -90,28 +91,27 @@ class ImageRagRetrieve:
         query_filter,
     ):
         """
-        Search for similar images using the DINO embedding only. Called with
-        an empty reference list so it runs as its own independent, KB-scoped
-        nearest-neighbor search rather than post-filtering a CLIP shortlist.
+        Search for similar images using the DINO embedding only, as its own
+        independent, KB-scoped nearest-neighbor search.
         """
         params = {
             'kb_id': kb_id,
             'top_k': top_k,
-            'reference_id_list': [],
         }
         try:
             sql_query, query_params = self.query_generator.get_image_embedding_dino(
-                dino_embedding, params, query_filter, offset=0, limit=top_k
+                dino_embedding, params, query_filter
             )
+            ef_search = self.query_generator.compute_ef_search(top_k)
             return await self.knowledge_base_embeddings_repository.execute_query(
                 sql_query,
                 query_params,
-                ef_search=query_params.get('ef_search'),
+                ef_search=ef_search,
             )
         except SQLAlchemyError as e:
             raise RuntimeError(f'Failed to execute the query for retrieval images: {e}')
 
-    async def image_retrieve_fused(
+    async def image_retrieve_clip_dino_union(
         self,
         clip_embedding,
         dino_embedding,
@@ -124,10 +124,11 @@ class ImageRagRetrieve:
         dino_weight: float = 0.5,
     ):
         """
-        Search for similar images by fusing independent CLIP and DINO
-        nearest-neighbor searches (each KB-scoped and index-friendly), so a
-        document surfaces if it ranks well under either embedding model
-        rather than being required to independently survive both stages.
+        Search for similar images by taking the union of independent CLIP
+        and DINO nearest-neighbor searches (each KB-scoped and
+        index-friendly), so a document surfaces if it ranks well under
+        either embedding model rather than being required to independently
+        survive both stages.
 
         The two searches run concurrently and are merged here in Python
         (instead of a single fused SQL query), which keeps each query's

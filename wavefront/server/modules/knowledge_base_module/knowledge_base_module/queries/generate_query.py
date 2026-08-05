@@ -1,5 +1,5 @@
 import re
-from typing import Any, Dict, Tuple, List, Optional
+from typing import Any, Dict, Tuple, Optional
 
 from db_repo_module.models.knowledge_base_documents import KnowledgeBaseDocuments
 from db_repo_module.models.knowledge_base_embeddings import KnowledgeBaseEmbeddings
@@ -189,7 +189,6 @@ class QueryGenerator:
             'query_embedding': query_embeddings,
             'kb_id': kb_id,
             'top_k': top_k,
-            'ef_search': self.compute_ef_search(top_k),
         }
         metadata_filter_clause = ''
         if filter:
@@ -230,33 +229,15 @@ class QueryGenerator:
         return sql_query, params
 
     def get_image_embedding_dino(
-        self,
-        query_embeddings: list,
-        params: Dict[str, Any],
-        filter: str,
-        offset: Optional[int] = None,
-        limit: Optional[int] = None,
+        self, query_embeddings: list, params: Dict[str, Any], filter: str
     ):
         kb_id = str(params.get('kb_id'))
-        # Use limit if provided, otherwise use top_k
-        effective_limit = limit if limit is not None else int(params.get('top_k', 10))
-        reference_id_list: List[Any] = params.get('reference_id_list', [])
-        effective_offset = offset if offset is not None else 0
-
-        if reference_id_list:
-            processed_reference_ids = [
-                str(id) for id in reference_id_list
-            ]  # Use list instead of tuple
-        else:
-            processed_reference_ids = []
+        top_k = int(params.get('top_k', 10))
 
         params = {
             'query_embedding': query_embeddings,
             'kb_id': kb_id,
-            'reference_ids': processed_reference_ids,
-            'offset': effective_offset,
-            'limit': effective_limit,
-            'ef_search': self.compute_ef_search(effective_limit),
+            'top_k': top_k,
         }
 
         metadata_filter_clause = ''
@@ -270,12 +251,10 @@ class QueryGenerator:
                 )
                 params.update(filter_params)
 
-        # NOTE: filtering on d.id = ANY(:reference_ids) lives in the same
-        # scope as the distance ORDER BY/LIMIT. reference_ids is normally a
-        # small, already-known candidate set (e.g. a CLIP shortlist), so
-        # this lets Postgres fetch exactly those rows and compute an exact
-        # distance directly, instead of running an unfiltered global ANN
-        # search first and hoping those specific rows survive it.
+        # NOTE: same reasoning as get_image_embedding_clip -- filter and
+        # ORDER BY/LIMIT share the same query scope so Postgres's planner
+        # can brute-force small/highly-selective KBs instead of always
+        # going through the HNSW index via an unfiltered candidate CTE.
         sql_query = f"""
         SELECT
             e.id AS embedding_id,
@@ -290,10 +269,9 @@ class QueryGenerator:
         FROM {KnowledgeBaseEmbeddings.__tablename__} e
         JOIN {KnowledgeBaseDocuments.__tablename__} d ON e.document_id = d.id
         WHERE d.knowledge_base_id = :kb_id
-            {('AND d.id = ANY(:reference_ids)' if processed_reference_ids else '')}
             {'AND (' + metadata_filter_clause + ')' if metadata_filter_clause else ''}
         ORDER BY similarity DESC
-        LIMIT :limit OFFSET :offset
+        LIMIT :top_k
         """
 
         return sql_query, params
