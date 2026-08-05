@@ -217,7 +217,7 @@ class Lexer:
 class ODataParserABC(ABC):
     @abstractmethod
     def prepare_odata_filter(
-        self, filter_expr: Optional[str]
+        self, filter_expr: Optional[str], param_prefix: str = ''
     ) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
         pass
 
@@ -241,9 +241,9 @@ class ODataQueryParser:
             raise ValueError(f'Invalid type: {self.type}')
 
     def prepare_odata_filter(
-        self, odata_filter: Optional[str]
+        self, odata_filter: Optional[str], param_prefix: str = ''
     ) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
-        return self.parser.prepare_odata_filter(odata_filter)
+        return self.parser.prepare_odata_filter(odata_filter, param_prefix)
 
     def prepare_odata_joins(
         self, odata_joins: str, parent_table: str
@@ -254,12 +254,15 @@ class ODataQueryParser:
 class SQLFilterParser:
     """Unified parser for OData filter expressions and query parameters"""
 
-    def __init__(self, lexer: Lexer, dynamic_var_char: str = '@'):
+    def __init__(
+        self, lexer: Lexer, dynamic_var_char: str = '@', param_prefix: str = ''
+    ):
         self.lexer = lexer
         self.current_token = self.lexer.get_next_token()
         self.params = {}
         self.param_count = {}
         self.dynamic_var_char = dynamic_var_char
+        self.param_prefix = param_prefix
 
     def eat(self, token_type: TokenType):
         if self.current_token.type == token_type:
@@ -336,9 +339,9 @@ class SQLFilterParser:
         if '.' in field:
             # For table aliases like "a.id", use "a_id" as parameter key
             table_alias, column_name = field.split('.', 1)
-            base_param_key = f'{table_alias}_{column_name}'
+            base_param_key = f'{self.param_prefix}{table_alias}_{column_name}'
         else:
-            base_param_key = field
+            base_param_key = f'{self.param_prefix}{field}'
 
         if base_param_key in self.param_count:
             self.param_count[base_param_key] += 1
@@ -669,14 +672,20 @@ class SQLODataParser(ODataParserABC):
         self.dynamic_var_char = dynamic_var_char
 
     def prepare_odata_filter(
-        self, filter_expr: Optional[str]
+        self, filter_expr: Optional[str], param_prefix: str = ''
     ) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
-        """Parses an OData-like filter expression and converts it into a SQL-like query with parameters."""
+        """Parses an OData-like filter expression and converts it into a SQL-like query with parameters.
+
+        ``param_prefix`` namespaces the generated parameter names. Each call
+        restarts its own counter, so filters parsed separately but bound to the
+        same statement (e.g. ``$filter`` and an RLS filter) must be given
+        different prefixes or they will generate colliding names.
+        """
         if not filter_expr:
             return None, None
 
         lexer = Lexer(filter_expr)
-        parser = SQLFilterParser(lexer, self.dynamic_var_char)
+        parser = SQLFilterParser(lexer, self.dynamic_var_char, param_prefix)
 
         sql_expr = parser.parse_filter_expression()
 

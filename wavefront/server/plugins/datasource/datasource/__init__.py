@@ -168,9 +168,11 @@ class DatasourcePlugin:
         limit: Optional[int] = 100,
         params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        odata_filter, odata_params = self.odata_parser.prepare_odata_filter(filter)
+        odata_filter, odata_params = self.odata_parser.prepare_odata_filter(
+            filter, param_prefix='flt_'
+        )
         odata_data_filter, odata_data_params = self.odata_parser.prepare_odata_filter(
-            rls_filter
+            rls_filter, param_prefix='rls_'
         )
         result_by_query: Dict[str, Any] = await self.datasource.execute_dynamic_query(
             query=query,
