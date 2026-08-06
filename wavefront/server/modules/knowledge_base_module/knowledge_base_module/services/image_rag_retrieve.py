@@ -23,11 +23,8 @@ class ImageRagRetrieve:
         image_data: str,
         inference_url: str,
         kb_id: uuid.UUID,
-        threshold: Optional[float] = None,
         top_k: Optional[int] = None,
         query_filter: Optional[str] = '',
-        offset: Optional[int] = None,
-        limit: Optional[int] = None,
     ):
         data = {'image_data': image_data}
         internal_api_url = f'{inference_url}/inference/v1/query/embeddings'
@@ -52,8 +49,6 @@ class ImageRagRetrieve:
                 kb_id,
                 top_k,
                 query_filter,
-                offset,
-                limit,
             )
         else:
             return []
@@ -118,8 +113,6 @@ class ImageRagRetrieve:
         kb_id,
         top_k,
         query_filter,
-        offset: Optional[int] = None,
-        limit: Optional[int] = None,
         clip_weight: float = 0.5,
         dino_weight: float = 0.5,
     ):
@@ -135,27 +128,44 @@ class ImageRagRetrieve:
         output shape identical to its standalone form and lets us control
         the final response shape explicitly -- including restoring a
         `similarity` field for callers that expect one.
+
+        Each result also carries a `matched_by` list (e.g. `['clip']`,
+        `['dino']`, or `['clip', 'dino']`) so callers can tell whether a
+        `clip_score`/`dino_score` of `0` means "this model scored it near
+        zero" or "this model never returned this document at all" --
+        distinguishing genuine low scores from defaults.
+
+        CLIP and DINO are each asked for their own real `top_k` (no
+        overfetching) and the union is returned as-is, so the response
+        naturally holds between `top_k` and `2 * top_k` results depending
+        on how much the two models agree -- this avoids ever having to
+        compare CLIP's and DINO's scores against each other just to decide
+        which candidates get truncated away.
         """
-        effective_limit = limit if limit is not None else int(top_k or 10)
-        effective_offset = offset or 0
-        candidate_k = max(effective_limit * 5, 50)
+        top_k = int(top_k or 10)
 
         clip_rows, dino_rows = await asyncio.gather(
-            self.image_retrieve_clip(clip_embedding, kb_id, candidate_k, query_filter),
-            self.image_retrieve_dino(dino_embedding, kb_id, candidate_k, query_filter),
+            self.image_retrieve_clip(clip_embedding, kb_id, top_k, query_filter),
+            self.image_retrieve_dino(dino_embedding, kb_id, top_k, query_filter),
         )
 
         merged: dict = {}
 
         for row in clip_rows:
             doc_id = row['document_id']
-            entry = merged.setdefault(doc_id, {**row, 'clip_score': 0, 'dino_score': 0})
+            entry = merged.setdefault(
+                doc_id, {**row, 'clip_score': 0, 'dino_score': 0, 'matched_by': []}
+            )
             entry.update(row)
             entry['clip_score'] = row.get('clip_score', 0) or 0
+            if 'clip' not in entry['matched_by']:
+                entry['matched_by'].append('clip')
 
         for row in dino_rows:
             doc_id = row['document_id']
-            entry = merged.setdefault(doc_id, {**row, 'clip_score': 0, 'dino_score': 0})
+            entry = merged.setdefault(
+                doc_id, {**row, 'clip_score': 0, 'dino_score': 0, 'matched_by': []}
+            )
             # Only fill in fields the clip row didn't already provide
             # (e.g. embedding_id/chunk_text/file_path when a document only
             # surfaced via DINO), and never let DINO's own "similarity"
@@ -165,6 +175,8 @@ class ImageRagRetrieve:
                 if key != 'similarity':
                     entry.setdefault(key, value)
             entry['dino_score'] = row.get('similarity', 0) or 0
+            if 'dino' not in entry['matched_by']:
+                entry['matched_by'].append('dino')
 
         results = []
         for entry in merged.values():
@@ -177,4 +189,4 @@ class ImageRagRetrieve:
             results.append(entry)
 
         results.sort(key=lambda r: r['combined_score'], reverse=True)
-        return results[effective_offset : effective_offset + effective_limit]
+        return results

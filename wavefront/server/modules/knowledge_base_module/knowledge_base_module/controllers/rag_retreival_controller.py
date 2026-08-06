@@ -278,11 +278,8 @@ async def retrieve_query(
             image_data,
             inference_url,
             kb_id,
-            threshold,
             top_k,
             query_filter,
-            offset,
-            limit,
         )
         retrieved_docs = convert_uuids_to_str(retrieved_docs)
     if not retrieved_docs:
