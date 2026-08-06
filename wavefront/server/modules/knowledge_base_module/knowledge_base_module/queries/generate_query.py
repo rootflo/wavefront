@@ -88,7 +88,6 @@ class QueryGenerator:
             'query': query,
             'offset': effective_offset,
             'limit': effective_limit,
-            'ef_search': self.compute_ef_search(effective_limit),
         }
         metadata_filter_clause_final = ''
         metadata_filter_clause_inner = ''
@@ -110,24 +109,37 @@ class QueryGenerator:
                 )
                 query_params.update(filter_params)
         sql_query = f"""
-            WITH vector_results AS (
+            WITH hnsw_candidates AS (
                 SELECT
-                    e.id as embedding_id,
-                    e.chunk_text,
-                    e.chunk_index,
+                    id,
+                    document_id,
+                    chunk_text,
+                    chunk_index,
+                    (embedding_vector::vector(512)) <=> :query_embed ::vector(512) AS distance
+                FROM
+                    {KnowledgeBaseEmbeddings.__tablename__}
+                ORDER BY
+                    (embedding_vector::vector(512)) <=> :query_embed ::vector(512)
+                LIMIT :limit * 20
+            ),
+            vector_results AS (
+                SELECT
+                    hc.id as embedding_id,
+                    hc.chunk_text,
+                    hc.chunk_index,
                     d.id as document_id,
                     d.file_path,
                     d.knowledge_base_id,
                     d.metadata_value,
-                    1 - ((e.embedding_vector::vector(512)) <=> :query_embed ::vector(512)) as vector_score
+                    1 - hc.distance as vector_score
                 FROM
-                    {KnowledgeBaseEmbeddings.__tablename__} e
+                    hnsw_candidates hc
                 JOIN
-                    {KnowledgeBaseDocuments.__tablename__} d ON e.document_id = d.id
+                    {KnowledgeBaseDocuments.__tablename__} d ON hc.document_id = d.id
                 WHERE
                      d.knowledge_base_id = :kb_id {'AND (' + metadata_filter_clause_inner + ')' if metadata_filter_clause_inner else ''}
                 ORDER BY
-                    (e.embedding_vector::vector(512)) <=> :query_embed ::vector(512)
+                    hc.distance ASC
                 LIMIT :limit
             ),
             keyword_results AS (
