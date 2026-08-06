@@ -20,6 +20,8 @@ from plugins_module.plugins_container import PluginsContainer
 from plugins_module.services.configuration_service import (
     ConfigurationAlreadyExistsError,
     ConfigurationService,
+    InvalidConfigurationKeyError,
+    InvalidConfigurationValueError,
     NamespaceNotFoundError,
 )
 
@@ -57,7 +59,11 @@ async def create_configuration(
             value=payload.value,
             description=payload.description,
         )
-    except NamespaceNotFoundError as e:
+    except (
+        NamespaceNotFoundError,
+        InvalidConfigurationKeyError,
+        InvalidConfigurationValueError,
+    ) as e:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content=response_formatter.buildErrorResponse(str(e)),
@@ -113,6 +119,9 @@ async def get_configuration(
     This is the read path the `fetch_configuration` function node uses on every
     workflow run, so the body is the document and nothing else.
     """
+    # None means no such row: a null document is refused on write, so it can
+    # never be a stored value. Other falsy documents (0, "", [], {}) are real
+    # values and fall through to the 200 below.
     value = await configuration_service.get_value(namespace, key)
     if value is None:
         return JSONResponse(
@@ -153,7 +162,11 @@ async def upsert_configuration(
             value=payload.value,
             description=payload.description,
         )
-    except NamespaceNotFoundError as e:
+    except (
+        NamespaceNotFoundError,
+        InvalidConfigurationKeyError,
+        InvalidConfigurationValueError,
+    ) as e:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content=response_formatter.buildErrorResponse(str(e)),

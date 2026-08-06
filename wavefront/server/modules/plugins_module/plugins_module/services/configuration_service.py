@@ -6,6 +6,7 @@ arbitrary JSON document that wavefront never interprets.
 """
 
 import json
+import re
 from typing import Any, Dict, List, Optional
 
 from db_repo_module.cache.cache_manager import CacheManager
@@ -17,6 +18,11 @@ from common_module.log.logger import logger
 # Configs are static and read on every workflow run, so they cache well. Writes
 # invalidate explicitly, making the TTL a backstop rather than the mechanism.
 CONFIGURATION_CACHE_TTL_SECONDS = 60 * 60
+
+
+# Keys are a URL path segment, so they are restricted to what addresses cleanly.
+# Same rule as agents_module's validate_agent_workflow_name.
+CONFIGURATION_KEY_PATTERN = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9_-]*$')
 
 
 def get_configuration_cache_key(namespace: str, key: str) -> str:
@@ -33,6 +39,35 @@ class NamespaceNotFoundError(Exception):
 
 class ConfigurationAlreadyExistsError(Exception):
     """A configuration with this (namespace, key) already exists."""
+
+
+class InvalidConfigurationKeyError(Exception):
+    """The configuration key cannot be addressed in a URL path.
+
+    Keys are a path segment in /v1/configurations/{namespace}/{key}, and the
+    ASGI server percent-decodes the path before routing — so a key containing
+    '/' is unreachable even when the client encodes it as %2F. A POST would
+    create the row and every subsequent GET/PUT/DELETE would 404 on it.
+
+    The pattern matches validate_agent_workflow_name in agents_module, which
+    restricts agent and workflow names for the same reason. It is duplicated
+    rather than imported to avoid giving plugins_module a dependency on
+    agents_module (see _assert_namespace_exists).
+    """
+
+
+class InvalidConfigurationValueError(Exception):
+    """The configuration document is null.
+
+    Refused on write for two reasons. A null document is meaningless — there is
+    nothing for a workflow to read out of it. And it would be unreachable:
+    `value` is jsonb NOT NULL, but SQLAlchemy maps Python None onto JSON `null`
+    rather than SQL NULL (none_as_null is False by default), so the row stores
+    successfully and then reads back as None — indistinguishable from "no such
+    configuration". GET would answer 404 for a row DELETE could still find.
+
+    Rejecting it here is what lets None mean exactly one thing on read.
+    """
 
 
 class ConfigurationService:
@@ -56,6 +91,27 @@ class ConfigurationService:
                 'Create it first via POST /v1/namespaces.'
             )
 
+    @staticmethod
+    def _assert_key_addressable(key: str) -> None:
+        if not CONFIGURATION_KEY_PATTERN.match(key or ''):
+            raise InvalidConfigurationKeyError(
+                f"Configuration key '{key}' is invalid. It must start with a "
+                'letter or number and contain only letters, numbers, hyphens '
+                'and underscores — the key is a URL path segment, so a key '
+                "containing '/' could be created but never read back."
+            )
+
+    @staticmethod
+    def _assert_value_not_null(value: Any) -> None:
+        # Guarded in the service, not just the controller, so the invariant
+        # holds for every caller — it is what makes `get_value` returning None
+        # unambiguously mean "no such configuration".
+        if value is None:
+            raise InvalidConfigurationValueError(
+                'Configuration value cannot be null. Store an object, array or '
+                'scalar; use DELETE to remove a configuration.'
+            )
+
     def _invalidate(self, namespace: str, key: str) -> None:
         try:
             self.cache_manager.remove(get_configuration_cache_key(namespace, key))
@@ -68,6 +124,10 @@ class ConfigurationService:
 
     async def get_value(self, namespace: str, key: str) -> Optional[Any]:
         """Return the config document, or None if there is no such key.
+
+        None is unambiguous here only because writes refuse a null document —
+        see InvalidConfigurationValueError. Every other falsy document (0, "",
+        [], {}) is a real value and is returned as-is.
 
         This is the hot path — every workflow run that uses a config node hits it.
         """
@@ -103,6 +163,8 @@ class ConfigurationService:
         value: Any,
         description: Optional[str] = None,
     ) -> Dict[str, Any]:
+        self._assert_key_addressable(key)
+        self._assert_value_not_null(value)
         await self._assert_namespace_exists(namespace)
 
         if await self.configuration_repository.find_one(namespace=namespace, key=key):
@@ -124,6 +186,8 @@ class ConfigurationService:
         value: Any,
         description: Optional[str] = None,
     ) -> Dict[str, Any]:
+        self._assert_key_addressable(key)
+        self._assert_value_not_null(value)
         await self._assert_namespace_exists(namespace)
 
         # The repository's upsert returns None, so the row is read back to

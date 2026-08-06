@@ -151,11 +151,20 @@ class CacheManager(CommonCache):
         value = self.get_str(key, default)
         return int(value) if value is not None else default
 
+    # Retries on the same terms as add()/get_str(). A dropped delete is the one
+    # failure that outlives the request: the key keeps serving the pre-write
+    # value until its TTL expires, so a transient blip here means stale reads
+    # long after the blip is over.
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        retry=retry_if_exception_type((RedisError, ConnectionError, TimeoutError)),
+    )
     def remove(self, key: str) -> bool:
         try:
             return bool(self.redis.delete(f'{self.namespace}/{key}'))
         except (RedisError, ConnectionError, TimeoutError) as e:
-            logger.error(f'Error getting key: {key} from cache: {e}')
+            logger.error(f'Error removing key: {key} from cache: {e}')
             raise
 
     def invalidate_query(self, pattern: str) -> int:

@@ -30,7 +30,7 @@ import { z } from 'zod';
 
 const createConfigurationSchema = z.object({
   namespace: z.string().min(1, 'Namespace is required'),
-  key: z.string().min(1, 'Key is required'),
+  key: z.string().trim().min(1, 'Key is required'),
   description: z.string().optional(),
   // Validated here rather than server-side so the editor can point at the
   // problem while the document is still in front of the user.
