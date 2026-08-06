@@ -267,6 +267,16 @@ class QueryGenerator:
         # ORDER BY/LIMIT share the same query scope so Postgres's planner
         # can brute-force small/highly-selective KBs instead of always
         # going through the HNSW index via an unfiltered candidate CTE.
+        #
+        # NOTE: ORDER BY deliberately repeats the raw `<=>` distance
+        # expression (ascending) rather than sorting by the `similarity`
+        # alias descending. The two are mathematically equivalent (since
+        # similarity = 1 - distance), but the HNSW index
+        # (ix_kbe_embedding_vector_1_hnsw_cosine) can only be used to
+        # satisfy an ORDER BY that matches its indexed `<=>` expression
+        # literally -- sorting by a derived alias like `similarity DESC`
+        # is invisible to the planner and forces a full scan + explicit
+        # sort instead.
         sql_query = f"""
         SELECT
             e.id AS embedding_id,
@@ -282,7 +292,7 @@ class QueryGenerator:
         JOIN {KnowledgeBaseDocuments.__tablename__} d ON e.document_id = d.id
         WHERE d.knowledge_base_id = :kb_id
             {'AND (' + metadata_filter_clause + ')' if metadata_filter_clause else ''}
-        ORDER BY similarity DESC
+        ORDER BY (e.embedding_vector_1::vector(1024)) <=> :query_embedding ::vector(1024)
         LIMIT :top_k
         """
 

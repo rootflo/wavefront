@@ -142,7 +142,7 @@ class ImageRagRetrieve:
         compare CLIP's and DINO's scores against each other just to decide
         which candidates get truncated away.
         """
-        top_k = int(top_k or 10)
+        top_k = 10 if top_k is None else int(top_k)
 
         clip_rows, dino_rows = await asyncio.gather(
             self.image_retrieve_clip(clip_embedding, kb_id, top_k, query_filter),
