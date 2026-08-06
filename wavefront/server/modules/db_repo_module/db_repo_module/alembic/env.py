@@ -37,6 +37,7 @@ from db_repo_module.models.scheduled_job import ScheduledJob
 from db_repo_module.models.scheduled_job_execution import ScheduledJobExecution
 from db_repo_module.models.async_agentic_execution import AsyncAgenticExecution
 from db_repo_module.models.agentic_trigger_credential import AgenticTriggerCredential
+from db_repo_module.models.agentic_configuration import AgenticConfiguration
 from db_repo_module.models.agentic_trigger import AgenticTrigger
 from db_repo_module.models.agentic_trigger_event import AgenticTriggerEvent
 from db_repo_module.models.agent import Agent
@@ -91,6 +92,7 @@ models = [
     ScheduledJob,
     ScheduledJobExecution,
     AsyncAgenticExecution,
+    AgenticConfiguration,
     AgenticTriggerCredential,
     AgenticTrigger,
     AgenticTriggerEvent,

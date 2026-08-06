@@ -54,6 +54,9 @@ const getAgentVersionsKey = (appId: string, agentId: string) => ['agent-versions
 const getWorkflowVersionsKey = (appId: string, workflowId: string) => ['workflow-versions', appId, workflowId];
 const getToolsKey = (appId: string) => ['tools', appId];
 const getApiServiceKey = (appId: string, serviceId: string) => ['api-service', appId, serviceId];
+const getConfigurationsKey = (appId: string, namespace?: string) =>
+  namespace ? ['configurations', appId, namespace] : ['configurations', appId];
+const getConfigurationKey = (appId: string, namespace: string, key: string) => ['configuration', appId, namespace, key];
 const getMessageProcessorsKey = (appId: string) => ['message-processors', appId];
 const getMessageProcessorKey = (appId: string, processorId: string) => ['message-processor', appId, processorId];
 const getPipelinesKey = (appId: string, statusFilter?: string) => {
@@ -96,6 +99,8 @@ export {
   getKnowledgeBasesKey,
   getLLMConfigKey,
   getLLMConfigsKey,
+  getConfigurationKey,
+  getConfigurationsKey,
   getMessageProcessorKey,
   getMessageProcessorsKey,
   getModelKey,

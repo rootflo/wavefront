@@ -8,6 +8,7 @@ import { App } from '@app/types/app';
 import { Authenticator } from '@app/types/authenticator';
 import { Datasource, ReadYamlData, Yaml } from '@app/types/datasource';
 import { LLMInferenceConfig } from '@app/types/llm-inference-config';
+import { ConfigurationListItem, ConfigurationValue } from '@app/types/configuration';
 import { MessageProcessor, MessageProcessorListItem } from '@app/types/message-processor';
 import { Pipeline, PipelineFile, PipelineStatus } from '@app/types/pipeline';
 import { SttConfig } from '@app/types/stt-config';
@@ -44,6 +45,8 @@ import {
   getKnowledgeBasesQueryFn,
   getLLMConfigQueryFn,
   getLLMConfigsQueryFn,
+  getConfigurationQueryFn,
+  getConfigurationsQueryFn,
   getMessageProcessorQueryFn,
   getMessageProcessorsQueryFn,
   getModelQueryFn,
@@ -94,6 +97,8 @@ import {
   getKnowledgeBasesKey,
   getLLMConfigKey,
   getLLMConfigsKey,
+  getConfigurationKey,
+  getConfigurationsKey,
   getMessageProcessorKey,
   getMessageProcessorsKey,
   getModelKey,
@@ -401,6 +406,25 @@ export const useGetApiService = (
     getApiServiceKey(appId || '', serviceId || ''),
     () => getApiServiceQueryFn(serviceId!),
     !!appId && !!serviceId
+  );
+};
+
+export const useGetConfigurations = (
+  appId: string | undefined,
+  namespace?: string
+): UseQueryResult<ConfigurationListItem[], Error> => {
+  return useQueryInit(getConfigurationsKey(appId || '', namespace), () => getConfigurationsQueryFn(namespace), !!appId);
+};
+
+export const useGetConfiguration = (
+  appId: string | undefined,
+  namespace: string | undefined,
+  key: string | undefined
+): UseQueryResult<ConfigurationValue | null, Error> => {
+  return useQueryInit(
+    getConfigurationKey(appId || '', namespace || '', key || ''),
+    () => getConfigurationQueryFn(namespace!, key!),
+    !!appId && !!namespace && !!key
   );
 };
 

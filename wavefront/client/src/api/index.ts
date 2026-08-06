@@ -5,6 +5,7 @@ import { ApiServiceService } from './api-service-service';
 import { AppService } from './app-service';
 import { AppUserService } from './app-user-service';
 import { AuthenticatorService } from './authenticator-service';
+import { ConfigurationService } from './configuration-service';
 import { ConsoleAuthService } from './console-auth-service';
 import { DataPipelineService } from './data-pipeline-service';
 import { DatasourcesService } from './datasources-service';
@@ -47,6 +48,10 @@ class FloConsoleService {
 
   get authenticatorService() {
     return new AuthenticatorService(this.http);
+  }
+
+  get configurationService() {
+    return new ConfigurationService(this.http);
   }
 
   get consoleAuthService() {

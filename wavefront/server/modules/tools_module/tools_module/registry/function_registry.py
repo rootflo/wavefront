@@ -19,6 +19,9 @@ from tools_module.registry.registries.message_processor_registry import (
 from tools_module.registry.registries.api_service_registry import (
     API_SERVICE_REGISTRY,
 )
+from tools_module.registry.registries.configuration_registry import (
+    CONFIGURATION_REGISTRY,
+)
 
 
 # TODO: Import other category registries as they are implemented
@@ -45,6 +48,7 @@ FUNCTION_REGISTRY = _merge_registries(
     UTIL_FUNCTION_REGISTRY,
     MESSAGE_PROCESSOR_REGISTRY,
     API_SERVICE_REGISTRY,
+    CONFIGURATION_REGISTRY,
 )
 
 
