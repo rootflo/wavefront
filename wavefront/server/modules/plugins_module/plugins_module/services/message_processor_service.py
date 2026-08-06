@@ -127,7 +127,10 @@ class MessageProcessorService:
         # Store YAML file in bucket
         yaml_bytes = yaml_content.encode('utf-8')
         self.cloud_storage_manager.save_small_file(
-            file_content=yaml_bytes, bucket_name=self.bucket_name, key=file_path
+            file_content=yaml_bytes,
+            bucket_name=self.bucket_name,
+            key=file_path,
+            disable_cache=True,
         )
         logger.info(f'Stored YAML file at {self.bucket_name}/{file_path}')
 

@@ -42,7 +42,10 @@ class DynamicQueryService:
 
             # storing to s3bucket
             self.cloud_storage_manager.save_small_file(
-                file_content=file_content, bucket_name=self.bucket_name, key=file_key
+                file_content=file_content,
+                bucket_name=self.bucket_name,
+                key=file_key,
+                disable_cache=True,
             )
 
             # strogin to db

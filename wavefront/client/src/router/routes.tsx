@@ -8,6 +8,8 @@ import AuthenticatorDetailPage from '@app/pages/apps/[appId]/authenticators/[aut
 import DatasourcesManagement from '@app/pages/apps/[appId]/datasources';
 import DatasourceDetail from '@app/pages/apps/[appId]/datasources/[datasourceId]';
 import ScheduledJobsPage from '@app/pages/apps/[appId]/scheduled-jobs';
+import ConfigurationsManagement from '@app/pages/apps/[appId]/configurations';
+import ConfigurationDetail from '@app/pages/apps/[appId]/configurations/[configKey]';
 import FunctionsManagement from '@app/pages/apps/[appId]/functions';
 import FunctionDetail from '@app/pages/apps/[appId]/functions/[functionId]';
 import KnowledgeBaseDetailPage from '@app/pages/apps/[appId]/knowledge-bases/[kbId]';
@@ -149,6 +151,14 @@ const routes = {
         {
           path: 'workflows/pipelines/:workflowPipelineId',
           element: <WorkflowPipelineDetail />,
+        },
+        {
+          path: 'configurations',
+          element: <ConfigurationsManagement />,
+        },
+        {
+          path: 'configurations/:namespace/:configKey',
+          element: <ConfigurationDetail />,
         },
         {
           path: 'functions',

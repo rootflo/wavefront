@@ -5,6 +5,7 @@ import { NamespaceItem } from '@app/api/namespace-service';
 import { AgentApi, AgentListItem } from '@app/types/agent';
 import { ApiServiceItem } from '@app/types/api-service';
 import { Authenticator } from '@app/types/authenticator';
+import { ConfigurationListItem, ConfigurationValue } from '@app/types/configuration';
 import { Datasource, ReadYamlData, Yaml } from '@app/types/datasource';
 import { LLMInferenceConfig } from '@app/types/llm-inference-config';
 import { MessageProcessor, MessageProcessorListItem } from '@app/types/message-processor';
@@ -326,6 +327,23 @@ const getToolsQueryFn = async (): Promise<ToolDetails[]> => {
   return [];
 };
 
+const getConfigurationsQueryFn = async (namespace?: string): Promise<ConfigurationListItem[]> => {
+  const response = await floConsoleService.configurationService.listConfigurations(namespace);
+  if (response.data?.data?.configurations && Array.isArray(response.data.data.configurations)) {
+    return response.data.data.configurations;
+  }
+  return [];
+};
+
+/**
+ * Returns the configuration document. `null` means "not found"; an empty object
+ * is a legitimate stored value, so the two must not be conflated.
+ */
+const getConfigurationQueryFn = async (namespace: string, key: string): Promise<ConfigurationValue | null> => {
+  const response = await floConsoleService.configurationService.getConfiguration(namespace, key);
+  return response.data?.data ?? null;
+};
+
 const getMessageProcessorsQueryFn = async (): Promise<MessageProcessorListItem[]> => {
   const response = await floConsoleService.messageProcessorService.listMessageProcessors();
   if (response.data?.data?.processors && Array.isArray(response.data.data.processors)) {
@@ -480,6 +498,8 @@ export {
   getLLMConfigQueryFn,
   getLLMConfigsQueryFn,
   getMessageProcessorQueryFn,
+  getConfigurationQueryFn,
+  getConfigurationsQueryFn,
   getMessageProcessorsQueryFn,
   getModelQueryFn,
   getModelsQueryFn,

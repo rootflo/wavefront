@@ -54,6 +54,7 @@ from floware.di.application_container import ApplicationContainer
 from floware.middleware.security_headers import SecurityHeadersMiddleware
 from floware.services.scheduler_manager import SchedulerManager
 from plugins_module.plugins_container import PluginsContainer
+from plugins_module.controllers.configuration_controller import configuration_router
 from plugins_module.controllers.datasource_controller import datasource_router
 from plugins_module.controllers.authenticator_controller import authenticator_router
 from floware.controllers.config_controller import config_router
@@ -151,6 +152,8 @@ plugins_container = PluginsContainer(
     cloud_storage_manager=common_container.cloud_storage_manager,
     dynamic_query_repository=db_repo_container.dynamic_query_repository,
     cache_manager=db_repo_container.cache_manager,
+    namespace_repository=db_repo_container.namespace_repository,
+    agentic_configuration_repository=db_repo_container.agentic_configuration_repository,
 )
 
 product_analysis_container = ProductAnalysisContainer()
@@ -450,6 +453,7 @@ app.include_router(stt_config_router, prefix='/floware')
 app.include_router(voice_agent_router, prefix='/floware')
 app.include_router(tool_router, prefix='/floware')
 app.include_router(message_processor_router, prefix='/floware')
+app.include_router(configuration_router, prefix='/floware')
 app.include_router(cloud_storage_router, prefix='/floware')
 app.include_router(trigger_router, prefix='/floware')
 
