@@ -221,8 +221,6 @@ class QueryGenerator:
         sql_query = f"""
         SELECT
             e.id AS embedding_id,
-            e.chunk_text,
-            e.chunk_index,
             d.id AS document_id,
             d.file_path,
             d.file_name,
@@ -280,8 +278,6 @@ class QueryGenerator:
         sql_query = f"""
         SELECT
             e.id AS embedding_id,
-            e.chunk_text,
-            e.chunk_index,
             d.id AS document_id,
             d.file_path,
             d.file_name,

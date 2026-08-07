@@ -1,11 +1,37 @@
 import asyncio
+from dataclasses import dataclass, field
 import httpx
-from typing import Optional
+from typing import Any, Optional
 import uuid
 from knowledge_base_module.queries.generate_query import QueryGenerator
 from db_repo_module.models.knowledge_base_embeddings import KnowledgeBaseEmbeddings
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from sqlalchemy.exc import SQLAlchemyError
+
+
+@dataclass
+class ImageMatch:
+    """
+    A single image search result, merged across the CLIP and DINO
+    nearest-neighbor searches for one `document_id`.
+
+    `clip_score`/`dino_score` default to 0 rather than `None` to
+    distinguish "this model never returned this document" from a
+    genuine near-zero similarity -- callers should check `matched_by`
+    to tell the two apart.
+    """
+
+    document_id: uuid.UUID
+    embedding_id: Any = None
+    file_path: Optional[str] = None
+    file_name: Optional[str] = None
+    knowledge_base_id: Optional[uuid.UUID] = None
+    metadata_value: Optional[dict] = None
+    clip_score: float = 0.0
+    dino_score: float = 0.0
+    matched_by: list = field(default_factory=list)
+    combined_score: float = 0.0
+    similarity: float = 0.0
 
 
 class ImageRagRetrieve:
@@ -115,7 +141,7 @@ class ImageRagRetrieve:
         query_filter,
         clip_weight: float = 0.5,
         dino_weight: float = 0.5,
-    ):
+    ) -> list[ImageMatch]:
         """
         Search for similar images by taking the union of independent CLIP
         and DINO nearest-neighbor searches (each KB-scoped and
@@ -128,6 +154,12 @@ class ImageRagRetrieve:
         output shape identical to its standalone form and lets us control
         the final response shape explicitly -- including restoring a
         `similarity` field for callers that expect one.
+
+        Returns a list of `ImageMatch` objects rather than raw dicts, so
+        the merge logic below has an explicit, typed shape to read and
+        write instead of ad-hoc dict keys. Callers that need a
+        JSON-serializable form (e.g. an HTTP response) should convert
+        via `dataclasses.asdict()`.
 
         Each result also carries a `matched_by` list (e.g. `['clip']`,
         `['dino']`, or `['clip', 'dino']`) so callers can tell whether a
@@ -149,44 +181,42 @@ class ImageRagRetrieve:
             self.image_retrieve_dino(dino_embedding, kb_id, top_k, query_filter),
         )
 
-        merged: dict = {}
+        merged: dict[uuid.UUID, ImageMatch] = {}
+
+        def _base_match(doc_id, row) -> ImageMatch:
+            return ImageMatch(
+                document_id=doc_id,
+                embedding_id=row.get('embedding_id'),
+                file_path=row.get('file_path'),
+                file_name=row.get('file_name'),
+                knowledge_base_id=row.get('knowledge_base_id'),
+                metadata_value=row.get('metadata_value'),
+            )
 
         for row in clip_rows:
             doc_id = row['document_id']
-            entry = merged.setdefault(
-                doc_id, {**row, 'clip_score': 0, 'dino_score': 0, 'matched_by': []}
-            )
-            entry.update(row)
-            entry['clip_score'] = row.get('clip_score', 0) or 0
-            if 'clip' not in entry['matched_by']:
-                entry['matched_by'].append('clip')
+            match = merged.setdefault(doc_id, _base_match(doc_id, row))
+            match.clip_score = row.get('clip_score', 0) or 0
+            if 'clip' not in match.matched_by:
+                match.matched_by.append('clip')
 
         for row in dino_rows:
             doc_id = row['document_id']
-            entry = merged.setdefault(
-                doc_id, {**row, 'clip_score': 0, 'dino_score': 0, 'matched_by': []}
-            )
-            # Only fill in fields the clip row didn't already provide
-            # (e.g. embedding_id/chunk_text/file_path when a document only
-            # surfaced via DINO), and never let DINO's own "similarity"
-            # column leak through -- it's remapped to dino_score below and
-            # "similarity" is recomputed as the final combined_score.
-            for key, value in row.items():
-                if key != 'similarity':
-                    entry.setdefault(key, value)
-            entry['dino_score'] = row.get('similarity', 0) or 0
-            if 'dino' not in entry['matched_by']:
-                entry['matched_by'].append('dino')
+            # Only created here if the document didn't already surface via
+            # CLIP -- otherwise the existing match (with its clip_score and
+            # shared fields already set) is reused and just gains a
+            # dino_score.
+            match = merged.setdefault(doc_id, _base_match(doc_id, row))
+            match.dino_score = row.get('similarity', 0) or 0
+            if 'dino' not in match.matched_by:
+                match.matched_by.append('dino')
 
-        results = []
-        for entry in merged.values():
-            combined_score = (
-                entry.get('clip_score', 0) * clip_weight
-                + entry.get('dino_score', 0) * dino_weight
+        results = list(merged.values())
+        for match in results:
+            match.combined_score = (
+                match.clip_score * clip_weight + match.dino_score * dino_weight
             )
-            entry['combined_score'] = combined_score
-            entry['similarity'] = combined_score
-            results.append(entry)
+            match.similarity = match.combined_score
 
-        results.sort(key=lambda r: r['combined_score'], reverse=True)
+        results.sort(key=lambda m: m.combined_score, reverse=True)
         return results
