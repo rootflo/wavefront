@@ -64,6 +64,18 @@ console_token_prefix = os.getenv('CONSOLE_TOKEN_PREFIX', 'fc_')
 passthrough_secret = os.getenv('PASSTHROUGH_SECRET')
 environment = os.getenv('APP_ENV', 'dev')
 
+mtls_allowed_namespaces = [
+    namespace.strip()
+    for namespace in os.getenv(
+        'MTLS_ALLOWED_NAMESPACES', 'client-applications,gpu-processing'
+    ).split(',')
+    if namespace.strip()
+]
+
+mtls_allowed_principal_prefixes = tuple(
+    f'spiffe://cluster.local/ns/{namespace}' for namespace in mtls_allowed_namespaces
+)
+
 required_hmac_apis = ['/floware/v1/image/analyse', *hmac_routes]
 
 
@@ -283,9 +295,7 @@ async def validate_mtls_auth(request: Request) -> bool:
             principal = xfcc
 
         if principal:
-            if not principal.startswith(
-                'spiffe://cluster.local/ns/client-applications'
-            ) and not principal.startswith('spiffe://cluster.local/ns/gpu-processing'):
+            if not principal.startswith(mtls_allowed_principal_prefixes):
                 logger.error(f'Invalid mTLS authentication. Principal: {principal}')
                 return False
 
