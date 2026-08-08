@@ -1,5 +1,5 @@
 import re
-from typing import Any, Dict, Tuple, List, Optional
+from typing import Any, Dict, Tuple, Optional
 
 from db_repo_module.models.knowledge_base_documents import KnowledgeBaseDocuments
 from db_repo_module.models.knowledge_base_embeddings import KnowledgeBaseEmbeddings
@@ -23,6 +23,26 @@ class QueryGenerator:
             pattern = rf'(?<!:)\b{re.escape(field)}\b'
             clause = re.sub(pattern, formatter(field), clause)
         return clause
+
+    def compute_ef_search(
+        self,
+        effective_limit: int,
+        safety_factor: int = 4,
+        floor: int = 200,
+        ceiling: int = 1000,
+    ) -> int:
+        """
+        Compute a safe value for the pgvector session parameter `hnsw.ef_search`.
+
+        `ef_search` caps how many candidates the HNSW index can return for a
+        given query, regardless of the SQL `LIMIT` (it defaults to 40 if never
+        set). It must be at least as large as the number of rows a query
+        needs, or results silently come back short. We scale it off the
+        requested limit with headroom, floor it at a value known to give
+        ~97-99% recall on real embeddings, and cap it at pgvector's hard
+        maximum (1000).
+        """
+        return max(min(effective_limit * safety_factor, ceiling), floor)
 
     def get_combined_search_query(
         self,
@@ -170,7 +190,7 @@ class QueryGenerator:
 
         return sql_query, query_params
 
-    def get_image_embedding(
+    def get_image_embedding_clip(
         self, query_embeddings: list, params: Dict[str, Any], filter: str
     ):
         kb_id = str(params.get('kb_id'))
@@ -192,67 +212,42 @@ class QueryGenerator:
                     lambda field: f"(d.metadata_value ->> '{field}')",
                 )
                 params.update(filter_params)
+        # NOTE: the filter (WHERE d.knowledge_base_id = :kb_id) and the
+        # distance ORDER BY/LIMIT are kept in the same query scope on
+        # purpose, so Postgres's planner can choose per-query whether to
+        # brute-force a small/highly-selective KB or use the HNSW index for
+        # a large one, instead of always being forced through the index via
+        # an unfiltered candidate CTE.
         sql_query = f"""
-        WITH hnsw_candidates AS (
-            SELECT
-                id,
-                document_id,
-                chunk_text,
-                chunk_index,
-                (embedding_vector::vector(512)) <=> :query_embedding ::vector(512) AS distance
-            FROM
-                {KnowledgeBaseEmbeddings.__tablename__}
-            ORDER BY
-                (embedding_vector::vector(512)) <=> :query_embedding ::vector(512)
-            LIMIT :top_k * 20
-        )
         SELECT
-            hc.id AS embedding_id,
-            hc.chunk_text,
-            hc.chunk_index,
+            e.id AS embedding_id,
             d.id AS document_id,
             d.file_path,
             d.file_name,
             d.knowledge_base_id,
             d.metadata_value,
-            hc.distance
-        FROM hnsw_candidates hc
-        JOIN {KnowledgeBaseDocuments.__tablename__} d ON hc.document_id = d.id
+            (e.embedding_vector::vector(512)) <=> :query_embedding ::vector(512) AS distance,
+            1 - ((e.embedding_vector::vector(512)) <=> :query_embedding ::vector(512)) AS clip_score
+        FROM {KnowledgeBaseEmbeddings.__tablename__} e
+        JOIN {KnowledgeBaseDocuments.__tablename__} d ON e.document_id = d.id
         WHERE d.knowledge_base_id = :kb_id
             {'AND (' + metadata_filter_clause + ')' if metadata_filter_clause else ''}
-        ORDER BY hc.distance ASC
+        ORDER BY (e.embedding_vector::vector(512)) <=> :query_embedding ::vector(512)
         LIMIT :top_k
         """
 
         return sql_query, params
 
     def get_image_embedding_dino(
-        self,
-        query_embeddings: list,
-        params: Dict[str, Any],
-        filter: str,
-        offset: Optional[int] = None,
-        limit: Optional[int] = None,
+        self, query_embeddings: list, params: Dict[str, Any], filter: str
     ):
         kb_id = str(params.get('kb_id'))
-        # Use limit if provided, otherwise use top_k
-        effective_limit = limit if limit is not None else int(params.get('top_k', 10))
-        reference_id_list: List[Any] = params.get('reference_id_list', [])
-        effective_offset = offset if offset is not None else 0
-
-        if reference_id_list:
-            processed_reference_ids = [
-                str(id) for id in reference_id_list
-            ]  # Use list instead of tuple
-        else:
-            processed_reference_ids = []
+        top_k = int(params.get('top_k', 10))
 
         params = {
             'query_embedding': query_embeddings,
             'kb_id': kb_id,
-            'reference_ids': processed_reference_ids,
-            'offset': effective_offset,
-            'limit': effective_limit,
+            'top_k': top_k,
         }
 
         metadata_filter_clause = ''
@@ -266,37 +261,35 @@ class QueryGenerator:
                 )
                 params.update(filter_params)
 
+        # NOTE: same reasoning as get_image_embedding_clip -- filter and
+        # ORDER BY/LIMIT share the same query scope so Postgres's planner
+        # can brute-force small/highly-selective KBs instead of always
+        # going through the HNSW index via an unfiltered candidate CTE.
+        #
+        # NOTE: ORDER BY deliberately repeats the raw `<=>` distance
+        # expression (ascending) rather than sorting by the `similarity`
+        # alias descending. The two are mathematically equivalent (since
+        # similarity = 1 - distance), but the HNSW index
+        # (ix_kbe_embedding_vector_1_hnsw_cosine) can only be used to
+        # satisfy an ORDER BY that matches its indexed `<=>` expression
+        # literally -- sorting by a derived alias like `similarity DESC`
+        # is invisible to the planner and forces a full scan + explicit
+        # sort instead.
         sql_query = f"""
-        WITH hnsw_candidates AS (
-            SELECT
-                id,
-                document_id,
-                chunk_text,
-                chunk_index,
-                (embedding_vector_1::vector(1024)) <=> :query_embedding ::vector(1024) AS distance
-            FROM
-                {KnowledgeBaseEmbeddings.__tablename__}
-            ORDER BY
-                (embedding_vector_1::vector(1024)) <=> :query_embedding ::vector(1024)
-            LIMIT :limit * 20
-        )
         SELECT
-            hc.id AS embedding_id,
-            hc.chunk_text,
-            hc.chunk_index,
+            e.id AS embedding_id,
             d.id AS document_id,
             d.file_path,
             d.file_name,
             d.knowledge_base_id,
             d.metadata_value,
-            1 - hc.distance AS similarity
-        FROM hnsw_candidates hc
-        JOIN {KnowledgeBaseDocuments.__tablename__} d ON hc.document_id = d.id
+            1 - ((e.embedding_vector_1::vector(1024)) <=> :query_embedding ::vector(1024)) AS similarity
+        FROM {KnowledgeBaseEmbeddings.__tablename__} e
+        JOIN {KnowledgeBaseDocuments.__tablename__} d ON e.document_id = d.id
         WHERE d.knowledge_base_id = :kb_id
-            {('AND d.id = ANY(:reference_ids)' if processed_reference_ids else '')}
             {'AND (' + metadata_filter_clause + ')' if metadata_filter_clause else ''}
-        ORDER BY similarity DESC
-        LIMIT :limit OFFSET :offset
+        ORDER BY (e.embedding_vector_1::vector(1024)) <=> :query_embedding ::vector(1024)
+        LIMIT :top_k
         """
 
         return sql_query, params

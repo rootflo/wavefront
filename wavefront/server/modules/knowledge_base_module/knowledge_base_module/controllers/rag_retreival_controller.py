@@ -1,4 +1,5 @@
 import base64
+import dataclasses
 from typing import List, Optional, Tuple
 import uuid
 
@@ -88,7 +89,10 @@ class DocumentPayload(BaseModel):
 
 
 def convert_uuids_to_str(data):
-    """Recursively converts UUID objects in a dictionary or list to strings."""
+    """Recursively converts UUID objects (and dataclasses, e.g. ImageMatch)
+    in a dictionary or list into JSON-safe structures."""
+    if dataclasses.is_dataclass(data) and not isinstance(data, type):
+        data = dataclasses.asdict(data)
     if isinstance(data, dict):
         return {key: convert_uuids_to_str(value) for key, value in data.items()}
     elif isinstance(data, list):
@@ -278,11 +282,8 @@ async def retrieve_query(
             image_data,
             inference_url,
             kb_id,
-            threshold,
             top_k,
             query_filter,
-            offset,
-            limit,
         )
         retrieved_docs = convert_uuids_to_str(retrieved_docs)
     if not retrieved_docs:
