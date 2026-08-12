@@ -72,6 +72,15 @@ class AsyncAgenticExecutionResultConsumer:
 
                 for _stream_name, entries in messages:
                     for msg_id, fields in entries:
+                        # Receipt log, paired with the publisher's 'Published
+                        # result event ... message_id=' line. Without both ends
+                        # a missing status update cannot be attributed to the
+                        # publisher or to this consumer.
+                        logger.info(
+                            f'Received stream message {msg_id}: '
+                            f'execution_id={fields.get("execution_id")}, '
+                            f'status={fields.get("status")}'
+                        )
                         try:
                             await self._process(fields)
                             await asyncio.to_thread(
