@@ -336,7 +336,11 @@ class WorkflowInferenceService:
         )
 
         result_str = str(result_list[-1].result.content)
-        trace = serialize_memory_trace(result_list)
+        # workflow.execution_trace (not result_list) is the full detailed
+        # trace: every agent turn incl. tool calls, every ForEach item, and
+        # every node of a nested sub-workflow — result_list/memory only ever
+        # holds one (the final) result per top-level node.
+        trace = serialize_memory_trace(workflow.execution_trace)
 
         # Conditionally extract JSON based on output_json_enabled flag
         if output_json_enabled:

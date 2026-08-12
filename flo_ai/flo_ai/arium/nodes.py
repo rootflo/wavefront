@@ -1,8 +1,9 @@
 from typing import List, Any, Dict, Optional, TYPE_CHECKING, Callable
 from flo_ai.utils.logger import logger
-from flo_ai.arium.memory import MessageMemory
+from flo_ai.arium.memory import MessageMemory, MessageMemoryItem
 from flo_ai.models import BaseMessage, UserMessage
 from flo_ai.arium.protocols import ExecutableNode
+from flo_ai.agent.agent import Agent
 import asyncio
 
 
@@ -85,6 +86,21 @@ class ForEachNode:
         self.execute_node = execute_node
         self.input_filter: Optional[List[str]] = input_filter
         self.forward_all_results: bool = forward_all_results
+        # Full per-item detail from the most recent run(): every turn of a
+        # wrapped Agent (incl. tool calls), or every node of a wrapped
+        # AriumNode's sub-workflow, qualified per item — a side channel the
+        # parent Arium reads for its own execution_trace. Never used for
+        # data-flow (that's `results`/`forward_all_results` below).
+        # Reset at the start of every run(), so a caller must read it before
+        # calling run() again — same contract as Arium.execution_trace. This
+        # isn't just a data-freshness rule: a wrapped Agent's dropped
+        # SystemMessage (removed by _setup_system_message on the next call)
+        # can otherwise be garbage-collected and a *new* message can be
+        # allocated at the same id(), corrupting identity-based diffing if a
+        # stale copy of last_execution_trace is compared afterwards. Arium
+        # itself never triggers this: it drains last_execution_trace into its
+        # own `_trace_memory` synchronously, immediately after each run().
+        self.last_execution_trace: List[MessageMemoryItem] = []
 
     async def _execute_item(
         self,
@@ -102,10 +118,50 @@ class ForEachNode:
         # Only ExecutableNode types have a run method
         if not isinstance(self.execute_node, ExecutableNode):
             raise TypeError(f'Node {self.execute_node.name} does not support execution')
-        result = await self.execute_node.run(
-            inputs=[item],
-            variables=item_variables,
-        )
+
+        item_node_name = f'{self.name}[{index}]'
+
+        if isinstance(self.execute_node, Agent):
+            # Same identity-based delta-capture as Arium's own Agent dispatch
+            # (see arium.py::_dispatch_node_run for why a length slice isn't
+            # safe): conversation_history accumulates across items since the
+            # same Agent instance runs every item, so only the messages this
+            # item's call adds belong to this item's trace.
+            ids_before = {id(m) for m in self.execute_node.conversation_history}
+            result = await self.execute_node.run(
+                inputs=[item],
+                variables=item_variables,
+            )
+            for msg in self.execute_node.conversation_history:
+                if id(msg) not in ids_before:
+                    self.last_execution_trace.append(
+                        MessageMemoryItem(node=item_node_name, result=msg)
+                    )
+        elif isinstance(self.execute_node, AriumNode):
+            result = await self.execute_node.run(
+                inputs=[item],
+                variables=item_variables,
+            )
+            for entry in self.execute_node.arium.execution_trace:
+                self.last_execution_trace.append(
+                    MessageMemoryItem(
+                        node=f'{item_node_name}.{entry.node}',
+                        result=entry.result,
+                        retag=False,
+                    )
+                )
+        else:
+            result = await self.execute_node.run(
+                inputs=[item],
+                variables=item_variables,
+            )
+            single_result = (
+                result[-1] if isinstance(result, list) and result else result
+            )
+            if single_result is not None:
+                self.last_execution_trace.append(
+                    MessageMemoryItem(node=item_node_name, result=single_result)
+                )
 
         # Return last item if result is a list, otherwise return as-is
         if isinstance(result, list) and result:
@@ -116,6 +172,8 @@ class ForEachNode:
         self, inputs: List[Any], variables: Optional[Dict[str, Any]] = None, **kwargs
     ) -> List[Any]:
         """Execute the node on all items"""
+
+        self.last_execution_trace = []
 
         # Sequential execution
         results = []

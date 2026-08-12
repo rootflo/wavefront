@@ -27,6 +27,16 @@ class Arium(BaseArium):
         super().__init__()
         self.is_compiled = False
         self.memory = memory if memory else MessageMemory()
+        # `memory` is the data bus nodes read from via input_filter, so it only
+        # ever holds one (the final) result per node. `execution_trace` is a
+        # strict superset — every message every node produced, including agent
+        # tool calls/intermediate turns, every ForEach item, and every node of
+        # a nested sub-workflow — for observability, never fed back into a
+        # node's inputs. `_trace_memory` is the working buffer for the run in
+        # progress; `execution_trace` is the finished snapshot exposed after
+        # `run()` returns (mirrors how `self.memory` itself behaves).
+        self.execution_trace: List[MessageMemoryItem] = []
+        self._trace_memory: MessageMemory = MessageMemory()
 
     def compile(self):
         self.validate_graph()
@@ -127,6 +137,8 @@ class Arium(BaseArium):
                         AriumEventType.WORKFLOW_COMPLETED, event_callback, events_filter
                     )
 
+                    self.execution_trace = self._trace_memory.get()
+                    self._trace_memory = MessageMemory()
                     self.memory = MessageMemory()  # cleanup the graph
 
                     return result
@@ -177,6 +189,8 @@ class Arium(BaseArium):
                     AriumEventType.WORKFLOW_COMPLETED, event_callback, events_filter
                 )
 
+                self.execution_trace = self._trace_memory.get()
+                self._trace_memory = MessageMemory()
                 self.memory = MessageMemory()  # cleanup the graph
 
                 return result
@@ -246,7 +260,7 @@ class Arium(BaseArium):
         # into another, or reusing a message object — and that tag names a node
         # in a workflow that is not this one. Keeping it would let an unrelated
         # (or caller-chosen) name drive this workflow's routing and filtering.
-        [
+        for msg in inputs:
             self.memory.add(
                 MessageMemoryItem(
                     node='input',
@@ -255,8 +269,17 @@ class Arium(BaseArium):
                     retag=not forwarded_from_parent,
                 )
             )
-            for msg in inputs
-        ]
+            # Same call again for the trace buffer: the message is already
+            # tagged 'input' by the call above, so _tag()'s existing==node
+            # check makes this a no-op copy-wise — safe to call twice.
+            self._trace_memory.add(
+                MessageMemoryItem(
+                    node='input',
+                    occurrence=0,
+                    result=msg,
+                    retag=not forwarded_from_parent,
+                )
+            )
 
         current_node = self.nodes[self.start_node_name]
         current_edge = self.edges[self.start_node_name]
@@ -655,22 +678,62 @@ class Arium(BaseArium):
 
         async with aprofile(f'node.{node.name}[{node_type}]'):
             if isinstance(node, Agent):
-                return await node.run(inputs, variables={})
+                # `conversation_history` is never reset between visits (a
+                # workflow can legitimately loop back to the same agent node),
+                # so only the messages this call adds — not the whole
+                # history — belong to this node's trace entry. A plain
+                # length-based slice isn't safe here: _setup_system_message
+                # removes the old SystemMessage and re-appends a fresh one on
+                # every run(), which shifts earlier messages' positions, so
+                # the "new" messages are identified by object identity, not
+                # by where they land in the list.
+                ids_before = {id(m) for m in node.conversation_history}
+                result = await node.run(inputs, variables={})
+                for msg in node.conversation_history:
+                    if id(msg) not in ids_before:
+                        self._trace_memory.add(
+                            MessageMemoryItem(node=node.name, result=msg)
+                        )
+                return result
             if isinstance(node, FunctionNode):
                 # Agents get {} because their prompts were already resolved against
                 # the variables in _resolve_agent_prompts. Function nodes have no
                 # such earlier pass, so they need the real mapping here.
-                return await node.run(inputs, variables=variables)
+                result = await node.run(inputs, variables=variables)
+                if result is not None:
+                    self._trace_memory.add(
+                        MessageMemoryItem(node=node.name, result=result)
+                    )
+                return result
             if isinstance(node, ForEachNode):
                 foreach_results: List[MessageMemoryItem | BaseMessage] = await node.run(
                     inputs,
                     variables=variables,
                 )
+                for entry in node.last_execution_trace:
+                    self._trace_memory.add(
+                        MessageMemoryItem(
+                            node=entry.node, result=entry.result, retag=False
+                        )
+                    )
                 return self._flatten_results(foreach_results)
             if isinstance(node, AriumNode):
                 arium_result: List[MessageMemoryItem] = await node.run(
                     inputs, variables=variables
                 )
+                # The nested Arium's own execution_trace is already fully
+                # populated by the time its run() returns (recursion handles
+                # arbitrarily deep nesting for free) — qualify each entry with
+                # this wrapper's name so nested node names can't collide with
+                # anything at this level.
+                for entry in node.arium.execution_trace:
+                    self._trace_memory.add(
+                        MessageMemoryItem(
+                            node=f'{node.name}.{entry.node}',
+                            result=entry.result,
+                            retag=False,
+                        )
+                    )
                 return self._flatten_results(arium_result)
             return None
 
