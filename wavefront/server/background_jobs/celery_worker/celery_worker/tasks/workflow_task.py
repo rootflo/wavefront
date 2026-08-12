@@ -32,7 +32,11 @@ async def _run(task, payload: Dict) -> None:
     try:
         inputs = _reconstruct_inputs(payload, services.cloud_storage)
 
-        result, exec_time = await services.workflow_inference.perform_inference_v2(
+        (
+            result,
+            exec_time,
+            trace,
+        ) = await services.workflow_inference.perform_inference_v2(
             workflow_data={
                 'id': payload['entity_id'],
                 'name': payload['workflow_name'],
@@ -65,7 +69,7 @@ async def _run(task, payload: Dict) -> None:
             services.cloud_storage,
             bucket,
             history_key,
-            _build_history(payload, result, exec_time),
+            _build_history(payload, result, exec_time, trace),
         )
 
         # Signal completed — floware consumer updates DB

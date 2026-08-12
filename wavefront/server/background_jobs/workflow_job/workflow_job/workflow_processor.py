@@ -78,6 +78,7 @@ class WorkflowMessageProcessor(MessageProcessor[ProcessingResult[Dict[str, Any]]
         (
             result,
             execution_time,
+            _trace,
         ) = await self.workflow_inference_service.perform_inference_v2(
             workflow_data=workflow_data,
             variables=variables,

@@ -25,6 +25,7 @@ from agents_module.utils.workflow_reference_utils import (
 )
 from flo_ai.arium import AriumEventType, AriumEvent, MessageMemoryItem
 from agents_module.services.agent_crud_service import AgentCrudService
+from agents_module.utils.trace_utils import serialize_memory_trace
 from tools_module.registry.tool_loader import ToolLoader
 from tools_module.registry.function_node_registry import FUNCTION_NODE_REGISTRY
 
@@ -297,7 +298,7 @@ class WorkflowInferenceService:
         output_json_enabled: bool = True,
         event_callback: Optional[Callable[[AriumEvent], None]] = None,
         events_filter: Optional[List[AriumEventType]] = None,
-    ) -> tuple[str, float]:
+    ) -> tuple[str, float, List[Dict[str, Any]]]:
         """
         Run workflow inference with provided variables
 
@@ -311,7 +312,9 @@ class WorkflowInferenceService:
             events_filter: Optional list of event types to filter
 
         Returns:
-            tuple: (result, execution_time)
+            tuple: (result, execution_time, trace) — trace is the full
+                per-node memory (every node's output plus the initial
+                inputs), serialized for history.json.
         """
         logger.info(
             f'Running inference for workflow {workflow_name} with variables: {list(variables.keys())}'
@@ -333,6 +336,7 @@ class WorkflowInferenceService:
         )
 
         result_str = str(result_list[-1].result.content)
+        trace = serialize_memory_trace(result_list)
 
         # Conditionally extract JSON based on output_json_enabled flag
         if output_json_enabled:
@@ -345,7 +349,7 @@ class WorkflowInferenceService:
             f'Successfully completed inference for workflow {workflow_name} in {execution_time:.2f} seconds'
         )
 
-        return result, execution_time
+        return result, execution_time, trace
 
     async def perform_inference(
         self,
@@ -386,7 +390,7 @@ class WorkflowInferenceService:
         )
 
         # Run inference with optional event streaming
-        result, execution_time = await self.run_workflow_inference(
+        result, execution_time, _trace = await self.run_workflow_inference(
             workflow,
             inputs,
             variables,
@@ -408,7 +412,7 @@ class WorkflowInferenceService:
         events_filter: Optional[List[AriumEventType]] = None,
         access_token: Optional[str] = None,
         app_key: Optional[str] = None,
-    ) -> tuple[str, float]:
+    ) -> tuple[str, float, List[Dict[str, Any]]]:
         """
         Complete inference workflow (v2): use pre-fetched workflow data, run inference
 
@@ -428,7 +432,9 @@ class WorkflowInferenceService:
             events_filter: Optional list of event types to filter
 
         Returns:
-            tuple: (result, execution_time)
+            tuple: (result, execution_time, trace) — trace is the full
+                per-node memory (every node's output plus the initial
+                inputs), serialized for history.json.
         """
         # Extract details from pre-fetched workflow data
         namespace = workflow_data['namespace']
@@ -453,7 +459,7 @@ class WorkflowInferenceService:
         )
 
         # Run inference with optional event streaming
-        result, execution_time = await self.run_workflow_inference(
+        result, execution_time, trace = await self.run_workflow_inference(
             workflow,
             inputs,
             variables,
@@ -463,4 +469,4 @@ class WorkflowInferenceService:
             events_filter,
         )
 
-        return result, execution_time
+        return result, execution_time, trace

@@ -8,6 +8,7 @@ from uuid import UUID
 from common_module.log.logger import logger
 from db_repo_module.models.llm_inference_config import LlmInferenceConfig
 from agents_module.utils.input_processing_utils import process_inference_inputs
+from agents_module.utils.trace_utils import serialize_conversation_trace
 
 from celery_worker.celery_app import app
 from celery_worker.env import MAX_RETRIES, RETRY_DELAY, STREAM_NAME
@@ -71,7 +72,12 @@ def _save_json(cloud_storage, bucket: str, key: str, data: Any) -> None:
     )
 
 
-def _build_history(payload: Dict, result: Any, exec_time: float) -> Dict:
+def _build_history(
+    payload: Dict,
+    result: Any,
+    exec_time: float,
+    trace: Optional[List[Dict[str, Any]]] = None,
+) -> Dict:
     return {
         'execution_id': payload['execution_id'],
         'entity_type': payload['entity_type'],
@@ -80,6 +86,7 @@ def _build_history(payload: Dict, result: Any, exec_time: float) -> Dict:
         'variables': payload.get('variables') or {},
         'output': result,
         'execution_time_seconds': round(exec_time, 3),
+        'trace': trace or [],  # full per-node/turn memory, in execution order
     }
 
 
@@ -118,6 +125,11 @@ async def _run(task, payload: Dict) -> None:
         )
 
         final_result = result[-1].content if isinstance(result, list) else result
+        trace = (
+            serialize_conversation_trace('agent', result)
+            if isinstance(result, list)
+            else []
+        )
 
         output_key = f"{payload['output_prefix']}output.json"
         history_key = f"{payload['output_prefix']}history.json"
@@ -136,7 +148,7 @@ async def _run(task, payload: Dict) -> None:
             services.cloud_storage,
             bucket,
             history_key,
-            _build_history(payload, final_result, exec_time),
+            _build_history(payload, final_result, exec_time, trace),
         )
 
         # Signal completed — floware consumer updates DB
