@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import socket
+import time
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
@@ -16,6 +17,10 @@ _GROUP = os.getenv('ASYNC_AGENTIC_EXEC_CONSUMER_GROUP', 'floware-agentic-consume
 _CONSUMER = f'floware-{socket.gethostname()}'
 _POLL_COUNT = 10
 _BLOCK_MS = 1000
+
+# Proof-of-life cadence. Silence from this loop is otherwise ambiguous: it looks
+# identical whether the task died or is polling a key that never has anything.
+_HEARTBEAT_INTERVAL_S = int(os.getenv('ASYNC_AGENTIC_EXEC_HEARTBEAT_S', '60'))
 
 _STATUS_CACHE_TTL_TERMINAL = 3600
 _STATUS_CACHE_KEY_PREFIX = 'async_agentic_exec:status'
@@ -47,6 +52,21 @@ class AsyncAgenticExecutionResultConsumer:
 
     async def start(self) -> None:
         """Entry point — call as asyncio.create_task(consumer.start())."""
+        try:
+            await self._run_forever()
+        except asyncio.CancelledError:
+            logger.warning('AsyncAgenticExecutionResultConsumer cancelled')
+            raise
+        except BaseException:
+            # Nothing awaits this task while the app runs, so without this the
+            # loop can die and stay dead with no trace until interpreter exit.
+            logger.exception(
+                'AsyncAgenticExecutionResultConsumer died — status updates '
+                'will stop until floware is restarted'
+            )
+            raise
+
+    async def _run_forever(self) -> None:
         self._running = True
 
         # Create consumer group — idempotent. id='0' only sets the initial cursor
@@ -54,10 +74,20 @@ class AsyncAgenticExecutionResultConsumer:
         # silently ignored). PEL entries from a previous run are NOT auto-redelivered
         # by this call — a separate XAUTOCLAIM/XCLAIM pass would be needed for that.
         self._cache.xgroup_create(_STREAM, _GROUP, id='0', mkstream=True)
+
+        # Log the RESOLVED key, not _STREAM. CacheManager prepends its namespace
+        # inside xadd/xreadgroup, so a publisher and consumer configured with
+        # different APP_NAMEs use different Redis keys while logging the same
+        # stream name — a mismatch that is otherwise invisible in the logs.
+        resolved_key = f'{self._cache.namespace}/{_STREAM}'
         logger.info(
-            f'AsyncAgenticExecutionResultConsumer started — stream={_STREAM}, '
+            f'AsyncAgenticExecutionResultConsumer started — key={resolved_key}, '
             f'group={_GROUP}, consumer={_CONSUMER}'
         )
+
+        polls = 0
+        received = 0
+        last_heartbeat = time.monotonic()
 
         while self._running:
             try:
@@ -69,6 +99,19 @@ class AsyncAgenticExecutionResultConsumer:
                     _POLL_COUNT,
                     _BLOCK_MS,
                 )
+                polls += 1
+                received += sum(len(entries) for _stream, entries in messages)
+
+                # Heartbeat distinguishes "loop is dead" from "loop is alive but
+                # this key never yields anything".
+                now = time.monotonic()
+                if now - last_heartbeat >= _HEARTBEAT_INTERVAL_S:
+                    last_heartbeat = now
+                    logger.info(
+                        f'Consumer alive — consumer={_CONSUMER}, '
+                        f'key={resolved_key}, polls={polls}, '
+                        f'messages_received={received}'
+                    )
 
                 for _stream_name, entries in messages:
                     for msg_id, fields in entries:

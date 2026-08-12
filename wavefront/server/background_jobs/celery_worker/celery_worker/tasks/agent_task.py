@@ -70,9 +70,13 @@ def _publish(cache, execution_id: str, fields: Dict) -> str:
     to look up with XRANGE when a row is stuck.
     """
     status = fields.get('status')
+    # Log the RESOLVED key. CacheManager prepends its namespace inside xadd, so
+    # a worker and a consumer configured with different APP_NAMEs write and read
+    # different Redis keys while logging the same stream name.
+    resolved_key = f'{cache.namespace}/{STREAM_NAME}'
     logger.info(
         f'Publishing result event: execution_id={execution_id}, '
-        f'status={status}, stream={STREAM_NAME}'
+        f'status={status}, key={resolved_key}'
     )
     try:
         message_id = cache.xadd(STREAM_NAME, fields)
@@ -81,13 +85,13 @@ def _publish(cache, execution_id: str, fields: Dict) -> str:
         # once, after tenacity has exhausted its retries.
         logger.exception(
             f'Publish FAILED: execution_id={execution_id}, status={status}, '
-            f'stream={STREAM_NAME}'
+            f'key={resolved_key}'
         )
         raise
 
     logger.info(
         f'Published result event: execution_id={execution_id}, '
-        f'status={status}, message_id={message_id}'
+        f'status={status}, key={resolved_key}, message_id={message_id}'
     )
     return message_id
 
