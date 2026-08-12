@@ -323,12 +323,22 @@ async def lifespan(app: FastAPI):
         scheduler_manager.shutdown()
         async_agentic_exec_consumer.stop()
         try:
-            await asyncio.wait_for(async_agentic_exec_consumer_task, timeout=5)
+            # Long enough for an in-flight _process (DB write + cache write) to
+            # finish, so the common rollout case doesn't strand a message, but
+            # short enough to leave headroom under a default 30s
+            # terminationGracePeriodSeconds given the shutdown work above. If it
+            # does time out the message stays in the PEL and the next pod
+            # reclaims it, so overrunning is recoverable rather than fatal.
+            await asyncio.wait_for(async_agentic_exec_consumer_task, timeout=15)
         except asyncio.TimeoutError:
             async_agentic_exec_consumer_task.cancel()
             logger.warning(
-                'AsyncAgenticExecutionResultConsumer did not stop within 5s; cancelled'
+                'AsyncAgenticExecutionResultConsumer did not stop within 15s; '
+                'cancelled — unacked messages will be reclaimed by the next run'
             )
+        except asyncio.CancelledError:
+            logger.warning('AsyncAgenticExecutionResultConsumer shutdown cancelled')
+            raise
         logger.info('Shutting down application...')
 
     except Exception as e:

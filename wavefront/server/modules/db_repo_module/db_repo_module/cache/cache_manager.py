@@ -335,6 +335,76 @@ class CacheManager(CommonCache):
             logger.error(f'Error acknowledging messages on stream {stream}: {e}')
             raise
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        retry=retry_if_exception_type((RedisError, ConnectionError, TimeoutError)),
+    )
+    def xautoclaim(
+        self,
+        stream: str,
+        group: str,
+        consumer: str,
+        min_idle_ms: int,
+        start_id: str = '0-0',
+        count: int = 10,
+    ) -> tuple:
+        """Take ownership of messages left unacked in the group's PEL.
+
+        Recovers entries stranded by a consumer that died or errored mid-process,
+        including consumers that no longer exist (e.g. a replaced pod). Without
+        this, XREADGROUP with '>' never returns them and they are lost forever.
+
+        Returns (next_start_id, entries) where entries is a list of
+        (message_id, fields). Entries whose payload was trimmed from the stream
+        come back with fields=None and should be skipped.
+        """
+        try:
+            response = self.redis.xautoclaim(
+                f'{self.namespace}/{stream}',
+                group,
+                consumer,
+                min_idle_time=min_idle_ms,
+                start_id=start_id,
+                count=count,
+            )
+            # Redis 6.2 returns [next_id, entries]; Redis 7+ appends deleted_ids
+            return response[0], response[1]
+        except (RedisError, ConnectionError, TimeoutError) as e:
+            logger.error(f'Error auto-claiming messages on stream {stream}: {e}')
+            raise
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        retry=retry_if_exception_type((RedisError, ConnectionError, TimeoutError)),
+    )
+    def xpending_range(
+        self,
+        stream: str,
+        group: str,
+        min_id: str,
+        max_id: str,
+        count: int = 10,
+    ) -> list:
+        """Inspect PEL entries in an ID range.
+
+        Returns a list of dicts with keys message_id, consumer,
+        time_since_delivered and times_delivered. The delivery count is the only
+        way to tell a message that is merely slow from one that can never
+        succeed, so it drives dead-lettering.
+        """
+        try:
+            return (
+                self.redis.xpending_range(
+                    f'{self.namespace}/{stream}', group, min_id, max_id, count
+                )
+                or []
+            )
+        except (RedisError, ConnectionError, TimeoutError) as e:
+            logger.error(f'Error reading pending entries on stream {stream}: {e}')
+            raise
+
     def close(self):
         try:
             self.pool.disconnect()
