@@ -1,4 +1,3 @@
-import asyncio
 from typing import Any, Dict
 from uuid import UUID
 
@@ -6,7 +5,7 @@ from common_module.log.logger import logger
 
 from celery_worker.celery_app import app
 from celery_worker.env import MAX_RETRIES, RETRY_DELAY
-from celery_worker.worker_setup import get_services
+from celery_worker.worker_setup import get_event_loop, get_services
 
 
 @app.task(
@@ -21,11 +20,10 @@ def process_trigger_event_task(
     services = get_services()
     processor = services.trigger_event_processor
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
     try:
         parsed_trigger_id = UUID(trigger_id)
-        return loop.run_until_complete(
+        # Shared process-lifetime loop — see get_event_loop().
+        return get_event_loop().run_until_complete(
             processor.process(trigger_id=parsed_trigger_id, raw_payload=raw_payload)
         )
     except ValueError:
@@ -39,12 +37,3 @@ def process_trigger_event_task(
         if self.request.retries < self.max_retries:
             raise self.retry(exc=exc)
         raise
-    finally:
-        pending = asyncio.all_tasks(loop)
-        for task in pending:
-            task.cancel()
-        try:
-            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-        except Exception:
-            pass
-        loop.close()

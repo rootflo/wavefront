@@ -1,4 +1,3 @@
-import asyncio
 from typing import Dict
 
 from common_module.log.logger import logger
@@ -11,7 +10,7 @@ from celery_worker.tasks.agent_task import (
     _reconstruct_inputs,
     _save_json,
 )
-from celery_worker.worker_setup import get_services
+from celery_worker.worker_setup import get_event_loop, get_services
 
 
 async def _run(task, payload: Dict) -> None:
@@ -107,11 +106,5 @@ async def _run(task, payload: Dict) -> None:
     default_retry_delay=RETRY_DELAY,
 )
 def execute_workflow_task(self, payload: Dict) -> None:
-    loop = asyncio.new_event_loop()
-    try:
-        loop.run_until_complete(_run(self, payload))
-    finally:
-        pending = asyncio.all_tasks(loop)
-        if pending:
-            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-        loop.close()
+    # Shared process-lifetime loop — see get_event_loop().
+    get_event_loop().run_until_complete(_run(self, payload))

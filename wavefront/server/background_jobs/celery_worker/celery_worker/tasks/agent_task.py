@@ -1,4 +1,3 @@
-import asyncio
 import base64
 import json
 from datetime import datetime, timezone
@@ -11,7 +10,7 @@ from agents_module.utils.input_processing_utils import process_inference_inputs
 
 from celery_worker.celery_app import app
 from celery_worker.env import MAX_RETRIES, RETRY_DELAY, STREAM_NAME
-from celery_worker.worker_setup import get_services
+from celery_worker.worker_setup import get_event_loop, get_services
 
 
 def _now() -> str:
@@ -178,13 +177,7 @@ async def _run(task, payload: Dict) -> None:
     default_retry_delay=RETRY_DELAY,
 )
 def execute_agent_task(self, payload: Dict) -> None:
-    loop = asyncio.new_event_loop()
-    try:
-        loop.run_until_complete(_run(self, payload))
-    finally:
-        # Drain any pending tasks (e.g. HTTP client aclose() from google.genai)
-        # before destroying the loop to suppress "Task was destroyed but pending" warnings
-        pending = asyncio.all_tasks(loop)
-        if pending:
-            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-        loop.close()
+    # Shared process-lifetime loop — see get_event_loop(). Pending client
+    # finalizers stay scheduled on it and run during the next task instead of
+    # being orphaned on a closed loop.
+    get_event_loop().run_until_complete(_run(self, payload))

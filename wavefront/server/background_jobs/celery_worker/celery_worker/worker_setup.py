@@ -4,6 +4,7 @@ No DB connection owned by the worker — status updates go through Redis Streams
 DB credentials are read from env vars so config.ini is not required.
 """
 
+import asyncio
 import threading
 from dataclasses import dataclass
 from typing import Optional
@@ -19,6 +20,7 @@ from llm_inference_config_module.container import LlmInferenceConfigContainer
 from agents_module.services.agent_inference_service import AgentInferenceService
 from agents_module.services.workflow_inference_service import WorkflowInferenceService
 from common_module.common_container import CommonContainer
+from common_module.log.logger import logger
 from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.database.connection import DatabaseConfig, DatabaseClient
 from db_repo_module.db_repo_container import DatabaseModuleContainer
@@ -61,6 +63,67 @@ class WorkerServices:
 
 _lock = threading.Lock()
 _services: Optional[WorkerServices] = None
+
+_loop_lock = threading.Lock()
+_loop: Optional[asyncio.AbstractEventLoop] = None
+
+
+def get_event_loop() -> asyncio.AbstractEventLoop:
+    """One event loop for the lifetime of the worker process.
+
+    Tasks used to create and close a loop per run. Because WorkerServices is a
+    process-wide singleton built during the first task, every async client it
+    holds stayed bound to that first loop — so later tasks ran against clients
+    owned by a closed loop, and httpx AsyncClient.aclose() finalizers raised
+    'Event loop is closed'. Sharing one loop keeps those clients and their
+    connection pools valid for the whole process.
+    """
+    global _loop
+    if _loop is not None and not _loop.is_closed():
+        return _loop
+
+    with _loop_lock:
+        if _loop is None or _loop.is_closed():
+            _loop = asyncio.new_event_loop()
+            # Set the thread default too, so library __del__ paths that call
+            # get_event_loop() outside a running loop find a live one.
+            asyncio.set_event_loop(_loop)
+
+    return _loop
+
+
+def close_event_loop() -> None:
+    """Tear the shared loop down cleanly at worker-process shutdown."""
+    global _loop
+    if _loop is None or _loop.is_closed():
+        return
+
+    with _loop_lock:
+        if _loop is None or _loop.is_closed():
+            return
+        if _loop.is_running():
+            # Under the solo pool tasks run in the main thread, so a shutdown
+            # signal handler can land on top of a running task. Draining or
+            # closing a running loop raises, and that exception would surface
+            # inside the task. Leave it to process teardown instead.
+            logger.warning(
+                'Worker event loop still running at shutdown; skipping close'
+            )
+            return
+        try:
+            # Give client finalizers (aclose() and friends) a chance to run
+            # while the loop is still alive.
+            pending = asyncio.all_tasks(_loop)
+            if pending:
+                _loop.run_until_complete(
+                    asyncio.gather(*pending, return_exceptions=True)
+                )
+            _loop.run_until_complete(_loop.shutdown_asyncgens())
+        except Exception as exc:
+            logger.warning(f'Error draining worker event loop on shutdown: {exc}')
+        finally:
+            _loop.close()
+            _loop = None
 
 
 def _build_db_client() -> DatabaseClient:

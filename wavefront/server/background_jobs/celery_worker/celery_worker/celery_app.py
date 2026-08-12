@@ -1,5 +1,9 @@
 from celery import Celery
-from celery.signals import worker_process_init
+from celery.signals import (
+    worker_process_init,
+    worker_process_shutdown,
+    worker_shutdown,
+)
 
 from celery_worker.env import CELERY_BROKER_URL, CELERY_RESULT_BACKEND
 
@@ -9,6 +13,20 @@ def setup_azure_redis_auth(**kwargs):
     from db_repo_module.cache.azure_redis_auth import patch_redis_for_azure
 
     patch_redis_for_azure()
+
+
+def teardown_event_loop(**kwargs):
+    from celery_worker.worker_setup import close_event_loop
+
+    close_event_loop()
+
+
+# Only the prefork pool dispatches worker_process_shutdown (celery/concurrency/
+# prefork.py) — under solo it never fires, and solo is where the loop lives in
+# the main process. Hook the worker-level signal too, which fires for every
+# pool. close_event_loop() is idempotent, so a double-fire is harmless.
+worker_process_shutdown.connect(teardown_event_loop, weak=False)
+worker_shutdown.connect(teardown_event_loop, weak=False)
 
 
 app = Celery('async_executor')
