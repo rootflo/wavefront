@@ -67,6 +67,30 @@ _services: Optional[WorkerServices] = None
 _loop_lock = threading.Lock()
 _loop: Optional[asyncio.AbstractEventLoop] = None
 
+# Per-phase ceiling on the shutdown drain, so teardown always terminates.
+# Worst case is 3x this (grace, cancel-reap, asyncgens) and only occurs if a
+# task ignores cancellation; the normal path finishes in milliseconds.
+_LOOP_DRAIN_TIMEOUT_S = 5.0
+
+
+def _drain_tasks(loop: asyncio.AbstractEventLoop, timeout: float) -> list:
+    """Run pending tasks on `loop` for at most `timeout` seconds.
+
+    Returns the tasks still unfinished. asyncio.wait() is used rather than
+    gather() because it reports the timeout instead of raising, and never
+    cancels on its own — phase 2 decides that explicitly.
+    """
+    pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
+    if not pending:
+        return []
+
+    try:
+        loop.run_until_complete(asyncio.wait(pending, timeout=timeout))
+    except Exception as exc:
+        logger.warning(f'Error draining worker event loop: {exc}')
+
+    return [t for t in pending if not t.done()]
+
 
 def get_event_loop() -> asyncio.AbstractEventLoop:
     """One event loop for the lifetime of the worker process.
@@ -111,14 +135,29 @@ def close_event_loop() -> None:
             )
             return
         try:
-            # Give client finalizers (aclose() and friends) a chance to run
-            # while the loop is still alive.
-            pending = asyncio.all_tasks(_loop)
-            if pending:
-                _loop.run_until_complete(
-                    asyncio.gather(*pending, return_exceptions=True)
+            # Phase 1: let client finalizers (aclose() and friends) finish on
+            # their own — that is the whole reason this drain exists.
+            stragglers = _drain_tasks(_loop, _LOOP_DRAIN_TIMEOUT_S)
+
+            # Phase 2: cancel and reap whatever is left. Tasks now outlive the
+            # run that created them, so without this a single leaked task would
+            # block worker shutdown indefinitely.
+            if stragglers:
+                for task in stragglers:
+                    task.cancel()
+                stragglers = _drain_tasks(_loop, _LOOP_DRAIN_TIMEOUT_S)
+
+            if stragglers:
+                logger.warning(
+                    f'{len(stragglers)} task(s) ignored cancellation on the '
+                    'worker event loop; closing anyway'
                 )
-            _loop.run_until_complete(_loop.shutdown_asyncgens())
+
+            _loop.run_until_complete(
+                asyncio.wait_for(
+                    _loop.shutdown_asyncgens(), timeout=_LOOP_DRAIN_TIMEOUT_S
+                )
+            )
         except Exception as exc:
             logger.warning(f'Error draining worker event loop on shutdown: {exc}')
         finally:
