@@ -19,6 +19,7 @@ from voice_agents_module.models.voice_agent_schemas import (
 from voice_agents_module.services.voice_agent_service import VoiceAgentService
 from voice_agents_module.services.twilio_service import TwilioService
 from voice_agents_module.services.exotel_service import ExotelService
+from voice_agents_module.services.smartflo_service import SmartfloService
 from voice_agents_module.models.telephony_schemas import TelephonyProvider
 from voice_agents_module.voice_agents_container import VoiceAgentsContainer
 
@@ -309,12 +310,15 @@ async def initiate_call(
     exotel_service: ExotelService = Depends(
         Provide[VoiceAgentsContainer.exotel_service]
     ),
+    smartflo_service: SmartfloService = Depends(
+        Provide[VoiceAgentsContainer.smartflo_service]
+    ),
 ):
     """
     Initiate an outbound call for a voice agent
 
     Validates the agent, selects appropriate phone number, and initiates
-    a call using Twilio.
+    a call using the configured telephony provider.
 
     Args:
         agent_id: UUID of the voice agent
@@ -433,6 +437,24 @@ async def initiate_call(
             api_token=api_token,
             account_sid=account_sid,
             subdomain=subdomain,
+        )
+
+    elif provider == TelephonyProvider.SMARTFLO.value:
+        api_key = credentials.get('api_key')
+
+        if not api_key:
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content=response_formatter.buildErrorResponse(
+                    'Smartflo credentials (api_key) missing'
+                ),
+            )
+
+        call_details = await smartflo_service.initiate_call(
+            to_number=payload.to_number,
+            from_number=from_number,
+            voice_agent_id=str(agent_id),
+            api_key=api_key,
         )
 
     else:

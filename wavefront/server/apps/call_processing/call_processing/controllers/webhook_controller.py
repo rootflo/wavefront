@@ -17,8 +17,6 @@ from dependency_injector.wiring import inject, Provide
 
 # Pipecat imports for WebSocket handling
 from pipecat.runner.types import WebSocketRunnerArguments
-from pipecat.runner.utils import parse_telephony_websocket
-
 from pipecat.serializers.twilio import TwilioFrameSerializer
 from pipecat.serializers.exotel import ExotelFrameSerializer
 from pipecat.audio.vad.silero import SileroVADAnalyzer
@@ -31,6 +29,8 @@ from pipecat.transports.websocket.fastapi import (
 from call_processing.services.voice_agent_cache_service import VoiceAgentCacheService
 from call_processing.services.pipecat_service import PipecatService
 from call_processing.di.application_container import ApplicationContainer
+from call_processing.helper.telephony_websocket import parse_telephony_websocket
+from call_processing.serializers.smartflo_serializer import SmartfloFrameSerializer
 
 webhook_router = APIRouter()
 
@@ -219,6 +219,15 @@ async def websocket_endpoint(
 
             customer_number = call_data.get('from', '')
             agent_number = call_data.get('to', '')
+        elif transport_type == 'smartflo':
+            body_data = call_data.get('body', {}) or {}
+            params = body_data if isinstance(body_data, dict) and body_data else {}
+
+            voice_agent_id = (
+                params.get('voice_agent_id') if isinstance(params, dict) else None
+            )
+            customer_number = call_data.get('to', '')
+            agent_number = call_data.get('from', '')
         else:
             logger.error(f'Unknown transport type: {transport_type}')
             await websocket.close(
@@ -265,6 +274,11 @@ async def websocket_endpoint(
             )
         elif provider == 'exotel':
             serializer = ExotelFrameSerializer(
+                stream_sid=call_data['stream_id'],
+                call_sid=call_data.get('call_id'),
+            )
+        elif provider == 'smartflo':
+            serializer = SmartfloFrameSerializer(
                 stream_sid=call_data['stream_id'],
                 call_sid=call_data.get('call_id'),
             )

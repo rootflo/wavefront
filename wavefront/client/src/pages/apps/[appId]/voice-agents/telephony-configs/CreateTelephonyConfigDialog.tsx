@@ -153,6 +153,11 @@ const CreateTelephonyConfigDialog: React.FC<CreateTelephonyConfigDialogProps> = 
         notifyError('Subdomain is required for Exotel');
         return;
       }
+    } else if (provider === 'smartflo') {
+      if (!data.api_key?.trim()) {
+        notifyError('API Key is required for Smartflo');
+        return;
+      }
     }
 
     // Validate SIP config if required
@@ -178,6 +183,10 @@ const CreateTelephonyConfigDialog: React.FC<CreateTelephonyConfigDialogProps> = 
           api_token: data.api_token!.trim(),
           account_sid: data.exotel_account_sid!.trim(),
           subdomain: data.subdomain!.trim(),
+        };
+      } else if (provider === 'smartflo') {
+        credentials = {
+          api_key: data.api_key!.trim(),
         };
       }
 
@@ -437,6 +446,24 @@ const CreateTelephonyConfigDialog: React.FC<CreateTelephonyConfigDialogProps> = 
                   />
                 </div>
               </div>
+            )}
+
+            {watchedProvider === 'smartflo' && (
+              <FormField
+                control={form.control}
+                name="api_key"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      API Key <span className="text-red-500">*</span>
+                    </FormLabel>
+                    <FormControl>
+                      <Input type="password" placeholder="Enter your Smartflo API key" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             )}
 
             {showSipConfig && (

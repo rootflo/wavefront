@@ -188,6 +188,19 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
             subdomain: nextSubdomain ?? base.subdomain ?? '',
           };
         }
+      } else if (provider === 'smartflo') {
+        const nextApiKey = data.api_key?.trim();
+        if (providerChanged && !nextApiKey) {
+          notifyError('API Key is required when switching to Smartflo');
+          setLoading(false);
+          return;
+        }
+        if (providerChanged || nextApiKey) {
+          const base = !providerChanged ? (config.credentials as any) : {};
+          updateData.credentials = {
+            api_key: nextApiKey ?? base.api_key ?? '',
+          };
+        }
       }
 
       // Add SIP config if required
@@ -461,6 +474,29 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
                   />
                 </div>
               </div>
+            )}
+
+            {watchedProvider === 'smartflo' && (
+              <FormField
+                control={form.control}
+                name="api_key"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      API Key{' '}
+                      {providerChanged ? (
+                        <span className="text-red-500">*</span>
+                      ) : (
+                        '(Optional - leave empty to keep existing)'
+                      )}
+                    </FormLabel>
+                    <FormControl>
+                      <Input type="password" placeholder="Enter new Smartflo API key to update" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             )}
 
             {showSipConfig && (
