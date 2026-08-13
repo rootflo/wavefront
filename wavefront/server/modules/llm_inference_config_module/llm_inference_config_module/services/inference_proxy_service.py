@@ -117,6 +117,7 @@ class InferenceProxyService:
     def _prepare_azure_openai_auth(self, headers: Dict[str, str], api_key: str) -> None:
         """Prepare Azure OpenAI authentication headers."""
         headers['api-key'] = api_key
+        del headers['authorization']
 
     def _prepare_ollama_auth(self, headers: Dict[str, str], api_key: str) -> None:
         """Prepare Ollama authentication headers (typically no auth required)."""
