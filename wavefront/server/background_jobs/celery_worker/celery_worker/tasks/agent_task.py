@@ -1,4 +1,3 @@
-import asyncio
 import base64
 import json
 from datetime import datetime, timezone
@@ -11,7 +10,7 @@ from agents_module.utils.input_processing_utils import process_inference_inputs
 
 from celery_worker.celery_app import app
 from celery_worker.env import MAX_RETRIES, RETRY_DELAY, STREAM_NAME
-from celery_worker.worker_setup import get_services
+from celery_worker.worker_setup import get_event_loop, get_services
 
 
 def _now() -> str:
@@ -62,6 +61,41 @@ def _reconstruct_inputs(payload: Dict, cloud_storage) -> Any:
     return process_inference_inputs(rebuilt)
 
 
+def _publish(cache, execution_id: str, fields: Dict) -> str:
+    """Publish a status transition to the results stream, observably.
+
+    Completion events have gone missing in production with no trace on either
+    side, so log the attempt and the outcome. The returned stream message id is
+    the important part: it proves the XADD reached Redis and gives an exact key
+    to look up with XRANGE when a row is stuck.
+    """
+    status = fields.get('status')
+    # Log the RESOLVED key. CacheManager prepends its namespace inside xadd, so
+    # a worker and a consumer configured with different APP_NAMEs write and read
+    # different Redis keys while logging the same stream name.
+    resolved_key = f'{cache.namespace}/{STREAM_NAME}'
+    logger.info(
+        f'Publishing result event: execution_id={execution_id}, '
+        f'status={status}, key={resolved_key}'
+    )
+    try:
+        message_id = cache.xadd(STREAM_NAME, fields)
+    except Exception:
+        # Per-attempt errors are logged inside CacheManager.xadd; this fires
+        # once, after tenacity has exhausted its retries.
+        logger.exception(
+            f'Publish FAILED: execution_id={execution_id}, status={status}, '
+            f'key={resolved_key}'
+        )
+        raise
+
+    logger.info(
+        f'Published result event: execution_id={execution_id}, '
+        f'status={status}, key={resolved_key}, message_id={message_id}'
+    )
+    return message_id
+
+
 def _save_json(cloud_storage, bucket: str, key: str, data: Any) -> None:
     cloud_storage.save_small_file(
         file_content=json.dumps(data, default=str).encode('utf-8'),
@@ -88,8 +122,9 @@ async def _run(task, payload: Dict) -> None:
     execution_id = payload['execution_id']
 
     # Signal in_progress — floware consumer updates DB
-    services.cache.xadd(
-        STREAM_NAME,
+    _publish(
+        services.cache,
+        execution_id,
         {
             'execution_id': execution_id,
             'status': 'in_progress',
@@ -140,8 +175,9 @@ async def _run(task, payload: Dict) -> None:
         )
 
         # Signal completed — floware consumer updates DB
-        services.cache.xadd(
-            STREAM_NAME,
+        _publish(
+            services.cache,
+            execution_id,
             {
                 'execution_id': execution_id,
                 'status': 'completed',
@@ -159,8 +195,9 @@ async def _run(task, payload: Dict) -> None:
         logger.error(f'Agent execution failed: {execution_id} — {error_msg}')
 
         # Signal failed — floware consumer updates DB
-        services.cache.xadd(
-            STREAM_NAME,
+        _publish(
+            services.cache,
+            execution_id,
             {
                 'execution_id': execution_id,
                 'status': 'failed',
@@ -178,13 +215,7 @@ async def _run(task, payload: Dict) -> None:
     default_retry_delay=RETRY_DELAY,
 )
 def execute_agent_task(self, payload: Dict) -> None:
-    loop = asyncio.new_event_loop()
-    try:
-        loop.run_until_complete(_run(self, payload))
-    finally:
-        # Drain any pending tasks (e.g. HTTP client aclose() from google.genai)
-        # before destroying the loop to suppress "Task was destroyed but pending" warnings
-        pending = asyncio.all_tasks(loop)
-        if pending:
-            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-        loop.close()
+    # Shared process-lifetime loop — see get_event_loop(). Pending client
+    # finalizers stay scheduled on it and run during the next task instead of
+    # being orphaned on a closed loop.
+    get_event_loop().run_until_complete(_run(self, payload))

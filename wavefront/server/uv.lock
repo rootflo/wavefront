@@ -769,7 +769,7 @@ dependencies = [
 requires-dist = [
     { name = "agents-module", editable = "modules/agents_module" },
     { name = "api-services-module", editable = "modules/api_services_module" },
-    { name = "celery", extras = ["redis"], specifier = ">=5.4.0,<6.0.0" },
+    { name = "celery", extras = ["redis"], specifier = ">=5.5.3,<6.0.0" },
     { name = "common-module", editable = "modules/common_module" },
     { name = "db-repo-module", editable = "modules/db_repo_module" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
