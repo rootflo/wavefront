@@ -41,23 +41,83 @@ _STANDARD_WS_HEADERS = {
     'sec-websocket-protocol',
 }
 
+# Credential headers must never enter custom params or logs
+_CREDENTIAL_HEADERS = {
+    'authorization',
+    'proxy-authorization',
+    'x-api-key',
+    'x-auth-token',
+    'api-key',
+    'auth-token',
+}
+
+# Only these header-derived keys are accepted as Smartflo custom parameters
+_ALLOWED_CUSTOM_PARAM_KEYS = {
+    'voice_agent_id',
+    'customer_number',
+    'agent_number',
+}
+
 
 def _normalize_header_key(key: str) -> str:
     """Normalize header names to snake_case param keys (voice-agent-id -> voice_agent_id)."""
     return key.strip().lower().replace('-', '_')
 
 
+def _is_credential_header(key: str) -> bool:
+    """Return True for auth/credential headers that must be excluded."""
+    lower = key.strip().lower()
+    normalized = _normalize_header_key(key)
+    return lower in _CREDENTIAL_HEADERS or normalized in {
+        'authorization',
+        'proxy_authorization',
+        'x_api_key',
+        'x_auth_token',
+        'api_key',
+        'auth_token',
+    }
+
+
+def _filter_allowed_params(raw_params: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep only allowlisted non-credential custom parameter keys."""
+    filtered: Dict[str, Any] = {}
+    for key, value in raw_params.items():
+        normalized = _normalize_header_key(str(key))
+        if _is_credential_header(str(key)):
+            continue
+        if normalized not in _ALLOWED_CUSTOM_PARAM_KEYS:
+            continue
+        if value is None or value == '':
+            continue
+        filtered[normalized] = value
+    return filtered
+
+
+def safe_call_data_for_log(call_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Return call_data safe for logging (no credential/header param values)."""
+    safe: Dict[str, Any] = {}
+    for key, value in call_data.items():
+        if key in ('body', 'custom_parameters'):
+            if isinstance(value, dict):
+                safe[f'{key}_keys'] = list(value.keys())
+            elif value:
+                safe[f'{key}_present'] = True
+            continue
+        safe[key] = value
+    return safe
+
+
 def _custom_parameters_from_headers(headers: Any) -> Dict[str, Any]:
     """
     Build custom parameters from Smartflo WebSocket handshake headers.
 
-    Smartflo can send configured custom/auth headers on the WSS connection
-    (start.customParameters is often empty in practice).
+    Only allowlisted keys are accepted. Credential headers
+    (authorization, x-api-key, etc.) are never included.
     """
     if not headers:
         return {}
 
-    params: Dict[str, Any] = {}
+    candidates: Dict[str, Any] = {}
 
     # Prefer an explicit JSON blob header when present
     for blob_key in (
@@ -67,21 +127,20 @@ def _custom_parameters_from_headers(headers: Any) -> Dict[str, Any]:
         'x-custom-parameters',
         'x-customparameters',
     ):
+        if _is_credential_header(blob_key):
+            continue
         raw = headers.get(blob_key)
         if not raw:
             continue
         try:
             parsed = json.loads(raw)
             if isinstance(parsed, dict):
-                params.update(
-                    {_normalize_header_key(str(k)): v for k, v in parsed.items()}
-                )
-            else:
-                params[_normalize_header_key(blob_key)] = raw
+                candidates.update(parsed)
+            # Non-dict blob values are ignored (not allowlisted keys)
         except (json.JSONDecodeError, TypeError):
-            params[_normalize_header_key(blob_key)] = raw
+            continue
 
-    # Collect remaining non-standard headers as flat custom params
+    # Collect remaining allowlisted headers as flat custom params
     try:
         items = headers.items()
     except AttributeError:
@@ -91,12 +150,13 @@ def _custom_parameters_from_headers(headers: Any) -> Dict[str, Any]:
         lower = key.lower()
         if lower in _STANDARD_WS_HEADERS or lower.startswith('sec-'):
             continue
+        if _is_credential_header(key):
+            continue
         normalized = _normalize_header_key(key)
-        # Don't overwrite values already taken from a JSON blob
-        if normalized not in params and value is not None and value != '':
-            params[normalized] = value
+        if normalized not in candidates and value is not None and value != '':
+            candidates[normalized] = value
 
-    return params
+    return _filter_allowed_params(candidates)
 
 
 def _is_smartflo_start(message_data: dict) -> bool:
@@ -181,7 +241,9 @@ def _extract_call_data(
     if transport_type == 'smartflo':
         start_data = call_data_raw.get('start', {})
         header_params = _custom_parameters_from_headers(headers)
-        logger.info(f'Smartflo custom parameters from headers: {header_params}')
+        logger.info(
+            f'Smartflo custom parameter keys from headers: {list(header_params.keys())}'
+        )
         return {
             'stream_id': start_data.get('streamSid') or call_data_raw.get('streamSid'),
             'call_id': start_data.get('callSid'),
@@ -252,12 +314,11 @@ async def parse_telephony_websocket(
             "to": str,
             "direction": str,
             "body": dict,              # custom params (headers preferred)
-            "custom_parameters": dict,  # same as body
         }
     """
     # Capture handshake headers before reading messages (Smartflo custom params)
     ws_headers = websocket.headers
-    logger.debug(f'Telephony WS headers: {dict(ws_headers)}')
+    logger.debug(f'Telephony WS header names: {list(ws_headers.keys())}')
 
     message_stream = websocket.iter_text()
     first_message: Dict[str, Any] = {}
@@ -300,5 +361,7 @@ async def parse_telephony_websocket(
         logger.warning('Could not auto-detect transport type')
 
     call_data = _extract_call_data(transport_type, call_data_raw, headers=ws_headers)
-    logger.debug(f'Parsed - Type: {transport_type}, Data: {call_data}')
+    logger.debug(
+        f'Parsed - Type: {transport_type}, Data: {safe_call_data_for_log(call_data)}'
+    )
     return transport_type, call_data

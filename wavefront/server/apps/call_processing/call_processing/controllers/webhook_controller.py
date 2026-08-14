@@ -29,7 +29,9 @@ from pipecat.transports.websocket.fastapi import (
 from call_processing.services.voice_agent_cache_service import VoiceAgentCacheService
 from call_processing.services.pipecat_service import PipecatService
 from call_processing.di.application_container import ApplicationContainer
-from call_processing.helper.telephony_websocket import parse_telephony_websocket
+from call_processing.helper.telephony_websocket import (
+    parse_telephony_websocket,
+)
 from call_processing.serializers.smartflo_serializer import SmartfloFrameSerializer
 
 webhook_router = APIRouter()
@@ -192,6 +194,7 @@ async def websocket_endpoint(
         transport_type, call_data = await parse_telephony_websocket(
             runner_args.websocket
         )
+        call_direction = None
 
         logger.info(f'Auto-detected transport: {transport_type}')
         logger.info(f'Call data: {call_data}')
@@ -226,8 +229,13 @@ async def websocket_endpoint(
             voice_agent_id = (
                 params.get('voice_agent_id') if isinstance(params, dict) else None
             )
-            customer_number = call_data.get('to', '')
-            agent_number = call_data.get('from', '')
+            call_direction = call_data.get('direction', None)
+            if call_direction == 'inbound':
+                customer_number = call_data.get('from', '')
+                agent_number = call_data.get('to', '')
+            else:
+                customer_number = call_data.get('to', '')
+                agent_number = call_data.get('from', '')
         else:
             logger.error(f'Unknown transport type: {transport_type}')
             await websocket.close(
@@ -320,7 +328,7 @@ async def websocket_endpoint(
             call_id=call_data.get('call_id', ''),
             agent_number=agent_number,
             provider=transport_type,
-            call_direction='outbound',
+            call_direction=call_direction or 'outbound',
         )
 
     except Exception as e:

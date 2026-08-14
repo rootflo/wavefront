@@ -23,15 +23,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@app/components/ui/textarea';
 import {
   getConnectionTypeOptions,
+  getDefaultConnectionType,
   getTelephonyProviderConfig,
   getTelephonyProviderOptions,
+  isConnectionTypeAllowed,
   requiresSipConfig,
 } from '@app/config/telephony-providers';
 import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { ConnectionType, SipTransport, TelephonyProvider } from '@app/types/telephony-config';
 import { zodResolver } from '@hookform/resolvers/zod';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
@@ -92,6 +94,7 @@ const CreateTelephonyConfigDialog: React.FC<CreateTelephonyConfigDialogProps> = 
 
   const watchedProvider = form.watch('provider');
   const watchedConnectionType = form.watch('connection_type');
+  const previousProviderRef = useRef(watchedProvider);
 
   // Reset SIP config when connection type changes
   useEffect(() => {
@@ -101,6 +104,28 @@ const CreateTelephonyConfigDialog: React.FC<CreateTelephonyConfigDialogProps> = 
       form.setValue('sip_transport', undefined);
     }
   }, [watchedConnectionType, form]);
+
+  // Normalize connection_type and clear credentials when provider changes
+  useEffect(() => {
+    const provider = watchedProvider as TelephonyProvider;
+    if (!provider || !getTelephonyProviderConfig(provider)) {
+      return;
+    }
+    const current = form.getValues('connection_type') as ConnectionType;
+    if (!isConnectionTypeAllowed(provider, current)) {
+      form.setValue('connection_type', getDefaultConnectionType(provider));
+    }
+
+    if (previousProviderRef.current !== provider) {
+      previousProviderRef.current = provider;
+      form.setValue('account_sid', '');
+      form.setValue('auth_token', '');
+      form.setValue('api_key', '');
+      form.setValue('api_token', '');
+      form.setValue('exotel_account_sid', '');
+      form.setValue('subdomain', '');
+    }
+  }, [watchedProvider, form]);
 
   // Reset form when dialog closes
   useEffect(() => {
@@ -120,11 +145,13 @@ const CreateTelephonyConfigDialog: React.FC<CreateTelephonyConfigDialogProps> = 
         sip_port: undefined,
         sip_transport: undefined,
       });
+      previousProviderRef.current = 'twilio';
     }
   }, [isOpen, form]);
 
   const onSubmit = async (data: CreateTelephonyConfigInput) => {
     const provider = data.provider as TelephonyProvider;
+    const providerConfig = getTelephonyProviderConfig(provider);
 
     // Validate provider-specific credentials
     if (provider === 'twilio') {
@@ -158,6 +185,11 @@ const CreateTelephonyConfigDialog: React.FC<CreateTelephonyConfigDialogProps> = 
         notifyError('API Key is required for Smartflo');
         return;
       }
+    }
+
+    if (!isConnectionTypeAllowed(provider, data.connection_type)) {
+      notifyError(`${providerConfig.name} only supports: ${providerConfig.allowedConnectionTypes.join(', ')}`);
+      return;
     }
 
     // Validate SIP config if required

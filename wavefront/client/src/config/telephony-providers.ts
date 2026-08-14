@@ -265,6 +265,20 @@ export const getConnectionTypeOptions = (
 };
 
 /**
+ * Whether the connection type is allowed for the provider (from shared config)
+ */
+export const isConnectionTypeAllowed = (provider: TelephonyProvider, connectionType: ConnectionType): boolean => {
+  return TELEPHONY_PROVIDERS_CONFIG[provider].allowedConnectionTypes.includes(connectionType);
+};
+
+/**
+ * Default (first allowed) connection type for a provider
+ */
+export const getDefaultConnectionType = (provider: TelephonyProvider): ConnectionType => {
+  return TELEPHONY_PROVIDERS_CONFIG[provider].allowedConnectionTypes[0];
+};
+
+/**
  * Initialize default SIP config values
  */
 export const getDefaultSipConfig = () => ({
