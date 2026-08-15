@@ -367,7 +367,7 @@ async def workflow_inference_v2(
                     event_data = event_queue.get_nowait()
                     yield f'data: {json.dumps(event_data)}\n\n'
 
-                result, execution_time = await inference_task
+                result, execution_time, _trace = await inference_task
 
                 output_event = {
                     'event_type': 'output',
@@ -410,7 +410,11 @@ async def workflow_inference_v2(
 
     else:
         # Non-streaming mode - normal JSON response
-        result, execution_time = await workflow_inference_service.perform_inference_v2(
+        (
+            result,
+            execution_time,
+            _trace,
+        ) = await workflow_inference_service.perform_inference_v2(
             workflow_data=workflow_data,
             variables=with_execution_variables(request_body.variables, execution_id),
             inputs=resolved_inputs
