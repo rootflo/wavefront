@@ -52,7 +52,11 @@ optional_auth_apis = [
     '/floware/v1/triggers/{trigger_id}/{agentic_id}/invoke',
 ]
 
-hmac_routes = os.getenv('HMAC_AUTH_ROUTES', '').split(',')
+hmac_routes = [
+    route.strip()
+    for route in os.getenv('HMAC_AUTH_ROUTES', '').split(',')
+    if route.strip()
+]
 
 floware_jwt_audience = os.getenv('FLOWARE_JWT_AUDIENCE', '')
 
@@ -108,6 +112,14 @@ def matches_dynamic_route(path: str, route_pattern: str) -> bool:
     regex_pattern = f'^{regex_pattern}$'
 
     return bool(re.match(regex_pattern, path))
+
+
+def matches_any_route(path: str, route_patterns: list[str]) -> bool:
+    """Check if a path matches any route in the list (supports {param} placeholders)."""
+    return any(
+        path == pattern if '{' not in pattern else matches_dynamic_route(path, pattern)
+        for pattern in route_patterns
+    )
 
 
 async def validate_service_auth(
@@ -217,9 +229,8 @@ async def validate_hmac_signature(
             )
             return False
 
-        if request.headers.get('X-Rootflo-Nonce'):
-            nonce = request.headers.get('X-Rootflo-Nonce')
-        else:
+        nonce = request.headers.get(RootfloHeaders.NONCE)
+        if not nonce:
             body = await request.body()
 
             # Parse JSON body to extract nonce
@@ -357,7 +368,9 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
 
             authorization = request.headers.get('Authorization')
             # Check if this endpoint requires HMAC validation (skip JWT validation then)
-            if request.url.path in required_hmac_apis and not authorization:
+            if not authorization and matches_any_route(
+                request.url.path, required_hmac_apis
+            ):
                 if not await validate_hmac_signature(request, auth_secrets_repository):
                     request_id = getattr(
                         request.state, 'request_id', get_current_request_id()
@@ -400,12 +413,7 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                     token = authorization.split(' ')[1]
 
                 # Skip authentication for optional APIs (supports {param} placeholders)
-                if any(
-                    request.url.path == pattern
-                    if '{' not in pattern
-                    else matches_dynamic_route(request.url.path, pattern)
-                    for pattern in optional_auth_apis
-                ):
+                if matches_any_route(request.url.path, optional_auth_apis):
                     return await call_next(request)
 
                 # For non-production environments: Check passthrough authentication globally
