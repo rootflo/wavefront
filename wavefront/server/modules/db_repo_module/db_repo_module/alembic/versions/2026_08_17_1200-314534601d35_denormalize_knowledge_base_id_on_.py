@@ -46,6 +46,17 @@ def upgrade() -> None:
         sa.Column('knowledge_base_id', sa.Uuid(), nullable=True),
     )
 
+    # Indexed before the backfill below so the UPDATE's join has it
+    # available, and because it's needed regardless for the explicit
+    # `DELETE FROM knowledge_base_embeddings WHERE document_id = ...` on
+    # document delete and the ON DELETE CASCADE from knowledge_base_documents.
+    op.create_index(
+        'ix_kbe_document_id',
+        'knowledge_base_embeddings',
+        ['document_id'],
+        unique=False,
+    )
+
     op.execute("""
         UPDATE knowledge_base_embeddings e
         SET knowledge_base_id = d.knowledge_base_id
@@ -75,13 +86,6 @@ def upgrade() -> None:
         'ix_kbd_knowledge_base_id',
         'knowledge_base_documents',
         ['knowledge_base_id'],
-        unique=False,
-    )
-
-    op.create_index(
-        'ix_kbe_document_id',
-        'knowledge_base_embeddings',
-        ['document_id'],
         unique=False,
     )
 
