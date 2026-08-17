@@ -5,6 +5,7 @@ class RootfloHeaders:
     CLIENT_KEY = 'X-Rootflo-Key'
     SIGNATURE = 'X-Rootflo-Signature'
     TIMESTAMP = 'X-Rootflo-Timestamp'
+    NONCE = 'X-Rootflo-Nonce'
     PASSTHROUGH = 'X-Passthrough'
 
 
