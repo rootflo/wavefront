@@ -126,6 +126,23 @@ class DataSourceABC(ABC):
             f'{type(self).__name__} does not support transactional multi-table update'
         )
 
+    def delete_rows_json(
+        self,
+        table_name: str,
+        where_clause: str,
+        params: Dict[str, Any],
+    ) -> int:
+        """Delete the rows matching ``where_clause``, returning how many went.
+
+        ``where_clause`` is a parameterized SQL predicate and ``params`` its
+        values. Concrete (not abstract) with a NotImplementedError default, for
+        the same reason as ``insert_rows_json_multi``: datasource types that don't
+        support it stay instantiable.
+        """
+        raise NotImplementedError(
+            f'{type(self).__name__} does not support deleting rows'
+        )
+
     @abstractmethod
     async def execute_dynamic_query(
         self,

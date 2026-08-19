@@ -152,6 +152,51 @@ class DatasourcePlugin:
             )
         return self.datasource.update_rows_json_multi(prepared, require_all_matched)
 
+    def delete_rows_json(self, table_name: str, filter: str) -> int:
+        """Delete the rows matching the OData ``filter``, returning how many went.
+
+        Same rule as ``update_rows_json``, and for a stronger reason: an absent or
+        unparseable filter is an error, never a no-op predicate, because a DELETE
+        with no WHERE empties the table.
+
+        Two further checks run here that the update path does not bother with,
+        because a DELETE cannot be walked back:
+
+        * every predicate must bind at least one value. The parser only ever emits
+          ``field <op> :param`` comparisons — it rejects a bare ``1 eq 1``, a
+          ``true``, and anything with a stray ``;`` or paren — so a predicate that
+          bound nothing would mean it had stopped doing that.
+        * no bound value may be empty. This is the one match-everything filter the
+          parser will happily build: ``name contains ''`` compiles to
+          ``LIKE '%%'``, which matches every non-null row, and it is exactly what a
+          UI produces when it interpolates an empty search box into a filter. An
+          empty ``eq ''`` is caught by the same rule; ``%`` is stripped first so
+          ``contains '%'`` cannot sneak past it.
+
+        Both raise ValueError, which the controller reports as a 400.
+        """
+        where_clause, params = self.odata_parser.prepare_odata_filter(filter)
+        if not where_clause:
+            raise ValueError('A filter is required to delete rows')
+
+        if not params:
+            raise ValueError(
+                'A delete filter must compare at least one column to a value'
+            )
+
+        blank = [
+            key
+            for key, value in params.items()
+            if isinstance(value, str) and not value.strip('%').strip()
+        ]
+        if blank:
+            raise ValueError(
+                'A delete filter may not compare a column to an empty value '
+                f'({", ".join(sorted(blank))}): it would match every row'
+            )
+
+        return self.datasource.delete_rows_json(table_name, where_clause, params)
+
     async def execute_query(
         self, query: str, use_legacy_sql: bool = False, dry_run: bool = False, **kwargs
     ) -> Any:

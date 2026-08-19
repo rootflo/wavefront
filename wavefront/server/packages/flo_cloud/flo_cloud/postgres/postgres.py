@@ -464,6 +464,53 @@ class PostgresClient:
             finally:
                 cursor.close()
 
+    def delete_rows_json(
+        self,
+        table_name: str,
+        where_clause: str,
+        params: Optional[Dict[str, Any]] = None,
+    ) -> int:
+        """Delete the rows matching ``where_clause``, returning how many went.
+
+        ``where_clause`` is a parameterized predicate (from the OData parser) using
+        ``:name`` placeholders, with ``params`` holding its values — the same
+        contract as ``update_rows_json``, minus the SET side, so there is no
+        ``set_`` prefixing to do and the parser's parameters can be used as they
+        come.
+
+        An empty ``where_clause`` is refused. A DELETE without a WHERE empties the
+        table, and unlike an UPDATE there is no prior value left to reconstruct it
+        from, so this check matters more here than anywhere else.
+        """
+        if not where_clause or not where_clause.strip():
+            raise ValueError('A where clause is required to delete rows')
+
+        converted_where, _ = self._convert_named_params(where_clause, params or {})
+
+        query = sql.SQL('DELETE FROM {table} WHERE {where}').format(
+            table=sql.Identifier(*table_name.split('.')),
+            where=sql.SQL(converted_where),
+        )
+
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            try:
+                # `or None`, not `or {}`: psycopg2 skips interpolation entirely
+                # when params is None, but an empty dict still triggers it and
+                # then trips over any literal '%' in a hand-written predicate.
+                # Callers coming through the OData parser always bind something,
+                # so this only matters to direct users of this class.
+                cursor.execute(query, params or None)
+                deleted_rows = cursor.rowcount
+                conn.commit()
+                return deleted_rows
+            except psycopg2.Error as e:
+                conn.rollback()
+                logger.error(f'Delete error: {e}')
+                raise
+            finally:
+                cursor.close()
+
     def update_rows_json_multi(
         self,
         updates: List[Dict[str, Any]],
