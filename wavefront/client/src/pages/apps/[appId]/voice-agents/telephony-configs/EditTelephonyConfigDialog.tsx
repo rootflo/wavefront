@@ -23,20 +23,23 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@app/components/ui/textarea';
 import {
   getConnectionTypeOptions,
+  getDefaultConnectionType,
   getTelephonyProviderConfig,
   getTelephonyProviderOptions,
+  isConnectionTypeAllowed,
   requiresSipConfig,
 } from '@app/config/telephony-providers';
 import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import {
+  ConnectionType,
   SipTransport,
   TelephonyConfig,
   TelephonyProvider,
   UpdateTelephonyConfigRequest,
 } from '@app/types/telephony-config';
 import { zodResolver } from '@hookform/resolvers/zod';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
@@ -100,6 +103,7 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
   const watchedProvider = form.watch('provider');
   const watchedConnectionType = form.watch('connection_type');
   const providerChanged = watchedProvider !== config.provider;
+  const previousProviderRef = useRef(config.provider);
 
   // Initialize form when dialog opens
   useEffect(() => {
@@ -119,6 +123,7 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
         sip_port: config.sip_config?.port,
         sip_transport: config.sip_config?.transport,
       });
+      previousProviderRef.current = config.provider;
     }
   }, [isOpen, config, form]);
 
@@ -131,8 +136,37 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
     }
   }, [watchedConnectionType, form]);
 
+  // Normalize connection_type and clear credentials when provider changes
+  useEffect(() => {
+    const provider = watchedProvider as TelephonyProvider;
+    if (!provider || !getTelephonyProviderConfig(provider)) {
+      return;
+    }
+    const current = form.getValues('connection_type') as ConnectionType;
+    if (!isConnectionTypeAllowed(provider, current)) {
+      form.setValue('connection_type', getDefaultConnectionType(provider));
+    }
+
+    if (previousProviderRef.current !== provider) {
+      previousProviderRef.current = provider;
+      form.setValue('account_sid', '');
+      form.setValue('auth_token', '');
+      form.setValue('api_key', '');
+      form.setValue('api_token', '');
+      form.setValue('exotel_account_sid', '');
+      form.setValue('subdomain', '');
+    }
+  }, [watchedProvider, form]);
+
   const onSubmit = async (data: UpdateTelephonyConfigInput) => {
     const provider = data.provider as TelephonyProvider;
+    const providerConfig = getTelephonyProviderConfig(provider);
+
+    // Reject connection types not allowed for the provider (Smartflo is websocket-only)
+    if (!isConnectionTypeAllowed(provider, data.connection_type)) {
+      notifyError(`${providerConfig.name} only supports: ${providerConfig.allowedConnectionTypes.join(', ')}`);
+      return;
+    }
 
     // Validate SIP config if required
     if (requiresSipConfig(provider, data.connection_type)) {
@@ -186,6 +220,19 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
             api_token: nextApiToken ?? base.api_token ?? '',
             account_sid: nextAccountSid ?? base.account_sid ?? '',
             subdomain: nextSubdomain ?? base.subdomain ?? '',
+          };
+        }
+      } else if (provider === 'smartflo') {
+        const nextApiKey = data.api_key?.trim();
+        if (providerChanged && !nextApiKey) {
+          notifyError('API Key is required when switching to Smartflo');
+          setLoading(false);
+          return;
+        }
+        if (providerChanged || nextApiKey) {
+          const base = !providerChanged ? (config.credentials as any) : {};
+          updateData.credentials = {
+            api_key: nextApiKey ?? base.api_key ?? '',
           };
         }
       }
@@ -461,6 +508,29 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
                   />
                 </div>
               </div>
+            )}
+
+            {watchedProvider === 'smartflo' && (
+              <FormField
+                control={form.control}
+                name="api_key"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      API Key{' '}
+                      {providerChanged ? (
+                        <span className="text-red-500">*</span>
+                      ) : (
+                        '(Optional - leave empty to keep existing)'
+                      )}
+                    </FormLabel>
+                    <FormControl>
+                      <Input type="password" placeholder="Enter new Smartflo API key to update" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             )}
 
             {showSipConfig && (

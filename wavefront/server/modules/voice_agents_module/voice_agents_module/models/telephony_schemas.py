@@ -11,6 +11,7 @@ UNSET = object()
 class TelephonyProvider(str, Enum):
     TWILIO = 'twilio'
     EXOTEL = 'exotel'
+    SMARTFLO = 'smartflo'
 
 
 class ConnectionType(str, Enum):
@@ -81,6 +82,7 @@ class CreateTelephonyConfigPayload(BaseModel):
 
         Twilio: {"account_sid": "...", "auth_token": "..."}
         Exotel: {"api_key": "...", "api_token": "...", "account_sid": "...", "subdomain": "ccm-api.exotel.com or ccm-api.in.exotel.com"}
+        Smartflo: {"api_key": "..."}
         """,
     )
     webhook_config: Optional[WebhookConfig] = Field(
