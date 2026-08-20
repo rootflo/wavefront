@@ -1,6 +1,6 @@
 import collections
-from uuid import UUID
 
+from common_module.utils.validators import is_valid_uuid
 from datasource import (
     DataSourceType,
     BigQueryConfig,
@@ -25,14 +25,10 @@ async def get_datasource_config(
     DataSourceType,
     BigQueryConfig | RedshiftConfig | PostgresConfig | MSSQLConfig,
 ]:
-    # `id` is a uuid column, so the query casts this string with ::UUID and
-    # Postgres raises InvalidTextRepresentation on a malformed one — before
-    # find_one can return None. Every caller's "not found -> 404" branch was
-    # therefore unreachable for a mistyped id, and a one-character typo came
-    # back as a 500 with a SQL traceback instead of "Datasource not found".
-    try:
-        UUID(str(datasource_id))
-    except (ValueError, AttributeError, TypeError):
+    # Without this, a mistyped id raises InvalidTextRepresentation inside the
+    # query before find_one can return None, so every caller's "not found -> 404"
+    # branch was unreachable and a one-character typo came back as a 500.
+    if not is_valid_uuid(datasource_id):
         return None, None
 
     datasource: Datasource | None = await datasource_repository.find_one(

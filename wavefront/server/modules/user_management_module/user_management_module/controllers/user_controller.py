@@ -1,5 +1,4 @@
 import secrets
-import uuid
 from typing import List, Optional
 
 from common_module.log.logger import logger
@@ -46,6 +45,7 @@ from user_management_module.utils.user_utils import (
 from user_management_module.utils.user_utils import get_current_user
 import json
 from common_module.utils.serializer import serialize_values
+from common_module.utils.validators import is_valid_uuid
 
 user_router = APIRouter(prefix='/v1')
 
@@ -442,9 +442,7 @@ async def get_user(
 
     # User.id is a uuid column, so a malformed id would otherwise reach the
     # database and come back as a 500 rather than a 400.
-    try:
-        uuid.UUID(user_id)
-    except ValueError:
+    if not is_valid_uuid(user_id):
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content=response_formatter.buildErrorResponse(
