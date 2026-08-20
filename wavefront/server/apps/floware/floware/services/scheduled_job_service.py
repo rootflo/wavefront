@@ -235,18 +235,10 @@ class ScheduledJobService:
             updates['max_retries'] = max_retries
         if status is not None:
             updates['status'] = status
-
-        reactivating_failed = (
-            job.status == 'failed'
-            and updates
-            and (status is None or status == 'active')
-        )
-        if reactivating_failed or status == 'active':
-            updates['status'] = 'active'
-            updates['retry_count'] = 0
-            updates['last_error'] = None
-        if reactivating_failed:
-            updates['next_run_at'] = datetime.now(timezone.utc)
+            # Reactivate a failed job.
+            if status == 'active' and job.status == 'failed':
+                updates['retry_count'] = 0
+                updates['last_error'] = None
 
         if updates:
             return await self.scheduled_job_repository.find_one_and_update(
