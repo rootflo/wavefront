@@ -36,26 +36,9 @@ const OutboundCallDialog: React.FC<OutboundCallDialogProps> = ({ isOpen, onOpenC
   // Get outbound phone numbers from the voice agent (not telephony config)
   const availablePhoneNumbers = agent.outbound_numbers || [];
 
-  // E.164 phone number validation
-  const isValidE164PhoneNumber = (phoneNumber: string): boolean => {
-    // E.164 format: +[1-15 digits]
-    const e164Regex = /^\+[1-9]\d{1,14}$/;
-    return e164Regex.test(phoneNumber);
-  };
-
   const handleInitiateCall = async () => {
     if (!toNumber.trim()) {
       notifyError('Please enter a destination phone number');
-      return;
-    }
-
-    if (!isValidE164PhoneNumber(toNumber.trim())) {
-      notifyError('Invalid phone number format. Use E.164 format (e.g., +14155559999)');
-      return;
-    }
-
-    if (fromNumber.trim() && !isValidE164PhoneNumber(fromNumber.trim())) {
-      notifyError('Invalid from number format. Use E.164 format (e.g., +14155551234)');
       return;
     }
 
