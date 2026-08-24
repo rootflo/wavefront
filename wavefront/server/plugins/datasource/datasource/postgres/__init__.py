@@ -3,7 +3,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from ..types import DataSourceABC
-from flo_cloud.postgres import PostgresClient
+from flo_cloud.postgres import PostgresClient, RowMutationResult
 from .config import PostgresConfig
 
 
@@ -71,21 +71,35 @@ class PostgresPlugin(DataSourceABC):
         data: Dict[str, Any],
         where_clause: str,
         params: Dict[str, Any],
-    ) -> int:
-        return self.client.update_rows_json(table_name, data, where_clause, params)
+        capture: bool = False,
+        capture_limit: Optional[int] = None,
+    ) -> RowMutationResult:
+        return self.client.update_rows_json(
+            table_name, data, where_clause, params, capture, capture_limit
+        )
 
     def update_rows_json_multi(
-        self, updates: List[Dict[str, Any]], require_all_matched: bool = True
-    ) -> List[Dict[str, Any]]:
-        return self.client.update_rows_json_multi(updates, require_all_matched)
+        self,
+        updates: List[Dict[str, Any]],
+        require_all_matched: bool = True,
+        capture: bool = False,
+        capture_limit: Optional[int] = None,
+    ) -> List[RowMutationResult]:
+        return self.client.update_rows_json_multi(
+            updates, require_all_matched, capture, capture_limit
+        )
 
     def delete_rows_json(
         self,
         table_name: str,
         where_clause: str,
         params: Dict[str, Any],
-    ) -> int:
-        return self.client.delete_rows_json(table_name, where_clause, params)
+        capture: bool = False,
+        capture_limit: Optional[int] = None,
+    ) -> RowMutationResult:
+        return self.client.delete_rows_json(
+            table_name, where_clause, params, capture, capture_limit
+        )
 
     async def execute_query(
         self, query: str, use_legacy_sql: bool = False, dry_run: bool = False, **kwargs

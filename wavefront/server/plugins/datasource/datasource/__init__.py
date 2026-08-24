@@ -5,7 +5,10 @@ from .types import (
     TableListResult,
     QueryResult,
 )
+from dataclasses import replace
 from typing import Any, Optional, List, Dict
+
+from flo_cloud.postgres import RowMutationResult
 
 from .bigquery import BigQueryPlugin, BigQueryConfig
 from .redshift import RedshiftPlugin, RedshiftConfig
@@ -107,9 +110,14 @@ class DatasourcePlugin:
         return self.datasource.insert_rows_json_multi(inserts)
 
     def update_rows_json(
-        self, table_name: str, data: Dict[str, Any], filter: str
-    ) -> int:
-        """Update the rows matching the OData ``filter``, returning how many changed.
+        self,
+        table_name: str,
+        data: Dict[str, Any],
+        filter: str,
+        capture: bool = False,
+        capture_limit: Optional[int] = None,
+    ) -> RowMutationResult:
+        """Update the rows matching the OData ``filter``.
 
         Unlike ``fetch_data``, which falls back to a '1=1' no-op predicate when no
         filter is given, an absent or unparseable filter is an error here: an
@@ -119,13 +127,21 @@ class DatasourcePlugin:
         where_clause, params = self.odata_parser.prepare_odata_filter(filter)
         if not where_clause:
             raise ValueError('A filter is required to update rows')
-        return self.datasource.update_rows_json(
-            table_name, data, where_clause, params or {}
+        result = self.datasource.update_rows_json(
+            table_name, data, where_clause, params or {}, capture, capture_limit
         )
+        # Attached here rather than deeper down because this is the only layer
+        # that sees the filter as OData: below it the predicate is already
+        # compiled, and the column -> value pairs cannot be recovered from it.
+        return replace(result, filter_params=params or None)
 
     def update_rows_json_multi(
-        self, updates: List[Dict[str, Any]], require_all_matched: bool = True
-    ) -> List[Dict[str, Any]]:
+        self,
+        updates: List[Dict[str, Any]],
+        require_all_matched: bool = True,
+        capture: bool = False,
+        capture_limit: Optional[int] = None,
+    ) -> List[RowMutationResult]:
         """Update rows across several tables atomically.
 
         ``updates``: list of ``{"table_name", "data", "filter"}``, where ``filter``
@@ -150,10 +166,24 @@ class DatasourcePlugin:
                     'params': params or {},
                 }
             )
-        return self.datasource.update_rows_json_multi(prepared, require_all_matched)
+        results = self.datasource.update_rows_json_multi(
+            prepared, require_all_matched, capture, capture_limit
+        )
+        # `prepared` and `results` are index-aligned: one result per entry, in
+        # order.
+        return [
+            replace(result, filter_params=spec['params'] or None)
+            for result, spec in zip(results, prepared)
+        ]
 
-    def delete_rows_json(self, table_name: str, filter: str) -> int:
-        """Delete the rows matching the OData ``filter``, returning how many went.
+    def delete_rows_json(
+        self,
+        table_name: str,
+        filter: str,
+        capture: bool = False,
+        capture_limit: Optional[int] = None,
+    ) -> RowMutationResult:
+        """Delete the rows matching the OData ``filter``.
 
         Same rule as ``update_rows_json``, and for a stronger reason: an absent or
         unparseable filter is an error, never a no-op predicate, because a DELETE
@@ -195,7 +225,10 @@ class DatasourcePlugin:
                 f'({", ".join(sorted(blank))}): it would match every row'
             )
 
-        return self.datasource.delete_rows_json(table_name, where_clause, params)
+        result = self.datasource.delete_rows_json(
+            table_name, where_clause, params, capture, capture_limit
+        )
+        return replace(result, filter_params=params or None)
 
     async def execute_query(
         self, query: str, use_legacy_sql: bool = False, dry_run: bool = False, **kwargs
