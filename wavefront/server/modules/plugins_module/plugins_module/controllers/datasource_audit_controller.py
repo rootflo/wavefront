@@ -1,4 +1,4 @@
-"""Admin-only read API over the datasource row-mutation audit trail.
+"""Read API over the datasource row-mutation audit trail, admin-only by default.
 
 Kept in its own router rather than added to ``datasource_router``: these routes
 are a read-only administrative surface with nothing in common with the data
@@ -18,6 +18,10 @@ from fastapi.responses import JSONResponse
 from fastapi.routing import APIRouter
 
 from common_module.common_container import CommonContainer
+from common_module.feature.feature_flag import (
+    ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG,
+    is_feature_enabled,
+)
 from common_module.response_formatter import ResponseFormatter
 from common_module.utils.serializer import serialize_values
 from common_module.utils.validators import is_valid_uuid
@@ -49,6 +53,22 @@ def _extract_filter_params(request: Request) -> Dict[str, str]:
         for key, value in request.query_params.items()
         if key.startswith(FILTER_PARAM_PREFIX) and key != FILTER_PARAM_PREFIX
     }
+
+
+async def _can_read_audit_logs(request: Request) -> bool:
+    """Read access to the audit trail: admin only, by default.
+
+    ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG lifts the same gate off the datasource
+    read paths, and the trail is a record of those rows, so it follows them —
+    a deployment that lets every authenticated user read the data has no reason
+    to hide what was done to it.
+    """
+    if is_feature_enabled(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG):
+        return True
+
+    role_id, _, _ = get_current_user(request)
+    return await check_is_admin(role_id)
+
 
 # Every column, `changes` included. It is what a listing is usually for — a UI
 # rendering "what changed" would otherwise fetch the list and then one detail
@@ -147,8 +167,7 @@ async def list_datasource_audit_logs(
     targeted by one of its columns is not findable by another, even though the
     row carries both.
     """
-    role_id, _, _ = get_current_user(request)
-    if not await check_is_admin(role_id):
+    if not await _can_read_audit_logs(request):
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
             content=response_formatter.buildErrorResponse('Admin access required'),
@@ -239,8 +258,7 @@ async def get_datasource_audit_log(
     record you already have the id of, typically from a `batch_id` or
     `request_id` you followed from somewhere else.
     """
-    role_id, _, _ = get_current_user(request)
-    if not await check_is_admin(role_id):
+    if not await _can_read_audit_logs(request):
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
             content=response_formatter.buildErrorResponse('Admin access required'),
