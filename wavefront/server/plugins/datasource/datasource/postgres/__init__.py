@@ -79,6 +79,14 @@ class PostgresPlugin(DataSourceABC):
     ) -> List[Dict[str, Any]]:
         return self.client.update_rows_json_multi(updates, require_all_matched)
 
+    def delete_rows_json(
+        self,
+        table_name: str,
+        where_clause: str,
+        params: Dict[str, Any],
+    ) -> int:
+        return self.client.delete_rows_json(table_name, where_clause, params)
+
     async def execute_query(
         self, query: str, use_legacy_sql: bool = False, dry_run: bool = False, **kwargs
     ) -> Any:

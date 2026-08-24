@@ -15,6 +15,10 @@ from fastapi.responses import JSONResponse
 from fastapi.routing import APIRouter
 
 from common_module.common_container import CommonContainer
+from common_module.feature.feature_flag import (
+    ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG,
+    is_feature_enabled,
+)
 from common_module.response_formatter import ResponseFormatter
 from common_module.utils.serializer import serialize_values
 from db_repo_module.models.resource import ResourceScope
@@ -31,6 +35,7 @@ from plugins_module.services.datasource_services import (
 from plugins_module.utils.helper import (
     InsertRowsJsonMultiPayload,
     AddDatasourcePayload,
+    DeleteRowsJsonPayload,
     UpdateDatasourcePayload,
     InsertRowsJsonPayload,
     UpdateRowsJsonPayload,
@@ -780,6 +785,81 @@ async def update_rows_json(
     )
 
 
+@datasource_router.delete('/v1/datasources/{datasource_id}/resources/{resource_id}')
+@inject
+async def delete_rows_json(
+    request: Request,
+    datasource_id: str,
+    resource_id: str,
+    delete_rows_json_payload: DeleteRowsJsonPayload,
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+):
+    """Delete the rows of one table matching an OData filter.
+
+    The filter travels in the body for the same reasons as on the PATCH — a
+    mutation's predicate should stay out of access logs, and the caller is spared
+    URL-encoding the quotes in `id eq '...'`. A DELETE with a body is unusual but
+    legal, and every alternative was worse: a `$filter` query param leaks the
+    predicate, and a POST `/delete` sub-route hides a destructive operation behind
+    the verb used for creation.
+
+    Matching nothing is a success returning `deleted_rows: 0`, not a 404. The
+    caller often cannot know whether the row is still there — unassigning a user
+    who was already unassigned is the ordinary case — and the end state it asked
+    for is the end state it got.
+
+    Currently only Postgres supports this; other datasource types return 501.
+    """
+    if not delete_rows_json_payload.filter.strip():
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                'A non-empty filter is required to delete rows'
+            ),
+        )
+
+    datasource_type, datasource_config = await get_datasource_config(datasource_id)
+    if not datasource_config:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse(
+                f'Datasource not found: {datasource_id}'
+            ),
+        )
+
+    datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
+
+    try:
+        deleted_rows = await asyncio.to_thread(
+            datasource_plugin.delete_rows_json,
+            resource_id,
+            delete_rows_json_payload.filter,
+        )
+    except NotImplementedError as e:
+        return JSONResponse(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
+    except ValueError as e:
+        # Unparseable filter, or one that resolved to nothing.
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            {
+                'message': f'Deleted {deleted_rows} rows successfully',
+                'deleted_rows': deleted_rows,
+            }
+        ),
+    )
+
+
 @datasource_router.put('/v1/{datasource_id}/dynamic-queries')
 @inject
 async def create_dynamic_query(
@@ -923,7 +1003,10 @@ async def execute_dynamic_query(
 
     rls_filter_str = None
     is_admin = await check_is_admin(role_id)
-    if not is_admin:
+    # With ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG on, non-admins are not narrowed
+    # down to their DATA resources: the row-level filter stays unset, so the
+    # query runs over the whole datasource exactly as it does for an admin.
+    if not is_admin and not is_feature_enabled(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG):
         rls_filters = await user_service.get_user_resources(
             user_id=user_id, scope=ResourceScope.DATA
         )

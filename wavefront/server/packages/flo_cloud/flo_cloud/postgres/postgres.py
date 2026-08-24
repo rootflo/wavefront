@@ -99,6 +99,31 @@ class PostgresClient:
                 finally:
                     cursor.close()
 
+    @contextmanager
+    def _write_cursor(self, operation: str = 'Write'):
+        """Yield a cursor on a connection that commits when the block exits.
+
+        The read helpers cannot stand in for this: ``execute_query`` fetches
+        results — which a statement without RETURNING does not produce — and
+        neither of them commits, so psycopg2 rolls the write back when the
+        connection closes. Every writing method therefore needs its own
+        connect/execute/commit block, and this is that block in one place.
+
+        ``operation`` only labels the log line, so 'Insert error' and 'Update
+        error' stay greppable.
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            try:
+                yield cursor
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                logger.error(f'{operation} error: {e}')
+                raise
+            finally:
+                cursor.close()
+
     def execute_query(
         self, query: str, params: Optional[Dict[str, Any]] = None
     ) -> List[Tuple]:
@@ -373,17 +398,8 @@ class PostgresClient:
         if not data:
             return
         query, serialized = self._build_insert(table_name, data)
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            try:
-                cursor.executemany(query, serialized)
-                conn.commit()
-            except psycopg2.Error as e:
-                conn.rollback()
-                logger.error(f'Insert error: {e}')
-                raise
-            finally:
-                cursor.close()
+        with self._write_cursor('Insert') as cursor:
+            cursor.executemany(query, serialized)
 
     def _build_update(
         self,
@@ -450,19 +466,46 @@ class PostgresClient:
             table_name, data, where_clause, params
         )
 
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            try:
-                cursor.execute(query, merged_params)
-                updated_rows = cursor.rowcount
-                conn.commit()
-                return updated_rows
-            except psycopg2.Error as e:
-                conn.rollback()
-                logger.error(f'Update error: {e}')
-                raise
-            finally:
-                cursor.close()
+        with self._write_cursor('Update') as cursor:
+            cursor.execute(query, merged_params)
+            return cursor.rowcount
+
+    def delete_rows_json(
+        self,
+        table_name: str,
+        where_clause: str,
+        params: Optional[Dict[str, Any]] = None,
+    ) -> int:
+        """Delete the rows matching ``where_clause``, returning how many went.
+
+        ``where_clause`` is a parameterized predicate (from the OData parser) using
+        ``:name`` placeholders, with ``params`` holding its values — the same
+        contract as ``update_rows_json``, minus the SET side, so there is no
+        ``set_`` prefixing to do and the parser's parameters can be used as they
+        come.
+
+        An empty ``where_clause`` is refused. A DELETE without a WHERE empties the
+        table, and unlike an UPDATE there is no prior value left to reconstruct it
+        from, so this check matters more here than anywhere else.
+        """
+        if not where_clause or not where_clause.strip():
+            raise ValueError('A where clause is required to delete rows')
+
+        converted_where, _ = self._convert_named_params(where_clause, params or {})
+
+        query = sql.SQL('DELETE FROM {table} WHERE {where}').format(
+            table=sql.Identifier(*table_name.split('.')),
+            where=sql.SQL(converted_where),
+        )
+
+        with self._write_cursor('Delete') as cursor:
+            # `or None`, not `or {}`: psycopg2 skips interpolation entirely when
+            # params is None, but an empty dict still triggers it and then trips
+            # over any literal '%' in a hand-written predicate. Callers coming
+            # through the OData parser always bind something, so this only
+            # matters to direct users of this class.
+            cursor.execute(query, params or None)
+            return cursor.rowcount
 
     def update_rows_json_multi(
         self,
@@ -504,6 +547,10 @@ class PostgresClient:
             for spec in updates
         ]
 
+        # Keeps its own connection block rather than using _write_cursor: it has
+        # to decide whether to commit *after* inspecting the row counts, and its
+        # rollback path raises NoRowsMatchedError, which is an expected 409 rather
+        # than a failure worth an error log.
         with self.get_connection() as conn:
             cursor = conn.cursor()
             try:
@@ -548,15 +595,8 @@ class PostgresClient:
         ]
         if not prepared:
             return
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            try:
-                for query, serialized in prepared:
-                    cursor.executemany(query, serialized)
-                conn.commit()
-            except psycopg2.Error as e:
-                conn.rollback()
-                logger.error(f'Multi-insert error: {e}')
-                raise
-            finally:
-                cursor.close()
+        # One cursor for every table, so the commit at the end of the block is
+        # what makes this all-or-nothing.
+        with self._write_cursor('Multi-insert') as cursor:
+            for query, serialized in prepared:
+                cursor.executemany(query, serialized)

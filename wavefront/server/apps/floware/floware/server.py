@@ -505,6 +505,10 @@ user_module_container.wire(
         'plugins_module.controllers',
         'user_management_module.controllers',
         'user_management_module.authorization',
+        # Helpers in utils (check_is_admin and its callers) resolve container
+        # providers themselves, so the package needs wiring too — otherwise only
+        # the copies imported into wired controller modules get patched.
+        'user_management_module.utils',
         'plugins_module.controllers',
     ],
 )
