@@ -39,6 +39,7 @@ from user_management_module.models.user_schema import ResetUser
 from user_management_module.models.user_schema import UpdateUser
 from user_management_module.utils.password_utils import hash_password
 from user_management_module.utils.user_utils import (
+    can_read_users,
     check_is_admin,
     create_account_lockout_response,
 )
@@ -333,10 +334,7 @@ async def get_all_user(
     offset: int = Query(0),
     force_fetch: int = Query(0),
 ):
-    role_id, _, _ = get_current_user(request)
-    is_admin = await check_is_admin(role_id)
-
-    if not is_admin:
+    if not await can_read_users(request):
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content=response_formatter.buildErrorResponse('Access denied'),
@@ -421,7 +419,8 @@ async def get_user(
 ):
     """Fetch one user by id — name and email, without roles.
 
-    Admin only, like the listing endpoint it complements. It resolves an id the
+    Admin only, like the listing endpoint it complements, unless
+    ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG opens both up. It resolves an id the
     caller already holds (a quotation's assignee, say) rather than returning a
     page, so the console does not have to pull the whole directory to put a name
     to one id.
@@ -431,10 +430,7 @@ async def get_user(
     it — there is no new invalidation to remember. Pass `force_fetch=1` to read
     through to the database.
     """
-    role_id, _, _ = get_current_user(request)
-    is_admin = await check_is_admin(role_id)
-
-    if not is_admin:
+    if not await can_read_users(request):
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content=response_formatter.buildErrorResponse('Access denied'),

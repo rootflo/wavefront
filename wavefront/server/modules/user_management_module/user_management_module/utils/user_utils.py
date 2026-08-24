@@ -1,6 +1,10 @@
 from datetime import datetime
 from typing import Optional
 
+from common_module.feature.feature_flag import (
+    ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG,
+    is_feature_enabled,
+)
 from common_module.response_formatter import ResponseFormatter
 import uuid
 from typing import Union
@@ -50,6 +54,22 @@ async def check_is_admin(
         return False
 
     return role.name == ADMIN_ROLE_NAME
+
+
+async def can_read_users(req: Request) -> bool:
+    """Read access for the user directory endpoints (list and fetch-by-id).
+
+    Admin-only by default. Deployments where every authenticated user needs to
+    resolve a user id to a name — a quotation's assignee, say — can open the
+    two read endpoints up by setting ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG=true.
+    The flag covers reads only; create/update/delete stay admin-gated
+    regardless.
+    """
+    if is_feature_enabled(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG):
+        return True
+
+    role_id, _, _ = get_current_user(req)
+    return await check_is_admin(role_id)
 
 
 def create_account_lockout_response(

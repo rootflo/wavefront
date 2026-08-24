@@ -15,6 +15,10 @@ from fastapi.responses import JSONResponse
 from fastapi.routing import APIRouter
 
 from common_module.common_container import CommonContainer
+from common_module.feature.feature_flag import (
+    ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG,
+    is_feature_enabled,
+)
 from common_module.response_formatter import ResponseFormatter
 from common_module.utils.serializer import serialize_values
 from db_repo_module.models.resource import ResourceScope
@@ -999,7 +1003,10 @@ async def execute_dynamic_query(
 
     rls_filter_str = None
     is_admin = await check_is_admin(role_id)
-    if not is_admin:
+    # With ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG on, non-admins are not narrowed
+    # down to their DATA resources: the row-level filter stays unset, so the
+    # query runs over the whole datasource exactly as it does for an admin.
+    if not is_admin and not is_feature_enabled(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG):
         rls_filters = await user_service.get_user_resources(
             user_id=user_id, scope=ResourceScope.DATA
         )
