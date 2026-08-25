@@ -3,6 +3,8 @@ from abc import ABC, abstractmethod
 from typing import Any, Generic, TypeVar, List, Dict, Optional
 from dataclasses import dataclass
 
+from flo_cloud.postgres import RowMutationResult
+
 
 @dataclass
 class Meta:
@@ -100,11 +102,14 @@ class DataSourceABC(ABC):
         data: Dict[str, Any],
         where_clause: str,
         params: Dict[str, Any],
-    ) -> int:
-        """Update the rows matching ``where_clause``, returning how many changed.
+        capture: bool = False,
+        capture_limit: Optional[int] = None,
+    ) -> RowMutationResult:
+        """Update the rows matching ``where_clause``.
 
         ``data`` maps column name to new value; ``where_clause`` is a parameterized
-        SQL predicate and ``params`` its values. Concrete (not abstract) with a
+        SQL predicate and ``params`` its values. ``capture`` asks for the updated
+        rows themselves rather than only a count. Concrete (not abstract) with a
         NotImplementedError default, for the same reason as
         ``insert_rows_json_multi``: datasource types that don't support it stay
         instantiable.
@@ -114,8 +119,12 @@ class DataSourceABC(ABC):
         )
 
     def update_rows_json_multi(
-        self, updates: List[Dict[str, Any]], require_all_matched: bool = True
-    ) -> List[Dict[str, Any]]:
+        self,
+        updates: List[Dict[str, Any]],
+        require_all_matched: bool = True,
+        capture: bool = False,
+        capture_limit: Optional[int] = None,
+    ) -> List[RowMutationResult]:
         """Update rows across multiple tables atomically, in one transaction.
 
         ``updates``: list of ``{"table_name", "data", "where_clause", "params"}``.
@@ -131,13 +140,17 @@ class DataSourceABC(ABC):
         table_name: str,
         where_clause: str,
         params: Dict[str, Any],
-    ) -> int:
-        """Delete the rows matching ``where_clause``, returning how many went.
+        capture: bool = False,
+        capture_limit: Optional[int] = None,
+    ) -> RowMutationResult:
+        """Delete the rows matching ``where_clause``.
 
         ``where_clause`` is a parameterized SQL predicate and ``params`` its
-        values. Concrete (not abstract) with a NotImplementedError default, for
-        the same reason as ``insert_rows_json_multi``: datasource types that don't
-        support it stay instantiable.
+        values. ``capture`` asks for the deleted rows themselves — after this
+        commits they exist nowhere else. Concrete (not abstract) with a
+        NotImplementedError default, for the same reason as
+        ``insert_rows_json_multi``: datasource types that don't support it stay
+        instantiable.
         """
         raise NotImplementedError(
             f'{type(self).__name__} does not support deleting rows'

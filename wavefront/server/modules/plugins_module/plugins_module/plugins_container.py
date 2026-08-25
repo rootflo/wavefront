@@ -7,6 +7,7 @@ from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyReposit
 from plugins_module.services.configuration_service import ConfigurationService
 from plugins_module.services.dynamic_query_service import DynamicQueryService
 from plugins_module.services.message_processor_service import MessageProcessorService
+from plugins_module.services.datasource_audit_service import DatasourceAuditService
 from flo_cloud.cloud_storage import CloudStorageManager
 
 
@@ -25,6 +26,10 @@ class PluginsContainer(containers.DeclarativeContainer):
     agentic_configuration_repository = providers.Dependency()
 
     namespace_repository = providers.Dependency()
+
+    # Same reasoning: declared once in db_repo_container alongside every other
+    # repository, and handed in here rather than re-declared.
+    datasource_audit_log_repository = providers.Dependency()
 
     datasource_repository = providers.Singleton(
         SQLAlchemyRepository[Datasource],
@@ -63,6 +68,11 @@ class PluginsContainer(containers.DeclarativeContainer):
         configuration_repository=agentic_configuration_repository,
         namespace_repository=namespace_repository,
         cache_manager=cache_manager,
+    )
+
+    datasource_audit_service = providers.Singleton(
+        DatasourceAuditService,
+        audit_log_repository=datasource_audit_log_repository,
     )
 
     message_processor_service = providers.Singleton(
