@@ -17,7 +17,7 @@ dependencies = [
     "pandas~=2.2.3",
     "ollama~=0.4.8",
     "textract~=1.6.5",
-    "flo-ai==1.1.9",
+    "flo-ai",
     "google-cloud-pubsub~=2.30.0",
     "boto3<=1.38.40",
     "pyyaml>=6.0.3,<7",
@@ -27,6 +27,7 @@ dependencies = [
 
 [tool.uv.sources]
 flo-cloud = { workspace = true }
+flo-ai = { git = "https://github.com/rootflo/flo-ai.git", subdirectory = "flo_ai", branch = "fix/pass_file_name_to_floai_MediaMessage" }
 auth-module = { workspace = true }
 common-module = { workspace = true }
 db-repo-module = { workspace = true }

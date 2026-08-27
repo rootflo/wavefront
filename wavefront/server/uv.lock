@@ -86,7 +86,7 @@ requires-dist = [
     { name = "api-services-module", editable = "modules/api_services_module" },
     { name = "celery", extras = ["redis"], specifier = ">=5.4.0,<6.0.0" },
     { name = "common-module", editable = "modules/common_module" },
-    { name = "flo-ai", specifier = "==1.1.9" },
+    { name = "flo-ai", git = "https://github.com/rootflo/flo-ai.git?subdirectory=flo_ai&branch=fix%2Fpass_file_name_to_floai_MediaMessage" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "flo-utils", editable = "packages/flo_utils" },
     { name = "llm-inference-config-module", editable = "modules/llm_inference_config_module" },
@@ -1475,7 +1475,7 @@ wheels = [
 [[package]]
 name = "flo-ai"
 version = "1.1.9"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/rootflo/flo-ai.git?subdirectory=flo_ai&branch=fix%2Fpass_file_name_to_floai_MediaMessage#f60dae25b0a955491b28e4c20b04cbaee581a95f" }
 dependencies = [
     { name = "aiohttp" },
     { name = "anthropic" },
@@ -1494,10 +1494,6 @@ dependencies = [
     { name = "pyjwt" },
     { name = "pymupdf" },
     { name = "pyyaml" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/06/91/780fa7dd81a22463765fb24fdb625cf6dcbb0fa42d19f3ef3a439fdb724e/flo_ai-1.1.9.tar.gz", hash = "sha256:29f67cc490844d3fe21522531b42ef130983b9092105acaf8734f1e98b073fd0", size = 116268, upload-time = "2026-07-31T12:14:02.573Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/b0/0e/c353459cfd290404753b63cf3ccfa94c8a92145b30607fd3a2c8c7a4ecc2/flo_ai-1.1.9-py3-none-any.whl", hash = "sha256:bcf67b9931971f6c6e614bbba305369d57d30639105ef57c26b316db397b06fa", size = 202159, upload-time = "2026-07-31T12:14:00.96Z" },
 ]
 
 [[package]]
@@ -2670,7 +2666,7 @@ dev = [
 requires-dist = [
     { name = "boto3", specifier = "<=1.38.40" },
     { name = "datasource", editable = "plugins/datasource" },
-    { name = "flo-ai", specifier = "==1.1.9" },
+    { name = "flo-ai", git = "https://github.com/rootflo/flo-ai.git?subdirectory=flo_ai&branch=fix%2Fpass_file_name_to_floai_MediaMessage" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "google-cloud-pubsub", specifier = "~=2.30.0" },
     { name = "numpy", specifier = ">=1.24,<2.0" },
@@ -5597,7 +5593,7 @@ dev = [
 requires-dist = [
     { name = "common-module", editable = "modules/common_module" },
     { name = "datasource", editable = "plugins/datasource" },
-    { name = "flo-ai", specifier = "==1.1.9" },
+    { name = "flo-ai", git = "https://github.com/rootflo/flo-ai.git?subdirectory=flo_ai&branch=fix%2Fpass_file_name_to_floai_MediaMessage" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "httpx", specifier = ">=0.27.0,<1.0.0" },
     { name = "knowledge-base-module", editable = "modules/knowledge_base_module" },

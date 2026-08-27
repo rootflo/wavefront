@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     gnupg2 \
     apt-transport-https \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Add Microsoft's ODBC driver repository and install msodbcsql
