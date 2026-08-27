@@ -43,17 +43,6 @@ def process_inference_inputs(
             elif input_item.get('role') == 'user':
                 input_content = input_item.get('content', {})
                 if is_image_message(input_content):
-                    # Inject filename as a text message before the image so
-                    # agents can reference the original file name in their output.
-                    # file_name = input_content.get('file_name')
-                    # if file_name:
-                    #     resolved_inputs.append(
-                    #         UserMessage(
-                    #             content=TextMessageContent(
-                    #                 text=f'The original filename of this image is: {file_name}'
-                    #             )
-                    #         )
-                    #     )
                     # Extract image_bytes and mime_type from image_base64
                     try:
                         data_url_pattern = r'^data:(image/[a-zA-Z0-9.+-]+);base64,(.+)$'
@@ -64,7 +53,9 @@ def process_inference_inputs(
                             mime_type = match.group(1)
                             processed_image = UserMessage(
                                 content=ImageMessageContent(
-                                    base64=match.group(2), mime_type=mime_type
+                                    base64=match.group(2),
+                                    mime_type=mime_type,
+                                    file_name=input_content.get('file_name'),
                                 )
                             )
                             resolved_inputs.append(processed_image)
@@ -74,6 +65,7 @@ def process_inference_inputs(
                                     content=ImageMessageContent(
                                         base64=input_content.get('image_base64'),
                                         mime_type=input_content.get('mime_type'),
+                                        file_name=input_content.get('file_name'),
                                     ),
                                 )
                             )
@@ -86,23 +78,13 @@ def process_inference_inputs(
                             detail=f'Invalid base64 image data: {e}',
                         )
                 elif is_doc_message(input_content):
-                    # Inject filename as a text message before the document so
-                    # agents can reference the original file name in their output.
-                    # file_name = input_content.get('file_name')
-                    # if file_name:
-                    #     resolved_inputs.append(
-                    #         UserMessage(
-                    #             content=TextMessageContent(
-                    #                 text=f'The original filename of this document is: {file_name}'
-                    #             )
-                    #         )
-                    #     )
                     resolved_inputs.append(
                         UserMessage(
                             content=DocumentMessageContent(
                                 base64=input_content.get('document_base64'),
                                 mime_type=input_content.get('mime_type'),
                                 url=input_content.get('document_url'),
+                                file_name=input_content.get('file_name'),
                             )
                         )
                     )

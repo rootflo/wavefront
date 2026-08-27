@@ -5,7 +5,29 @@ from typing import Dict, Any, List, Optional, AsyncIterator
 from flo_ai.tool.base_tool import Tool
 from flo_ai.utils.logger import logger
 from flo_ai.utils.profiler import aprofile, profile as _sync_profile
-from flo_ai.models.chat_message import DocumentMessageContent, ImageMessageContent
+from flo_ai.models.chat_message import (
+    DocumentMessageContent,
+    ImageMessageContent,
+    MediaMessageContent,
+)
+
+
+def file_name_text_block(media: MediaMessageContent) -> Optional[Dict[str, Any]]:
+    """An OpenAI-shaped text block naming the file, or None if unnamed.
+
+    Agents are routinely asked to report the original filename of a document
+    they were given, and nothing else in the request carries it — the media
+    block is just bytes plus a mime type. Without this the model has no
+    source for the name and invents a plausible-looking one.
+
+    Prepended to the media block within the *same* message rather than sent
+    as its own message: a ForEach that iterates over the input messages
+    counts one item per message, so an extra message per file would double
+    the iterations.
+    """
+    if not media.file_name:
+        return None
+    return {'type': 'text', 'text': f'Original filename: {media.file_name}'}
 
 
 class BaseLLM(ABC):

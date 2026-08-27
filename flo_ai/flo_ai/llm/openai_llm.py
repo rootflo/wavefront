@@ -1,7 +1,7 @@
 from typing import Dict, Any, List, AsyncIterator, Optional
 from openai import AsyncOpenAI
-from .base_llm import BaseLLM
-from flo_ai.models.chat_message import ImageMessageContent
+from .base_llm import BaseLLM, file_name_text_block
+from flo_ai.models.chat_message import DocumentMessageContent, ImageMessageContent
 from flo_ai.tool.base_tool import Tool
 from flo_ai.telemetry.instrumentation import (
     trace_llm_call,
@@ -185,18 +185,31 @@ class OpenAI(BaseLLM):
         """Format tools for OpenAI's API"""
         return [self.format_tool_for_llm(tool) for tool in tools]
 
+    async def format_document_in_message(
+        self, document: DocumentMessageContent
+    ) -> list[dict]:
+        """Rasterized document pages, preceded by the file's name if known."""
+        blocks = await super().format_document_in_message(document)
+        name_block = file_name_text_block(document)
+        # New list — `blocks` is the cached value held on the document.
+        return [name_block, *blocks] if name_block else blocks
+
     def format_image_in_message(self, image: ImageMessageContent) -> list[dict]:
         """Format a image in the message"""
         # OpenAI Chat Completions multimodal format:
         # {"type":"image_url","image_url":{"url":"https://..."}} or data URLs.
+        name_block = file_name_text_block(image)
+        prefix = [name_block] if name_block else []
+
         if image.url:
             return [
+                *prefix,
                 {
                     'type': 'image_url',
                     'image_url': {
                         'url': image.url,
                     },
-                }
+                },
             ]
 
         if image.base64 or image.bytes:
@@ -214,12 +227,13 @@ class OpenAI(BaseLLM):
 
             data_url = f'data:{image.mime_type};base64,{b64}'
             return [
+                *prefix,
                 {
                     'type': 'image_url',
                     'image_url': {
                         'url': data_url,
                     },
-                }
+                },
             ]
 
         raise NotImplementedError(

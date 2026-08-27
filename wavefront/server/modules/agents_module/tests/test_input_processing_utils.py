@@ -262,6 +262,99 @@ class TestProcessInferenceInputs:
         )
 
 
+class TestFileNamePropagation:
+    """Test cases for carrying the original file_name onto media content"""
+
+    def test_image_data_url_carries_file_name(self):
+        """Test that file_name survives the data URL branch"""
+        simple_png_b64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+
+        inputs = [
+            {
+                'role': 'user',
+                'content': {
+                    'image_base64': f'data:image/png;base64,{simple_png_b64}',
+                    'file_name': 'photo.png',
+                },
+            }
+        ]
+
+        result = process_inference_inputs(inputs)
+
+        # Exactly one message - the file name rides on the content, it is not
+        # injected as an extra text message
+        assert len(result) == 1
+        assert isinstance(result[0].content, ImageMessageContent)
+        assert result[0].content.file_name == 'photo.png'
+
+    def test_image_plain_base64_carries_file_name(self):
+        """Test that file_name survives the plain base64 branch"""
+        simple_png_b64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+
+        inputs = [
+            {
+                'role': 'user',
+                'content': {
+                    'image_base64': simple_png_b64,
+                    'mime_type': 'image/png',
+                    'file_name': 'photo.png',
+                },
+            }
+        ]
+
+        result = process_inference_inputs(inputs)
+
+        assert len(result) == 1
+        assert isinstance(result[0].content, ImageMessageContent)
+        assert result[0].content.file_name == 'photo.png'
+
+    def test_document_carries_file_name(self):
+        """Test that file_name is set on DocumentMessageContent"""
+        document_base64_str = base64.b64encode(b'fake_pdf_content').decode('utf-8')
+
+        inputs = [
+            {
+                'role': 'user',
+                'content': {
+                    'document_base64': document_base64_str,
+                    'mime_type': 'application/pdf',
+                    'file_name': 'invoice.pdf',
+                },
+            }
+        ]
+
+        result = process_inference_inputs(inputs)
+
+        assert len(result) == 1
+        assert isinstance(result[0].content, DocumentMessageContent)
+        assert result[0].content.file_name == 'invoice.pdf'
+
+    def test_media_without_file_name_defaults_to_none(self):
+        """Test that omitting file_name leaves it None on image and document"""
+        simple_png_b64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+        document_base64_str = base64.b64encode(b'fake_pdf_content').decode('utf-8')
+
+        inputs = [
+            {
+                'role': 'user',
+                'content': {'image_base64': f'data:image/png;base64,{simple_png_b64}'},
+            },
+            {
+                'role': 'user',
+                'content': {
+                    'document_base64': document_base64_str,
+                    'mime_type': 'application/pdf',
+                },
+            },
+        ]
+
+        result = process_inference_inputs(inputs)
+
+        assert len(result) == 2
+        assert result[0].content.file_name is None
+        assert result[1].content.file_name is None
+
+
 class TestIsImageMessage:
     """Test cases for is_image_message function"""
 
