@@ -15,13 +15,3 @@
 .yarnrc.yml
 README.md
 extras
-
-# Python build/venv/cache artifacts — never ship source venvs or caches into
-# the build context (each image builds its own env via `uv sync`).
-**/.venv
-**/__pycache__
-**/*.pyc
-**/.pytest_cache
-**/.ruff_cache
-**/.mypy_cache
-**/*.egg-info

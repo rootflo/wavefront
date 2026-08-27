@@ -14,7 +14,7 @@ dependencies = [
     "tools-module",
     "api-services-module",
     "llm-inference-config-module",
-    "flo-ai",
+    "flo-ai==1.1.9",
     "celery[redis]>=5.4.0,<6.0.0",
 ]
 
@@ -22,7 +22,6 @@ dependencies = [
 common-module = { workspace = true }
 flo-utils = { workspace = true }
 flo-cloud = { workspace = true }
-flo-ai = { git = "https://github.com/rootflo/flo-ai.git", subdirectory = "flo_ai", branch = "fix/pass_file_name_to_floai_MediaMessage" }
 tools-module = {workspace = true}
 api-services-module = {workspace = true}
 llm-inference-config-module = {workspace = true}

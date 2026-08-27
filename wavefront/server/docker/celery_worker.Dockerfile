@@ -9,7 +9,6 @@ RUN apt-get update && apt-get install -y \
     gcc \
     libgl1 \
     libglib2.0-0 \
-    git \
     && rm -rf /var/lib/apt/lists/*
 
 COPY wavefront/server/pyproject.toml wavefront/server/uv.lock ./

@@ -3,7 +3,7 @@ name = "tools_module"
 version = "0.1.0"
 description = "Tools module for Flo AI agent system"
 dependencies = [
-    "flo-ai",
+    "flo-ai==1.1.9",
     "httpx>=0.27.0,<1.0.0",
     "flo_cloud",
 
@@ -15,7 +15,6 @@ dependencies = [
 
 [tool.uv.sources]
 flo-cloud = { workspace = true }
-flo-ai = { git = "https://github.com/rootflo/flo-ai.git", subdirectory = "flo_ai", branch = "fix/pass_file_name_to_floai_MediaMessage" }
 common-module = { workspace = true }
 plugins-module = { workspace = true }
 datasource = { workspace = true }
