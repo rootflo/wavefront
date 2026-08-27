@@ -12,7 +12,7 @@ from unittest.mock import Mock, AsyncMock, patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from flo_ai.llm.openai_llm import OpenAI
-from flo_ai.models.chat_message import ImageMessageContent
+from flo_ai.models.chat_message import DocumentMessageContent, ImageMessageContent
 from flo_ai.tool.base_tool import Tool
 
 
@@ -273,6 +273,59 @@ class TestOpenAI:
         assert len(result) == 1
         assert result[0]['type'] == 'image_url'
         assert result[0]['image_url']['url'] == 'https://example.com/image.jpg'
+
+    def test_openai_format_image_includes_file_name(self):
+        """A named image is preceded by a text block stating the file name."""
+        llm = OpenAI(api_key='test-key-123')
+
+        image = ImageMessageContent(
+            base64='AAAA', mime_type='image/png', file_name='site_photo.png'
+        )
+        result = llm.format_image_in_message(image)
+
+        assert len(result) == 2
+        assert result[0] == {
+            'type': 'text',
+            'text': 'Original filename: site_photo.png',
+        }
+        assert result[1]['type'] == 'image_url'
+
+    def test_openai_format_image_without_file_name_unchanged(self):
+        """An unnamed image produces the image block alone, as before."""
+        llm = OpenAI(api_key='test-key-123')
+
+        image = ImageMessageContent(base64='AAAA', mime_type='image/png')
+        result = llm.format_image_in_message(image)
+
+        assert len(result) == 1
+        assert result[0]['type'] == 'image_url'
+
+    @pytest.mark.asyncio
+    async def test_openai_format_document_includes_file_name(self):
+        """A named document is preceded by its file name, once per call.
+
+        The rasterized pages are cached on the document, so the name block
+        must be prepended to a copy — otherwise repeated calls would stack up
+        duplicate name blocks in the cached list.
+        """
+        llm = OpenAI(api_key='test-key-123')
+
+        document = DocumentMessageContent(
+            base64='JVBERi0=', mime_type='application/pdf', file_name='invoice.pdf'
+        )
+        pages = [{'type': 'image_url', 'image_url': {'url': 'page-1'}}]
+
+        with patch.object(OpenAI, '_rasterize_pdf_to_images', return_value=pages):
+            first = await llm.format_document_in_message(document)
+            second = await llm.format_document_in_message(document)
+
+        assert first == [
+            {'type': 'text', 'text': 'Original filename: invoice.pdf'},
+            {'type': 'image_url', 'image_url': {'url': 'page-1'}},
+        ]
+        assert second == first
+        # The cached value is the pages alone, unmutated
+        assert document._formatted_cache['OpenAI'] == pages
 
     @pytest.mark.asyncio
     async def test_openai_generate_error_handling(self):
