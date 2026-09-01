@@ -88,6 +88,25 @@ class DocumentPayload(BaseModel):
     model: Optional[str] = None
 
 
+class ExactMatchPayload(BaseModel):
+    """
+    Payload for the branch/date-window restricted exact DINO match. Use
+    image_data (base64) or image_url (gs:// or s3://); image_url has priority
+    if both are set. `threshold` is required (no default) so the caller
+    always controls the similarity cutoff explicitly.
+    """
+
+    image_data: Optional[str] = None
+    image_url: Optional[str] = None
+    branch: str
+    loan_date_start: datetime
+    loan_date_end: datetime
+    exclude_loan_id: str
+    threshold: float = Field(
+        ..., description='Cosine similarity threshold; only matches above this are returned'
+    )
+
+
 def convert_uuids_to_str(data):
     """Recursively converts UUID objects (and dataclasses, e.g. ImageMatch)
     in a dictionary or list into JSON-safe structures."""
@@ -296,6 +315,78 @@ async def retrieve_query(
         status_code=status.HTTP_200_OK,
         content=response_formatter.buildSuccessResponse(
             data={'documents': retrieved_docs}
+        ),
+    )
+
+
+@rag_retrieval_router.post('/v1/knowledge-base/{kb_id}/exact-match')
+@inject
+async def exact_match_query(
+    kb_id: uuid.UUID,
+    payload: ExactMatchPayload,
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+    knowledge_base_repository: SQLAlchemyRepository[KnowledgeBase] = Depends(
+        Provide[KnowledgeBaseContainer.knowledge_base_repository]
+    ),
+    image_rag_retrieval: ImageRagRetrieve = Depends(
+        Provide[KnowledgeBaseContainer.image_knowledge_base_retrieve]
+    ),
+    config: dict = Depends(Provide[KnowledgeBaseContainer.config]),
+    cloud_storage: CloudStorageManager = Depends(
+        Provide[KnowledgeBaseContainer.cloud_storage]
+    ),
+):
+    """
+    Exact (non-ANN) DINO similarity match against documents in `kb_id`
+    restricted to `branch` and a `[loan_date_start, loan_date_end]` window,
+    excluding `exclude_loan_id`. Unlike `/retrieve`, there is no `top_k` --
+    the response only ever contains rows already scoring above `threshold`,
+    and the underlying query never touches the HNSW index (see
+    `QueryGenerator.get_image_embedding_dino_exact`).
+    """
+    if not payload.image_data and not payload.image_url:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                'Query or Image data should not be empty'
+            ),
+        )
+    existing_kb = await knowledge_base_repository.find_one(id=kb_id)
+    if not existing_kb:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                'Knowledge Base with the mentioned id doesnt exist'
+            ),
+        )
+    image_data, error_response = await _resolve_image_data(
+        ImagePayload(image_data=payload.image_data, image_url=payload.image_url),
+        cloud_storage,
+        config,
+        response_formatter,
+    )
+    if error_response is not None:
+        return error_response
+
+    inference_url = config['model']['inference_service_url']
+    documents = await image_rag_retrieval.exact_match_dino(
+        image_data,
+        inference_url,
+        kb_id,
+        payload.branch,
+        payload.loan_date_start,
+        payload.loan_date_end,
+        payload.exclude_loan_id,
+        payload.threshold,
+    )
+    documents = convert_uuids_to_str(documents)
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            data={'documents': documents, 'match_count': len(documents)}
         ),
     )
 
