@@ -88,25 +88,6 @@ class DocumentPayload(BaseModel):
     model: Optional[str] = None
 
 
-class ExactMatchPayload(BaseModel):
-    """
-    Payload for the branch/date-window restricted exact DINO match. Use
-    image_data (base64) or image_url (gs:// or s3://); image_url has priority
-    if both are set. `threshold` is required (no default) so the caller
-    always controls the similarity cutoff explicitly.
-    """
-
-    image_data: Optional[str] = None
-    image_url: Optional[str] = None
-    branch: str
-    loan_date_start: datetime
-    loan_date_end: datetime
-    exclude_loan_id: str
-    threshold: float = Field(
-        ..., description='Cosine similarity threshold; only matches above this are returned'
-    )
-
-
 def convert_uuids_to_str(data):
     """Recursively converts UUID objects (and dataclasses, e.g. ImageMatch)
     in a dictionary or list into JSON-safe structures."""
@@ -247,6 +228,30 @@ async def retrieve_query(
         None, description='Number of results to return (overrides top_k)'
     ),
     query_filter: str | None = Query(None, alias='$filter'),
+    exact_match: bool = Query(
+        False,
+        description=(
+            'If true, run an exact (non-ANN) DINO match restricted by '
+            'filter1/document_date/exclude_filter4 instead of the default '
+            'top_k ANN search. Requires image input, threshold, filter1, '
+            'document_date_start, document_date_end, and exclude_filter4. '
+            'The underlying query never touches the HNSW index (see '
+            'QueryGenerator.get_image_embedding_dino_exact_match) so results '
+            'are exact, not approximate.'
+        ),
+    ),
+    filter1: Optional[str] = Query(
+        None, description='Exact-match only: equality filter on knowledge_base_documents.filter1'
+    ),
+    document_date_start: Optional[datetime] = Query(
+        None, description='Exact-match only: start of the document_date window (inclusive)'
+    ),
+    document_date_end: Optional[datetime] = Query(
+        None, description='Exact-match only: end of the document_date window (inclusive)'
+    ),
+    exclude_filter4: Optional[str] = Query(
+        None, description='Exact-match only: exclude documents whose filter4 equals this value'
+    ),
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
     ),
@@ -271,6 +276,27 @@ async def retrieve_query(
                 'Query or Image data should not be empty'
             ),
         )
+    if exact_match and not payload:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                'Image data is required when exact_match=true'
+            ),
+        )
+    if exact_match and (
+        threshold is None
+        or filter1 is None
+        or document_date_start is None
+        or document_date_end is None
+        or exclude_filter4 is None
+    ):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                'threshold, filter1, document_date_start, document_date_end, '
+                'and exclude_filter4 are all required when exact_match=true'
+            ),
+        )
     existing_kb = await knowledge_base_repository.find_one(id=kb_id)
     if not existing_kb:
         return JSONResponse(
@@ -279,7 +305,27 @@ async def retrieve_query(
                 'Knowledge Base with the mentioned id doesnt exist'
             ),
         )
-    if query:
+    match_count = None
+    if exact_match:
+        image_data, error_response = await _resolve_image_data(
+            payload, cloud_storage, config, response_formatter
+        )
+        if error_response is not None:
+            return error_response
+        inference_url = config['model']['inference_service_url']
+        retrieved_docs = await image_rag_retrieval.exact_match_dino(
+            image_data,
+            inference_url,
+            kb_id,
+            filter1,
+            document_date_start,
+            document_date_end,
+            exclude_filter4,
+            threshold,
+        )
+        retrieved_docs = convert_uuids_to_str(retrieved_docs)
+        match_count = len(retrieved_docs)
+    elif query:
         retrieved_docs = await rag_retrieval.retrieve_documents(
             query,
             kb_id,
@@ -306,88 +352,20 @@ async def retrieve_query(
         )
         retrieved_docs = convert_uuids_to_str(retrieved_docs)
     if not retrieved_docs:
+        empty_data = {'documents': []}
+        if match_count is not None:
+            empty_data['match_count'] = 0
         return JSONResponse(
             status_code=status.HTTP_200_OK,
-            content=response_formatter.buildSuccessResponse(data={'documents': []}),
+            content=response_formatter.buildSuccessResponse(data=empty_data),
         )
 
+    data = {'documents': retrieved_docs}
+    if match_count is not None:
+        data['match_count'] = match_count
     return JSONResponse(
         status_code=status.HTTP_200_OK,
-        content=response_formatter.buildSuccessResponse(
-            data={'documents': retrieved_docs}
-        ),
-    )
-
-
-@rag_retrieval_router.post('/v1/knowledge-base/{kb_id}/exact-match')
-@inject
-async def exact_match_query(
-    kb_id: uuid.UUID,
-    payload: ExactMatchPayload,
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter]
-    ),
-    knowledge_base_repository: SQLAlchemyRepository[KnowledgeBase] = Depends(
-        Provide[KnowledgeBaseContainer.knowledge_base_repository]
-    ),
-    image_rag_retrieval: ImageRagRetrieve = Depends(
-        Provide[KnowledgeBaseContainer.image_knowledge_base_retrieve]
-    ),
-    config: dict = Depends(Provide[KnowledgeBaseContainer.config]),
-    cloud_storage: CloudStorageManager = Depends(
-        Provide[KnowledgeBaseContainer.cloud_storage]
-    ),
-):
-    """
-    Exact (non-ANN) DINO similarity match against documents in `kb_id`
-    restricted to `branch` and a `[loan_date_start, loan_date_end]` window,
-    excluding `exclude_loan_id`. Unlike `/retrieve`, there is no `top_k` --
-    the response only ever contains rows already scoring above `threshold`,
-    and the underlying query never touches the HNSW index (see
-    `QueryGenerator.get_image_embedding_dino_exact`).
-    """
-    if not payload.image_data and not payload.image_url:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(
-                'Query or Image data should not be empty'
-            ),
-        )
-    existing_kb = await knowledge_base_repository.find_one(id=kb_id)
-    if not existing_kb:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(
-                'Knowledge Base with the mentioned id doesnt exist'
-            ),
-        )
-    image_data, error_response = await _resolve_image_data(
-        ImagePayload(image_data=payload.image_data, image_url=payload.image_url),
-        cloud_storage,
-        config,
-        response_formatter,
-    )
-    if error_response is not None:
-        return error_response
-
-    inference_url = config['model']['inference_service_url']
-    documents = await image_rag_retrieval.exact_match_dino(
-        image_data,
-        inference_url,
-        kb_id,
-        payload.branch,
-        payload.loan_date_start,
-        payload.loan_date_end,
-        payload.exclude_loan_id,
-        payload.threshold,
-    )
-    documents = convert_uuids_to_str(documents)
-
-    return JSONResponse(
-        status_code=status.HTTP_200_OK,
-        content=response_formatter.buildSuccessResponse(
-            data={'documents': documents, 'match_count': len(documents)}
-        ),
+        content=response_formatter.buildSuccessResponse(data=data),
     )
 
 

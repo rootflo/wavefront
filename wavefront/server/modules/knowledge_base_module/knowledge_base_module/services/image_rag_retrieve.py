@@ -84,23 +84,25 @@ class ImageRagRetrieve:
         image_data: str,
         inference_url: str,
         kb_id: uuid.UUID,
-        branch: str,
-        loan_date_start,
-        loan_date_end,
-        exclude_loan_id: str,
+        filter1: str,
+        document_date_start,
+        document_date_end,
+        exclude_filter4: str,
         threshold: float,
     ) -> list[dict]:
         """
         Exact (non-ANN) DINO similarity match, restricted to documents in
-        `kb_id` whose real `branch`/`loan_date` columns fall within the given
-        window, excluding `exclude_loan_id` (the loan currently being
-        processed).
+        `kb_id` whose real `filter1`/`document_date` columns fall within the
+        given window, excluding `exclude_filter4` (e.g. the record currently
+        being processed). `filter1`/`filter4` are generic, caller-defined
+        columns -- see `KnowledgeBaseDocuments` -- this service has no notion
+        of what they mean semantically.
 
         Only the DINO embedding is fetched/compared -- this check is purely
         about near-duplicate/visual-similarity matching (the same use case
         `DINO_MATCH_SCORE_THRESHOLD` already serves in flo-api's spurious-image
         check), not general semantic (CLIP) similarity. The underlying query
-        (`QueryGenerator.get_image_embedding_dino_exact`) never engages the
+        (`QueryGenerator.get_image_embedding_dino_exact_match`) never engages the
         HNSW index -- see that method's docstring -- so scores returned here
         are always exact, not approximate.
         """
@@ -122,13 +124,13 @@ class ImageRagRetrieve:
             return []
 
         try:
-            sql_query, query_params = self.query_generator.get_image_embedding_dino_exact(
+            sql_query, query_params = self.query_generator.get_image_embedding_dino_exact_match(
                 dino_embedding,
                 kb_id,
-                branch,
-                loan_date_start,
-                loan_date_end,
-                exclude_loan_id,
+                filter1,
+                document_date_start,
+                document_date_end,
+                exclude_filter4,
                 threshold,
             )
             return await self.knowledge_base_embeddings_repository.execute_query(

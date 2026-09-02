@@ -294,26 +294,30 @@ class QueryGenerator:
 
         return sql_query, params
 
-    def get_image_embedding_dino_exact(
+    def get_image_embedding_dino_exact_match(
         self,
         query_embeddings: list,
         kb_id: str,
-        branch: str,
-        loan_date_start,
-        loan_date_end,
-        exclude_loan_id: str,
+        filter1: str,
+        document_date_start,
+        document_date_end,
+        exclude_filter4: str,
         threshold: float,
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Exact (brute-force) DINO similarity search restricted to documents on
-        `knowledge_base_documents` matching `branch` and a `loan_date` window,
-        excluding `exclude_loan_id` (the loan currently being processed).
+        `knowledge_base_documents` matching `filter1` and a `document_date`
+        window, excluding `exclude_filter4` (e.g. the record currently being
+        processed). `filter1`/`filter4` are generic, caller-defined columns --
+        see `KnowledgeBaseDocuments` -- this query has no notion of what they
+        mean semantically, only that one is an equality/range filter and the
+        other is an exclusion.
 
         Deliberately has no `ORDER BY`/`LIMIT` tied to the `<=>` distance
         expression anywhere -- that is what would let Postgres route the
         query through the HNSW index (`ix_kbe_embedding_vector_1_hnsw_cosine`)
         for an *approximate* top-K search. Here we instead pre-filter to a
-        small candidate set via the real, indexed `branch`/`loan_date`
+        small candidate set via the real, indexed `filter1`/`document_date`
         columns, then compute an exact cosine distance for every one of those
         rows and only keep the ones above `threshold` -- so results are exact,
         not approximate, and the count of matches is precise.
@@ -327,10 +331,10 @@ class QueryGenerator:
         params: Dict[str, Any] = {
             'query_embedding': query_embeddings,
             'kb_id': str(kb_id),
-            'branch': branch,
-            'loan_date_start': loan_date_start,
-            'loan_date_end': loan_date_end,
-            'exclude_loan_id': exclude_loan_id,
+            'filter1': filter1,
+            'document_date_start': document_date_start,
+            'document_date_end': document_date_end,
+            'exclude_filter4': exclude_filter4,
             'threshold': threshold,
         }
 
@@ -342,15 +346,15 @@ class QueryGenerator:
                 d.file_path,
                 d.file_name,
                 d.knowledge_base_id,
-                d.loan_id,
+                d.filter4,
                 d.metadata_value,
                 1 - ((e.embedding_vector_1::vector(1024)) <=> :query_embedding ::vector(1024)) AS dino_score
             FROM {KnowledgeBaseEmbeddings.__tablename__} e
             JOIN {KnowledgeBaseDocuments.__tablename__} d ON e.document_id = d.id
             WHERE d.knowledge_base_id = :kb_id
-                AND d.branch = :branch
-                AND d.loan_date BETWEEN :loan_date_start AND :loan_date_end
-                AND d.loan_id != :exclude_loan_id
+                AND d.filter1 = :filter1
+                AND d.document_date BETWEEN :document_date_start AND :document_date_end
+                AND d.filter4 != :exclude_filter4
         ) scored
         WHERE dino_score > :threshold
         """

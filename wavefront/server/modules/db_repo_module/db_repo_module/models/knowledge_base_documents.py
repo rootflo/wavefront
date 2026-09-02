@@ -30,14 +30,26 @@ class KnowledgeBaseDocuments(Base):
         JSON, nullable=True, default=lambda: {}
     )
     # Real, indexed columns (in addition to the equivalent keys already
-    # carried inside `metadata_value`) so branch/date-window filtering (e.g.
-    # the repeat-pledge exact-match check) can use a real btree index instead
-    # of unindexed JSON text extraction.
-    loan_id: Mapped[Optional[str]] = mapped_column(nullable=True)
-    branch: Mapped[Optional[str]] = mapped_column(nullable=True)
-    loan_date: Mapped[Optional[datetime]] = mapped_column(nullable=True)
-    zone: Mapped[Optional[str]] = mapped_column(nullable=True)
-    item_type: Mapped[Optional[str]] = mapped_column(nullable=True)
+    # carried inside `metadata_value`) so date-window filtering (e.g. the
+    # repeat-pledge exact-match check) can use a real btree index instead of
+    # unindexed JSON text extraction.
+    #
+    # Deliberately generic -- wavefront is a shared KB/RAG service used by
+    # multiple callers, so it has no business knowing about domain concepts
+    # like "loan" or "branch". Callers own the mapping of their own fields
+    # onto these generic slots (e.g. flo-api currently maps
+    # branch->filter1, zone->filter2, item_type->filter3, loan_id->filter4);
+    # filter5/filter6 are headroom for future filter needs. Only filter1 is
+    # indexed today (paired with document_date, see the composite index
+    # below) -- add more indexes if/when a real query need arises for the
+    # others, same as filter1/document_date.
+    document_date: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    filter1: Mapped[Optional[str]] = mapped_column(nullable=True)
+    filter2: Mapped[Optional[str]] = mapped_column(nullable=True)
+    filter3: Mapped[Optional[str]] = mapped_column(nullable=True)
+    filter4: Mapped[Optional[str]] = mapped_column(nullable=True)
+    filter5: Mapped[Optional[str]] = mapped_column(nullable=True)
+    filter6: Mapped[Optional[str]] = mapped_column(nullable=True)
 
     def to_dict(self):
         result = {}
