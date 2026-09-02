@@ -31,6 +31,15 @@ class UpdateRowsJsonPayload(BaseModel):
     data: Dict[str, Any]
 
 
+class DeleteRowsJsonPayload(BaseModel):
+    # OData filter naming the rows to delete, e.g.
+    # "quotation_id eq 'Q-1' $and user_id eq 'u-1'".
+    # Required, for the same reason as on UpdateRowsJsonPayload but more so: a
+    # DELETE with no WHERE empties the table, and there is no prior value left to
+    # rebuild it from.
+    filter: str
+
+
 class TableUpdate(BaseModel):
     table_name: str
     # OData filter naming the rows to update in THIS table. Per-entry rather than

@@ -56,6 +56,9 @@ from floware.services.scheduler_manager import SchedulerManager
 from plugins_module.plugins_container import PluginsContainer
 from plugins_module.controllers.configuration_controller import configuration_router
 from plugins_module.controllers.datasource_controller import datasource_router
+from plugins_module.controllers.datasource_audit_controller import (
+    datasource_audit_router,
+)
 from plugins_module.controllers.authenticator_controller import authenticator_router
 from floware.controllers.config_controller import config_router
 from floware.controllers.scheduled_job_controller import scheduled_job_router
@@ -154,6 +157,7 @@ plugins_container = PluginsContainer(
     cache_manager=db_repo_container.cache_manager,
     namespace_repository=db_repo_container.namespace_repository,
     agentic_configuration_repository=db_repo_container.agentic_configuration_repository,
+    datasource_audit_log_repository=db_repo_container.datasource_audit_log_repository,
 )
 
 product_analysis_container = ProductAnalysisContainer()
@@ -431,6 +435,7 @@ app.include_router(rag_retrieval_router, prefix='/floware')
 app.include_router(gold_router, prefix='/floware')
 app.include_router(subscription_controller, prefix='/floware')
 app.include_router(datasource_router, prefix='/floware')
+app.include_router(datasource_audit_router, prefix='/floware')
 app.include_router(hmac_router, prefix='/floware')
 app.include_router(authenticator_router, prefix='/floware')
 app.include_router(config_router, prefix='/floware')
@@ -505,6 +510,10 @@ user_module_container.wire(
         'plugins_module.controllers',
         'user_management_module.controllers',
         'user_management_module.authorization',
+        # Helpers in utils (check_is_admin and its callers) resolve container
+        # providers themselves, so the package needs wiring too — otherwise only
+        # the copies imported into wired controller modules get patched.
+        'user_management_module.utils',
         'plugins_module.controllers',
     ],
 )

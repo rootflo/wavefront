@@ -212,25 +212,31 @@ class QueryGenerator:
                     lambda field: f"(d.metadata_value ->> '{field}')",
                 )
                 params.update(filter_params)
-        # NOTE: the filter (WHERE d.knowledge_base_id = :kb_id) and the
+        # NOTE: the filter (WHERE e.knowledge_base_id = :kb_id) and the
         # distance ORDER BY/LIMIT are kept in the same query scope on
         # purpose, so Postgres's planner can choose per-query whether to
         # brute-force a small/highly-selective KB or use the HNSW index for
         # a large one, instead of always being forced through the index via
-        # an unfiltered candidate CTE.
+        # an unfiltered candidate CTE. The filter is on knowledge_base_id
+        # denormalized onto `e` itself (not via the `d` join) because
+        # pgvector only pushes filtering ahead of the HNSW walk when the
+        # filter column lives on the same table as the vector column --
+        # filtering through the join would apply after an ef_search-bounded,
+        # KB-unaware candidate set is gathered, and could silently return
+        # fewer than top_k rows for a small/selective KB.
         sql_query = f"""
         SELECT
             e.id AS embedding_id,
             d.id AS document_id,
             d.file_path,
             d.file_name,
-            d.knowledge_base_id,
+            e.knowledge_base_id,
             d.metadata_value,
             (e.embedding_vector::vector(512)) <=> :query_embedding ::vector(512) AS distance,
             1 - ((e.embedding_vector::vector(512)) <=> :query_embedding ::vector(512)) AS clip_score
         FROM {KnowledgeBaseEmbeddings.__tablename__} e
         JOIN {KnowledgeBaseDocuments.__tablename__} d ON e.document_id = d.id
-        WHERE d.knowledge_base_id = :kb_id
+        WHERE e.knowledge_base_id = :kb_id
             {'AND (' + metadata_filter_clause + ')' if metadata_filter_clause else ''}
         ORDER BY (e.embedding_vector::vector(512)) <=> :query_embedding ::vector(512)
         LIMIT :top_k
@@ -264,7 +270,11 @@ class QueryGenerator:
         # NOTE: same reasoning as get_image_embedding_clip -- filter and
         # ORDER BY/LIMIT share the same query scope so Postgres's planner
         # can brute-force small/highly-selective KBs instead of always
-        # going through the HNSW index via an unfiltered candidate CTE.
+        # going through the HNSW index via an unfiltered candidate CTE, and
+        # the filter is on e.knowledge_base_id (denormalized onto the same
+        # table as the vector column) rather than via the `d` join, so
+        # pgvector can push it ahead of the HNSW walk instead of applying it
+        # after an ef_search-bounded, KB-unaware candidate set is gathered.
         #
         # NOTE: ORDER BY deliberately repeats the raw `<=>` distance
         # expression (ascending) rather than sorting by the `similarity`
@@ -281,12 +291,12 @@ class QueryGenerator:
             d.id AS document_id,
             d.file_path,
             d.file_name,
-            d.knowledge_base_id,
+            e.knowledge_base_id,
             d.metadata_value,
             1 - ((e.embedding_vector_1::vector(1024)) <=> :query_embedding ::vector(1024)) AS similarity
         FROM {KnowledgeBaseEmbeddings.__tablename__} e
         JOIN {KnowledgeBaseDocuments.__tablename__} d ON e.document_id = d.id
-        WHERE d.knowledge_base_id = :kb_id
+        WHERE e.knowledge_base_id = :kb_id
             {'AND (' + metadata_filter_clause + ')' if metadata_filter_clause else ''}
         ORDER BY (e.embedding_vector_1::vector(1024)) <=> :query_embedding ::vector(1024)
         LIMIT :top_k

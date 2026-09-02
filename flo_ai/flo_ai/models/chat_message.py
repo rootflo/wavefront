@@ -15,6 +15,9 @@ class MediaMessageContent:
     url: Optional[str] = None
     base64: Optional[str] = None
     mime_type: Optional[str] = None
+    # Original name of the uploaded file, carried through for traceability.
+    # Not sent to the LLM — provider payloads ignore it.
+    file_name: Optional[str] = None
 
 
 @dataclass

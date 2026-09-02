@@ -39,12 +39,14 @@ from user_management_module.models.user_schema import ResetUser
 from user_management_module.models.user_schema import UpdateUser
 from user_management_module.utils.password_utils import hash_password
 from user_management_module.utils.user_utils import (
+    can_read_users,
     check_is_admin,
     create_account_lockout_response,
 )
 from user_management_module.utils.user_utils import get_current_user
 import json
 from common_module.utils.serializer import serialize_values
+from common_module.utils.validators import is_valid_uuid
 
 user_router = APIRouter(prefix='/v1')
 
@@ -332,10 +334,7 @@ async def get_all_user(
     offset: int = Query(0),
     force_fetch: int = Query(0),
 ):
-    role_id, _, _ = get_current_user(request)
-    is_admin = await check_is_admin(role_id)
-
-    if not is_admin:
+    if not await can_read_users(request):
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content=response_formatter.buildErrorResponse('Access denied'),
@@ -405,6 +404,77 @@ async def get_all_user(
     return JSONResponse(
         status_code=status.HTTP_200_OK,
         content=response_formatter.buildSuccessResponse({'users': serialize_result}),
+    )
+
+
+@user_router.get('/users/{user_id}')
+@inject
+async def get_user(
+    request: Request,
+    response_formatter: ResponseFormatterDep,
+    user_repository: UserRepositoryDep,
+    cache_manager: CacheManagerDep,
+    user_id: str = Path(..., description='User id to fetch'),
+    force_fetch: int = Query(0),
+):
+    """Fetch one user by id — name and email, without roles.
+
+    Admin only, like the listing endpoint it complements, unless
+    ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG opens both up. It resolves an id the
+    caller already holds (a quotation's assignee, say) rather than returning a
+    page, so the console does not have to pull the whole directory to put a name
+    to one id.
+
+    Cached for an hour under a `user_data_` key, so the existing
+    `invalidate_query('user_data_*')` calls in create/update/delete already clear
+    it — there is no new invalidation to remember. Pass `force_fetch=1` to read
+    through to the database.
+    """
+    if not await can_read_users(request):
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content=response_formatter.buildErrorResponse('Access denied'),
+        )
+
+    # User.id is a uuid column, so a malformed id would otherwise reach the
+    # database and come back as a 500 rather than a 400.
+    if not is_valid_uuid(user_id):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                f'Invalid user id: {user_id}'
+            ),
+        )
+
+    cache_key = f'user_data_id_{user_id}'
+    if not force_fetch:
+        cached_result = cache_manager.get_str(cache_key)
+        if cached_result:
+            return JSONResponse(
+                status_code=status.HTTP_200_OK,
+                content=response_formatter.buildSuccessResponse(
+                    {'user': json.loads(cached_result)}
+                ),
+            )
+
+    user = await user_repository.find_one(id=user_id)
+    if not user or user.deleted:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse('User not found'),
+        )
+
+    serialize_result = {
+        'id': str(user.id),
+        'first_name': user.first_name,
+        'last_name': user.last_name,
+        'email': user.email,
+    }
+
+    cache_manager.add(cache_key, json.dumps(serialize_result), expiry=60 * 60)  # 1 hour
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse({'user': serialize_result}),
     )
 
 

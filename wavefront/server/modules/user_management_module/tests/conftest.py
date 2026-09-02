@@ -201,6 +201,7 @@ def setup_containers(
         packages=[
             'user_management_module.authorization',
             'user_management_module.controllers',
+            'user_management_module.utils',
             'auth_module.controllers',
         ]
     )
@@ -293,12 +294,22 @@ def mock_auth_admin_user_functions(monkeypatch, test_user_id):
         'user_management_module.controllers.user_controller.get_current_user',
         mock_get_current_user,
     )
+    # The read endpoints go through can_read_users, which resolves both helpers
+    # from the user_utils namespace rather than the controller's.
+    monkeypatch.setattr(
+        'user_management_module.utils.user_utils.get_current_user',
+        mock_get_current_user,
+    )
 
     async def mock_check_is_admin(role_id, role_repository=None):
         return True
 
     monkeypatch.setattr(
         'user_management_module.controllers.user_controller.check_is_admin',
+        mock_check_is_admin,
+    )
+    monkeypatch.setattr(
+        'user_management_module.utils.user_utils.check_is_admin',
         mock_check_is_admin,
     )
 
@@ -310,6 +321,10 @@ def mocking_user_controller_is_admin(monkeypatch):
 
     monkeypatch.setattr(
         'user_management_module.controllers.user_controller.check_is_admin',
+        mock_check_is_admin,
+    )
+    monkeypatch.setattr(
+        'user_management_module.utils.user_utils.check_is_admin',
         mock_check_is_admin,
     )
 

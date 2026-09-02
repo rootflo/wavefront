@@ -15,6 +15,10 @@ from fastapi.responses import JSONResponse
 from fastapi.routing import APIRouter
 
 from common_module.common_container import CommonContainer
+from common_module.feature.feature_flag import (
+    ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG,
+    is_feature_enabled,
+)
 from common_module.response_formatter import ResponseFormatter
 from common_module.utils.serializer import serialize_values
 from db_repo_module.models.resource import ResourceScope
@@ -31,12 +35,17 @@ from plugins_module.services.datasource_services import (
 from plugins_module.utils.helper import (
     InsertRowsJsonMultiPayload,
     AddDatasourcePayload,
+    DeleteRowsJsonPayload,
     UpdateDatasourcePayload,
     InsertRowsJsonPayload,
     UpdateRowsJsonPayload,
     UpdateRowsJsonMultiPayload,
 )
 from flo_cloud.postgres import NoRowsMatchedError
+from plugins_module.services.datasource_audit_service import (
+    AuditEntry,
+    DatasourceAuditService,
+)
 from plugins_module.plugins_container import PluginsContainer
 from user_management_module.user_container import UserContainer
 from user_management_module.services.user_service import UserService
@@ -511,6 +520,63 @@ async def query_datasource(
     )
 
 
+def _insert_entries(prepared: list[dict], payload_inserts) -> list[AuditEntry]:
+    """One audit entry per table for the multi-table insert path.
+
+    Inserts have no RETURNING: what gets recorded is what was submitted, which
+    is what `snapshot: 'submitted'` says. Server defaults, triggers and
+    generated columns are therefore not reflected.
+
+    ``meta.multi_table`` records that the call spanned several tables, not that
+    it was transactional — every mutation through these endpoints is, since even
+    a single-table multi-row insert is one executemany in one transaction.
+    """
+    return [
+        AuditEntry(
+            table_name=spec['table_name'],
+            snapshot='submitted',
+            rows=spec['data'],
+            rows_affected=len(spec['data']),
+            meta={
+                'multi_table': True,
+                'batch_index': index,
+                'batch_size': len(prepared),
+                'single_row': payload_inserts[index].single_row,
+            },
+        )
+        for index, spec in enumerate(prepared)
+    ]
+
+
+def _update_entries(results, payload) -> list[AuditEntry]:
+    """One audit entry per table for the multi-table update path.
+
+    ``results`` and ``payload.updates`` are index-aligned: the client builds one
+    RowMutationResult per entry, in order.
+    """
+    return [
+        AuditEntry(
+            table_name=result.table_name,
+            snapshot='after',
+            rows=result.rows,
+            before_rows=result.before_rows,
+            key_columns=result.key_columns,
+            rows_affected=result.rows_affected,
+            truncated=result.truncated,
+            filter=update.filter,
+            filter_params=result.filter_params,
+            meta={
+                'multi_table': True,
+                'require_all_matched': payload.require_all_matched,
+                'batch_index': index,
+                'batch_size': len(results),
+                'patch': update.data,
+            },
+        )
+        for index, (result, update) in enumerate(zip(results, payload.updates))
+    ]
+
+
 @datasource_router.post('/v1/datasources/{datasource_id}/resources/insert')
 @inject
 async def insert_rows_json_multi(
@@ -519,6 +585,9 @@ async def insert_rows_json_multi(
     insert_rows_json_multi_payload: InsertRowsJsonMultiPayload,
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
+    ),
+    datasource_audit_service: DatasourceAuditService = Depends(
+        Provide[PluginsContainer.datasource_audit_service]
     ),
 ):
     """Insert rows into multiple tables of one datasource atomically.
@@ -553,6 +622,14 @@ async def insert_rows_json_multi(
             content=response_formatter.buildErrorResponse(str(e)),
         )
 
+    datasource_audit_service.record_from_request(
+        request,
+        datasource_id=datasource_id,
+        datasource_type=datasource_type,
+        operation='insert',
+        entries=_insert_entries(prepared, insert_rows_json_multi_payload.inserts),
+    )
+
     total_rows = sum(len(p['data']) for p in prepared)
     return JSONResponse(
         status_code=status.HTTP_200_OK,
@@ -577,6 +654,9 @@ async def insert_rows_json(
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
     ),
+    datasource_audit_service: DatasourceAuditService = Depends(
+        Provide[PluginsContainer.datasource_audit_service]
+    ),
 ):
     datasource_type, datasource_config = await get_datasource_config(datasource_id)
     if not datasource_config:
@@ -595,6 +675,26 @@ async def insert_rows_json(
     await asyncio.to_thread(
         datasource_plugin.insert_rows_json, resource_id, rows_with_created_at
     )
+
+    # The only mutation path that runs for every datasource type, not just
+    # Postgres — it needs no RETURNING, because the rows submitted are already
+    # in hand.
+    datasource_audit_service.record_from_request(
+        request,
+        datasource_id=datasource_id,
+        datasource_type=datasource_type,
+        operation='insert',
+        entries=[
+            AuditEntry(
+                table_name=resource_id,
+                snapshot='submitted',
+                rows=rows_with_created_at,
+                rows_affected=len(rows_with_created_at),
+                meta={'multi_table': False},
+            )
+        ],
+    )
+
     return JSONResponse(
         status_code=status.HTTP_200_OK,
         content=response_formatter.buildSuccessResponse(
@@ -618,6 +718,9 @@ async def update_rows_json_multi(
     update_rows_json_multi_payload: UpdateRowsJsonMultiPayload,
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
+    ),
+    datasource_audit_service: DatasourceAuditService = Depends(
+        Provide[PluginsContainer.datasource_audit_service]
     ),
 ):
     """Update rows across multiple tables of one datasource atomically.
@@ -668,6 +771,8 @@ async def update_rows_json_multi(
             datasource_plugin.update_rows_json_multi,
             [update.model_dump() for update in update_rows_json_multi_payload.updates],
             update_rows_json_multi_payload.require_all_matched,
+            capture=True,
+            capture_limit=datasource_audit_service.capture_limit,
         )
     except NotImplementedError as e:
         return JSONResponse(
@@ -688,7 +793,23 @@ async def update_rows_json_multi(
             content=response_formatter.buildErrorResponse(str(e)),
         )
 
-    total_rows = sum(result['updated_rows'] for result in results)
+    datasource_audit_service.record_from_request(
+        request,
+        datasource_id=datasource_id,
+        datasource_type=datasource_type,
+        operation='update',
+        entries=_update_entries(results, update_rows_json_multi_payload),
+    )
+
+    total_rows = sum(result.rows_affected for result in results)
+    # Rebuilt field by field rather than serialized wholesale: the client
+    # contract is exactly {table_name, updated_rows}, and handing the richer
+    # result object straight to JSONResponse is how captured row data would end
+    # up in an API response.
+    client_results = [
+        {'table_name': result.table_name, 'updated_rows': result.rows_affected}
+        for result in results
+    ]
     return JSONResponse(
         status_code=status.HTTP_200_OK,
         content=response_formatter.buildSuccessResponse(
@@ -698,7 +819,7 @@ async def update_rows_json_multi(
                     f'{len(results)} table(s) successfully'
                 ),
                 'updated_rows': total_rows,
-                'results': results,
+                'results': client_results,
             }
         ),
     )
@@ -713,6 +834,9 @@ async def update_rows_json(
     update_rows_json_payload: UpdateRowsJsonPayload,
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
+    ),
+    datasource_audit_service: DatasourceAuditService = Depends(
+        Provide[PluginsContainer.datasource_audit_service]
     ),
 ):
     """Update the rows of one table matching an OData filter.
@@ -751,11 +875,13 @@ async def update_rows_json(
     datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
 
     try:
-        updated_rows = await asyncio.to_thread(
+        result = await asyncio.to_thread(
             datasource_plugin.update_rows_json,
             resource_id,
             update_rows_json_payload.data,
             update_rows_json_payload.filter,
+            capture=True,
+            capture_limit=datasource_audit_service.capture_limit,
         )
     except NotImplementedError as e:
         return JSONResponse(
@@ -769,12 +895,136 @@ async def update_rows_json(
             content=response_formatter.buildErrorResponse(str(e)),
         )
 
+    datasource_audit_service.record_from_request(
+        request,
+        datasource_id=datasource_id,
+        datasource_type=datasource_type,
+        operation='update',
+        entries=[
+            AuditEntry(
+                table_name=resource_id,
+                snapshot='after',
+                rows=result.rows,
+                before_rows=result.before_rows,
+                key_columns=result.key_columns,
+                rows_affected=result.rows_affected,
+                truncated=result.truncated,
+                filter=update_rows_json_payload.filter,
+                filter_params=result.filter_params,
+                meta={'multi_table': False, 'patch': update_rows_json_payload.data},
+            )
+        ],
+    )
+
+    updated_rows = result.rows_affected
     return JSONResponse(
         status_code=status.HTTP_200_OK,
         content=response_formatter.buildSuccessResponse(
             {
                 'message': f'Updated {updated_rows} rows successfully',
                 'updated_rows': updated_rows,
+            }
+        ),
+    )
+
+
+@datasource_router.delete('/v1/datasources/{datasource_id}/resources/{resource_id}')
+@inject
+async def delete_rows_json(
+    request: Request,
+    datasource_id: str,
+    resource_id: str,
+    delete_rows_json_payload: DeleteRowsJsonPayload,
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+    datasource_audit_service: DatasourceAuditService = Depends(
+        Provide[PluginsContainer.datasource_audit_service]
+    ),
+):
+    """Delete the rows of one table matching an OData filter.
+
+    The filter travels in the body for the same reasons as on the PATCH — a
+    mutation's predicate should stay out of access logs, and the caller is spared
+    URL-encoding the quotes in `id eq '...'`. A DELETE with a body is unusual but
+    legal, and every alternative was worse: a `$filter` query param leaks the
+    predicate, and a POST `/delete` sub-route hides a destructive operation behind
+    the verb used for creation.
+
+    Matching nothing is a success returning `deleted_rows: 0`, not a 404. The
+    caller often cannot know whether the row is still there — unassigning a user
+    who was already unassigned is the ordinary case — and the end state it asked
+    for is the end state it got.
+
+    Currently only Postgres supports this; other datasource types return 501.
+    """
+    if not delete_rows_json_payload.filter.strip():
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                'A non-empty filter is required to delete rows'
+            ),
+        )
+
+    datasource_type, datasource_config = await get_datasource_config(datasource_id)
+    if not datasource_config:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse(
+                f'Datasource not found: {datasource_id}'
+            ),
+        )
+
+    datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
+
+    try:
+        result = await asyncio.to_thread(
+            datasource_plugin.delete_rows_json,
+            resource_id,
+            delete_rows_json_payload.filter,
+            capture=True,
+            capture_limit=datasource_audit_service.capture_limit,
+        )
+    except NotImplementedError as e:
+        return JSONResponse(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
+    except ValueError as e:
+        # Unparseable filter, or one that resolved to nothing.
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
+
+    # The captured rows are the only remaining record of what was destroyed —
+    # after the commit above they exist nowhere else.
+    datasource_audit_service.record_from_request(
+        request,
+        datasource_id=datasource_id,
+        datasource_type=datasource_type,
+        operation='delete',
+        entries=[
+            AuditEntry(
+                table_name=resource_id,
+                snapshot='deleted',
+                rows=result.rows,
+                rows_affected=result.rows_affected,
+                truncated=result.truncated,
+                filter=delete_rows_json_payload.filter,
+                filter_params=result.filter_params,
+                meta={'multi_table': False},
+            )
+        ],
+    )
+
+    deleted_rows = result.rows_affected
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            {
+                'message': f'Deleted {deleted_rows} rows successfully',
+                'deleted_rows': deleted_rows,
             }
         ),
     )
@@ -923,7 +1173,10 @@ async def execute_dynamic_query(
 
     rls_filter_str = None
     is_admin = await check_is_admin(role_id)
-    if not is_admin:
+    # With ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG on, non-admins are not narrowed
+    # down to their DATA resources: the row-level filter stays unset, so the
+    # query runs over the whole datasource exactly as it does for an admin.
+    if not is_admin and not is_feature_enabled(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG):
         rls_filters = await user_service.get_user_resources(
             user_id=user_id, scope=ResourceScope.DATA
         )

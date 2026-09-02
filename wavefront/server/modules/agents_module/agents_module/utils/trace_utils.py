@@ -27,6 +27,7 @@ def _serialize_content(content: Any) -> Any:
             'type': content.type,
             'mime_type': content.mime_type,
             'reference': content.url,
+            'file_name': content.file_name,
         }
     return content
 

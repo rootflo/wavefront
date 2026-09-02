@@ -234,6 +234,15 @@ class SQLAlchemyRepository(Generic[T]):
                 await session.execute(
                     text(f'SET LOCAL hnsw.ef_search = {int(ef_search)}')
                 )
+                # HNSW applies WHERE-clause filtering after the index scan,
+                # so a filter that eliminates most of the ef_search
+                # candidates can otherwise return fewer than the query's
+                # LIMIT. Iterative scans keep expanding the search until
+                # enough post-filter matches are found (or hnsw.max_scan_tuples
+                # is hit), instead of a fixed one-shot candidate set.
+                await session.execute(
+                    text("SET LOCAL hnsw.iterative_scan = 'relaxed_order'")
+                )
             result = await session.execute(text(query), params)
             columns = result.keys()
             rows = [dict(zip(columns, row)) for row in result.all()]

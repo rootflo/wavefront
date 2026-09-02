@@ -1,4 +1,6 @@
 import collections
+
+from common_module.utils.validators import is_valid_uuid
 from datasource import (
     DataSourceType,
     BigQueryConfig,
@@ -23,6 +25,12 @@ async def get_datasource_config(
     DataSourceType,
     BigQueryConfig | RedshiftConfig | PostgresConfig | MSSQLConfig,
 ]:
+    # Without this, a mistyped id raises InvalidTextRepresentation inside the
+    # query before find_one can return None, so every caller's "not found -> 404"
+    # branch was unreachable and a one-character typo came back as a 500.
+    if not is_valid_uuid(datasource_id):
+        return None, None
+
     datasource: Datasource | None = await datasource_repository.find_one(
         id=datasource_id
     )

@@ -5,7 +5,10 @@ from .types import (
     TableListResult,
     QueryResult,
 )
+from dataclasses import replace
 from typing import Any, Optional, List, Dict
+
+from flo_cloud.postgres import RowMutationResult
 
 from .bigquery import BigQueryPlugin, BigQueryConfig
 from .redshift import RedshiftPlugin, RedshiftConfig
@@ -107,9 +110,14 @@ class DatasourcePlugin:
         return self.datasource.insert_rows_json_multi(inserts)
 
     def update_rows_json(
-        self, table_name: str, data: Dict[str, Any], filter: str
-    ) -> int:
-        """Update the rows matching the OData ``filter``, returning how many changed.
+        self,
+        table_name: str,
+        data: Dict[str, Any],
+        filter: str,
+        capture: bool = False,
+        capture_limit: Optional[int] = None,
+    ) -> RowMutationResult:
+        """Update the rows matching the OData ``filter``.
 
         Unlike ``fetch_data``, which falls back to a '1=1' no-op predicate when no
         filter is given, an absent or unparseable filter is an error here: an
@@ -119,13 +127,21 @@ class DatasourcePlugin:
         where_clause, params = self.odata_parser.prepare_odata_filter(filter)
         if not where_clause:
             raise ValueError('A filter is required to update rows')
-        return self.datasource.update_rows_json(
-            table_name, data, where_clause, params or {}
+        result = self.datasource.update_rows_json(
+            table_name, data, where_clause, params or {}, capture, capture_limit
         )
+        # Attached here rather than deeper down because this is the only layer
+        # that sees the filter as OData: below it the predicate is already
+        # compiled, and the column -> value pairs cannot be recovered from it.
+        return replace(result, filter_params=params or None)
 
     def update_rows_json_multi(
-        self, updates: List[Dict[str, Any]], require_all_matched: bool = True
-    ) -> List[Dict[str, Any]]:
+        self,
+        updates: List[Dict[str, Any]],
+        require_all_matched: bool = True,
+        capture: bool = False,
+        capture_limit: Optional[int] = None,
+    ) -> List[RowMutationResult]:
         """Update rows across several tables atomically.
 
         ``updates``: list of ``{"table_name", "data", "filter"}``, where ``filter``
@@ -150,7 +166,69 @@ class DatasourcePlugin:
                     'params': params or {},
                 }
             )
-        return self.datasource.update_rows_json_multi(prepared, require_all_matched)
+        results = self.datasource.update_rows_json_multi(
+            prepared, require_all_matched, capture, capture_limit
+        )
+        # `prepared` and `results` are index-aligned: one result per entry, in
+        # order.
+        return [
+            replace(result, filter_params=spec['params'] or None)
+            for result, spec in zip(results, prepared)
+        ]
+
+    def delete_rows_json(
+        self,
+        table_name: str,
+        filter: str,
+        capture: bool = False,
+        capture_limit: Optional[int] = None,
+    ) -> RowMutationResult:
+        """Delete the rows matching the OData ``filter``.
+
+        Same rule as ``update_rows_json``, and for a stronger reason: an absent or
+        unparseable filter is an error, never a no-op predicate, because a DELETE
+        with no WHERE empties the table.
+
+        Two further checks run here that the update path does not bother with,
+        because a DELETE cannot be walked back:
+
+        * every predicate must bind at least one value. The parser only ever emits
+          ``field <op> :param`` comparisons — it rejects a bare ``1 eq 1``, a
+          ``true``, and anything with a stray ``;`` or paren — so a predicate that
+          bound nothing would mean it had stopped doing that.
+        * no bound value may be empty. This is the one match-everything filter the
+          parser will happily build: ``name contains ''`` compiles to
+          ``LIKE '%%'``, which matches every non-null row, and it is exactly what a
+          UI produces when it interpolates an empty search box into a filter. An
+          empty ``eq ''`` is caught by the same rule; ``%`` is stripped first so
+          ``contains '%'`` cannot sneak past it.
+
+        Both raise ValueError, which the controller reports as a 400.
+        """
+        where_clause, params = self.odata_parser.prepare_odata_filter(filter)
+        if not where_clause:
+            raise ValueError('A filter is required to delete rows')
+
+        if not params:
+            raise ValueError(
+                'A delete filter must compare at least one column to a value'
+            )
+
+        blank = [
+            key
+            for key, value in params.items()
+            if isinstance(value, str) and not value.strip('%').strip()
+        ]
+        if blank:
+            raise ValueError(
+                'A delete filter may not compare a column to an empty value '
+                f'({", ".join(sorted(blank))}): it would match every row'
+            )
+
+        result = self.datasource.delete_rows_json(
+            table_name, where_clause, params, capture, capture_limit
+        )
+        return replace(result, filter_params=params or None)
 
     async def execute_query(
         self, query: str, use_legacy_sql: bool = False, dry_run: bool = False, **kwargs
