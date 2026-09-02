@@ -670,7 +670,6 @@ async def store_embeddings(
         kb_embeddings = [
             KnowledgeBaseEmbeddings(
                 document_id=embedding.document_id,
-                knowledge_base_id=embedding.kb_id,
                 embedding_vector=embedding.embedding_vector[index],
                 embedding_vector_1=embedding.embedding_vector_1[index]
                 if embedding.embedding_vector_1[index]

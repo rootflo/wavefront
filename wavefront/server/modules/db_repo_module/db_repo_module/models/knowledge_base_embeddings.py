@@ -24,13 +24,6 @@ class KnowledgeBaseEmbeddings(Base):
         ForeignKey('knowledge_base_documents.id', ondelete='CASCADE'),
         nullable=False,
     )
-    # Denormalized from knowledge_base_documents.knowledge_base_id so KB-scoped
-    # vector search can filter on the same table as the indexed vector column
-    # instead of via a join, which pgvector's HNSW index can use for pre-filtering.
-    knowledge_base_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey('knowledge_bases.id', ondelete='CASCADE'),
-        nullable=False,
-    )
     # Using pgvector's Vector type for proper vector storage
     embedding_vector = (
         Column(Vector) if os.environ.get('APP_ENV') != 'test' else Column(Text)
