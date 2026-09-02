@@ -105,6 +105,21 @@ async def upload_document(
         parsed_metadata = None
         if metadata is not None:
             parsed_metadata = json.loads(metadata)
+        metadata_dict = parsed_metadata or {}
+
+        # In addition to the raw JSON blob (metadata_value), also lift a few
+        # well-known keys into real typed columns so callers can filter on
+        # them with a normal indexed WHERE clause instead of unindexed JSON
+        # text extraction (e.g. the repeat-pledge branch/date-window check).
+        loan_date_value = None
+        raw_loan_date = metadata_dict.get('loan_date')
+        if raw_loan_date:
+            try:
+                loan_date_value = datetime.fromisoformat(raw_loan_date)
+            except (TypeError, ValueError):
+                logger.warning(
+                    f'Could not parse loan_date from document metadata: {raw_loan_date}'
+                )
 
         async with knowledge_base_documents_repository.session() as session:
             new_kb_document = KnowledgeBaseDocuments(
@@ -115,6 +130,11 @@ async def upload_document(
                 file_type=file.content_type.split('/')[1],
                 file_size=file.size,
                 metadata_value=parsed_metadata,
+                loan_id=metadata_dict.get('loan_id'),
+                branch=metadata_dict.get('branch'),
+                loan_date=loan_date_value,
+                zone=metadata_dict.get('zone'),
+                item_type=metadata_dict.get('type'),
             )
 
             session.add(new_kb_document)

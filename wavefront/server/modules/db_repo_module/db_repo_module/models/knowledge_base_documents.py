@@ -1,6 +1,7 @@
 from datetime import datetime
 import json
 import uuid
+from typing import Optional
 
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
@@ -28,6 +29,15 @@ class KnowledgeBaseDocuments(Base):
     metadata_value: Mapped[dict] = mapped_column(
         JSON, nullable=True, default=lambda: {}
     )
+    # Real, indexed columns (in addition to the equivalent keys already
+    # carried inside `metadata_value`) so branch/date-window filtering (e.g.
+    # the repeat-pledge exact-match check) can use a real btree index instead
+    # of unindexed JSON text extraction.
+    loan_id: Mapped[Optional[str]] = mapped_column(nullable=True)
+    branch: Mapped[Optional[str]] = mapped_column(nullable=True)
+    loan_date: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    zone: Mapped[Optional[str]] = mapped_column(nullable=True)
+    item_type: Mapped[Optional[str]] = mapped_column(nullable=True)
 
     def to_dict(self):
         result = {}

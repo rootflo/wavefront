@@ -79,6 +79,67 @@ class ImageRagRetrieve:
         else:
             return []
 
+    async def exact_match_dino(
+        self,
+        image_data: str,
+        inference_url: str,
+        kb_id: uuid.UUID,
+        branch: str,
+        loan_date_start,
+        loan_date_end,
+        exclude_loan_id: str,
+        threshold: float,
+    ) -> list[dict]:
+        """
+        Exact (non-ANN) DINO similarity match, restricted to documents in
+        `kb_id` whose real `branch`/`loan_date` columns fall within the given
+        window, excluding `exclude_loan_id` (the loan currently being
+        processed).
+
+        Only the DINO embedding is fetched/compared -- this check is purely
+        about near-duplicate/visual-similarity matching (the same use case
+        `DINO_MATCH_SCORE_THRESHOLD` already serves in flo-api's spurious-image
+        check), not general semantic (CLIP) similarity. The underlying query
+        (`QueryGenerator.get_image_embedding_dino_exact`) never engages the
+        HNSW index -- see that method's docstring -- so scores returned here
+        are always exact, not approximate.
+        """
+        data = {'image_data': image_data}
+        internal_api_url = f'{inference_url}/inference/v1/query/embeddings'
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(60.0, connect=30.0),
+            limits=httpx.Limits(
+                max_keepalive_connections=20,
+                max_connections=100,
+                keepalive_expiry=60,
+            ),
+        ) as client:
+            response = await client.post(internal_api_url, json=data)
+            embedding = response.json().get('data', {}).get('response', [])
+
+        dino_embedding = next((e['dino'] for e in embedding if 'dino' in e), None)
+        if not dino_embedding:
+            return []
+
+        try:
+            sql_query, query_params = self.query_generator.get_image_embedding_dino_exact(
+                dino_embedding,
+                kb_id,
+                branch,
+                loan_date_start,
+                loan_date_end,
+                exclude_loan_id,
+                threshold,
+            )
+            return await self.knowledge_base_embeddings_repository.execute_query(
+                sql_query,
+                query_params,
+            )
+        except SQLAlchemyError as e:
+            raise RuntimeError(
+                f'Failed to execute the query for exact match retrieval: {e}'
+            )
+
     async def image_retrieve_clip(
         self,
         clip_embedding,
