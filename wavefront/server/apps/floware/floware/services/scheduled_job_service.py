@@ -235,6 +235,10 @@ class ScheduledJobService:
             updates['max_retries'] = max_retries
         if status is not None:
             updates['status'] = status
+            # Reactivate a failed job.
+            if status == 'active' and job.status == 'failed':
+                updates['retry_count'] = 0
+                updates['last_error'] = None
 
         if updates:
             return await self.scheduled_job_repository.find_one_and_update(
@@ -251,11 +255,22 @@ class ScheduledJobService:
         job = await self.scheduled_job_repository.find_one(id=job_id)
         if not job:
             return None
+        updates: dict = {
+            'status': 'active',
+            'retry_count': 0,
+            'last_error': None,
+        }
+        if job.status == 'failed':
+            # Run on the next poller tick rather than waiting until the next cron.
+            updates['next_run_at'] = datetime.now(timezone.utc)
+        else:
+            updates['next_run_at'] = self._compute_next_run_at(
+                job.cron_expr, job.timezone
+            )
         return await self.scheduled_job_repository.find_one_and_update(
             filters={'id': job_id},
             refresh=True,
-            status='active',
-            next_run_at=self._compute_next_run_at(job.cron_expr, job.timezone),
+            **updates,
         )
 
     async def delete_job(self, job_id: str) -> bool:

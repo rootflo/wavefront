@@ -104,9 +104,13 @@ const ScheduledJobsPage: React.FC = () => {
   const handlePauseResume = async (job: ScheduledJob) => {
     setActionJobId(job.id);
     try {
-      if (job.status === 'paused') {
+      if (job.status === 'paused' || job.status === 'failed') {
         await floConsoleService.scheduledJobService.resumeScheduledJob(job.id);
-        notifySuccess('Scheduled job resumed');
+        notifySuccess(
+          job.status === 'failed'
+            ? 'Scheduled job resumed; it will run on the next scheduler poll'
+            : 'Scheduled job resumed'
+        );
       } else {
         await floConsoleService.scheduledJobService.pauseScheduledJob(job.id);
         notifySuccess('Scheduled job paused');
@@ -230,7 +234,7 @@ const ScheduledJobsPage: React.FC = () => {
               {filteredJobs.map((job) => {
                 const payload = job.payload || {};
                 const datasourceId = getDatasourceIdFromPayload(payload);
-                const canPauseResume = job.status === 'active' || job.status === 'paused';
+                const canPauseResume = job.status === 'active' || job.status === 'paused' || job.status === 'failed';
                 return (
                   <TableRow key={job.id}>
                     <TableCell>
@@ -265,7 +269,7 @@ const ScheduledJobsPage: React.FC = () => {
                             disabled={actionJobId === job.id}
                             onClick={() => void handlePauseResume(job)}
                           >
-                            {job.status === 'paused' ? 'Resume' : 'Pause'}
+                            {job.status === 'paused' || job.status === 'failed' ? 'Resume' : 'Pause'}
                           </Button>
                         ) : null}
                         <Button variant="outline" size="sm" onClick={() => handleEdit(job)}>
