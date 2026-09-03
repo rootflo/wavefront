@@ -60,6 +60,8 @@ class ImageRagRetrieve:
         filter6: Optional[str] = None,
         document_date_start=None,
         document_date_end=None,
+        created_at_start=None,
+        created_at_end=None,
     ):
         data = {'image_data': image_data}
         internal_api_url = f'{inference_url}/inference/v1/query/embeddings'
@@ -92,6 +94,8 @@ class ImageRagRetrieve:
                 filter6=filter6,
                 document_date_start=document_date_start,
                 document_date_end=document_date_end,
+                created_at_start=created_at_start,
+                created_at_end=created_at_end,
             )
         else:
             return []
@@ -110,6 +114,8 @@ class ImageRagRetrieve:
         filter4: Optional[str] = None,
         filter5: Optional[str] = None,
         filter6: Optional[str] = None,
+        created_at_start=None,
+        created_at_end=None,
     ) -> list[dict]:
         """
         Exact (non-ANN) DINO similarity match, restricted to documents in
@@ -176,6 +182,8 @@ class ImageRagRetrieve:
                     filter4,
                     filter5,
                     filter6,
+                    created_at_start,
+                    created_at_end,
                 )
             )
             return await self.knowledge_base_embeddings_repository.execute_query(
@@ -201,6 +209,8 @@ class ImageRagRetrieve:
         filter6: Optional[str] = None,
         document_date_start=None,
         document_date_end=None,
+        created_at_start=None,
+        created_at_end=None,
     ):
         """Search for similar images using the CLIP embedding only."""
         params = {
@@ -214,6 +224,8 @@ class ImageRagRetrieve:
             'filter6': filter6,
             'document_date_start': document_date_start,
             'document_date_end': document_date_end,
+            'created_at_start': created_at_start,
+            'created_at_end': created_at_end,
         }
         try:
             sql_query, query_params = self.query_generator.get_image_embedding_clip(
@@ -242,6 +254,8 @@ class ImageRagRetrieve:
         filter6: Optional[str] = None,
         document_date_start=None,
         document_date_end=None,
+        created_at_start=None,
+        created_at_end=None,
     ):
         """
         Search for similar images using the DINO embedding only, as its own
@@ -258,6 +272,8 @@ class ImageRagRetrieve:
             'filter6': filter6,
             'document_date_start': document_date_start,
             'document_date_end': document_date_end,
+            'created_at_start': created_at_start,
+            'created_at_end': created_at_end,
         }
         try:
             sql_query, query_params = self.query_generator.get_image_embedding_dino(
@@ -289,6 +305,8 @@ class ImageRagRetrieve:
         filter6: Optional[str] = None,
         document_date_start=None,
         document_date_end=None,
+        created_at_start=None,
+        created_at_end=None,
     ) -> list[ImageMatch]:
         """
         Search for similar images by taking the union of independent CLIP
@@ -338,6 +356,8 @@ class ImageRagRetrieve:
                 filter6,
                 document_date_start,
                 document_date_end,
+                created_at_start,
+                created_at_end,
             ),
             self.image_retrieve_dino(
                 dino_embedding,
@@ -352,6 +372,8 @@ class ImageRagRetrieve:
                 filter6,
                 document_date_start,
                 document_date_end,
+                created_at_start,
+                created_at_end,
             ),
         )
 

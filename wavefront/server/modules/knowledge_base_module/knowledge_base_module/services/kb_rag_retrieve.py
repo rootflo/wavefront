@@ -52,6 +52,8 @@ class KBRagResponse:
         filter6: Optional[str] = None,
         document_date_start=None,
         document_date_end=None,
+        created_at_start=None,
+        created_at_end=None,
     ) -> list:
         """
         Retrieve documents for a specific knowledge base
@@ -67,6 +69,8 @@ class KBRagResponse:
                 knowledge_base_documents.filterN
             document_date_start/document_date_end: Optional document_date
                 window (both required together)
+            created_at_start/created_at_end: Optional created_at window
+                (both required together)
 
         Returns:
             List of retrieved documents
@@ -97,6 +101,8 @@ class KBRagResponse:
             filter6,
             document_date_start,
             document_date_end,
+            created_at_start,
+            created_at_end,
         )
         for doc in reranked_docs:
             for key, value in doc.items():
@@ -120,6 +126,8 @@ class KBRagResponse:
         filter6: Optional[str] = None,
         document_date_start=None,
         document_date_end=None,
+        created_at_start=None,
+        created_at_end=None,
     ) -> list:
         """
         Perform combined vector and keyword search with reranking in a single SQL query,
@@ -157,6 +165,8 @@ class KBRagResponse:
                         filter6,
                         document_date_start,
                         document_date_end,
+                        created_at_start,
+                        created_at_end,
                     )
                 )
                 retrieved_docs = (

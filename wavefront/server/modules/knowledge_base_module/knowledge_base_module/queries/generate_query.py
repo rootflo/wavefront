@@ -35,18 +35,21 @@ class QueryGenerator:
         document_date_start: Optional[Any] = None,
         document_date_end: Optional[Any] = None,
         table_alias: str = 'd',
+        created_at_start: Optional[Any] = None,
+        created_at_end: Optional[Any] = None,
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Build an `AND ...` SQL fragment (empty string if nothing is set) plus
-        matching bind params for the real, indexed `filter1`..`filter6` and
-        `document_date` columns on `knowledge_base_documents`. Shared by
-        every query that joins that table in under `table_alias`, so
-        filtering on these columns behaves the same regardless of retrieval
-        mode (hybrid text search, image ANN search, or the DINO exact
-        match) rather than being special-cased to one of them.
+        matching bind params for the real, indexed `filter1`..`filter6`,
+        `document_date`, and `created_at` columns on
+        `knowledge_base_documents`. Shared by every query that joins that
+        table in under `table_alias`, so filtering on these columns behaves
+        the same regardless of retrieval mode (hybrid text search, image ANN
+        search, or the DINO exact match) rather than being special-cased to
+        one of them.
 
-        `document_date` is only filtered when both `document_date_start`
-        and `document_date_end` are given -- a one-sided window isn't
+        `document_date`/`created_at` are only filtered when both the
+        matching `_start` and `_end` are given -- a one-sided window isn't
         supported by the underlying `BETWEEN`.
         """
         params: Dict[str, Any] = {}
@@ -68,6 +71,13 @@ class QueryGenerator:
             clauses.append(
                 f'AND {table_alias}.document_date BETWEEN '
                 ':document_date_start AND :document_date_end'
+            )
+        if created_at_start is not None and created_at_end is not None:
+            params['created_at_start'] = created_at_start
+            params['created_at_end'] = created_at_end
+            clauses.append(
+                f'AND {table_alias}.created_at BETWEEN '
+                ':created_at_start AND :created_at_end'
             )
         return ' '.join(clauses), params
 
@@ -107,6 +117,8 @@ class QueryGenerator:
         filter6: Optional[str] = None,
         document_date_start: Optional[Any] = None,
         document_date_end: Optional[Any] = None,
+        created_at_start: Optional[Any] = None,
+        created_at_end: Optional[Any] = None,
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Generate SQL query for combined vector and keyword search with reranking.
@@ -174,6 +186,8 @@ class QueryGenerator:
             document_date_start,
             document_date_end,
             table_alias='d',
+            created_at_start=created_at_start,
+            created_at_end=created_at_end,
         )
         query_params.update(filter_columns_params)
 
@@ -277,6 +291,8 @@ class QueryGenerator:
             params.get('document_date_start'),
             params.get('document_date_end'),
             table_alias='d',
+            created_at_start=params.get('created_at_start'),
+            created_at_end=params.get('created_at_end'),
         )
 
         # Prepare query parameters
@@ -337,6 +353,8 @@ class QueryGenerator:
             params.get('document_date_start'),
             params.get('document_date_end'),
             table_alias='d',
+            created_at_start=params.get('created_at_start'),
+            created_at_end=params.get('created_at_end'),
         )
 
         params = {
@@ -403,6 +421,8 @@ class QueryGenerator:
         filter4: Optional[str] = None,
         filter5: Optional[str] = None,
         filter6: Optional[str] = None,
+        created_at_start: Optional[Any] = None,
+        created_at_end: Optional[Any] = None,
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Exact (brute-force) DINO similarity search restricted to documents on
@@ -437,6 +457,8 @@ class QueryGenerator:
             document_date_start,
             document_date_end,
             table_alias='d',
+            created_at_start=created_at_start,
+            created_at_end=created_at_end,
         )
 
         params: Dict[str, Any] = {

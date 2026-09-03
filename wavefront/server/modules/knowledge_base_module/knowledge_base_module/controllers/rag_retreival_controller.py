@@ -258,6 +258,22 @@ async def retrieve_query(
             'Required when exact_match=true.'
         ),
     ),
+    created_at_start: Optional[datetime] = Query(
+        None,
+        description=(
+            'Start of the created_at window (inclusive), applied on '
+            'knowledge_base_documents.created_at. Works with any search '
+            'mode (text query, image ANN, or exact_match); must be provided '
+            'together with created_at_end.'
+        ),
+    ),
+    created_at_end: Optional[datetime] = Query(
+        None,
+        description=(
+            'End of the created_at window (inclusive). Works with any '
+            'search mode; must be provided together with created_at_start.'
+        ),
+    ),
     filter1: Optional[str] = Query(
         None,
         description=(
@@ -352,6 +368,13 @@ async def retrieve_query(
                 'document_date_start and document_date_end must be provided together'
             ),
         )
+    if (created_at_start is None) != (created_at_end is None):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                'created_at_start and created_at_end must be provided together'
+            ),
+        )
     existing_kb = await knowledge_base_repository.find_one(id=kb_id)
     if not existing_kb:
         return JSONResponse(
@@ -382,6 +405,8 @@ async def retrieve_query(
             filter4,
             filter5,
             filter6,
+            created_at_start,
+            created_at_end,
         )
         retrieved_docs = convert_uuids_to_str(retrieved_docs)
         match_count = len(retrieved_docs)
@@ -403,6 +428,8 @@ async def retrieve_query(
             filter6,
             document_date_start,
             document_date_end,
+            created_at_start,
+            created_at_end,
         )
     else:
         image_data, error_response = await _resolve_image_data(
@@ -425,6 +452,8 @@ async def retrieve_query(
             filter6,
             document_date_start,
             document_date_end,
+            created_at_start,
+            created_at_end,
         )
         retrieved_docs = convert_uuids_to_str(retrieved_docs)
     if not retrieved_docs:
