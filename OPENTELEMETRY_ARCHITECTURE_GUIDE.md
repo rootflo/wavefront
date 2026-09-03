@@ -161,27 +161,18 @@ Because an empty exporter list (`exporters: []`) crashes the collector, `collect
 
 ---
 
-## 7. Local Infrastructure: LocalStack Resource Bootstrapping
-
-Wavefront runs AWS S3 and SQS emulation locally using LocalStack. The initialization script at [`wavefront/localstack-init/ready.d/01-init-resources.sh`](file:///home/aquib/workspace/rootflo/wavefront/wavefront/localstack-init/ready.d/01-init-resources.sh) automatically creates all required buckets and queues on container boot:
-* **S3 Buckets:** `wavefront-assets`, `wavefront-agents`, `wavefront-executions`, `wavefront-voice-agents`, `wavefront-applications`, `wavefront-transcripts`, `wavefront-audio`, `wavefront-models`, `wavefront-reference-images`.
-* **SQS Queues:** `wavefront-rag`, `wavefront-default`, `wavefront-workflows`.
-
----
-
-## 8. Summary of Files Changed & Created
+## 7. Summary of Files Changed & Created
 
 | File | Status | Description |
 | :--- | :--- | :--- |
-| [`telemetry/bootstrap.py`](file:///home/aquib/workspace/rootflo/wavefront/wavefront/server/modules/common_module/common_module/telemetry/bootstrap.py) | **[NEW]** | Configures providers, instruments FastAPI, SQLAlchemy, Redis, and HTTPX. |
-| [`telemetry/baggage_middleware.py`](file:///home/aquib/workspace/rootflo/wavefront/wavefront/server/modules/common_module/common_module/telemetry/baggage_middleware.py) | **[NEW]** | Raw ASGI middleware injecting tenant metadata into context & `SERVER` span. |
-| [`telemetry/baggage_span_processor.py`](file:///home/aquib/workspace/rootflo/wavefront/wavefront/server/modules/common_module/common_module/telemetry/baggage_span_processor.py) | **[NEW]** | Promotes `app.*` baggage entries onto all child spans. |
-| [`telemetry/errors.py`](file:///home/aquib/workspace/rootflo/wavefront/wavefront/server/modules/common_module/common_module/telemetry/errors.py) | **[NEW]** | Attaches exception events and error status to active spans in global handlers. |
-| [`otel/collector-base.yaml`](file:///home/aquib/workspace/rootflo/wavefront/otel/collector-base.yaml) | **[NEW]** | Base OTel Collector config: receivers, processors, redaction, and local Jaeger pipeline. |
-| [`otel/exporters/*.yaml`](file:///home/aquib/workspace/rootflo/wavefront/otel/exporters/) | **[NEW]** | Additive cloud export overlays for Honeycomb, Generic OTLP, Azure, AWS, GCP, and None. |
-| [`localstack-init/ready.d/01-init-resources.sh`](file:///home/aquib/workspace/rootflo/wavefront/wavefront/localstack-init/ready.d/01-init-resources.sh) | **[NEW]** | LocalStack automatic S3 bucket and SQS queue provisioner. |
-| [`floware/server.py`](file:///home/aquib/workspace/rootflo/wavefront/wavefront/server/apps/floware/floware/server.py) | **[MODIFY]** | Lifespan telemetry bootstrap, SQLAlchemy instrumentation, and Baggage middleware registration. |
-| [`celery_app.py`](file:///home/aquib/workspace/rootflo/wavefront/wavefront/server/background_jobs/celery_worker/celery_worker/celery_app.py) | **[MODIFY]** | Initializes OTel per worker process on `@worker_process_init.connect`. |
-| [`common_module/pyproject.toml`](file:///home/aquib/workspace/rootflo/wavefront/wavefront/server/modules/common_module/pyproject.toml) | **[MODIFY]** | Replaced `prometheus-client` with official `opentelemetry-*` packages. |
-| [`prometheus_middleware.py`](file:///home/aquib/workspace/rootflo/wavefront/wavefront/server/modules/common_module/common_module/prometheus/prometheus_middleware.py) | **[DELETED]** | Removed legacy Prometheus middleware. |
-| [`docker-compose.local.yml`](file:///home/aquib/workspace/rootflo/wavefront/docker-compose.local.yml) | **[MODIFY]** | Configured `otel-collector` (with overlay layer) and `jaeger` services. |
+| [`telemetry/bootstrap.py`](wavefront/server/modules/common_module/common_module/telemetry/bootstrap.py) | **[NEW]** | Configures providers, instruments FastAPI, SQLAlchemy, Redis, and HTTPX. |
+| [`telemetry/baggage_middleware.py`](wavefront/server/modules/common_module/common_module/telemetry/baggage_middleware.py) | **[NEW]** | Raw ASGI middleware injecting tenant metadata into context & `SERVER` span. |
+| [`telemetry/baggage_span_processor.py`](wavefront/server/modules/common_module/common_module/telemetry/baggage_span_processor.py) | **[NEW]** | Promotes `app.*` baggage entries onto all child spans. |
+| [`telemetry/errors.py`](wavefront/server/modules/common_module/common_module/telemetry/errors.py) | **[NEW]** | Attaches exception events and error status to active spans in global handlers. |
+| [`otel/collector-base.yaml`](otel/collector-base.yaml) | **[NEW]** | Base OTel Collector config: receivers, processors, redaction, and local Jaeger pipeline. |
+| [`otel/exporters/*.yaml`](otel/exporters/) | **[NEW]** | Additive cloud export overlays for Honeycomb, Generic OTLP, Azure, AWS, GCP, and None. |
+| [`floware/server.py`](wavefront/server/apps/floware/floware/server.py) | **[MODIFY]** | Lifespan telemetry bootstrap, SQLAlchemy instrumentation, and Baggage middleware registration. |
+| [`celery_app.py`](wavefront/server/background_jobs/celery_worker/celery_worker/celery_app.py) | **[MODIFY]** | Initializes OTel per worker process on `@worker_process_init.connect`. |
+| [`common_module/pyproject.toml`](wavefront/server/modules/common_module/pyproject.toml) | **[MODIFY]** | Replaced `prometheus-client` with official `opentelemetry-*` packages. |
+| [`prometheus_middleware.py`](wavefront/server/modules/common_module/common_module/prometheus/prometheus_middleware.py) | **[DELETED]** | Removed legacy Prometheus middleware. |
+| [`docker-compose.local.yml`](docker-compose.local.yml) | **[MODIFY]** | Configured `otel-collector` (with overlay layer) and `jaeger` services. |
