@@ -348,18 +348,20 @@ async def retrieve_query(
                 'Image data is required when exact_match=true'
             ),
         )
+    has_document_date_window = (
+        document_date_start is not None and document_date_end is not None
+    )
+    has_created_at_window = created_at_start is not None and created_at_end is not None
     if exact_match and (
-        threshold is None
-        or document_date_start is None
-        or document_date_end is None
-        or created_at_start is None
-        or created_at_end is None
+        threshold is None or not (has_document_date_window or has_created_at_window)
     ):
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content=response_formatter.buildErrorResponse(
-                'threshold, document_date_start, and document_date_end '
-                'are all required when exact_match=true'
+                'threshold and either a document_date window '
+                '(document_date_start + document_date_end) or a created_at '
+                'window (created_at_start + created_at_end) are required '
+                'when exact_match=true'
             ),
         )
     if (document_date_start is None) != (document_date_end is None):
