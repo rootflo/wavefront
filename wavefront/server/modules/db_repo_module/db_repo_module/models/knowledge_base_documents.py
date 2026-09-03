@@ -39,10 +39,10 @@ class KnowledgeBaseDocuments(Base):
     # like "loan" or "branch". Callers own the mapping of their own fields
     # onto these generic slots (e.g. flo-api currently maps
     # branch->filter1, zone->filter2, item_type->filter3, loan_id->filter4);
-    # filter5/filter6 are headroom for future filter needs. Only filter1 is
-    # indexed today (paired with document_date, see the composite index
-    # below) -- add more indexes if/when a real query need arises for the
-    # others, same as filter1/document_date.
+    # filter5/filter6 are headroom for future filter needs. Every slot has
+    # a (knowledge_base_id, filterN, document_date) composite index (see the
+    # migration), so any caller can filter on knowledge_base_id + any one
+    # filter slot via a real btree index regardless of which slot it uses.
     document_date: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     filter1: Mapped[Optional[str]] = mapped_column(nullable=True)
     filter2: Mapped[Optional[str]] = mapped_column(nullable=True)

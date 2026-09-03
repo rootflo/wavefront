@@ -24,6 +24,53 @@ class QueryGenerator:
             clause = re.sub(pattern, formatter(field), clause)
         return clause
 
+    def build_filter_columns_clause(
+        self,
+        filter1: Optional[str] = None,
+        filter2: Optional[str] = None,
+        filter3: Optional[str] = None,
+        filter4: Optional[str] = None,
+        filter5: Optional[str] = None,
+        filter6: Optional[str] = None,
+        document_date_start: Optional[Any] = None,
+        document_date_end: Optional[Any] = None,
+        table_alias: str = 'd',
+    ) -> Tuple[str, Dict[str, Any]]:
+        """
+        Build an `AND ...` SQL fragment (empty string if nothing is set) plus
+        matching bind params for the real, indexed `filter1`..`filter6` and
+        `document_date` columns on `knowledge_base_documents`. Shared by
+        every query that joins that table in under `table_alias`, so
+        filtering on these columns behaves the same regardless of retrieval
+        mode (hybrid text search, image ANN search, or the DINO exact
+        match) rather than being special-cased to one of them.
+
+        `document_date` is only filtered when both `document_date_start`
+        and `document_date_end` are given -- a one-sided window isn't
+        supported by the underlying `BETWEEN`.
+        """
+        params: Dict[str, Any] = {}
+        clauses = []
+        for name, value in (
+            ('filter1', filter1),
+            ('filter2', filter2),
+            ('filter3', filter3),
+            ('filter4', filter4),
+            ('filter5', filter5),
+            ('filter6', filter6),
+        ):
+            if value is not None:
+                params[name] = value
+                clauses.append(f'AND {table_alias}.{name} = :{name}')
+        if document_date_start is not None and document_date_end is not None:
+            params['document_date_start'] = document_date_start
+            params['document_date_end'] = document_date_end
+            clauses.append(
+                f'AND {table_alias}.document_date BETWEEN '
+                ':document_date_start AND :document_date_end'
+            )
+        return ' '.join(clauses), params
+
     def compute_ef_search(
         self,
         effective_limit: int,
@@ -52,6 +99,14 @@ class QueryGenerator:
         filter: str,
         offset: Optional[int] = None,
         limit: Optional[int] = None,
+        filter1: Optional[str] = None,
+        filter2: Optional[str] = None,
+        filter3: Optional[str] = None,
+        filter4: Optional[str] = None,
+        filter5: Optional[str] = None,
+        filter6: Optional[str] = None,
+        document_date_start: Optional[Any] = None,
+        document_date_end: Optional[Any] = None,
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Generate SQL query for combined vector and keyword search with reranking.
@@ -108,6 +163,20 @@ class QueryGenerator:
                     lambda field: f"(d.metadata_value ->> '{field}')",
                 )
                 query_params.update(filter_params)
+
+        filter_columns_clause, filter_columns_params = self.build_filter_columns_clause(
+            filter1,
+            filter2,
+            filter3,
+            filter4,
+            filter5,
+            filter6,
+            document_date_start,
+            document_date_end,
+            table_alias='d',
+        )
+        query_params.update(filter_columns_params)
+
         sql_query = f"""
             WITH hnsw_candidates AS (
                 SELECT
@@ -137,7 +206,7 @@ class QueryGenerator:
                 JOIN
                     {KnowledgeBaseDocuments.__tablename__} d ON hc.document_id = d.id
                 WHERE
-                     d.knowledge_base_id = :kb_id {'AND (' + metadata_filter_clause_inner + ')' if metadata_filter_clause_inner else ''}
+                     d.knowledge_base_id = :kb_id {'AND (' + metadata_filter_clause_inner + ')' if metadata_filter_clause_inner else ''} {filter_columns_clause}
                 ORDER BY
                     hc.distance ASC
                 LIMIT :limit
@@ -159,7 +228,7 @@ class QueryGenerator:
                     plainto_tsquery('english', :query) AS query_tokens
                 WHERE
                     e.token @@ query_tokens
-                    AND d.knowledge_base_id = :kb_id {'AND (' + metadata_filter_clause_inner + ')' if metadata_filter_clause_inner else ''}
+                    AND d.knowledge_base_id = :kb_id {'AND (' + metadata_filter_clause_inner + ')' if metadata_filter_clause_inner else ''} {filter_columns_clause}
                 ORDER BY
                     text_score DESC
                 LIMIT :limit
@@ -195,12 +264,24 @@ class QueryGenerator:
     ):
         kb_id = str(params.get('kb_id'))
         top_k = int(params.get('top_k', 10))
+        filter_columns_clause, filter_columns_params = self.build_filter_columns_clause(
+            params.get('filter1'),
+            params.get('filter2'),
+            params.get('filter3'),
+            params.get('filter4'),
+            params.get('filter5'),
+            params.get('filter6'),
+            params.get('document_date_start'),
+            params.get('document_date_end'),
+            table_alias='d',
+        )
 
         # Prepare query parameters
         params = {
             'query_embedding': query_embeddings,
             'kb_id': kb_id,
             'top_k': top_k,
+            **filter_columns_params,
         }
         metadata_filter_clause = ''
         if filter:
@@ -231,7 +312,7 @@ class QueryGenerator:
         FROM {KnowledgeBaseEmbeddings.__tablename__} e
         JOIN {KnowledgeBaseDocuments.__tablename__} d ON e.document_id = d.id
         WHERE d.knowledge_base_id = :kb_id
-            {'AND (' + metadata_filter_clause + ')' if metadata_filter_clause else ''}
+            {'AND (' + metadata_filter_clause + ')' if metadata_filter_clause else ''} {filter_columns_clause}
         ORDER BY (e.embedding_vector::vector(512)) <=> :query_embedding ::vector(512)
         LIMIT :top_k
         """
@@ -243,11 +324,23 @@ class QueryGenerator:
     ):
         kb_id = str(params.get('kb_id'))
         top_k = int(params.get('top_k', 10))
+        filter_columns_clause, filter_columns_params = self.build_filter_columns_clause(
+            params.get('filter1'),
+            params.get('filter2'),
+            params.get('filter3'),
+            params.get('filter4'),
+            params.get('filter5'),
+            params.get('filter6'),
+            params.get('document_date_start'),
+            params.get('document_date_end'),
+            table_alias='d',
+        )
 
         params = {
             'query_embedding': query_embeddings,
             'kb_id': kb_id,
             'top_k': top_k,
+            **filter_columns_params,
         }
 
         metadata_filter_clause = ''
@@ -287,7 +380,7 @@ class QueryGenerator:
         FROM {KnowledgeBaseEmbeddings.__tablename__} e
         JOIN {KnowledgeBaseDocuments.__tablename__} d ON e.document_id = d.id
         WHERE d.knowledge_base_id = :kb_id
-            {'AND (' + metadata_filter_clause + ')' if metadata_filter_clause else ''}
+            {'AND (' + metadata_filter_clause + ')' if metadata_filter_clause else ''} {filter_columns_clause}
         ORDER BY (e.embedding_vector_1::vector(1024)) <=> :query_embedding ::vector(1024)
         LIMIT :top_k
         """
@@ -301,23 +394,26 @@ class QueryGenerator:
         filter1: str,
         document_date_start,
         document_date_end,
-        exclude_filter4: str,
         threshold: float,
+        filter2: Optional[str] = None,
+        filter3: Optional[str] = None,
+        filter4: Optional[str] = None,
+        filter5: Optional[str] = None,
+        filter6: Optional[str] = None,
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Exact (brute-force) DINO similarity search restricted to documents on
         `knowledge_base_documents` matching `filter1` and a `document_date`
-        window, excluding `exclude_filter4` (e.g. the record currently being
-        processed). `filter1`/`filter4` are generic, caller-defined columns --
-        see `KnowledgeBaseDocuments` -- this query has no notion of what they
-        mean semantically, only that one is an equality/range filter and the
-        other is an exclusion.
+        window, further narrowed by an equality match on any of
+        `filter2`..`filter6` that are provided. All `filterN` columns are
+        generic, caller-defined columns -- see `KnowledgeBaseDocuments` --
+        this query has no notion of what they mean semantically.
 
         Deliberately has no `ORDER BY`/`LIMIT` tied to the `<=>` distance
         expression anywhere -- that is what would let Postgres route the
         query through the HNSW index (`ix_kbe_embedding_vector_1_hnsw_cosine`)
         for an *approximate* top-K search. Here we instead pre-filter to a
-        small candidate set via the real, indexed `filter1`/`document_date`
+        small candidate set via the real, indexed `filterN`/`document_date`
         columns, then compute an exact cosine distance for every one of those
         rows and only keep the ones above `threshold` -- so results are exact,
         not approximate, and the count of matches is precise.
@@ -328,14 +424,23 @@ class QueryGenerator:
         same-level `WHERE`) -- it still runs after every distance in the
         candidate set has already been computed exactly.
         """
+        filter_columns_clause, filter_columns_params = self.build_filter_columns_clause(
+            filter1,
+            filter2,
+            filter3,
+            filter4,
+            filter5,
+            filter6,
+            document_date_start,
+            document_date_end,
+            table_alias='d',
+        )
+
         params: Dict[str, Any] = {
             'query_embedding': query_embeddings,
             'kb_id': str(kb_id),
-            'filter1': filter1,
-            'document_date_start': document_date_start,
-            'document_date_end': document_date_end,
-            'exclude_filter4': exclude_filter4,
             'threshold': threshold,
+            **filter_columns_params,
         }
 
         sql_query = f"""
@@ -346,15 +451,12 @@ class QueryGenerator:
                 d.file_path,
                 d.file_name,
                 d.knowledge_base_id,
-                d.filter4,
                 d.metadata_value,
                 1 - ((e.embedding_vector_1::vector(1024)) <=> :query_embedding ::vector(1024)) AS dino_score
             FROM {KnowledgeBaseEmbeddings.__tablename__} e
             JOIN {KnowledgeBaseDocuments.__tablename__} d ON e.document_id = d.id
             WHERE d.knowledge_base_id = :kb_id
-                AND d.filter1 = :filter1
-                AND d.document_date BETWEEN :document_date_start AND :document_date_end
-                AND d.filter4 != :exclude_filter4
+                {filter_columns_clause}
         ) scored
         WHERE dino_score > :threshold
         """

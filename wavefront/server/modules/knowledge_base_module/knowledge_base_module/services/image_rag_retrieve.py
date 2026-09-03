@@ -51,6 +51,14 @@ class ImageRagRetrieve:
         kb_id: uuid.UUID,
         top_k: Optional[int] = None,
         query_filter: Optional[str] = '',
+        filter1: Optional[str] = None,
+        filter2: Optional[str] = None,
+        filter3: Optional[str] = None,
+        filter4: Optional[str] = None,
+        filter5: Optional[str] = None,
+        filter6: Optional[str] = None,
+        document_date_start=None,
+        document_date_end=None,
     ):
         data = {'image_data': image_data}
         internal_api_url = f'{inference_url}/inference/v1/query/embeddings'
@@ -75,6 +83,14 @@ class ImageRagRetrieve:
                 kb_id,
                 top_k,
                 query_filter,
+                filter1=filter1,
+                filter2=filter2,
+                filter3=filter3,
+                filter4=filter4,
+                filter5=filter5,
+                filter6=filter6,
+                document_date_start=document_date_start,
+                document_date_end=document_date_end,
             )
         else:
             return []
@@ -87,16 +103,21 @@ class ImageRagRetrieve:
         filter1: str,
         document_date_start,
         document_date_end,
-        exclude_filter4: str,
         threshold: float,
+        filter2: Optional[str] = None,
+        filter3: Optional[str] = None,
+        filter4: Optional[str] = None,
+        filter5: Optional[str] = None,
+        filter6: Optional[str] = None,
     ) -> list[dict]:
         """
         Exact (non-ANN) DINO similarity match, restricted to documents in
         `kb_id` whose real `filter1`/`document_date` columns fall within the
-        given window, excluding `exclude_filter4` (e.g. the record currently
-        being processed). `filter1`/`filter4` are generic, caller-defined
-        columns -- see `KnowledgeBaseDocuments` -- this service has no notion
-        of what they mean semantically.
+        given window. `filter1` and `document_date` are required; `filter2`
+        through `filter6` are optional additional equality filters. All
+        `filterN` columns are generic, caller-defined columns -- see
+        `KnowledgeBaseDocuments` -- this service has no notion of what they
+        mean semantically.
 
         Only the DINO embedding is fetched/compared -- this check is purely
         about near-duplicate/visual-similarity matching (the same use case
@@ -124,14 +145,20 @@ class ImageRagRetrieve:
             return []
 
         try:
-            sql_query, query_params = self.query_generator.get_image_embedding_dino_exact_match(
-                dino_embedding,
-                kb_id,
-                filter1,
-                document_date_start,
-                document_date_end,
-                exclude_filter4,
-                threshold,
+            sql_query, query_params = (
+                self.query_generator.get_image_embedding_dino_exact_match(
+                    dino_embedding,
+                    kb_id,
+                    filter1,
+                    document_date_start,
+                    document_date_end,
+                    threshold,
+                    filter2,
+                    filter3,
+                    filter4,
+                    filter5,
+                    filter6,
+                )
             )
             return await self.knowledge_base_embeddings_repository.execute_query(
                 sql_query,
@@ -148,11 +175,27 @@ class ImageRagRetrieve:
         kb_id,
         top_k,
         query_filter,
+        filter1: Optional[str] = None,
+        filter2: Optional[str] = None,
+        filter3: Optional[str] = None,
+        filter4: Optional[str] = None,
+        filter5: Optional[str] = None,
+        filter6: Optional[str] = None,
+        document_date_start=None,
+        document_date_end=None,
     ):
         """Search for similar images using the CLIP embedding only."""
         params = {
             'kb_id': kb_id,
             'top_k': top_k,
+            'filter1': filter1,
+            'filter2': filter2,
+            'filter3': filter3,
+            'filter4': filter4,
+            'filter5': filter5,
+            'filter6': filter6,
+            'document_date_start': document_date_start,
+            'document_date_end': document_date_end,
         }
         try:
             sql_query, query_params = self.query_generator.get_image_embedding_clip(
@@ -173,6 +216,14 @@ class ImageRagRetrieve:
         kb_id,
         top_k,
         query_filter,
+        filter1: Optional[str] = None,
+        filter2: Optional[str] = None,
+        filter3: Optional[str] = None,
+        filter4: Optional[str] = None,
+        filter5: Optional[str] = None,
+        filter6: Optional[str] = None,
+        document_date_start=None,
+        document_date_end=None,
     ):
         """
         Search for similar images using the DINO embedding only, as its own
@@ -181,6 +232,14 @@ class ImageRagRetrieve:
         params = {
             'kb_id': kb_id,
             'top_k': top_k,
+            'filter1': filter1,
+            'filter2': filter2,
+            'filter3': filter3,
+            'filter4': filter4,
+            'filter5': filter5,
+            'filter6': filter6,
+            'document_date_start': document_date_start,
+            'document_date_end': document_date_end,
         }
         try:
             sql_query, query_params = self.query_generator.get_image_embedding_dino(
@@ -204,6 +263,14 @@ class ImageRagRetrieve:
         query_filter,
         clip_weight: float = 0.5,
         dino_weight: float = 0.5,
+        filter1: Optional[str] = None,
+        filter2: Optional[str] = None,
+        filter3: Optional[str] = None,
+        filter4: Optional[str] = None,
+        filter5: Optional[str] = None,
+        filter6: Optional[str] = None,
+        document_date_start=None,
+        document_date_end=None,
     ) -> list[ImageMatch]:
         """
         Search for similar images by taking the union of independent CLIP
@@ -240,8 +307,34 @@ class ImageRagRetrieve:
         top_k = 10 if top_k is None else int(top_k)
 
         clip_rows, dino_rows = await asyncio.gather(
-            self.image_retrieve_clip(clip_embedding, kb_id, top_k, query_filter),
-            self.image_retrieve_dino(dino_embedding, kb_id, top_k, query_filter),
+            self.image_retrieve_clip(
+                clip_embedding,
+                kb_id,
+                top_k,
+                query_filter,
+                filter1,
+                filter2,
+                filter3,
+                filter4,
+                filter5,
+                filter6,
+                document_date_start,
+                document_date_end,
+            ),
+            self.image_retrieve_dino(
+                dino_embedding,
+                kb_id,
+                top_k,
+                query_filter,
+                filter1,
+                filter2,
+                filter3,
+                filter4,
+                filter5,
+                filter6,
+                document_date_start,
+                document_date_end,
+            ),
         )
 
         merged: dict[uuid.UUID, ImageMatch] = {}

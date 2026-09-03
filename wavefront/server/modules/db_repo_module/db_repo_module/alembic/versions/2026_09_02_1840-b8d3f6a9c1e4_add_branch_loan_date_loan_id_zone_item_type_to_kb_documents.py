@@ -11,12 +11,14 @@ service used by multiple callers, so it shouldn't encode any one caller's
 business vocabulary. Each caller owns the mapping of its own fields onto
 these generic slots (e.g. flo-api currently maps branch->filter1,
 zone->filter2, item_type->filter3, loan_id->filter4); filter5/filter6 are
-headroom for future filter needs, not filtered on by any query yet. Only
-`filter1` is indexed today (paired with `document_date`) -- add more
-indexes when a real query need arises for the other slots.
+headroom for future filter needs. Every slot gets the same
+(knowledge_base_id, filterN, document_date) composite index as filter1, so
+any caller can filter on knowledge_base_id + any one filter slot (optionally
+narrowed by a document_date window) via a real btree index, not unindexed
+JSON text extraction, regardless of which slot they end up using.
 
 Revision ID: b8d3f6a9c1e4
-Revises: c7e2a1b4d9f3
+Revises: d4f1a7c3e2b8
 Create Date: 2026-09-02 18:40:00.000000
 
 """
@@ -28,7 +30,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = 'b8d3f6a9c1e4'
-down_revision: Union[str, None] = 'c7e2a1b4d9f3'
+down_revision: Union[str, None] = 'd4f1a7c3e2b8'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -68,9 +70,56 @@ def upgrade() -> None:
         'knowledge_base_documents',
         ['knowledge_base_id', 'filter1', 'document_date'],
     )
+    op.create_index(
+        'ix_kbd_kb_id_filter2_document_date',
+        'knowledge_base_documents',
+        ['knowledge_base_id', 'filter2', 'document_date'],
+    )
+    op.create_index(
+        'ix_kbd_kb_id_filter3_document_date',
+        'knowledge_base_documents',
+        ['knowledge_base_id', 'filter3', 'document_date'],
+    )
+    op.create_index(
+        'ix_kbd_kb_id_filter4_document_date',
+        'knowledge_base_documents',
+        ['knowledge_base_id', 'filter4', 'document_date'],
+    )
+    op.create_index(
+        'ix_kbd_kb_id_filter5_document_date',
+        'knowledge_base_documents',
+        ['knowledge_base_id', 'filter5', 'document_date'],
+    )
+    op.create_index(
+        'ix_kbd_kb_id_filter6_document_date',
+        'knowledge_base_documents',
+        ['knowledge_base_id', 'filter6', 'document_date'],
+    )
+
+    op.create_index(
+        'ix_kbe_document_id',
+        'knowledge_base_embeddings',
+        ['document_id'],
+        unique=False,
+    )
 
 
 def downgrade() -> None:
+    op.drop_index(
+        'ix_kbd_kb_id_filter6_document_date', table_name='knowledge_base_documents'
+    )
+    op.drop_index(
+        'ix_kbd_kb_id_filter5_document_date', table_name='knowledge_base_documents'
+    )
+    op.drop_index(
+        'ix_kbd_kb_id_filter4_document_date', table_name='knowledge_base_documents'
+    )
+    op.drop_index(
+        'ix_kbd_kb_id_filter3_document_date', table_name='knowledge_base_documents'
+    )
+    op.drop_index(
+        'ix_kbd_kb_id_filter2_document_date', table_name='knowledge_base_documents'
+    )
     op.drop_index(
         'ix_kbd_kb_id_filter1_document_date', table_name='knowledge_base_documents'
     )
@@ -81,3 +130,8 @@ def downgrade() -> None:
     op.drop_column('knowledge_base_documents', 'filter2')
     op.drop_column('knowledge_base_documents', 'filter1')
     op.drop_column('knowledge_base_documents', 'document_date')
+
+    op.drop_index(
+        'ix_kbe_document_id',
+        table_name='knowledge_base_embeddings',
+    )

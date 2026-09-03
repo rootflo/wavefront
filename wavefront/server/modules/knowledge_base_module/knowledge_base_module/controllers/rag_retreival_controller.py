@@ -231,26 +231,75 @@ async def retrieve_query(
     exact_match: bool = Query(
         False,
         description=(
-            'If true, run an exact (non-ANN) DINO match restricted by '
-            'filter1/document_date/exclude_filter4 instead of the default '
-            'top_k ANN search. Requires image input, threshold, filter1, '
-            'document_date_start, document_date_end, and exclude_filter4. '
-            'The underlying query never touches the HNSW index (see '
+            'If true, run an exact (non-ANN) DINO match instead of the '
+            'default top_k ANN/hybrid search. Requires image input, '
+            'threshold, filter1, document_date_start, and document_date_end '
+            '(filter1/document_date are optional narrowing filters on the '
+            'other search modes, but required for exact_match). The '
+            'underlying query never touches the HNSW index (see '
             'QueryGenerator.get_image_embedding_dino_exact_match) so results '
             'are exact, not approximate.'
         ),
     ),
-    filter1: Optional[str] = Query(
-        None, description='Exact-match only: equality filter on knowledge_base_documents.filter1'
-    ),
     document_date_start: Optional[datetime] = Query(
-        None, description='Exact-match only: start of the document_date window (inclusive)'
+        None,
+        description=(
+            'Start of the document_date window (inclusive), applied on '
+            'knowledge_base_documents.document_date. Works with any search '
+            'mode (text query, image ANN, or exact_match); must be provided '
+            'together with document_date_end. Required when exact_match=true.'
+        ),
     ),
     document_date_end: Optional[datetime] = Query(
-        None, description='Exact-match only: end of the document_date window (inclusive)'
+        None,
+        description=(
+            'End of the document_date window (inclusive). Works with any '
+            'search mode; must be provided together with document_date_start. '
+            'Required when exact_match=true.'
+        ),
     ),
-    exclude_filter4: Optional[str] = Query(
-        None, description='Exact-match only: exclude documents whose filter4 equals this value'
+    filter1: Optional[str] = Query(
+        None,
+        description=(
+            'Equality filter on knowledge_base_documents.filter1. Works with '
+            'any search mode (text query, image ANN, or exact_match). '
+            'Required when exact_match=true.'
+        ),
+    ),
+    filter2: Optional[str] = Query(
+        None,
+        description=(
+            'Equality filter on knowledge_base_documents.filter2. Works with '
+            'any search mode (text query, image ANN, or exact_match).'
+        ),
+    ),
+    filter3: Optional[str] = Query(
+        None,
+        description=(
+            'Equality filter on knowledge_base_documents.filter3. Works with '
+            'any search mode (text query, image ANN, or exact_match).'
+        ),
+    ),
+    filter4: Optional[str] = Query(
+        None,
+        description=(
+            'Equality filter on knowledge_base_documents.filter4. Works with '
+            'any search mode (text query, image ANN, or exact_match).'
+        ),
+    ),
+    filter5: Optional[str] = Query(
+        None,
+        description=(
+            'Equality filter on knowledge_base_documents.filter5. Works with '
+            'any search mode (text query, image ANN, or exact_match).'
+        ),
+    ),
+    filter6: Optional[str] = Query(
+        None,
+        description=(
+            'Equality filter on knowledge_base_documents.filter6. Works with '
+            'any search mode (text query, image ANN, or exact_match).'
+        ),
     ),
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
@@ -288,13 +337,19 @@ async def retrieve_query(
         or filter1 is None
         or document_date_start is None
         or document_date_end is None
-        or exclude_filter4 is None
     ):
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content=response_formatter.buildErrorResponse(
-                'threshold, filter1, document_date_start, document_date_end, '
-                'and exclude_filter4 are all required when exact_match=true'
+                'threshold, filter1, document_date_start, and document_date_end '
+                'are all required when exact_match=true'
+            ),
+        )
+    if (document_date_start is None) != (document_date_end is None):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                'document_date_start and document_date_end must be provided together'
             ),
         )
     existing_kb = await knowledge_base_repository.find_one(id=kb_id)
@@ -305,6 +360,7 @@ async def retrieve_query(
                 'Knowledge Base with the mentioned id doesnt exist'
             ),
         )
+
     match_count = None
     if exact_match:
         image_data, error_response = await _resolve_image_data(
@@ -320,8 +376,12 @@ async def retrieve_query(
             filter1,
             document_date_start,
             document_date_end,
-            exclude_filter4,
             threshold,
+            filter2,
+            filter3,
+            filter4,
+            filter5,
+            filter6,
         )
         retrieved_docs = convert_uuids_to_str(retrieved_docs)
         match_count = len(retrieved_docs)
@@ -335,6 +395,14 @@ async def retrieve_query(
             query_filter,
             offset,
             limit,
+            filter1,
+            filter2,
+            filter3,
+            filter4,
+            filter5,
+            filter6,
+            document_date_start,
+            document_date_end,
         )
     else:
         image_data, error_response = await _resolve_image_data(
@@ -349,6 +417,14 @@ async def retrieve_query(
             kb_id,
             top_k,
             query_filter,
+            filter1,
+            filter2,
+            filter3,
+            filter4,
+            filter5,
+            filter6,
+            document_date_start,
+            document_date_end,
         )
         retrieved_docs = convert_uuids_to_str(retrieved_docs)
     if not retrieved_docs:
