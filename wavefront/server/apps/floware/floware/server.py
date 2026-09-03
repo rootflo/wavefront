@@ -17,7 +17,12 @@ from auth_module.auth_container import AuthContainer
 from common_module.common_container import CommonContainer
 from common_module.middleware.request_id_middleware import get_current_request_id
 from common_module.log.logger import logger
-from common_module.prometheus.prometheus_middleware import PrometheusMiddleware
+from common_module.telemetry import (
+    configure_telemetry_providers,
+    instrument_sqlalchemy,
+    record_exception_on_span,
+    shutdown_telemetry,
+)
 from common_module.response_formatter import ResponseFormatter
 
 from db_repo_module.database.connection import DatabaseClient
@@ -201,6 +206,9 @@ async def lifespan(app: FastAPI):
             logger.info('========== Establishing db connection ...')
             await db_client.connect()
             logger.info('========== DB connection established.')
+            # Emits db.* spans for every query; needs the engine, so it can
+            # only happen once the DI container has built the client.
+            instrument_sqlalchemy(db_client.engine)
         else:
             raise TypeError('db_client is not an instance of DatabaseClient')
 
@@ -294,6 +302,10 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f'Error during application lifecycle: {str(e)}')
         raise
+    finally:
+        # In a `finally` so buffered spans and metrics are still flushed when
+        # shutdown takes an error path or startup fails before `yield`.
+        shutdown_telemetry()
 
 
 environment = os.getenv('APP_ENV', 'production')
@@ -309,6 +321,10 @@ app = FastAPI(
     docs_url='/docs' if is_dev else None,
     redoc_url='/redoc' if is_dev else None,
 )
+
+# Providers must exist before any instrumentation is attached. The FastAPI app
+# itself is instrumented further down, after all other middleware is registered.
+configure_telemetry_providers(default_service_name='wavefront-floware')
 
 floware_base_url = os.getenv('FLOWARE_BASE_URL', 'http://localhost:8001')
 
@@ -351,13 +367,6 @@ def custom_openapi() -> dict[str, Any]:
 app.openapi = cast(OpenApiCallable, custom_openapi)  # type: ignore[assignment]
 
 
-@app.get('/v1/_metrics')
-async def metrics(request: Request):
-    logger.debug('Metrics endpoint called')
-    metrics_data = await PrometheusMiddleware.metrics_endpoint(request)
-    return metrics_data
-
-
 # Middlewares & Routers
 add_middlewares(app)
 include_routers(app)
@@ -369,10 +378,10 @@ async def global_exception_handler(request: Request, exc: Exception):
     if isinstance(exc, HTTPException):
         raise exc
 
-    prometheus_middleware = PrometheusMiddleware.get_instance()
-    if prometheus_middleware:
-        labels = prometheus_middleware.get_labels(request)
-        prometheus_middleware.http_errors_total.labels(**labels, status_code=500).inc()
+    # This handler swallows the exception and returns a 500 without re-raising,
+    # so it never reaches the OTel ASGI middleware's own exception recording -
+    # the SERVER span would otherwise be marked as a success. Record it here.
+    record_exception_on_span(exc)
 
     error_message = 'An unexpected error has occurred while performing this action, please try again'
     if is_dev:

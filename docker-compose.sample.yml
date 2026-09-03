@@ -81,6 +81,51 @@ services:
     networks:
       - floware-network
 
+  # OpenTelemetry Collector Contrib Gateway. Two --config files layer a
+  # pluggable exporter overlay on top of the local-only base config; swapping
+  # cloud backends is a matter of pointing OTEL_EXPORTER_OVERLAY at a different
+  # file in otel/exporters/ - no application code or rebuild involved. See
+  # otel/collector-base.yaml for the fan-out design.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.159.0
+    container_name: otel-collector
+    restart: unless-stopped
+    command:
+      - "--config=/etc/otel/collector-base.yaml"
+      - "--config=<YOUR_OTEL_EXPORTER_OVERLAY_OR_/etc/otel/exporters/none.yaml>"
+    mem_limit: 768m
+    volumes:
+      - ./otel:/etc/otel:ro
+    environment:
+      - APPLICATIONINSIGHTS_CONNECTION_STRING=<YOUR_APPLICATIONINSIGHTS_CONNECTION_STRING>
+      - AWS_REGION=<YOUR_AWS_REGION>
+      - GOOGLE_CLOUD_PROJECT=<YOUR_GOOGLE_CLOUD_PROJECT>
+      - OTEL_CLOUD_ENDPOINT=<YOUR_OTEL_CLOUD_ENDPOINT>
+      - OTEL_CLOUD_HEADERS_AUTHORIZATION=<YOUR_OTEL_CLOUD_HEADERS_AUTHORIZATION>
+    ports:
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+      - "13133:13133" # health_check extension
+      - "8888:8888" # collector self-metrics
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - floware-network
+
+  # Jaeger v2 for Local Distributed Tracing UI. OTLP ingest is on by default
+  # in v2 (no COLLECTOR_OTLP_ENABLED needed - that was a v1 all-in-one flag).
+  jaeger:
+    image: jaegertracing/jaeger:2.20.0
+    container_name: jaeger
+    restart: unless-stopped
+    ports:
+      - "16686:16686" # Jaeger Web UI
+    networks:
+      - floware-network
+
   # Wavefront - AI middleware web
   wavefront:
     build:
@@ -222,6 +267,12 @@ services:
       - HERMES_URL=<YOUR_HERMES_URL>
 
       # ============================================
+      # OpenTelemetry APM Configuration
+      # ============================================
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_SERVICE_NAME=wavefront-floware
+
+      # ============================================
       # OAuth Configuration (Optional)
       # ============================================
       # Azure OAuth
@@ -288,6 +339,8 @@ services:
       postgres-floware:
         condition: service_healthy
       redis-floware:
+        condition: service_healthy
+      otel-collector:
         condition: service_healthy
     networks:
       - floware-network
@@ -377,11 +430,20 @@ services:
       - CALL_PROCESSING_TOKEN_PREFIX=<YOUR_CALL_PROCESSING_TOKEN_PREFIX>
       - CALL_PROCESSING_JWT_ISSUER=<YOUR_CALL_PROCESSING_JWT_ISSUER>
 
+      # ============================================
+      # OpenTelemetry APM Configuration
+      # ============================================
+      - CALL_PROCESSING_ENABLE_TRACING=true
+      - CALL_PROCESSING_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_SERVICE_NAME=wavefront-call-processing
+
     depends_on:
       redis-call-processing:
         condition: service_healthy
       floware:
         condition: service_started
+      otel-collector:
+        condition: service_healthy
     networks:
       - floware-network
 

@@ -1,0 +1,26 @@
+# GCP Cloud Trace + Cloud Monitoring overlay, for symmetry with the GAR/GCP
+# build targets already used in .github/workflows/.
+#
+# Select it with:
+#   OTEL_EXPORTER_OVERLAY=/etc/otel/exporters/gcp.yaml
+#   GOOGLE_CLOUD_PROJECT=<project-id>
+#
+# Auth is Application Default Credentials — mount a service account key or run
+# on GCP infra with the collector's runtime identity granted
+# roles/cloudtrace.agent and roles/monitoring.metricWriter.
+
+exporters:
+  googlecloud:
+    project: ${env:GOOGLE_CLOUD_PROJECT}
+
+service:
+  pipelines:
+    traces/cloud_upstream:
+      receivers: [otlp]
+      processors: [memory_limiter, resourcedetection, transform/redact, tail_sampling, batch]
+      exporters: [googlecloud]
+
+    metrics/cloud_upstream:
+      receivers: [otlp]
+      processors: [memory_limiter, resourcedetection, transform/redact, batch]
+      exporters: [googlecloud]
