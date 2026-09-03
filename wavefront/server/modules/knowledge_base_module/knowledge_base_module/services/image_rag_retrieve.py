@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 import httpx
 from typing import Any, Optional
 import uuid
+from fastapi import HTTPException, status
 from knowledge_base_module.queries.generate_query import QueryGenerator
 from db_repo_module.models.knowledge_base_embeddings import KnowledgeBaseEmbeddings
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
@@ -129,16 +130,33 @@ class ImageRagRetrieve:
         """
         data = {'image_data': image_data}
         internal_api_url = f'{inference_url}/inference/v1/query/embeddings'
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(60.0, connect=30.0),
-            limits=httpx.Limits(
-                max_keepalive_connections=20,
-                max_connections=100,
-                keepalive_expiry=60,
-            ),
-        ) as client:
-            response = await client.post(internal_api_url, json=data)
-            embedding = response.json().get('data', {}).get('response', [])
+        try:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(60.0, connect=30.0),
+                limits=httpx.Limits(
+                    max_keepalive_connections=20,
+                    max_connections=100,
+                    keepalive_expiry=60,
+                ),
+            ) as client:
+                response = await client.post(internal_api_url, json=data)
+                response.raise_for_status()
+                embedding = response.json().get('data', {}).get('response', [])
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f'Inference service returned an error: {e}',
+            )
+        except httpx.RequestError as e:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f'Inference service is unreachable: {e}',
+            )
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f'Inference service returned an unparseable response: {e}',
+            )
 
         dino_embedding = next((e['dino'] for e in embedding if 'dino' in e), None)
         if not dino_embedding:

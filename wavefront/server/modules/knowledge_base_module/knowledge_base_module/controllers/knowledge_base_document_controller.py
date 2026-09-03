@@ -126,6 +126,26 @@ async def upload_document(
                     f'{raw_document_date}'
                 )
 
+        filter_column_names = (
+            'filter1',
+            'filter2',
+            'filter3',
+            'filter4',
+            'filter5',
+            'filter6',
+        )
+        for filter_name in filter_column_names:
+            filter_value = metadata_dict.get(filter_name)
+            if filter_value is not None and (
+                not isinstance(filter_value, str) or len(filter_value) > 255
+            ):
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content=response_formatter.buildErrorResponse(
+                        f'{filter_name} must be a string of at most 255 characters'
+                    ),
+                )
+
         async with knowledge_base_documents_repository.session() as session:
             new_kb_document = KnowledgeBaseDocuments(
                 id=doc_id,

@@ -180,35 +180,38 @@ class QueryGenerator:
         sql_query = f"""
             WITH hnsw_candidates AS (
                 SELECT
-                    id,
-                    document_id,
-                    chunk_text,
-                    chunk_index,
-                    (embedding_vector::vector(512)) <=> :query_embed ::vector(512) AS distance
+                    e.id,
+                    e.document_id,
+                    e.chunk_text,
+                    e.chunk_index,
+                    d.file_path,
+                    d.knowledge_base_id,
+                    d.metadata_value,
+                    (e.embedding_vector::vector(512)) <=> :query_embed ::vector(512) AS distance
                 FROM
-                    {KnowledgeBaseEmbeddings.__tablename__}
+                    {KnowledgeBaseEmbeddings.__tablename__} e
+                JOIN
+                    {KnowledgeBaseDocuments.__tablename__} d ON e.document_id = d.id
+                WHERE
+                     d.knowledge_base_id = :kb_id {'AND (' + metadata_filter_clause_inner + ')' if metadata_filter_clause_inner else ''} {filter_columns_clause}
                 ORDER BY
-                    (embedding_vector::vector(512)) <=> :query_embed ::vector(512)
+                    (e.embedding_vector::vector(512)) <=> :query_embed ::vector(512)
                 LIMIT :limit * 20
             ),
             vector_results AS (
                 SELECT
-                    hc.id as embedding_id,
-                    hc.chunk_text,
-                    hc.chunk_index,
-                    d.id as document_id,
-                    d.file_path,
-                    d.knowledge_base_id,
-                    d.metadata_value,
-                    1 - hc.distance as vector_score
+                    id as embedding_id,
+                    chunk_text,
+                    chunk_index,
+                    document_id,
+                    file_path,
+                    knowledge_base_id,
+                    metadata_value,
+                    1 - distance as vector_score
                 FROM
-                    hnsw_candidates hc
-                JOIN
-                    {KnowledgeBaseDocuments.__tablename__} d ON hc.document_id = d.id
-                WHERE
-                     d.knowledge_base_id = :kb_id {'AND (' + metadata_filter_clause_inner + ')' if metadata_filter_clause_inner else ''} {filter_columns_clause}
+                    hnsw_candidates
                 ORDER BY
-                    hc.distance ASC
+                    distance ASC
                 LIMIT :limit
             ),
             keyword_results AS (
