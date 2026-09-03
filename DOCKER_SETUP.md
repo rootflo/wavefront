@@ -87,6 +87,68 @@ Some services require credential files (JSON files for GCP, OAuth, etc.). Follow
 | **postgres-console** | 5433 | Console database |
 | **redis-floware** | 6379 | Floware cache |
 | **redis-call-processing** | 6380 | Call processing service cache |
+| **otel-collector** | 4317/4318 | OpenTelemetry gateway (OTLP gRPC/HTTP), 13133 health, 8888 self-metrics |
+| **jaeger** | 16686 | Jaeger UI for local distributed traces |
+
+## Observability
+
+Applications never talk to an APM vendor directly. They push standard OTLP to
+the **otel-collector**, which fans that out along two independent pipelines:
+
+| Pipeline | Sampling | Processing | Destination |
+|----------|----------|------------|-------------|
+| `*/local_debug` | 100%, unsampled | batch only | Jaeger (`http://localhost:16686`) |
+| `*/cloud_upstream` | all errors, all requests >2s, 5% of the rest | PII redaction, then tail sampling | your cloud APM |
+
+That split is why local debugging shows every request while the cloud bill
+stays bounded, and why switching cloud vendors requires **no application
+change or rebuild**.
+
+### View traces locally
+
+```bash
+docker compose -f docker-compose.local.yml up -d otel-collector jaeger floware
+open http://localhost:16686
+```
+
+Traces carry `app.user.id`, `app.role.id`, `app.session.id` and
+`app.request.id` on every span (HTTP, DB, Redis, outbound HTTP, and LLM/agent
+spans), propagated via OpenTelemetry Baggage. `app.user.id` is visible in
+Jaeger but hashed before it is exported to any cloud backend.
+
+### Push to a cloud APM backend
+
+Pick one overlay and set its credentials in `.env`:
+
+| Backend | `OTEL_EXPORTER_OVERLAY` | Credentials |
+|---------|-------------------------|-------------|
+| Local only (default) | `/etc/otel/exporters/none.yaml` | – |
+| Any OTLP vendor (Grafana Cloud, Honeycomb, New Relic, Datadog, SigNoz, Elastic, …) | `/etc/otel/exporters/otlphttp.yaml` | `OTEL_CLOUD_ENDPOINT`, `OTEL_CLOUD_HEADERS_AUTHORIZATION` |
+| Azure Application Insights | `/etc/otel/exporters/azure.yaml` | `APPLICATIONINSIGHTS_CONNECTION_STRING` |
+| AWS X-Ray + CloudWatch | `/etc/otel/exporters/aws.yaml` | `AWS_REGION` + IAM role |
+| GCP Cloud Trace + Monitoring | `/etc/otel/exporters/gcp.yaml` | `GOOGLE_CLOUD_PROJECT` + ADC |
+
+Then restart just the collector — no application rebuild:
+
+```bash
+docker compose -f docker-compose.local.yml up -d --force-recreate otel-collector
+curl -sf http://localhost:13133 && echo "collector healthy"
+```
+
+The overlay files live in [`otel/exporters/`](otel/exporters/); the shared
+receivers, processors and local pipelines are in
+[`otel/collector-base.yaml`](otel/collector-base.yaml). Adding a vendor means
+adding one file there.
+
+> **Do not set `OTEL_TRACES_SAMPLER` to a ratio.** Head sampling must stay at
+> 100% or the collector's `tail_sampling` cannot see complete traces.
+
+> **Scaling note:** `tail_sampling` requires every span of a trace to reach the
+> same collector instance. That holds for the single container here, but
+> scaling the collector past one replica needs a two-tier topology — an agent
+> tier fanning out via the `loadbalancing` exporter keyed by trace ID, into a
+> gateway tier that owns `tail_sampling`. Without it, sampling decisions go
+> silently wrong.
 
 ## Environment Variables Reference
 
@@ -602,7 +664,9 @@ This docker-compose setup is designed for **local development only**. For produc
 
 1. Use Kubernetes or Docker Swarm for orchestration
 2. Implement proper secrets management (Vault, AWS Secrets Manager, etc.)
-3. Set up monitoring and logging (Prometheus, Grafana, ELK stack)
+3. Deploy the OpenTelemetry Collector as a DaemonSet/sidecar and point
+   `OTEL_EXPORTER_OTLP_ENDPOINT` at it; supply cloud APM credentials from a
+   secret store rather than env literals (see the Observability section above)
 4. Configure auto-scaling based on load
 5. Use managed databases (RDS, Cloud SQL) instead of containerized databases
 6. Implement backup and disaster recovery procedures

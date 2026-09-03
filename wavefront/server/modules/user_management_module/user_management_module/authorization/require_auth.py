@@ -41,7 +41,6 @@ optional_auth_apis = [
     '/floware/v1/user/send-reset-password-email',
     '/floware/v1/user/reset-password',
     '/floware/v1/data-sources/outlook/webhook/email_received',
-    '/v1/_metrics',
     '/floware/v1/plugin-auth/authenticate',
     '/floware/v1/oauth/google/callback',
     '/floware/v1/oauth/microsoft/callback',

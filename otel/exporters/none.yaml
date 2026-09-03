@@ -1,0 +1,4 @@
+# Default overlay: no cloud export. Adds nothing to collector-base.yaml, so
+# only the local Jaeger pipelines run. This is what docker-compose.local.yml
+# and docker-compose.sample.yml use unless OTEL_EXPORTER_OVERLAY is set.
+{}

@@ -161,6 +161,11 @@ def close_event_loop() -> None:
         except Exception as exc:
             logger.warning(f'Error draining worker event loop on shutdown: {exc}')
         finally:
+            # Telemetry shutdown is handled by the `worker_shutdown` /
+            # `worker_process_shutdown` signals in celery_app.py, not here —
+            # this function's contract is event-loop teardown, and coupling
+            # span/metric flush to it meant a repeated or skipped call here
+            # could lose the tail of the traces.
             _loop.close()
             _loop = None
 
