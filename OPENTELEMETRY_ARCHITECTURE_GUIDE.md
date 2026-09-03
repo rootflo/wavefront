@@ -106,12 +106,12 @@ Because an empty exporter list (`exporters: []`) crashes the collector, `collect
 
 | Overlay File | Destination | Required Environment Variables |
 | :--- | :--- | :--- |
-| [`otel/exporters/none.yaml`](file:///home/aquib/workspace/rootflo/wavefront/otel/exporters/none.yaml) | Local Jaeger only (Default) | None |
-| [`otel/exporters/honeycomb.yaml`](file:///home/aquib/workspace/rootflo/wavefront/otel/exporters/honeycomb.yaml) | Honeycomb.io | `OTEL_CLOUD_HEADERS_AUTHORIZATION=<api-key>` |
-| [`otel/exporters/otlphttp.yaml`](file:///home/aquib/workspace/rootflo/wavefront/otel/exporters/otlphttp.yaml) | Generic OTLP (Grafana Cloud, Datadog, New Relic, SigNoz) | `OTEL_CLOUD_ENDPOINT`, `OTEL_CLOUD_HEADERS_AUTHORIZATION` |
-| [`otel/exporters/azure.yaml`](file:///home/aquib/workspace/rootflo/wavefront/otel/exporters/azure.yaml) | Azure Application Insights | `APPLICATIONINSIGHTS_CONNECTION_STRING` |
-| [`otel/exporters/aws.yaml`](file:///home/aquib/workspace/rootflo/wavefront/otel/exporters/aws.yaml) | AWS X-Ray (traces) + CloudWatch EMF (metrics) | `AWS_REGION` + IAM Credentials |
-| [`otel/exporters/gcp.yaml`](file:///home/aquib/workspace/rootflo/wavefront/otel/exporters/gcp.yaml) | GCP Cloud Trace + Monitoring | `GOOGLE_CLOUD_PROJECT` + ADC |
+| [`otel/exporters/none.yaml`](otel/exporters/none.yaml) | Local Jaeger only (Default) | None |
+| [`otel/exporters/honeycomb.yaml`](otel/exporters/honeycomb.yaml) | Honeycomb.io | `OTEL_CLOUD_HEADERS_AUTHORIZATION=<api-key>` |
+| [`otel/exporters/otlphttp.yaml`](otel/exporters/otlphttp.yaml) | Generic OTLP (Grafana Cloud, Datadog, New Relic, SigNoz) | `OTEL_CLOUD_ENDPOINT`, `OTEL_CLOUD_HEADERS_AUTHORIZATION` |
+| [`otel/exporters/azure.yaml`](otel/exporters/azure.yaml) | Azure Application Insights | `APPLICATIONINSIGHTS_CONNECTION_STRING` |
+| [`otel/exporters/aws.yaml`](otel/exporters/aws.yaml) | AWS X-Ray (traces) + CloudWatch EMF (metrics) | `AWS_REGION` + IAM Credentials |
+| [`otel/exporters/gcp.yaml`](otel/exporters/gcp.yaml) | GCP Cloud Trace + Monitoring | `GOOGLE_CLOUD_PROJECT` + ADC |
 
 ---
 
