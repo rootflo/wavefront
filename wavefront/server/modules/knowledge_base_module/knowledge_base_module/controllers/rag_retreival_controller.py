@@ -350,14 +350,15 @@ async def retrieve_query(
         )
     if exact_match and (
         threshold is None
-        or filter1 is None
         or document_date_start is None
         or document_date_end is None
+        or created_at_start is None
+        or created_at_end is None
     ):
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content=response_formatter.buildErrorResponse(
-                'threshold, filter1, document_date_start, and document_date_end '
+                'threshold, document_date_start, and document_date_end '
                 'are all required when exact_match=true'
             ),
         )
