@@ -101,6 +101,7 @@ def upgrade() -> None:
         'knowledge_base_embeddings',
         ['document_id'],
         unique=False,
+        if_not_exists=True,
     )
 
 
