@@ -24,7 +24,6 @@ from common_module.telemetry.baggage_span_processor import BaggageSpanProcessor
 EXCLUDED_URLS = 'health,healthz,docs,openapi.json,redoc,favicon.ico'
 
 _providers_configured = False
-_fastapi_instrumented = False
 _sqlalchemy_instrumented = False
 
 
@@ -161,18 +160,39 @@ def instrument_fastapi(app: Any) -> None:
     semantic conventions and route-template span names, and extracts inbound
     trace context from request headers, so no hand-written HTTP middleware is
     needed or wanted alongside it.
-    """
-    global _fastapi_instrumented
 
-    if _fastapi_instrumented or not _providers_configured:
+    The "already done" check is per app object, never a module-level flag.
+    ``python server.py`` executes the server module up to three times in one
+    process tree - as ``__main__``, as ``__mp_main__`` in uvicorn's spawned
+    reload/worker child, and again as ``server`` when uvicorn imports the
+    ``"server:app"`` string - and each execution builds a *different* FastAPI
+    instance. Only the last one is served. A process-global flag is set by the
+    first instance and silently skips the one that actually handles requests,
+    which costs every HTTP SERVER span while leaving the redis/httpx/SQLAlchemy
+    spans (global monkey-patches, not per-app) working - so telemetry looks
+    half-alive rather than broken.
+    """
+    if not _providers_configured:
+        return
+
+    # Set by FastAPIInstrumentor itself; instrumenting twice only warns, but
+    # checking keeps the log honest.
+    if getattr(app, '_is_instrumented_by_opentelemetry', False):
         return
 
     try:
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
-        FastAPIInstrumentor.instrument_app(app, excluded_urls=EXCLUDED_URLS)
-        _fastapi_instrumented = True
-        logger.info('FastAPI instrumentation enabled')
+        # `exclude_spans` drops the per-ASGI-event `http send` / `http receive`
+        # INTERNAL spans. They restate timings the SERVER span already carries,
+        # but there are three or more of them per request - the majority of
+        # every request trace, and the part that grows fastest with traffic.
+        FastAPIInstrumentor.instrument_app(
+            app,
+            excluded_urls=EXCLUDED_URLS,
+            exclude_spans=['receive', 'send'],
+        )
+        logger.info(f'FastAPI instrumentation enabled (app id={id(app):#x})')
     except Exception as exc:
         logger.error(f'Failed to instrument FastAPI app: {exc}', exc_info=True)
 
