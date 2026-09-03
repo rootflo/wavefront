@@ -32,6 +32,18 @@ processors:
     send_batch_size: 512
     timeout: 1s
 
+  # Background pollers emit one root span per iteration - a redis stream read
+  # per consumer per second, plus connection keepalives - and outnumber real
+  # request traces by orders of magnitude. Matched with IsRootSpan() so the
+  # same commands still appear when they happen *inside* a request trace,
+  # where they carry actual diagnostic value.
+  filter/background_noise:
+    error_mode: ignore
+    traces:
+      span:
+        - 'IsRootSpan() and name == "XREADGROUP"'
+        - 'IsRootSpan() and name == "PING"'
+
   resourcedetection:
     detectors: [env, system]
     timeout: 2s
@@ -118,7 +130,7 @@ service:
     # local development; this pipeline is not present in any cloud overlay.
     traces/local_debug:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, batch]
+      processors: [memory_limiter, filter/background_noise, resourcedetection, batch]
       exporters: [otlp/jaeger, debug]
 
     metrics/local_debug:

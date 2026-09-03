@@ -24,7 +24,7 @@ service:
   pipelines:
     traces/cloud_upstream:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, transform/redact, tail_sampling, batch]
+      processors: [memory_limiter, filter/background_noise, resourcedetection, transform/redact, tail_sampling, batch]
       exporters: [awsxray]
 
     metrics/cloud_upstream:
