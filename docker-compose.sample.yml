@@ -92,26 +92,27 @@ services:
     restart: unless-stopped
     command:
       - "--config=/etc/otel/collector-base.yaml"
-      - "--config=<YOUR_OTEL_EXPORTER_OVERLAY_OR_/etc/otel/exporters/none.yaml>"
+      - "--config=${OTEL_EXPORTER_OVERLAY:-/etc/otel/exporters/none.yaml}"
     mem_limit: 768m
     volumes:
       - ./otel:/etc/otel:ro
     environment:
-      - APPLICATIONINSIGHTS_CONNECTION_STRING=<YOUR_APPLICATIONINSIGHTS_CONNECTION_STRING>
-      - AWS_REGION=<YOUR_AWS_REGION>
-      - GOOGLE_CLOUD_PROJECT=<YOUR_GOOGLE_CLOUD_PROJECT>
-      - OTEL_CLOUD_ENDPOINT=<YOUR_OTEL_CLOUD_ENDPOINT>
-      - OTEL_CLOUD_HEADERS_AUTHORIZATION=<YOUR_OTEL_CLOUD_HEADERS_AUTHORIZATION>
+      - APPLICATIONINSIGHTS_CONNECTION_STRING=${APPLICATIONINSIGHTS_CONNECTION_STRING:-}
+      - AWS_REGION=${AWS_REGION:-}
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT:-}
+      - OTEL_CLOUD_ENDPOINT=${OTEL_CLOUD_ENDPOINT:-}
+      - OTEL_CLOUD_HEADERS_AUTHORIZATION=${OTEL_CLOUD_HEADERS_AUTHORIZATION:-}
     ports:
-      - "4317:4317" # OTLP gRPC
-      - "4318:4318" # OTLP HTTP
-      - "13133:13133" # health_check extension
-      - "8888:8888" # collector self-metrics
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - "4317:4317"
+      - "4318:4318"
+      - "13133:13133"
+      - "8888:8888"
+    # No container healthcheck: the collector-contrib image is distroless (no
+    # shell, wget or curl) and the collector binary has no probe subcommand, so
+    # any in-container probe fails by construction. The health_check extension
+    # still serves :13133 - check it from the host with
+    # `curl -sf http://localhost:13133`. Dependents use service_started because
+    # the OTLP exporters retry, so a late collector is not a startup blocker.
     networks:
       - floware-network
 
@@ -341,7 +342,7 @@ services:
       redis-floware:
         condition: service_healthy
       otel-collector:
-        condition: service_healthy
+        condition: service_started
     networks:
       - floware-network
 
@@ -443,7 +444,7 @@ services:
       floware:
         condition: service_started
       otel-collector:
-        condition: service_healthy
+        condition: service_started
     networks:
       - floware-network
 
