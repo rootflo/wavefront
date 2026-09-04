@@ -1,6 +1,7 @@
 from datetime import datetime
 import json
 import uuid
+from typing import Optional
 
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
@@ -28,6 +29,27 @@ class KnowledgeBaseDocuments(Base):
     metadata_value: Mapped[dict] = mapped_column(
         JSON, nullable=True, default=lambda: {}
     )
+    # Real, indexed columns (in addition to the equivalent keys already
+    # carried inside `metadata_value`) so date-window filtering (e.g. the
+    # repeat-pledge exact-match check) can use a real btree index instead of
+    # unindexed JSON text extraction.
+    #
+    # Deliberately generic -- wavefront is a shared KB/RAG service used by
+    # multiple callers, so it has no business knowing about domain concepts
+    # like "loan" or "branch". Callers own the mapping of their own fields
+    # onto these generic slots (e.g. flo-api currently maps
+    # branch->filter1, zone->filter2, item_type->filter3, loan_id->filter4);
+    # filter5/filter6 are headroom for future filter needs. Every slot has
+    # a (knowledge_base_id, filterN, document_date) composite index (see the
+    # migration), so any caller can filter on knowledge_base_id + any one
+    # filter slot via a real btree index regardless of which slot it uses.
+    document_date: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    filter1: Mapped[Optional[str]] = mapped_column(nullable=True)
+    filter2: Mapped[Optional[str]] = mapped_column(nullable=True)
+    filter3: Mapped[Optional[str]] = mapped_column(nullable=True)
+    filter4: Mapped[Optional[str]] = mapped_column(nullable=True)
+    filter5: Mapped[Optional[str]] = mapped_column(nullable=True)
+    filter6: Mapped[Optional[str]] = mapped_column(nullable=True)
 
     def to_dict(self):
         result = {}

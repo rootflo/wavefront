@@ -105,6 +105,46 @@ async def upload_document(
         parsed_metadata = None
         if metadata is not None:
             parsed_metadata = json.loads(metadata)
+        metadata_dict = parsed_metadata or {}
+
+        # In addition to the raw JSON blob (metadata_value), also lift a few
+        # well-known generic keys into real typed columns so callers can
+        # filter on them with a normal indexed WHERE clause instead of
+        # unindexed JSON text extraction (e.g. the repeat-pledge date-window
+        # check). `filter1`..`filter6`/`document_date` are generic --
+        # wavefront has no notion of what they mean semantically, only the
+        # caller (e.g. flo-api) knows/decides that, say, `filter1` means
+        # "branch" for its documents.
+        document_date_value = None
+        raw_document_date = metadata_dict.get('document_date')
+        if raw_document_date:
+            try:
+                document_date_value = datetime.fromisoformat(raw_document_date)
+            except (TypeError, ValueError):
+                logger.warning(
+                    'Could not parse document_date from document metadata: '
+                    f'{raw_document_date}'
+                )
+
+        filter_column_names = (
+            'filter1',
+            'filter2',
+            'filter3',
+            'filter4',
+            'filter5',
+            'filter6',
+        )
+        for filter_name in filter_column_names:
+            filter_value = metadata_dict.get(filter_name)
+            if filter_value is not None and (
+                not isinstance(filter_value, str) or len(filter_value) > 255
+            ):
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content=response_formatter.buildErrorResponse(
+                        f'{filter_name} must be a string of at most 255 characters'
+                    ),
+                )
 
         async with knowledge_base_documents_repository.session() as session:
             new_kb_document = KnowledgeBaseDocuments(
@@ -115,6 +155,13 @@ async def upload_document(
                 file_type=file.content_type.split('/')[1],
                 file_size=file.size,
                 metadata_value=parsed_metadata,
+                document_date=document_date_value,
+                filter1=metadata_dict.get('filter1'),
+                filter2=metadata_dict.get('filter2'),
+                filter3=metadata_dict.get('filter3'),
+                filter4=metadata_dict.get('filter4'),
+                filter5=metadata_dict.get('filter5'),
+                filter6=metadata_dict.get('filter6'),
             )
 
             session.add(new_kb_document)
