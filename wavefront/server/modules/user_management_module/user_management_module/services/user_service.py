@@ -9,6 +9,7 @@ from db_repo_module.models.role_resource import RoleResource
 from db_repo_module.cache.cache_manager import CacheManager
 from sqlalchemy import select, Result, and_, or_, func
 from user_management_module.constants.auth import ADMIN_ROLE_NAME
+from user_management_module.constants.cache import USER_DATA_PATTERN
 from common_module.response_formatter import ResponseFormatter
 from common_module.log.logger import logger
 from user_management_module.utils.password_utils import hash_password
@@ -288,7 +289,7 @@ class UserService:
                 session.add_all(user_roles)
                 await session.commit()
 
-                self.cache_manager.invalidate_query('user_data_*')
+                self.cache_manager.invalidate_query(USER_DATA_PATTERN)
 
                 return JSONResponse(
                     status_code=status.HTTP_200_OK,
