@@ -23,6 +23,7 @@ from fastapi import status
 from user_management_module.constants.auth import SERVICE_AUTH_ROLE_ID, RootfloHeaders
 from fastapi.responses import JSONResponse
 import jwt
+from starlette.datastructures import Headers
 from starlette.middleware.base import BaseHTTPMiddleware
 from user_management_module.user_container import UserContainer
 from user_management_module.utils.user_utils import check_is_admin
@@ -119,6 +120,23 @@ def matches_any_route(path: str, route_patterns: list[str]) -> bool:
     return any(
         path == pattern if '{' not in pattern else matches_dynamic_route(path, pattern)
         for pattern in route_patterns
+    )
+
+
+def is_request_hmac(headers: Headers) -> bool:
+    """Check whether a request is attempting HMAC authentication.
+
+    Any of the HMAC headers counts: a caller that sends a signature but omits the
+    timestamp is still attempting HMAC, and should get the HMAC error rather than
+    falling through to another auth path.
+    """
+    return any(
+        headers.get(header)
+        for header in (
+            RootfloHeaders.SIGNATURE,
+            RootfloHeaders.CLIENT_KEY,
+            RootfloHeaders.TIMESTAMP,
+        )
     )
 
 
@@ -337,6 +355,49 @@ async def validate_mtls_auth(request: Request) -> bool:
         return False
 
 
+def validate_passthrough_auth(
+    request: Request,
+    response_formatter: ResponseFormatter,
+) -> JSONResponse | None:
+    """Validate the passthrough secret and attach a service session.
+
+    Returns an error response when validation fails, or None when the caller is
+    authenticated.
+    """
+    passthrough = request.headers.get(RootfloHeaders.PASSTHROUGH)
+    logger.info(f'PASSTHROUGH header present: {passthrough}')
+
+    if not passthrough_secret:
+        request_id = getattr(request.state, 'request_id', get_current_request_id())
+        logger.error(
+            f'PASSTHROUGH_SECRET environment variable not set [Request ID: {request_id}]'
+        )
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content=response_formatter.buildErrorResponse(
+                error='passthrough is not configured'
+            ),
+        )
+
+    if passthrough != passthrough_secret:
+        request_id = getattr(request.state, 'request_id', get_current_request_id())
+        logger.error(f'Invalid passthrough secret provided [Request ID: {request_id}]')
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content=response_formatter.buildErrorResponse(
+                error='Invalid passthrough secret'
+            ),
+        )
+
+    # Create a service session for passthrough auth
+    request.state.session = UserSession(
+        role_id=SERVICE_AUTH_ROLE_ID,
+        user_id='passthrough',
+        session_id='passthrough-token',
+    )
+    return None
+
+
 @dataclass
 class UserSession:
     role_id: str
@@ -367,6 +428,39 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                 return await call_next(request)
 
             authorization = request.headers.get('Authorization')
+            token = None
+            if authorization and authorization.startswith('Bearer '):
+                token = authorization.split(' ')[1]
+
+            # Skip authentication for optional APIs (supports {param} placeholders)
+            if matches_any_route(request.url.path, optional_auth_apis):
+                return await call_next(request)
+
+            # For non-production environments: Check passthrough authentication globally
+            if environment != 'production' and request.headers.get(
+                RootfloHeaders.PASSTHROUGH
+            ):
+                error_response = validate_passthrough_auth(request, response_formatter)
+                if error_response:
+                    return error_response
+                return await call_next(request)
+
+            # Check for mTLS authentication if the caller is presenting neither a
+            # token nor HMAC headers
+            mtls_header = request.headers.get('X-Forwarded-Client-Cert')
+            if mtls_header and not token and not is_request_hmac(request.headers):
+                logger.info(f'mTLS authentication by {mtls_header}')
+                if await validate_mtls_auth(request):
+                    return await call_next(request)
+                else:
+                    logger.error(f'Invalid mTLS authentication for {request.url.path}')
+                    return JSONResponse(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        content=response_formatter.buildErrorResponse(
+                            error='Invalid mTLS authentication'
+                        ),
+                    )
+
             # Check if this endpoint requires HMAC validation (skip JWT validation then)
             if not authorization and matches_any_route(
                 request.url.path, required_hmac_apis
@@ -389,93 +483,8 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                     user_id='hmac-service',
                     session_id='hmac-token',
                 )
-            # Check for service-to-service authentication (Client-Key header + JWT)
-            elif request.headers.get(RootfloHeaders.CLIENT_KEY):
-                if not await validate_service_auth(
-                    request, auth_secrets_repository, token_service
-                ):
-                    request_id = getattr(
-                        request.state, 'request_id', get_current_request_id()
-                    )
-                    logger.error(
-                        f'Service authentication failed for {request.url.path} [Request ID: {request_id}]'
-                    )
-                    return JSONResponse(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        content=response_formatter.buildErrorResponse(
-                            'Invalid service authentication'
-                        ),
-                    )
             else:
                 # Normal auth token flow
-                token = None
-                if authorization and authorization.startswith('Bearer '):
-                    token = authorization.split(' ')[1]
-
-                # Skip authentication for optional APIs (supports {param} placeholders)
-                if matches_any_route(request.url.path, optional_auth_apis):
-                    return await call_next(request)
-
-                # For non-production environments: Check passthrough authentication globally
-                if environment != 'production' and request.headers.get(
-                    RootfloHeaders.PASSTHROUGH
-                ):
-                    passthrough = request.headers.get(RootfloHeaders.PASSTHROUGH)
-                    logger.info(f'PASSTHROUGH header present: {passthrough}')
-
-                    if not passthrough_secret:
-                        request_id = getattr(
-                            request.state, 'request_id', get_current_request_id()
-                        )
-                        logger.error(
-                            f'PASSTHROUGH_SECRET environment variable not set [Request ID: {request_id}]'
-                        )
-                        return JSONResponse(
-                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                            content=response_formatter.buildErrorResponse(
-                                error='passthrough is not configured'
-                            ),
-                        )
-
-                    if passthrough != passthrough_secret:
-                        request_id = getattr(
-                            request.state, 'request_id', get_current_request_id()
-                        )
-                        logger.error(
-                            f'Invalid passthrough secret provided [Request ID: {request_id}]'
-                        )
-                        return JSONResponse(
-                            status_code=status.HTTP_401_UNAUTHORIZED,
-                            content=response_formatter.buildErrorResponse(
-                                error='Invalid passthrough secret'
-                            ),
-                        )
-
-                    # Create a service session for passthrough auth
-                    request.state.session = UserSession(
-                        role_id=SERVICE_AUTH_ROLE_ID,
-                        user_id='passthrough',
-                        session_id='passthrough-token',
-                    )
-                    return await call_next(request)
-
-                # Check for mTLS authentication if no token is present
-                mtls_header = request.headers.get('X-Forwarded-Client-Cert')
-                if mtls_header and not token:
-                    logger.info(f'mTLS authentication by {mtls_header}')
-                    if await validate_mtls_auth(request):
-                        return await call_next(request)
-                    else:
-                        logger.error(
-                            f'Invalid mTLS authentication for {request.url.path}'
-                        )
-                        return JSONResponse(
-                            status_code=status.HTTP_403_FORBIDDEN,
-                            content=response_formatter.buildErrorResponse(
-                                error='Invalid mTLS authentication'
-                            ),
-                        )
-
                 if not token:
                     request_id = getattr(
                         request.state, 'request_id', get_current_request_id()
