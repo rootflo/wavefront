@@ -140,6 +140,10 @@ Because an empty exporter list (`exporters: []`) crashes the collector, `collect
 3. **`slow` (100% Retention)**: If total trace duration was $\ge 2000\text{ ms}$, save the entire trace.
 4. **`baseline-sample` (5% Retention)**: If the request was fast and successful, keep 5% to calculate baseline latency percentiles (p50/p95) while discarding 95% of routine `200 OK` traces, slashing cloud ingestion costs.
 
+### Scaling Past 1 Replica (Production Multi-Pod Topology):
+* **Single Pod Gateway**: Handles ~1,000–3,000 spans/sec comfortably (768MB RAM limit).
+* **Scaling Beyond 1 Pod**: Because `tail_sampling` requires all spans of a `trace_id` to reach the same collector instance, do not simply increase replica count behind a standard round-robin Service. Deploy a **two-tier topology**: an Agent tier (or ingress proxy) routing spans via the OpenTelemetry **`loadbalancing` exporter** (keyed by `trace_id`) into the backend Gateway tier that runs `tail_sampling`.
+
 ---
 
 ## 6. Collector Self-Observability & Metrics Exposition
