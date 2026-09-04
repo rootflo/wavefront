@@ -1,7 +1,7 @@
 """create datasource_audit_logs table
 
 Revision ID: d4f1a7c3e2b8
-Revises: 314534601d35
+Revises: c7e2a1b4d9f3
 Create Date: 2026-08-20 12:00:00.000000
 
 """
@@ -14,7 +14,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = 'd4f1a7c3e2b8'
-down_revision: Union[str, None] = '314534601d35'
+down_revision: Union[str, None] = 'c7e2a1b4d9f3'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

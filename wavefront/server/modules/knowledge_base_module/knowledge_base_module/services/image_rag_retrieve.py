@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 import httpx
 from typing import Any, Optional
 import uuid
+from fastapi import HTTPException, status
 from knowledge_base_module.queries.generate_query import QueryGenerator
 from db_repo_module.models.knowledge_base_embeddings import KnowledgeBaseEmbeddings
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
@@ -51,6 +52,16 @@ class ImageRagRetrieve:
         kb_id: uuid.UUID,
         top_k: Optional[int] = None,
         query_filter: Optional[str] = '',
+        filter1: Optional[str] = None,
+        filter2: Optional[str] = None,
+        filter3: Optional[str] = None,
+        filter4: Optional[str] = None,
+        filter5: Optional[str] = None,
+        filter6: Optional[str] = None,
+        document_date_start=None,
+        document_date_end=None,
+        created_at_start=None,
+        created_at_end=None,
     ):
         data = {'image_data': image_data}
         internal_api_url = f'{inference_url}/inference/v1/query/embeddings'
@@ -75,9 +86,114 @@ class ImageRagRetrieve:
                 kb_id,
                 top_k,
                 query_filter,
+                filter1=filter1,
+                filter2=filter2,
+                filter3=filter3,
+                filter4=filter4,
+                filter5=filter5,
+                filter6=filter6,
+                document_date_start=document_date_start,
+                document_date_end=document_date_end,
+                created_at_start=created_at_start,
+                created_at_end=created_at_end,
             )
         else:
             return []
+
+    async def exact_match_dino(
+        self,
+        image_data: str,
+        inference_url: str,
+        kb_id: uuid.UUID,
+        filter1: str,
+        document_date_start,
+        document_date_end,
+        threshold: float,
+        filter2: Optional[str] = None,
+        filter3: Optional[str] = None,
+        filter4: Optional[str] = None,
+        filter5: Optional[str] = None,
+        filter6: Optional[str] = None,
+        created_at_start=None,
+        created_at_end=None,
+    ) -> list[dict]:
+        """
+        Exact (non-ANN) DINO similarity match, restricted to documents in
+        `kb_id` whose real `filter1`/`document_date` columns fall within the
+        given window. `filter1` and `document_date` are required; `filter2`
+        through `filter6` are optional additional equality filters. All
+        `filterN` columns are generic, caller-defined columns -- see
+        `KnowledgeBaseDocuments` -- this service has no notion of what they
+        mean semantically.
+
+        Only the DINO embedding is fetched/compared -- this check is purely
+        about near-duplicate/visual-similarity matching (the same use case
+        `DINO_MATCH_SCORE_THRESHOLD` already serves in flo-api's spurious-image
+        check), not general semantic (CLIP) similarity. The underlying query
+        (`QueryGenerator.get_image_embedding_dino_exact_match`) never engages the
+        HNSW index -- see that method's docstring -- so scores returned here
+        are always exact, not approximate.
+        """
+        data = {'image_data': image_data}
+        internal_api_url = f'{inference_url}/inference/v1/query/embeddings'
+        try:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(60.0, connect=30.0),
+                limits=httpx.Limits(
+                    max_keepalive_connections=20,
+                    max_connections=100,
+                    keepalive_expiry=60,
+                ),
+            ) as client:
+                response = await client.post(internal_api_url, json=data)
+                response.raise_for_status()
+                embedding = response.json().get('data', {}).get('response', [])
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f'Inference service returned an error: {e}',
+            )
+        except httpx.RequestError as e:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f'Inference service is unreachable: {e}',
+            )
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f'Inference service returned an unparseable response: {e}',
+            )
+
+        dino_embedding = next((e['dino'] for e in embedding if 'dino' in e), None)
+        if not dino_embedding:
+            return []
+
+        try:
+            sql_query, query_params = (
+                self.query_generator.get_image_embedding_dino_exact_match(
+                    dino_embedding,
+                    kb_id,
+                    filter1,
+                    document_date_start,
+                    document_date_end,
+                    threshold,
+                    filter2,
+                    filter3,
+                    filter4,
+                    filter5,
+                    filter6,
+                    created_at_start,
+                    created_at_end,
+                )
+            )
+            return await self.knowledge_base_embeddings_repository.execute_query(
+                sql_query,
+                query_params,
+            )
+        except SQLAlchemyError as e:
+            raise RuntimeError(
+                f'Failed to execute the query for exact match retrieval: {e}'
+            )
 
     async def image_retrieve_clip(
         self,
@@ -85,11 +201,31 @@ class ImageRagRetrieve:
         kb_id,
         top_k,
         query_filter,
+        filter1: Optional[str] = None,
+        filter2: Optional[str] = None,
+        filter3: Optional[str] = None,
+        filter4: Optional[str] = None,
+        filter5: Optional[str] = None,
+        filter6: Optional[str] = None,
+        document_date_start=None,
+        document_date_end=None,
+        created_at_start=None,
+        created_at_end=None,
     ):
         """Search for similar images using the CLIP embedding only."""
         params = {
             'kb_id': kb_id,
             'top_k': top_k,
+            'filter1': filter1,
+            'filter2': filter2,
+            'filter3': filter3,
+            'filter4': filter4,
+            'filter5': filter5,
+            'filter6': filter6,
+            'document_date_start': document_date_start,
+            'document_date_end': document_date_end,
+            'created_at_start': created_at_start,
+            'created_at_end': created_at_end,
         }
         try:
             sql_query, query_params = self.query_generator.get_image_embedding_clip(
@@ -110,6 +246,16 @@ class ImageRagRetrieve:
         kb_id,
         top_k,
         query_filter,
+        filter1: Optional[str] = None,
+        filter2: Optional[str] = None,
+        filter3: Optional[str] = None,
+        filter4: Optional[str] = None,
+        filter5: Optional[str] = None,
+        filter6: Optional[str] = None,
+        document_date_start=None,
+        document_date_end=None,
+        created_at_start=None,
+        created_at_end=None,
     ):
         """
         Search for similar images using the DINO embedding only, as its own
@@ -118,6 +264,16 @@ class ImageRagRetrieve:
         params = {
             'kb_id': kb_id,
             'top_k': top_k,
+            'filter1': filter1,
+            'filter2': filter2,
+            'filter3': filter3,
+            'filter4': filter4,
+            'filter5': filter5,
+            'filter6': filter6,
+            'document_date_start': document_date_start,
+            'document_date_end': document_date_end,
+            'created_at_start': created_at_start,
+            'created_at_end': created_at_end,
         }
         try:
             sql_query, query_params = self.query_generator.get_image_embedding_dino(
@@ -141,6 +297,16 @@ class ImageRagRetrieve:
         query_filter,
         clip_weight: float = 0.5,
         dino_weight: float = 0.5,
+        filter1: Optional[str] = None,
+        filter2: Optional[str] = None,
+        filter3: Optional[str] = None,
+        filter4: Optional[str] = None,
+        filter5: Optional[str] = None,
+        filter6: Optional[str] = None,
+        document_date_start=None,
+        document_date_end=None,
+        created_at_start=None,
+        created_at_end=None,
     ) -> list[ImageMatch]:
         """
         Search for similar images by taking the union of independent CLIP
@@ -177,8 +343,38 @@ class ImageRagRetrieve:
         top_k = 10 if top_k is None else int(top_k)
 
         clip_rows, dino_rows = await asyncio.gather(
-            self.image_retrieve_clip(clip_embedding, kb_id, top_k, query_filter),
-            self.image_retrieve_dino(dino_embedding, kb_id, top_k, query_filter),
+            self.image_retrieve_clip(
+                clip_embedding,
+                kb_id,
+                top_k,
+                query_filter,
+                filter1,
+                filter2,
+                filter3,
+                filter4,
+                filter5,
+                filter6,
+                document_date_start,
+                document_date_end,
+                created_at_start,
+                created_at_end,
+            ),
+            self.image_retrieve_dino(
+                dino_embedding,
+                kb_id,
+                top_k,
+                query_filter,
+                filter1,
+                filter2,
+                filter3,
+                filter4,
+                filter5,
+                filter6,
+                document_date_start,
+                document_date_end,
+                created_at_start,
+                created_at_end,
+            ),
         )
 
         merged: dict[uuid.UUID, ImageMatch] = {}

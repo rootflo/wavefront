@@ -44,6 +44,16 @@ class KBRagResponse:
         query_filter: Optional[str] = '',
         offset: Optional[int] = None,
         limit: Optional[int] = None,
+        filter1: Optional[str] = None,
+        filter2: Optional[str] = None,
+        filter3: Optional[str] = None,
+        filter4: Optional[str] = None,
+        filter5: Optional[str] = None,
+        filter6: Optional[str] = None,
+        document_date_start=None,
+        document_date_end=None,
+        created_at_start=None,
+        created_at_end=None,
     ) -> list:
         """
         Retrieve documents for a specific knowledge base
@@ -55,6 +65,12 @@ class KBRagResponse:
             top_k: Number of results to return (default: 10)
             vector_weight: Weight for vector similarity score (default: 0.7)
             keyword_weight: Weight for keyword similarity score (default: 0.3)
+            filter1..filter6: Optional equality filters on
+                knowledge_base_documents.filterN
+            document_date_start/document_date_end: Optional document_date
+                window (both required together)
+            created_at_start/created_at_end: Optional created_at window
+                (both required together)
 
         Returns:
             List of retrieved documents
@@ -71,7 +87,22 @@ class KBRagResponse:
         }
 
         reranked_docs = await self.combined_search_with_reranking(
-            query, query_embeddings, params, query_filter, offset, limit
+            query,
+            query_embeddings,
+            params,
+            query_filter,
+            offset,
+            limit,
+            filter1,
+            filter2,
+            filter3,
+            filter4,
+            filter5,
+            filter6,
+            document_date_start,
+            document_date_end,
+            created_at_start,
+            created_at_end,
         )
         for doc in reranked_docs:
             for key, value in doc.items():
@@ -87,6 +118,16 @@ class KBRagResponse:
         filter: str,
         offset: Optional[int] = None,
         limit: Optional[int] = None,
+        filter1: Optional[str] = None,
+        filter2: Optional[str] = None,
+        filter3: Optional[str] = None,
+        filter4: Optional[str] = None,
+        filter5: Optional[str] = None,
+        filter6: Optional[str] = None,
+        document_date_start=None,
+        document_date_end=None,
+        created_at_start=None,
+        created_at_end=None,
     ) -> list:
         """
         Perform combined vector and keyword search with reranking in a single SQL query,
@@ -110,7 +151,22 @@ class KBRagResponse:
                 # Get and execute the combined search query
                 sql_query, query_params = (
                     self.query_generator.get_combined_search_query(
-                        query, query_embeddings, params, filter, offset, limit
+                        query,
+                        query_embeddings,
+                        params,
+                        filter,
+                        offset,
+                        limit,
+                        filter1,
+                        filter2,
+                        filter3,
+                        filter4,
+                        filter5,
+                        filter6,
+                        document_date_start,
+                        document_date_end,
+                        created_at_start,
+                        created_at_end,
                     )
                 )
                 retrieved_docs = (
