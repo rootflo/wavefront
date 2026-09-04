@@ -1,5 +1,5 @@
 import floConsoleService from '@app/api';
-import { NewKnowledgeBasePayload } from '@app/api/knowledge-base-service';
+import { KbData, UpdateKnowledgeBasePayload } from '@app/api/knowledge-base-service';
 import { Button } from '@app/components/ui/button';
 import {
   Dialog,
@@ -19,84 +19,72 @@ import {
   FormMessage,
 } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
-import { useDashboardStore, useNotifyStore } from '@app/store';
+import { extractErrorMessage } from '@app/lib/utils';
+import { useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
 import React, { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
-const createKnowledgeBaseSchema = z.object({
+const editKnowledgeBaseSchema = z.object({
   name: z.string().min(1, 'Knowledge base name is required'),
   type: z.string().min(1, 'Type is required'),
   description: z.string().optional(),
-  vector_size: z.number().min(1, 'Vector size must be at least 1'),
 });
 
-type CreateKnowledgeBaseInput = z.infer<typeof createKnowledgeBaseSchema>;
+type EditKnowledgeBaseInput = z.infer<typeof editKnowledgeBaseSchema>;
 
-interface CreateKnowledgeBaseDialogProps {
+interface EditKnowledgeBaseDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-  appId: string;
+  knowledgeBase: KbData;
   onSuccess?: () => void;
 }
 
-const CreateKnowledgeBaseDialog: React.FC<CreateKnowledgeBaseDialogProps> = ({
+const EditKnowledgeBaseDialog: React.FC<EditKnowledgeBaseDialogProps> = ({
   isOpen,
   onOpenChange,
-  appId,
+  knowledgeBase,
   onSuccess,
 }) => {
   const { notifySuccess, notifyError } = useNotifyStore();
-  const { selectedApp } = useDashboardStore();
 
-  const form = useForm<CreateKnowledgeBaseInput>({
-    resolver: zodResolver(createKnowledgeBaseSchema),
+  const form = useForm<EditKnowledgeBaseInput>({
+    resolver: zodResolver(editKnowledgeBaseSchema),
     defaultValues: {
       name: '',
       type: '',
       description: '',
-      vector_size: 1536,
     },
   });
 
-  // Reset form when dialog closes
   useEffect(() => {
-    if (!isOpen) {
+    if (knowledgeBase && isOpen) {
       form.reset({
-        name: '',
-        type: '',
-        description: '',
-        vector_size: 1536,
+        name: knowledgeBase.name || '',
+        type: knowledgeBase.type || '',
+        description: knowledgeBase.description || '',
       });
     }
-  }, [isOpen, form]);
+  }, [knowledgeBase, isOpen, form]);
 
-  const onSubmit = async (data: CreateKnowledgeBaseInput) => {
-    if (!appId) {
-      notifyError('Knowledge base service not available');
-      return;
-    }
-
+  const onSubmit = async (data: EditKnowledgeBaseInput) => {
     try {
-      const payload: NewKnowledgeBasePayload = {
+      const payload: UpdateKnowledgeBasePayload = {
         name: data.name.trim(),
         description: data.description?.trim() || '',
         type: data.type.trim(),
-        vector_size: data.vector_size,
       };
 
-      const response = await floConsoleService.knowledgeBaseService.createKnowledgeBase(payload);
+      await floConsoleService.knowledgeBaseService.updateKnowledgeBase(knowledgeBase.id, payload);
 
-      if (response.data?.data) {
-        notifySuccess(`Knowledge Base '${response.data.data.name}' created successfully`);
-        onSuccess?.();
-        onOpenChange(false);
-      } else {
-        notifyError('Failed to get knowledge base ID after creation.');
-      }
+      notifySuccess(`Knowledge Base '${payload.name}' updated successfully`);
+      onSuccess?.();
+      onOpenChange(false);
     } catch (error) {
-      console.error('Error creating knowledge base:', error);
+      console.error('Error updating knowledge base:', error);
+      const errorMessage = extractErrorMessage(error);
+      notifyError(errorMessage || 'Failed to update knowledge base');
     }
   };
 
@@ -104,8 +92,8 @@ const CreateKnowledgeBaseDialog: React.FC<CreateKnowledgeBaseDialogProps> = ({
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto lg:max-w-4xl">
         <DialogHeader>
-          <DialogTitle>Create New Knowledge Base</DialogTitle>
-          <DialogDescription>Create a new knowledge base for {selectedApp?.app_name}</DialogDescription>
+          <DialogTitle>Edit Knowledge Base</DialogTitle>
+          <DialogDescription>Update the details for this knowledge base</DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
@@ -166,35 +154,12 @@ const CreateKnowledgeBaseDialog: React.FC<CreateKnowledgeBaseDialogProps> = ({
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="vector_size"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    Vector Size<span className="text-red-500">*</span>
-                  </FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      placeholder="e.g., 1536"
-                      {...field}
-                      onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
-                      value={field.value || ''}
-                    />
-                  </FormControl>
-                  <FormDescription>The vector size for your knowledge base</FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
               <Button type="submit" loading={form.formState.isSubmitting}>
-                Create Knowledge Base
+                Save Changes
               </Button>
             </DialogFooter>
           </form>
@@ -204,4 +169,4 @@ const CreateKnowledgeBaseDialog: React.FC<CreateKnowledgeBaseDialogProps> = ({
   );
 };
 
-export default CreateKnowledgeBaseDialog;
+export default EditKnowledgeBaseDialog;

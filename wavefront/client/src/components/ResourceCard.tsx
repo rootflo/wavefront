@@ -1,4 +1,4 @@
-import { TrashIcon } from 'lucide-react';
+import { Pencil, TrashIcon } from 'lucide-react';
 import React from 'react';
 
 export interface ResourceCardMetadata {
@@ -14,7 +14,9 @@ interface ResourceCardProps {
   metadata: ResourceCardMetadata[];
   onClick: () => void;
   onDeleteClick: (e: React.MouseEvent) => void;
+  onEditClick?: (e: React.MouseEvent) => void;
   deleteTitle?: string;
+  editTitle?: string;
 }
 
 const ResourceCard: React.FC<ResourceCardProps> = ({
@@ -23,7 +25,9 @@ const ResourceCard: React.FC<ResourceCardProps> = ({
   metadata,
   onClick,
   onDeleteClick,
+  onEditClick,
   deleteTitle = 'Delete',
+  editTitle = 'Edit',
 }) => {
   return (
     <div
@@ -35,6 +39,15 @@ const ResourceCard: React.FC<ResourceCardProps> = ({
           {title}
         </h3>
         <div className="flex items-center space-x-2">
+          {onEditClick && (
+            <button
+              onClick={onEditClick}
+              className="cursor-pointer rounded p-1 text-gray-600 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-gray-100 hover:text-gray-900"
+              title={editTitle}
+            >
+              <Pencil className="h-4 w-4" />
+            </button>
+          )}
           <button
             onClick={onDeleteClick}
             className="cursor-pointer rounded p-1 text-red-500 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-50 hover:text-red-700"

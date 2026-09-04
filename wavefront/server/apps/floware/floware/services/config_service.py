@@ -1,19 +1,24 @@
 from typing import Any
 
-from db_repo_module.models.config import Config
 from fastapi import UploadFile, File, HTTPException
 from flo_cloud.cloud_storage import CloudStorageManager
-from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
+from floware.repositories.config_repository import AppConfigRepository
+from floware.repositories.datasource_repository import AppDatasourceRepository
+from floware.repositories.knowledge_base_repository import AppKnowledgeBaseRepository
 
 
 class ConfigService:
     def __init__(
         self,
-        config_repository: SQLAlchemyRepository[Config],
+        app_config_repository: AppConfigRepository,
+        datasource_repository: AppDatasourceRepository,
+        knowledge_base_repository: AppKnowledgeBaseRepository,
         cloud_storage_manager: CloudStorageManager,
         config: dict[str, Any],
     ) -> None:
-        self.config_repository = config_repository
+        self.app_config_repository = app_config_repository
+        self.datasource_repository = datasource_repository
+        self.knowledge_base_repository = knowledge_base_repository
         self.cloud_storage_manager = cloud_storage_manager
         self.config = config
 
@@ -52,34 +57,40 @@ class ConfigService:
                 config_credentials['config_file_name'],
             )
         # if atleast one icon or file_content is there then allow the all_config to be saved
-        config_data = await self.config_repository.find(key='app_config')
-        if config_data and config_data[0].value.get('app_icon') or file_content:
-            # saving the config to the database
-            await self.config_repository.upsert(
-                filters={'key': 'app_config'},
-                value={
+        config_data = await self.app_config_repository.get()
+        if config_data and config_data.get('app_icon') or file_content:
+            await self.app_config_repository.upsert(
+                {
                     'app_icon': config_credentials['config_file_name'],
                     'app_config': app_config if app_config else {},
-                },
+                }
             )
         else:
             raise HTTPException(status_code=400, detail='App icon is not set')
         return
 
     async def get_app_config(self):
-        config_record = await self.config_repository.find(key='app_config')
-        # checking if the config_record is empty
+        config_record = await self.app_config_repository.get()
         if not config_record:
             return None, None
-        config_path = config_record[0].value.get('app_icon')
+        config_path = config_record.get('app_icon')
         config_credentials = self._get_floware_credentials()
-        # Generate new presigned URL
         url = self.cloud_storage_manager.generate_presigned_url(
             config_credentials['asset_storage_bucket'],
             config_path,
             'get',
         )
-        # getting the app_config from the database
-        app_config = config_record[0].value.get('app_config', {})
-
+        app_config = config_record.get('app_config', {})
         return url, app_config
+
+    async def get_settings_config(self) -> dict[str, Any]:
+        """Full settings/config payload: app icon URL, app_config, and resource lists."""
+        url, app_config = await self.get_app_config()
+        datasources = await self.datasource_repository.get_all()
+        knowledge_bases = await self.knowledge_base_repository.get_all()
+        return {
+            'app_icon': url,
+            'app_config': app_config,
+            'datasources': datasources,
+            'knowledgebases': knowledge_bases,
+        }

@@ -1,6 +1,9 @@
 from dependency_injector import containers
 from dependency_injector import providers
 
+from floware.repositories.config_repository import AppConfigRepository
+from floware.repositories.datasource_repository import AppDatasourceRepository
+from floware.repositories.knowledge_base_repository import AppKnowledgeBaseRepository
 from floware.services.notification_service import NotificationService
 from floware.services.config_service import ConfigService
 from floware.services.scheduled_job_service import ScheduledJobService
@@ -10,6 +13,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
     config = providers.Configuration(ini_files=['./config.ini'])
     # db
     db_client = providers.Dependency()
+    cache_manager = providers.Dependency()
 
     email_repository = providers.Dependency()
     oauth_credential_repository = providers.Dependency()
@@ -28,6 +32,23 @@ class ApplicationContainer(containers.DeclarativeContainer):
     user_service = providers.Dependency()
     role_repository = providers.Dependency()
     user_role_repository = providers.Dependency()
+    knowledge_base_repository = providers.Dependency()
+
+    app_config_repository = providers.Singleton(
+        AppConfigRepository,
+        repository=config_repository,
+        cache_manager=cache_manager,
+    )
+    app_datasource_repository = providers.Singleton(
+        AppDatasourceRepository,
+        repository=datasource_repository,
+        cache_manager=cache_manager,
+    )
+    app_knowledge_base_repository = providers.Singleton(
+        AppKnowledgeBaseRepository,
+        repository=knowledge_base_repository,
+        cache_manager=cache_manager,
+    )
 
     # services
     notification_service = providers.Singleton(
@@ -36,7 +57,9 @@ class ApplicationContainer(containers.DeclarativeContainer):
 
     config_service = providers.Singleton(
         ConfigService,
-        config_repository=config_repository,
+        app_config_repository=app_config_repository,
+        datasource_repository=app_datasource_repository,
+        knowledge_base_repository=app_knowledge_base_repository,
         cloud_storage_manager=cloud_storage_manager,
         config=config,
     )

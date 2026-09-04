@@ -32,9 +32,13 @@ class Datasource(Base):
     def get_table_name():
         return (Datasource()).__tablename__
 
-    def to_dict(self):
+    def to_dict(self, exclude_config: bool = False):
         result = {}
         for column in self.__table__.columns:
+            # Skip config in responses for security
+            if exclude_config and column.name == 'config':
+                continue
+
             value = getattr(self, column.name)
             if isinstance(value, uuid.UUID):
                 result[column.name] = str(value)

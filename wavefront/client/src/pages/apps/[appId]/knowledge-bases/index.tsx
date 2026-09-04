@@ -21,6 +21,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import CreateKnowledgeBaseDialog from './CreateKnowledgeBaseDialog';
+import EditKnowledgeBaseDialog from './EditKnowledgeBaseDialog';
 
 const KnowledgeBasesListPage: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();
@@ -32,6 +33,7 @@ const KnowledgeBasesListPage: React.FC = () => {
   const [deleteItem, setDeleteItem] = useState<KbData | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [editItem, setEditItem] = useState<KbData | null>(null);
 
   // Fetch knowledge bases
   const { data: knowledgeBases = [], isLoading: loading } = useGetKnowledgeBases(appId);
@@ -39,6 +41,16 @@ const KnowledgeBasesListPage: React.FC = () => {
   const handleDeleteClick = (e: React.MouseEvent, kb: KbData) => {
     e.stopPropagation();
     setDeleteItem(kb);
+  };
+
+  const handleEditClick = (e: React.MouseEvent, kb: KbData) => {
+    e.stopPropagation();
+    setEditItem(kb);
+  };
+
+  const handleEditSuccess = () => {
+    queryClient.invalidateQueries({ queryKey: getKnowledgeBasesKey(appId as string) });
+    setEditItem(null);
   };
 
   const handleDeleteConfirm = async () => {
@@ -72,8 +84,7 @@ const KnowledgeBasesListPage: React.FC = () => {
   };
 
   const handleCreateSuccess = () => {
-    if (!appId) return;
-    queryClient.invalidateQueries({ queryKey: getKnowledgeBasesKey(appId) });
+    queryClient.invalidateQueries({ queryKey: getKnowledgeBasesKey(appId as string) });
     setCreateDialogOpen(false);
   };
 
@@ -143,7 +154,13 @@ const KnowledgeBasesListPage: React.FC = () => {
         ) : (
           <>
             {filteredKnowledgeBases.map((kb) => (
-              <KnowledgeBaseCard key={kb.id} kb={kb} onClick={handleCardClick} onDeleteClick={handleDeleteClick} />
+              <KnowledgeBaseCard
+                key={kb.id}
+                kb={kb}
+                onClick={handleCardClick}
+                onDeleteClick={handleDeleteClick}
+                onEditClick={handleEditClick}
+              />
             ))}
           </>
         )}
@@ -166,6 +183,18 @@ const KnowledgeBasesListPage: React.FC = () => {
           onOpenChange={setCreateDialogOpen}
           appId={appId}
           onSuccess={handleCreateSuccess}
+        />
+      )}
+
+      {/* Edit Knowledge Base Dialog */}
+      {editItem && (
+        <EditKnowledgeBaseDialog
+          isOpen={!!editItem}
+          onOpenChange={(open) => {
+            if (!open) setEditItem(null);
+          }}
+          knowledgeBase={editItem}
+          onSuccess={handleEditSuccess}
         />
       )}
     </div>
