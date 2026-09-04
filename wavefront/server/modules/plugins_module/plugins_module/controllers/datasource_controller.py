@@ -24,6 +24,10 @@ from common_module.utils.serializer import serialize_values
 from db_repo_module.models.resource import ResourceScope
 from db_repo_module.models.datasource import Datasource
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
+from db_repo_module.cache.cache_manager import CacheManager
+from db_repo_module.cache.application_cache import (
+    invalidate_datasources_cache,
+)
 from datasource import DatasourcePlugin
 from datasource.types import DataSourceType, QueryResult, TableListResult
 from plugins_module.services.datasource_services import (
@@ -54,7 +58,6 @@ from fastapi import HTTPException
 from user_management_module.utils.user_utils import check_is_admin
 from user_management_module.utils.user_utils import get_current_user
 from plugins_module.services.dynamic_query_service import DynamicQueryService
-from db_repo_module.cache.cache_manager import CacheManager
 from ..utils.helper import (
     generate_cache_key,
     generate_export_filename_hash,
@@ -82,6 +85,7 @@ async def add_datasource(
     datasource_repository: SQLAlchemyRepository[Datasource] = Depends(
         Provide[PluginsContainer.datasource_repository]
     ),
+    cache_manager: CacheManager = Depends(Provide[PluginsContainer.cache_manager]),
 ):
     role_id = request.state.session.role_id
 
@@ -131,6 +135,7 @@ async def add_datasource(
         config=config_json,
         description=add_datasource_payload.description,
     )
+    invalidate_datasources_cache(cache_manager)
 
     return JSONResponse(
         status_code=status.HTTP_201_CREATED,
@@ -155,6 +160,7 @@ async def update_datasource(
     datasource_repository: SQLAlchemyRepository[Datasource] = Depends(
         Provide[PluginsContainer.datasource_repository]
     ),
+    cache_manager: CacheManager = Depends(Provide[PluginsContainer.cache_manager]),
 ):
     role_id = request.state.session.role_id
 
@@ -237,6 +243,7 @@ async def update_datasource(
     updated_datasource = await datasource_repository.find_one_and_update(
         filters={'id': datasource_id}, refresh=True, **update_data
     )
+    invalidate_datasources_cache(cache_manager)
 
     return JSONResponse(
         status_code=status.HTTP_200_OK,
@@ -261,6 +268,7 @@ async def delete_datasource(
     datasource_repository: SQLAlchemyRepository[Datasource] = Depends(
         Provide[PluginsContainer.datasource_repository]
     ),
+    cache_manager: CacheManager = Depends(Provide[PluginsContainer.cache_manager]),
 ):
     role_id = request.state.session.role_id
     is_admin = await check_is_admin(role_id)
@@ -285,6 +293,7 @@ async def delete_datasource(
 
     # Delete datasource
     await datasource_repository.delete_all(id=datasource_id)
+    invalidate_datasources_cache(cache_manager)
 
     return JSONResponse(
         status_code=status.HTTP_200_OK,

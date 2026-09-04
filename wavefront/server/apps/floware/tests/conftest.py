@@ -195,8 +195,17 @@ def mock_config_service():
     async def mock_get_app_config():
         return 'https://test-bucket.com/config.png', {}
 
+    async def mock_get_settings_config():
+        return {
+            'app_icon': 'https://test-bucket.com/config.png',
+            'app_config': {},
+            'datasources': [],
+            'knowledge_bases': [],
+        }
+
     mock_service.store_app_config = mock_store_app_config
     mock_service.get_app_config = mock_get_app_config
+    mock_service.get_settings_config = mock_get_settings_config
 
     return mock_service
 

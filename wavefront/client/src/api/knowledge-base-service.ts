@@ -9,22 +9,26 @@ export interface NewKnowledgeBasePayload {
   vector_size: number;
 }
 
+// Interface for partially updating a knowledge base
+export interface UpdateKnowledgeBasePayload {
+  name?: string;
+  description?: string;
+  type?: string;
+}
+
 export interface KbData {
   id: string;
   name: string;
   description: string;
+  type: string;
   created_at: string;
   updated_at: string;
-}
-// Interface for knowledge base data
-export interface KnowledgeBaseData {
-  data: KbData;
 }
 
 export type KnowledgeBaseDetail = IApiResponse<KbData>;
 
 // Interface for a single knowledge base response
-export type KnowledgeBaseDetailResponse = IApiResponse<KnowledgeBaseData>;
+export type KnowledgeBaseDetailResponse = IApiResponse<KbData>;
 
 // Interface for listing knowledge bases
 export interface KnowledgeBaseListData {
@@ -91,6 +95,14 @@ export class KnowledgeBaseService {
   async createKnowledgeBase(payload: NewKnowledgeBasePayload): Promise<KnowledgeBaseDetailResponse> {
     const response: KnowledgeBaseDetailResponse = await this.http.post(
       `/v1/:appId/floware/v1/knowledge-bases`,
+      payload
+    );
+    return response;
+  }
+
+  async updateKnowledgeBase(kbId: string, payload: UpdateKnowledgeBasePayload): Promise<KnowledgeBaseDetailResponse> {
+    const response: KnowledgeBaseDetailResponse = await this.http.patch(
+      `/v1/:appId/floware/v1/knowledge-bases/${kbId}`,
       payload
     );
     return response;

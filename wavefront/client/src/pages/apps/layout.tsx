@@ -74,7 +74,7 @@ const navItems = [
   },
   {
     id: 'knowledge-bases',
-    name: 'RAG Service',
+    name: 'Knowledgebases',
     icon: RagIcon,
     link: `/apps/:appId/knowledge-bases`,
     description: 'Manage and configure knowledge bases for this application',

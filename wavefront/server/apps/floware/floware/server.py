@@ -126,6 +126,7 @@ user_module_container = UserContainer(
 )
 application_container = ApplicationContainer(
     db_client=db_repo_container.db_client,
+    cache_manager=db_repo_container.cache_manager,
     cloud_storage_manager=common_container.cloud_storage_manager,
     email_repository=db_repo_container.email_repository,
     oauth_credential_repository=db_repo_container.oauth_credential_repository,
@@ -142,9 +143,10 @@ application_container = ApplicationContainer(
     user_service=user_module_container.user_service,
     role_repository=user_module_container.role_repository,
     user_role_repository=user_module_container.user_role_repository,
+    knowledge_base_repository=db_repo_container.knowledge_base_repository,
 )
 
-email_rag_container = KnowledgeBaseContainer(
+knowledge_base_container = KnowledgeBaseContainer(
     db_client=db_repo_container.db_client, cache_manager=db_repo_container.cache_manager
 )
 
@@ -557,7 +559,7 @@ common_container.wire(
     ],
 )
 
-email_rag_container.wire(
+knowledge_base_container.wire(
     modules=[__name__],
     packages=[
         'knowledge_base_module.controllers',
