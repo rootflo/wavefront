@@ -34,6 +34,11 @@ from user_management_module.dependencies.injection import (
     UserRoleRepositoryDep,
     UserServiceDep,
 )
+from user_management_module.constants.cache import (
+    USER_DATA_PATTERN,
+    user_by_id_cache_key,
+    user_list_cache_key,
+)
 from user_management_module.models.user_schema import NewUser
 from user_management_module.models.user_schema import ResetUser
 from user_management_module.models.user_schema import UpdateUser
@@ -159,7 +164,7 @@ async def create_user(
 
             await session.commit()
 
-            cache_manager.invalidate_query('user_data_*')
+            cache_manager.invalidate_query(USER_DATA_PATTERN)
 
             return JSONResponse(
                 status_code=status.HTTP_200_OK,
@@ -311,7 +316,7 @@ async def update_user(
         await session.commit()
 
     # Invalidate all user_data cache entries
-    cache_manager.invalidate_query('user_data_*')
+    cache_manager.invalidate_query(USER_DATA_PATTERN)
     cache_manager.remove(str(update_user.user_id))
     return JSONResponse(
         status_code=status.HTTP_200_OK,
@@ -340,7 +345,7 @@ async def get_all_user(
             content=response_formatter.buildErrorResponse('Access denied'),
         )
     # checking the cache for the keys
-    cache_key = f'user_data_{offset}_{limit}_{search}_{roles}'
+    cache_key = user_list_cache_key(offset, limit, search, roles)
     if not force_fetch:
         cached_result = cache_manager.get_str(cache_key)
         if cached_result:
@@ -425,10 +430,10 @@ async def get_user(
     page, so the console does not have to pull the whole directory to put a name
     to one id.
 
-    Cached for an hour under a `user_data_` key, so the existing
-    `invalidate_query('user_data_*')` calls in create/update/delete already clear
-    it — there is no new invalidation to remember. Pass `force_fetch=1` to read
-    through to the database.
+    Cached for an hour under a key from `constants.cache`, so the existing
+    `invalidate_query(USER_DATA_PATTERN)` calls in create/update/delete already
+    clear it — there is no new invalidation to remember. Pass `force_fetch=1` to
+    read through to the database.
     """
     if not await can_read_users(request):
         return JSONResponse(
@@ -446,7 +451,7 @@ async def get_user(
             ),
         )
 
-    cache_key = f'user_data_id_{user_id}'
+    cache_key = user_by_id_cache_key(user_id)
     if not force_fetch:
         cached_result = cache_manager.get_str(cache_key)
         if cached_result:
@@ -508,7 +513,7 @@ async def delete_user(
 
     response = await user_service.delete_user(delete_id)
     # Invalidate all user_data cache entries
-    cache_manager.invalidate_query('user_data_*')
+    cache_manager.invalidate_query(USER_DATA_PATTERN)
 
     if response:
         return JSONResponse(
