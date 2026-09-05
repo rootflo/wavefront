@@ -504,14 +504,9 @@ class QueryGenerator:
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Cheap, index-only count of documents in `kb_id` matching the same
-        `filterN`/`document_date`/`created_at` window used by
-        `get_image_embedding_dino_exact_match`. Intended as a pre-flight
-        safety check -- callers should run this first and compare the
-        result against a candidate-count cap before running the (much more
-        expensive) exact-match brute-force distance computation, since this
-        query only touches the real, indexed columns on
-        `knowledge_base_documents` and never reads `knowledge_base_embeddings`
-        or computes any vector distance.
+        filters as `get_image_embedding_dino_exact_match`. Used as a
+        pre-flight check against a candidate-count cap before running that
+        much more expensive brute-force query.
         """
         filter_columns_clause, params = self.build_filter_columns_clause(
             filter1,

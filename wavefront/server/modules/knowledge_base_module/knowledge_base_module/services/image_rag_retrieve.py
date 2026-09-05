@@ -9,17 +9,11 @@ from db_repo_module.models.knowledge_base_embeddings import KnowledgeBaseEmbeddi
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from sqlalchemy.exc import SQLAlchemyError
 
-# Absolute, non-configurable ceiling on how many candidate documents
-# `exact_match_dino` will brute-force score in a single request, regardless
-# of what `max_candidates`/config says. This exists so a misconfigured or
-# accidentally-widened env var (`KB_EXACT_MATCH_MAX_CANDIDATES`) can never
-# fully disable the safety guard -- see `exact_match_dino` below.
+# Hard ceiling on exact_match_dino's candidate count -- no config/env var can
+# exceed this, so a misconfiguration can't fully disable the safety guard.
 EXACT_MATCH_HARD_CEILING = 5_000
 
-# Fallback candidate cap used when the caller doesn't supply one (e.g. older
-# callers, or config missing the `knowledge_base.exact_match_max_candidates`
-# key). Deliberately conservative; tune based on real p95 latency
-# measurements against the target KB size.
+# Default candidate cap when the caller doesn't supply one.
 DEFAULT_EXACT_MATCH_MAX_CANDIDATES = 1_000
 
 
@@ -148,16 +142,10 @@ class ImageRagRetrieve:
         HNSW index -- see that method's docstring -- so scores returned here
         are always exact, not approximate.
 
-        Before doing any of that, this first runs a cheap, index-only count
-        of how many documents match the given filters and rejects the
-        request with a 422 if that count exceeds `max_candidates` (itself
-        clamped to `EXACT_MATCH_HARD_CEILING`). This protects the DB from an
-        accidentally wide date range / filter turning into a brute-force
-        distance computation over a huge fraction of a large KB (see
-        `get_filtered_document_count_query`) -- the count check runs before
-        the outbound call to the inference service too, so an
-        already-doomed request fails fast instead of paying for an
-        embedding computation it won't use.
+        Before any of that, runs a cheap count of matching documents and
+        rejects with a 422 if it exceeds `max_candidates` (clamped to
+        `EXACT_MATCH_HARD_CEILING`), so an oversized candidate set fails
+        fast instead of brute-forcing distances over it.
         """
         effective_cap = min(
             max_candidates or DEFAULT_EXACT_MATCH_MAX_CANDIDATES,

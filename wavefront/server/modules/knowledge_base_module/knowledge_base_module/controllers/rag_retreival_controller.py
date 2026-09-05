@@ -214,13 +214,7 @@ async def _resolve_image_data(
 
 
 def _resolve_exact_match_candidate_cap(config: dict) -> int:
-    """
-    Resolve the exact-match candidate-count safety cap: a soft,
-    env-configurable limit (`knowledge_base.exact_match_max_candidates` /
-    `KB_EXACT_MATCH_MAX_CANDIDATES`, see config.ini) clamped to a hardcoded,
-    non-configurable ceiling (`EXACT_MATCH_HARD_CEILING`) so a misconfigured
-    or accidentally-widened env var can never fully disable the guard.
-    """
+    """Resolve the exact-match candidate cap from config, clamped to `EXACT_MATCH_HARD_CEILING`."""
     knowledge_base_config = (config or {}).get('knowledge_base') or {}
     try:
         configured_cap = int(
