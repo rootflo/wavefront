@@ -1,0 +1,39 @@
+# Generic OTLP-over-HTTP overlay: the "plug in any cloud service" path.
+#
+# Covers essentially any backend that ingests raw OTLP over HTTP with a bearer
+# or API-key header — Grafana Cloud / Tempo / Mimir, Honeycomb, New Relic,
+# Datadog's OTLP intake, SigNoz, Elastic, Dynatrace, Axiom, Coralogix,
+# Uptrace, and self-hosted collectors. If what you have is an API key rather
+# than a native cloud SDK integration, use this file.
+#
+# Select it with:
+#   OTEL_EXPORTER_OVERLAY=/etc/otel/exporters/otlphttp.yaml
+# and set OTEL_CLOUD_ENDPOINT / OTEL_CLOUD_HEADERS_AUTHORIZATION accordingly,
+# e.g. for Grafana Cloud:
+#   OTEL_CLOUD_ENDPOINT=https://otlp-gateway-<region>.grafana.net/otlp
+#   OTEL_CLOUD_HEADERS_AUTHORIZATION=Basic <base64(instance_id:api_key)>
+# or for Honeycomb:
+#   OTEL_CLOUD_ENDPOINT=https://api.honeycomb.io
+#   OTEL_CLOUD_HEADERS_AUTHORIZATION=<api_key>   # sent as x-honeycomb-team below;
+#                                                 # adjust the header key per vendor.
+#
+# ${env:VAR} is required syntax on the pinned collector version — a bare
+# ${VAR} is not resolved.
+
+exporters:
+  otlphttp/cloud:
+    endpoint: ${env:OTEL_CLOUD_ENDPOINT}
+    headers:
+      Authorization: ${env:OTEL_CLOUD_HEADERS_AUTHORIZATION}
+
+service:
+  pipelines:
+    traces/cloud_upstream:
+      receivers: [otlp]
+      processors: [memory_limiter, filter/background_noise, resourcedetection, transform/redact, tail_sampling, batch]
+      exporters: [otlphttp/cloud]
+
+    metrics/cloud_upstream:
+      receivers: [otlp]
+      processors: [memory_limiter, resourcedetection, transform/redact, batch]
+      exporters: [otlphttp/cloud]

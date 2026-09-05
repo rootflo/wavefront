@@ -1,0 +1,25 @@
+# Honeycomb.io overlay
+#
+# Select it with:
+#   OTEL_EXPORTER_OVERLAY=/etc/otel/exporters/honeycomb.yaml
+#   OTEL_CLOUD_HEADERS_AUTHORIZATION=<your-honeycomb-api-key>
+#
+# (Optionally set OTEL_CLOUD_ENDPOINT if using Honeycomb EU: https://api.eu1.honeycomb.io)
+
+exporters:
+  otlphttp/cloud:
+    endpoint: ${env:OTEL_CLOUD_ENDPOINT}
+    headers:
+      x-honeycomb-team: ${env:OTEL_CLOUD_HEADERS_AUTHORIZATION}
+
+service:
+  pipelines:
+    traces/cloud_upstream:
+      receivers: [otlp]
+      processors: [memory_limiter, filter/background_noise, resourcedetection, transform/redact, tail_sampling, batch]
+      exporters: [otlphttp/cloud]
+
+    metrics/cloud_upstream:
+      receivers: [otlp]
+      processors: [memory_limiter, resourcedetection, transform/redact, batch]
+      exporters: [otlphttp/cloud]

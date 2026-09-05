@@ -1,0 +1,150 @@
+# Base OpenTelemetry Collector config: local Jaeger fan-out plus the
+# scaffolding a cloud pipeline needs. This file alone runs the local developer
+# loop (100% unsampled traces into Jaeger) with zero further configuration.
+#
+# Cloud export is layered on top via a second `--config` file (see
+# otel/exporters/*.yaml and docker-compose.local.yml's `command:`), never by
+# editing this file or the applications. The collector deep-merges repeated
+# `--config` files, but MAPS merge while LISTS are replaced wholesale — so
+# every overlay restates the full `exporters` list it wants for each
+# `*/cloud_upstream` pipeline, local exporters included if it wants to keep
+# them.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # Must be first in every pipeline. limit_mib (rather than limit_percentage)
+  # so protection doesn't silently depend on the container's memory limit
+  # matching the percentage math — set mem_limit on the otel-collector service
+  # in compose to match.
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+
+  batch:
+    send_batch_size: 512
+    timeout: 1s
+
+  # Background pollers emit one root span per iteration - a redis stream read
+  # per consumer per second, plus connection keepalives - and outnumber real
+  # request traces by orders of magnitude. Matched with IsRootSpan() so the
+  # same commands still appear when they happen *inside* a request trace,
+  # where they carry actual diagnostic value.
+  filter/background_noise:
+    error_mode: ignore
+    traces:
+      span:
+        - 'IsRootSpan() and name == "XREADGROUP"'
+        - 'IsRootSpan() and name == "PING"'
+
+  resourcedetection:
+    detectors: [env, system]
+    timeout: 2s
+    override: false
+
+  # Cloud-only: strip anything that shouldn't leave the building before it
+  # reaches an exporter. Left out of the local pipelines on purpose, so the
+  # Jaeger UI still shows the raw data for debugging.
+  #
+  # NOTE: verify these OTTL function names (SHA256, replace_pattern, delete_key)
+  # against the pinned collector version's `transform` processor docs before
+  # relying on this in production; the `redaction` processor is a viable
+  # alternative if OTTL syntax drifts.
+  transform/redact:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          - delete_key(attributes, "http.request.header.authorization")
+          - delete_key(attributes, "http.request.header.cookie")
+          - set(attributes["app.user.id"], SHA256(attributes["app.user.id"])) where attributes["app.user.id"] != nil
+          - replace_pattern(attributes["url.full"], "\\?.*", "")
+          - replace_pattern(attributes["http.url"], "\\?.*", "")
+          - delete_key(attributes, "client.address")
+          - delete_key(attributes, "net.peer.ip")
+          - truncate_all(attributes, 256)
+    metric_statements:
+      - context: datapoint
+        statements:
+          - delete_key(attributes, "client.address")
+          - delete_key(attributes, "net.peer.ip")
+
+  # Cloud-only, traces pipeline only: keep every error and every slow request,
+  # sample the rest. Requires every span of a trace to land on this same
+  # collector instance — fine for the single container this repo runs, but it
+  # silently makes wrong decisions the moment the collector is scaled past one
+  # replica. Scaling past one instance needs a two-tier topology (an agent
+  # tier fanning out via the `loadbalancing` exporter keyed by trace ID, into a
+  # gateway tier that owns tail_sampling) — out of scope here, flagged for
+  # whoever deploys this to production.
+  tail_sampling:
+    decision_wait: 10s
+    num_traces: 50000
+    expected_new_traces_per_sec: 100
+    policies:
+      - name: errors
+        type: status_code
+        status_code: { status_codes: [ERROR] }
+      - name: slow
+        type: latency
+        latency: { threshold_ms: 2000 }
+      - name: baseline-sample
+        type: probabilistic
+        probabilistic: { sampling_percentage: 5 }
+
+exporters:
+  # Local Distributed Tracing UI (Jaeger v2, OTLP-native).
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+
+  debug:
+    verbosity: basic
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+
+  telemetry:
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+
+  pipelines:
+    # 100% of traces, no sampling, straight to Jaeger. Fast feedback loop for
+    # local development; this pipeline is not present in any cloud overlay.
+    traces/local_debug:
+      receivers: [otlp]
+      processors: [memory_limiter, filter/background_noise, resourcedetection, batch]
+      exporters: [otlp/jaeger, debug]
+
+    metrics/local_debug:
+      receivers: [otlp]
+      processors: [memory_limiter, resourcedetection, batch]
+      exporters: [debug]
+
+    # No `*/cloud_upstream` pipeline is defined here on purpose. A collector
+    # pipeline must have at least one exporter, so a pipeline with an empty
+    # `exporters: []` fails validation at startup — there is no config-only way
+    # to define a pipeline as "off". Instead, each file in otel/exporters/ that
+    # actually wants cloud export ADDS the `traces/cloud_upstream` and
+    # `metrics/cloud_upstream` pipeline keys itself (service.pipelines merges
+    # as a map, so new keys layer in cleanly), referencing the transform/redact
+    # and tail_sampling processors already defined above. otel/exporters/none.yaml
+    # adds nothing, so with no overlay selected only the two local_debug
+    # pipelines above exist and the collector runs local-only.

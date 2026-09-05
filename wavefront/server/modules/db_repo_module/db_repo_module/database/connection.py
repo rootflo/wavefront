@@ -27,6 +27,11 @@ class DatabaseClient:
             autocommit=False, bind=self._engine
         )
 
+    @property
+    def engine(self):
+        """The underlying async engine, for callers such as instrumentation."""
+        return self._engine
+
     async def close(self):
         if self._engine is None:
             raise Exception('DatabaseClient is not initialized')

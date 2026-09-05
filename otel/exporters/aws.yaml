@@ -1,0 +1,33 @@
+# AWS X-Ray + CloudWatch overlay. Neither ingests raw OTLP, so this uses the
+# native `awsxray` (traces) and `awsemf` (metrics) exporters.
+#
+# Select it with:
+#   OTEL_EXPORTER_OVERLAY=/etc/otel/exporters/aws.yaml
+#   AWS_REGION=us-east-1
+#
+# Auth is IAM, not an API key: the collector container's role/credentials need
+# AWSXRayDaemonWriteAccess (traces) and CloudWatchAgentServerPolicy (metrics).
+# In this repo's local compose that's whatever AWS_* env vars are already
+# passed through; in a real deployment it should be an instance/task role
+# rather than long-lived keys.
+
+exporters:
+  awsxray:
+    region: ${env:AWS_REGION}
+
+  awsemf:
+    region: ${env:AWS_REGION}
+    namespace: Wavefront
+    log_group_name: '/wavefront/otel-metrics'
+
+service:
+  pipelines:
+    traces/cloud_upstream:
+      receivers: [otlp]
+      processors: [memory_limiter, filter/background_noise, resourcedetection, transform/redact, tail_sampling, batch]
+      exporters: [awsxray]
+
+    metrics/cloud_upstream:
+      receivers: [otlp]
+      processors: [memory_limiter, resourcedetection, transform/redact, batch]
+      exporters: [awsemf]

@@ -1,0 +1,25 @@
+# Azure Application Insights overlay. App Insights does not ingest raw OTLP,
+# so this uses the native `azuremonitor` exporter rather than otlphttp.
+#
+# Select it with:
+#   OTEL_EXPORTER_OVERLAY=/etc/otel/exporters/azure.yaml
+#   APPLICATIONINSIGHTS_CONNECTION_STRING=InstrumentationKey=...;IngestionEndpoint=...
+#
+# Requires the `otelcontribcol` build to include the azuremonitorexporter
+# component (the standard otel/opentelemetry-collector-contrib image does).
+
+exporters:
+  azuremonitor:
+    connection_string: ${env:APPLICATIONINSIGHTS_CONNECTION_STRING}
+
+service:
+  pipelines:
+    traces/cloud_upstream:
+      receivers: [otlp]
+      processors: [memory_limiter, filter/background_noise, resourcedetection, transform/redact, tail_sampling, batch]
+      exporters: [azuremonitor]
+
+    metrics/cloud_upstream:
+      receivers: [otlp]
+      processors: [memory_limiter, resourcedetection, transform/redact, batch]
+      exporters: [azuremonitor]

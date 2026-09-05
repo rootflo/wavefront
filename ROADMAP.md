@@ -269,7 +269,7 @@ Command-line interface for configuring and managing Wavefront AI.
 | Feature | Description | Priority | Status | Target Release |
 |---------|-------------|----------|--------|----------------|
 | **OpenTelemetry Integration** | Full OpenTelemetry support | High | ✅ Available | v1.0.0 |
-| **Prometheus Metrics** | Prometheus-compatible metrics | High | ✅ Available | v1.0.0 |
+| **Pluggable Cloud APM Export** | Push traces/metrics to Azure App Insights, AWS X-Ray/CloudWatch, GCP Cloud Trace, or any OTLP vendor | High | ✅ Available | v1.0.0 |
 | **Grafana Dashboards** | Pre-built Grafana dashboards | High | Yet to start | v0.1.0 |
 | **Application Metrics** | Application-level performance metrics | High | ✅ Available | v1.0.0 |
 | **AI Token Tracking** | Token usage tracking per agent | High | ✅ Available | v1.0.0 |
