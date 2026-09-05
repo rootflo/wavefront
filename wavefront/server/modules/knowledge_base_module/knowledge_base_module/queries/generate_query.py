@@ -488,6 +488,55 @@ class QueryGenerator:
 
         return sql_query, params
 
+    def get_filtered_document_count_query(
+        self,
+        kb_id: str,
+        filter1: Optional[str] = None,
+        document_date_start: Optional[Any] = None,
+        document_date_end: Optional[Any] = None,
+        filter2: Optional[str] = None,
+        filter3: Optional[str] = None,
+        filter4: Optional[str] = None,
+        filter5: Optional[str] = None,
+        filter6: Optional[str] = None,
+        created_at_start: Optional[Any] = None,
+        created_at_end: Optional[Any] = None,
+    ) -> Tuple[str, Dict[str, Any]]:
+        """
+        Cheap, index-only count of documents in `kb_id` matching the same
+        `filterN`/`document_date`/`created_at` window used by
+        `get_image_embedding_dino_exact_match`. Intended as a pre-flight
+        safety check -- callers should run this first and compare the
+        result against a candidate-count cap before running the (much more
+        expensive) exact-match brute-force distance computation, since this
+        query only touches the real, indexed columns on
+        `knowledge_base_documents` and never reads `knowledge_base_embeddings`
+        or computes any vector distance.
+        """
+        filter_columns_clause, params = self.build_filter_columns_clause(
+            filter1,
+            filter2,
+            filter3,
+            filter4,
+            filter5,
+            filter6,
+            document_date_start,
+            document_date_end,
+            table_alias='d',
+            created_at_start=created_at_start,
+            created_at_end=created_at_end,
+        )
+        params['kb_id'] = str(kb_id)
+
+        sql_query = f"""
+        SELECT COUNT(*) AS candidate_count
+        FROM {KnowledgeBaseDocuments.__tablename__} d
+        WHERE d.knowledge_base_id = :kb_id
+            {filter_columns_clause}
+        """
+
+        return sql_query, params
+
     def get_documents_list_query(
         self,
         kb_id: str,

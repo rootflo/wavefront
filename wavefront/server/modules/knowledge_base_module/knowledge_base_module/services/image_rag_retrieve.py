@@ -9,6 +9,19 @@ from db_repo_module.models.knowledge_base_embeddings import KnowledgeBaseEmbeddi
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from sqlalchemy.exc import SQLAlchemyError
 
+# Absolute, non-configurable ceiling on how many candidate documents
+# `exact_match_dino` will brute-force score in a single request, regardless
+# of what `max_candidates`/config says. This exists so a misconfigured or
+# accidentally-widened env var (`KB_EXACT_MATCH_MAX_CANDIDATES`) can never
+# fully disable the safety guard -- see `exact_match_dino` below.
+EXACT_MATCH_HARD_CEILING = 5_000
+
+# Fallback candidate cap used when the caller doesn't supply one (e.g. older
+# callers, or config missing the `knowledge_base.exact_match_max_candidates`
+# key). Deliberately conservative; tune based on real p95 latency
+# measurements against the target KB size.
+DEFAULT_EXACT_MATCH_MAX_CANDIDATES = 1_000
+
 
 @dataclass
 class ImageMatch:
@@ -116,6 +129,7 @@ class ImageRagRetrieve:
         filter6: Optional[str] = None,
         created_at_start=None,
         created_at_end=None,
+        max_candidates: Optional[int] = None,
     ) -> list[dict]:
         """
         Exact (non-ANN) DINO similarity match, restricted to documents in
@@ -133,7 +147,58 @@ class ImageRagRetrieve:
         (`QueryGenerator.get_image_embedding_dino_exact_match`) never engages the
         HNSW index -- see that method's docstring -- so scores returned here
         are always exact, not approximate.
+
+        Before doing any of that, this first runs a cheap, index-only count
+        of how many documents match the given filters and rejects the
+        request with a 422 if that count exceeds `max_candidates` (itself
+        clamped to `EXACT_MATCH_HARD_CEILING`). This protects the DB from an
+        accidentally wide date range / filter turning into a brute-force
+        distance computation over a huge fraction of a large KB (see
+        `get_filtered_document_count_query`) -- the count check runs before
+        the outbound call to the inference service too, so an
+        already-doomed request fails fast instead of paying for an
+        embedding computation it won't use.
         """
+        effective_cap = min(
+            max_candidates or DEFAULT_EXACT_MATCH_MAX_CANDIDATES,
+            EXACT_MATCH_HARD_CEILING,
+        )
+        try:
+            count_query, count_params = (
+                self.query_generator.get_filtered_document_count_query(
+                    kb_id,
+                    filter1,
+                    document_date_start,
+                    document_date_end,
+                    filter2,
+                    filter3,
+                    filter4,
+                    filter5,
+                    filter6,
+                    created_at_start,
+                    created_at_end,
+                )
+            )
+            count_rows = await self.knowledge_base_embeddings_repository.execute_query(
+                count_query,
+                count_params,
+            )
+        except SQLAlchemyError as e:
+            raise RuntimeError(
+                f'Failed to execute the candidate-count query for exact match retrieval: {e}'
+            )
+
+        candidate_count = int(count_rows[0]['candidate_count']) if count_rows else 0
+        if candidate_count > effective_cap:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f'{candidate_count} documents match the given filters, which '
+                    f'exceeds the exact-match safety limit of {effective_cap}. '
+                    'Narrow your date range or filters and try again.'
+                ),
+            )
+
         data = {'image_data': image_data}
         internal_api_url = f'{inference_url}/inference/v1/query/embeddings'
         try:

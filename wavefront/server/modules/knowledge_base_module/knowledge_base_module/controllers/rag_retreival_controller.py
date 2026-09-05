@@ -22,7 +22,11 @@ from knowledge_base_module.models.knowledge_base_schema import (
     NewInference,
 )
 from knowledge_base_module.services.kb_rag_retrieve import KBRagResponse
-from knowledge_base_module.services.image_rag_retrieve import ImageRagRetrieve
+from knowledge_base_module.services.image_rag_retrieve import (
+    DEFAULT_EXACT_MATCH_MAX_CANDIDATES,
+    EXACT_MATCH_HARD_CEILING,
+    ImageRagRetrieve,
+)
 from flo_cloud.cloud_storage import CloudStorageManager
 from pydantic import BaseModel, Field
 from datetime import datetime
@@ -207,6 +211,25 @@ async def _resolve_image_data(
         )
     image_data_b64 = base64.b64encode(image_bytes).decode('utf-8')
     return (image_data_b64, None)
+
+
+def _resolve_exact_match_candidate_cap(config: dict) -> int:
+    """
+    Resolve the exact-match candidate-count safety cap: a soft,
+    env-configurable limit (`knowledge_base.exact_match_max_candidates` /
+    `KB_EXACT_MATCH_MAX_CANDIDATES`, see config.ini) clamped to a hardcoded,
+    non-configurable ceiling (`EXACT_MATCH_HARD_CEILING`) so a misconfigured
+    or accidentally-widened env var can never fully disable the guard.
+    """
+    knowledge_base_config = (config or {}).get('knowledge_base') or {}
+    try:
+        configured_cap = int(
+            knowledge_base_config.get('exact_match_max_candidates')
+            or DEFAULT_EXACT_MATCH_MAX_CANDIDATES
+        )
+    except (TypeError, ValueError):
+        configured_cap = DEFAULT_EXACT_MATCH_MAX_CANDIDATES
+    return min(configured_cap, EXACT_MATCH_HARD_CEILING)
 
 
 @rag_retrieval_router.post('/v1/knowledge-base/{kb_id}/retrieve')
@@ -395,6 +418,7 @@ async def retrieve_query(
         if error_response is not None:
             return error_response
         inference_url = config['model']['inference_service_url']
+        exact_match_max_candidates = _resolve_exact_match_candidate_cap(config)
         retrieved_docs = await image_rag_retrieval.exact_match_dino(
             image_data,
             inference_url,
@@ -410,6 +434,7 @@ async def retrieve_query(
             filter6,
             created_at_start,
             created_at_end,
+            max_candidates=exact_match_max_candidates,
         )
         retrieved_docs = convert_uuids_to_str(retrieved_docs)
         match_count = len(retrieved_docs)
