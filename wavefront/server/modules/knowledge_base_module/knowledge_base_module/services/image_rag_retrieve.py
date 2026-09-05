@@ -13,7 +13,10 @@ from sqlalchemy.exc import SQLAlchemyError
 # exceed this, so a misconfiguration can't fully disable the safety guard.
 EXACT_MATCH_HARD_CEILING = 5_000
 
-# Default candidate cap when the caller doesn't supply one.
+# Fallback candidate cap used when the caller doesn't supply one (e.g. older
+# callers, or config missing the `knowledge_base.exact_match_max_candidates`
+# key). Deliberately conservative; tune based on real p95 latency
+# measurements against the target KB size.
 DEFAULT_EXACT_MATCH_MAX_CANDIDATES = 1_000
 
 
