@@ -186,6 +186,12 @@ class Agent(BaseAgent):
                     'attempt': retry_count,
                 }
 
+                # A policy decision is final. Surface it unchanged so callers
+                # can tell "blocked by guardrails" from "the model failed";
+                # wrapping it in AgentError loses both the type and the reason.
+                if getattr(e, 'retryable', True) is False:
+                    raise
+
                 should_retry, analysis = await self.handle_error(e, context)
 
                 if should_retry and retry_count <= self.max_retries:
@@ -418,6 +424,9 @@ class Agent(BaseAgent):
                     'conversation_history': self.conversation_history,
                     'attempt': retry_count,
                 }
+
+                if getattr(e, 'retryable', True) is False:
+                    raise
 
                 should_retry, analysis = await self.handle_error(e, context)
                 if should_retry and retry_count <= self.max_retries:

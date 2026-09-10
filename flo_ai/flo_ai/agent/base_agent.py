@@ -51,6 +51,15 @@ class BaseAgent(ABC):
     async def handle_error(
         self, error: Exception, context: Dict[str, Any]
     ) -> Tuple[bool, str]:
+        # Errors that declare themselves final skip LLM analysis entirely.
+        # Two reasons: retrying a policy decision only re-derives the same
+        # verdict at the cost of another provider call, and the prompt below
+        # embeds `context` — which carries the full conversation history — so
+        # analysing a guardrail block would send the very content that was
+        # just blocked to the model.
+        if getattr(error, 'retryable', True) is False:
+            return False, str(error)
+
         error_prompt = (
             f'An error occurred while processing the request: {str(error)}\n'
             f'Context: {context}\n'
