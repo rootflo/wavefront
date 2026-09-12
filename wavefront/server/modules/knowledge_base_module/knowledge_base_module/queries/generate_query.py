@@ -482,6 +482,7 @@ class QueryGenerator:
                 d.file_name,
                 d.knowledge_base_id,
                 d.metadata_value,
+                d.document_date::text AS document_date,
                 1 - ((e.embedding_vector_1::vector(1024)) <=> :query_embedding ::vector(1024)) AS dino_score
             FROM {KnowledgeBaseEmbeddings.__tablename__} e
             JOIN {KnowledgeBaseDocuments.__tablename__} d ON e.document_id = d.id
