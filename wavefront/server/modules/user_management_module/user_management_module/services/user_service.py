@@ -1,6 +1,8 @@
 from typing import Any, List, Optional, cast
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from db_repo_module.models.user import User
+from db_repo_module.models.user_group_member import UserGroupMember
+from db_repo_module.models.user_group_role import UserGroupRole
 from db_repo_module.models.user_role import UserRole
 from db_repo_module.models.session import Session
 from db_repo_module.models.resource import Resource, ResourceScope
@@ -26,12 +28,96 @@ class UserService:
         session_repository: SQLAlchemyRepository[Session],
         resource_repository: SQLAlchemyRepository[Resource],
         cache_manager: CacheManager,
+        user_group_member_repository: SQLAlchemyRepository[UserGroupMember],
     ):
         self.user_repository = user_repository
         self.user_role_repository = user_role_repository
         self.session_repository = session_repository
         self.resource_repository = resource_repository
         self.cache_manager = cache_manager
+        self.user_group_member_repository = user_group_member_repository
+
+    @staticmethod
+    def effective_role_ids(user_id: str):
+        """Roles a user holds directly plus roles granted by their groups.
+
+        The single definition of "which roles does this user have". Filtering on
+        it rather than joining `user_role` is what makes group membership count
+        everywhere a direct assignment does.
+
+        A group with no roles contributes no rows, so members of an empty group
+        simply keep their direct roles. The `User.deleted` guard sits inside both
+        branches so every caller inherits it.
+        """
+        direct = (
+            select(UserRole.role_id)
+            .join(User, User.id == UserRole.user_id)
+            .where(UserRole.user_id == user_id, User.deleted.is_(False))
+        )
+        via_group = (
+            select(UserGroupRole.role_id)
+            .join(
+                UserGroupMember,
+                UserGroupMember.group_id == UserGroupRole.group_id,
+            )
+            .join(User, User.id == UserGroupMember.user_id)
+            .where(UserGroupMember.user_id == user_id, User.deleted.is_(False))
+        )
+        return direct.union(via_group)
+
+    async def resolve_assignment_role_ids(
+        self,
+        role_ids: Optional[List[str]] = None,
+        group_ids: Optional[List[str]] = None,
+    ) -> set[str]:
+        """Every role a user would hold given these direct roles and groups.
+
+        Used before the user exists (creation) or before an assignment is
+        committed, where `effective_role_ids` has nothing to read yet. Because a
+        group may carry no roles, membership alone can contribute nothing here --
+        which is exactly why the console check that consumes this must keep
+        rejecting a user whose only groups are empty.
+        """
+        resolved: set[str] = {str(role_id) for role_id in (role_ids or [])}
+        if not group_ids:
+            return resolved
+
+        async with self.resource_repository.session() as session:
+            group_role_ids = (
+                await session.scalars(
+                    select(UserGroupRole.role_id).where(
+                        UserGroupRole.group_id.in_(group_ids)
+                    )
+                )
+            ).all()
+        resolved.update(str(role_id) for role_id in group_role_ids)
+        return resolved
+
+    async def user_ids_with_role(self, role_id: str) -> set[str]:
+        """Ids of live users holding a role directly or through a group.
+
+        Backs the "at least one admin must remain" guard, which needs both the
+        count and the identity of the remaining admins, and which would
+        otherwise miss admins whose role arrives via group membership and let
+        the last one be removed.
+        """
+        async with self.resource_repository.session() as session:
+            direct = (
+                select(UserRole.user_id)
+                .join(User, User.id == UserRole.user_id)
+                .where(UserRole.role_id == role_id, User.deleted.is_(False))
+            )
+            via_group = (
+                select(UserGroupMember.user_id)
+                .join(
+                    UserGroupRole,
+                    UserGroupRole.group_id == UserGroupMember.group_id,
+                )
+                .join(User, User.id == UserGroupMember.user_id)
+                .where(UserGroupRole.role_id == role_id, User.deleted.is_(False))
+            )
+            rows = (await session.scalars(direct.union(via_group))).all()
+            return {str(user_id) for user_id in rows}
 
     async def get_user_resources(
         self,
@@ -40,7 +126,8 @@ class UserService:
         scopes: Optional[List[ResourceScope]] = None,
     ) -> List[Resource]:
         """
-        Fetch all resources a user has access to through their role assignments.
+        Fetch all resources a user has access to, through either a directly
+        assigned role or a role granted by one of their groups.
 
         Args:
             user_id: The ID of the user
@@ -55,11 +142,7 @@ class UserService:
                 select(Resource)
                 .distinct()
                 .join(RoleResource, Resource.id == RoleResource.resource_id)
-                .join(Role, Role.id == RoleResource.role_id)
-                .join(UserRole, UserRole.role_id == Role.id)
-                .join(User, UserRole.user_id == User.id)
-                .where(UserRole.user_id == user_id)
-                .where(User.deleted.is_(False))
+                .where(RoleResource.role_id.in_(self.effective_role_ids(user_id)))
             )
 
             if scope is not None:
@@ -155,6 +238,10 @@ class UserService:
         Admin users are granted access to every scope and their admin role_id is
         returned directly without checking resource assignments.
 
+        Both lookups run over the user's effective roles, so console access (and
+        therefore the ability to log in) can come from a group just as well as
+        from a direct assignment.
+
         Args:
             user_id: The ID of the user
             scope: The resource scope to check (usually ResourceScope.CONSOLE)
@@ -162,16 +249,15 @@ class UserService:
         Returns:
             The role_id if user has access to the scope, None otherwise
         """
+        effective_roles = self.effective_role_ids(user_id)
+
         async with self.resource_repository.session() as session:
             # Admins have access to all scopes; return their role_id immediately.
             # role_id is not yet known at login, so admin status is resolved by
             # user_id here (the one place this lookup is unavoidable).
             admin_stmt = (
-                select(UserRole.role_id)
-                .join(Role, UserRole.role_id == Role.id)
-                .join(User, UserRole.user_id == User.id)
-                .where(UserRole.user_id == user_id)
-                .where(User.deleted.is_(False))
+                select(Role.id)
+                .where(Role.id.in_(effective_roles))
                 .where(Role.name == ADMIN_ROLE_NAME)
             )
             admin_result = await session.execute(admin_stmt)
@@ -180,13 +266,10 @@ class UserService:
                 return str(admin_role_id)
 
             statement = (
-                select(UserRole.role_id)
-                .join(Role, UserRole.role_id == Role.id)
+                select(Role.id)
                 .join(RoleResource, Role.id == RoleResource.role_id)
                 .join(Resource, RoleResource.resource_id == Resource.id)
-                .join(User, UserRole.user_id == User.id)
-                .where(UserRole.user_id == user_id)
-                .where(User.deleted.is_(False))
+                .where(Role.id.in_(effective_roles))
                 .where(Resource.scope == scope)
             )
             result: Result = await session.execute(statement)
@@ -194,6 +277,10 @@ class UserService:
 
     async def delete_user(self, user_id: str) -> bool:
         await self.user_role_repository.delete_all(user_id=user_id)
+        # The user row is only soft-deleted, so the FK cascade never fires and
+        # membership rows would otherwise survive and resurrect group-granted
+        # access if the account were later reactivated.
+        await self.user_group_member_repository.delete_all(user_id=user_id)
 
         sessions = await self.session_repository.find(user_id=user_id, limit=1000)
         for s in sessions:
@@ -215,7 +302,11 @@ class UserService:
         current_admin_role_id: str,
         response_formatter: ResponseFormatter,
     ) -> JSONResponse:
-        is_reactivating_admin = current_admin_role_id in new_user_data.role_id
+        # Groups can carry the admin role, so resolve both paths before deciding.
+        assignment_role_ids = await self.resolve_assignment_role_ids(
+            role_ids=new_user_data.role_id, group_ids=new_user_data.group_ids
+        )
+        is_reactivating_admin = current_admin_role_id in assignment_role_ids
 
         try:
             async with self.user_repository.session() as session:
@@ -235,14 +326,15 @@ class UserService:
                     )
 
                 # Admins have implicit access to all resources; only validate console
-                # resource requirement for non-admin users
+                # resource requirement for non-admin users. Group roles count, but
+                # an empty group grants nothing and so cannot satisfy this.
                 if not is_reactivating_admin:
                     console_resources_query = (
                         select(Resource)
                         .join(RoleResource, Resource.id == RoleResource.resource_id)
                         .where(
                             and_(
-                                RoleResource.role_id.in_(new_user_data.role_id),
+                                RoleResource.role_id.in_(assignment_role_ids),
                                 Resource.scope == ResourceScope.CONSOLE,
                             )
                         )
@@ -287,6 +379,14 @@ class UserService:
                 ]
 
                 session.add_all(user_roles)
+                # delete_user strips membership rows, so reactivation re-adds the
+                # groups named in the payload rather than inheriting stale ones.
+                session.add_all(
+                    [
+                        UserGroupMember(user_id=existing_user.id, group_id=group_id)
+                        for group_id in new_user_data.group_ids
+                    ]
+                )
                 await session.commit()
 
                 self.cache_manager.invalidate_query(USER_DATA_PATTERN)

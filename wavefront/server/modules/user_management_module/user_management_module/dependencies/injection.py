@@ -10,6 +10,9 @@ from db_repo_module.models.resource import Resource
 from db_repo_module.models.role import Role
 from db_repo_module.models.role_resource import RoleResource
 from db_repo_module.models.user import User
+from db_repo_module.models.user_group import UserGroup
+from db_repo_module.models.user_group_member import UserGroupMember
+from db_repo_module.models.user_group_role import UserGroupRole
 from db_repo_module.models.user_role import UserRole
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from dependency_injector.wiring import Provide
@@ -42,6 +45,18 @@ RoleRepositoryDep = Annotated[
 RoleResourceRepositoryDep = Annotated[
     SQLAlchemyRepository[RoleResource],
     Depends(Provide[UserContainer.role_resource_repository]),
+]
+UserGroupRepositoryDep = Annotated[
+    SQLAlchemyRepository[UserGroup],
+    Depends(Provide[UserContainer.user_group_repository]),
+]
+UserGroupMemberRepositoryDep = Annotated[
+    SQLAlchemyRepository[UserGroupMember],
+    Depends(Provide[UserContainer.user_group_member_repository]),
+]
+UserGroupRoleRepositoryDep = Annotated[
+    SQLAlchemyRepository[UserGroupRole],
+    Depends(Provide[UserContainer.user_group_role_repository]),
 ]
 UserServiceDep = Annotated[UserService, Depends(Provide[UserContainer.user_service])]
 CacheManagerDep = Annotated[CacheManager, Depends(Provide[UserContainer.cache_manager])]

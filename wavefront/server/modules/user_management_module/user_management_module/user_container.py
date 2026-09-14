@@ -3,6 +3,9 @@ from db_repo_module.models.role import Role
 from db_repo_module.models.role_resource import RoleResource
 from db_repo_module.models.session import Session
 from db_repo_module.models.user import User
+from db_repo_module.models.user_group import UserGroup
+from db_repo_module.models.user_group_member import UserGroupMember
+from db_repo_module.models.user_group_role import UserGroupRole
 from db_repo_module.models.user_role import UserRole
 from db_repo_module.models.auth_secrets import AuthSecrets
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
@@ -46,6 +49,21 @@ class UserContainer(containers.DeclarativeContainer):
         model=UserRole,
         db_client=db_client,
     )
+    user_group_repository = providers.Singleton(
+        SQLAlchemyRepository[UserGroup],
+        model=UserGroup,
+        db_client=db_client,
+    )
+    user_group_member_repository = providers.Singleton(
+        SQLAlchemyRepository[UserGroupMember],
+        model=UserGroupMember,
+        db_client=db_client,
+    )
+    user_group_role_repository = providers.Singleton(
+        SQLAlchemyRepository[UserGroupRole],
+        model=UserGroupRole,
+        db_client=db_client,
+    )
     session_repository = providers.Singleton(
         SQLAlchemyRepository[Session],
         model=Session,
@@ -83,6 +101,7 @@ class UserContainer(containers.DeclarativeContainer):
         session_repository=session_repository,
         resource_repository=resource_repository,
         cache_manager=cache_manager,
+        user_group_member_repository=user_group_member_repository,
     )
 
     account_lockout_service = providers.Singleton(

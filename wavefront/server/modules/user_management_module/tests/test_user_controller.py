@@ -1135,6 +1135,13 @@ async def test_admin_user_creat_non_admin_user_with_empty_role(
     mocking_user_controller_is_admin,
     mocking_user_controller_get_current_user,
 ):
+    """An empty role list is still rejected, but by the console-resource guard.
+
+    Roles became optional on the schema when groups landed, since a user may
+    draw their access from a group instead. Supplying neither roles nor a group
+    that grants console access is now a 400 from that check rather than a 422
+    from the request model.
+    """
     await create_session(test_session, test_user_id, test_session_id)
     new_user_data = {
         'email': 'test2@example.com',
@@ -1149,7 +1156,8 @@ async def test_admin_user_creat_non_admin_user_with_empty_role(
         json=new_user_data,
         headers={'Authorization': f'Bearer {auth_token}'},
     )
-    assert response.status_code == 422
+    assert response.status_code == 400
+    assert 'console resource' in str(response.json())
 
 
 @pytest.mark.asyncio

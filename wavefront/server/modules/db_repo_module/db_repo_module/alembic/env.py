@@ -19,6 +19,9 @@ from db_repo_module.models.session import Session
 from db_repo_module.models.task import Task
 from db_repo_module.models.team import Team
 from db_repo_module.models.user import User
+from db_repo_module.models.user_group import UserGroup
+from db_repo_module.models.user_group_member import UserGroupMember
+from db_repo_module.models.user_group_role import UserGroupRole
 from db_repo_module.models.user_role import UserRole
 from db_repo_module.models.datasource import Datasource
 from db_repo_module.models.model_schema import ModelSchema
@@ -75,6 +78,9 @@ models = [
     Resource,
     RoleResource,
     UserRole,
+    UserGroup,
+    UserGroupMember,
+    UserGroupRole,
     KnowledgeBase,
     KnowledgeBaseDocuments,
     KnowledgeBaseEmbeddings,

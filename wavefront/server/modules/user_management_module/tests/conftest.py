@@ -258,12 +258,47 @@ def mock_auth_admin_functions(monkeypatch):
 
 
 @pytest.fixture
-def mock_admin_false_functions(monkeypatch):
-    async def mock_check_is_not_admin(role_id):
+def mock_group_admin_functions(monkeypatch):
+    """Admin caller for the group endpoints.
+
+    group_controller imports get_current_user/check_is_admin into its own
+    namespace, so they are patched there rather than on user_utils.
+    """
+
+    def mock_get_current_user(request):
+        return 'test_role_id', 'test_user_id', 'test_session_id'
+
+    monkeypatch.setattr(
+        'user_management_module.controllers.group_controller.get_current_user',
+        mock_get_current_user,
+    )
+
+    async def mock_check_is_admin(role_id, role_repository=None):
+        return True
+
+    monkeypatch.setattr(
+        'user_management_module.controllers.group_controller.check_is_admin',
+        mock_check_is_admin,
+    )
+
+
+@pytest.fixture
+def mock_group_non_admin_functions(monkeypatch):
+    """Non-admin caller, for asserting the group endpoints reject them."""
+
+    def mock_get_current_user(request):
+        return 'test_role_id', 'test_user_id', 'test_session_id'
+
+    monkeypatch.setattr(
+        'user_management_module.controllers.group_controller.get_current_user',
+        mock_get_current_user,
+    )
+
+    async def mock_check_is_not_admin(role_id, role_repository=None):
         return False
 
     monkeypatch.setattr(
-        'auth_module.controllers.superset_controller.check_is_admin',
+        'user_management_module.controllers.group_controller.check_is_admin',
         mock_check_is_not_admin,
     )
 
