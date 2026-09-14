@@ -54,6 +54,7 @@ from plugins_module.plugins_container import PluginsContainer
 from user_management_module.user_container import UserContainer
 from user_management_module.services.user_service import UserService
 from flo_cloud.cloud_storage import CloudStorageManager
+from flo_cloud.exceptions import CloudStorageFileNotFoundError
 from fastapi import HTTPException
 from user_management_module.utils.user_utils import check_is_admin
 from user_management_module.utils.user_utils import get_current_user
@@ -1178,7 +1179,25 @@ async def execute_dynamic_query(
             ),
         )
     # fetching the yaml query based on the query_id
-    yaml_query, _ = await dynamic_query_yaml_service.get_dynamic_yaml_query(query_id)
+    #
+    # An unknown query_id makes the storage read raise, which without this would
+    # leave the endpoint as an uncaught 500 — indistinguishable from the query
+    # existing but failing. Callers cannot tell a typo from an outage, so it is
+    # reported as the 404 it is, matching GET /v1/{datasource_id}/dynamic-queries/{query_id}.
+    try:
+        yaml_query, _ = await dynamic_query_yaml_service.get_dynamic_yaml_query(
+            query_id
+        )
+    except CloudStorageFileNotFoundError:
+        yaml_query = None
+
+    if not yaml_query:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse(
+                f'Dynamic query not found: {query_id}'
+            ),
+        )
 
     rls_filter_str = None
     is_admin = await check_is_admin(role_id)
