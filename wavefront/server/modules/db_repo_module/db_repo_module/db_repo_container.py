@@ -57,6 +57,10 @@ class DatabaseModuleContainer(containers.DeclarativeContainer):
         host=config.database.host,
         port=config.database.port,
         db_name=config.database.db_name,
+        pool_size=config.database.pool_size,
+        max_overflow=config.database.max_overflow,
+        pool_timeout=config.database.pool_timeout,
+        pool_recycle=config.database.pool_recycle,
     )
 
     db_client = providers.Singleton(DatabaseClient, db_config=db_config)
