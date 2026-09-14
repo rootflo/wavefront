@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from common_module.feature.feature_flag import (
-    DATASOURCE_AUDIT_DISABLE_FLAG,
+    DATASOURCE_AUDIT_ENABLED_FLAG,
     is_feature_enabled,
 )
 from common_module.log.logger import logger
@@ -159,7 +159,7 @@ class DatasourceAuditService:
 
         Does not raise, so callers can put it on a success path unwrapped.
         """
-        if is_feature_enabled(DATASOURCE_AUDIT_DISABLE_FLAG):
+        if not is_feature_enabled(DATASOURCE_AUDIT_ENABLED_FLAG):
             return
 
         try:
@@ -204,7 +204,7 @@ class DatasourceAuditService:
         batch_id: Optional[uuid.UUID] = None,
     ) -> None:
         """Write the audit rows. Awaitable, for tests and any blocking caller."""
-        if is_feature_enabled(DATASOURCE_AUDIT_DISABLE_FLAG):
+        if not is_feature_enabled(DATASOURCE_AUDIT_ENABLED_FLAG):
             return
 
         try:
