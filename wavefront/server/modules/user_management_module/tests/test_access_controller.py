@@ -164,27 +164,32 @@ async def test_get_roles_composite_only(
 ):
     await create_session(test_session, test_user_id, test_session_id)
 
+    console_resource_id = str(uuid.uuid4())
+    data_resource_id = str(uuid.uuid4())
+    single_resource_role_id = str(uuid.uuid4())
+    composite_role_id = str(uuid.uuid4())
+
     console_resource = Resource(
-        id=str(uuid.uuid4()),
+        id=console_resource_id,
         key='console_resource',
         value='viewer_resource',
         description='Console resource',
         scope=ResourceScope.CONSOLE,
     )
     data_resource = Resource(
-        id=str(uuid.uuid4()),
+        id=data_resource_id,
         key='branch',
         value='mumbai',
         description='Data resource',
         scope=ResourceScope.DATA,
     )
     single_resource_role = Role(
-        id=str(uuid.uuid4()),
+        id=single_resource_role_id,
         name='single_resource_role',
         description='Role with one resource',
     )
     composite_role = Role(
-        id=str(uuid.uuid4()),
+        id=composite_role_id,
         name='composite_role',
         description='Role with multiple resources',
     )
@@ -199,16 +204,16 @@ async def test_get_roles_composite_only(
         session.add_all(
             [
                 RoleResource(
-                    role_id=single_resource_role.id,
-                    resource_id=console_resource.id,
+                    role_id=single_resource_role_id,
+                    resource_id=console_resource_id,
                 ),
                 RoleResource(
-                    role_id=composite_role.id,
-                    resource_id=console_resource.id,
+                    role_id=composite_role_id,
+                    resource_id=console_resource_id,
                 ),
                 RoleResource(
-                    role_id=composite_role.id,
-                    resource_id=data_resource.id,
+                    role_id=composite_role_id,
+                    resource_id=data_resource_id,
                 ),
             ]
         )
@@ -235,22 +240,26 @@ async def test_get_roles_composite_only_without_scopes(
 ):
     await create_session(test_session, test_user_id, test_session_id)
 
+    console_resource_id = str(uuid.uuid4())
+    route_resource_id = str(uuid.uuid4())
+    composite_role_id = str(uuid.uuid4())
+
     console_resource = Resource(
-        id=str(uuid.uuid4()),
+        id=console_resource_id,
         key='console_resource',
         value='viewer_resource',
         description='Console resource',
         scope=ResourceScope.CONSOLE,
     )
     route_resource = Resource(
-        id=str(uuid.uuid4()),
+        id=route_resource_id,
         key='route',
         value='agents',
         description='Route resource',
         scope=ResourceScope.ROUTE,
     )
     composite_role = Role(
-        id=str(uuid.uuid4()),
+        id=composite_role_id,
         name='cross_scope_composite_role',
         description='Role with resources across scopes',
     )
@@ -263,12 +272,12 @@ async def test_get_roles_composite_only_without_scopes(
         session.add_all(
             [
                 RoleResource(
-                    role_id=composite_role.id,
-                    resource_id=console_resource.id,
+                    role_id=composite_role_id,
+                    resource_id=console_resource_id,
                 ),
                 RoleResource(
-                    role_id=composite_role.id,
-                    resource_id=route_resource.id,
+                    role_id=composite_role_id,
+                    resource_id=route_resource_id,
                 ),
             ]
         )
@@ -295,22 +304,28 @@ async def test_get_roles_composite_only_exact_scope_match(
 ):
     await create_session(test_session, test_user_id, test_session_id)
 
+    data_resource_one_id = str(uuid.uuid4())
+    data_resource_two_id = str(uuid.uuid4())
+    dashboard_resource_id = str(uuid.uuid4())
+    data_only_role_id = str(uuid.uuid4())
+    data_dashboard_role_id = str(uuid.uuid4())
+
     data_resource_one = Resource(
-        id=str(uuid.uuid4()),
+        id=data_resource_one_id,
         key='branch',
         value='mumbai',
         description='Data resource',
         scope=ResourceScope.DATA,
     )
     data_resource_two = Resource(
-        id=str(uuid.uuid4()),
+        id=data_resource_two_id,
         key='branch',
         value='delhi',
         description='Data resource',
         scope=ResourceScope.DATA,
     )
     dashboard_resource = Resource(
-        id=str(uuid.uuid4()),
+        id=dashboard_resource_id,
         key='dashboard',
         value='sales',
         description='Dashboard resource',
@@ -320,13 +335,13 @@ async def test_get_roles_composite_only_exact_scope_match(
 
     # Composite role whose resources are all DATA scoped.
     data_only_role = Role(
-        id=str(uuid.uuid4()),
+        id=data_only_role_id,
         name='data_only_composite_role',
         description='Composite role with only data resources',
     )
     # Composite role spanning DATA + DASHBOARD scopes.
     data_dashboard_role = Role(
-        id=str(uuid.uuid4()),
+        id=data_dashboard_role_id,
         name='data_dashboard_composite_role',
         description='Composite role with data and dashboard resources',
     )
@@ -347,20 +362,20 @@ async def test_get_roles_composite_only_exact_scope_match(
         session.add_all(
             [
                 RoleResource(
-                    role_id=data_only_role.id,
-                    resource_id=data_resource_one.id,
+                    role_id=data_only_role_id,
+                    resource_id=data_resource_one_id,
                 ),
                 RoleResource(
-                    role_id=data_only_role.id,
-                    resource_id=data_resource_two.id,
+                    role_id=data_only_role_id,
+                    resource_id=data_resource_two_id,
                 ),
                 RoleResource(
-                    role_id=data_dashboard_role.id,
-                    resource_id=data_resource_one.id,
+                    role_id=data_dashboard_role_id,
+                    resource_id=data_resource_one_id,
                 ),
                 RoleResource(
-                    role_id=data_dashboard_role.id,
-                    resource_id=dashboard_resource.id,
+                    role_id=data_dashboard_role_id,
+                    resource_id=dashboard_resource_id,
                 ),
             ]
         )
@@ -406,22 +421,28 @@ async def test_get_roles_scope_filter_excludes_cross_scope_composite(
     in that scope, but a composite role spanning multiple scopes is excluded."""
     await create_session(test_session, test_user_id, test_session_id)
 
+    route_resource_id = str(uuid.uuid4())
+    data_resource_id = str(uuid.uuid4())
+    dashboard_resource_id = str(uuid.uuid4())
+    route_only_role_id = str(uuid.uuid4())
+    cross_scope_role_id = str(uuid.uuid4())
+
     route_resource = Resource(
-        id=str(uuid.uuid4()),
+        id=route_resource_id,
         key='route',
         value='agents',
         description='Route resource',
         scope=ResourceScope.ROUTE,
     )
     data_resource = Resource(
-        id=str(uuid.uuid4()),
+        id=data_resource_id,
         key='branch',
         value='mumbai',
         description='Data resource',
         scope=ResourceScope.DATA,
     )
     dashboard_resource = Resource(
-        id=str(uuid.uuid4()),
+        id=dashboard_resource_id,
         key='dashboard',
         value='sales',
         description='Dashboard resource',
@@ -431,14 +452,14 @@ async def test_get_roles_scope_filter_excludes_cross_scope_composite(
 
     # Single-resource route role -> should appear under scopes=route.
     route_only_role = Role(
-        id=str(uuid.uuid4()),
+        id=route_only_role_id,
         name='route_only_role',
         description='Single route resource role',
     )
     # Composite role spanning route + data + dashboard -> should NOT appear
     # under scopes=route.
     cross_scope_role = Role(
-        id=str(uuid.uuid4()),
+        id=cross_scope_role_id,
         name='cross_scope_role',
         description='Composite role spanning multiple scopes',
     )
@@ -458,13 +479,13 @@ async def test_get_roles_scope_filter_excludes_cross_scope_composite(
     async with test_session() as session:
         session.add_all(
             [
-                RoleResource(role_id=route_only_role.id, resource_id=route_resource.id),
+                RoleResource(role_id=route_only_role_id, resource_id=route_resource_id),
                 RoleResource(
-                    role_id=cross_scope_role.id, resource_id=route_resource.id
+                    role_id=cross_scope_role_id, resource_id=route_resource_id
                 ),
-                RoleResource(role_id=cross_scope_role.id, resource_id=data_resource.id),
+                RoleResource(role_id=cross_scope_role_id, resource_id=data_resource_id),
                 RoleResource(
-                    role_id=cross_scope_role.id, resource_id=dashboard_resource.id
+                    role_id=cross_scope_role_id, resource_id=dashboard_resource_id
                 ),
             ]
         )
@@ -492,22 +513,26 @@ async def test_patch_role_resources_pure_console_role_rejected(
     role (UI identity marker) and its resources must not be editable."""
     await create_session(test_session, test_user_id, test_session_id)
 
+    console_resource_id = str(uuid.uuid4())
+    data_resource_id = str(uuid.uuid4())
+    console_role_id = str(uuid.uuid4())
+
     console_resource = Resource(
-        id=str(uuid.uuid4()),
+        id=console_resource_id,
         key='console_resource',
         value='viewer_resource',
         description='Console resource',
         scope=ResourceScope.CONSOLE,
     )
     data_resource = Resource(
-        id=str(uuid.uuid4()),
+        id=data_resource_id,
         key='branch',
         value='mumbai',
         description='Data resource',
         scope=ResourceScope.DATA,
     )
     console_role = Role(
-        id=str(uuid.uuid4()),
+        id=console_role_id,
         name='console_role',
         description='Pure console role',
     )
@@ -518,13 +543,13 @@ async def test_patch_role_resources_pure_console_role_rejected(
 
     async with test_session() as session:
         session.add(
-            RoleResource(role_id=console_role.id, resource_id=console_resource.id)
+            RoleResource(role_id=console_role_id, resource_id=console_resource_id)
         )
         await session.commit()
 
     response = test_client.patch(
-        f'/floware/v1/access/roles/{console_role.id}',
-        json={'resources': [data_resource.id]},
+        f'/floware/v1/access/roles/{console_role_id}',
+        json={'resources': [data_resource_id]},
         headers={'Authorization': f'Bearer {auth_token}'},
     )
     assert response.status_code == 400
@@ -547,29 +572,34 @@ async def test_patch_role_resources_composite_with_console_allowed(
     not a console role and must remain editable."""
     await create_session(test_session, test_user_id, test_session_id)
 
+    console_resource_id = str(uuid.uuid4())
+    data_resource_id = str(uuid.uuid4())
+    route_resource_id = str(uuid.uuid4())
+    composite_role_id = str(uuid.uuid4())
+
     console_resource = Resource(
-        id=str(uuid.uuid4()),
+        id=console_resource_id,
         key='console_resource',
         value='viewer_resource',
         description='Console resource',
         scope=ResourceScope.CONSOLE,
     )
     data_resource = Resource(
-        id=str(uuid.uuid4()),
+        id=data_resource_id,
         key='branch',
         value='mumbai',
         description='Data resource',
         scope=ResourceScope.DATA,
     )
     route_resource = Resource(
-        id=str(uuid.uuid4()),
+        id=route_resource_id,
         key='route',
         value='agents',
         description='Route resource',
         scope=ResourceScope.ROUTE,
     )
     composite_role = Role(
-        id=str(uuid.uuid4()),
+        id=composite_role_id,
         name='composite_role',
         description='Composite role including a console resource',
     )
@@ -584,16 +614,16 @@ async def test_patch_role_resources_composite_with_console_allowed(
         session.add_all(
             [
                 RoleResource(
-                    role_id=composite_role.id, resource_id=console_resource.id
+                    role_id=composite_role_id, resource_id=console_resource_id
                 ),
-                RoleResource(role_id=composite_role.id, resource_id=data_resource.id),
+                RoleResource(role_id=composite_role_id, resource_id=data_resource_id),
             ]
         )
         await session.commit()
 
     response = test_client.patch(
-        f'/floware/v1/access/roles/{composite_role.id}',
-        json={'resources': [data_resource.id, route_resource.id]},
+        f'/floware/v1/access/roles/{composite_role_id}',
+        json={'resources': [data_resource_id, route_resource_id]},
         headers={'Authorization': f'Bearer {auth_token}'},
     )
     assert response.status_code == 200
@@ -601,11 +631,11 @@ async def test_patch_role_resources_composite_with_console_allowed(
     async with test_session() as session:
         result = await session.execute(
             select(RoleResource.resource_id).where(
-                RoleResource.role_id == composite_role.id
+                RoleResource.role_id == composite_role_id
             )
         )
         resource_ids = {row[0] for row in result.all()}
-        assert resource_ids == {data_resource.id, route_resource.id}
+        assert resource_ids == {data_resource_id, route_resource_id}
 
 
 @pytest.mark.asyncio
@@ -620,15 +650,18 @@ async def test_delete_role_pure_console_role_rejected(
     """A pure single console-resource role must not be deletable here."""
     await create_session(test_session, test_user_id, test_session_id)
 
+    console_resource_id = str(uuid.uuid4())
+    console_role_id = str(uuid.uuid4())
+
     console_resource = Resource(
-        id=str(uuid.uuid4()),
+        id=console_resource_id,
         key='console_resource',
         value='viewer_resource',
         description='Console resource',
         scope=ResourceScope.CONSOLE,
     )
     console_role = Role(
-        id=str(uuid.uuid4()),
+        id=console_role_id,
         name='console_role',
         description='Pure console role',
     )
@@ -639,12 +672,12 @@ async def test_delete_role_pure_console_role_rejected(
 
     async with test_session() as session:
         session.add(
-            RoleResource(role_id=console_role.id, resource_id=console_resource.id)
+            RoleResource(role_id=console_role_id, resource_id=console_resource_id)
         )
         await session.commit()
 
     response = test_client.delete(
-        f'/floware/v1/access/roles/{console_role.id}',
+        f'/floware/v1/access/roles/{console_role_id}',
         headers={'Authorization': f'Bearer {auth_token}'},
     )
     assert response.status_code == 400
@@ -663,22 +696,26 @@ async def test_delete_role_composite_with_console_allowed(
     """A composite role that includes a console resource must remain deletable."""
     await create_session(test_session, test_user_id, test_session_id)
 
+    console_resource_id = str(uuid.uuid4())
+    data_resource_id = str(uuid.uuid4())
+    composite_role_id = str(uuid.uuid4())
+
     console_resource = Resource(
-        id=str(uuid.uuid4()),
+        id=console_resource_id,
         key='console_resource',
         value='viewer_resource',
         description='Console resource',
         scope=ResourceScope.CONSOLE,
     )
     data_resource = Resource(
-        id=str(uuid.uuid4()),
+        id=data_resource_id,
         key='branch',
         value='mumbai',
         description='Data resource',
         scope=ResourceScope.DATA,
     )
     composite_role = Role(
-        id=str(uuid.uuid4()),
+        id=composite_role_id,
         name='composite_role',
         description='Composite role including a console resource',
     )
@@ -691,21 +728,21 @@ async def test_delete_role_composite_with_console_allowed(
         session.add_all(
             [
                 RoleResource(
-                    role_id=composite_role.id, resource_id=console_resource.id
+                    role_id=composite_role_id, resource_id=console_resource_id
                 ),
-                RoleResource(role_id=composite_role.id, resource_id=data_resource.id),
+                RoleResource(role_id=composite_role_id, resource_id=data_resource_id),
             ]
         )
         await session.commit()
 
     response = test_client.delete(
-        f'/floware/v1/access/roles/{composite_role.id}',
+        f'/floware/v1/access/roles/{composite_role_id}',
         headers={'Authorization': f'Bearer {auth_token}'},
     )
     assert response.status_code == 200
 
     async with test_session() as session:
-        result = await session.execute(select(Role).where(Role.id == composite_role.id))
+        result = await session.execute(select(Role).where(Role.id == composite_role_id))
         assert result.scalar_one_or_none() is None
 
 
