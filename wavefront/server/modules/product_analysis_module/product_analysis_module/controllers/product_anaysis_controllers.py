@@ -132,7 +132,7 @@ async def get_product_login_stats_summary(
     request: Request,
     start_date: date = Query(...),
     end_date: date = Query(...),
-    role_id: str | None = Query(None),
+    group_id: str | None = Query(None),
     product_analysis_service: ProductAnalysisService = Depends(
         Provide[ProductAnalysisContainer.product_analysis_service]
     ),
@@ -157,7 +157,7 @@ async def get_product_login_stats_summary(
         return range_error
 
     summary = await product_analysis_service.get_login_stats_summary(
-        start_date=start_date, end_date=end_date, role_id=role_id
+        start_date=start_date, end_date=end_date, group_id=group_id
     )
 
     return JSONResponse(
@@ -172,7 +172,7 @@ async def get_product_login_stats(
     request: Request,
     start_date: date = Query(...),
     end_date: date = Query(...),
-    role_id: str | None = Query(None),
+    group_id: str | None = Query(None),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     product_analysis_service: ProductAnalysisService = Depends(
@@ -203,7 +203,7 @@ async def get_product_login_stats(
         end_date=end_date,
         limit=limit,
         offset=offset,
-        role_id=role_id,
+        group_id=group_id,
     )
 
     return JSONResponse(

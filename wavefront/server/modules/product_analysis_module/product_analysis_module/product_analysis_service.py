@@ -1,7 +1,7 @@
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from db_repo_module.models.product_analytics import ProductAnalytics
 from db_repo_module.models.user import User
-from db_repo_module.models.user_role import UserRole
+from db_repo_module.models.user_group_member import UserGroupMember
 from db_repo_module.db_repo_container import DatabaseModuleContainer
 from dependency_injector.wiring import inject
 from dependency_injector.wiring import Provide
@@ -43,7 +43,7 @@ class ProductAnalysisService:
     async def get_product_analysis(self):
         return await self.product_analysis_repository.find()
 
-    def _user_filters(self, role_id: str | None = None) -> list:
+    def _user_filters(self, group_id: str | None = None) -> list:
         excluded_emails_raw = os.getenv(
             'PRODUCT_ANALYTICS_EXCLUDED_EMAILS',
             '',
@@ -54,9 +54,13 @@ class ProductAnalysisService:
         user_filters = [User.deleted.is_(False)]
         if excluded_emails:
             user_filters.append(User.email.notin_(excluded_emails))
-        if role_id:
+        if group_id:
             user_filters.append(
-                User.id.in_(select(UserRole.user_id).where(UserRole.role_id == role_id))
+                User.id.in_(
+                    select(UserGroupMember.user_id).where(
+                        UserGroupMember.group_id == group_id
+                    )
+                )
             )
         return user_filters
 
@@ -85,9 +89,9 @@ class ProductAnalysisService:
         end_date: date,
         limit: int,
         offset: int,
-        role_id: str | None = None,
+        group_id: str | None = None,
     ) -> tuple[list[dict], int]:
-        user_filters = self._user_filters(role_id)
+        user_filters = self._user_filters(group_id)
         login_events = self._login_events_cte(start_date, end_date, user_filters)
 
         query = (
@@ -124,9 +128,9 @@ class ProductAnalysisService:
         self,
         start_date: date,
         end_date: date,
-        role_id: str | None = None,
+        group_id: str | None = None,
     ) -> dict:
-        user_filters = self._user_filters(role_id)
+        user_filters = self._user_filters(group_id)
         login_events = self._login_events_cte(start_date, end_date, user_filters)
         unique_login_days = func.coalesce(
             func.count(func.distinct(cast(login_events.c.created_at, Date))),
