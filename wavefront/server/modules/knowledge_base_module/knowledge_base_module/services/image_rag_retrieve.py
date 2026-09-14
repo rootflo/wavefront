@@ -145,50 +145,20 @@ class ImageRagRetrieve:
         HNSW index -- see that method's docstring -- so scores returned here
         are always exact, not approximate.
 
-        Before any of that, runs a cheap count of matching documents and
-        rejects with a 422 if it exceeds `max_candidates` (clamped to
-        `EXACT_MATCH_HARD_CEILING`), so an oversized candidate set fails
-        fast instead of brute-forcing distances over it.
+        The candidate set is capped directly in SQL via `ORDER BY d.id LIMIT
+        max_candidates + 1` (clamped to `EXACT_MATCH_HARD_CEILING`) rather
+        than fetched-then-checked, so an oversized candidate set never gets
+        fully brute-forced. The extra "+1" row lets us detect an overflow
+        (raise a 422) using just the row count of the one query already run,
+        with no separate `COUNT` pre-check needed. The `threshold` filter is
+        applied here in Python (after the overflow check) rather than in
+        SQL, since the overflow check needs the raw, pre-threshold row
+        count.
         """
         effective_cap = min(
             max_candidates or DEFAULT_EXACT_MATCH_MAX_CANDIDATES,
             EXACT_MATCH_HARD_CEILING,
         )
-        try:
-            count_query, count_params = (
-                self.query_generator.get_filtered_document_count_query(
-                    kb_id,
-                    filter1,
-                    document_date_start,
-                    document_date_end,
-                    filter2,
-                    filter3,
-                    filter4,
-                    filter5,
-                    filter6,
-                    created_at_start,
-                    created_at_end,
-                )
-            )
-            count_rows = await self.knowledge_base_embeddings_repository.execute_query(
-                count_query,
-                count_params,
-            )
-        except SQLAlchemyError as e:
-            raise RuntimeError(
-                f'Failed to execute the candidate-count query for exact match retrieval: {e}'
-            )
-
-        candidate_count = int(count_rows[0]['candidate_count']) if count_rows else 0
-        if candidate_count > effective_cap:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=(
-                    f'{candidate_count} documents match the given filters, which '
-                    f'exceeds the exact-match safety limit of {effective_cap}. '
-                    'Narrow your date range or filters and try again.'
-                ),
-            )
 
         data = {'image_data': image_data}
         internal_api_url = f'{inference_url}/inference/v1/query/embeddings'
@@ -232,7 +202,7 @@ class ImageRagRetrieve:
                     filter1,
                     document_date_start,
                     document_date_end,
-                    threshold,
+                    effective_cap,
                     filter2,
                     filter3,
                     filter4,
@@ -242,7 +212,7 @@ class ImageRagRetrieve:
                     created_at_end,
                 )
             )
-            return await self.knowledge_base_embeddings_repository.execute_query(
+            raw_rows = await self.knowledge_base_embeddings_repository.execute_query(
                 sql_query,
                 query_params,
             )
@@ -250,6 +220,18 @@ class ImageRagRetrieve:
             raise RuntimeError(
                 f'Failed to execute the query for exact match retrieval: {e}'
             )
+
+        if len(raw_rows) > effective_cap:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f'More than {effective_cap} documents match the given filters, '
+                    'which exceeds the exact-match safety limit. Narrow your date '
+                    'range or filters and try again.'
+                ),
+            )
+
+        return [row for row in raw_rows if row['dino_score'] > threshold]
 
     async def image_retrieve_clip(
         self,
