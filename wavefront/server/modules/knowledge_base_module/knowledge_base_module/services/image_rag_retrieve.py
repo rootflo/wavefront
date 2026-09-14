@@ -13,10 +13,8 @@ from sqlalchemy.exc import SQLAlchemyError
 # exceed this, so a misconfiguration can't fully disable the safety guard.
 EXACT_MATCH_HARD_CEILING = 5_000
 
-# Fallback candidate cap used when the caller doesn't supply one (e.g. older
-# callers, or config missing the `knowledge_base.exact_match_max_candidates`
-# key). Deliberately conservative; tune based on real p95 latency
-# measurements against the target KB size.
+# Fallback candidate cap used when the caller doesn't supply one Deliberately conservative; 
+# tune based on real p95 latency measurements against the target KB size.
 DEFAULT_EXACT_MATCH_MAX_CANDIDATES = 1_000
 
 
@@ -146,14 +144,12 @@ class ImageRagRetrieve:
         are always exact, not approximate.
 
         The candidate set is capped directly in SQL via `ORDER BY d.id LIMIT
-        max_candidates + 1` (clamped to `EXACT_MATCH_HARD_CEILING`) rather
-        than fetched-then-checked, so an oversized candidate set never gets
-        fully brute-forced. The extra "+1" row lets us detect an overflow
-        (raise a 422) using just the row count of the one query already run,
-        with no separate `COUNT` pre-check needed. The `threshold` filter is
-        applied here in Python (after the overflow check) rather than in
-        SQL, since the overflow check needs the raw, pre-threshold row
-        count.
+        max_candidates + 1` (clamped to `EXACT_MATCH_HARD_CEILING`), 
+        so an oversized candidate set never gets fully brute-forced. 
+        The extra "+1" row lets us detect an overflow  (raise a 422) 
+        using just the row count of the one query already run. 
+        The `threshold` filter is applied in Python (after the overflow check) 
+        rather than in SQL.
         """
         effective_cap = min(
             max_candidates or DEFAULT_EXACT_MATCH_MAX_CANDIDATES,
