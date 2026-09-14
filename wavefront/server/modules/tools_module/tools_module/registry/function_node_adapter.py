@@ -20,7 +20,7 @@ import json
 import inspect
 from types import FunctionType
 from typing import List, Optional, Dict, Any, Callable, Awaitable
-from flo_ai import BaseMessage
+from flo_ai import BaseMessage, TextMessageContent
 from flo_utils.utils.log import logger
 from flo_ai import FloUtils
 
@@ -30,8 +30,30 @@ def extract_function_params(
     variables: Optional[Dict[str, Any]] = None,
     **kwargs,
 ) -> Dict[str, Any]:
+    """Extract function parameters, raising if the last input is unreadable.
+
+    Thin wrapper over :func:`_collect_function_params` for callers that want the
+    unreadable-input failure immediately. The adapter uses the underlying
+    function instead, so it can defer that failure until it knows whether the
+    input was needed at all — see ``create_function_node_adapter``.
+    """
+    params, input_error = _collect_function_params(inputs, variables, kwargs)
+    if input_error:
+        raise ValueError(input_error)
+    return params
+
+
+def _collect_function_params(
+    inputs: Optional[List[BaseMessage]] = None,
+    variables: Optional[Dict[str, Any]] = None,
+    kwargs: Optional[Dict[str, Any]] = None,
+) -> tuple[Dict[str, Any], Optional[str]]:
     """
     Extract function parameters from inputs and variables.
+
+    Returns ``(params, input_error)``. ``input_error`` describes an unreadable
+    last input rather than raising on it, leaving the caller to decide whether
+    that mattered.
 
     Parameters are extracted with this priority (higher priority overrides lower):
     1. kwargs (highest priority)
@@ -60,9 +82,11 @@ def extract_function_params(
         **kwargs: Additional keyword arguments (highest priority)
 
     Returns:
-        Dictionary of extracted parameters
+        Tuple of (extracted parameters, unreadable-last-input message or None)
     """
     params = {}
+    kwargs = kwargs or {}
+    input_error: Optional[str] = None
 
     if inputs:
         by_node: Dict[str, List[Any]] = {}
@@ -71,19 +95,32 @@ def extract_function_params(
         last_index = len(inputs) - 1
 
         # The last message is the one the node is contractually fed, so anything
-        # that stops it being read has to fail loudly — proceeding would call the
+        # that stops it being read is reported — proceeding blind would call the
         # function with only the earlier messages' params, i.e. on stale or empty
-        # data, and surface as a confusing error somewhere further in. Earlier
-        # messages may legitimately be unreadable now that a wider input_filter
-        # can select the raw workflow inputs (e.g. an uploaded document, whose
-        # content is a DocumentMessageContent rather than text), which were never
-        # looked at before; those are skipped.
+        # data, and surface as a confusing error somewhere further in. It is
+        # reported rather than raised here because a node whose arguments are all
+        # prefilled never reads its input at all; the caller decides, once it
+        # knows which parameters actually went missing. Earlier messages may
+        # legitimately be unreadable now that a wider input_filter can select the
+        # raw workflow inputs (e.g. an uploaded document, whose content is a
+        # DocumentMessageContent rather than text); those are skipped outright.
         for index, message in enumerate(inputs):
             content = getattr(message, 'content', None)
 
+            # The raw workflow input arrives as a TextMessageContent when the
+            # caller posts the chat-style ``[{"role": "user", "content": ...}]``
+            # form and as a bare string when it posts a plain string. Both carry
+            # the same text, so unwrap rather than reject: otherwise a node that
+            # reads the workflow input — any function node used as the start node —
+            # works for one caller and fails for the other. Content that genuinely
+            # cannot be read as text, an image or a document, still falls through
+            # to the check below.
+            if isinstance(content, TextMessageContent):
+                content = content.text
+
             if not isinstance(content, str):
                 if index == last_index:
-                    raise ValueError(
+                    input_error = (
                         f'Function node input must be a JSON object, but the last '
                         f'input has content of type {type(content).__name__}.'
                     )
@@ -93,8 +130,9 @@ def extract_function_params(
                 parsed = FloUtils.extract_jsons_from_string(content, strict=True)
             except (json.JSONDecodeError, TypeError, ValueError):
                 if index == last_index:
-                    raise ValueError(
-                        f'Invalid JSON: {content}. Function node input must be a JSON object.'
+                    input_error = (
+                        f'Invalid JSON: {content}. Function node input must be a '
+                        f'JSON object.'
                     )
                 continue
 
@@ -113,7 +151,7 @@ def extract_function_params(
         params.update(variables)
 
     params.update(kwargs)
-    return params
+    return params, input_error
 
 
 def _build_call_kwargs(
@@ -153,12 +191,18 @@ def _validate_required_params(
     call_kwargs: Dict[str, Any],
     function_name: str,
     excluded_params: set,
+    input_error: Optional[str] = None,
 ) -> None:
     """Validate that all required parameters are present.
 
     Variadic parameters (``*args`` / ``**kwargs``) report no default, so they
     would otherwise be reported as missing required arguments — they are not,
     they simply collect whatever else is passed.
+
+    ``input_error`` is an unreadable last input, deferred rather than raised.
+    It is almost always the reason a parameter is missing, so it is quoted in
+    the error — without it the report says a parameter was absent but not that
+    the message carrying it could not be read.
     """
     variadic = (inspect.Parameter.VAR_KEYWORD, inspect.Parameter.VAR_POSITIONAL)
     required_params = [
@@ -178,6 +222,8 @@ def _validate_required_params(
             f'Required parameters: {required_params}.\n'
             f'Provided parameters: {list(call_kwargs.keys())}.\n'
         )
+        if input_error:
+            error_msg += f'The last input could not be read: {input_error}\n'
         logger.error(error_msg)
         raise ValueError(error_msg)
 
@@ -238,7 +284,9 @@ def create_function_node_adapter(
             String result of the function execution
         """
         try:
-            all_params = extract_function_params(inputs, variables, **kwargs)
+            all_params, input_error = _collect_function_params(
+                inputs, variables, kwargs
+            )
             call_kwargs = _build_call_kwargs(
                 param_names,
                 all_params,
@@ -246,7 +294,30 @@ def create_function_node_adapter(
                 excluded_params,
                 accepts_var_keyword,
             )
-            _validate_required_params(sig, call_kwargs, function_name, excluded_params)
+
+            # An unreadable last input is tolerated only when nothing was read
+            # from any input: the node then demonstrably did not consult them, so
+            # there is no data to be stale. That is what lets a fully configured
+            # node — a datasource read with its query and params pinned in the
+            # YAML — start a workflow the caller triggers with plain text.
+            #
+            # It is NOT tolerated when some earlier message did parse, because
+            # then the call would run on those earlier params while the message
+            # the node is contractually fed went unread — silently substituting
+            # older data for the value it was supposed to act on.
+            #
+            # Nor when the function declares **kwargs. Those build their payload
+            # out of whatever they are handed — the message processor and API
+            # service tools do exactly that — so the input is the payload, no
+            # named parameter's absence would reveal the problem, and running on
+            # an empty one is the same silent-wrong-data case.
+            read_any_input = bool(all_params.get('input_list'))
+            if input_error and (accepts_var_keyword or read_any_input):
+                raise ValueError(input_error)
+
+            _validate_required_params(
+                sig, call_kwargs, function_name, excluded_params, input_error
+            )
 
             result = (
                 await original_function(**call_kwargs)
