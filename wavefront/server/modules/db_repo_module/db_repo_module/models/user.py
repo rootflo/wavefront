@@ -59,4 +59,14 @@ class User(Base):
             'username': self.username,
             'first_name': self.first_name,
             'last_name': self.last_name,
+            'failed_attempts': self.failed_attempts,
+            'locked_until': self.locked_until.isoformat()
+            if self.locked_until
+            else None,
+            'last_failed_attempt': self.last_failed_attempt.isoformat()
+            if self.last_failed_attempt
+            else None,
+            'last_login_at': self.last_login_at.isoformat()
+            if self.last_login_at
+            else None,
         }

@@ -617,12 +617,7 @@ async def get_user(
             content=response_formatter.buildErrorResponse('User not found'),
         )
 
-    serialize_result = {
-        'id': str(user.id),
-        'first_name': user.first_name,
-        'last_name': user.last_name,
-        'email': user.email,
-    }
+    serialize_result = user.to_dict()
 
     cache_manager.add(cache_key, json.dumps(serialize_result), expiry=60 * 60)  # 1 hour
     return JSONResponse(
@@ -782,7 +777,7 @@ async def send_reset_url(
             )
 
         is_locked, locked_until = await account_lockout_service.check_account_lockout(
-            email
+            user_with_email
         )
         if is_locked:
             return create_account_lockout_response(
