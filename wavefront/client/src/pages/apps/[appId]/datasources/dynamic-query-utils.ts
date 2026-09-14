@@ -11,30 +11,25 @@ export const buildDynamicQueryYaml = (
 ): string => {
   if (!selectedQuery || queryItems.length === 0) return '';
 
-  const queryId = selectedQuery.split('.')[0];
-  return (
-    `id: ${queryId}\n` +
-    `name: ${queryName}\n` +
-    `queries:\n` +
-    queryItems
-      .map((query) => {
-        const queryBlock =
-          `  - id: ${query.id}\n` +
-          `    query: |\n` +
-          query.query
-            .split('\n')
-            .map((line) => `      ${line}`)
-            .join('\n') +
-          `\n` +
-          `    description: ${query.description}\n` +
-          (query.parameters && query.parameters.length > 0
-            ? `    parameters:\n` +
-              query.parameters.map((param) => `      - name: ${param.name}\n        type: ${param.type}`).join('\n')
-            : '');
-
-        return queryBlock;
-      })
-      .join('\n')
+  return yaml.dump(
+    {
+      id: selectedQuery.split('.')[0],
+      name: queryName,
+      queries: queryItems.map((query) => ({
+        id: query.id,
+        query: query.query,
+        description: query.description ?? '',
+        ...(query.parameters && query.parameters.length > 0
+          ? {
+              parameters: query.parameters.map((param) => ({
+                name: param.name,
+                type: param.type,
+              })),
+            }
+          : {}),
+      })),
+    },
+    { lineWidth: -1, noRefs: true }
   );
 };
 
@@ -42,7 +37,7 @@ export const getDynamicQueryYamlFilename = (file: string): string => {
   return /\.ya?ml$/i.test(file) ? file : `${file}.yaml`;
 };
 
-export const getDynamicQueryIdFromFileName = (file: string): string => file.split('.')[0];
+export const getDynamicQueryIdFromFileName = (file: string): string => file.replace(/\.ya?ml$/i, '').trim();
 
 export const parseUploadedDynamicQuery = (
   filename: string,

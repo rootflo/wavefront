@@ -44,6 +44,7 @@ import {
   getQueryIdsFromPayload,
   normalizeUserId,
 } from './scheduled-job-utils';
+import { getDynamicQueryIdFromFileName } from '../datasources/dynamic-query-utils';
 
 const getUserId = (user: IUser) => user.id;
 const getUserSearchValue = (user: IUser) => `${user.first_name} ${user.last_name} ${user.email}`;
@@ -104,7 +105,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
   const [error, setError] = useState('');
 
   const availableQueryIds = useMemo(
-    () => dynamicQueries.map((query) => query.file.split('.')[0]).filter((id) => id.length > 0),
+    () => dynamicQueries.map((query) => getDynamicQueryIdFromFileName(query.file)).filter((id) => id.length > 0),
     [dynamicQueries]
   );
 

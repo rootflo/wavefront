@@ -15,6 +15,7 @@ const OptionChips: React.FC<OptionChipsProps> = ({ options, selected, onToggle }
         <button
           key={option}
           type="button"
+          aria-pressed={isSelected}
           onClick={() => onToggle(option)}
           className={cn(
             'rounded-full border px-3 py-1 text-xs transition-colors',

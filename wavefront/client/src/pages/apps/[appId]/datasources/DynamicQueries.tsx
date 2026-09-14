@@ -1,6 +1,7 @@
 import BulkDownloadDialog from '@app/components/BulkDownloadDialog';
 import BulkUploadDialog, { MAX_BULK_UPLOAD_FILES } from '@app/components/BulkUploadDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
+import { ErrorBanner } from '@app/components/Banner';
 import { Button } from '@app/components/ui/button';
 import { Input } from '@app/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
@@ -27,8 +28,8 @@ const DynamicQueries = ({
   isLoading?: boolean;
   onCreate: () => void;
   onDownload: (query: DynamicQuery) => Promise<void>;
-  onDownloadMany: (queries: DynamicQuery[]) => Promise<void>;
-  onUploadMany: (files: { name: string; id: string; content: string }[]) => Promise<void>;
+  onDownloadMany: (queries: DynamicQuery[]) => Promise<string>;
+  onUploadMany: (files: { name: string; id: string; content: string }[]) => Promise<string>;
   setQueryCrud: React.Dispatch<
     React.SetStateAction<{ view: boolean; edit: boolean; create: boolean; delete: boolean; execute: boolean }>
   >;
@@ -38,6 +39,7 @@ const DynamicQueries = ({
   const [downloadingFile, setDownloadingFile] = useState<string | null>(null);
   const [bulkDownloadOpen, setBulkDownloadOpen] = useState(false);
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
+  const [bulkError, setBulkError] = useState('');
   const { notifySuccess, notifyError } = useNotifyStore();
 
   const filteredQueries = useMemo(() => {
@@ -97,6 +99,8 @@ const DynamicQueries = ({
         </Button>
         <Button onClick={onCreate}>Create Dynamic Query</Button>
       </div>
+
+      {bulkError ? <ErrorBanner message={bulkError} onDismiss={() => setBulkError('')} /> : null}
 
       {isLoading ? (
         <p className="text-sm text-gray-500">Loading dynamic queries...</p>
@@ -182,7 +186,9 @@ const DynamicQueries = ({
         items={dynamicQueries}
         getItemId={(query) => query.full_path}
         getItemLabel={(query) => query.file}
-        onDownload={onDownloadMany}
+        onDownload={async (queries) => {
+          setBulkError(await onDownloadMany(queries));
+        }}
       />
       <BulkUploadDialog
         isOpen={bulkUploadOpen}
@@ -194,7 +200,10 @@ const DynamicQueries = ({
           const parsed = parseUploadedDynamicQuery(filename, content, existingIds, seen);
           return { ...parsed, label: parsed.id };
         }}
-        onUpload={(files) => onUploadMany(files.map(({ filename, id, content }) => ({ name: filename, id, content })))}
+        onUpload={async (files) => {
+          const uploaded = files.map(({ filename, id, content }) => ({ name: filename, id, content }));
+          setBulkError(await onUploadMany(uploaded));
+        }}
       />
     </div>
   );

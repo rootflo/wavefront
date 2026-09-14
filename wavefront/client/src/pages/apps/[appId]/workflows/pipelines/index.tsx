@@ -13,7 +13,7 @@ import { WorkflowPipelineListItem } from '@app/types/workflow';
 import { useQueryClient } from '@tanstack/react-query';
 import { Copy, Trash2 } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { Link, useParams } from 'react-router';
 import CreateWorkflowPipelineDialog from './CreateWorkflowPipelineDialog';
 
 const formatCreatedAt = (value?: string) => {
@@ -23,9 +23,10 @@ const formatCreatedAt = (value?: string) => {
   return date.toLocaleString();
 };
 
+const ALL_WORKFLOWS = '__all__';
+
 const WorkflowPipelinesPage: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { notifySuccess, notifyError } = useNotifyStore();
   const [searchTerm, setSearchTerm] = useState('');
@@ -99,11 +100,15 @@ const WorkflowPipelinesPage: React.FC = () => {
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
       <div className="mb-8 flex shrink-0 items-center justify-end gap-3">
-        <Select value={workflow || undefined} onValueChange={(value) => setWorkflow(value || '')}>
+        <Select
+          value={workflow || ALL_WORKFLOWS}
+          onValueChange={(value) => setWorkflow(value === ALL_WORKFLOWS ? '' : value)}
+        >
           <SelectTrigger className="w-48 cursor-pointer">
             <SelectValue placeholder="All Workflows" />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value={ALL_WORKFLOWS}>All Workflows</SelectItem>
             {workflows.map((wf) => (
               <SelectItem key={wf.id} value={wf.id}>
                 {wf.name}
@@ -147,15 +152,16 @@ const WorkflowPipelinesPage: React.FC = () => {
             </TableHeader>
             <TableBody>
               {filteredWorkflowPipelines.map((pipeline) => (
-                <TableRow
-                  key={pipeline.id}
-                  className="cursor-pointer"
-                  onClick={() => navigate(`/apps/${appId}/workflows/pipelines/${pipeline.id}`)}
-                >
+                <TableRow key={pipeline.id}>
                   <TableCell className="max-w-[220px] truncate font-medium" title={pipeline.name}>
-                    {pipeline.name}
+                    <Link
+                      to={`/apps/${appId}/workflows/pipelines/${pipeline.id}`}
+                      className="hover:underline focus-visible:underline"
+                    >
+                      {pipeline.name}
+                    </Link>
                   </TableCell>
-                  <TableCell className="max-w-[240px]" onClick={(e) => e.stopPropagation()}>
+                  <TableCell className="max-w-[240px]">
                     <div className="flex items-center gap-1">
                       <span className="truncate font-mono text-xs" title={pipeline.id}>
                         {pipeline.id}
@@ -172,7 +178,7 @@ const WorkflowPipelinesPage: React.FC = () => {
                     {pipeline.workflow_version !== undefined ? `v${pipeline.workflow_version}` : '—'}
                   </TableCell>
                   <TableCell className="text-sm whitespace-nowrap">{formatCreatedAt(pipeline.created_at)}</TableCell>
-                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                  <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
                       <Button variant="ghost" size="sm" title="Delete" onClick={() => setDeleteItem(pipeline)}>
                         <Trash2 className="h-4 w-4 text-red-600" />

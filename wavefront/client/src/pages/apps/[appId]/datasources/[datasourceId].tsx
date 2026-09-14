@@ -13,7 +13,7 @@ import { Label } from '@app/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@app/components/ui/tabs';
 import { useGetAllDynamicQueries, useGetDatasource, useReadDynamicQuery } from '@app/hooks/data/fetch-hooks';
 import { getAllDynamicQueriesKey, getDatasourceKey, readDynamicQueryKey } from '@app/hooks/data/query-keys';
-import { copyToClipboard, validateDynamicQueryYaml } from '@app/lib/utils';
+import { copyToClipboard, createZipBlob, downloadBlobFile, validateDynamicQueryYaml } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { DynamicQuery, DynamicQueryItem } from '@app/types/datasource';
 import { useQueryClient } from '@tanstack/react-query';
@@ -178,47 +178,41 @@ const DatasourceDetail: React.FC = () => {
 
   const handleDynamicQueryDownloadMany = async (queries: DynamicQuery[]) => {
     const files: { filename: string; content: string }[] = [];
+    const failed: string[] = [];
     for (const query of queries) {
+      const filename = getDynamicQueryYamlFilename(query.file);
       try {
         const file = await fetchDynamicQueryYaml(query);
         if (file) files.push(file);
+        else failed.push(filename);
       } catch {
-        // Continue downloading remaining files
+        failed.push(filename);
       }
     }
 
     if (files.length === 0) {
-      notifyError('Failed to download dynamic queries');
-      return;
+      return `Failed to download dynamic queries: ${failed.join(', ')}`;
     }
 
-    for (const [index, file] of files.entries()) {
-      downloadTextFile(file.filename, file.content);
-      if (index < files.length - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 200));
-      }
-    }
-
-    if (files.length < queries.length) {
-      notifyError(`Downloaded ${files.length} of ${queries.length} dynamic queries`);
-    }
+    downloadBlobFile('dynamic-queries.zip', createZipBlob(files));
+    return failed.length > 0 ? `Failed to download: ${failed.join(', ')}` : '';
   };
 
   const handleDynamicQueryUploadMany = async (files: { name: string; id: string; content: string }[]) => {
-    if (!datasourceId) return;
+    if (!datasourceId) return '';
 
     let created = 0;
-    let failed = 0;
+    const failed: string[] = [];
     for (const file of files) {
       try {
         const response = await floConsoleService.datasourcesService.createDynamicQuery(datasourceId, file.content);
         if (response.data.meta?.code === 1) {
           created += 1;
         } else {
-          failed += 1;
+          failed.push(file.name);
         }
       } catch {
-        failed += 1;
+        failed.push(file.name);
       }
     }
 
@@ -229,9 +223,7 @@ const DatasourceDetail: React.FC = () => {
     if (created > 0) {
       notifySuccess(`Created ${created} dynamic ${created === 1 ? 'query' : 'queries'}`);
     }
-    if (failed > 0) {
-      notifyError(`Failed to create ${failed} dynamic ${failed === 1 ? 'query' : 'queries'}`);
-    }
+    return failed.length > 0 ? `Failed to create dynamic queries: ${failed.join(', ')}` : '';
   };
 
   const fetchDynamicQueryYaml = async (query: DynamicQuery) => {

@@ -48,9 +48,13 @@ const BulkUploadDialog = <T extends object = object>({
   onUpload: (files: Array<T & BulkUploadFile>) => Promise<void>;
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
+  const pendingReadsRef = useRef(0);
+  const readSessionRef = useRef(0);
   const [files, setFiles] = useState<BulkUploadFile[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [reading, setReading] = useState(false);
   const [limitError, setLimitError] = useState('');
+  const isBusy = uploading || reading;
 
   const parsedFiles = useMemo(() => {
     const seen = new Set<string>();
@@ -64,35 +68,54 @@ const BulkUploadDialog = <T extends object = object>({
 
   useEffect(() => {
     if (!isOpen) {
+      readSessionRef.current += 1;
+      pendingReadsRef.current = 0;
       setFiles([]);
       setLimitError('');
       setUploading(false);
+      setReading(false);
       if (inputRef.current) inputRef.current.value = '';
     }
   }, [isOpen]);
 
   const addFiles = async (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
+    if (uploading || pendingReadsRef.current > 0) return;
 
-    const remaining = maxFiles - files.length;
-    if (remaining <= 0) {
-      setLimitError(`You can upload up to ${maxFiles} files at a time`);
-      return;
+    pendingReadsRef.current += 1;
+    setReading(true);
+    const session = readSessionRef.current;
+
+    try {
+      const remaining = maxFiles - files.length;
+      if (remaining <= 0) {
+        setLimitError(`You can upload up to ${maxFiles} files at a time`);
+        return;
+      }
+
+      const incoming = Array.from(fileList);
+      const selected = incoming.slice(0, remaining);
+      setLimitError(incoming.length > remaining ? `You can upload up to ${maxFiles} files at a time` : '');
+
+      const nextFiles = await Promise.all(
+        selected.map(async (file) => ({
+          filename: file.name,
+          content: await readFileAsText(file),
+        }))
+      );
+
+      if (session !== readSessionRef.current) return;
+
+      setFiles((prev) => {
+        const room = maxFiles - prev.length;
+        if (room <= 0) return prev;
+        return [...prev, ...nextFiles.slice(0, room)];
+      });
+    } finally {
+      pendingReadsRef.current = Math.max(0, pendingReadsRef.current - 1);
+      if (pendingReadsRef.current === 0) setReading(false);
+      if (inputRef.current) inputRef.current.value = '';
     }
-
-    const incoming = Array.from(fileList);
-    const selected = incoming.slice(0, remaining);
-    setLimitError(incoming.length > remaining ? `You can upload up to ${maxFiles} files at a time` : '');
-
-    const nextFiles = await Promise.all(
-      selected.map(async (file) => ({
-        filename: file.name,
-        content: await readFileAsText(file),
-      }))
-    );
-
-    setFiles((prev) => [...prev, ...nextFiles]);
-    if (inputRef.current) inputRef.current.value = '';
   };
 
   const removeFile = (index: number) => {
@@ -119,7 +142,7 @@ const BulkUploadDialog = <T extends object = object>({
   };
 
   const handleOpenChange = (open: boolean) => {
-    if (!open && uploading) return;
+    if (!open && isBusy) return;
     onOpenChange(open);
   };
 
@@ -140,7 +163,7 @@ const BulkUploadDialog = <T extends object = object>({
             variant="outline"
             size="sm"
             onClick={() => inputRef.current?.click()}
-            disabled={uploading || files.length >= maxFiles}
+            disabled={isBusy || files.length >= maxFiles}
           >
             Choose files
           </Button>
@@ -176,7 +199,7 @@ const BulkUploadDialog = <T extends object = object>({
                   variant="ghost"
                   size="sm"
                   title="Remove"
-                  disabled={uploading}
+                  disabled={isBusy}
                   onClick={() => removeFile(index)}
                 >
                   <X className="h-4 w-4" />
@@ -187,14 +210,14 @@ const BulkUploadDialog = <T extends object = object>({
         </div>
 
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={uploading}>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isBusy}>
             Cancel
           </Button>
           <Button
             type="button"
             onClick={() => void handleUpload()}
-            loading={uploading}
-            disabled={validFiles.length === 0}
+            loading={isBusy}
+            disabled={validFiles.length === 0 || isBusy}
           >
             Upload{validFiles.length > 0 ? ` (${validFiles.length})` : ''}
           </Button>

@@ -108,6 +108,22 @@ function MultiSelect<T>({
     [unselectedItems, search, getSearchValue, getLabel]
   );
 
+  const unresolvedSelectedIds = useMemo(() => {
+    if (loading) return [];
+    const seen = new Set<string>();
+    return selectedIds.filter((selectedId) => {
+      const normalized = normalizeId(selectedId);
+      if (seen.has(normalized)) return false;
+      seen.add(normalized);
+      return !sortedItems.some((item) => normalizeId(getId(item)) === normalized);
+    });
+  }, [loading, selectedIds, sortedItems, getId, normalizeId]);
+
+  const visibleUnresolvedSelectedIds = useMemo(
+    () => unresolvedSelectedIds.filter((id) => matchesSearch(id, search)),
+    [unresolvedSelectedIds, search]
+  );
+
   const selectVisible = () => {
     const prev = selectedIdsRef.current;
     const nextIds = visibleUnselectedItems.map(getId).filter((id) => !isIdSelected(id, prev));
@@ -116,13 +132,14 @@ function MultiSelect<T>({
 
   const clearAll = () => emitChange([]);
 
+  const triggerLabels = [...selectedItems.map(getLabel), ...unresolvedSelectedIds];
   const triggerLabel = loading
     ? loadingLabel
     : selectedIds.length === 0
       ? placeholder
-      : selectedItems.length <= 2
-        ? selectedItems.map(getLabel).join(', ')
-        : selectedCountLabel(selectedItems.length);
+      : triggerLabels.length <= 2
+        ? triggerLabels.join(', ')
+        : selectedCountLabel(selectedIds.length);
 
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen);
@@ -172,7 +189,7 @@ function MultiSelect<T>({
             ) : null}
             <CommandList>
               <CommandEmpty>{emptyLabel}</CommandEmpty>
-              {visibleSelectedItems.length > 0 ? (
+              {visibleSelectedItems.length > 0 || visibleUnresolvedSelectedIds.length > 0 ? (
                 <CommandGroup heading={selectedGroupHeading}>
                   {visibleSelectedItems.map((item) => {
                     const id = getId(item);
@@ -187,6 +204,14 @@ function MultiSelect<T>({
                       </CommandItem>
                     );
                   })}
+                  {visibleUnresolvedSelectedIds.map((id) => (
+                    <CommandItem key={`unresolved-${id}`} value={id} onSelect={() => toggleItem(id)}>
+                      <Check className="mr-2 h-4 w-4 shrink-0 opacity-100" />
+                      <span className="truncate" title={id}>
+                        {id}
+                      </span>
+                    </CommandItem>
+                  ))}
                 </CommandGroup>
               ) : null}
               {visibleUnselectedItems.length > 0 ? (
@@ -206,7 +231,7 @@ function MultiSelect<T>({
           </Command>
         </PopoverContent>
       </Popover>
-      {selectedItems.length > 0 ? (
+      {selectedItems.length > 0 || unresolvedSelectedIds.length > 0 ? (
         <div className="mt-2 flex max-h-20 flex-wrap gap-2 overflow-y-auto rounded-md border border-[#EFF0F1] bg-[#FBFBFB] p-3">
           {selectedItems.map((item) => {
             const id = getId(item);
@@ -229,6 +254,25 @@ function MultiSelect<T>({
               </Badge>
             );
           })}
+          {unresolvedSelectedIds.map((id) => (
+            <Badge
+              key={`unresolved-${id}`}
+              variant="secondary"
+              className="shrink-0 gap-1 border border-[#EFF0F1] bg-white pr-1 font-normal"
+            >
+              <span className="max-w-60 truncate" title={id}>
+                {id}
+              </span>
+              <button
+                type="button"
+                className="rounded-full p-0.5 hover:bg-black/10"
+                aria-label={`Remove ${id}`}
+                onClick={() => toggleItem(id)}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          ))}
         </div>
       ) : null}
     </div>

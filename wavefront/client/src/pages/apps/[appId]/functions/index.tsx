@@ -3,6 +3,7 @@ import BulkDownloadDialog from '@app/components/BulkDownloadDialog';
 import BulkUploadDialog, { MAX_BULK_UPLOAD_FILES } from '@app/components/BulkUploadDialog';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
+import { ErrorBanner } from '@app/components/Banner';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -15,7 +16,7 @@ import { Input } from '@app/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
 import { useGetMessageProcessors } from '@app/hooks';
 import { getMessageProcessorsKey } from '@app/hooks/data/query-keys';
-import { copyToClipboard, downloadTextFile, getYamlFilename } from '@app/lib/utils';
+import { copyToClipboard, createZipBlob, downloadBlobFile, downloadTextFile, getYamlFilename } from '@app/lib/utils';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { MessageProcessorListItem } from '@app/types/message-processor';
 import { useQueryClient } from '@tanstack/react-query';
@@ -43,6 +44,7 @@ const FunctionsManagement: React.FC = () => {
   const [bulkDownloadOpen, setBulkDownloadOpen] = useState(false);
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [bulkError, setBulkError] = useState('');
 
   const { selectedApp } = useDashboardStore();
   const { notifySuccess, notifyError } = useNotifyStore();
@@ -115,35 +117,30 @@ const FunctionsManagement: React.FC = () => {
 
   const handleFunctionDownloadMany = async (selected: MessageProcessorListItem[]) => {
     const files: { filename: string; content: string }[] = [];
+    const failed: string[] = [];
     for (const processor of selected) {
+      const filename = getYamlFilename(processor.name);
       try {
         const file = await fetchFunctionYaml(processor);
         if (file) files.push(file);
+        else failed.push(filename);
       } catch {
-        // Continue downloading remaining files
+        failed.push(filename);
       }
     }
 
     if (files.length === 0) {
-      notifyError('Failed to download functions');
+      setBulkError(`Failed to download functions: ${failed.join(', ')}`);
       return;
     }
 
-    for (const [index, file] of files.entries()) {
-      downloadTextFile(file.filename, file.content);
-      if (index < files.length - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 200));
-      }
-    }
-
-    if (files.length < selected.length) {
-      notifyError(`Downloaded ${files.length} of ${selected.length} functions`);
-    }
+    downloadBlobFile('functions.zip', createZipBlob(files));
+    setBulkError(failed.length > 0 ? `Failed to download: ${failed.join(', ')}` : '');
   };
 
   const handleFunctionUploadMany = async (files: { name: string; description?: string; content: string }[]) => {
     let created = 0;
-    let failed = 0;
+    const failed: string[] = [];
     for (const file of files) {
       try {
         const response = await floConsoleService.messageProcessorService.createMessageProcessor({
@@ -152,12 +149,12 @@ const FunctionsManagement: React.FC = () => {
           description: file.description,
         });
         if (response.data?.meta?.status === 'failure') {
-          failed += 1;
+          failed.push(file.name);
         } else {
           created += 1;
         }
       } catch {
-        failed += 1;
+        failed.push(file.name);
       }
     }
 
@@ -168,9 +165,7 @@ const FunctionsManagement: React.FC = () => {
     if (created > 0) {
       notifySuccess(`Created ${created} ${created === 1 ? 'function' : 'functions'}`);
     }
-    if (failed > 0) {
-      notifyError(`Failed to create ${failed} ${failed === 1 ? 'function' : 'functions'}`);
-    }
+    setBulkError(failed.length > 0 ? `Failed to create functions: ${failed.join(', ')}` : '');
   };
 
   const handleDeleteConfirm = async () => {
@@ -239,6 +234,8 @@ const FunctionsManagement: React.FC = () => {
           <Button onClick={handleCreateProcessor}>Create Function</Button>
         </div>
       </div>
+
+      {bulkError ? <ErrorBanner message={bulkError} onDismiss={() => setBulkError('')} /> : null}
 
       {loading ? (
         <p className="text-sm text-gray-500">Loading functions...</p>

@@ -42,6 +42,8 @@ import { useNavigate, useParams } from 'react-router';
 
 const formatFieldName = (key: string) => key.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 
+const fieldId = (...parts: string[]) => ['authenticator', ...parts].join('-');
+
 const AuthenticatorDetailPage: React.FC = () => {
   const { app, authId } = useParams<{ app: string; authId: string }>();
   const navigate = useNavigate();
@@ -180,7 +182,9 @@ const AuthenticatorDetailPage: React.FC = () => {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {Object.entries(paramConfig.fields).map(([nestedKey, nestedConfig]) => (
               <div key={nestedKey} className="flex flex-col gap-2">
-                <Label className="text-xs">{formatFieldName(nestedKey)}</Label>
+                <Label htmlFor={fieldId('param', key, nestedKey)} className="text-xs">
+                  {formatFieldName(nestedKey)}
+                </Label>
                 {renderNestedField(key, nestedKey, nestedConfig, disabled)}
               </div>
             ))}
@@ -193,8 +197,9 @@ const AuthenticatorDetailPage: React.FC = () => {
       const arrayValue = Array.isArray(parameters[key]) ? parameters[key].join(', ') : '';
       return (
         <div className="flex flex-col gap-2">
-          <Label>{formatFieldName(key)}</Label>
+          <Label htmlFor={fieldId('param', key)}>{formatFieldName(key)}</Label>
           <Input
+            id={fieldId('param', key)}
             value={arrayValue}
             onChange={(e) => {
               const values = e.target.value
@@ -214,12 +219,13 @@ const AuthenticatorDetailPage: React.FC = () => {
       return (
         <div className="flex items-start gap-3">
           <Checkbox
+            id={fieldId('param', key)}
             checked={getBooleanParameter(parameters, key)}
             onCheckedChange={(checked) => setParameter(key, checked === true)}
             disabled={disabled}
           />
           <div>
-            <Label>{formatFieldName(key)}</Label>
+            <Label htmlFor={fieldId('param', key)}>{formatFieldName(key)}</Label>
           </div>
         </div>
       );
@@ -228,8 +234,9 @@ const AuthenticatorDetailPage: React.FC = () => {
     if (paramConfig.type === 'number') {
       return (
         <div className="flex flex-col gap-2">
-          <Label>{formatFieldName(key)}</Label>
+          <Label htmlFor={fieldId('param', key)}>{formatFieldName(key)}</Label>
           <Input
+            id={fieldId('param', key)}
             type="number"
             value={getNumberOrStringParameter(parameters, key)}
             onChange={(e) => setParameter(key, e.target.value ? Number(e.target.value) : '')}
@@ -246,13 +253,13 @@ const AuthenticatorDetailPage: React.FC = () => {
     if (paramConfig.type === 'select' && paramConfig.options) {
       return (
         <div className="flex flex-col gap-2">
-          <Label>{formatFieldName(key)}</Label>
+          <Label htmlFor={fieldId('param', key)}>{formatFieldName(key)}</Label>
           <Select
             value={getStringParameter(parameters, key)}
             onValueChange={(value) => setParameter(key, value)}
             disabled={disabled}
           >
-            <SelectTrigger>
+            <SelectTrigger id={fieldId('param', key)}>
               <SelectValue placeholder="Select an option" />
             </SelectTrigger>
             <SelectContent>
@@ -269,8 +276,9 @@ const AuthenticatorDetailPage: React.FC = () => {
 
     return (
       <div className="flex flex-col gap-2">
-        <Label>{formatFieldName(key)}</Label>
+        <Label htmlFor={fieldId('param', key)}>{formatFieldName(key)}</Label>
         <Input
+          id={fieldId('param', key)}
           type="text"
           value={getStringParameter(parameters, key)}
           onChange={(e) => setParameter(key, e.target.value)}
@@ -282,9 +290,12 @@ const AuthenticatorDetailPage: React.FC = () => {
   };
 
   const renderNestedField = (parentKey: string, childKey: string, config: ParameterConfig, disabled: boolean) => {
+    const id = fieldId('param', parentKey, childKey);
+
     if (config.type === 'boolean') {
       return (
         <Checkbox
+          id={id}
           checked={getBooleanNestedParameter(parameters, parentKey, childKey)}
           onCheckedChange={(checked) => setNestedParameter(parentKey, childKey, checked === true)}
           disabled={disabled}
@@ -295,6 +306,7 @@ const AuthenticatorDetailPage: React.FC = () => {
     if (config.type === 'number') {
       return (
         <Input
+          id={id}
           type="number"
           value={getNumberOrStringNestedParameter(parameters, parentKey, childKey)}
           onChange={(e) => setNestedParameter(parentKey, childKey, e.target.value ? Number(e.target.value) : '')}
@@ -308,6 +320,7 @@ const AuthenticatorDetailPage: React.FC = () => {
 
     return (
       <Input
+        id={id}
         type="text"
         value={getStringNestedParameter(parameters, parentKey, childKey)}
         onChange={(e) => setNestedParameter(parentKey, childKey, e.target.value)}
@@ -399,8 +412,9 @@ const AuthenticatorDetailPage: React.FC = () => {
           <div className="grid w-full gap-6 lg:grid-cols-3">
             <div className="flex flex-col gap-6 lg:col-span-2">
               <div className="flex flex-col gap-2">
-                <Label>Description</Label>
+                <Label htmlFor={fieldId('description')}>Description</Label>
                 <Textarea
+                  id={fieldId('description')}
                   value={authDesc}
                   onChange={(e) => setAuthDesc(e.target.value)}
                   disabled={!isEditing}

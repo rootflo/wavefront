@@ -86,7 +86,7 @@ const WorkflowsLayout: React.FC = () => {
         </div>
 
         {/* Child Route Content */}
-        <div className="min-h-0 flex-1 overflow-hidden px-8">
+        <div className="min-h-0 flex-1 overflow-y-auto px-8">
           <Outlet />
         </div>
       </div>

@@ -3,13 +3,14 @@ import BulkDownloadDialog from '@app/components/BulkDownloadDialog';
 import BulkUploadDialog, { MAX_BULK_UPLOAD_FILES } from '@app/components/BulkUploadDialog';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
+import { ErrorBanner } from '@app/components/Banner';
 import { Button } from '@app/components/ui/button';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
 import { useGetNamespaces, useGetWorkflows } from '@app/hooks';
 import { getWorkflowsKey } from '@app/hooks/data/query-keys';
-import { copyToClipboard, downloadTextFile, getYamlFilename } from '@app/lib/utils';
+import { copyToClipboard, createZipBlob, downloadBlobFile, downloadTextFile, getYamlFilename } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { WorkflowListItem } from '@app/types/workflow';
 import { useQueryClient } from '@tanstack/react-query';
@@ -26,6 +27,8 @@ const formatCreatedAt = (value?: string) => {
   return date.toLocaleString();
 };
 
+const ALL_NAMESPACES = '__all__';
+
 const WorkflowManagement: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();
   const navigate = useNavigate();
@@ -39,6 +42,7 @@ const WorkflowManagement: React.FC = () => {
   const [bulkDownloadOpen, setBulkDownloadOpen] = useState(false);
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [bulkError, setBulkError] = useState('');
 
   const { data: workflows = [], isLoading: loading } = useGetWorkflows(appId, namespace || undefined);
   const { data: namespaces = [] } = useGetNamespaces(appId);
@@ -94,35 +98,30 @@ const WorkflowManagement: React.FC = () => {
 
   const handleWorkflowDownloadMany = async (selected: WorkflowListItem[]) => {
     const files: { filename: string; content: string }[] = [];
+    const failed: string[] = [];
     for (const workflow of selected) {
+      const filename = getYamlFilename(workflow.name);
       try {
         const file = await fetchWorkflowYaml(workflow);
         if (file) files.push(file);
+        else failed.push(filename);
       } catch {
-        // Continue downloading remaining files
+        failed.push(filename);
       }
     }
 
     if (files.length === 0) {
-      notifyError('Failed to download workflows');
+      setBulkError(`Failed to download workflows: ${failed.join(', ')}`);
       return;
     }
 
-    for (const [index, file] of files.entries()) {
-      downloadTextFile(file.filename, file.content);
-      if (index < files.length - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 200));
-      }
-    }
-
-    if (files.length < selected.length) {
-      notifyError(`Downloaded ${files.length} of ${selected.length} workflows`);
-    }
+    downloadBlobFile('workflows.zip', createZipBlob(files));
+    setBulkError(failed.length > 0 ? `Failed to download: ${failed.join(', ')}` : '');
   };
 
   const handleWorkflowUploadMany = async (files: { name: string; content: string }[]) => {
     let created = 0;
-    let failed = 0;
+    const failed: string[] = [];
     const uploadNamespace = namespace || 'default';
     for (const file of files) {
       try {
@@ -132,12 +131,12 @@ const WorkflowManagement: React.FC = () => {
           uploadNamespace
         );
         if (response.data?.meta?.status === 'failure') {
-          failed += 1;
+          failed.push(file.name);
         } else {
           created += 1;
         }
       } catch {
-        failed += 1;
+        failed.push(file.name);
       }
     }
 
@@ -148,9 +147,7 @@ const WorkflowManagement: React.FC = () => {
     if (created > 0) {
       notifySuccess(`Created ${created} ${created === 1 ? 'workflow' : 'workflows'}`);
     }
-    if (failed > 0) {
-      notifyError(`Failed to create ${failed} ${failed === 1 ? 'workflow' : 'workflows'}`);
-    }
+    setBulkError(failed.length > 0 ? `Failed to create workflows: ${failed.join(', ')}` : '');
   };
 
   const handleDelete = async () => {
@@ -181,11 +178,15 @@ const WorkflowManagement: React.FC = () => {
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
       <div className="mb-8 flex shrink-0 items-center justify-end gap-3">
-        <Select value={namespace || undefined} onValueChange={(value) => setNamespace(value || '')}>
+        <Select
+          value={namespace || ALL_NAMESPACES}
+          onValueChange={(value) => setNamespace(value === ALL_NAMESPACES ? '' : value)}
+        >
           <SelectTrigger className="w-48 cursor-pointer">
             <SelectValue placeholder="All Namespaces" />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value={ALL_NAMESPACES}>All Namespaces</SelectItem>
             {namespaces.map((ns) => (
               <SelectItem key={ns.name} value={ns.name}>
                 {ns.name}
@@ -208,6 +209,8 @@ const WorkflowManagement: React.FC = () => {
         </Button>
         <Button onClick={() => setCreateDialogOpen(true)}>Create Workflow</Button>
       </div>
+
+      {bulkError ? <ErrorBanner message={bulkError} onDismiss={() => setBulkError('')} /> : null}
 
       {loading ? (
         <p className="text-sm text-gray-500">Loading workflows...</p>
