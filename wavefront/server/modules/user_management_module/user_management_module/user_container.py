@@ -115,5 +115,6 @@ class UserContainer(containers.DeclarativeContainer):
     account_inactivity_service = providers.Singleton(
         AccountInactivityService,
         user_repository=user_repository,
+        cache_manager=cache_manager,
         inactive_days_threshold=config.auth.inactive_days_threshold,
     )

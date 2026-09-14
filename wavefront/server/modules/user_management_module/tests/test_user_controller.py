@@ -1324,3 +1324,54 @@ async def test_unblock_already_unlocked_user(
     # Should still return success (idempotent operation)
     assert response.status_code == 200
     assert 'successfully unblocked' in response.json()['data']['message']
+
+
+@pytest.mark.asyncio
+async def test_get_user_by_id_includes_lockout_fields(
+    test_client,
+    mock_auth_admin_user_functions,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+    setup_containers,
+):
+    """GET /users/{id} returns lockout/login fields from user.to_dict()."""
+    await create_session(test_session, test_user_id, test_session_id)
+
+    # Bypass the hour-long user cache so this assertion hits the database.
+    _, _, user_container = setup_containers
+    user_container.cache_manager().get_str.return_value = None
+
+    locked_until = datetime.now(timezone.utc) + timedelta(hours=2)
+    last_failed = datetime.now(timezone.utc) - timedelta(minutes=1)
+    last_login = datetime.now(timezone.utc) - timedelta(days=1)
+    target_user_id = None
+
+    async with test_session() as session:
+        target = User(
+            email='lockout_fields@example.com',
+            password='hashedpassword',
+            first_name='Lockout',
+            last_name='Fields',
+            failed_attempts=3,
+            locked_until=locked_until,
+            last_failed_attempt=last_failed,
+            last_login_at=last_login,
+        )
+        session.add(target)
+        await session.flush()
+        target_user_id = str(target.id)
+        await session.commit()
+
+    response = test_client.get(
+        f'/floware/v1/users/{target_user_id}?force_fetch=1',
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 200
+    user_data = response.json()['data']['user']
+    assert user_data['failed_attempts'] == 3
+    assert user_data['locked_until'] is not None
+    assert user_data['last_failed_attempt'] is not None
+    assert user_data['last_login_at'] is not None
+    assert user_data['email'] == 'lockout_fields@example.com'
