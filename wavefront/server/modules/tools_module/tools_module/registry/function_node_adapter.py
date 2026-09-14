@@ -106,6 +106,7 @@ def _collect_function_params(
         # DocumentMessageContent rather than text); those are skipped outright.
         for index, message in enumerate(inputs):
             content = getattr(message, 'content', None)
+            producing_node = (getattr(message, 'metadata', None) or {}).get('node')
 
             # The raw workflow input arrives as a TextMessageContent when the
             # caller posts the chat-style ``[{"role": "user", "content": ...}]``
@@ -118,11 +119,18 @@ def _collect_function_params(
             if isinstance(content, TextMessageContent):
                 content = content.text
 
+            # These messages carry workflow payloads — submissions, extracted
+            # documents, whatever the caller sent — so the text itself never goes
+            # into the error. It would be raised to the caller and written to the
+            # logs by _validate_required_params, putting the payload somewhere it
+            # was never meant to be. The producing node and the size say where to
+            # look without reproducing anything.
             if not isinstance(content, str):
                 if index == last_index:
                     input_error = (
                         f'Function node input must be a JSON object, but the last '
-                        f'input has content of type {type(content).__name__}.'
+                        f'input (from node {producing_node or "input"!r}) has '
+                        f'content of type {type(content).__name__}.'
                     )
                 continue
 
@@ -131,13 +139,12 @@ def _collect_function_params(
             except (json.JSONDecodeError, TypeError, ValueError):
                 if index == last_index:
                     input_error = (
-                        f'Invalid JSON: {content}. Function node input must be a '
-                        f'JSON object.'
+                        f'Invalid JSON from node {producing_node or "input"!r}: the '
+                        f'last input ({len(content)} chars) is not a JSON object.'
                     )
                 continue
 
             ordered.append(parsed)
-            producing_node = (getattr(message, 'metadata', None) or {}).get('node')
             if producing_node:
                 by_node.setdefault(producing_node, []).append(parsed)
 

@@ -233,7 +233,32 @@ class TestUnreadableInputIsJudgedByWhatWentMissing:
 
         assert 'query_id' in str(excinfo.value)
         assert 'could not be read' in str(excinfo.value)
-        assert 'Invalid JSON: run' in str(excinfo.value)
+        assert 'Invalid JSON' in str(excinfo.value)
+
+    async def test_error_does_not_reproduce_the_input(self):
+        """Inputs carry workflow payloads. This error is raised to the caller and
+        written to the logs by _validate_required_params, so the text must not
+        travel with it — the producing node and the size locate the problem
+        without reproducing anything.
+
+        Scoped to what this module controls. flo_ai logs the raw string itself in
+        FloUtils.extract_jsons_from_string ('No JSON found in strict mode: ...'),
+        which no change here can suppress.
+        """
+        secret = '{"customer": "acme", "ssn": "123-45-6789"'  # truncated JSON
+
+        async def call_service(service_id: str, action: str):
+            return 'unreachable'
+
+        adapter = create_function_node_adapter(call_service, 'call_service')
+
+        with pytest.raises(ValueError) as excinfo:
+            await adapter(inputs=[message(secret, node='upstream')], service_id='s-1')
+
+        reported = str(excinfo.value)
+        assert 'acme' not in reported and '123-45-6789' not in reported
+        assert "'upstream'" in reported
+        assert f'{len(secret)} chars' in reported
 
     async def test_unreadable_last_input_still_fails_when_an_earlier_one_parsed(self):
         """The stale-data case. If any input was read, the node is consulting its
