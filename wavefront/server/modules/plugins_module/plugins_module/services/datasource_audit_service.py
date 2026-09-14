@@ -22,6 +22,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from common_module.feature.feature_flag import (
+    DATASOURCE_AUDIT_DISABLE_FLAG,
+    is_feature_enabled,
+)
 from common_module.log.logger import logger
 from common_module.middleware.request_id_middleware import get_current_request_id
 from common_module.utils.serializer import serialize_values
@@ -155,6 +159,9 @@ class DatasourceAuditService:
 
         Does not raise, so callers can put it on a success path unwrapped.
         """
+        if is_feature_enabled(DATASOURCE_AUDIT_DISABLE_FLAG):
+            return
+
         try:
             # get_current_user returns (role_id, user_id, session_id) — that
             # order reads backwards, so unpack into named locals and pass by
@@ -197,6 +204,9 @@ class DatasourceAuditService:
         batch_id: Optional[uuid.UUID] = None,
     ) -> None:
         """Write the audit rows. Awaitable, for tests and any blocking caller."""
+        if is_feature_enabled(DATASOURCE_AUDIT_DISABLE_FLAG):
+            return
+
         try:
             # A statement that matched nothing is a success but not a change,
             # and this table records changes. Filtering here rather than at the
