@@ -6,6 +6,8 @@ from common_module.log.logger import logger
 from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.models.user import User
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from user_management_module.constants.cache import user_by_id_cache_key
 
 USER_CACHE_TTL_SECONDS = 60 * 60
@@ -49,6 +51,13 @@ class AccountLockoutService:
             return False
         return self._ensure_timezone_aware(locked_until) >= datetime.now(timezone.utc)
 
+    async def _lock_user_row(self, session: AsyncSession, user_id) -> Optional[User]:
+        """Load the user row with FOR UPDATE so concurrent attempts serialize."""
+        result = await session.execute(
+            select(User).where(User.id == user_id).with_for_update()
+        )
+        return result.scalar_one_or_none()
+
     async def _clear_lockout(self, user: User) -> None:
         updated = await self.user_repository.find_one_and_update(
             {'id': user.id},
@@ -80,54 +89,58 @@ class AccountLockoutService:
 
         current_time = datetime.now(timezone.utc)
 
-        failed_attempts = user.failed_attempts or 0
-        locked_until = user.locked_until
+        async with self.user_repository.session() as session:
+            db_user = await self._lock_user_row(session, user.id)
+            if not db_user:
+                return False, None
 
-        # An expired lock clears the slate. Without this the attempts counted
-        # during the lockout would re-lock the account on the first mistake after
-        # it runs out.
-        lock_expired = locked_until is not None and not self._is_currently_locked(
-            locked_until
-        )
+            failed_attempts = db_user.failed_attempts or 0
+            locked_until = db_user.locked_until
 
-        # Reset attempts if enough time has passed or if this is the first failure
-        if (
-            lock_expired
-            or user.last_failed_attempt is None
-            or current_time - self._ensure_timezone_aware(user.last_failed_attempt)
-            > timedelta(hours=self.lockout_duration_hours)
-        ):
-            failed_attempts = 0
-            locked_until = None
+            # An expired lock clears the slate. Without this the attempts counted
+            # during the lockout would re-lock the account on the first mistake after
+            # it runs out.
+            lock_expired = locked_until is not None and not self._is_currently_locked(
+                locked_until
+            )
 
-        # Increment failed attempts
-        failed_attempts += 1
+            # Reset attempts if enough time has passed or if this is the first failure
+            if (
+                lock_expired
+                or db_user.last_failed_attempt is None
+                or current_time
+                - self._ensure_timezone_aware(db_user.last_failed_attempt)
+                > timedelta(hours=self.lockout_duration_hours)
+            ):
+                failed_attempts = 0
+                locked_until = None
 
-        # Check if account should be locked
-        if failed_attempts >= self.max_failed_attempts:
-            locked_until = current_time + timedelta(hours=self.lockout_duration_hours)
+            # Increment failed attempts
+            failed_attempts += 1
 
-        updated = await self.user_repository.find_one_and_update(
-            {'id': user.id},
-            refresh=True,
-            failed_attempts=failed_attempts,
-            locked_until=locked_until,
-            last_failed_attempt=current_time,
-        )
-        if not updated:
-            return False, None
+            # Check if account should be locked
+            if failed_attempts >= self.max_failed_attempts:
+                locked_until = current_time + timedelta(
+                    hours=self.lockout_duration_hours
+                )
 
-        self._cache_user(
-            updated,
-            expiry=self.get_lockout_time_remaining(updated.locked_until)
-            or USER_CACHE_TTL_SECONDS,
-        )
+            db_user.failed_attempts = failed_attempts
+            db_user.locked_until = locked_until
+            db_user.last_failed_attempt = current_time
+            await session.commit()
+            await session.refresh(db_user)
 
-        if updated.locked_until:
+            self._cache_user(
+                db_user,
+                expiry=self.get_lockout_time_remaining(db_user.locked_until)
+                or USER_CACHE_TTL_SECONDS,
+            )
+
+        if locked_until:
             logger.warning(
                 f'User {user.email} account locked due to {failed_attempts} failed attempts'
             )
-            return True, updated.locked_until
+            return True, locked_until
 
         logger.info(
             f'Failed login for {user.email}. Attempts: {failed_attempts}/{self.max_failed_attempts}'
@@ -139,24 +152,33 @@ class AccountLockoutService:
 
         `locked_until` is deliberately left alone: extending it on every attempt
         would let anyone keep an account locked out indefinitely.
-        """
-        updated = await self.user_repository.find_one_and_update(
-            {'id': user.id},
-            refresh=True,
-            failed_attempts=(user.failed_attempts or 0) + 1,
-            last_failed_attempt=datetime.now(timezone.utc),
-        )
-        if not updated:
-            return
 
-        self._cache_user(
-            updated,
-            expiry=self.get_lockout_time_remaining(updated.locked_until)
-            or USER_CACHE_TTL_SECONDS,
-        )
+        The increment uses a row lock so concurrent wrong passwords cannot race
+        on a stale absolute failed_attempts value.
+        """
+        current_time = datetime.now(timezone.utc)
+
+        async with self.user_repository.session() as session:
+            db_user = await self._lock_user_row(session, user.id)
+            if not db_user:
+                return
+
+            failed_attempts = (db_user.failed_attempts or 0) + 1
+            db_user.failed_attempts = failed_attempts
+            db_user.last_failed_attempt = current_time
+            await session.commit()
+            # to_dict() below reads columns the commit expired.
+            await session.refresh(db_user)
+
+            self._cache_user(
+                db_user,
+                expiry=self.get_lockout_time_remaining(db_user.locked_until)
+                or USER_CACHE_TTL_SECONDS,
+            )
+
         logger.info(
             f'Failed login for locked account {user.email}. '
-            f'Attempts: {updated.failed_attempts}'
+            f'Attempts: {failed_attempts}'
         )
 
     async def reset_failed_attempts(self, user: User) -> None:

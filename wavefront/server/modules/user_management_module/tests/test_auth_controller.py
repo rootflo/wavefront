@@ -857,6 +857,10 @@ async def test_locked_account_wrong_password_increments_attempts(
             )
         )
         await session.commit()
+        # Persist round-trips TIMESTAMP WITHOUT TIME ZONE; compare against the
+        # stored value so TZ/microsecond normalization does not false-fail.
+        stored_user = await session.get(User, test_user_id)
+        original_locked_until = stored_user.locked_until
 
     response = test_client.post(
         '/floware/v1/authenticate',
@@ -867,7 +871,10 @@ async def test_locked_account_wrong_password_increments_attempts(
     async with test_session() as session:
         updated_user = await session.get(User, test_user_id)
         assert updated_user.failed_attempts == 4
-        assert updated_user.locked_until is not None
+
+        # Lock window must stay unchanged; wrong passwords while locked
+        # must not extend locked_until.
+        assert updated_user.locked_until == original_locked_until
 
         last_failed = updated_user.last_failed_attempt
         if last_failed.tzinfo is None:
@@ -976,6 +983,10 @@ async def test_successful_login_refreshes_user_cache_with_last_login(
     ]
     assert cached_payloads
     latest = cached_payloads[-1]
-    assert latest['last_login_at'] is not None
+    cached_login = datetime.fromisoformat(latest['last_login_at'])
+    if cached_login.tzinfo is None:
+        cached_login = cached_login.replace(tzinfo=timezone.utc)
+    assert cached_login > old_login_date
+    assert cached_login == updated_login
     assert latest['failed_attempts'] == 0
     assert latest['last_failed_attempt'] is None
