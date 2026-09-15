@@ -147,7 +147,7 @@ class ProductAnalysisService:
         summary_query = select(
             func.count().label('total_users'),
             func.count()
-            .filter(user_stats.c.unique_login_days > 1)
+            .filter(user_stats.c.unique_login_days > 0)
             .label('active_users'),
         ).select_from(user_stats)
 
