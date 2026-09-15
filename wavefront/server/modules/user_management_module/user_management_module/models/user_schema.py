@@ -22,6 +22,22 @@ class NewUser(BaseModel):
     role_id: List[str] = Field(default_factory=list)
     group_ids: List[str] = Field(default_factory=list)
 
+    # Both join tables are keyed on their two ids, so a repeated entry would
+    # fail on insert as a primary key violation rather than as bad input.
+    @field_validator('role_id')
+    @classmethod
+    def validate_role_ids(cls, v):
+        if v is not None and len(set(v)) != len(v):
+            raise ValueError('Role IDs must be unique')
+        return v
+
+    @field_validator('group_ids')
+    @classmethod
+    def validate_group_ids(cls, v):
+        if v is not None and len(set(v)) != len(v):
+            raise ValueError('Group IDs must be unique')
+        return v
+
     @field_validator('email')
     @classmethod
     def validate_email_format(cls, v):

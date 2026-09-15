@@ -93,31 +93,60 @@ class UserService:
         resolved.update(str(role_id) for role_id in group_role_ids)
         return resolved
 
-    async def user_ids_with_role(self, role_id: str) -> set[str]:
+    @staticmethod
+    async def lock_role(session, role_id: str) -> None:
+        """Serialize last-admin checks against each other.
+
+        Any caller that might demote an admin takes this row lock before
+        counting, so two concurrent requests cannot each observe an admin the
+        other is about to remove and both pass. `group_controller` locks the
+        same physical row (by name rather than id), so the group and user paths
+        serialize against one another too.
+
+        Only ever locks the `role` row. Deleting a child `user_role` row does
+        not take a lock on its parent, so the mutations guarded here cannot
+        deadlock against this; inserting one would, and must therefore stay
+        inside the same transaction that holds the lock.
+        """
+        await session.execute(
+            select(Role.id).where(Role.id == role_id).with_for_update()
+        )
+
+    async def user_ids_with_role(self, role_id: str, session=None) -> set[str]:
         """Ids of live users holding a role directly or through a group.
 
         Backs the "at least one admin must remain" guard, which needs both the
         count and the identity of the remaining admins, and which would
         otherwise miss admins whose role arrives via group membership and let
         the last one be removed.
+
+        Pass `session` to run inside an existing transaction, so the count and
+        the mutation it guards cannot be pulled apart by a concurrent request.
         """
-        async with self.resource_repository.session() as session:
-            direct = (
-                select(UserRole.user_id)
-                .join(User, User.id == UserRole.user_id)
-                .where(UserRole.role_id == role_id, User.deleted.is_(False))
+        if session is not None:
+            return await self._user_ids_with_role(session, role_id)
+
+        async with self.resource_repository.session() as owned_session:
+            return await self._user_ids_with_role(owned_session, role_id)
+
+    @staticmethod
+    async def _user_ids_with_role(session, role_id: str) -> set[str]:
+        direct = (
+            select(UserRole.user_id)
+            .join(User, User.id == UserRole.user_id)
+            .where(UserRole.role_id == role_id, User.deleted.is_(False))
+        )
+        via_group = (
+            select(UserGroupMember.user_id)
+            .join(
+                UserGroupRole,
+                UserGroupRole.group_id == UserGroupMember.group_id,
             )
-            via_group = (
-                select(UserGroupMember.user_id)
-                .join(
-                    UserGroupRole,
-                    UserGroupRole.group_id == UserGroupMember.group_id,
-                )
-                .join(User, User.id == UserGroupMember.user_id)
-                .where(UserGroupRole.role_id == role_id, User.deleted.is_(False))
-            )
-            rows = (await session.scalars(direct.union(via_group))).all()
-            return {str(user_id) for user_id in rows}
+            .join(User, User.id == UserGroupMember.user_id)
+            .where(UserGroupRole.role_id == role_id, User.deleted.is_(False))
+        )
+        rows = (await session.scalars(direct.union(via_group))).all()
+        return {str(user_id) for user_id in rows}
 
     async def get_user_resources(
         self,

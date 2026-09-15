@@ -19,10 +19,14 @@ from db_repo_module.models.user_group_role import UserGroupRole
 from db_repo_module.models.user_role import UserRole
 import pytest
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.ext.asyncio import AsyncSession
 
+# The test_session fixture hands out a session factory, not a live session.
+SessionFactory = async_sessionmaker[AsyncSession]
 
-async def create_session(test_session: AsyncSession, test_user_id, test_session_id):
+
+async def create_session(test_session: SessionFactory, test_user_id, test_session_id):
     user = User(
         id=test_user_id,
         email='test@example.com',
@@ -41,7 +45,7 @@ async def create_session(test_session: AsyncSession, test_user_id, test_session_
 
 
 async def create_role_with_resource(
-    test_session: AsyncSession,
+    test_session: SessionFactory,
     role_id: str,
     role_name: str,
     scope: ResourceScope = ResourceScope.CONSOLE,
@@ -70,7 +74,7 @@ async def create_role_with_resource(
 
 
 async def create_group(
-    test_session: AsyncSession,
+    test_session: SessionFactory,
     name: str,
     role_ids: list[str] | None = None,
     user_ids: list[str] | None = None,
@@ -97,7 +101,7 @@ async def create_group(
     return str(group_id)
 
 
-async def create_user(test_session: AsyncSession, email: str) -> str:
+async def create_user(test_session: SessionFactory, email: str) -> str:
     async with test_session() as session:
         user = User(
             email=email,
@@ -584,34 +588,175 @@ async def test_group_endpoints_reject_non_admin(
     await create_session(test_session, test_user_id, test_session_id)
     group_id = await create_group(test_session, 'Private')
 
-    assert (
-        test_client.get(
-            '/floware/v1/groups', headers=auth_headers(auth_token)
-        ).status_code
-        == 401
+    get_response = test_client.get(
+        '/floware/v1/groups', headers=auth_headers(auth_token)
     )
-    assert (
-        test_client.post(
-            '/floware/v1/groups',
-            json={'name': 'Nope'},
-            headers=auth_headers(auth_token),
-        ).status_code
-        == 401
+    assert get_response.status_code == 401
+
+    post_response = test_client.post(
+        '/floware/v1/groups',
+        json={'name': 'Nope'},
+        headers=auth_headers(auth_token),
     )
-    assert (
-        test_client.patch(
-            f'/floware/v1/groups/{group_id}',
-            json={'name': 'Nope'},
-            headers=auth_headers(auth_token),
-        ).status_code
-        == 401
+    assert post_response.status_code == 401
+
+    patch_response = test_client.patch(
+        f'/floware/v1/groups/{group_id}',
+        json={'name': 'Nope'},
+        headers=auth_headers(auth_token),
     )
-    assert (
-        test_client.delete(
-            f'/floware/v1/groups/{group_id}', headers=auth_headers(auth_token)
-        ).status_code
-        == 401
+    assert patch_response.status_code == 401
+
+    delete_response = test_client.delete(
+        f'/floware/v1/groups/{group_id}', headers=auth_headers(auth_token)
     )
+    assert delete_response.status_code == 401
+
+
+# --------------------------------------------------------------------------
+# Last-admin guard on group mutations
+#
+# A group can be the only source of the admin role, so stripping its roles,
+# deleting it, or removing its last member can demote the final admin and lock
+# everyone out of the instance.
+# --------------------------------------------------------------------------
+
+
+async def setup_group_only_admin(test_session) -> tuple[str, str]:
+    """An instance whose single admin holds the role solely through a group."""
+    await create_role_with_resource(test_session, 'admin_role', 'admin')
+    admin_id = await create_user(test_session, 'groupadmin@example.com')
+    group_id = await create_group(test_session, 'Admins', ['admin_role'], [admin_id])
+    return group_id, admin_id
+
+
+@pytest.mark.asyncio
+async def test_update_group_cannot_strip_last_admin_role(
+    test_client,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+    mock_group_admin_functions,
+):
+    await create_session(test_session, test_user_id, test_session_id)
+    group_id, _ = await setup_group_only_admin(test_session)
+
+    response = test_client.patch(
+        f'/floware/v1/groups/{group_id}',
+        json={'role_ids': []},
+        headers=auth_headers(auth_token),
+    )
+    assert response.status_code == 400
+    assert 'admin' in str(response.json()).lower()
+
+    async with test_session() as session:
+        roles = (
+            await session.scalars(
+                select(UserGroupRole.role_id).where(UserGroupRole.group_id == group_id)
+            )
+        ).all()
+    assert [str(r) for r in roles] == ['admin_role']
+
+
+@pytest.mark.asyncio
+async def test_delete_group_cannot_remove_last_admin(
+    test_client,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+    mock_group_admin_functions,
+):
+    await create_session(test_session, test_user_id, test_session_id)
+    group_id, _ = await setup_group_only_admin(test_session)
+
+    response = test_client.delete(
+        f'/floware/v1/groups/{group_id}', headers=auth_headers(auth_token)
+    )
+    assert response.status_code == 400
+    assert 'admin' in str(response.json()).lower()
+
+    async with test_session() as session:
+        assert await session.get(UserGroup, uuid.UUID(group_id)) is not None
+
+
+@pytest.mark.asyncio
+async def test_remove_members_cannot_remove_last_admin(
+    test_client,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+    mock_group_admin_functions,
+):
+    await create_session(test_session, test_user_id, test_session_id)
+    group_id, admin_id = await setup_group_only_admin(test_session)
+
+    response = test_client.request(
+        'DELETE',
+        f'/floware/v1/groups/{group_id}/members',
+        json={'user_ids': [admin_id]},
+        headers=auth_headers(auth_token),
+    )
+    assert response.status_code == 400
+    assert 'admin' in str(response.json()).lower()
+
+    async with test_session() as session:
+        members = (
+            await session.scalars(
+                select(UserGroupMember.user_id).where(
+                    UserGroupMember.group_id == group_id
+                )
+            )
+        ).all()
+    assert [str(m) for m in members] == [admin_id]
+
+
+@pytest.mark.asyncio
+async def test_group_mutations_allowed_when_another_admin_remains(
+    test_client,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+    mock_group_admin_functions,
+):
+    """The guard blocks only the last admin, not admin management in general."""
+    await create_session(test_session, test_user_id, test_session_id)
+    group_id, _ = await setup_group_only_admin(test_session)
+
+    direct_admin = await create_user(test_session, 'directadmin@example.com')
+    async with test_session() as session:
+        session.add(UserRole(user_id=direct_admin, role_id='admin_role'))
+        await session.commit()
+
+    response = test_client.delete(
+        f'/floware/v1/groups/{group_id}', headers=auth_headers(auth_token)
+    )
+    assert response.status_code == 200
+
+    async with test_session() as session:
+        assert await session.get(UserGroup, uuid.UUID(group_id)) is None
+
+
+@pytest.mark.asyncio
+async def test_delete_role_less_group_is_unaffected_by_admin_guard(
+    test_client,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+    mock_group_admin_functions,
+):
+    """A group granting no admin is deletable even with no admins anywhere."""
+    await create_session(test_session, test_user_id, test_session_id)
+    group_id = await create_group(test_session, 'Harmless')
+
+    response = test_client.delete(
+        f'/floware/v1/groups/{group_id}', headers=auth_headers(auth_token)
+    )
+    assert response.status_code == 200
 
 
 # --------------------------------------------------------------------------
@@ -846,6 +991,63 @@ async def test_create_user_with_no_roles_but_group_granting_console(
 
 
 @pytest.mark.asyncio
+async def test_create_user_rejects_duplicate_group_ids(
+    test_client,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+    mock_auth_admin_user_functions,
+):
+    """Caught as input, not as a primary key violation on the membership row."""
+    await create_session(test_session, test_user_id, test_session_id)
+    await create_role_with_resource(test_session, 'console_role', 'Console Role')
+    group_id = await create_group(test_session, 'Console Group', ['console_role'])
+
+    response = test_client.post(
+        '/floware/v1/users',
+        json={
+            'email': 'dupe@example.com',
+            'password': 'Password123!',
+            'first_name': 'Dupe',
+            'last_name': 'Groups',
+            'group_ids': [group_id, group_id],
+        },
+        headers=auth_headers(auth_token),
+    )
+    assert response.status_code == 422
+    assert 'unique' in str(response.json()).lower()
+
+
+@pytest.mark.asyncio
+async def test_create_user_rejects_duplicate_role_ids(
+    test_client,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+    mock_auth_admin_user_functions,
+):
+    """Same primary key reasoning as duplicate group ids, on user_role."""
+    await create_session(test_session, test_user_id, test_session_id)
+    await create_role_with_resource(test_session, 'console_role', 'Console Role')
+
+    response = test_client.post(
+        '/floware/v1/users',
+        json={
+            'email': 'dupe-role@example.com',
+            'password': 'Password123!',
+            'first_name': 'Dupe',
+            'last_name': 'Roles',
+            'role_id': ['console_role', 'console_role'],
+        },
+        headers=auth_headers(auth_token),
+    )
+    assert response.status_code == 422
+    assert 'unique' in str(response.json()).lower()
+
+
+@pytest.mark.asyncio
 async def test_create_user_rejected_when_only_group_is_role_less(
     test_client,
     test_session,
@@ -882,7 +1084,6 @@ async def test_update_user_adds_and_removes_groups(
     test_session_id,
     auth_token,
     mock_auth_admin_user_functions,
-    mock_admin_false_functions,
 ):
     await create_session(test_session, test_user_id, test_session_id)
     member_id = await create_user(test_session, 'movable@example.com')

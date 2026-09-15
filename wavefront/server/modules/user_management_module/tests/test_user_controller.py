@@ -171,7 +171,6 @@ async def test_update_user_success(
     test_user_id,
     test_session_id,
     auth_token,
-    mock_admin_false_functions,
 ):
     await create_session(test_session, test_user_id, test_session_id)
     # Create test user and role
@@ -900,7 +899,6 @@ async def test_update_user_invalid_role(
 @pytest.mark.asyncio
 async def test_non_admin_user_create_user(
     test_client,
-    mock_admin_false_functions,
     test_session,
     test_user_id,
     test_session_id,
@@ -1241,7 +1239,6 @@ async def test_unblock_nonexistent_user(
 @pytest.mark.asyncio
 async def test_unblock_user_non_admin_access_denied(
     test_client,
-    mock_admin_false_functions,  # This makes the user non-admin
     test_session,
     test_user_id,
     test_session_id,

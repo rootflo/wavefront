@@ -333,9 +333,15 @@ async def update_user(
 
         # Guard against demoting the only remaining admin. Admins are counted
         # across both paths, so an admin who holds the role through a group still
-        # counts as a remaining admin here.
+        # counts as a remaining admin here. The lock and the count run in this
+        # transaction, the same one that applies the change below, so a
+        # concurrent request cannot slip between the two and demote the admin
+        # this count is relying on.
         if add_role_ids or delete_role_ids or add_group_ids or delete_group_ids:
-            admin_user_ids = await user_service.user_ids_with_role(role_id)
+            await user_service.lock_role(session, role_id)
+            admin_user_ids = await user_service.user_ids_with_role(
+                role_id, session=session
+            )
             if len(admin_user_ids) == 1 and str(update_user.user_id) in admin_user_ids:
                 return JSONResponse(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -682,6 +688,7 @@ async def get_user_groups(
 async def delete_user(
     request: Request,
     response_formatter: ResponseFormatterDep,
+    user_repository: UserRepositoryDep,
     user_service: UserServiceDep,
     cache_manager: CacheManagerDep,
     delete_id: str = Query(alias='id'),
@@ -697,16 +704,27 @@ async def delete_user(
 
     # Counted across direct assignments and group membership alike, so the last
     # admin cannot be deleted even when their admin role comes from a group.
-    admin_user_ids = await user_service.user_ids_with_role(role_id)
-    if len(admin_user_ids) == 1 and user_id == delete_id:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(
-                'Atleast one admin is mandatory, please assign another user as admin before deleting this user.'
-            ),
+    #
+    # The lock is held across both the count and the delete. delete_user commits
+    # through its own transactions, but those commits land before this one
+    # releases the lock, so the next request through here blocks until then and
+    # always counts post-delete state.
+    async with user_repository.session() as guard_session:
+        await user_service.lock_role(guard_session, role_id)
+        admin_user_ids = await user_service.user_ids_with_role(
+            role_id, session=guard_session
         )
+        if len(admin_user_ids) == 1 and user_id == delete_id:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content=response_formatter.buildErrorResponse(
+                    'Atleast one admin is mandatory, please assign another user as admin before deleting this user.'
+                ),
+            )
 
-    response = await user_service.delete_user(delete_id)
+        response = await user_service.delete_user(delete_id)
+        await guard_session.commit()
+
     # Invalidate all user_data cache entries
     cache_manager.invalidate_query(USER_DATA_PATTERN)
 

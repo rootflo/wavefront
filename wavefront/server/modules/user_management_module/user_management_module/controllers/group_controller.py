@@ -21,6 +21,7 @@ from db_repo_module.models.user import User
 from db_repo_module.models.user_group import UserGroup
 from db_repo_module.models.user_group_member import UserGroupMember
 from db_repo_module.models.user_group_role import UserGroupRole
+from db_repo_module.models.user_role import UserRole
 from dependency_injector.wiring import inject
 from fastapi import APIRouter
 from fastapi import Path
@@ -35,6 +36,7 @@ from sqlalchemy import or_
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from user_management_module.constants.auth import ADMIN_ROLE_NAME
 from user_management_module.constants.cache import USER_DATA_PATTERN
 from user_management_module.dependencies.injection import (
     CacheManagerDep,
@@ -67,6 +69,65 @@ def _invalid_group_id_response(group_id: str, response_formatter) -> JSONRespons
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
         content=response_formatter.buildErrorResponse(f'Invalid group id: {group_id}'),
+    )
+
+
+async def _lock_admin_role(session) -> None:
+    """Serialize the checks below against each other.
+
+    Every mutation that can demote an admin takes a row lock on the admin role
+    first. Without it two concurrent requests could each observe an admin the
+    other is about to remove, both pass, and between them leave the instance
+    with none.
+    """
+    await session.execute(
+        select(Role.id).where(Role.name == ADMIN_ROLE_NAME).with_for_update()
+    )
+
+
+async def _admin_user_ids(session) -> set[str]:
+    """Live users holding the admin role directly or through a group.
+
+    Runs inside the caller's session so it sees that transaction's pending
+    changes, which is what lets a mutation be applied and then checked before
+    it is committed.
+    """
+    direct = (
+        select(UserRole.user_id)
+        .join(Role, Role.id == UserRole.role_id)
+        .join(User, User.id == UserRole.user_id)
+        .where(Role.name == ADMIN_ROLE_NAME, User.deleted.is_(False))
+    )
+    via_group = (
+        select(UserGroupMember.user_id)
+        .join(UserGroupRole, UserGroupRole.group_id == UserGroupMember.group_id)
+        .join(Role, Role.id == UserGroupRole.role_id)
+        .join(User, User.id == UserGroupMember.user_id)
+        .where(Role.name == ADMIN_ROLE_NAME, User.deleted.is_(False))
+    )
+    rows = (await session.scalars(direct.union(via_group))).all()
+    return {str(user_id) for user_id in rows}
+
+
+async def _would_orphan_admins(session, admins_before: set[str]) -> bool:
+    """True when a just-applied, not-yet-committed change removed the last admin.
+
+    Only a transition from "some admins" to "none" is blocked. An instance that
+    already had no admins stays mutable, so this cannot wedge a recovery.
+    """
+    if not admins_before:
+        return False
+    await session.flush()
+    return not await _admin_user_ids(session)
+
+
+def _last_admin_response(response_formatter, action: str) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content=response_formatter.buildErrorResponse(
+            f'Atleast one admin is mandatory, {action} would remove the last one. '
+            'Please grant another user the admin role first.'
+        ),
     )
 
 
@@ -181,9 +242,11 @@ async def list_groups(
     group_repository: UserGroupRepositoryDep,
     search: Optional[str] = Query(None, description='Search by name or description'),
     limit: Optional[int] = Query(
-        None, description='Maximum number of groups to return (all when omitted)'
+        None,
+        ge=0,
+        description='Maximum number of groups to return (all when omitted)',
     ),
-    offset: int = Query(0, description='Number of groups to skip'),
+    offset: int = Query(0, ge=0, description='Number of groups to skip'),
 ):
     denied = await _require_admin(request, response_formatter)
     if denied:
@@ -364,6 +427,11 @@ async def update_group(
         # None means "leave roles alone"; [] means "remove every role". Treating
         # the empty list as a no-op would make emptying a group impossible.
         if payload.role_ids is not None:
+            # Dropping the admin role from a group demotes every member who held
+            # it only through this group.
+            await _lock_admin_role(session)
+            admins_before = await _admin_user_ids(session)
+
             await session.execute(
                 delete(UserGroupRole.__table__).where(
                     UserGroupRole.group_id == group_id
@@ -375,6 +443,10 @@ async def update_group(
                     for role_id in payload.role_ids
                 ]
             )
+
+            if await _would_orphan_admins(session, admins_before):
+                await session.rollback()
+                return _last_admin_response(response_formatter, 'this role change')
 
         group_in_session = await session.get(UserGroup, group_id)
         if payload.name is not None:
@@ -419,8 +491,19 @@ async def delete_group(
         )
 
     # Both join tables cascade. Members keep their directly assigned roles and
-    # lose only what this group was granting them.
-    await group_repository.delete_all(id=group_id)
+    # lose only what this group was granting them -- which, if this is the group
+    # carrying the admin role, can be the instance's last admin.
+    async with group_repository.session() as session:
+        await _lock_admin_role(session)
+        admins_before = await _admin_user_ids(session)
+
+        await group_repository.delete_all(id=group_id, session=session)
+
+        if await _would_orphan_admins(session, admins_before):
+            await session.rollback()
+            return _last_admin_response(response_formatter, 'deleting this group')
+
+        await session.commit()
 
     cache_manager.invalidate_query(USER_DATA_PATTERN)
     return JSONResponse(
@@ -522,6 +605,11 @@ async def remove_group_members(
         )
 
     async with group_repository.session() as session:
+        # Removing a member from the group that carries the admin role revokes
+        # their admin access along with it.
+        await _lock_admin_role(session)
+        admins_before = await _admin_user_ids(session)
+
         await session.execute(
             delete(UserGroupMember.__table__).where(
                 and_(
@@ -530,6 +618,11 @@ async def remove_group_members(
                 )
             )
         )
+
+        if await _would_orphan_admins(session, admins_before):
+            await session.rollback()
+            return _last_admin_response(response_formatter, 'removing these members')
+
         await session.commit()
 
     cache_manager.invalidate_query(USER_DATA_PATTERN)
