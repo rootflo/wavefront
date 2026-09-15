@@ -16,6 +16,30 @@ from product_analysis_module.product_analysis_service import ProductAnalysisServ
 
 product_analysis_router = APIRouter(prefix='/v1')
 
+MAX_LOGIN_STATS_SPAN_DAYS = 366
+
+
+def _validate_login_stats_range(
+    start_date: date,
+    end_date: date,
+    response_formatter: ResponseFormatter,
+) -> JSONResponse | None:
+    if start_date > end_date:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                'start_date must be less than or equal to end_date'
+            ),
+        )
+    if (end_date - start_date) > timedelta(days=MAX_LOGIN_STATS_SPAN_DAYS):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                f'date range too large (max {MAX_LOGIN_STATS_SPAN_DAYS} days)'
+            ),
+        )
+    return None
+
 
 @product_analysis_router.post('/product-analysis')
 @inject
@@ -102,12 +126,55 @@ async def get_product_analysis(
     )
 
 
+@product_analysis_router.get('/product-analysis/stats/login/summary')
+@inject
+async def get_product_login_stats_summary(
+    request: Request,
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    role_id: str | None = Query(None),
+    product_analysis_service: ProductAnalysisService = Depends(
+        Provide[ProductAnalysisContainer.product_analysis_service]
+    ),
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+):
+    """
+    Admin-only endpoint to fetch login-stats summary cards for a date range.
+    """
+    user_role_id, user_id, _ = get_current_user(request)
+    user_role = await check_is_admin(user_role_id)
+
+    if not user_id or not user_role:
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content=response_formatter.buildErrorResponse('Access denied'),
+        )
+
+    range_error = _validate_login_stats_range(start_date, end_date, response_formatter)
+    if range_error:
+        return range_error
+
+    summary = await product_analysis_service.get_login_stats_summary(
+        start_date=start_date, end_date=end_date, role_id=role_id
+    )
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(summary),
+    )
+
+
 @product_analysis_router.get('/product-analysis/stats/login')
 @inject
 async def get_product_login_stats(
     request: Request,
     start_date: date = Query(...),
     end_date: date = Query(...),
+    role_id: str | None = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     product_analysis_service: ProductAnalysisService = Depends(
         Provide[ProductAnalysisContainer.product_analysis_service]
     ),
@@ -127,28 +194,26 @@ async def get_product_login_stats(
             content=response_formatter.buildErrorResponse('Access denied'),
         )
 
-    if start_date > end_date:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(
-                'start_date must be less than or equal to end_date'
-            ),
-        )
+    range_error = _validate_login_stats_range(start_date, end_date, response_formatter)
+    if range_error:
+        return range_error
 
-    max_span_days = 366
-    if (end_date - start_date) > timedelta(days=max_span_days):
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(
-                f'date range too large (max {max_span_days} days)'
-            ),
-        )
-
-    login_stats = await product_analysis_service.get_login_stats(
-        start_date=start_date, end_date=end_date
+    login_stats, total = await product_analysis_service.get_login_stats(
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit,
+        offset=offset,
+        role_id=role_id,
     )
 
     return JSONResponse(
         status_code=status.HTTP_200_OK,
-        content=response_formatter.buildSuccessResponse({'login_stats': login_stats}),
+        content=response_formatter.buildSuccessResponse(
+            {
+                'login_stats': login_stats,
+                'total': total,
+                'offset': offset,
+                'limit': limit,
+            }
+        ),
     )

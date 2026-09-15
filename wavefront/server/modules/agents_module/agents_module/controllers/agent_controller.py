@@ -109,6 +109,7 @@ async def agent_inference(
         agent_id=agent_id,
         namespace=namespace,
         execution_time=execution_time,
+        variables=agent_inference_payload.variables,
     )
 
     logger.info(
@@ -209,6 +210,7 @@ async def agent_inference_v2(
         agent_id=str(agent_id),
         namespace=namespace,
         execution_time=execution_time,
+        variables=agent_inference_payload.variables,
     )
 
     logger.info(f'Successfully completed v2 inference for agent_id: {agent_id}')

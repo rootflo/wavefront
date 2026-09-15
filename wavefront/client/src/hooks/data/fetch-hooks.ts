@@ -6,7 +6,7 @@ import { AgentApi, AgentListItem } from '@app/types/agent';
 import { ApiServiceItem } from '@app/types/api-service';
 import { App } from '@app/types/app';
 import { Authenticator } from '@app/types/authenticator';
-import { Datasource, ReadYamlData, Yaml } from '@app/types/datasource';
+import { Datasource, DynamicQuery, ReadDynamicQueryData } from '@app/types/datasource';
 import { LLMInferenceConfig } from '@app/types/llm-inference-config';
 import { ConfigurationListItem, ConfigurationValue } from '@app/types/configuration';
 import { MessageProcessor, MessageProcessorListItem } from '@app/types/message-processor';
@@ -29,7 +29,7 @@ import {
   getAgentsQueryFn,
   getAllAppsQueryFn,
   getAllDatasourcesQueryFn,
-  getAllYamlsQueryFn,
+  getAllDynamicQueriesQueryFn,
   getApiServiceQueryFn,
   getApiServicesQueryFn,
   getAppByIdFn,
@@ -71,7 +71,7 @@ import {
   getWorkflowPipelinesQueryFn,
   getWorkflowRunsQueryFn,
   getWorkflowsQueryFn,
-  readYamlQueryFn,
+  readDynamicQueryQueryFn,
   getScheduledJobsQueryFn,
 } from './query-functions';
 import {
@@ -81,7 +81,7 @@ import {
   getAgentsKey,
   getAllAppsKey,
   getAllDatasourcesKey,
-  getAllYamlsKey,
+  getAllDynamicQueriesKey,
   getApiServiceKey,
   getApiServicesKey,
   getAppByIdKey,
@@ -123,7 +123,7 @@ import {
   getWorkflowPipelinesKey,
   getWorkflowRunsKey,
   getWorkflowsKey,
-  readYamlKey,
+  readDynamicQueryKey,
   getScheduledJobsKey,
 } from './query-keys';
 
@@ -150,26 +150,26 @@ export const useGetDatasource = (
   );
 };
 
-export const useGetAllYamls = (
+export const useGetAllDynamicQueries = (
   appId: string | undefined,
   datasourceId: string | undefined
-): UseQueryResult<Yaml[], Error> => {
+): UseQueryResult<DynamicQuery[], Error> => {
   return useQueryInit(
-    getAllYamlsKey(appId || '', datasourceId || ''),
-    () => getAllYamlsQueryFn(datasourceId!),
+    getAllDynamicQueriesKey(appId || '', datasourceId || ''),
+    () => getAllDynamicQueriesQueryFn(datasourceId!),
     !!appId && !!datasourceId
   );
 };
 
-export const useReadYaml = (
+export const useReadDynamicQuery = (
   appId: string | undefined,
   datasourceId: string | undefined,
-  yamlId: string | undefined
-): UseQueryResult<ReadYamlData | null, Error> => {
+  queryId: string | undefined
+): UseQueryResult<ReadDynamicQueryData | null, Error> => {
   return useQueryInit(
-    readYamlKey(appId || '', datasourceId || '', yamlId || ''),
-    () => readYamlQueryFn(datasourceId!, yamlId!),
-    !!appId && !!datasourceId && !!yamlId
+    readDynamicQueryKey(appId || '', datasourceId || '', queryId || ''),
+    () => readDynamicQueryQueryFn(datasourceId!, queryId!),
+    !!appId && !!datasourceId && !!queryId
   );
 };
 

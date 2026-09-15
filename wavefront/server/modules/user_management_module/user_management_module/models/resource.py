@@ -62,7 +62,9 @@ class CreateRolePayload(BaseModel):
 
 
 class UpdateRolePayload(BaseModel):
-    resources: List[str]
+    name: Optional[str] = None
+    description: Optional[str] = None
+    resources: Optional[List[str]] = None
 
 
 class UpdateResourcePayload(BaseModel):

@@ -9,19 +9,36 @@ import {
   BreadcrumbSeparator,
 } from '@app/components/ui/breadcrumb';
 import { Button } from '@app/components/ui/button';
+import { Label } from '@app/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@app/components/ui/tabs';
-import { useGetAllYamls, useGetDatasource, useReadYaml } from '@app/hooks/data/fetch-hooks';
-import { getAllYamlsKey, getDatasourceKey } from '@app/hooks/data/query-keys';
+import { useGetAllDynamicQueries, useGetDatasource, useReadDynamicQuery } from '@app/hooks/data/fetch-hooks';
+import { getAllDynamicQueriesKey, getDatasourceKey, readDynamicQueryKey } from '@app/hooks/data/query-keys';
+import { copyToClipboard, createZipBlob, downloadBlobFile, validateDynamicQueryYaml } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
-import { YamlReadData } from '@app/types/datasource';
-import { validateDynamicQueryYaml } from '@app/lib/utils';
+import { DynamicQuery, DynamicQueryItem } from '@app/types/datasource';
 import { useQueryClient } from '@tanstack/react-query';
+import { Copy } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import EditDatasourceDialog from './EditDatasourceDialog';
-import YamlCreation from './YamlCreation';
-import Yamls from './Yamls';
-import YamlView from './YamlView';
+import DynamicQueryCreation from './DynamicQueryCreation';
+import DynamicQueries from './DynamicQueries';
+import DynamicQueryView from './DynamicQueryView';
+import { buildDynamicQueryYaml, downloadTextFile, getDynamicQueryYamlFilename } from './dynamic-query-utils';
+
+const DATASOURCE_TYPE_LABELS: Record<string, string> = {
+  gcp_bigquery: 'Google BigQuery',
+  aws_redshift: 'AWS Redshift',
+  postgres: 'PostgreSQL',
+  mssql: 'Microsoft SQL Server',
+};
+
+const formatDatasourceDate = (value?: string) => {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleString();
+};
 
 const DatasourceDetail: React.FC = () => {
   const { app: appId, datasourceId } = useParams<{
@@ -34,21 +51,20 @@ const DatasourceDetail: React.FC = () => {
 
   // Use hooks for GET requests
   const { data: datasource } = useGetDatasource(appId, datasourceId);
-  const { data: yamls = [] } = useGetAllYamls(appId, datasourceId);
+  const { data: dynamicQueries = [], isLoading: dynamicQueriesLoading } = useGetAllDynamicQueries(appId, datasourceId);
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [selectedYaml, setSelectedYaml] = useState<string | null>(null);
+  const [selectedQuery, setSelectedQuery] = useState<string | null>(null);
   const [executing, setExecuting] = useState(false);
 
-  // Extract yamlId from selectedYaml (format: "queryId.yaml")
-  const yamlId = useMemo(() => {
-    if (!selectedYaml) return undefined;
-    return selectedYaml.split('.')[0];
-  }, [selectedYaml]);
+  const queryId = useMemo(() => {
+    if (!selectedQuery) return undefined;
+    return selectedQuery.split('.')[0];
+  }, [selectedQuery]);
 
-  const { data: yamlData } = useReadYaml(appId, datasourceId, yamlId);
+  const { data: queryData } = useReadDynamicQuery(appId, datasourceId, queryId);
 
-  const [yamlCrud, setYamlCrud] = useState({
+  const [queryCrud, setQueryCrud] = useState({
     view: false,
     edit: false,
     create: false,
@@ -56,120 +72,190 @@ const DatasourceDetail: React.FC = () => {
     execute: false,
   });
   const handleClose = () => {
-    setYamlCrud({
+    setQueryCrud({
       view: false,
       edit: false,
       create: false,
       delete: false,
       execute: false,
     });
-    setYamlQueries([]);
-    setSelectedYaml(null);
-    setYamlExecuteResult([]);
+    setQueryItems([]);
+    setSelectedQuery(null);
+    setExecuteResult([]);
   };
-  // Delete state
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  // Test connection state
   const [testingConnection, setTestingConnection] = useState(false);
 
-  const [yamlCreation, setYamlCreation] = useState<boolean>(false);
-  const [yamlContent, setYamlContent] = useState<string>('');
-  const [yamlQueries, setYamlQueries] = useState<YamlReadData[]>([]);
-  const [yamlName, setYamlName] = useState<string>('');
-  const [yamlExecuteResult, setYamlExecuteResult] = useState<Record<string, unknown>[]>([]);
+  const [queryCreation, setQueryCreation] = useState<boolean>(false);
+  const [queryContent, setQueryContent] = useState<string>('');
+  const [queryItems, setQueryItems] = useState<DynamicQueryItem[]>([]);
+  const [queryName, setQueryName] = useState<string>('');
+  const [executeResult, setExecuteResult] = useState<Record<string, unknown>[]>([]);
 
-  // Update yamlQueries and yamlName when yamlData changes
   useEffect(() => {
-    if (yamlData) {
-      setYamlName(yamlData.yaml_name || '');
-      setYamlQueries(yamlData.yaml_query || []);
+    if (queryData) {
+      setQueryName(queryData.yaml_name || '');
+      setQueryItems(queryData.yaml_query || []);
     }
-  }, [yamlData]);
+  }, [queryData]);
 
-  const createYaml = async () => {
+  const createDynamicQuery = async () => {
     try {
-      if (!datasourceId || !yamlContent) return;
-      const response = await floConsoleService.datasourcesService.createYaml(datasourceId, yamlContent);
+      if (!datasourceId || !queryContent) return;
+      const response = await floConsoleService.datasourcesService.createDynamicQuery(datasourceId, queryContent);
       const responseCode = response.data.meta?.code;
-      //checking the response code
       if (responseCode === 1) {
-        notifySuccess('Yaml created successfully');
-        setYamlCreation(false);
-        setYamlContent('');
+        notifySuccess('Dynamic query created successfully');
+        setQueryCreation(false);
+        setQueryContent('');
         queryClient.invalidateQueries({
-          queryKey: getAllYamlsKey(appId || '', datasourceId),
+          queryKey: getAllDynamicQueriesKey(appId || '', datasourceId),
         });
       } else {
-        notifyError('Error while creating yaml');
-        return;
+        notifyError('Error while creating dynamic query');
       }
     } catch {
-      notifyError('Error while creating yaml');
-    } finally {
-      setYamlCreation(false);
-      setYamlContent('');
+      notifyError('Error while creating dynamic query');
     }
   };
 
-  const handleYamlEdit = async (yamlContent: string) => {
+  const handleDynamicQueryEdit = async (content: string) => {
     if (!datasourceId) return;
-    if (yamlContent) {
-      const yamlResponse = validateDynamicQueryYaml(yamlContent);
-      if (!yamlResponse.valid) {
-        notifyError(yamlResponse.error);
+    if (content) {
+      const queryResponse = validateDynamicQueryYaml(content);
+      if (!queryResponse.valid) {
+        notifyError(queryResponse.error);
         return;
       }
-      const response = await floConsoleService.datasourcesService.createYaml(datasourceId, yamlContent);
+      const response = await floConsoleService.datasourcesService.createDynamicQuery(datasourceId, content);
       const responseCode = response?.data.meta?.code;
       if (responseCode === 1) {
-        notifySuccess('Yaml updated successfully');
+        notifySuccess('Dynamic query updated successfully');
         handleClose();
         queryClient.invalidateQueries({
-          queryKey: getAllYamlsKey(appId || '', datasourceId),
+          queryKey: getAllDynamicQueriesKey(appId || '', datasourceId),
         });
-        if (yamlId) {
+        if (queryId) {
           queryClient.invalidateQueries({
-            queryKey: ['yaml', appId || '', datasourceId, yamlId],
+            queryKey: readDynamicQueryKey(appId || '', datasourceId, queryId),
           });
         }
       } else {
-        notifyError('Error while updating yaml');
+        notifyError('Error while updating dynamic query');
       }
     }
   };
-  const handleYamlDelete = async () => {
-    if (!datasourceId || !selectedYaml) return;
-    const queryId = selectedYaml.split('.')[0];
-    const response = await floConsoleService.datasourcesService.deleteYaml(datasourceId, queryId);
+  const handleDynamicQueryDelete = async () => {
+    if (!datasourceId || !selectedQuery) return;
+    const selectedQueryId = selectedQuery.split('.')[0];
+    const response = await floConsoleService.datasourcesService.deleteDynamicQuery(datasourceId, selectedQueryId);
     const responseCode = response?.data.meta?.code;
     if (responseCode === 1) {
-      notifySuccess('Yaml deleted successfully');
+      notifySuccess('Dynamic query deleted successfully');
       handleClose();
       queryClient.invalidateQueries({
-        queryKey: getAllYamlsKey(appId || '', datasourceId),
+        queryKey: getAllDynamicQueriesKey(appId || '', datasourceId),
       });
     } else {
-      notifyError('Error while deleting yaml');
+      notifyError('Error while deleting dynamic query');
     }
   };
 
-  const handleYamlExecute = async (params: Record<string, string>) => {
+  const handleDynamicQueryDownload = async (query: DynamicQuery) => {
+    try {
+      const file = await fetchDynamicQueryYaml(query);
+      if (!file) {
+        notifyError('Failed to download dynamic query');
+        return;
+      }
+      downloadTextFile(file.filename, file.content);
+    } catch {
+      notifyError('Failed to download dynamic query');
+    }
+  };
+
+  const handleDynamicQueryDownloadMany = async (queries: DynamicQuery[]) => {
+    const files: { filename: string; content: string }[] = [];
+    const failed: string[] = [];
+    for (const query of queries) {
+      const filename = getDynamicQueryYamlFilename(query.file);
+      try {
+        const file = await fetchDynamicQueryYaml(query);
+        if (file) files.push(file);
+        else failed.push(filename);
+      } catch {
+        failed.push(filename);
+      }
+    }
+
+    if (files.length === 0) {
+      return `Failed to download dynamic queries: ${failed.join(', ')}`;
+    }
+
+    downloadBlobFile('dynamic-queries.zip', createZipBlob(files));
+    return failed.length > 0 ? `Failed to download: ${failed.join(', ')}` : '';
+  };
+
+  const handleDynamicQueryUploadMany = async (files: { name: string; id: string; content: string }[]) => {
+    if (!datasourceId) return '';
+
+    let created = 0;
+    const failed: string[] = [];
+    for (const file of files) {
+      try {
+        const response = await floConsoleService.datasourcesService.createDynamicQuery(datasourceId, file.content);
+        if (response.data.meta?.code === 1) {
+          created += 1;
+        } else {
+          failed.push(file.name);
+        }
+      } catch {
+        failed.push(file.name);
+      }
+    }
+
+    queryClient.invalidateQueries({
+      queryKey: getAllDynamicQueriesKey(appId || '', datasourceId),
+    });
+
+    if (created > 0) {
+      notifySuccess(`Created ${created} dynamic ${created === 1 ? 'query' : 'queries'}`);
+    }
+    return failed.length > 0 ? `Failed to create dynamic queries: ${failed.join(', ')}` : '';
+  };
+
+  const fetchDynamicQueryYaml = async (query: DynamicQuery) => {
+    if (!datasourceId) return null;
+    const queryId = query.file.split('.')[0];
+    const response = await floConsoleService.datasourcesService.readDynamicQuery(datasourceId, queryId);
+    const data = response.data?.data;
+    if (!data) return null;
+    const yamlContent = buildDynamicQueryYaml(query.file, data.yaml_name || '', data.yaml_query || []);
+    if (!yamlContent) return null;
+    return { filename: getDynamicQueryYamlFilename(query.file), content: yamlContent };
+  };
+
+  const handleDynamicQueryExecute = async (params: Record<string, string>) => {
     try {
       setExecuting(true);
-      if (!datasourceId || !selectedYaml) return;
-      const queryId = selectedYaml.split('.')[0];
-      const response = await floConsoleService.datasourcesService.executeYaml(datasourceId, queryId, params);
+      if (!datasourceId || !selectedQuery) return;
+      const selectedQueryId = selectedQuery.split('.')[0];
+      const response = await floConsoleService.datasourcesService.executeDynamicQuery(
+        datasourceId,
+        selectedQueryId,
+        params
+      );
       const responseCode = response?.data.meta?.code;
       if (responseCode === 1) {
-        notifySuccess('Yaml executed successfully');
-        setYamlExecuteResult((response.data.data as unknown as Record<string, unknown>[]) || []);
+        notifySuccess('Dynamic query executed successfully');
+        setExecuteResult((response.data.data as unknown as Record<string, unknown>[]) || []);
       } else {
-        notifyError('Error while executing yaml');
+        notifyError('Error while executing dynamic query');
       }
     } catch {
-      notifyError('Error while executing yaml');
+      notifyError('Error while executing dynamic query');
     } finally {
       setExecuting(false);
     }
@@ -194,6 +280,15 @@ const DatasourceDetail: React.FC = () => {
     } finally {
       setDeleting(false);
       setShowDeleteConfirm(false);
+    }
+  };
+
+  const handleCopyId = async (id: string) => {
+    const copied = await copyToClipboard(id);
+    if (copied) {
+      notifySuccess('Copied ID to clipboard');
+    } else {
+      notifyError('Failed to copy ID');
     }
   };
 
@@ -269,37 +364,78 @@ const DatasourceDetail: React.FC = () => {
             <TabsTrigger className="cursor-pointer" value="configuration">
               Info
             </TabsTrigger>
-            <TabsTrigger className="cursor-pointer" value="yamls">
+            <TabsTrigger className="cursor-pointer" value="dynamic-queries">
               Dynamic Queries
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="configuration" className="mt-6">
-            <div className="flex gap-10 pb-5">
-              <div className="flex w-1/2 flex-col gap-10">
-                <div className="flex flex-col gap-3">
-                  <div className="flex justify-between">
-                    <div>
-                      <Button onClick={handleTestConnection} loading={testingConnection} disabled={testingConnection}>
-                        Test Connection
-                      </Button>
-                    </div>
-                  </div>
+            <div className="grid w-full gap-6 lg:grid-cols-3">
+              <div className="flex flex-col gap-6 lg:col-span-2">
+                <div className="flex flex-col gap-2">
+                  <Label>Description</Label>
+                  <p className="text-sm text-gray-900">{datasource?.description || '—'}</p>
+                </div>
+                <div>
+                  <Button onClick={handleTestConnection} loading={testingConnection} disabled={testingConnection}>
+                    Test Connection
+                  </Button>
                 </div>
               </div>
+
+              {datasource && (
+                <div className="rounded-lg border border-[#EFF0F1]">
+                  <div className="border-b border-[#EFF0F1] px-6 py-4">
+                    <h2 className="text-lg font-semibold text-gray-900">Metadata</h2>
+                  </div>
+                  <dl className="space-y-4 p-6">
+                    <div>
+                      <dt className="text-xs font-medium text-gray-500">Datasource ID</dt>
+                      <dd className="mt-1 flex items-center gap-1">
+                        <span className="truncate font-mono text-sm text-gray-900" title={datasource.id}>
+                          {datasource.id}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="Copy ID"
+                          onClick={() => void handleCopyId(datasource.id)}
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </Button>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-medium text-gray-500">Type</dt>
+                      <dd className="mt-1 text-sm text-gray-900">
+                        {DATASOURCE_TYPE_LABELS[datasource.type] || datasource.type || '—'}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-medium text-gray-500">Created At</dt>
+                      <dd className="mt-1 text-sm text-gray-900">{formatDatasourceDate(datasource.created_at)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-medium text-gray-500">Updated At</dt>
+                      <dd className="mt-1 text-sm text-gray-900">{formatDatasourceDate(datasource.updated_at)}</dd>
+                    </div>
+                  </dl>
+                </div>
+              )}
             </div>
           </TabsContent>
 
-          <TabsContent value="yamls" className="mt-6">
-            <div className="flex flex-col gap-10">
-              <div className="flex w-full justify-end pb-5">
-                <Button onClick={() => setYamlCreation(true)}>Create Dynamic Query</Button>
-              </div>
-            </div>
-            {/* Yamls component moved inside main container to get pb-10 padding */}
-            {yamls && yamls.length > 0 && (
-              <Yamls yamls={yamls} setYamlCrud={setYamlCrud} setSelectedYaml={setSelectedYaml} />
-            )}
+          <TabsContent value="dynamic-queries" className="mt-6">
+            <DynamicQueries
+              dynamicQueries={dynamicQueries}
+              isLoading={dynamicQueriesLoading}
+              onCreate={() => setQueryCreation(true)}
+              onDownload={handleDynamicQueryDownload}
+              onDownloadMany={handleDynamicQueryDownloadMany}
+              onUploadMany={handleDynamicQueryUploadMany}
+              setQueryCrud={setQueryCrud}
+              setSelectedQuery={setSelectedQuery}
+            />
           </TabsContent>
         </Tabs>
 
@@ -328,37 +464,37 @@ const DatasourceDetail: React.FC = () => {
           />
         )}
 
-        <YamlCreation
-          yamlContent={yamlContent}
-          setYamlContent={setYamlContent}
-          yamlCreation={yamlCreation}
-          setYamlCreation={setYamlCreation}
-          createYaml={createYaml}
+        <DynamicQueryCreation
+          queryContent={queryContent}
+          setQueryContent={setQueryContent}
+          isOpen={queryCreation}
+          setIsOpen={setQueryCreation}
+          onCreate={createDynamicQuery}
         />
 
-        <YamlView
-          yamlQueries={yamlQueries}
-          setYamlCrud={setYamlCrud}
-          setYamlQueries={setYamlQueries}
-          setSelectedYaml={setSelectedYaml}
-          yamlCrud={yamlCrud}
-          selectedYaml={selectedYaml}
-          yamlName={yamlName}
-          handleYamlEdit={handleYamlEdit}
+        <DynamicQueryView
+          queryItems={queryItems}
+          setQueryCrud={setQueryCrud}
+          setQueryItems={setQueryItems}
+          setSelectedQuery={setSelectedQuery}
+          queryCrud={queryCrud}
+          selectedQuery={selectedQuery}
+          queryName={queryName}
+          handleDynamicQueryEdit={handleDynamicQueryEdit}
           handleClose={handleClose}
-          handleYamlExecute={handleYamlExecute}
-          yamlExecuteResult={yamlExecuteResult}
-          setYamlExecuteResult={setYamlExecuteResult}
+          handleDynamicQueryExecute={handleDynamicQueryExecute}
+          executeResult={executeResult}
+          setExecuteResult={setExecuteResult}
           executing={executing}
         />
 
-        {yamlCrud.delete && selectedYaml && (
+        {queryCrud.delete && selectedQuery && (
           <DeleteConfirmationDialog
-            isOpen={showDeleteConfirm}
-            title="Delete Yaml"
-            message={`Are you sure you want to delete "${selectedYaml}"? This action cannot be undone.`}
-            onConfirm={handleYamlDelete}
-            onCancel={() => setShowDeleteConfirm(false)}
+            isOpen={queryCrud.delete}
+            title="Delete Dynamic Query"
+            message={`Are you sure you want to delete "${selectedQuery}"? This action cannot be undone.`}
+            onConfirm={handleDynamicQueryDelete}
+            onCancel={handleClose}
             loading={deleting}
             confirmLabel="Delete"
             cancelLabel="Cancel"

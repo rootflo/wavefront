@@ -105,7 +105,7 @@ const ToolsPage: React.FC = () => {
   };
 
   return (
-    <div className="h-full w-full overflow-hidden">
+    <div className="w-full">
       <div className="w-full">
         <div className="mb-8 flex items-center justify-end">
           <div className="flex items-center gap-4">

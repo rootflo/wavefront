@@ -6,7 +6,7 @@ import { AgentApi, AgentListItem } from '@app/types/agent';
 import { ApiServiceItem } from '@app/types/api-service';
 import { Authenticator } from '@app/types/authenticator';
 import { ConfigurationListItem, ConfigurationValue } from '@app/types/configuration';
-import { Datasource, ReadYamlData, Yaml } from '@app/types/datasource';
+import { Datasource, DynamicQuery, ReadDynamicQueryData } from '@app/types/datasource';
 import { LLMInferenceConfig } from '@app/types/llm-inference-config';
 import { MessageProcessor, MessageProcessorListItem } from '@app/types/message-processor';
 import { Pipeline, PipelineFile, PipelineStatus } from '@app/types/pipeline';
@@ -68,16 +68,16 @@ const getDatasourceQueryFn = async (datasourceId: string): Promise<Datasource | 
   return null;
 };
 
-const getAllYamlsQueryFn = async (datasourceId: string): Promise<Yaml[]> => {
-  const response = await floConsoleService.datasourcesService.getAllYamls(datasourceId);
+const getAllDynamicQueriesQueryFn = async (datasourceId: string): Promise<DynamicQuery[]> => {
+  const response = await floConsoleService.datasourcesService.getAllDynamicQueries(datasourceId);
   if (response.data?.data?.yamls) {
     return response.data.data.yamls;
   }
   return [];
 };
 
-const readYamlQueryFn = async (datasourceId: string, yamlId: string): Promise<ReadYamlData | null> => {
-  const response = await floConsoleService.datasourcesService.readYaml(datasourceId, yamlId);
+const readDynamicQueryQueryFn = async (datasourceId: string, queryId: string): Promise<ReadDynamicQueryData | null> => {
+  const response = await floConsoleService.datasourcesService.readDynamicQuery(datasourceId, queryId);
   if (response.data?.data) {
     return response.data.data;
   }
@@ -481,7 +481,7 @@ export {
   getAgentToolsQueryFn,
   getAllAppsQueryFn,
   getAllDatasourcesQueryFn,
-  getAllYamlsQueryFn,
+  getAllDynamicQueriesQueryFn,
   getApiServiceQueryFn,
   getApiServicesQueryFn,
   getAppByIdFn,
@@ -522,6 +522,6 @@ export {
   getWorkflowPipelinesQueryFn,
   getWorkflowRunsQueryFn,
   getWorkflowsQueryFn,
-  readYamlQueryFn,
+  readDynamicQueryQueryFn,
   getScheduledJobsQueryFn,
 };

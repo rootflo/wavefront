@@ -160,6 +160,7 @@ plugins_container = PluginsContainer(
     namespace_repository=db_repo_container.namespace_repository,
     agentic_configuration_repository=db_repo_container.agentic_configuration_repository,
     datasource_audit_log_repository=db_repo_container.datasource_audit_log_repository,
+    notification_repository=db_repo_container.notification_repository,
 )
 
 product_analysis_container = ProductAnalysisContainer()

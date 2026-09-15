@@ -4,7 +4,6 @@ import os
 import re
 from typing import Optional
 import uuid
-import json
 
 from common_module.common_container import CommonContainer
 from common_module.log.logger import logger
@@ -27,6 +26,8 @@ from knowledge_base_module.knowledge_base_container import KnowledgeBaseContaine
 from flo_cloud.message_queue import MessageQueueManager
 from flo_cloud.cloud_storage import CloudStorageManager
 from pydantic import BaseModel
+from pydantic import Field
+from pydantic import Json
 from knowledge_base_module.queries.generate_query import QueryGenerator
 
 kb_document_router = APIRouter()
@@ -45,12 +46,32 @@ class KnowledgeBaseDocumentResponse(BaseModel):
     updated_at: datetime
 
 
+class DocumentMetadataRequest(BaseModel):
+    """Request model for the `metadata` JSON string form field on document upload.
+
+    `filter1`..`filter6`/`document_date` are generic -- wavefront has no notion
+    of what they mean semantically, only the caller (e.g. flo-api) knows/decides
+    that, say, `filter1` means "branch" for its documents. `metadata` holds any
+    other caller-defined data that isn't one of those flat, indexed columns and
+    is stored as-is in the `metadata_value` JSON column.
+    """
+
+    document_date: Optional[datetime] = None
+    filter1: Optional[str] = Field(default=None, max_length=255)
+    filter2: Optional[str] = Field(default=None, max_length=255)
+    filter3: Optional[str] = Field(default=None, max_length=255)
+    filter4: Optional[str] = Field(default=None, max_length=255)
+    filter5: Optional[str] = Field(default=None, max_length=255)
+    filter6: Optional[str] = Field(default=None, max_length=255)
+    metadata: Optional[dict] = None
+
+
 @kb_document_router.post('/v1/knowledge-bases/{kb_id}/documents')
 @inject
 async def upload_document(
     kb_id: uuid.UUID,
     file: UploadFile,
-    metadata: str = Form(None),
+    metadata: Optional[Json[DocumentMetadataRequest]] = Form(None),
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
     ),
@@ -101,51 +122,6 @@ async def upload_document(
         gcs_file_name = f'kb_{kb_id}/{doc_id}/{filename}'
 
         # Create document record
-        # Safely load the JSON string into a dictionary
-        parsed_metadata = None
-        if metadata is not None:
-            parsed_metadata = json.loads(metadata)
-        metadata_dict = parsed_metadata or {}
-
-        # In addition to the raw JSON blob (metadata_value), also lift a few
-        # well-known generic keys into real typed columns so callers can
-        # filter on them with a normal indexed WHERE clause instead of
-        # unindexed JSON text extraction (e.g. the repeat-pledge date-window
-        # check). `filter1`..`filter6`/`document_date` are generic --
-        # wavefront has no notion of what they mean semantically, only the
-        # caller (e.g. flo-api) knows/decides that, say, `filter1` means
-        # "branch" for its documents.
-        document_date_value = None
-        raw_document_date = metadata_dict.get('document_date')
-        if raw_document_date:
-            try:
-                document_date_value = datetime.fromisoformat(raw_document_date)
-            except (TypeError, ValueError):
-                logger.warning(
-                    'Could not parse document_date from document metadata: '
-                    f'{raw_document_date}'
-                )
-
-        filter_column_names = (
-            'filter1',
-            'filter2',
-            'filter3',
-            'filter4',
-            'filter5',
-            'filter6',
-        )
-        for filter_name in filter_column_names:
-            filter_value = metadata_dict.get(filter_name)
-            if filter_value is not None and (
-                not isinstance(filter_value, str) or len(filter_value) > 255
-            ):
-                return JSONResponse(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    content=response_formatter.buildErrorResponse(
-                        f'{filter_name} must be a string of at most 255 characters'
-                    ),
-                )
-
         async with knowledge_base_documents_repository.session() as session:
             new_kb_document = KnowledgeBaseDocuments(
                 id=doc_id,
@@ -154,14 +130,14 @@ async def upload_document(
                 file_name=file.filename,
                 file_type=file.content_type.split('/')[1],
                 file_size=file.size,
-                metadata_value=parsed_metadata,
-                document_date=document_date_value,
-                filter1=metadata_dict.get('filter1'),
-                filter2=metadata_dict.get('filter2'),
-                filter3=metadata_dict.get('filter3'),
-                filter4=metadata_dict.get('filter4'),
-                filter5=metadata_dict.get('filter5'),
-                filter6=metadata_dict.get('filter6'),
+                metadata_value=metadata.metadata if metadata else None,
+                document_date=metadata.document_date if metadata else None,
+                filter1=metadata.filter1 if metadata else None,
+                filter2=metadata.filter2 if metadata else None,
+                filter3=metadata.filter3 if metadata else None,
+                filter4=metadata.filter4 if metadata else None,
+                filter5=metadata.filter5 if metadata else None,
+                filter6=metadata.filter6 if metadata else None,
             )
 
             session.add(new_kb_document)

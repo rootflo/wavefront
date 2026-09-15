@@ -3,6 +3,9 @@ from typing import Any, Tuple, List, Dict, Optional
 from enum import Enum, auto
 from abc import ABC, abstractmethod
 
+from .dialect import SqlDialect
+from .dialect import StandardSqlDialect
+
 
 class TokenType(Enum):
     FIELD = auto()
@@ -231,12 +234,18 @@ class ODataParserABC(ABC):
 class ODataQueryParser:
     """Unified parser for OData query parameters"""
 
-    def __init__(self, type: str, dynamic_var_char: str = '@'):
+    def __init__(
+        self,
+        type: str,
+        dynamic_var_char: str = '@',
+        dialect: Optional[SqlDialect] = None,
+    ):
         self.type = type
         self.dynamic_var_char = dynamic_var_char
+        self.dialect = dialect or StandardSqlDialect()
 
         if self.type == 'sql':
-            self.parser = SQLODataParser(self.dynamic_var_char)
+            self.parser = SQLODataParser(self.dynamic_var_char, self.dialect)
         else:
             raise ValueError(f'Invalid type: {self.type}')
 
@@ -255,7 +264,11 @@ class SQLFilterParser:
     """Unified parser for OData filter expressions and query parameters"""
 
     def __init__(
-        self, lexer: Lexer, dynamic_var_char: str = '@', param_prefix: str = ''
+        self,
+        lexer: Lexer,
+        dynamic_var_char: str = '@',
+        param_prefix: str = '',
+        dialect: Optional[SqlDialect] = None,
     ):
         self.lexer = lexer
         self.current_token = self.lexer.get_next_token()
@@ -263,6 +276,7 @@ class SQLFilterParser:
         self.param_count = {}
         self.dynamic_var_char = dynamic_var_char
         self.param_prefix = param_prefix
+        self.dialect = dialect or StandardSqlDialect()
 
     def eat(self, token_type: TokenType):
         if self.current_token.type == token_type:
@@ -355,7 +369,7 @@ class SQLFilterParser:
         if operator == 'contains':
             parsed_value = self.parse_value(value)
             self.params[param_key] = f'%{parsed_value}%'
-            return f'LOWER({field}) {sql_op} LOWER({self.dynamic_var_char}{param_key})'
+            return self.dialect.contains(field, f'{self.dynamic_var_char}{param_key}')
 
         elif operator == 'in':
             # Parse array values
@@ -668,8 +682,11 @@ class SQLFilterParser:
 
 
 class SQLODataParser(ODataParserABC):
-    def __init__(self, dynamic_var_char: str = '@'):
+    def __init__(
+        self, dynamic_var_char: str = '@', dialect: Optional[SqlDialect] = None
+    ):
         self.dynamic_var_char = dynamic_var_char
+        self.dialect = dialect or StandardSqlDialect()
 
     def prepare_odata_filter(
         self, filter_expr: Optional[str], param_prefix: str = ''
@@ -685,7 +702,9 @@ class SQLODataParser(ODataParserABC):
             return None, None
 
         lexer = Lexer(filter_expr)
-        parser = SQLFilterParser(lexer, self.dynamic_var_char, param_prefix)
+        parser = SQLFilterParser(
+            lexer, self.dynamic_var_char, param_prefix, self.dialect
+        )
 
         sql_expr = parser.parse_filter_expression()
 
@@ -702,14 +721,16 @@ class SQLODataParser(ODataParserABC):
             return '', [], '', {}
 
         lexer = Lexer(odata_query)
-        query_parser = SQLFilterParser(lexer, self.dynamic_var_char)
+        query_parser = SQLFilterParser(
+            lexer, self.dynamic_var_char, dialect=self.dialect
+        )
 
         query_params = query_parser.parse_odata_query()
 
         expand_tables = query_params.get('expand', [])
         join_columns = query_params.get('join', [])
 
-        join_builder = JoinBuilder(self.dynamic_var_char)
+        join_builder = JoinBuilder(self.dynamic_var_char, self.dialect)
         join_sql, table_aliases, where_clause, filter_params = join_builder.build_joins(
             expand_tables, join_columns, parent_table
         )
@@ -720,8 +741,11 @@ class SQLODataParser(ODataParserABC):
 class JoinBuilder:
     """Builds SQL JOIN statements from OData expand and join parameters"""
 
-    def __init__(self, dynamic_var_char: str = '@'):
+    def __init__(
+        self, dynamic_var_char: str = '@', dialect: Optional[SqlDialect] = None
+    ):
         self.dynamic_var_char = dynamic_var_char
+        self.dialect = dialect or StandardSqlDialect()
 
     def build_joins(
         self,
@@ -809,7 +833,9 @@ class JoinBuilder:
                     # Parse the filter expression to get SQL and parameters
                     try:
                         # Create a new parser instance to avoid circular imports
-                        filter_parser = SQLODataParser(self.dynamic_var_char)
+                        filter_parser = SQLODataParser(
+                            self.dynamic_var_char, self.dialect
+                        )
                         sql_filter, filter_params = filter_parser.prepare_odata_filter(
                             filter_expr
                         )

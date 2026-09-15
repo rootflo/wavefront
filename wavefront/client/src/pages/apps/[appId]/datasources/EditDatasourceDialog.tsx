@@ -16,6 +16,7 @@ import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { Datasource } from '@app/types/datasource';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
 import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeMirror from '@uiw/react-codemirror';
 import React, { useEffect } from 'react';
@@ -111,7 +112,7 @@ const EditDatasourceDialog: React.FC<EditDatasourceDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Datasource</DialogTitle>
           {/* <DialogDescription>Update datasource configuration for {currentApp.app_name}</DialogDescription> */}
@@ -183,14 +184,16 @@ const EditDatasourceDialog: React.FC<EditDatasourceDialogProps> = ({
                 <FormItem>
                   <FormLabel>Connection Configuration (JSON)</FormLabel>
                   <FormControl>
-                    <div className="w-full">
+                    <div className="w-full min-w-0">
                       <CodeMirror
                         value={field.value}
                         onChange={field.onChange}
                         theme="dark"
                         height="300px"
-                        className="w-full"
-                        extensions={[langs.json()]}
+                        width="100%"
+                        maxWidth="100%"
+                        className="w-full min-w-0"
+                        extensions={[langs.json(), ...popupCodeMirrorExtensions]}
                         placeholder="Enter your connection configuration in JSON format..."
                       />
                     </div>

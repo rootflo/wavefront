@@ -48,6 +48,10 @@ class AgentInferenceResponse(BaseModel):
         ..., description='The namespace of the agent that performed the inference'
     )
     execution_time: float = Field(..., description='Execution time in seconds')
+    variables: Dict[str, Any] | None = Field(
+        default=None,
+        description='The variables this inference was run with',
+    )
 
 
 class AgentResponse(BaseModel):

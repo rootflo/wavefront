@@ -214,7 +214,11 @@ class SQLAlchemyRepository(Generic[T]):
             return await session.scalar(query)
 
     async def execute_query(
-        self, query: str, params={}, model_class=None, ef_search: int | None = None
+        self,
+        query: str | Any,
+        params={},
+        model_class=None,
+        ef_search: int | None = None,
     ) -> list:
         """
         Execute a raw SQL query or an SQLAlchemy query asynchronously and return the results.
@@ -243,7 +247,8 @@ class SQLAlchemyRepository(Generic[T]):
                 await session.execute(
                     text("SET LOCAL hnsw.iterative_scan = 'relaxed_order'")
                 )
-            result = await session.execute(text(query), params)
+            statement = text(query) if isinstance(query, str) else query
+            result = await session.execute(statement, params)
             columns = result.keys()
             rows = [dict(zip(columns, row)) for row in result.all()]
             if model_class:

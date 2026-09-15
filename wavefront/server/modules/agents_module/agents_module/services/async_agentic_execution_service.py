@@ -191,6 +191,7 @@ class AsyncAgenticExecutionService:
             status='pending',
             input_bucket=self.bucket,
             inputs=json.dumps(clean_inputs),
+            variables=variables,
             input_files=json.dumps(stored_files) if stored_files else None,
         )
 
@@ -232,6 +233,7 @@ class AsyncAgenticExecutionService:
             entity_type='agent',
             entity_id=agent_id,
             status_url=f'/v1/agentic-executions/{execution_id}',
+            variables=variables,
         )
 
     async def create_and_enqueue_workflow(
@@ -260,6 +262,7 @@ class AsyncAgenticExecutionService:
             status='pending',
             input_bucket=self.bucket,
             inputs=json.dumps(clean_inputs),
+            variables=variables,
             input_files=json.dumps(stored_files) if stored_files else None,
         )
 
@@ -305,6 +308,7 @@ class AsyncAgenticExecutionService:
             entity_type='workflow',
             entity_id=workflow_id,
             status_url=f'/v1/agentic-executions/{execution_id}',
+            variables=variables,
         )
 
     def _build_status_response(
@@ -371,6 +375,7 @@ class AsyncAgenticExecutionService:
             celery_task_id=record_dict.get('celery_task_id'),
             status=record_dict['status'],
             error=record_dict.get('error'),
+            variables=record_dict.get('variables'),
             input_files=input_files,
             output_url=output_url,
             history_url=history_url,

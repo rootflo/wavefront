@@ -22,6 +22,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useGetNamespaces } from '@app/hooks';
 import { useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
 import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeMirror from '@uiw/react-codemirror';
 import React, { useEffect } from 'react';
@@ -123,7 +124,7 @@ const CreateConfigurationDialog: React.FC<CreateConfigurationDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto lg:max-w-4xl">
+      <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto lg:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Create New Configuration</DialogTitle>
           <DialogDescription>Static reference data workflows read at runtime</DialogDescription>
@@ -199,14 +200,16 @@ const CreateConfigurationDialog: React.FC<CreateConfigurationDialogProps> = ({
                     Value<span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
-                    <div className="w-full">
+                    <div className="w-full min-w-0">
                       <CodeMirror
                         value={field.value}
                         onChange={field.onChange}
                         theme="dark"
                         height="400px"
-                        className="w-full"
-                        extensions={[langs.json()]}
+                        width="100%"
+                        maxWidth="100%"
+                        className="w-full min-w-0"
+                        extensions={[langs.json(), ...popupCodeMirrorExtensions]}
                         placeholder="Enter the configuration document as JSON..."
                       />
                     </div>

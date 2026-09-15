@@ -94,7 +94,7 @@ const DashboardLayout = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
     <div className="flex h-full w-full">
       <div className={'relative flex h-full flex-1 flex-col'}>
         <Topbar user={user} apps={apps} />
-        <main className="flex-1 overflow-auto bg-[#f6fafd]">
+        <main className="min-h-0 flex-1 overflow-auto bg-[#f6fafd]">
           <Outlet />
         </main>
       </div>

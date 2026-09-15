@@ -131,6 +131,71 @@ async def test_retrieve_image_success(
 
 
 @pytest.mark.asyncio
+async def test_retrieve_image_exact_match_returns_document_date(
+    test_client,
+    auth_token,
+    test_session: AsyncSession,
+    test_user_id,
+    test_session_id,
+    setup_containers,
+):
+    """Exact-match (branch-level repeat-pledge) results must include each
+    hit's `document_date`, since callers (e.g. aurum) need it to bucket
+    matches into their own lookback windows."""
+    await create_session(test_session, test_user_id, test_session_id)
+
+    _, _, _, kb_container, _ = setup_containers
+
+    kb_id = uuid4()
+    async with test_session() as session:
+        new_kb = KnowledgeBase(
+            id=kb_id,
+            name='Test KB Exact Match',
+            description='Test Description',
+            type='image',
+            vector_size=0,
+        )
+        session.add(new_kb)
+        await session.commit()
+
+    mock_image_rag_retrieve = AsyncMock()
+    mock_image_rag_retrieve.exact_match_dino.return_value = [
+        {
+            'document_id': str(uuid4()),
+            'file_path': 'images/test.png',
+            'file_name': 'test.png',
+            'document_date': '2026-08-01T00:00:00',
+            'dino_score': 0.95,
+        }
+    ]
+    kb_container.image_knowledge_base_retrieve.override(
+        providers.Singleton(lambda: mock_image_rag_retrieve)
+    )
+
+    response = test_client.post(
+        f'/floware/v1/knowledge-base/{kb_id}/retrieve',
+        params={
+            'exact_match': 'true',
+            'filter1': 'branch-1',
+            'document_date_start': '2026-07-01T00:00:00',
+            'document_date_end': '2026-08-15T00:00:00',
+            'threshold': 0.8,
+        },
+        headers={'Authorization': f'Bearer {auth_token}'},
+        json={'image_data': 'base64-image-data'},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    response_data = response.json()
+    assert response_data['data']['match_count'] == 1
+    documents = response_data['data']['documents']
+    assert len(documents) == 1
+    assert documents[0]['document_date'] == '2026-08-01T00:00:00'
+
+    mock_image_rag_retrieve.exact_match_dino.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_retrieve_image_kb_not_found(
     test_client, auth_token, test_session: AsyncSession, test_user_id, test_session_id
 ):

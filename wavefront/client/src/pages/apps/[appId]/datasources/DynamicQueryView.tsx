@@ -1,33 +1,28 @@
 import { Button } from '@app/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@app/components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@app/components/ui/dialog';
 import { Input } from '@app/components/ui/input';
-import { YamlReadData } from '@app/types/datasource';
+import { DynamicQueryItem } from '@app/types/datasource';
 import { removeUnderscoreAndSentenceCase } from '@app/utils/string-formatting';
+import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
 import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeMirror from '@uiw/react-codemirror';
 import { useEffect, useState } from 'react';
+import { buildDynamicQueryYaml } from './dynamic-query-utils';
 
-const YamlView = ({
-  yamlQueries,
-  yamlCrud,
-  selectedYaml,
-  yamlName,
-  handleYamlEdit,
+const DynamicQueryView = ({
+  queryItems,
+  queryCrud,
+  selectedQuery,
+  queryName,
+  handleDynamicQueryEdit,
   handleClose,
-  handleYamlExecute,
-  yamlExecuteResult,
-  setYamlExecuteResult,
+  handleDynamicQueryExecute,
+  executeResult,
+  setExecuteResult,
   executing,
 }: {
-  yamlQueries: YamlReadData[];
-  setYamlCrud: React.Dispatch<
+  queryItems: DynamicQueryItem[];
+  setQueryCrud: React.Dispatch<
     React.SetStateAction<{
       view: boolean;
       edit: boolean;
@@ -36,40 +31,39 @@ const YamlView = ({
       execute: boolean;
     }>
   >;
-  setYamlQueries: React.Dispatch<React.SetStateAction<YamlReadData[]>>;
-  setSelectedYaml: React.Dispatch<React.SetStateAction<string | null>>;
-  yamlCrud: {
+  setQueryItems: React.Dispatch<React.SetStateAction<DynamicQueryItem[]>>;
+  setSelectedQuery: React.Dispatch<React.SetStateAction<string | null>>;
+  queryCrud: {
     view: boolean;
     edit: boolean;
     create: boolean;
     delete: boolean;
     execute: boolean;
   };
-  selectedYaml: string | null;
-  yamlName: string;
-  handleYamlEdit: (yamlContent: string) => void;
+  selectedQuery: string | null;
+  queryName: string;
+  handleDynamicQueryEdit: (queryContent: string) => void;
   handleClose: () => void;
-  handleYamlExecute: (params: Record<string, string>) => void;
-  yamlExecuteResult: Record<string, unknown>[];
-  setYamlExecuteResult: React.Dispatch<React.SetStateAction<Record<string, unknown>[]>>;
+  handleDynamicQueryExecute: (params: Record<string, string>) => void;
+  executeResult: Record<string, unknown>[];
+  setExecuteResult: React.Dispatch<React.SetStateAction<Record<string, unknown>[]>>;
   executing: boolean;
 }) => {
-  const [yamlContent, setYamlContent] = useState('');
-  const [yamlParameters, setYamlParameters] = useState<Record<string, 'string' | 'number' | 'boolean' | 'date'>>({});
+  const [queryContent, setQueryContent] = useState('');
+  const [queryParameters, setQueryParameters] = useState<Record<string, 'string' | 'number' | 'boolean' | 'date'>>({});
   const [parameterValues, setParameterValues] = useState<Record<string, string>>({});
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
-  const generateYamlParameters = () => {
-    if (selectedYaml && yamlQueries.length > 0) {
+  const generateQueryParameters = () => {
+    if (selectedQuery && queryItems.length > 0) {
       const allParameters: Record<string, 'string' | 'number' | 'boolean' | 'date'> = {};
 
-      // Get unique parameters from all queries (since they might share parameters)
       const uniqueParametersSet = new Set<string>();
 
-      yamlQueries.forEach((query) => {
-        const queryParameters = query.parameters;
-        if (queryParameters && queryParameters.length > 0) {
-          queryParameters.forEach(({ name, type }) => {
+      queryItems.forEach((query) => {
+        const queryParametersList = query.parameters;
+        if (queryParametersList && queryParametersList.length > 0) {
+          queryParametersList.forEach(({ name, type }) => {
             if (!uniqueParametersSet.has(name)) {
               allParameters[name] = type as 'string' | 'number' | 'boolean' | 'date';
               uniqueParametersSet.add(name);
@@ -78,9 +72,8 @@ const YamlView = ({
         }
       });
 
-      setYamlParameters(allParameters);
+      setQueryParameters(allParameters);
 
-      // Initialize parameter values with empty strings
       const initialValues: Record<string, string> = {};
       Object.keys(allParameters).forEach((key) => {
         initialValues[key] = '';
@@ -90,14 +83,12 @@ const YamlView = ({
     }
   };
 
-  // Handle parameter input changes
   const handleParameterChange = (parameterName: string, value: string) => {
     setParameterValues((prev) => ({
       ...prev,
       [parameterName]: value,
     }));
 
-    // Clear error when user starts typing
     if (formErrors[parameterName]) {
       setFormErrors((prev) => ({
         ...prev,
@@ -106,20 +97,18 @@ const YamlView = ({
     }
   };
 
-  // Validate form
   const validateForm = (): boolean => {
     const errors: Record<string, string> = {};
     let isValid = true;
 
-    Object.keys(yamlParameters).forEach((parameterName) => {
+    Object.keys(queryParameters).forEach((parameterName) => {
       const value = parameterValues[parameterName]?.trim();
-      const parameterType = yamlParameters[parameterName];
+      const parameterType = queryParameters[parameterName];
 
       if (!value) {
         errors[parameterName] = 'This field is required';
         isValid = false;
       } else {
-        // Type-specific validation
         switch (parameterType) {
           case 'number':
             if (isNaN(Number(value))) {
@@ -147,57 +136,24 @@ const YamlView = ({
     return isValid;
   };
 
-  // Handle form submission
   const handleExecuteQuery = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (validateForm()) {
-      handleYamlExecute(parameterValues);
-      setYamlExecuteResult([]);
+      handleDynamicQueryExecute(parameterValues);
+      setExecuteResult([]);
     }
   };
 
-  // Function to generate YAML string from current state
-  const generateYamlString = () => {
-    if (selectedYaml && yamlQueries.length > 0) {
-      const queryId = selectedYaml.split('.')[0];
-      return (
-        `id: ${queryId}\n` +
-        `name: ${yamlName}\n` +
-        `queries:\n` +
-        yamlQueries
-          .map((query) => {
-            const queryBlock =
-              `  - id: ${query.id}\n` +
-              `    query: |\n` +
-              query.query
-                .split('\n')
-                .map((line) => `      ${line}`) // indent each line by 6 spaces
-                .join('\n') +
-              `\n` +
-              `    description: ${query.description}\n` +
-              (query.parameters && query.parameters.length > 0
-                ? `    parameters:\n` +
-                  query.parameters.map((param) => `      - name: ${param.name}\n        type: ${param.type}`).join('\n')
-                : '');
-
-            return queryBlock;
-          })
-          .join('\n')
-      );
-    }
-    return '';
-  };
-
-  // Initialize and update YAML content when dependencies change
   useEffect(() => {
-    setYamlContent(generateYamlString());
-  }, [selectedYaml, yamlName, yamlQueries]);
+    setQueryContent(buildDynamicQueryYaml(selectedQuery, queryName, queryItems));
+  }, [selectedQuery, queryName, queryItems]);
 
   useEffect(() => {
-    generateYamlParameters();
-  }, [yamlQueries]);
+    generateQueryParameters();
+  }, [queryItems]);
 
-  const isOpen = (yamlCrud.view || yamlCrud.edit || yamlCrud.execute) && (yamlQueries.length > 0 || yamlCrud.execute);
+  const isOpen =
+    (queryCrud.view || queryCrud.edit || queryCrud.execute) && (queryItems.length > 0 || queryCrud.execute);
 
   const handleOpenChange = (open: boolean) => {
     if (!open) {
@@ -206,45 +162,34 @@ const YamlView = ({
   };
 
   const getDialogTitle = () => {
-    if (yamlCrud.execute) return 'Execute Query';
-    if (yamlCrud.edit) return 'Edit YAML Query';
-    return 'View YAML Query';
-  };
-
-  const getDialogDescription = () => {
-    if (yamlCrud.execute) return 'Enter parameters to execute the query';
-    if (yamlCrud.edit) return 'Edit the YAML query configuration';
-    return 'View the YAML query configuration';
+    if (queryCrud.execute) return 'Execute Query';
+    if (queryCrud.edit) return 'Edit Dynamic Query';
+    return queryName;
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-h-[90vh] w-full max-w-[800px] overflow-y-auto">
+      <DialogContent className="max-h-[90vh] w-full max-w-[calc(100%-2rem)] min-w-0 overflow-y-auto sm:max-w-[1100px]">
         <DialogHeader>
           <DialogTitle>{getDialogTitle()}</DialogTitle>
-          <DialogDescription>{getDialogDescription()}</DialogDescription>
         </DialogHeader>
-        {(yamlCrud.view || yamlCrud.edit) && (
-          <div className="flex max-h-[700px] w-full flex-col gap-4 overflow-y-auto">
-            <div className="rounded-xl border border-[#EFF0F1] bg-[#FBFBFB] p-4">
-              <div className="mb-3 text-base leading-normal font-normal text-[#282828]">YAML Content:</div>
-              <CodeMirror
-                className="w-full max-w-max overflow-hidden rounded-xl border border-[#EFF0F1] bg-white p-4 font-mono text-sm font-normal text-[#282828] outline-none"
-                value={yamlContent}
-                height="400px"
-                extensions={[langs.yaml()]}
-                onChange={(value: string) => setYamlContent(value)}
-                editable={yamlCrud.edit}
-                placeholder="Enter your YAML content here..."
-                theme="dark"
-              />
-              <p className="mt-3 text-sm leading-normal font-normal text-[#878787]">
-                Define your YAML query configuration. Edit the content to modify query parameters and structure.
-              </p>
-            </div>
+        {(queryCrud.view || queryCrud.edit) && (
+          <div className="w-full min-w-0 rounded-xl border border-[#EFF0F1]">
+            <CodeMirror
+              className="w-full min-w-0 rounded-xl bg-white p-4 font-mono text-sm font-normal text-[#282828] outline-none"
+              value={queryContent}
+              height="400px"
+              width="100%"
+              maxWidth="100%"
+              extensions={[langs.yaml(), ...popupCodeMirrorExtensions]}
+              onChange={(value: string) => setQueryContent(value)}
+              editable={queryCrud.edit}
+              placeholder="Enter your dynamic query here..."
+              theme="dark"
+            />
           </div>
         )}
-        {yamlCrud.execute && (
+        {queryCrud.execute && (
           <div className="flex flex-col gap-6">
             <form
               onSubmit={(e) => {
@@ -252,10 +197,10 @@ const YamlView = ({
               }}
               className="flex flex-col gap-6"
             >
-              {yamlParameters && Object.keys(yamlParameters).length > 0 && (
+              {queryParameters && Object.keys(queryParameters).length > 0 && (
                 <div className="grid grid-cols-2 gap-6">
-                  {Object.keys(yamlParameters).map((parameter) => {
-                    const parameterType = yamlParameters[parameter];
+                  {Object.keys(queryParameters).map((parameter) => {
+                    const parameterType = queryParameters[parameter];
                     const hasError = !!formErrors[parameter];
 
                     return (
@@ -290,7 +235,7 @@ const YamlView = ({
                 <h3 className="text-lg leading-4 font-medium text-black">Query Results</h3>
                 <div className="max-h-[300px] overflow-auto rounded-xl border border-[#EFF0F1] bg-[#FBFBFB] p-4">
                   <pre className="text-sm font-normal whitespace-pre-wrap text-[#282828]">
-                    {JSON.stringify(yamlExecuteResult, null, 2)}
+                    {JSON.stringify(executeResult, null, 2)}
                   </pre>
                 </div>
               </div>
@@ -306,9 +251,9 @@ const YamlView = ({
           </div>
         )}
 
-        {(yamlCrud.edit || yamlCrud.view) && (
+        {(queryCrud.edit || queryCrud.view) && (
           <DialogFooter>
-            {yamlCrud.edit && <Button onClick={() => handleYamlEdit(yamlContent)}>Save</Button>}
+            {queryCrud.edit && <Button onClick={() => handleDynamicQueryEdit(queryContent)}>Save</Button>}
             <Button type="button" variant="outline" onClick={handleClose}>
               Cancel
             </Button>
@@ -318,4 +263,4 @@ const YamlView = ({
     </Dialog>
   );
 };
-export default YamlView;
+export default DynamicQueryView;

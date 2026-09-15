@@ -22,6 +22,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from common_module.feature.feature_flag import (
+    DATASOURCE_AUDIT_ENABLED_FLAG,
+    is_feature_enabled,
+)
 from common_module.log.logger import logger
 from common_module.middleware.request_id_middleware import get_current_request_id
 from common_module.utils.serializer import serialize_values
@@ -117,10 +121,16 @@ class DatasourceAuditService:
         audit_log_repository: SQLAlchemyRepository[DatasourceAuditLog],
         max_rows: Optional[int] = AUDIT_MAX_ROWS,
         max_payload_bytes: Optional[int] = AUDIT_MAX_PAYLOAD_BYTES,
+        change_notification_service=None,
     ) -> None:
         self.audit_log_repository = audit_log_repository
         self.max_rows = max_rows
         self.max_payload_bytes = max_payload_bytes
+        # Optional, and typed loosely, to keep the dependency one-way: the
+        # notification service imports from this module, so naming its type here
+        # would be a cycle. None means "audit only", which is what every caller
+        # that does not care about the feed gets.
+        self.change_notification_service = change_notification_service
 
     @property
     def capture_limit(self) -> Optional[int]:
@@ -149,6 +159,9 @@ class DatasourceAuditService:
 
         Does not raise, so callers can put it on a success path unwrapped.
         """
+        if not is_feature_enabled(DATASOURCE_AUDIT_ENABLED_FLAG):
+            return
+
         try:
             # get_current_user returns (role_id, user_id, session_id) — that
             # order reads backwards, so unpack into named locals and pass by
@@ -191,6 +204,9 @@ class DatasourceAuditService:
         batch_id: Optional[uuid.UUID] = None,
     ) -> None:
         """Write the audit rows. Awaitable, for tests and any blocking caller."""
+        if not is_feature_enabled(DATASOURCE_AUDIT_ENABLED_FLAG):
+            return
+
         try:
             # A statement that matched nothing is a success but not a change,
             # and this table records changes. Filtering here rather than at the
@@ -215,6 +231,20 @@ class DatasourceAuditService:
                 for entry in recordable
             ]
 
+            # Built before the insert, never after: the session factory leaves
+            # expire_on_commit at its default, so once create_all commits and
+            # closes its session these records are expired and detached, and
+            # reading .changes off one raises DetachedInstanceError.
+            notification = self._build_change_notification(
+                datasource_id=datasource_id,
+                datasource_type=datasource_type,
+                operation=operation,
+                actor=actor,
+                occurred_at=occurred_at,
+                batch_id=batch_id,
+                records=records,
+            )
+
             # create_all opens one session and commits once, so a multi-table
             # request's audit rows land together or not at all — matching the
             # atomicity of the mutation they describe. create() would open one
@@ -222,6 +252,50 @@ class DatasourceAuditService:
             await self.audit_log_repository.create_all(records)
         except Exception as e:
             logger.error(f'Failed to write datasource audit rows: {e}')
+            return
+
+        # Outside the block above, and only once the audit rows are committed.
+        # The trail is the record of truth; the feed is a convenience over it, so
+        # the order is fixed and a failure here must not be logged as, or
+        # mistaken for, an audit failure.
+        if notification is not None:
+            title, data = notification
+            await self.change_notification_service.publish(title, data)
+
+    def _build_change_notification(
+        self,
+        *,
+        datasource_id: str,
+        datasource_type: str,
+        operation: str,
+        actor: AuditActor,
+        occurred_at: datetime,
+        batch_id: uuid.UUID,
+        records: List[DatasourceAuditLog],
+    ) -> Optional[Tuple[str, Dict[str, Any]]]:
+        """Build the feed payload, or None if there is nothing to publish.
+
+        Swallows its own failures rather than letting them reach the caller's
+        except block: this runs *before* the audit insert, and the feed is a
+        convenience over the trail. A bug in payload construction must not be
+        what stops the audit row from being written.
+        """
+        if self.change_notification_service is None:
+            return None
+
+        try:
+            return self.change_notification_service.build_payload(
+                datasource_id=datasource_id,
+                datasource_type=datasource_type,
+                operation=operation,
+                actor=actor,
+                occurred_at=occurred_at,
+                batch_id=batch_id,
+                records=records,
+            )
+        except Exception as e:
+            logger.error(f'Failed to build datasource change notification: {e}')
+            return None
 
     def _spawn(self, coro) -> None:
         task = asyncio.create_task(coro)

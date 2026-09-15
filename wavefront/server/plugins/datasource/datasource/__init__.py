@@ -11,6 +11,10 @@ from typing import Any, Optional, List, Dict
 from flo_cloud.postgres import RowMutationResult
 
 from .bigquery import BigQueryPlugin, BigQueryConfig
+from .dialect import BigQuerySqlDialect
+from .dialect import MSSQLSqlDialect
+from .dialect import PostgresSqlDialect
+from .dialect import RedshiftSqlDialect
 from .redshift import RedshiftPlugin, RedshiftConfig
 from .postgres import PostgresPlugin, PostgresConfig
 from .mssql import MSSQLPlugin, MSSQLConfig
@@ -30,22 +34,38 @@ class DatasourcePlugin:
 
     def __get_datasource(self) -> DataSourceABC:
         if self.datasource_type == DataSourceType.AWS_REDSHIFT:
-            self.odata_parser = ODataQueryParser(type='sql', dynamic_var_char=':')
+            self.odata_parser = ODataQueryParser(
+                type='sql',
+                dynamic_var_char=':',
+                dialect=RedshiftSqlDialect(),
+            )
             if not isinstance(self.config, RedshiftConfig):
                 raise ValueError(f'Invalid config type: {type(self.config)}')
             return RedshiftPlugin(self.config)
         elif self.datasource_type == DataSourceType.GCP_BIGQUERY:
-            self.odata_parser = ODataQueryParser(type='sql', dynamic_var_char='@')
+            self.odata_parser = ODataQueryParser(
+                type='sql',
+                dynamic_var_char='@',
+                dialect=BigQuerySqlDialect(),
+            )
             if not isinstance(self.config, BigQueryConfig):
                 raise ValueError(f'Invalid config type: {type(self.config)}')
             return BigQueryPlugin(self.config)
         elif self.datasource_type == DataSourceType.POSTGRES:
-            self.odata_parser = ODataQueryParser(type='sql', dynamic_var_char=':')
+            self.odata_parser = ODataQueryParser(
+                type='sql',
+                dynamic_var_char=':',
+                dialect=PostgresSqlDialect(),
+            )
             if not isinstance(self.config, PostgresConfig):
                 raise ValueError(f'Invalid config type: {type(self.config)}')
             return PostgresPlugin(self.config)
         elif self.datasource_type == DataSourceType.MSSQL:
-            self.odata_parser = ODataQueryParser(type='sql', dynamic_var_char=':')
+            self.odata_parser = ODataQueryParser(
+                type='sql',
+                dynamic_var_char=':',
+                dialect=MSSQLSqlDialect(),
+            )
             if not isinstance(self.config, MSSQLConfig):
                 raise ValueError(f'Invalid config type: {type(self.config)}')
             return MSSQLPlugin(self.config)

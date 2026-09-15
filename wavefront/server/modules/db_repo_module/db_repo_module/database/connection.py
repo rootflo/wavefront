@@ -15,13 +15,22 @@ class DatabaseConfig:
     host: str
     port: str
     db_name: str
+    pool_size: int = 20
+    max_overflow: int = 20
+    pool_timeout: int = 30
+    pool_recycle: int = 1800
 
 
 class DatabaseClient:
     def __init__(self, db_config: DatabaseConfig) -> None:
         self.db_config = db_config
         self._engine = create_async_engine(
-            f'postgresql+psycopg://{db_config.username}:{db_config.password}@{db_config.host}:{db_config.port}/{db_config.db_name}'
+            f'postgresql+psycopg://{db_config.username}:{db_config.password}@{db_config.host}:{db_config.port}/{db_config.db_name}',
+            pool_size=int(db_config.pool_size),
+            max_overflow=int(db_config.max_overflow),
+            pool_timeout=int(db_config.pool_timeout),
+            pool_recycle=int(db_config.pool_recycle),
+            pool_pre_ping=True,
         )
         self.session: async_sessionmaker[AsyncSession] = async_sessionmaker(
             autocommit=False, bind=self._engine
