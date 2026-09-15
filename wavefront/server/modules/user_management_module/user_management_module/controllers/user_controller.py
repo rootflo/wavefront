@@ -331,24 +331,20 @@ async def update_user(
                     ),
                 )
 
-        # Guard against demoting the only remaining admin. Admins are counted
-        # across both paths, so an admin who holds the role through a group still
-        # counts as a remaining admin here. The lock and the count run in this
-        # transaction, the same one that applies the change below, so a
-        # concurrent request cannot slip between the two and demote the admin
-        # this count is relying on.
-        if add_role_ids or delete_role_ids or add_group_ids or delete_group_ids:
+        # Guard against demoting the only remaining admin. Apply the mutation
+        # first, then re-count: that lets a sole admin still pick up additional
+        # non-admin roles or groups, while still rejecting a change that would
+        # leave the instance with none. The lock keeps a concurrent request
+        # from slipping between the two counts.
+        mutating_roles_or_groups = bool(
+            add_role_ids or delete_role_ids or add_group_ids or delete_group_ids
+        )
+        admins_before: set[str] = set()
+        if mutating_roles_or_groups:
             await user_service.lock_role(session, role_id)
-            admin_user_ids = await user_service.user_ids_with_role(
+            admins_before = await user_service.user_ids_with_role(
                 role_id, session=session
             )
-            if len(admin_user_ids) == 1 and str(update_user.user_id) in admin_user_ids:
-                return JSONResponse(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    content=response_formatter.buildErrorResponse(
-                        error='Atleast one admin is mandatory, please assign another user as admin before updating this user.'
-                    ),
-                )
 
         if add_role_ids:
             existing_links = await user_role_repository.find(
@@ -397,6 +393,20 @@ async def update_user(
                 )
             )
             await session.execute(query)
+
+        if mutating_roles_or_groups and admins_before:
+            await session.flush()
+            admins_after = await user_service.user_ids_with_role(
+                role_id, session=session
+            )
+            if not admins_after:
+                await session.rollback()
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content=response_formatter.buildErrorResponse(
+                        error='Atleast one admin is mandatory, please assign another user as admin before updating this user.'
+                    ),
+                )
 
         if profile_updates:
             user_in_session = await session.get(User, update_user.user_id)

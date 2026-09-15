@@ -1077,6 +1077,119 @@ async def test_create_user_rejected_when_only_group_is_role_less(
 
 
 @pytest.mark.asyncio
+async def test_update_sole_admin_can_add_non_admin_role(
+    test_client,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+    mock_auth_admin_user_functions,
+):
+    """Adding a non-admin role does not demote the sole admin, so it must pass.
+
+    The session mock carries role_id='test_role_id', and the last-admin guard
+    counts holders of that id (matching production, where an admin's JWT carries
+    the admin role's id). The sole admin therefore holds 'test_role_id'.
+    """
+    await create_session(test_session, test_user_id, test_session_id)
+    await create_role_with_resource(test_session, 'test_role_id', 'admin')
+    await create_role_with_resource(
+        test_session,
+        'viewer_role',
+        'Viewer',
+        scope=ResourceScope.DASHBOARD,
+        resource_key='viewer',
+        resource_value='dashboard',
+    )
+    admin_id = await create_user(test_session, 'soleadmin@example.com')
+    async with test_session() as session:
+        session.add(UserRole(user_id=admin_id, role_id='test_role_id'))
+        await session.commit()
+
+    response = test_client.patch(
+        '/floware/v1/users',
+        json={'user_id': admin_id, 'add_role_ids': ['viewer_role']},
+        headers=auth_headers(auth_token),
+    )
+    assert response.status_code == 200
+
+    async with test_session() as session:
+        roles = (
+            await session.scalars(
+                select(UserRole.role_id).where(UserRole.user_id == admin_id)
+            )
+        ).all()
+    assert sorted(str(r) for r in roles) == ['test_role_id', 'viewer_role']
+
+
+@pytest.mark.asyncio
+async def test_update_sole_admin_cannot_remove_admin_role(
+    test_client,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+    mock_auth_admin_user_functions,
+):
+    await create_session(test_session, test_user_id, test_session_id)
+    await create_role_with_resource(test_session, 'test_role_id', 'admin')
+    admin_id = await create_user(test_session, 'soleadmin@example.com')
+    async with test_session() as session:
+        session.add(UserRole(user_id=admin_id, role_id='test_role_id'))
+        await session.commit()
+
+    response = test_client.patch(
+        '/floware/v1/users',
+        json={'user_id': admin_id, 'delete_role_ids': ['test_role_id']},
+        headers=auth_headers(auth_token),
+    )
+    assert response.status_code == 400
+    assert 'admin' in str(response.json()).lower()
+
+    async with test_session() as session:
+        roles = (
+            await session.scalars(
+                select(UserRole.role_id).where(UserRole.user_id == admin_id)
+            )
+        ).all()
+    assert [str(r) for r in roles] == ['test_role_id']
+
+
+@pytest.mark.asyncio
+async def test_update_sole_admin_cannot_leave_admin_group(
+    test_client,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+    mock_auth_admin_user_functions,
+):
+    """Removing the sole admin from the group that grants admin must fail."""
+    await create_session(test_session, test_user_id, test_session_id)
+    await create_role_with_resource(test_session, 'test_role_id', 'admin')
+    admin_id = await create_user(test_session, 'groupadmin@example.com')
+    group_id = await create_group(test_session, 'Admins', ['test_role_id'], [admin_id])
+
+    response = test_client.patch(
+        '/floware/v1/users',
+        json={'user_id': admin_id, 'delete_group_ids': [group_id]},
+        headers=auth_headers(auth_token),
+    )
+    assert response.status_code == 400
+    assert 'admin' in str(response.json()).lower()
+
+    async with test_session() as session:
+        memberships = (
+            await session.scalars(
+                select(UserGroupMember.group_id).where(
+                    UserGroupMember.user_id == admin_id
+                )
+            )
+        ).all()
+    assert [str(g) for g in memberships] == [group_id]
+
+
+@pytest.mark.asyncio
 async def test_update_user_adds_and_removes_groups(
     test_client,
     test_session,
