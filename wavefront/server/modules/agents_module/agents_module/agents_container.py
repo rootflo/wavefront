@@ -45,6 +45,11 @@ class AgentsContainer(containers.DeclarativeContainer):
 
     llm_inference_config_service = providers.Dependency(default=None)
 
+    # Optional: agents run unguarded when no engine is supplied, so this
+    # container stays usable from the celery worker and other entry points
+    # that do not build the guardrails stack.
+    guardrails_engine = providers.Dependency(default=None)
+
     namespace_service = providers.Singleton(
         NamespaceService,
         namespace_repository=namespace_repository,
@@ -75,6 +80,7 @@ class AgentsContainer(containers.DeclarativeContainer):
         message_processor_bucket_name=message_processor_bucket_name,
         api_services_manager=api_services_manager,
         llm_inference_config_service=llm_inference_config_service,
+        guardrails_engine=guardrails_engine,
     )
 
     workflow_crud_service = providers.Singleton(
@@ -91,6 +97,7 @@ class AgentsContainer(containers.DeclarativeContainer):
 
     workflow_inference_service = providers.Singleton(
         WorkflowInferenceService,
+        guardrails_engine=guardrails_engine,
         cloud_storage_manager=cloud_storage_manager,
         cache_manager=cache_manager,
         bucket_name=config.agents.agent_yaml_bucket,

@@ -7,6 +7,10 @@ from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.models.workflow import Workflow
 from db_repo_module.models.workflow_version import WorkflowVersion
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
+from agents_module.utils.agent_guardrails import (
+    apply_guardrails,
+    guardrail_run_scope,
+)
 from flo_ai import AriumBuilder, BaseMessage, FloUtils, Arium, AgentBuilder, Agent
 from flo_cloud.cloud_storage import CloudStorageManager
 from common_module.log.logger import logger
@@ -44,6 +48,7 @@ class WorkflowInferenceService:
         ] = None,
         agent_crud_service: Optional[AgentCrudService] = None,
         tool_loader: Optional[ToolLoader] = None,
+        guardrails_engine: Optional[Any] = None,
     ):
         """
         Initialize the workflow inference service
@@ -58,8 +63,11 @@ class WorkflowInferenceService:
                 explicitly requested versions that don't exist or are soft-deleted
             agent_crud_service: Agent CRUD service for fetching agent YAMLs
             tool_loader: Tool loader for loading agent tools
+            guardrails_engine: Guardrails engine. Agents run unguarded when absent,
+                so entry points that do not build the guardrails stack still work.
         """
         self.cloud_storage_manager = cloud_storage_manager
+        self.guardrails_engine = guardrails_engine
         self.bucket_name = bucket_name
         self.cache_manager = cache_manager
         self.workflow_repository = workflow_repository
@@ -221,6 +229,14 @@ class WorkflowInferenceService:
                     app_key=app_key,
                 ).build()
 
+                # Workflow agents were previously left unguarded: this service
+                # builds its own agents rather than going through
+                # AgentInferenceService, so policy set to ENFORCE protected
+                # single-agent inference and silently did nothing here.
+                agent = apply_guardrails(
+                    agent, self.guardrails_engine, namespace, agent_name
+                )
+
                 agents_dict[agent_ref] = agent
                 logger.info(f'Successfully built agent: {agent_ref}')
 
@@ -328,12 +344,13 @@ class WorkflowInferenceService:
             processed_inputs = inputs
 
         # Run workflow inference with optional event streaming
-        result_list: List[MessageMemoryItem] = await workflow.run(
-            processed_inputs,
-            variables=variables,
-            event_callback=event_callback,
-            events_filter=events_filter,
-        )
+        with guardrail_run_scope():
+            result_list: List[MessageMemoryItem] = await workflow.run(
+                processed_inputs,
+                variables=variables,
+                event_callback=event_callback,
+                events_filter=events_filter,
+            )
 
         result_str = str(result_list[-1].result.content)
         trace = serialize_memory_trace(result_list)

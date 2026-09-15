@@ -84,6 +84,8 @@ from triggers_module.triggers_container import TriggersContainer
 from inference_module.inference_container import InferenceContainer
 from inference_module.controllers.inference_controller import inference_router
 
+from guardrails_module.container import GuardrailsContainer
+from guardrails_module.controllers.guardrails_controller import guardrails_router
 from llm_inference_config_module.container import LlmInferenceConfigContainer
 from llm_inference_config_module.controllers.llm_inference_config_controller import (
     llm_inference_config_router,
@@ -196,6 +198,11 @@ llm_inference_config_container = LlmInferenceConfigContainer(
     cache_manager=db_repo_container.cache_manager,
 )
 
+guardrails_container = GuardrailsContainer(
+    db_client=db_repo_container.db_client,
+    cache_manager=db_repo_container.cache_manager,
+)
+
 agents_container = AgentsContainer(
     db_client=db_repo_container.db_client,
     cloud_storage_manager=common_container.cloud_storage_manager,
@@ -214,6 +221,7 @@ agents_container = AgentsContainer(
     async_agentic_execution_repository=db_repo_container.async_agentic_execution_repository,
     executions_bucket=config['agents']['executions_bucket'],
     llm_inference_config_service=llm_inference_config_container.llm_inference_config_service,
+    guardrails_engine=guardrails_container.guardrails_engine,
 )
 
 voice_agents_container = VoiceAgentsContainer(
@@ -452,6 +460,7 @@ app.include_router(workflow_runs_router, prefix='/floware')
 app.include_router(inference_router, prefix='/floware')
 
 app.include_router(llm_inference_config_router, prefix='/floware')
+app.include_router(guardrails_router, prefix='/floware')
 app.include_router(inference_proxy_router, prefix='/floware')
 app.include_router(tools_router, prefix='/floware')
 app.include_router(telephony_config_router, prefix='/floware')
@@ -553,6 +562,7 @@ common_container.wire(
         'agents_module.services',
         'inference_module.controllers',
         'llm_inference_config_module.controllers',
+        'guardrails_module.controllers',
         'tools_module.controllers',
         'voice_agents_module.controllers',
         'triggers_module.controllers',
@@ -607,6 +617,15 @@ llm_inference_config_container.wire(
         'llm_inference_config_module.controllers',
         'agents_module.controllers',
         'knowledge_base_module.controllers',
+    ],
+)
+
+guardrails_container.wire(
+    modules=[__name__],
+    packages=[
+        'guardrails_module.controllers',
+        # Agent inference resolves policy when constructing a guarded LLM.
+        'agents_module.controllers',
     ],
 )
 

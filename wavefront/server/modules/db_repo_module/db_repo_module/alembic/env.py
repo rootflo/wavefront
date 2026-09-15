@@ -50,6 +50,8 @@ from db_repo_module.models.workflow_version import WorkflowVersion
 from db_repo_module.models.workflow_pipeline import WorkflowPipeline
 from db_repo_module.models.workflow_runs import WorkflowRuns
 from db_repo_module.models.datasource_audit_log import DatasourceAuditLog
+from db_repo_module.models.guardrail_audit_event import GuardrailAuditEvent
+from db_repo_module.models.guardrail_policy import GuardrailPolicy
 from dotenv import load_dotenv
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
@@ -110,6 +112,8 @@ models = [
     WorkflowPipeline,
     WorkflowRuns,
     DatasourceAuditLog,
+    GuardrailAuditEvent,
+    GuardrailPolicy,
 ]
 target_metadata = Base.metadata
 
