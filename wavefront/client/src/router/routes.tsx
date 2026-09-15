@@ -14,6 +14,7 @@ import FunctionsManagement from '@app/pages/apps/[appId]/functions';
 import FunctionDetail from '@app/pages/apps/[appId]/functions/[functionId]';
 import KnowledgeBaseDetailPage from '@app/pages/apps/[appId]/knowledge-bases/[kbId]';
 import KnowledgeBasesListPage from '@app/pages/apps/[appId]/knowledge-bases/index';
+import GuardrailsManagement from '@app/pages/apps/[appId]/guardrails';
 import LLMInferenceConfigsManagement from '@app/pages/apps/[appId]/llm-inference';
 import LLMInferenceConfigDetail from '@app/pages/apps/[appId]/llm-inference/[configId]';
 import ModelManagement from '@app/pages/apps/[appId]/model-inference';
@@ -129,6 +130,10 @@ const routes = {
         {
           path: 'llm-repository/:llmId',
           element: <LLMInferenceConfigDetail />,
+        },
+        {
+          path: 'guardrails',
+          element: <GuardrailsManagement />,
         },
         {
           path: 'workflows',

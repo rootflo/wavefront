@@ -9,6 +9,7 @@ import { ConfigurationService } from './configuration-service';
 import { ConsoleAuthService } from './console-auth-service';
 import { DataPipelineService } from './data-pipeline-service';
 import { DatasourcesService } from './datasources-service';
+import { GuardrailsService } from './guardrails-service';
 import { KnowledgeBaseService } from './knowledge-base-service';
 import { LLMInferenceService } from './llm-inference-service';
 import { MessageProcessorService } from './message-processor-service';
@@ -64,6 +65,10 @@ class FloConsoleService {
 
   get datasourcesService() {
     return new DatasourcesService(this.http);
+  }
+
+  get guardrailsService() {
+    return new GuardrailsService(this.http);
   }
 
   get knowledgeBaseService() {

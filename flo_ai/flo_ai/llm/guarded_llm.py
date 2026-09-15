@@ -6,6 +6,7 @@ import contextvars
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
 from flo_ai.guardrails.contracts import (
+    PolicyAction,
     PolicyDecision,
     Principal,
     WorkflowStage,
@@ -19,6 +20,16 @@ from flo_ai.utils.logger import logger
 #: checked on the way out, and the system prompt is developer-authored, so
 #: re-scanning them on every turn costs a provider call and finds nothing.
 UNTRUSTED_ROLES = frozenset({'user', 'tool', 'function'})
+
+#: Developer-authored roles that carry no position information.
+#:
+#: ``Agent._setup_system_message`` appends the system prompt to the *end* of
+#: the conversation history, after the user turn, so a backwards scan that
+#: treated any non-untrusted role as the boundary found an empty trailing run
+#: and never evaluated input at all. These are skipped over rather than
+#: treated as a boundary, which keeps "only what is new since the last model
+#: call" correct regardless of where the caller puts the system prompt.
+TRANSPARENT_ROLES = frozenset({'system', 'developer'})
 
 #: Carries the redaction for the response most recently returned by
 #: ``generate`` on this task. ``get_message_content`` consults it so an
@@ -55,10 +66,7 @@ class GuardrailBlocked(AgentError):
 class GuardedLLM(BaseLLM):
     """Wraps any ``BaseLLM``, evaluating policy before and after inference.
 
-    The principal is bound here rather than passed per call. An earlier
-    revision threaded an ``evaluation_context`` keyword from ``Agent.run``
-    down to ``generate``; every frame that forgot to forward it silently
-    disabled all checks, and the tool-calling path forgot.
+    The principal is bound here rather than passed per call
     """
 
     def __init__(
@@ -151,15 +159,21 @@ class GuardedLLM(BaseLLM):
                 destination='user',
             )
             if decision.blocked:
-                raise GuardrailBlocked(
-                    f'Response blocked by guardrails: '
-                    f'{"; ".join(decision.block_reasons())}',
-                    decision,
+                logger.warning(
+                    f'Guardrail blocked model response '
+                    f'[agent={self._principal.agent_id or "-"}] '
+                    f'{"; ".join(decision.block_reasons())}'
                 )
+                raise GuardrailBlocked(decision.caller_message('response'), decision)
             if decision.transformed:
                 # Rewrite via get_message_content instead of mutating the raw
                 # provider response, whose shape differs per provider.
                 _output_redaction.set((response, decision.transformed_content))
+                logger.info(
+                    f'Guardrail rewrote model response '
+                    f'({len(text)} -> {len(decision.transformed_content)} chars) '
+                    f'before returning to caller'
+                )
 
         return response
 
@@ -209,11 +223,12 @@ class GuardedLLM(BaseLLM):
                 destination='user',
             )
             if decision.blocked:
-                raise GuardrailBlocked(
-                    f'Response blocked by guardrails: '
-                    f'{"; ".join(decision.block_reasons())}',
-                    decision,
+                logger.warning(
+                    f'Guardrail blocked streamed response '
+                    f'[agent={self._principal.agent_id or "-"}] '
+                    f'{"; ".join(decision.block_reasons())}'
                 )
+                raise GuardrailBlocked(decision.caller_message('response'), decision)
             if decision.transformed:
                 logger.warning(
                     'Guardrail redacted a streamed response; emitting the '
@@ -255,11 +270,13 @@ class GuardedLLM(BaseLLM):
                 destination='llm_provider',
             )
             if decision.blocked:
-                raise GuardrailBlocked(
-                    f'Request blocked by guardrails: '
-                    f'{"; ".join(decision.block_reasons())}',
-                    decision,
+                # Operator detail to the log, a safe summary to the caller.
+                logger.warning(
+                    f'Guardrail blocked request to provider '
+                    f'[agent={self._principal.agent_id or "-"}] '
+                    f'{"; ".join(decision.block_reasons())}'
                 )
+                raise GuardrailBlocked(decision.caller_message('request'), decision)
             if decision.transformed:
                 # Copy rather than mutate: the caller's list is the agent's
                 # conversation history, and redacting it in place rewrites
@@ -267,15 +284,40 @@ class GuardedLLM(BaseLLM):
                 redacted = dict(messages[index])
                 redacted['content'] = decision.transformed_content
                 result[index] = redacted
+                # The engine reports its verdict; this reports that the verdict
+                # was actually applied to the payload leaving the process. Both
+                # are needed - a TRANSFORM the caller silently discards is
+                # exactly the bug this makes visible.
+                logger.info(
+                    f'Guardrail rewrote message {index} '
+                    f'(role={messages[index].get("role")}, '
+                    f'{len(text)} -> {len(decision.transformed_content)} chars) '
+                    f'before sending to provider'
+                )
+            elif (
+                decision.observed_action is PolicyAction.TRANSFORM
+                and not decision.enforced
+            ):
+                # Easy to misread as a broken redaction, so name it.
+                logger.info(
+                    f'Guardrail found PII in message {index} but the policy is '
+                    f'in MONITOR mode, so the provider receives the original '
+                    f'text. Switch to ENFORCE to redact.'
+                )
         return result
 
     @staticmethod
     def _trailing_untrusted(messages: List[Dict[str, Any]]) -> List[int]:
         indices: List[int] = []
         for index in range(len(messages) - 1, -1, -1):
-            if messages[index].get('role') in UNTRUSTED_ROLES:
+            role = messages[index].get('role')
+            if role in UNTRUSTED_ROLES:
                 indices.append(index)
+            elif role in TRANSPARENT_ROLES:
+                continue
             else:
+                # An assistant turn is a real boundary: everything before it
+                # was evaluated when it was new.
                 break
         return list(reversed(indices))
 

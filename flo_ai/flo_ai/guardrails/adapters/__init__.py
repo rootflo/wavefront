@@ -10,11 +10,25 @@ from typing import Any
 
 from .base_adapter import BaseAdapter
 
-__all__ = ['AzureContentSafetyAdapter', 'BaseAdapter', 'PresidioAdapter']
+__all__ = [
+    'AzureContentSafetyAdapter',
+    'BaseAdapter',
+    'ENTITY_CATALOG',
+    'EntityMeta',
+    'PresidioAdapter',
+    'describe_entity',
+    'group_sort_key',
+]
 
 _LAZY = {
     'AzureContentSafetyAdapter': ('.azure_adapter', 'AzureContentSafetyAdapter'),
     'PresidioAdapter': ('.presidio_adapter', 'PresidioAdapter'),
+    # Presentation metadata only - no Presidio import, so this is cheap. Listed
+    # here so callers have one import path for everything adapter-related.
+    'ENTITY_CATALOG': ('.pii_catalog', 'ENTITY_CATALOG'),
+    'EntityMeta': ('.pii_catalog', 'EntityMeta'),
+    'describe_entity': ('.pii_catalog', 'describe'),
+    'group_sort_key': ('.pii_catalog', 'group_sort_key'),
 }
 
 

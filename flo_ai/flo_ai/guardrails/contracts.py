@@ -217,10 +217,53 @@ class PolicyDecision:
         )
 
     def block_reasons(self) -> List[str]:
-        """Human-readable reasons, safe to surface to a caller."""
+        """Full detail for operators: logs, audit rows, debugging.
+
+        Names adapters and finding codes, so this is **not** for end users.
+        See ``caller_message``.
+        """
         reasons = [
             result.message
             for result in self.results
             if result.action is PolicyAction.BLOCK and result.message
         ]
         return reasons or ['Blocked by guardrail policy']
+
+    def caller_message(self, subject: str = 'request') -> str:
+        """A single message safe to show the end user.
+
+        Deliberately names no adapter, threshold or finding code. Those
+        describe which checks run and how they are tuned, which is a map of
+        how to get around them — the API that manages this policy is
+        admin-only for that exact reason, so the enforcement path must not
+        hand the same detail to anyone who trips it.
+
+        It does distinguish the cases a caller can act on, because "your input
+        was rejected" and "our safety config is broken" need opposite
+        responses from whoever reads it.
+        """
+        blocking = [r for r in self.results if r.action is PolicyAction.BLOCK]
+
+        if any(r.failure_class is FailureClass.MISCONFIGURED for r in blocking):
+            return (
+                'Safety checks are not correctly configured for this '
+                'workspace, so nothing was sent to the model. This is not a '
+                'problem with your input — please contact your administrator.'
+            )
+        if any(r.failure_class is FailureClass.INFRASTRUCTURE for r in blocking):
+            return (
+                'Safety checks could not be completed just now, so nothing '
+                'was sent to the model. Please try again shortly.'
+            )
+        if any(r.failure_class is FailureClass.INPUT_REJECTED for r in blocking):
+            return (
+                f'This {subject} could not be checked for safety, so it was '
+                f'not processed. It may be too large or in an unsupported '
+                f'format.'
+            )
+        if any((r.finding_code or '').startswith('privacy.') for r in blocking):
+            return (
+                f'This {subject} was blocked because it appears to contain '
+                f'personal or sensitive information.'
+            )
+        return f'This {subject} was blocked by a content safety policy.'

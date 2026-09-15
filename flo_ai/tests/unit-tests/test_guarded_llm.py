@@ -155,7 +155,12 @@ class TestInputGuard:
         with pytest.raises(GuardrailBlocked) as excinfo:
             await guarded.generate([{'role': 'user', 'content': 'bad'}])
 
-        assert 'not allowed' in str(excinfo.value)
+        # The caller gets a sanitised message. The adapter's own wording is
+        # operator detail: it names the check that fired, so it stays on
+        # .reasons and in the log rather than going to whoever tripped it.
+        assert 'not allowed' not in str(excinfo.value)
+        assert 'blocked' in str(excinfo.value).lower()
+        assert excinfo.value.reasons == ['not allowed']
         assert inner.seen_messages is None, 'blocked prompt must not reach provider'
 
     async def test_block_is_not_retryable(self):
@@ -209,6 +214,42 @@ class TestInputGuard:
         )
 
         assert adapter.seen == ['current question']
+
+    async def test_trailing_system_prompt_does_not_disable_input_checks(self):
+        """Regression: this shape silently disabled *all* input checking.
+
+        ``Agent._setup_system_message`` appends the system prompt after the
+        user turn, so every real agent call arrived in this order. The
+        backwards scan treated the trailing system message as the boundary,
+        found an empty run, and returned without evaluating anything --
+        BEFORE_MODEL never ran in production while the tests above, which put
+        the system message first, all passed.
+        """
+        guarded, _, adapter = make()
+
+        await guarded.generate(
+            [
+                {'role': 'user', 'content': 'my card is 4111 1111 1111 1111'},
+                {'role': 'system', 'content': 'you are helpful'},
+            ]
+        )
+
+        assert adapter.seen == ['my card is 4111 1111 1111 1111']
+
+    async def test_assistant_turn_still_bounds_the_scan(self):
+        """Skipping system messages must not reopen already-checked history."""
+        guarded, _, adapter = make()
+
+        await guarded.generate(
+            [
+                {'role': 'user', 'content': 'first question'},
+                {'role': 'assistant', 'content': 'earlier reply'},
+                {'role': 'user', 'content': 'second question'},
+                {'role': 'system', 'content': 'you are helpful'},
+            ]
+        )
+
+        assert adapter.seen == ['second question']
 
     async def test_multimodal_text_blocks_are_scanned(self):
         guarded, _, adapter = make()

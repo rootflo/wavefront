@@ -25,11 +25,19 @@ BEFORE = WorkflowStage.BEFORE_MODEL
 class FakeAdapter(BaseAdapter):
     """Adapter with scripted behaviour, recording every call it receives."""
 
-    def __init__(self, name='fake', behaviour='allow', transform_to=None, delay=0.0):
+    def __init__(
+        self,
+        name='fake',
+        behaviour='allow',
+        transform_to=None,
+        delay=0.0,
+        finding_code=None,
+    ):
         self._name = name
         self.behaviour = behaviour
         self.transform_to = transform_to
         self.delay = delay
+        self.finding_code = finding_code
         self.calls = []
         self.closed = False
 
@@ -53,6 +61,7 @@ class FakeAdapter(BaseAdapter):
                 action=PolicyAction.BLOCK,
                 adapter=self._name,
                 message=f'{self._name} says no',
+                finding_code=self.finding_code,
             )
         if self.behaviour == 'transform':
             return CheckResult(
@@ -135,6 +144,37 @@ class TestVerdicts:
         assert decision.action is PolicyAction.BLOCK
         assert decision.blocked
         assert decision.block_reasons() == ['fake says no']
+
+    async def test_misconfiguration_is_not_disclosed_to_the_caller(self):
+        """The caller-facing message must not describe the safety setup.
+
+        A policy naming an unregistered adapter fails closed, and the operator
+        message says which adapter and which ones *are* registered. Surfacing
+        that to whoever tripped it hands out an inventory of the checks in
+        force, which is why the policy API is admin-only in the first place.
+        """
+        engine = build(policy(spec(name='not_installed')))
+
+        decision = await engine.evaluate('anything', Principal(), BEFORE)
+
+        assert decision.blocked
+        # Operator detail is still available for logs and audit.
+        assert 'not_installed' in '; '.join(decision.block_reasons())
+
+        caller = decision.caller_message()
+        assert 'not_installed' not in caller
+        assert 'registered' not in caller
+        assert 'administrator' in caller
+
+    async def test_pii_block_tells_the_caller_what_to_change(self):
+        engine = build(
+            policy(spec()),
+            FakeAdapter(behaviour='block', finding_code='privacy.pii_detected'),
+        )
+
+        decision = await engine.evaluate('my ssn', Principal(), BEFORE)
+
+        assert 'personal or sensitive information' in decision.caller_message()
 
     async def test_single_transform(self):
         adapter = FakeAdapter(behaviour='transform', transform_to='<redacted>')
@@ -398,3 +438,59 @@ async def test_context_carries_principal_and_stage(stage):
     await engine.evaluate('text', Principal(agent_id='agent-7'), stage)
 
     assert captured == {'stage': stage, 'agent': 'agent-7'}
+
+
+class TestPreview:
+    """Preview must go through the same decision path as enforcement."""
+
+    async def test_reports_misconfiguration_instead_of_hiding_it(self):
+        """The case that locks a namespace out, caught before saving."""
+        engine = build(policy(spec()))  # no adapters registered
+
+        decision = await engine.preview(
+            'anything', Principal(), BEFORE, policy(spec(name='not_installed'))
+        )
+
+        assert decision.action is PolicyAction.BLOCK
+        assert 'not_installed' in '; '.join(decision.block_reasons())
+
+    async def test_block_overrides_another_adapters_transform(self):
+        """A PII-only preview would show a redaction that never happens."""
+        engine = build(
+            policy(),
+            FakeAdapter(name='redactor', behaviour='transform', transform_to='<x>'),
+            FakeAdapter(name='blocker', behaviour='block'),
+        )
+
+        decision = await engine.preview(
+            'secret',
+            Principal(),
+            BEFORE,
+            policy(spec(name='redactor'), spec(name='blocker')),
+        )
+
+        assert decision.action is PolicyAction.BLOCK
+        assert decision.transformed_content is None
+
+    async def test_monitor_mode_shows_the_verdict_without_applying_it(self):
+        engine = build(policy(), FakeAdapter(behaviour='block'))
+
+        decision = await engine.preview(
+            'bad',
+            Principal(),
+            BEFORE,
+            policy(spec(), mode=EnforcementMode.MONITOR),
+        )
+
+        assert decision.action is PolicyAction.ALLOW
+        assert decision.observed_action is PolicyAction.BLOCK
+        assert decision.enforced is False
+
+    async def test_is_not_audited(self):
+        """A hypothetical must not enter the compliance record."""
+        audit = RecordingAudit()
+        engine = build(policy(spec()), FakeAdapter(behaviour='block'), audit=audit)
+
+        await engine.preview('bad', Principal(), BEFORE, policy(spec()))
+
+        assert audit.records == []

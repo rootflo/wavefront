@@ -90,6 +90,16 @@ class GuardrailsEngine:
     def registered(self) -> Tuple[str, ...]:
         return tuple(sorted(self._adapters))
 
+    def get_adapter(self, name: str) -> Optional[BaseAdapter]:
+        """The registered adapter by name, or ``None``.
+
+        Exposed for callers that need a provider's own capabilities - listing
+        the entity types Presidio can detect, say - rather than an evaluation.
+        Without it those callers reach into the private registry and break
+        whenever it changes.
+        """
+        return self._adapters.get(name)
+
     async def aclose(self) -> None:
         """Release every adapter's resources."""
         for adapter in self._adapters.values():
@@ -108,6 +118,40 @@ class GuardrailsEngine:
         """
         policy = await self._resolve(principal)
         return bool(policy.adapters_for(stage))
+
+    async def preview(
+        self,
+        content: Any,
+        principal: Principal,
+        stage: WorkflowStage,
+        policy: ResolvedPolicy,
+    ) -> PolicyDecision:
+        """Run an explicit ``policy`` against ``content`` without resolving it.
+
+        Lets an operator test a policy they have not saved yet, through the
+        same adapters, composition and mode handling that enforcement uses. A
+        preview built on a parallel code path would verify the preview rather
+        than the policy: it could not show one adapter's BLOCK overriding
+        another's TRANSFORM, nor a monitor-mode verdict that applies nothing,
+        nor an adapter named but not registered — which fails closed and is
+        exactly the mistake worth catching before saving rather than after.
+
+        Deliberately not audited. A preview is a hypothetical, and recording it
+        would put events into the compliance trail that never happened to real
+        traffic.
+        """
+        specs = policy.adapters_for(stage)
+        context = EvaluationContext(
+            workflow_stage=stage,
+            principal=principal,
+            run_id=get_run_id(),
+            policy_version=policy.version,
+        )
+        if not specs:
+            return PolicyDecision(policy_version=policy.version)
+
+        results = await self._run_adapters(content, context, specs)
+        return await self._decide(content, results, policy, context, specs)
 
     async def evaluate(
         self,
@@ -128,12 +172,79 @@ class GuardrailsEngine:
         )
 
         if not specs:
+            # The most common "why isn't it working?" case, so say which of the
+            # two reasons applies rather than staying silent.
+            reason = (
+                'policy disabled'
+                if not policy.is_enabled
+                else f'no adapters configured for {stage.value}'
+            )
+            logger.debug(
+                f'Guardrail {stage.value} skipped ({reason}) '
+                f'[ns={principal.namespace or "-"} agent={principal.agent_id or "-"}]'
+            )
             return PolicyDecision(policy_version=policy.version)
 
         results = await self._run_adapters(content, context, specs)
         decision = await self._decide(content, results, policy, context, specs)
+        self._log_decision(decision, context, specs)
         await self._audit(decision, context)
         return decision
+
+    def _log_decision(
+        self,
+        decision: PolicyDecision,
+        context: EvaluationContext,
+        specs: Sequence[AdapterSpec],
+    ) -> None:
+        """Emit one line per evaluation so enforcement is verifiable from logs.
+
+        Findings are summarised as codes, entity types and counts. The
+        evaluated content and the matched values never appear: a guardrail that
+        logs the PII it just found has only moved the leak somewhere else.
+
+        A clean result is DEBUG because it happens on every call. Anything the
+        policy reacted to is INFO, because it is rare and is the record of the
+        control having done something.
+        """
+        stage = context.workflow_stage.value
+        where = (
+            f'ns={context.namespace or "-"} agent={context.agent_id or "-"} '
+            f'run={context.run_id or "-"}'
+        )
+
+        if decision.observed_action is PolicyAction.ALLOW and not any(
+            r.is_error for r in decision.results
+        ):
+            logger.debug(
+                f'Guardrail {stage} clean '
+                f'[{where} adapters={", ".join(s.name for s in specs)}]'
+            )
+            return
+
+        details = []
+        for result in decision.results:
+            if result.action is PolicyAction.ALLOW and not result.is_error:
+                continue
+            bits = [f'{result.adapter}={result.action.value}']
+            if result.finding_code:
+                bits.append(result.finding_code)
+            counts = result.provider_metadata.get('entity_counts')
+            if counts:
+                bits.append(str(counts))
+            if result.severity is not None:
+                bits.append(f'severity={result.severity:.2f}')
+            if result.is_error:
+                bits.append(f'error={result.failure_class.value}')
+                if result.message:
+                    bits.append(f'({result.message})')
+            details.append(' '.join(bits))
+
+        logger.info(
+            f'Guardrail {stage} -> {decision.observed_action.value} '
+            f'({"ENFORCED" if decision.enforced else "MONITOR"}) '
+            f'[{where}] {"; ".join(details)}'
+        )
 
     # -- policy ----------------------------------------------------------
 
@@ -270,13 +381,8 @@ class GuardrailsEngine:
             action = observed
         else:
             # Monitor mode records the verdict and lets the payload through.
+            # _log_decision reports it, tagged MONITOR.
             action = PolicyAction.ALLOW
-            if observed is not PolicyAction.ALLOW:
-                logger.info(
-                    f'Guardrail (monitor) would have {observed.value} at '
-                    f'{context.workflow_stage.value} for agent '
-                    f'{context.agent_id or "-"}'
-                )
 
         return PolicyDecision(
             action=action,

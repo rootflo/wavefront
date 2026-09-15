@@ -25,6 +25,10 @@ const getApiServicesKey = (appId: string) => ['api-services', appId];
 const getAuthenticatorsKey = (appId: string) => ['authenticators', appId];
 const getAuthenticatorKey = (appId: string, authId: string) => ['authenticator', appId, authId];
 const getLLMConfigsKey = (appId: string) => ['llm-configs', appId];
+const getGuardrailPoliciesKey = (appId: string) => ['guardrail-policies', appId];
+const getGuardrailPolicyKey = (appId: string, namespace: string) => ['guardrail-policy', appId, namespace];
+const getGuardrailAdaptersKey = (appId: string) => ['guardrail-adapters', appId];
+const getGuardrailPiiEntitiesKey = (appId: string) => ['guardrail-pii-entities', appId];
 const getLLMConfigKey = (appId: string, configId: string) => ['llm-config', appId, configId];
 const getModelsKey = (appId: string) => ['models', appId];
 const getModelKey = (appId: string, modelId: string) => ['model', appId, modelId];
@@ -102,6 +106,10 @@ export {
   getKnowledgeBaseInferencesKey,
   getKnowledgeBaseKey,
   getKnowledgeBasesKey,
+  getGuardrailAdaptersKey,
+  getGuardrailPiiEntitiesKey,
+  getGuardrailPoliciesKey,
+  getGuardrailPolicyKey,
   getLLMConfigKey,
   getLLMConfigsKey,
   getConfigurationKey,
