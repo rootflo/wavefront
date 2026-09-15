@@ -74,14 +74,25 @@ const BASE_URL_PLACEHOLDERS: Record<InferenceEngineType, string> = {
   groq: 'https://api.groq.com/openai/v1',
 };
 
-const createLLMInferenceSchema = z.object({
-  displayName: z.string().min(1, 'Display name is required'),
-  llmModel: z.string().min(1, 'LLM model name is required'),
-  type: z.enum(['openai', 'anthropic', 'gemini', 'azure_openai', 'ollama', 'vllm', 'groq']),
-  modelType: z.enum(['llm', 'embedding']),
-  apiKey: z.string().optional(),
-  baseUrl: z.string().optional(),
-});
+const createLLMInferenceSchema = z
+  .object({
+    displayName: z.string().min(1, 'Display name is required'),
+    llmModel: z.string().min(1, 'LLM model name is required'),
+    type: z.enum(['openai', 'anthropic', 'gemini', 'azure_openai', 'ollama', 'vllm', 'groq']),
+    modelType: z.enum(['llm', 'embedding']),
+    apiKey: z.string().optional(),
+    baseUrl: z.string().optional(),
+    apiVersion: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.type === 'azure_openai' && !data.apiVersion?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['apiVersion'],
+        message: 'API version is required for Azure OpenAI',
+      });
+    }
+  });
 
 type CreateLLMInferenceInput = z.infer<typeof createLLMInferenceSchema>;
 
@@ -114,6 +125,7 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
       modelType: 'llm',
       apiKey: '',
       baseUrl: getDefaultBaseUrl('openai'),
+      apiVersion: '',
     },
   });
 
@@ -143,6 +155,7 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
         modelType: 'llm',
         apiKey: '',
         baseUrl: getDefaultBaseUrl(defaultType),
+        apiVersion: '',
       });
       setType(defaultType);
       setParameters(initializeParameters(defaultType));
@@ -175,6 +188,11 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
     setCreating(true);
     try {
       const cleanedParams = cleanParameters(parameters);
+      if (data.type === 'azure_openai' && data.apiVersion) {
+        cleanedParams.api_version = data.apiVersion.trim();
+      }
+
+      const finalParams = Object.keys(cleanedParams).length > 0 ? cleanedParams : undefined;
 
       const response = await floConsoleService.llmInferenceService.createLLMConfig({
         display_name: data.displayName.trim(),
@@ -183,7 +201,7 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
         type: data.type,
         model_type: data.modelType,
         base_url: data.baseUrl?.trim() || undefined,
-        parameters: Object.keys(cleanedParams).length > 0 ? cleanedParams : undefined,
+        parameters: finalParams,
       });
 
       const responseData = response.data?.data;
@@ -196,7 +214,7 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
 
         onOpenChange(false);
 
-        navigate(`/apps/${appId}/model-repository/${responseData.id}`);
+        navigate(`/apps/${appId}/llm-repository/${responseData.id}`);
       } else {
         notifySuccess('Model added to repository successfully');
 
@@ -451,6 +469,25 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
                           ? 'Required base URL for your local inference server'
                           : 'Optional custom base URL for the API endpoint'}
                       </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+
+              {type === 'azure_openai' && (
+                <FormField
+                  control={form.control}
+                  name="apiVersion"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        API Version<span className="text-red-500">*</span>
+                      </FormLabel>
+                      <FormControl>
+                        <Input type="text" placeholder="2024-12-01-preview" {...field} />
+                      </FormControl>
+                      <FormDescription>Azure OpenAI API version (e.g. 2024-12-01-preview)</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}

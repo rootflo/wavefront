@@ -1,6 +1,6 @@
 from typing import Dict, Any, List, AsyncIterator, Optional
 from openai import AsyncOpenAI
-from .base_llm import BaseLLM, file_name_text_block
+from .base_llm import BaseLLM, file_name_text_block, split_client_kwargs
 from flo_ai.models.chat_message import DocumentMessageContent, ImageMessageContent
 from flo_ai.tool.base_tool import Tool
 from flo_ai.telemetry.instrumentation import (
@@ -23,21 +23,25 @@ class OpenAI(BaseLLM):
         custom_headers: Optional[Dict[str, str]] = None,
         **kwargs,
     ):
+        client_kwargs, request_kwargs = split_client_kwargs(
+            AsyncOpenAI, kwargs, reserved=('default_headers',)
+        )
+
         super().__init__(
             model=model,
             api_key=api_key,
             temperature=temperature,
-            **kwargs,
+            **request_kwargs,
         )
 
         self.client = AsyncOpenAI(
             api_key=self.api_key,
             base_url=base_url,
             default_headers=custom_headers,
-            **kwargs,
+            **client_kwargs,
         )
         self.model = model
-        self.kwargs = kwargs
+        self.kwargs = request_kwargs
 
     @trace_llm_call(provider='openai')
     async def generate(

@@ -5,7 +5,7 @@ import json
 import base64 as _base64
 
 from flo_ai.models.chat_message import DocumentMessageContent, ImageMessageContent
-from .base_llm import BaseLLM
+from .base_llm import BaseLLM, split_client_kwargs
 from flo_ai.tool.base_tool import Tool
 from flo_ai.telemetry.instrumentation import (
     trace_llm_call,
@@ -27,25 +27,22 @@ class Anthropic(BaseLLM):
         custom_headers: Optional[Dict[str, str]] = None,
         **kwargs,
     ):
+        client_kwargs, request_kwargs = split_client_kwargs(
+            AsyncAnthropic, kwargs, reserved=('default_headers',)
+        )
+
         super().__init__(
             model=model,
             api_key=api_key,
             temperature=temperature,
-            **kwargs,
+            **request_kwargs,
         )
-
-        # Filter out keys that are already passed explicitly to avoid duplicate keyword arguments
-        filtered_kwargs = {
-            k: v
-            for k, v in kwargs.items()
-            if k not in ('api_key', 'base_url', 'default_headers')
-        }
 
         self.client = AsyncAnthropic(
             api_key=self.api_key,
             base_url=base_url,
             default_headers=custom_headers,
-            **filtered_kwargs,
+            **client_kwargs,
         )
 
     @trace_llm_call(provider='anthropic')

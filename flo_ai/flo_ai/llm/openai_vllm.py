@@ -61,8 +61,8 @@ class OpenAIVLLM(OpenAI):
             'model': self.model,
             'messages': messages,
             'temperature': self.temperature,
-            **kwargs,
             **self.kwargs,
+            **kwargs,
         }
 
         # Make the API call
@@ -85,8 +85,8 @@ class OpenAIVLLM(OpenAI):
             'messages': messages,
             'temperature': self.temperature,
             'stream': True,
-            **kwargs,
             **self.kwargs,
+            **kwargs,
         }
 
         if functions:

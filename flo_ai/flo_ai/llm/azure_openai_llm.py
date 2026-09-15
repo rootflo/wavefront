@@ -2,7 +2,7 @@ from typing import Dict, Any, List, AsyncIterator, Optional
 
 from openai import AsyncAzureOpenAI
 
-from .base_llm import BaseLLM, file_name_text_block
+from .base_llm import BaseLLM, file_name_text_block, split_client_kwargs
 from flo_ai.models.chat_message import DocumentMessageContent, ImageMessageContent
 from flo_ai.tool.base_tool import Tool
 from flo_ai.telemetry.instrumentation import (
@@ -36,28 +36,33 @@ class AzureOpenAI(BaseLLM):
             api_version: Azure OpenAI API version
             temperature: Sampling temperature
             custom_headers: Optional additional headers to send with each request
-            **kwargs: Extra parameters forwarded to the SDK client / calls
+            **kwargs: Client options for the SDK client (timeout,
+                max_retries), and generation params for every request
 
         PDFs are sent to the underlying deployment as rasterized page images
         via the Chat Completions multimodal format. The deployment must be
         vision-capable (gpt-4o, gpt-4.1, gpt-5, etc.); text-only deployments
         will error on the first document call.
         """
+        client_kwargs, request_kwargs = split_client_kwargs(
+            AsyncAzureOpenAI, kwargs, reserved=('default_headers',)
+        )
+
         super().__init__(
             model=model,
             api_key=api_key,
             temperature=temperature,
-            **kwargs,
+            **request_kwargs,
         )
         self.client = AsyncAzureOpenAI(
             api_key=self.api_key,
             azure_endpoint=azure_endpoint,
             api_version=api_version,
             default_headers=custom_headers,
-            **kwargs,
+            **client_kwargs,
         )
         self.model = model
-        self.kwargs = kwargs
+        self.kwargs = request_kwargs
 
     @trace_llm_call(provider='azureopenai')
     async def generate(

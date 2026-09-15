@@ -27,6 +27,7 @@ const LLMConfigCard: React.FC<LLMConfigCardProps> = ({ config, onClick, onDelete
       label: 'ID',
       value: config.id,
       isMono: true,
+      isCopyable: true,
     },
     {
       label: 'Type',

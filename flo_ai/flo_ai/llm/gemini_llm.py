@@ -2,6 +2,7 @@ import base64
 import asyncio
 from typing import Dict, Any, List, Optional, AsyncIterator
 from .base_llm import BaseLLM
+from flo_ai.utils.logger import logger
 from flo_ai.models.chat_message import DocumentMessageContent, ImageMessageContent
 from google import genai
 from google.genai import types
@@ -44,6 +45,32 @@ class Gemini(BaseLLM):
         else:
             self.client = genai.Client()
 
+    # The config layer uses OpenAI's name for the token limit.
+    _CONFIG_ALIASES = {'max_tokens': 'max_output_tokens'}
+
+    def _generation_config_kwargs(self, call_kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        """Map generation params onto GenerateContentConfig's field names.
+
+        GenerateContentConfig rejects unknown fields, so an unmapped param
+        would fail the request rather than be ignored.
+
+        Args:
+            call_kwargs: Per-call params, which override the instance's
+
+        Returns:
+            Params accepted by types.GenerateContentConfig
+        """
+        config_kwargs: Dict[str, Any] = {}
+        for key, value in {**self.kwargs, **call_kwargs}.items():
+            field = self._CONFIG_ALIASES.get(key, key)
+            if field in types.GenerateContentConfig.model_fields:
+                config_kwargs[field] = value
+            else:
+                logger.warning(
+                    f'Ignoring generation param not supported by Gemini: {key}'
+                )
+        return config_kwargs
+
     @trace_llm_call(provider='gemini')
     async def generate(
         self,
@@ -68,9 +95,13 @@ class Gemini(BaseLLM):
         try:
             # Prepare generation config
             # Merge instance kwargs with method kwargs
-            config_kwargs = {**self.kwargs, **kwargs}
+            config_kwargs = self._generation_config_kwargs(kwargs)
+            # temperature is a config field like any other, so a per-call one
+            # lands in config_kwargs; passing it alongside the keyword below
+            # is a duplicate-argument TypeError.
+            temperature = config_kwargs.pop('temperature', self.temperature)
             generation_config = types.GenerateContentConfig(
-                temperature=self.temperature,
+                temperature=temperature,
                 system_instruction=system_prompt,
                 **config_kwargs,
             )
@@ -170,9 +201,10 @@ class Gemini(BaseLLM):
 
         # Prepare generation config
         # Merge instance kwargs with method kwargs
-        config_kwargs = {**self.kwargs, **kwargs}
+        config_kwargs = self._generation_config_kwargs(kwargs)
+        temperature = config_kwargs.pop('temperature', self.temperature)
         generation_config = types.GenerateContentConfig(
-            temperature=self.temperature,
+            temperature=temperature,
             system_instruction=system_prompt,
             **config_kwargs,
         )

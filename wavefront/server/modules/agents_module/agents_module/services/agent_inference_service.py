@@ -1,3 +1,4 @@
+import os
 import time
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -8,7 +9,7 @@ from db_repo_module.models.llm_inference_config import LlmInferenceConfig
 from db_repo_module.models.message_processors import MessageProcessors
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from flo_ai import AgentBuilder, Agent, BaseMessage
-from flo_ai.llm import OpenAI, Anthropic, Gemini, OllamaLLM, OpenAIVLLM
+from flo_ai.llm import OpenAI, Anthropic, Gemini, OllamaLLM, OpenAIVLLM, AzureOpenAI
 from flo_ai.tool.base_tool import Tool
 from flo_cloud.cloud_storage import CloudStorageManager
 from common_module.log.logger import logger
@@ -24,6 +25,9 @@ import yaml
 
 class AgentInferenceService:
     """Service for handling agent inference operations"""
+
+    # Passed explicitly below; a config carrying one would be a duplicate kwarg.
+    RESERVED_PARAMETERS = frozenset({'model', 'api_key', 'base_url', 'azure_endpoint'})
 
     def __init__(
         self,
@@ -220,20 +224,48 @@ class AgentInferenceService:
         Returns:
             LLM instance
         """
+        # Declared names (temperature, api_version) bind to the constructor
+        # arguments; the rest ride through as **kwargs into the request body.
+        # Nulls are dropped so the provider's own defaults still apply.
+        llm_kwargs: Dict[str, Any] = {
+            key: value
+            for key, value in (config.parameters or {}).items()
+            if value is not None and key not in self.RESERVED_PARAMETERS
+        }
+
         if config.type == 'openai':
-            return OpenAI(model=config.llm_model, api_key=config.api_key)
+            return OpenAI(model=config.llm_model, api_key=config.api_key, **llm_kwargs)
         elif config.type == 'azure_openai':
-            return OpenAI(
-                model=config.llm_model, api_key=config.api_key, base_url=config.base_url
+            # The client will not build without one, so fall back to the env
+            api_version = llm_kwargs.get('api_version') or os.getenv(
+                'AZURE_OPENAI_API_VERSION'
+            )
+            if api_version:
+                llm_kwargs['api_version'] = api_version
+
+            return AzureOpenAI(
+                model=config.llm_model,
+                api_key=config.api_key,
+                azure_endpoint=config.base_url,
+                **llm_kwargs,
             )
         elif config.type == 'anthropic':
-            return Anthropic(model=config.llm_model, api_key=config.api_key)
+            return Anthropic(
+                model=config.llm_model, api_key=config.api_key, **llm_kwargs
+            )
         elif config.type == 'gemini':
-            return Gemini(model=config.llm_model, api_key=config.api_key)
+            return Gemini(model=config.llm_model, api_key=config.api_key, **llm_kwargs)
         elif config.type == 'ollama':
-            return OllamaLLM(model=config.llm_model, base_url=config.base_url)
+            return OllamaLLM(
+                model=config.llm_model, base_url=config.base_url, **llm_kwargs
+            )
         elif config.type == 'vllm':
-            return OpenAIVLLM(model=config.llm_model, base_url=config.base_url)
+            return OpenAIVLLM(
+                model=config.llm_model,
+                api_key=config.api_key,
+                base_url=config.base_url,
+                **llm_kwargs,
+            )
         else:
             raise ValueError(f'Unsupported LLM type: {config.type}')
 

@@ -74,7 +74,6 @@ class RootFloLLM(BaseLLM):
         self._issuer = issuer
         self._audience = audience
         self._access_token = access_token
-        self._temperature = temperature
         self._kwargs = kwargs
 
         # Lazy initialization state
@@ -95,6 +94,22 @@ class RootFloLLM(BaseLLM):
             temperature=temperature,
             **kwargs,
         )
+
+    @property
+    def temperature(self) -> float:
+        """Sampling temperature used for generation."""
+        return self._temperature
+
+    @temperature.setter
+    def temperature(self, temperature: float) -> None:
+        """Set the sampling temperature.
+
+        The wrapper is built lazily, so a value set before then is picked up by
+        _ensure_initialized(); an existing one is updated to match.
+        """
+        self._temperature = temperature
+        if getattr(self, '_llm', None) is not None:
+            self._llm.temperature = temperature
 
     async def _fetch_llm_config_async(
         self,
@@ -224,7 +239,7 @@ class RootFloLLM(BaseLLM):
                     model=llm_model,
                     base_url=full_url,
                     api_key=api_token or 'no_token',
-                    temperature=self._temperature,
+                    temperature=self.temperature,
                     custom_headers=custom_headers,
                     **self._kwargs,
                 )
@@ -233,7 +248,7 @@ class RootFloLLM(BaseLLM):
                     model=llm_model,
                     base_url=full_url,
                     api_key=api_token or 'no_token',
-                    temperature=self._temperature,
+                    temperature=self.temperature,
                     custom_headers=custom_headers,
                     **self._kwargs,
                 )
@@ -242,7 +257,7 @@ class RootFloLLM(BaseLLM):
                 self._llm = Gemini(
                     model=llm_model,
                     api_key=api_token or 'no_token',
-                    temperature=self._temperature,
+                    temperature=self.temperature,
                     base_url=full_url,
                     custom_headers=custom_headers,
                     **self._kwargs,
@@ -253,7 +268,7 @@ class RootFloLLM(BaseLLM):
                     model=llm_model,
                     base_url=full_url,
                     api_key=api_token or 'no_token',
-                    temperature=self._temperature,
+                    temperature=self.temperature,
                     custom_headers=custom_headers,
                     **self._kwargs,
                 )

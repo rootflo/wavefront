@@ -21,6 +21,7 @@ class AgentBuilder:
         self._name = 'AI Assistant'
         self._system_prompt: str | AssistantMessage = 'You are a helpful AI assistant.'
         self._llm: Optional[BaseLLM] = None
+        self._temperature: Optional[float] = None
         self._tools: List[Tool] = []
         self._max_retries = 3
         self._reasoning_pattern = ReasoningPattern.DIRECT
@@ -51,6 +52,17 @@ class AgentBuilder:
             llm: An instance of a BaseLLM implementation
         """
         self._llm = llm
+        return self
+
+    def with_temperature(self, temperature: float) -> 'AgentBuilder':
+        """Set the sampling temperature, applied to the LLM in build()
+
+        Deferred so it survives a later with_llm() replacing the instance.
+
+        Args:
+            temperature: Sampling temperature
+        """
+        self._temperature = temperature
         return self
 
     def with_tools(
@@ -173,6 +185,11 @@ class AgentBuilder:
         if not self._llm:
             raise ValueError('LLM must be configured before building the agent')
 
+        # Applied here so the value reaches whichever LLM the agent ends up
+        # with, whatever order the builder was configured in.
+        if self._temperature is not None:
+            self._llm.temperature = self._temperature
+
         return Agent(
             name=self._name,
             system_prompt=self._system_prompt,
@@ -284,6 +301,11 @@ class AgentBuilder:
                 )
             builder.with_llm(base_llm)
 
+        # Applied here because several factories build their client without
+        # it; an explicit settings.temperature below still wins.
+        if agent.model is not None and agent.model.temperature is not None:
+            builder.with_temperature(agent.model.temperature)
+
         if agent.tools is not None:
             tools_list = []
             for tool in agent.tools:
@@ -307,7 +329,7 @@ class AgentBuilder:
         if agent.settings is not None:
             settings = agent.settings
             if settings.temperature is not None:
-                builder._llm.temperature = settings.temperature
+                builder.with_temperature(settings.temperature)
             if settings.max_retries is not None:
                 builder.with_retries(settings.max_retries)
             if settings.reasoning_pattern is not None:

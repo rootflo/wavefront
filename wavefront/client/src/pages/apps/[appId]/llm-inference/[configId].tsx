@@ -21,6 +21,7 @@ import {
   mergeParameters,
   ParameterConfig,
 } from '@app/config/llm-providers';
+import { Spinner } from '@app/components/ui/spinner';
 import { useGetLLMConfig } from '@app/hooks';
 import { getLLMConfigKey, getLLMConfigsKey } from '@app/hooks/data/query-keys';
 import { extractErrorMessage } from '@app/lib/utils';
@@ -31,7 +32,7 @@ import {
   getNumberParameterWithDefault,
   getStringParameter,
 } from '@app/utils/parameter-helpers';
-import { InferenceEngineType, UpdateLLMConfigRequest } from '@app/types/llm-inference-config';
+import { InferenceEngineType, LLMInferenceConfig, UpdateLLMConfigRequest } from '@app/types/llm-inference-config';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
@@ -50,17 +51,45 @@ const INFERENCE_ENGINE_TYPES = [
   { value: 'groq' as InferenceEngineType, label: 'Groq' },
 ];
 
-const llmConfigFormSchema = z.object({
-  display_name: z.string().min(1, 'Display name is required'),
-  llm_model: z.string().min(1, 'LLM model is required'),
-  type: z.enum(['openai', 'anthropic', 'gemini', 'azure_openai', 'ollama', 'vllm', 'groq']),
-  api_key: z.string().optional(),
-  model_type: z.enum(['llm', 'embedding']),
-  base_url: z.string().optional(),
-  parameters: z.record(z.any()).optional(),
-});
+const llmConfigFormSchema = z
+  .object({
+    display_name: z.string().min(1, 'Display name is required'),
+    llm_model: z.string().min(1, 'LLM model is required'),
+    type: z.enum(['openai', 'anthropic', 'gemini', 'azure_openai', 'ollama', 'vllm', 'groq']),
+    api_key: z.string().optional(),
+    model_type: z.enum(['llm', 'embedding']),
+    base_url: z.string().optional(),
+    api_version: z.string().optional(),
+    parameters: z.record(z.any()).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.type === 'azure_openai' && !data.api_version?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['api_version'],
+        message: 'API version is required for Azure OpenAI',
+      });
+    }
+  });
 
 type LLMConfigForm = z.infer<typeof llmConfigFormSchema>;
+
+/**
+ * Build the complete set of form values from a saved config.
+ * Shared by the initial load and the edit-cancel revert so neither can omit a
+ * field: `form.reset` replaces every value, so a partial payload would silently
+ * blank out whatever it left out (e.g. the Azure-only `api_version`).
+ */
+const buildFormValues = (config: LLMInferenceConfig, mergedParams: Record<string, unknown>): LLMConfigForm => ({
+  display_name: config.display_name,
+  llm_model: config.llm_model,
+  type: config.type,
+  model_type: (config.model_type as 'llm' | 'embedding') || 'llm',
+  api_key: '', // API key is never returned for security
+  base_url: config.base_url || '',
+  api_version: (config.parameters?.api_version as string) || '',
+  parameters: mergedParams,
+});
 
 const LLMInferenceConfigDetail: React.FC = () => {
   const { app: appId, llmId } = useParams<{ app: string; llmId: string }>();
@@ -69,7 +98,7 @@ const LLMInferenceConfigDetail: React.FC = () => {
   const { notifySuccess, notifyError } = useNotifyStore();
 
   // Fetch LLM config
-  const { data: config } = useGetLLMConfig(appId, llmId);
+  const { data: config, isLoading } = useGetLLMConfig(appId, llmId);
 
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -85,6 +114,7 @@ const LLMInferenceConfigDetail: React.FC = () => {
       model_type: 'llm',
       api_key: '',
       base_url: '',
+      api_version: '',
       parameters: {},
     },
     mode: 'onChange',
@@ -96,15 +126,7 @@ const LLMInferenceConfigDetail: React.FC = () => {
       // Merge saved parameters with defaults
       const mergedParams = mergeParameters(config.type, config.parameters);
       setParameters(mergedParams);
-      form.reset({
-        display_name: config.display_name,
-        llm_model: config.llm_model,
-        type: config.type,
-        model_type: (config.model_type as 'llm' | 'embedding') || 'llm',
-        api_key: '', // API key is never returned for security
-        base_url: config.base_url || '',
-        parameters: mergedParams,
-      });
+      form.reset(buildFormValues(config, mergedParams));
     }
   }, [config, form]);
 
@@ -138,6 +160,11 @@ const LLMInferenceConfigDetail: React.FC = () => {
     try {
       // Clean parameters before sending (remove undefined/null/empty values)
       const cleanedParams = cleanParameters(parameters);
+      if (data.type === 'azure_openai' && data.api_version) {
+        cleanedParams.api_version = data.api_version.trim();
+      } else {
+        delete cleanedParams.api_version;
+      }
 
       // Only include fields that have changed or are explicitly set
       const updateData: UpdateLLMConfigRequest = {
@@ -181,7 +208,7 @@ const LLMInferenceConfigDetail: React.FC = () => {
       await floConsoleService.llmInferenceService.deleteLLMConfig(llmId);
       queryClient.invalidateQueries({ queryKey: getLLMConfigKey(appId, llmId) });
       notifySuccess('Model deleted successfully');
-      navigate(`/apps/${appId}/llm-inference`);
+      navigate(`/apps/${appId}/llm-repository`);
     } catch (error) {
       console.error('Error deleting LLM inference config:', error);
     }
@@ -225,322 +252,355 @@ const LLMInferenceConfigDetail: React.FC = () => {
         </BreadcrumbList>
       </Breadcrumb>
 
-      <div className="flex w-full flex-col gap-10 pb-5">
-        <div className="flex items-center justify-between">
-          <p className="text-2xl leading-normal font-semibold text-black">{config?.display_name}</p>
-          <div className="flex gap-4">
-            {editing ? (
-              <>
-                <Button onClick={form.handleSubmit(handleSave)} loading={saving}>
-                  Save
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setEditing(false);
-                    // Revert changes by resetting form to config data
-                    if (config) {
-                      const mergedParams = mergeParameters(config.type, config.parameters);
-                      form.reset({
-                        display_name: config.display_name,
-                        llm_model: config.llm_model,
-                        type: config.type,
-                        model_type: (config.model_type as 'llm' | 'embedding') || 'llm',
-                        api_key: '',
-                        base_url: config.base_url || '',
-                        parameters: mergedParams,
-                      });
-                      setParameters(mergedParams);
-                    }
-                  }}
-                >
-                  Cancel
-                </Button>
-              </>
-            ) : (
-              <Button variant="outline" onClick={() => setEditing(true)}>
-                Edit
-              </Button>
-            )}
-            <Button variant="destructive" onClick={() => setShowDeleteConfirm(true)}>
-              Delete
-            </Button>
-          </div>
+      {isLoading ? (
+        <div className="flex h-64 items-center justify-center">
+          <Spinner className="h-8 w-8 text-gray-500" />
         </div>
-
-        <div className="flex w-full flex-col gap-6">
-          <div className="flex w-full flex-col gap-6 rounded-lg border border-gray-200 bg-white p-6">
-            <h3 className="text-lg font-semibold text-gray-900">Model Details</h3>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(handleSave)} className="flex w-full flex-col gap-6">
-                <div className={clsx('grid w-full gap-6 lg:grid-cols-2', !editing && 'pointer-events-none opacity-80')}>
-                  <FormField
-                    control={form.control}
-                    name="display_name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Display Name</FormLabel>
-                        <FormControl>
-                          <Input disabled={!editing} placeholder="Display name" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="llm_model"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>LLM Model</FormLabel>
-                        <FormControl>
-                          <Input disabled={!editing} placeholder="Model name" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="type"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Inference Engine Type</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value} disabled={!editing}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select engine type" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {INFERENCE_ENGINE_TYPES.map((engineType) => (
-                              <SelectItem key={engineType.value} value={engineType.value}>
-                                {engineType.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  {requiresApiKey(form.watch('type')) && (
-                    <FormField
-                      control={form.control}
-                      name="api_key"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>API Key</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="password"
-                              disabled={!editing}
-                              placeholder="Enter new API key (leave blank to keep current)"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                          <p className="text-xs text-gray-500">
-                            Leave blank to keep the current API key. Enter a new key to update it.
-                          </p>
-                        </FormItem>
-                      )}
-                    />
-                  )}
-
-                  {supportsBaseUrl(form.watch('type')) && (
-                    <FormField
-                      control={form.control}
-                      name="base_url"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Base URL</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="url"
-                              disabled={!editing}
-                              placeholder="Base URL for the API endpoint"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  )}
-
-                  <FormField
-                    control={form.control}
-                    name="model_type"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Model Type</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value} disabled={!editing}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select model type" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="llm">LLM</SelectItem>
-                            <SelectItem value="embedding">Embedding</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </form>
-            </Form>
+      ) : !config ? (
+        <div className="flex h-64 items-center justify-center text-gray-500">Model configuration not found</div>
+      ) : (
+        <div className="flex w-full flex-col gap-10 pb-5">
+          <div className="flex items-center justify-between">
+            <p className="text-2xl leading-normal font-semibold text-black">{config?.display_name}</p>
+            <div className="flex gap-4">
+              {editing ? (
+                <>
+                  <Button onClick={form.handleSubmit(handleSave)} loading={saving}>
+                    Save
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setEditing(false);
+                      // Revert changes by resetting form to config data
+                      if (config) {
+                        const mergedParams = mergeParameters(config.type, config.parameters);
+                        form.reset(buildFormValues(config, mergedParams));
+                        setParameters(mergedParams);
+                      }
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </>
+              ) : (
+                <Button variant="outline" onClick={() => setEditing(true)}>
+                  Edit
+                </Button>
+              )}
+              <Button variant="destructive" onClick={() => setShowDeleteConfirm(true)}>
+                Delete
+              </Button>
+            </div>
           </div>
 
-          {/* Model Parameters Section */}
-          {(() => {
-            const currentType = form.watch('type') || config?.type;
-            const providerConfig = currentType ? getProviderConfig(currentType) : null;
-            if (!providerConfig || !config || Object.keys(providerConfig.parameters).length === 0) {
-              return null;
-            }
+          <div className="flex w-full flex-col gap-6">
+            <div className="flex w-full flex-col gap-6 rounded-lg border border-gray-200 bg-white p-6">
+              <h3 className="text-lg font-semibold text-gray-900">Model Details</h3>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(handleSave)} className="flex w-full flex-col gap-6">
+                  <div
+                    className={clsx('grid w-full gap-6 lg:grid-cols-2', !editing && 'pointer-events-none opacity-80')}
+                  >
+                    <FormField
+                      control={form.control}
+                      name="display_name"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Display Name</FormLabel>
+                          <FormControl>
+                            <Input disabled={!editing} placeholder="Display name" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
-            return (
-              <div className="flex w-full flex-col gap-6 rounded-lg border border-gray-200 bg-white p-6">
-                <h3 className="text-lg font-semibold text-gray-900">Model Parameters</h3>
-                <Form {...form}>
-                  <div className={clsx('grid w-full grid-cols-4 gap-6', !editing && 'pointer-events-none opacity-80')}>
-                    {Object.entries(providerConfig.parameters).map(
-                      ([paramKey, paramConfig]: [string, ParameterConfig]) => (
-                        <FormField
-                          key={paramKey}
-                          control={form.control}
-                          name={`parameters.${paramKey}`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>
-                                {paramKey.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
-                              </FormLabel>
-                              <FormControl>
-                                {paramConfig.type === 'number' ? (
-                                  <div className="space-y-2">
-                                    <Input
-                                      type="number"
-                                      value={getNumberOrStringParameter(parameters, paramKey)}
-                                      onChange={(e) => {
-                                        const value = e.target.value === '' ? undefined : parseFloat(e.target.value);
-                                        setParameters((prev) => ({ ...prev, [paramKey]: value }));
-                                        field.onChange(value);
-                                      }}
-                                      min={paramConfig.min}
-                                      max={paramConfig.max}
-                                      step={paramConfig.step}
-                                      placeholder={paramConfig.placeholder}
-                                      disabled={!editing}
-                                    />
-                                    {paramConfig.min !== undefined && paramConfig.max !== undefined && (
-                                      <Slider
-                                        value={[
-                                          getNumberParameterWithDefault(
-                                            parameters,
-                                            paramKey,
-                                            paramConfig.default,
-                                            paramConfig.min
-                                          ),
-                                        ]}
-                                        onValueChange={(values) => {
-                                          const value = values[0];
+                    <FormField
+                      control={form.control}
+                      name="llm_model"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>LLM Model</FormLabel>
+                          <FormControl>
+                            <Input disabled={!editing} placeholder="Model name" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="type"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Inference Engine Type</FormLabel>
+                          <Select
+                            onValueChange={(val) => {
+                              if (val) field.onChange(val);
+                            }}
+                            value={field.value}
+                            disabled={!editing}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select engine type" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {INFERENCE_ENGINE_TYPES.map((engineType) => (
+                                <SelectItem key={engineType.value} value={engineType.value}>
+                                  {engineType.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    {requiresApiKey(form.watch('type')) && (
+                      <FormField
+                        control={form.control}
+                        name="api_key"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>API Key</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="password"
+                                disabled={!editing}
+                                placeholder="Enter new API key (leave blank to keep current)"
+                                {...field}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                            <p className="text-xs text-gray-500">
+                              Leave blank to keep the current API key. Enter a new key to update it.
+                            </p>
+                          </FormItem>
+                        )}
+                      />
+                    )}
+
+                    {supportsBaseUrl(form.watch('type')) && (
+                      <FormField
+                        control={form.control}
+                        name="base_url"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Base URL</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="url"
+                                disabled={!editing}
+                                placeholder="Base URL for the API endpoint"
+                                {...field}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
+
+                    {watchedType === 'azure_openai' && (
+                      <FormField
+                        control={form.control}
+                        name="api_version"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>API Version</FormLabel>
+                            <FormControl>
+                              <Input type="text" disabled={!editing} placeholder="2024-12-01-preview" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
+
+                    <FormField
+                      control={form.control}
+                      name="model_type"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Model Type</FormLabel>
+                          <Select
+                            onValueChange={(val) => {
+                              if (val) field.onChange(val);
+                            }}
+                            value={field.value}
+                            disabled={!editing}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select model type" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="llm">LLM</SelectItem>
+                              <SelectItem value="embedding">Embedding</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </form>
+              </Form>
+            </div>
+
+            {/* Model Parameters Section */}
+            {(() => {
+              const currentType = form.watch('type') || config?.type;
+              const providerConfig = currentType ? getProviderConfig(currentType) : null;
+              if (!providerConfig || !config || Object.keys(providerConfig.parameters).length === 0) {
+                return null;
+              }
+
+              return (
+                <div className="flex w-full flex-col gap-6 rounded-lg border border-gray-200 bg-white p-6">
+                  <h3 className="text-lg font-semibold text-gray-900">Model Parameters</h3>
+                  <Form {...form}>
+                    <div
+                      className={clsx('grid w-full grid-cols-4 gap-6', !editing && 'pointer-events-none opacity-80')}
+                    >
+                      {Object.entries(providerConfig.parameters).map(
+                        ([paramKey, paramConfig]: [string, ParameterConfig]) => (
+                          <FormField
+                            key={paramKey}
+                            control={form.control}
+                            name={`parameters.${paramKey}`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>
+                                  {paramKey.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
+                                </FormLabel>
+                                <FormControl>
+                                  {paramConfig.type === 'number' ? (
+                                    <div className="space-y-2">
+                                      <Input
+                                        type="number"
+                                        value={getNumberOrStringParameter(parameters, paramKey)}
+                                        onChange={(e) => {
+                                          const value = e.target.value === '' ? undefined : parseFloat(e.target.value);
                                           setParameters((prev) => ({ ...prev, [paramKey]: value }));
                                           field.onChange(value);
                                         }}
                                         min={paramConfig.min}
                                         max={paramConfig.max}
                                         step={paramConfig.step}
+                                        placeholder={paramConfig.placeholder}
                                         disabled={!editing}
                                       />
-                                    )}
-                                  </div>
-                                ) : paramConfig.type === 'boolean' ? (
-                                  <div className="flex items-center space-x-2">
-                                    <Checkbox
-                                      checked={getBooleanParameterWithDefault(
-                                        parameters,
-                                        paramKey,
-                                        paramConfig.default
+                                      {paramConfig.min !== undefined && paramConfig.max !== undefined && (
+                                        <Slider
+                                          value={[
+                                            getNumberParameterWithDefault(
+                                              parameters,
+                                              paramKey,
+                                              paramConfig.default,
+                                              paramConfig.min
+                                            ),
+                                          ]}
+                                          onValueChange={(values) => {
+                                            const value = values[0];
+                                            setParameters((prev) => ({ ...prev, [paramKey]: value }));
+                                            field.onChange(value);
+                                          }}
+                                          min={paramConfig.min}
+                                          max={paramConfig.max}
+                                          step={paramConfig.step}
+                                          disabled={!editing}
+                                        />
                                       )}
-                                      onCheckedChange={(checked) => {
-                                        setParameters((prev) => ({ ...prev, [paramKey]: checked }));
-                                        field.onChange(checked);
+                                    </div>
+                                  ) : paramConfig.type === 'boolean' ? (
+                                    <div className="flex items-center space-x-2">
+                                      <Checkbox
+                                        checked={getBooleanParameterWithDefault(
+                                          parameters,
+                                          paramKey,
+                                          paramConfig.default
+                                        )}
+                                        onCheckedChange={(checked) => {
+                                          setParameters((prev) => ({ ...prev, [paramKey]: checked }));
+                                          field.onChange(checked);
+                                        }}
+                                        disabled={!editing}
+                                      />
+                                      <label className="text-sm leading-none font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                        Enable
+                                      </label>
+                                    </div>
+                                  ) : paramConfig.type === 'select' && paramConfig.options ? (
+                                    <Select
+                                      value={getStringParameter(parameters, paramKey) || ''}
+                                      onValueChange={(value) => {
+                                        if (!value) return;
+                                        const val = value || undefined;
+                                        setParameters((prev) => ({ ...prev, [paramKey]: val }));
+                                        field.onChange(val);
                                       }}
                                       disabled={!editing}
+                                    >
+                                      <FormControl>
+                                        <SelectTrigger>
+                                          <SelectValue placeholder="-- Select --" />
+                                        </SelectTrigger>
+                                      </FormControl>
+                                      <SelectContent>
+                                        {paramConfig.options.map((option) => (
+                                          <SelectItem key={String(option.value)} value={String(option.value)}>
+                                            {option.label}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  ) : (
+                                    <Input
+                                      type="text"
+                                      value={getStringParameter(parameters, paramKey)}
+                                      onChange={(e) => {
+                                        const value = e.target.value || undefined;
+                                        setParameters((prev) => ({ ...prev, [paramKey]: value }));
+                                        field.onChange(value);
+                                      }}
+                                      placeholder={paramConfig.placeholder}
+                                      disabled={!editing}
                                     />
-                                    <label className="text-sm leading-none font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                                      Enable
-                                    </label>
-                                  </div>
-                                ) : paramConfig.type === 'select' && paramConfig.options ? (
-                                  <Select
-                                    value={getStringParameter(parameters, paramKey) || ''}
-                                    onValueChange={(value) => {
-                                      const val = value || undefined;
-                                      setParameters((prev) => ({ ...prev, [paramKey]: val }));
-                                      field.onChange(val);
-                                    }}
-                                    disabled={!editing}
-                                  >
-                                    <FormControl>
-                                      <SelectTrigger>
-                                        <SelectValue placeholder="-- Select --" />
-                                      </SelectTrigger>
-                                    </FormControl>
-                                    <SelectContent>
-                                      {paramConfig.options.map((option) => (
-                                        <SelectItem key={String(option.value)} value={String(option.value)}>
-                                          {option.label}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                ) : (
-                                  <Input
-                                    type="text"
-                                    value={getStringParameter(parameters, paramKey)}
-                                    onChange={(e) => {
-                                      const value = e.target.value || undefined;
-                                      setParameters((prev) => ({ ...prev, [paramKey]: value }));
-                                      field.onChange(value);
-                                    }}
-                                    placeholder={paramConfig.placeholder}
-                                    disabled={!editing}
-                                  />
+                                  )}
+                                </FormControl>
+                                {paramConfig.description && (
+                                  <p className="text-xs text-gray-500">{paramConfig.description}</p>
                                 )}
-                              </FormControl>
-                              {paramConfig.description && (
-                                <p className="text-xs text-gray-500">{paramConfig.description}</p>
-                              )}
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      )
-                    )}
-                  </div>
-                </Form>
-              </div>
-            );
-          })()}
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        )
+                      )}
+                    </div>
+                  </Form>
+                </div>
+              );
+            })()}
+          </div>
         </div>
+      )}
 
-        {/* Delete Confirmation Dialog */}
-        <DeleteConfirmationDialog
-          isOpen={showDeleteConfirm}
-          title="Delete Model"
-          message={`Are you sure you want to delete "${config?.display_name}"? This action cannot be undone.`}
-          onConfirm={handleDelete}
-          onCancel={() => setShowDeleteConfirm(false)}
-        />
-      </div>
+      {/* Delete Confirmation Dialog */}
+      <DeleteConfirmationDialog
+        isOpen={showDeleteConfirm}
+        title="Delete Model"
+        message={`Are you sure you want to delete "${config?.display_name}"? This action cannot be undone.`}
+        onConfirm={handleDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </div>
   );
 };

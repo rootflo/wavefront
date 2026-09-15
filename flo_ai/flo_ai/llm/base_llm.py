@@ -1,7 +1,8 @@
 import asyncio
 import base64 as _base64
+import inspect
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional, AsyncIterator
+from typing import Dict, Any, Iterable, List, Optional, AsyncIterator, Tuple
 from flo_ai.tool.base_tool import Tool
 from flo_ai.utils.logger import logger
 from flo_ai.utils.profiler import aprofile, profile as _sync_profile
@@ -10,6 +11,41 @@ from flo_ai.models.chat_message import (
     ImageMessageContent,
     MediaMessageContent,
 )
+
+
+def split_client_kwargs(
+    client_cls: type, kwargs: Dict[str, Any], reserved: Iterable[str] = ()
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Split a wrapper's extra kwargs into SDK client options and request params.
+
+    Extra kwargs are how a caller sets generation params for every request
+    (top_p, seed, max_completion_tokens), which generate() and stream() spread
+    into the request body. A few are client options instead (timeout,
+    max_retries, http_client), and the SDK constructors declare no catch-all
+    **kwargs, so handing one a generation param raises TypeError. Matching the
+    client's own signature keeps that split from needing a maintained list.
+
+    Args:
+        client_cls: The SDK client class the wrapper instantiates
+        kwargs: The extra kwargs the wrapper was constructed with
+        reserved: Names the wrapper passes to the client itself, dropped
+            because passing them twice is a TypeError
+
+    Returns:
+        Tuple of (client options, request params)
+    """
+    client_params = inspect.signature(client_cls.__init__).parameters
+    reserved = set(reserved)
+
+    client_kwargs: Dict[str, Any] = {}
+    request_kwargs: Dict[str, Any] = {}
+    for key, value in kwargs.items():
+        if key in reserved:
+            continue
+        target = client_kwargs if key in client_params else request_kwargs
+        target[key] = value
+
+    return client_kwargs, request_kwargs
 
 
 def file_name_text_block(media: MediaMessageContent) -> Optional[Dict[str, Any]]:
