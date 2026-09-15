@@ -47,39 +47,39 @@ export interface DatasourceResourcesData {
     resources: string[];
   };
 }
-export interface YamlDataSource {
+export interface DynamicQueryDataSource {
   status: 'success' | 'error';
   data: {
     message: string;
   };
 }
 
-export interface Yaml {
+export interface DynamicQuery {
   version: string;
   file: string;
   full_path: string;
 }
-export interface AllYamlsData {
-  yamls: Yaml[];
+export interface AllDynamicQueriesData {
+  yamls: DynamicQuery[];
   has_more: boolean;
   page_number: number;
   page_size: number;
   total_count: number;
 }
-export interface YamlReadData {
+export interface DynamicQueryItem {
   id: string;
   query: string;
   parameters?: Array<{ name: string; type: string }>;
   description?: string;
 }
-export interface ReadYamlData {
+export interface ReadDynamicQueryData {
   yaml_name: string;
-  yaml_query: YamlReadData[];
+  yaml_query: DynamicQueryItem[];
 }
-export interface DeleteYamlData {
+export interface DeleteDynamicQueryData {
   message: string;
 }
-export interface ExecuteYamlData {
+export interface ExecuteDynamicQueryData {
   results: Record<string, unknown>[];
 }
 
@@ -87,8 +87,8 @@ export type TestDatasourceResponse = IApiResponse<TestDatasourceData>;
 export type DatasourceResponse = IApiResponse<DatasourceData>;
 export type DatasourceListResponse = IApiResponse<DatasourceListData>;
 export type DatasourceResourcesResponse = IApiResponse<DatasourceResourcesData>;
-export type YamlResponse = IApiResponse<YamlDataSource>;
-export type AllYamlsResponse = IApiResponse<AllYamlsData>;
-export type ReadYamlResponse = IApiResponse<ReadYamlData>;
-export type DeleteYamlResponse = IApiResponse<DeleteYamlData>;
-export type ExecuteYamlResponse = IApiResponse<ExecuteYamlData>;
+export type DynamicQueryResponse = IApiResponse<DynamicQueryDataSource>;
+export type AllDynamicQueriesResponse = IApiResponse<AllDynamicQueriesData>;
+export type ReadDynamicQueryResponse = IApiResponse<ReadDynamicQueryData>;
+export type DeleteDynamicQueryResponse = IApiResponse<DeleteDynamicQueryData>;
+export type ExecuteDynamicQueryResponse = IApiResponse<ExecuteDynamicQueryData>;

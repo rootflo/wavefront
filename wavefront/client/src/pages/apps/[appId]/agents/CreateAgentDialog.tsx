@@ -23,6 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { extractErrorMessage } from '@app/lib/utils';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
 import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeMirror from '@uiw/react-codemirror';
 import React, { useEffect } from 'react';
@@ -114,7 +115,7 @@ const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] w-full overflow-y-auto lg:max-w-4xl">
+      <DialogContent className="max-h-[90vh] w-full min-w-0 overflow-y-auto lg:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Create New Agent</DialogTitle>
           <DialogDescription>Create a new AI agent for {selectedApp?.app_name}</DialogDescription>
@@ -173,14 +174,16 @@ const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
                 <FormItem>
                   <FormLabel>Agent Configuration (YAML)</FormLabel>
                   <FormControl>
-                    <div className="w-full">
+                    <div className="w-full min-w-0">
                       <CodeMirror
                         value={field.value}
                         onChange={field.onChange}
                         theme="dark"
                         height="400px"
-                        className="w-full"
-                        extensions={[langs.yaml()]}
+                        width="100%"
+                        maxWidth="100%"
+                        className="w-full min-w-0"
+                        extensions={[langs.yaml(), ...popupCodeMirrorExtensions]}
                         placeholder="Enter your agent YAML configuration..."
                       />
                     </div>

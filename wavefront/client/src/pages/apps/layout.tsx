@@ -24,6 +24,7 @@ const navItems = [
     description: 'Manage and configure agents for this application',
   },
   {
+    id: 'authenticators',
     name: 'Authenticators',
     icon: PermissionIcon,
     link: `/apps/:appId/authenticators`,
@@ -121,7 +122,7 @@ const AppLayout: React.FC = () => {
   return (
     <div className="h-full bg-white">
       <div className="flex h-full min-h-0 w-full">
-        <div className="flex h-full w-[240px] flex-col gap-3 border-r border-gray-200 p-5">
+        <div className="flex h-full min-h-0 w-[240px] shrink-0 flex-col gap-3 overflow-y-auto border-r border-gray-200 p-5">
           {finalNavItems.map((item) => {
             const isActive = item.id === location.pathname.split('/')[3];
             return (
@@ -134,7 +135,7 @@ const AppLayout: React.FC = () => {
                 onClick={() => navigate(item.link.replace(':appId', app!))}
               >
                 <div className="flex items-center gap-2">
-                  <item.icon color={isActive ? '#000' : '#fff'} />
+                  <item.icon color={isActive ? '#101010' : '#585858'} />
                   <p
                     className={clsx(
                       isActive ? 'font-medium text-[#101010]' : 'font-normal text-[#585858]',

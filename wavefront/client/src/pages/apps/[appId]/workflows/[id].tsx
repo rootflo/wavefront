@@ -15,6 +15,7 @@ import { ChatMessage, ChatMessageContent } from '@app/types/chat-message';
 import { Workflow, WorkflowEvent } from '@app/types/workflow';
 import { scrollToBottom } from '@app/utils/scroll';
 import { useQueryClient } from '@tanstack/react-query';
+import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
 import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeMirror from '@uiw/react-codemirror';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -821,19 +822,21 @@ const WorkflowDetail: React.FC = () => {
       </div>
 
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto lg:max-w-4xl">
+        <DialogContent className="max-h-[90vh] min-w-0 overflow-y-auto lg:max-w-4xl">
           <DialogHeader>
             <DialogTitle>Edit Workflow Configuration</DialogTitle>
           </DialogHeader>
-          <div className="flex flex-col gap-3 overflow-auto py-4">
+          <div className="flex min-w-0 flex-col gap-3 overflow-y-auto py-4">
             <CodeMirror
               value={yamlContent}
               editable={true}
               onChange={(value: string) => setYamlContent(value)}
               theme="dark"
               height="500px"
-              className="w-full"
-              extensions={[langs.yaml()]}
+              width="100%"
+              maxWidth="100%"
+              className="w-full min-w-0"
+              extensions={[langs.yaml(), ...popupCodeMirrorExtensions]}
             />
             <p className="text-sm leading-normal font-normal text-[#878787]">
               Define your workflow configuration in YAML format.

@@ -68,6 +68,10 @@ export interface ScheduledJobEmailPayload {
   params?: Record<string, unknown>;
 }
 
+export type FormTab = 'schedule' | 'email';
+export type PayloadDateRange = NonNullable<ScheduledJobEmailPayload['date_range']>;
+export type DateRangeOption = PayloadDateRange | 'none';
+
 export interface CreateScheduledJobRequest {
   job_type: 'email_dynamic_query';
   cron_expr: string;

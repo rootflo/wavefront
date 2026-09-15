@@ -149,7 +149,7 @@ const ScheduledJobsPage: React.FC = () => {
   };
 
   return (
-    <div className="flex h-full w-full flex-col p-8">
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden p-8">
       <Breadcrumb className="mb-4">
         <BreadcrumbList>
           <BreadcrumbItem>
@@ -174,7 +174,7 @@ const ScheduledJobsPage: React.FC = () => {
         </BreadcrumbList>
       </Breadcrumb>
 
-      <div className="mb-8 flex w-full items-start justify-between">
+      <div className="mb-8 flex w-full shrink-0 items-start justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Scheduled Jobs</h1>
           <p className="mt-2 text-gray-600">Manage email report schedules for {selectedApp?.app_name}</p>
@@ -216,9 +216,9 @@ const ScheduledJobsPage: React.FC = () => {
           />
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-[#EFF0F1]">
+        <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-[#EFF0F1]">
           <Table>
-            <TableHeader>
+            <TableHeader className="sticky top-0 z-10 bg-white">
               <TableRow>
                 <TableHead>Status</TableHead>
                 <TableHead>Datasource</TableHead>

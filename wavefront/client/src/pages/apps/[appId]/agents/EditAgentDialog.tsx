@@ -29,6 +29,7 @@ import { cn } from '@app/lib/utils';
 import { ToolsDetailsData } from '@app/types/tool';
 import { useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
 import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeMirror from '@uiw/react-codemirror';
 import yaml from 'js-yaml';
@@ -156,7 +157,7 @@ const EditAgentDialog: React.FC<EditAgentDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] w-full overflow-y-auto lg:max-w-5xl">
+      <DialogContent className="max-h-[90vh] w-full min-w-0 overflow-y-auto lg:max-w-5xl">
         <DialogHeader>
           <DialogTitle>Edit Agent{editingVersion !== undefined ? ` (v${editingVersion})` : ''}</DialogTitle>
           <DialogDescription>
@@ -171,19 +172,21 @@ const EditAgentDialog: React.FC<EditAgentDialogProps> = ({
                 control={form.control}
                 name="yamlContent"
                 render={({ field }) => (
-                  <FormItem className="col-span-3">
+                  <FormItem className="col-span-3 min-w-0">
                     <FormLabel>Configuration</FormLabel>
                     <FormControl>
                       <CodeMirror
                         value={localYamlContent}
                         height="400px"
-                        extensions={[langs.yaml()]}
+                        width="100%"
+                        maxWidth="100%"
+                        extensions={[langs.yaml(), ...popupCodeMirrorExtensions]}
                         onChange={(value: string) => {
                           setLocalYamlContent(value);
                           field.onChange(value);
                         }}
                         theme="dark"
-                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 font-mono text-sm text-black outline-none"
+                        className="w-full min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2 font-mono text-sm text-black outline-none"
                         placeholder="Enter your agent YAML configuration..."
                       />
                     </FormControl>

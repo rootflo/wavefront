@@ -40,6 +40,7 @@ import {
   getStringParameter,
 } from '@app/utils/parameter-helpers';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
 import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeMirror from '@uiw/react-codemirror';
 import React, { useEffect, useState } from 'react';
@@ -519,7 +520,7 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto lg:max-w-5xl">
+      <DialogContent className="max-h-[90vh] min-w-0 overflow-y-auto lg:max-w-5xl">
         <DialogHeader>
           <DialogTitle>Create New Voice Agent</DialogTitle>
           <DialogDescription>Create a new voice agent for {selectedApp?.app_name}</DialogDescription>
@@ -965,14 +966,16 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                     <FormItem>
                       <FormLabel>Conversation Configuration</FormLabel>
                       <FormControl>
-                        <div className="w-full">
+                        <div className="w-full min-w-0">
                           <CodeMirror
                             value={field.value || '{}'}
                             onChange={field.onChange}
                             theme="dark"
                             height="200px"
-                            className="w-full"
-                            extensions={[langs.json()]}
+                            width="100%"
+                            maxWidth="100%"
+                            className="w-full min-w-0"
+                            extensions={[langs.json(), ...popupCodeMirrorExtensions]}
                             placeholder='{\n  "max_duration_seconds": 600,\n  "silence_timeout_seconds": 10,\n  "enable_interruptions": true\n}'
                           />
                         </div>

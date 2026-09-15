@@ -8,8 +8,13 @@ const getNamespacesKey = (appId: string) => ['namespaces', appId];
 const getAllAppsKey = () => ['apps'];
 const getAllDatasourcesKey = (appId: string) => ['datasources', appId];
 const getDatasourceKey = (appId: string, datasourceId: string) => ['datasource', appId, datasourceId];
-const getAllYamlsKey = (appId: string, datasourceId: string) => ['yamls', appId, datasourceId];
-const readYamlKey = (appId: string, datasourceId: string, yamlId: string) => ['yaml', appId, datasourceId, yamlId];
+const getAllDynamicQueriesKey = (appId: string, datasourceId: string) => ['dynamic-queries', appId, datasourceId];
+const readDynamicQueryKey = (appId: string, datasourceId: string, queryId: string) => [
+  'dynamic-query',
+  appId,
+  datasourceId,
+  queryId,
+];
 const getDatasourceResourcesKey = (appId: string, datasourceId: string) => [
   'datasource-resources',
   appId,
@@ -91,8 +96,8 @@ export {
   getCurrentUserKey,
   getDatasourceKey,
   getDatasourceResourcesKey,
-  getAllYamlsKey,
-  readYamlKey,
+  getAllDynamicQueriesKey,
+  readDynamicQueryKey,
   getKnowledgeBaseDocumentsKey,
   getKnowledgeBaseInferencesKey,
   getKnowledgeBaseKey,

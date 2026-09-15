@@ -1,14 +1,8 @@
 import floConsoleService from '@app/api';
-import { Badge } from '@app/components/ui/badge';
+import FieldHelp from '@app/components/FieldHelp';
+import MultiSelect from '@app/components/MultiSelect';
+import OptionChips from '@app/components/OptionChips';
 import { Button } from '@app/components/ui/button';
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@app/components/ui/command';
 import {
   Dialog,
   DialogContent,
@@ -18,16 +12,29 @@ import {
   DialogTitle,
 } from '@app/components/ui/dialog';
 import { Input } from '@app/components/ui/input';
-import { Popover, PopoverContent, PopoverTrigger } from '@app/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@app/components/ui/tabs';
 import { Textarea } from '@app/components/ui/textarea';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@app/components/ui/tooltip';
-import { useGetAllDatasources, useGetAllYamls, useGetAppUsers } from '@app/hooks';
-import { cn } from '@app/lib/utils';
+import {
+  COLUMN_STYLES_PLACEHOLDER,
+  DATE_RANGE,
+  DEFAULT_CRON_EXPR,
+  DEFAULT_END_DATE_PARAM,
+  DEFAULT_MAX_RETRIES,
+  DEFAULT_START_DATE_PARAM,
+  DEFAULT_TIMEZONE,
+  EMAIL_CONTENT_PLACEHOLDER,
+  FORM_TAB,
+  JOB_TYPE_EMAIL_DYNAMIC_QUERY,
+  MAX_RETRIES_LIMIT,
+  QUERY_PARAMS_PLACEHOLDER,
+  isFormTab,
+  isPayloadDateRange,
+} from '@app/constants/scheduled-job';
+import { useGetAllDatasources, useGetAllDynamicQueries, useGetAppUsers } from '@app/hooks';
 import { useNotifyStore } from '@app/store';
-import { ColumnStyleConfig, ScheduledJob } from '@app/types/scheduled-job';
-import { Check, ChevronDown, Info, X } from 'lucide-react';
+import { ColumnStyleConfig, DateRangeOption, FormTab, ScheduledJob } from '@app/types/scheduled-job';
+import { IUser } from '@app/types/user';
 import { useEffect, useMemo, useState } from 'react';
 import {
   buildEmailPayload,
@@ -36,19 +43,24 @@ import {
   getDatasourceIdFromPayload,
   getQueryIdsFromPayload,
   normalizeUserId,
-  resolveUsersFromRecipientIds,
 } from './scheduled-job-utils';
+import { getDynamicQueryIdFromFileName } from '../datasources/dynamic-query-utils';
 
-const COLUMN_STYLES_PLACEHOLDER = `[
-  {
-    "column": "Total calls attempted",
-    "rules": [
-      { "op": "eq", "value": 0, "fill": "light_red" },
-      { "op": "lt", "value": 160, "fill": "light_yellow" },
-      { "op": "gte", "value": 225, "fill": "dark_green" }
-    ]
-  }
-]`;
+const getUserId = (user: IUser) => user.id;
+const getUserSearchValue = (user: IUser) => `${user.first_name} ${user.last_name} ${user.email}`;
+const selectedUsersCountLabel = (count: number) => `${count} users selected`;
+
+const DATE_RANGE_OPTIONS: { value: DateRangeOption; label: string }[] = [
+  { value: DATE_RANGE.NONE, label: 'None' },
+  { value: DATE_RANGE.LAST_HOUR, label: 'Last hour' },
+  { value: DATE_RANGE.LAST_DAY, label: 'Last day' },
+  { value: DATE_RANGE.T_2, label: 'T-2 (2 days ago)' },
+  { value: DATE_RANGE.LAST_7_DAYS, label: 'Last 7 days' },
+  { value: DATE_RANGE.LAST_30_DAYS, label: 'Last 30 days' },
+];
+
+const isDateRangeOption = (value: string): value is DateRangeOption =>
+  DATE_RANGE_OPTIONS.some((option) => option.value === value);
 
 interface ScheduledJobFormDialogProps {
   isOpen: boolean;
@@ -72,50 +84,30 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
 
   const [datasourceId, setDatasourceId] = useState('');
   const [selectedQueryIds, setSelectedQueryIds] = useState<string[]>([]);
-  const { data: yamls = [], isLoading: yamlsLoading } = useGetAllYamls(appId, datasourceId || undefined);
+  const { data: dynamicQueries = [], isLoading: dynamicQueriesLoading } = useGetAllDynamicQueries(
+    appId,
+    datasourceId || undefined
+  );
 
-  const [cronExpr, setCronExpr] = useState('0 9 * * *');
-  const [timezone, setTimezone] = useState('Asia/Kolkata');
+  const [cronExpr, setCronExpr] = useState(DEFAULT_CRON_EXPR);
+  const [timezone, setTimezone] = useState(DEFAULT_TIMEZONE);
   const [selectedRecipientUserIds, setSelectedRecipientUserIds] = useState<string[]>([]);
-  const [recipientsSelectOpen, setRecipientsSelectOpen] = useState(false);
   const [subject, setSubject] = useState('');
   const [emailContent, setEmailContent] = useState('');
   const [queryParamsJson, setQueryParamsJson] = useState('');
   const [columnStylesJson, setColumnStylesJson] = useState('');
-  const [dateRange, setDateRange] = useState<
-    'none' | 'last_day' | 't_2' | 'last_hour' | 'last_7_days' | 'last_30_days'
-  >('none');
-  const [startDateParamKey, setStartDateParamKey] = useState('start_date');
-  const [endDateParamKey, setEndDateParamKey] = useState('end_date');
-  const [maxRetries, setMaxRetries] = useState('3');
-  const [activeTab, setActiveTab] = useState<'schedule' | 'email'>('schedule');
+  const [dateRange, setDateRange] = useState<DateRangeOption>(DATE_RANGE.NONE);
+  const [startDateParamKey, setStartDateParamKey] = useState(DEFAULT_START_DATE_PARAM);
+  const [endDateParamKey, setEndDateParamKey] = useState(DEFAULT_END_DATE_PARAM);
+  const [maxRetries, setMaxRetries] = useState(DEFAULT_MAX_RETRIES);
+  const [activeTab, setActiveTab] = useState<FormTab>(FORM_TAB.SCHEDULE);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   const availableQueryIds = useMemo(
-    () => yamls.map((yaml) => yaml.file.split('.')[0]).filter((id) => id.length > 0),
-    [yamls]
+    () => dynamicQueries.map((query) => getDynamicQueryIdFromFileName(query.file)).filter((id) => id.length > 0),
+    [dynamicQueries]
   );
-
-  const selectedRecipientUsers = useMemo(
-    () => resolveUsersFromRecipientIds(selectedRecipientUserIds, appUsers),
-    [selectedRecipientUserIds, appUsers]
-  );
-
-  const isRecipientSelected = (userId: string) =>
-    selectedRecipientUserIds.some((id) => normalizeUserId(id) === normalizeUserId(userId));
-
-  const toggleRecipientUser = (userId: string) => {
-    setSelectedRecipientUserIds((prev) =>
-      isRecipientSelected(userId)
-        ? prev.filter((id) => normalizeUserId(id) !== normalizeUserId(userId))
-        : [...prev, userId]
-    );
-  };
-
-  const removeRecipientUser = (userId: string) => {
-    setSelectedRecipientUserIds((prev) => prev.filter((id) => normalizeUserId(id) !== normalizeUserId(userId)));
-  };
 
   const toggleQueryId = (queryId: string) => {
     setSelectedQueryIds((prev) => (prev.includes(queryId) ? prev.filter((id) => id !== queryId) : [...prev, queryId]));
@@ -124,18 +116,18 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
   const resetForm = () => {
     setDatasourceId('');
     setSelectedQueryIds([]);
-    setCronExpr('0 9 * * *');
-    setTimezone('Asia/Kolkata');
+    setCronExpr(DEFAULT_CRON_EXPR);
+    setTimezone(DEFAULT_TIMEZONE);
     setSelectedRecipientUserIds([]);
     setSubject('');
     setEmailContent('');
     setQueryParamsJson('');
     setColumnStylesJson('');
-    setDateRange('none');
-    setStartDateParamKey('start_date');
-    setEndDateParamKey('end_date');
-    setMaxRetries('3');
-    setActiveTab('schedule');
+    setDateRange(DATE_RANGE.NONE);
+    setStartDateParamKey(DEFAULT_START_DATE_PARAM);
+    setEndDateParamKey(DEFAULT_END_DATE_PARAM);
+    setMaxRetries(DEFAULT_MAX_RETRIES);
+    setActiveTab(FORM_TAB.SCHEDULE);
     setError('');
   };
 
@@ -143,27 +135,23 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
     const payload = (existingJob.payload || {}) as Record<string, unknown>;
     setDatasourceId(getDatasourceIdFromPayload(payload));
     setSelectedQueryIds(getQueryIdsFromPayload(payload));
-    setCronExpr(existingJob.cron_expr || '0 9 * * *');
-    setTimezone(existingJob.timezone || 'Asia/Kolkata');
-    setMaxRetries(String(existingJob.max_retries ?? 3));
+    setCronExpr(existingJob.cron_expr || DEFAULT_CRON_EXPR);
+    setTimezone(existingJob.timezone || DEFAULT_TIMEZONE);
+    setMaxRetries(String(existingJob.max_retries ?? Number(DEFAULT_MAX_RETRIES)));
     setSelectedRecipientUserIds(extractRecipientUserIdsFromPayload(payload));
     setSubject(typeof payload.subject === 'string' ? payload.subject : '');
     setEmailContent(typeof payload.email_content === 'string' ? payload.email_content : '');
     const paramsValue = payload.params;
     const dateRangeValue = payload.date_range;
-    if (
-      dateRangeValue === 'last_day' ||
-      dateRangeValue === 't_2' ||
-      dateRangeValue === 'last_hour' ||
-      dateRangeValue === 'last_7_days' ||
-      dateRangeValue === 'last_30_days'
-    ) {
+    if (isPayloadDateRange(dateRangeValue)) {
       setDateRange(dateRangeValue);
     } else {
-      setDateRange('none');
+      setDateRange(DATE_RANGE.NONE);
     }
-    setStartDateParamKey(typeof payload.start_date_param === 'string' ? payload.start_date_param : 'start_date');
-    setEndDateParamKey(typeof payload.end_date_param === 'string' ? payload.end_date_param : 'end_date');
+    setStartDateParamKey(
+      typeof payload.start_date_param === 'string' ? payload.start_date_param : DEFAULT_START_DATE_PARAM
+    );
+    setEndDateParamKey(typeof payload.end_date_param === 'string' ? payload.end_date_param : DEFAULT_END_DATE_PARAM);
     if (paramsValue && typeof paramsValue === 'object' && !Array.isArray(paramsValue)) {
       setQueryParamsJson(JSON.stringify(paramsValue, null, 2));
     } else {
@@ -201,32 +189,32 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
     const retries = Number(maxRetries);
     if (!datasourceId.trim()) {
       setError('Datasource is required');
-      setActiveTab('schedule');
+      setActiveTab(FORM_TAB.SCHEDULE);
       return;
     }
     if (selectedQueryIds.length === 0) {
       setError('Select at least one dynamic query');
-      setActiveTab('schedule');
+      setActiveTab(FORM_TAB.SCHEDULE);
       return;
     }
     if (!cronExpr.trim()) {
       setError('Cron expression is required');
-      setActiveTab('schedule');
+      setActiveTab(FORM_TAB.SCHEDULE);
       return;
     }
     if (!timezone.trim()) {
       setError('Timezone is required');
-      setActiveTab('schedule');
+      setActiveTab(FORM_TAB.SCHEDULE);
       return;
     }
     if (selectedRecipientUserIds.length === 0) {
       setError('At least one recipient user is required');
-      setActiveTab('email');
+      setActiveTab(FORM_TAB.EMAIL);
       return;
     }
-    if (!Number.isInteger(retries) || retries < 0 || retries > 10) {
-      setError('Max retries must be an integer between 0 and 10');
-      setActiveTab('schedule');
+    if (!Number.isInteger(retries) || retries < 0 || retries > MAX_RETRIES_LIMIT) {
+      setError(`Max retries must be an integer between 0 and ${MAX_RETRIES_LIMIT}`);
+      setActiveTab(FORM_TAB.SCHEDULE);
       return;
     }
 
@@ -236,13 +224,13 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
         const value = JSON.parse(queryParamsJson);
         if (typeof value !== 'object' || value === null || Array.isArray(value)) {
           setError('Query params must be a JSON object');
-          setActiveTab('schedule');
+          setActiveTab(FORM_TAB.SCHEDULE);
           return;
         }
         parsedParams = value as Record<string, unknown>;
       } catch {
         setError('Query params must be valid JSON (object)');
-        setActiveTab('schedule');
+        setActiveTab(FORM_TAB.SCHEDULE);
         return;
       }
     }
@@ -253,13 +241,13 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
         const value = JSON.parse(columnStylesJson);
         if (!Array.isArray(value)) {
           setError('Column styles must be a JSON array');
-          setActiveTab('email');
+          setActiveTab(FORM_TAB.EMAIL);
           return;
         }
         parsedColumnStyles = value as ColumnStyleConfig[];
       } catch {
         setError('Column styles must be valid JSON (array)');
-        setActiveTab('email');
+        setActiveTab(FORM_TAB.EMAIL);
         return;
       }
     }
@@ -271,9 +259,9 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
       subject: subject.trim() || undefined,
       emailContent: emailContent.trim() || undefined,
       columnStyles: parsedColumnStyles,
-      dateRange: dateRange === 'none' ? undefined : dateRange,
-      startDateParam: dateRange === 'none' ? undefined : startDateParamKey.trim() || 'start_date',
-      endDateParam: dateRange === 'none' ? undefined : endDateParamKey.trim() || 'end_date',
+      dateRange: dateRange === DATE_RANGE.NONE ? undefined : dateRange,
+      startDateParam: dateRange === DATE_RANGE.NONE ? undefined : startDateParamKey.trim() || DEFAULT_START_DATE_PARAM,
+      endDateParam: dateRange === DATE_RANGE.NONE ? undefined : endDateParamKey.trim() || DEFAULT_END_DATE_PARAM,
       params: parsedParams,
     });
 
@@ -290,7 +278,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
         notifySuccess('Scheduled job updated successfully');
       } else {
         await floConsoleService.scheduledJobService.createScheduledJob({
-          job_type: 'email_dynamic_query',
+          job_type: JOB_TYPE_EMAIL_DYNAMIC_QUERY,
           cron_expr: cronExpr.trim(),
           timezone: timezone.trim(),
           max_retries: retries,
@@ -317,13 +305,18 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'schedule' | 'email')}>
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => {
+            if (isFormTab(value)) setActiveTab(value);
+          }}
+        >
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="schedule">Schedule</TabsTrigger>
-            <TabsTrigger value="email">Email</TabsTrigger>
+            <TabsTrigger value={FORM_TAB.SCHEDULE}>Schedule</TabsTrigger>
+            <TabsTrigger value={FORM_TAB.EMAIL}>Email</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="schedule" className="mt-4 space-y-5">
+          <TabsContent value={FORM_TAB.SCHEDULE} className="mt-4 space-y-5">
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <p className="mb-1 text-xs text-[#878787]">Datasource</p>
@@ -350,7 +343,11 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
               </div>
               <div>
                 <p className="mb-1 text-xs text-[#878787]">Max retries</p>
-                <Input value={maxRetries} onChange={(e) => setMaxRetries(e.target.value)} placeholder="3" />
+                <Input
+                  value={maxRetries}
+                  onChange={(e) => setMaxRetries(e.target.value)}
+                  placeholder={DEFAULT_MAX_RETRIES}
+                />
               </div>
             </div>
 
@@ -360,59 +357,44 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
               </p>
               {!datasourceId ? (
                 <p className="text-sm text-[#878787]">Select a datasource to load queries.</p>
-              ) : yamlsLoading ? (
+              ) : dynamicQueriesLoading ? (
                 <p className="text-sm text-[#878787]">Loading queries...</p>
               ) : availableQueryIds.length === 0 ? (
                 <p className="text-sm text-[#878787]">No dynamic queries found for this datasource.</p>
               ) : (
-                <div className="flex max-h-40 flex-wrap gap-2 overflow-y-auto rounded-md border border-[#EFF0F1] bg-[#FBFBFB] p-3">
-                  {availableQueryIds.map((queryId) => {
-                    const selected = selectedQueryIds.includes(queryId);
-                    return (
-                      <button
-                        key={queryId}
-                        type="button"
-                        onClick={() => toggleQueryId(queryId)}
-                        className={cn(
-                          'rounded-full border px-3 py-1 text-xs transition-colors',
-                          selected
-                            ? 'border-[#282828] bg-[#282828] text-white'
-                            : 'border-[#EFF0F1] bg-white text-[#282828] hover:border-[#282828]'
-                        )}
-                      >
-                        {queryId}
-                      </button>
-                    );
-                  })}
-                </div>
+                <OptionChips options={availableQueryIds} selected={selectedQueryIds} onToggle={toggleQueryId} />
               )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <p className="mb-1 text-xs text-[#878787]">Cron expression</p>
-                <Input value={cronExpr} onChange={(e) => setCronExpr(e.target.value)} placeholder="0 9 * * *" />
+                <Input value={cronExpr} onChange={(e) => setCronExpr(e.target.value)} placeholder={DEFAULT_CRON_EXPR} />
               </div>
               <div>
                 <p className="mb-1 text-xs text-[#878787]">Timezone</p>
-                <Input value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="Asia/Kolkata" />
+                <Input value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder={DEFAULT_TIMEZONE} />
               </div>
             </div>
 
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <p className="mb-1 text-xs text-[#878787]">Dynamic date range (optional)</p>
-                <Select value={dateRange} onValueChange={(v) => setDateRange(v as typeof dateRange)}>
+                <Select
+                  value={dateRange}
+                  onValueChange={(value) => {
+                    if (isDateRangeOption(value)) setDateRange(value);
+                  }}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Select range" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">None</SelectItem>
-                    <SelectItem value="last_hour">Last hour</SelectItem>
-                    <SelectItem value="last_day">Last day</SelectItem>
-                    <SelectItem value="t_2">T-2 (2 days ago)</SelectItem>
-                    <SelectItem value="last_7_days">Last 7 days</SelectItem>
-                    <SelectItem value="last_30_days">Last 30 days</SelectItem>
+                    {DATE_RANGE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -431,171 +413,78 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
               <Textarea
                 value={queryParamsJson}
                 onChange={(e) => setQueryParamsJson(e.target.value)}
-                placeholder={'{"start_date":"2026-03-01","end_date":"2026-03-31"}'}
+                placeholder={QUERY_PARAMS_PLACEHOLDER}
                 className="min-h-[90px] font-mono"
               />
             </div>
           </TabsContent>
 
-          <TabsContent value="email" className="mt-4 space-y-5">
-            <TooltipProvider delayDuration={200}>
+          <TabsContent value={FORM_TAB.EMAIL} className="mt-4 space-y-5">
+            <div>
+              <p className="mb-1 text-xs text-[#878787]">Subject (optional)</p>
+              <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Daily report" />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <p className="mb-1 text-xs text-[#878787]">Subject (optional)</p>
-                <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Daily report" />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <div className="mb-1 flex items-center gap-1.5">
-                    <p className="text-xs text-[#878787]">Email content (optional)</p>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          className="inline-flex cursor-pointer text-[#878787] hover:text-[#555555]"
-                          aria-label="Email content help"
-                        >
-                          <Info className="h-3.5 w-3.5" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-md">
-                        {`Use {query_id} placeholders to embed result tables inline (e.g. {sales_summary}). Plain text or HTML. Excel files are still attached when under the size limit. Leave empty for the default summary.`}
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-                  <Textarea
-                    value={emailContent}
-                    onChange={(e) => setEmailContent(e.target.value)}
-                    placeholder={`Here is your result\n{my_query_id}\n\nSee more\n{another_query_id}`}
-                    className="min-h-[120px]"
-                  />
+                <div className="mb-1 flex items-center gap-1.5">
+                  <p className="text-xs text-[#878787]">Email content (optional)</p>
+                  <FieldHelp ariaLabel="Email content help" contentClassName="max-w-md">
+                    Use {'{query_id}'} placeholders to embed result tables inline (e.g. {'{sales_summary}'}). Plain text
+                    or HTML. Excel files are still attached when under the size limit. Leave empty for the default
+                    summary.
+                  </FieldHelp>
                 </div>
-
-                <div>
-                  <div className="mb-1 flex items-center gap-1.5">
-                    <p className="text-xs text-[#878787]">Column styles (optional JSON)</p>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          className="inline-flex cursor-pointer text-[#878787] hover:text-[#555555]"
-                          aria-label="Column styles help"
-                        >
-                          <Info className="h-3.5 w-3.5" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-xs">
-                        Rules are evaluated top-to-bottom; first match wins.
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-                  <Textarea
-                    value={columnStylesJson}
-                    onChange={(e) => setColumnStylesJson(e.target.value)}
-                    placeholder={COLUMN_STYLES_PLACEHOLDER}
-                    className="min-h-[120px] font-mono text-xs"
-                  />
-                </div>
+                <Textarea
+                  value={emailContent}
+                  onChange={(e) => setEmailContent(e.target.value)}
+                  placeholder={EMAIL_CONTENT_PLACEHOLDER}
+                  className="min-h-[120px]"
+                />
               </div>
 
               <div>
                 <div className="mb-1 flex items-center gap-1.5">
-                  <p className="text-xs text-[#878787]">Recipient users</p>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        className="inline-flex cursor-pointer text-[#878787] hover:text-[#555555]"
-                        aria-label="Recipient users help"
-                      >
-                        <Info className="h-3.5 w-3.5" />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="max-w-xs">
-                      Each user receives reports filtered by their data access (RLS).
-                    </TooltipContent>
-                  </Tooltip>
+                  <p className="text-xs text-[#878787]">Column styles (optional JSON)</p>
+                  <FieldHelp ariaLabel="Column styles help">
+                    Rules are evaluated top-to-bottom; first match wins.
+                  </FieldHelp>
                 </div>
-                <Popover modal open={recipientsSelectOpen} onOpenChange={setRecipientsSelectOpen}>
-                  <PopoverTrigger asChild>
-                    <button
-                      type="button"
-                      role="combobox"
-                      aria-expanded={recipientsSelectOpen}
-                      disabled={appUsersLoading}
-                      className={cn(
-                        'border-input ring-offset-background focus:ring-ring flex min-h-9 w-full items-center justify-between rounded-md border bg-white px-3 py-2 text-sm shadow-sm focus:ring-1 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50',
-                        selectedRecipientUserIds.length === 0 && 'text-[#878787]'
-                      )}
-                    >
-                      <span className="truncate text-left">
-                        {appUsersLoading
-                          ? 'Loading users...'
-                          : selectedRecipientUserIds.length === 0
-                            ? 'Select recipient users'
-                            : selectedRecipientUsers.length <= 2
-                              ? selectedRecipientUsers.map((u) => formatUserLabel(u)).join(', ')
-                              : `${selectedRecipientUsers.length} users selected`}
-                      </span>
-                      <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-(--radix-popover-trigger-width) p-0" align="start">
-                    <Command>
-                      <CommandInput placeholder="Search users..." />
-                      <CommandList>
-                        <CommandEmpty>No users found.</CommandEmpty>
-                        {selectedRecipientUsers.length > 0 ? (
-                          <CommandGroup heading="Selected">
-                            {selectedRecipientUsers.map((user) => (
-                              <CommandItem
-                                key={`selected-${user.id}`}
-                                value={`selected-${user.id}-${user.email}`}
-                                onSelect={() => toggleRecipientUser(user.id)}
-                              >
-                                <Check className="mr-2 h-4 w-4 shrink-0 opacity-100" />
-                                {formatUserLabel(user)}
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        ) : null}
-                        <CommandGroup heading="All users">
-                          {appUsers
-                            .filter((user) => !isRecipientSelected(user.id))
-                            .map((user) => (
-                              <CommandItem
-                                key={user.id}
-                                value={`${user.first_name} ${user.last_name} ${user.email}`}
-                                onSelect={() => toggleRecipientUser(user.id)}
-                              >
-                                <Check className="mr-2 h-4 w-4 shrink-0 opacity-0" />
-                                {formatUserLabel(user)}
-                              </CommandItem>
-                            ))}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
-                {selectedRecipientUsers.length > 0 ? (
-                  <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
-                    {selectedRecipientUsers.map((user) => (
-                      <Badge key={user.id} variant="secondary" className="shrink-0 gap-1 pr-1 font-normal">
-                        <span className="max-w-[240px] truncate">{formatUserLabel(user)}</span>
-                        <button
-                          type="button"
-                          className="rounded-full p-0.5 hover:bg-black/10"
-                          aria-label={`Remove ${formatUserLabel(user)}`}
-                          onClick={() => removeRecipientUser(user.id)}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </Badge>
-                    ))}
-                  </div>
-                ) : null}
+                <Textarea
+                  value={columnStylesJson}
+                  onChange={(e) => setColumnStylesJson(e.target.value)}
+                  placeholder={COLUMN_STYLES_PLACEHOLDER}
+                  className="min-h-[120px] font-mono text-xs"
+                />
               </div>
-            </TooltipProvider>
+            </div>
+
+            <div>
+              <div className="mb-1 flex items-center gap-1.5">
+                <p className="text-xs text-[#878787]">Recipient users</p>
+                <FieldHelp ariaLabel="Recipient users help">
+                  Each user receives reports filtered by their data access (RLS).
+                </FieldHelp>
+              </div>
+              <MultiSelect
+                items={appUsers}
+                selectedIds={selectedRecipientUserIds}
+                onChange={setSelectedRecipientUserIds}
+                getId={getUserId}
+                getLabel={formatUserLabel}
+                getSearchValue={getUserSearchValue}
+                normalizeId={normalizeUserId}
+                placeholder="Select recipient users"
+                searchPlaceholder="Search users..."
+                loading={appUsersLoading}
+                loadingLabel="Loading users..."
+                emptyLabel="No users found."
+                showSelectAll
+                selectedGroupHeading="Selected"
+                allItemsGroupHeading="All users"
+                selectedCountLabel={selectedUsersCountLabel}
+              />
+            </div>
           </TabsContent>
         </Tabs>
 
