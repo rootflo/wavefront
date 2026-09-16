@@ -7,6 +7,7 @@ from unittest.mock import Mock, AsyncMock
 from typing import Literal, List, Dict, Any, Optional, AsyncIterator
 
 from flo_ai.arium.llm_router import (
+    DEFAULT_ROUTING_TEMPERATURE,
     SmartRouter,
     TaskClassifierRouter,
     ConversationAnalysisRouter,
@@ -351,12 +352,38 @@ class TestRouterTemperature:
 
         assert router.llm.temperature == 0.1
 
-    def test_default_routing_temperature_is_applied(self):
+    def test_the_routing_temperature_is_applied_to_a_copy(self):
+        """The supplied LLM is routinely the base_llm the agents also hold."""
         mock_llm = MockLLM('researcher')
+        mock_llm.temperature = 0.7
+
+        router = SmartRouter(self.ROUTING_OPTIONS, llm=mock_llm, temperature=0.1)
+
+        assert router.llm is not mock_llm
+        assert mock_llm.temperature == 0.7
+
+    def test_a_router_built_llm_uses_the_routing_default(self, monkeypatch):
+        """Nothing was supplied, so the router picks a deterministic default."""
+        monkeypatch.setenv('OPENAI_API_KEY', 'sk-test')
+
+        router = SmartRouter(self.ROUTING_OPTIONS)
+
+        assert router.llm.temperature == DEFAULT_ROUTING_TEMPERATURE
+        assert router.temperature == DEFAULT_ROUTING_TEMPERATURE
+
+    def test_a_supplied_llm_keeps_its_own_temperature_by_default(self):
+        """Forcing the default on it would override a deliberate choice.
+
+        The caller configured that LLM - from a YAML `model:` block, or an LLM
+        inference config - and asked for no routing temperature.
+        """
+        mock_llm = MockLLM('researcher')
+        mock_llm.temperature = 0.4
 
         router = SmartRouter(self.ROUTING_OPTIONS, llm=mock_llm)
 
-        assert router.llm.temperature == router.temperature
+        assert router.llm is mock_llm
+        assert router.llm.temperature == 0.4
 
     def test_router_temperature_is_still_recorded(self):
         mock_llm = MockLLM('researcher')

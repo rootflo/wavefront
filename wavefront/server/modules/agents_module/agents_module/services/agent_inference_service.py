@@ -9,6 +9,7 @@ from db_repo_module.models.llm_inference_config import LlmInferenceConfig
 from db_repo_module.models.message_processors import MessageProcessors
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from flo_ai import AgentBuilder, Agent, BaseMessage
+from flo_ai.helpers.generation_params import normalize_generation_params
 from flo_ai.llm import OpenAI, Anthropic, Gemini, OllamaLLM, OpenAIVLLM, AzureOpenAI
 from flo_ai.tool.base_tool import Tool
 from flo_cloud.cloud_storage import CloudStorageManager
@@ -28,6 +29,10 @@ class AgentInferenceService:
 
     # Passed explicitly below; a config carrying one would be a duplicate kwarg.
     RESERVED_PARAMETERS = frozenset({'model', 'api_key', 'base_url', 'azure_endpoint'})
+
+    # Groq speaks the OpenAI protocol, so the OpenAI client covers it; it just
+    # needs pointing at Groq unless the config names its own endpoint.
+    GROQ_BASE_URL = 'https://api.groq.com/openai/v1'
 
     def __init__(
         self,
@@ -131,8 +136,10 @@ class AgentInferenceService:
             logger.info(
                 f'Overriding LLM with config: {llm_config.display_name} (type: {llm_config.type})'
             )
+            # Built here for this agent alone, so the builder can apply its
+            # settings in place instead of working on a copy.
             llm_instance = self._create_llm_instance(llm_config)
-            agent_builder = agent_builder.with_llm(llm_instance)
+            agent_builder = agent_builder.with_llm(llm_instance, owned=True)
 
         agent = agent_builder.build()
         logger.info(f'Successfully created agent for agent: {agent_name}')
@@ -233,15 +240,40 @@ class AgentInferenceService:
         """
         # Declared names (temperature, api_version) bind to the constructor
         # arguments; the rest ride through as **kwargs into the request body.
-        # Nulls are dropped so the provider's own defaults still apply.
-        llm_kwargs: Dict[str, Any] = {
-            key: value
-            for key, value in (config.parameters or {}).items()
-            if value is not None and key not in self.RESERVED_PARAMETERS
-        }
+        # Nulls are dropped so the provider's own defaults still apply, and the
+        # token limit is renamed to whatever this provider calls it - a config
+        # that was created for one provider and later pointed at another keeps
+        # the first one's key, and OpenAI rejects a request carrying both
+        # `max_tokens` and `max_completion_tokens`.
+        llm_kwargs: Dict[str, Any] = normalize_generation_params(
+            {
+                key: value
+                for key, value in (config.parameters or {}).items()
+                if key not in self.RESERVED_PARAMETERS
+            },
+            config.type,
+        )
+
+        # Empty rather than '' so the SDK falls back to its own default. Passed
+        # to every provider that accepts one: a config pointing at LiteLLM, a
+        # gateway or a self-hosted OpenAI-compatible endpoint would otherwise
+        # reach the vendor's public API instead, with no error to show it.
+        base_url = config.base_url or None
 
         if config.type == 'openai':
-            return OpenAI(model=config.llm_model, api_key=config.api_key, **llm_kwargs)
+            return OpenAI(
+                model=config.llm_model,
+                api_key=config.api_key,
+                base_url=base_url,
+                **llm_kwargs,
+            )
+        elif config.type == 'groq':
+            return OpenAI(
+                model=config.llm_model,
+                api_key=config.api_key,
+                base_url=base_url or self.GROQ_BASE_URL,
+                **llm_kwargs,
+            )
         elif config.type == 'azure_openai':
             # The client will not build without one, so fall back to the env
             api_version = llm_kwargs.get('api_version') or os.getenv(
@@ -258,14 +290,25 @@ class AgentInferenceService:
             )
         elif config.type == 'anthropic':
             return Anthropic(
-                model=config.llm_model, api_key=config.api_key, **llm_kwargs
+                model=config.llm_model,
+                api_key=config.api_key,
+                base_url=base_url,
+                **llm_kwargs,
             )
         elif config.type == 'gemini':
-            return Gemini(model=config.llm_model, api_key=config.api_key, **llm_kwargs)
-        elif config.type == 'ollama':
-            return OllamaLLM(
-                model=config.llm_model, base_url=config.base_url, **llm_kwargs
+            return Gemini(
+                model=config.llm_model,
+                api_key=config.api_key,
+                base_url=base_url,
+                **llm_kwargs,
             )
+        elif config.type == 'ollama':
+            # Only when set: OllamaLLM defaults it to localhost and calls
+            # .rstrip() on it, so an explicit None is an AttributeError.
+            ollama_kwargs = dict(llm_kwargs)
+            if base_url:
+                ollama_kwargs['base_url'] = base_url
+            return OllamaLLM(model=config.llm_model, **ollama_kwargs)
         elif config.type == 'vllm':
             return OpenAIVLLM(
                 model=config.llm_model,

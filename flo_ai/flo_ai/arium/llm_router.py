@@ -5,6 +5,7 @@ This module provides intelligent routing capabilities using Large Language Model
 to make dynamic routing decisions based on conversation context and history.
 """
 
+import copy
 from abc import ABC, abstractmethod
 from typing import Dict, Optional, Callable, Any, Union, get_args, List, Awaitable, cast
 from functools import wraps
@@ -19,6 +20,9 @@ from flo_ai.llm import OpenAI
 from flo_ai.utils.logger import logger
 
 
+DEFAULT_ROUTING_TEMPERATURE = 0.1
+
+
 class BaseLLMRouter(ABC):
     """
     Base class for LLM-powered routers that make intelligent routing decisions
@@ -28,7 +32,7 @@ class BaseLLMRouter(ABC):
     def __init__(
         self,
         llm: Optional[BaseLLM] = None,
-        temperature: float = 0.1,
+        temperature: Optional[float] = None,
         max_retries: int = 3,
         fallback_strategy: str = 'first',
     ):
@@ -37,18 +41,32 @@ class BaseLLMRouter(ABC):
 
         Args:
             llm: The LLM instance to use for routing decisions. Defaults to GPT-4o-mini.
-            temperature: Temperature for LLM calls (lower = more deterministic)
+            temperature: Temperature for LLM calls (lower = more deterministic).
+                Left unset, an LLM built here routes at
+                DEFAULT_ROUTING_TEMPERATURE and a supplied one keeps its own.
             max_retries: Maximum number of retries for LLM calls
             fallback_strategy: Strategy when LLM fails ("first", "last", "random")
         """
-        self.llm = llm or OpenAI(model='gpt-4o-mini', temperature=temperature)
-        if llm is not None:
+        self.temperature = (
+            DEFAULT_ROUTING_TEMPERATURE if temperature is None else temperature
+        )
+
+        if llm is None:
+            self.llm = OpenAI(model='gpt-4o-mini', temperature=self.temperature)
+        elif temperature is None:
+            # Nothing was asked for, so the supplied LLM keeps the temperature
+            # it was configured with. Forcing the routing default on it would
+            # override a deliberate choice with one nobody made.
+            self.llm = llm
+        else:
             # A supplied LLM is built by the caller (from a YAML `model:` block,
-            # say) without knowing the routing temperature, so apply it here.
-            # Routing wants determinism, and silently running at the provider's
-            # default instead makes the same input take different branches.
+            # say) without knowing the routing temperature, so apply it here -
+            # to a copy, because the same instance is routinely the base_llm
+            # shared with the workflow's agents, and routers are built after
+            # them. The SDK client is shared; only `temperature` differs.
+            self.llm = copy.copy(llm)
             self.llm.temperature = temperature
-        self.temperature = temperature
+
         self.max_retries = max_retries
         self.fallback_strategy = fallback_strategy
         self.supports_self_reference = (

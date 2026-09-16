@@ -55,8 +55,11 @@ class TestAgentBuilderTemperature:
 
         agent = builder.with_llm(override).build()
 
-        assert agent.llm is override
         assert agent.llm.temperature == 0.2
+        # The agent gets a copy: the instance a caller supplies may be shared
+        # with other agents, which declared their own temperature or none.
+        assert agent.llm is not override
+        assert override.temperature == 0.9
 
     def test_yaml_temperature_applies_without_override(self):
         """The YAML temperature reaches the LLM from_yaml() built itself."""
@@ -197,3 +200,12 @@ class TestRootFloLLMTemperature:
 
         assert agent.llm.temperature == 0.2
         assert agent.llm._temperature == 0.2
+
+    def test_an_assignment_counts_as_a_deliberate_choice(self):
+        """It is how settings.temperature arrives, so it beats the config's."""
+        llm = self._llm()
+        assert llm._temperature_explicit is False
+
+        llm.temperature = 0.2
+
+        assert llm._temperature_explicit is True

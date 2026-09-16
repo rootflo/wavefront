@@ -187,7 +187,7 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
 
     setCreating(true);
     try {
-      const cleanedParams = cleanParameters(parameters);
+      const cleanedParams = cleanParameters(parameters, data.type);
       if (data.type === 'azure_openai' && data.apiVersion) {
         cleanedParams.api_version = data.apiVersion.trim();
       }

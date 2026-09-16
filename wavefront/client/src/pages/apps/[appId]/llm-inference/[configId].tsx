@@ -158,8 +158,9 @@ const LLMInferenceConfigDetail: React.FC = () => {
 
     setSaving(true);
     try {
-      // Clean parameters before sending (remove undefined/null/empty values)
-      const cleanedParams = cleanParameters(parameters);
+      // Clean parameters before sending (remove undefined/null/empty values,
+      // and any left over from a provider this config no longer points at)
+      const cleanedParams = cleanParameters(parameters, data.type);
       if (data.type === 'azure_openai' && data.api_version) {
         cleanedParams.api_version = data.api_version.trim();
       } else {

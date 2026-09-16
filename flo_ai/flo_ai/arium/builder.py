@@ -886,9 +886,12 @@ class AriumBuilder:
                 model_config = model_config.model_copy(
                     update={'base_url': agent_config.base_url}
                 )
+            # Built for this agent alone, unlike a base_llm every agent shares
             llm = AriumBuilder._create_llm_from_config(model_config, **kwargs)
+            llm_owned = True
         elif base_llm:
             llm = base_llm
+            llm_owned = False
         else:
             raise ValueError(
                 f'Model must be specified for agent {name} or base_llm must be provided'
@@ -968,7 +971,7 @@ class AriumBuilder:
             AgentBuilder()
             .with_name(name)
             .with_prompt(job)
-            .with_llm(llm)
+            .with_llm(llm, owned=llm_owned)
             .with_tools(agent_tools)
             .with_retries(max_retries)
             .with_reasoning(reasoning_pattern)
@@ -987,6 +990,8 @@ class AriumBuilder:
         if temperature is not None:
             # An explicit settings.temperature wins over the model block
             builder.with_temperature(temperature)
+        if settings is not None:
+            builder.with_generation_params(**settings.generation_params())
 
         if act_as is not None:
             builder.with_actas(act_as)

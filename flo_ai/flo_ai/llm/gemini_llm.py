@@ -18,6 +18,8 @@ from opentelemetry import trace
 
 
 class Gemini(BaseLLM):
+    provider_name = 'gemini'
+
     def __init__(
         self,
         model: str = 'gemini-2.5-flash',
@@ -39,7 +41,13 @@ class Gemini(BaseLLM):
 
         # Initialize client based on configuration
         if http_options:
-            self.client = genai.Client(http_options=http_options)
+            # The key goes to the SDK as well as into the header above: the SDK
+            # refuses to construct without a key of some kind, so passing only
+            # the header made every base_url configuration raise `Missing key
+            # inputs argument!` unless the environment happened to carry one.
+            # A proxy that authenticates on Authorization ignores the header
+            # the SDK adds from this.
+            self.client = genai.Client(api_key=self.api_key, http_options=http_options)
         elif self.api_key:
             self.client = genai.Client(api_key=self.api_key)
         else:
@@ -71,6 +79,33 @@ class Gemini(BaseLLM):
                 )
         return config_kwargs
 
+    def _generation_config(
+        self, system_prompt: str, call_kwargs: Dict[str, Any]
+    ) -> 'types.GenerateContentConfig':
+        """Build the request config, resolving what the caller may also have set.
+
+        `temperature` and `system_instruction` are both ordinary
+        GenerateContentConfig fields, so either can arrive in the params as well
+        as from the arguments here - and passing one twice is a
+        duplicate-keyword TypeError. Building the whole mapping and splatting it
+        once keeps every field in the config single-valued by construction.
+
+        Args:
+            system_prompt: The system text collected from the messages
+            call_kwargs: Per-call params, which override the instance's
+
+        Returns:
+            The config to send with the request
+        """
+        config_kwargs = self._generation_config_kwargs(call_kwargs)
+        config_kwargs.setdefault('temperature', self.temperature)
+        # The messages carry the agent's actual system prompt, so it outranks
+        # one set as a generation param; with no system messages, a configured
+        # instruction is the only one there is.
+        if system_prompt or 'system_instruction' not in config_kwargs:
+            config_kwargs['system_instruction'] = system_prompt
+        return types.GenerateContentConfig(**config_kwargs)
+
     @trace_llm_call(provider='gemini')
     async def generate(
         self,
@@ -93,18 +128,8 @@ class Gemini(BaseLLM):
                 contents.append(message_content)
 
         try:
-            # Prepare generation config
-            # Merge instance kwargs with method kwargs
-            config_kwargs = self._generation_config_kwargs(kwargs)
-            # temperature is a config field like any other, so a per-call one
-            # lands in config_kwargs; passing it alongside the keyword below
-            # is a duplicate-argument TypeError.
-            temperature = config_kwargs.pop('temperature', self.temperature)
-            generation_config = types.GenerateContentConfig(
-                temperature=temperature,
-                system_instruction=system_prompt,
-                **config_kwargs,
-            )
+            # Prepare generation config, merging instance and method kwargs
+            generation_config = self._generation_config(system_prompt, kwargs)
 
             # Add tools if functions are provided
             if functions:
@@ -199,15 +224,8 @@ class Gemini(BaseLLM):
             else:
                 contents.append(message_content)
 
-        # Prepare generation config
-        # Merge instance kwargs with method kwargs
-        config_kwargs = self._generation_config_kwargs(kwargs)
-        temperature = config_kwargs.pop('temperature', self.temperature)
-        generation_config = types.GenerateContentConfig(
-            temperature=temperature,
-            system_instruction=system_prompt,
-            **config_kwargs,
-        )
+        # Prepare generation config, merging instance and method kwargs
+        generation_config = self._generation_config(system_prompt, kwargs)
 
         # Add tools if functions are provided
         if functions:

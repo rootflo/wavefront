@@ -10,6 +10,7 @@ from .openai_llm import OpenAI
 from .gemini_llm import Gemini
 from .anthropic_llm import Anthropic
 from .openai_vllm import OpenAIVLLM
+from flo_ai.helpers.generation_params import merge_generation_params
 from flo_ai.tool.base_tool import Tool
 
 
@@ -26,9 +27,19 @@ class LLMProvider(Enum):
 DEFAULT_TEMPERATURE = 0.7
 
 # Passed explicitly when the wrapper is built, so a fetched configuration
-# carrying one of these would be a duplicate keyword argument.
+# carrying one of these would be a duplicate keyword argument. `api_version` is
+# here for a different reason: an Azure configuration is routed through the
+# proxy as a plain OpenAI client, whose create() has no such parameter.
 RESERVED_CONFIG_PARAMETERS = frozenset(
-    {'model', 'api_key', 'base_url', 'azure_endpoint', 'temperature', 'custom_headers'}
+    {
+        'model',
+        'api_key',
+        'api_version',
+        'base_url',
+        'azure_endpoint',
+        'temperature',
+        'custom_headers',
+    }
 )
 
 
@@ -130,6 +141,54 @@ class RootFloLLM(BaseLLM):
         self._temperature_explicit = True
         if getattr(self, '_llm', None) is not None:
             self._llm.temperature = temperature
+
+    def __copy__(self) -> 'RootFloLLM':
+        """A copy that resolves its own wrapper rather than sharing this one.
+
+        The wrapped SDK client is built from the temperature and params held
+        here, so sharing it would defeat the point of copying. The copy re-runs
+        the configuration fetch on first use, under its own lock.
+        """
+        clone = super().__copy__()
+        clone._kwargs = dict(self._kwargs)
+        clone._llm = None
+        clone._initialized = False
+        clone._init_lock = asyncio.Lock()
+        return clone
+
+    def apply_generation_params(self, params: Dict[str, Any]) -> None:
+        """Merge caller-set generation params into every request.
+
+        Overridden to defer the canonical-name translation: which provider the
+        proxy routes to, and so what its token limit is called, is only known
+        after the configuration fetch in _ensure_initialized.
+
+        Args:
+            params: Canonical generation params (`max_tokens`, `top_p`, ...)
+        """
+        supplied = {key: value for key, value in params.items() if value is not None}
+        self._kwargs.update(supplied)
+        self.kwargs.update(supplied)
+
+    @staticmethod
+    def _unreserved(params: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """`params` without the keys the wrapper is given explicitly."""
+        return {
+            key: value
+            for key, value in (params or {}).items()
+            if key not in RESERVED_CONFIG_PARAMETERS
+        }
+
+    @staticmethod
+    def _wire_provider(llm_provider: 'LLMProvider') -> str:
+        """The provider whose parameter names the wrapped client expects.
+
+        Azure is routed through the proxy as a plain OpenAI client, so it takes
+        OpenAI's names rather than its own.
+        """
+        if llm_provider is LLMProvider.AZURE_OPENAI:
+            return LLMProvider.OPENAI.value
+        return llm_provider.value
 
     async def _fetch_llm_config_async(
         self,
@@ -238,24 +297,6 @@ class RootFloLLM(BaseLLM):
             llm_type = config['type']
             config_parameters = config.get('parameters') or {}
 
-            # The configuration's own generation parameters ride through as
-            # kwargs. Nulls are dropped so the provider's defaults still apply,
-            # and self._kwargs wins because it came from the caller.
-            config_kwargs = {
-                key: value
-                for key, value in config_parameters.items()
-                if value is not None and key not in RESERVED_CONFIG_PARAMETERS
-            }
-            sdk_kwargs = {**config_kwargs, **self._kwargs}
-
-            # temperature is passed explicitly below rather than as a kwarg, so
-            # apply the configured one unless the caller asked for a specific
-            # value (a YAML `settings.temperature`, say).
-            if not self._temperature_explicit:
-                configured_temperature = config_parameters.get('temperature')
-                if configured_temperature is not None:
-                    self._temperature = configured_temperature
-
             # Map type string to LLMProvider enum
             try:
                 llm_provider = LLMProvider(llm_type.lower())
@@ -264,6 +305,26 @@ class RootFloLLM(BaseLLM):
                     f'Unsupported LLM provider type from API: {llm_type}. '
                     f'Supported types: {[p.value for p in LLMProvider]}'
                 )
+
+            # The configuration's own generation parameters ride through as
+            # kwargs, with self._kwargs winning because it came from the caller.
+            # Only now is the provider known, which is what the token limit has
+            # to be named for - and merging through one place is what stops a
+            # stale `max_tokens` travelling alongside `max_completion_tokens`,
+            # a pair the OpenAI-compatible providers reject outright.
+            sdk_kwargs = merge_generation_params(
+                self._unreserved(config_parameters),
+                self._unreserved(self._kwargs),
+                self._wire_provider(llm_provider),
+            )
+
+            # temperature is passed explicitly below rather than as a kwarg, so
+            # apply the configured one unless the caller asked for a specific
+            # value (a YAML `settings.temperature`, say).
+            if not self._temperature_explicit:
+                configured_temperature = config_parameters.get('temperature')
+                if configured_temperature is not None:
+                    self._temperature = configured_temperature
 
             # Update instance attributes
             self.llm_provider = llm_provider

@@ -4,6 +4,8 @@ from flo_ai.telemetry.instrumentation import trace_llm_stream
 
 
 class OpenAIVLLM(OpenAI):
+    provider_name = 'vllm'
+
     def __init__(
         self,
         base_url: str,
@@ -56,14 +58,18 @@ class OpenAIVLLM(OpenAI):
                     },
                 )
 
-        # Prepare OpenAI API parameters
-        vllm_openai_kwargs = {
-            'model': self.model,
-            'messages': messages,
-            'temperature': self.temperature,
-            **self.kwargs,
-            **kwargs,
-        }
+        # Prepare OpenAI API parameters. vLLM's own sampling params (top_k,
+        # repetition_penalty, ...) are not in the OpenAI SDK's signature, so
+        # _create_kwargs moves them into extra_body for the server to read.
+        vllm_openai_kwargs = self._create_kwargs(
+            {
+                'model': self.model,
+                'messages': messages,
+                'temperature': self.temperature,
+                **self.kwargs,
+                **kwargs,
+            }
+        )
 
         # Make the API call
         response = await self.client.chat.completions.create(**vllm_openai_kwargs)
@@ -80,14 +86,16 @@ class OpenAIVLLM(OpenAI):
         **kwargs: Any,
     ) -> AsyncIterator[Dict[str, Any]]:
         """Stream partial responses from vLLM-hosted OpenAI-compatible endpoint."""
-        vllm_openai_kwargs = {
-            'model': self.model,
-            'messages': messages,
-            'temperature': self.temperature,
-            'stream': True,
-            **self.kwargs,
-            **kwargs,
-        }
+        vllm_openai_kwargs = self._create_kwargs(
+            {
+                'model': self.model,
+                'messages': messages,
+                'temperature': self.temperature,
+                'stream': True,
+                **self.kwargs,
+                **kwargs,
+            }
+        )
 
         if functions:
             vllm_openai_kwargs['functions'] = functions

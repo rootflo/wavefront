@@ -2,7 +2,18 @@ import asyncio
 import base64 as _base64
 import inspect
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Iterable, List, Optional, AsyncIterator, Tuple
+from functools import lru_cache
+from typing import (
+    Callable,
+    Dict,
+    Any,
+    Iterable,
+    List,
+    Optional,
+    AsyncIterator,
+    Tuple,
+)
+from flo_ai.helpers.generation_params import merge_generation_params
 from flo_ai.tool.base_tool import Tool
 from flo_ai.utils.logger import logger
 from flo_ai.utils.profiler import aprofile, profile as _sync_profile
@@ -48,6 +59,49 @@ def split_client_kwargs(
     return client_kwargs, request_kwargs
 
 
+@lru_cache(maxsize=16)
+def _declared_params(func: Callable[..., Any]) -> Tuple[frozenset, bool]:
+    """The parameter names `func` declares, and whether it takes **kwargs."""
+    params = inspect.signature(func).parameters
+    accepts_any = any(
+        param.kind is inspect.Parameter.VAR_KEYWORD for param in params.values()
+    )
+    return frozenset(params), accepts_any
+
+
+def split_request_kwargs(
+    create_method: Callable[..., Any], kwargs: Dict[str, Any]
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Split request params into ones the SDK declares and ones needing extra_body.
+
+    The OpenAI SDK's create() declares no **kwargs, so a param outside its
+    signature - vLLM's `top_k`, or an inference server's own knobs - raises
+    TypeError locally instead of reaching the server that understands it.
+    `extra_body` is the SDK's own escape hatch: its contents are merged into the
+    request body verbatim, which is where an OpenAI-compatible server looks.
+
+    Args:
+        create_method: The SDK method the wrapper calls (bound or unbound)
+        kwargs: Request params to be sent
+
+    Returns:
+        Tuple of (params create() declares, params for extra_body)
+    """
+    names, accepts_any = _declared_params(
+        getattr(create_method, '__func__', create_method)
+    )
+    if accepts_any:
+        return dict(kwargs), {}
+
+    declared: Dict[str, Any] = {}
+    extra: Dict[str, Any] = {}
+    for key, value in kwargs.items():
+        target = declared if key in names else extra
+        target[key] = value
+
+    return declared, extra
+
+
 def file_name_text_block(media: MediaMessageContent) -> Optional[Dict[str, Any]]:
     """An OpenAI-shaped text block naming the file, or None if unnamed.
 
@@ -67,6 +121,10 @@ def file_name_text_block(media: MediaMessageContent) -> Optional[Dict[str, Any]]
 
 
 class BaseLLM(ABC):
+    # Which provider's wire names this wrapper's request params use. Read when
+    # translating canonical generation params; see llm.generation_params.
+    provider_name: str = ''
+
     def __init__(
         self,
         model: str,
@@ -78,6 +136,33 @@ class BaseLLM(ABC):
         self.api_key = api_key
         self.temperature = temperature
         self.kwargs = kwargs
+
+    def __copy__(self) -> 'BaseLLM':
+        """A copy whose per-agent settings are independent of this instance's.
+
+        AgentBuilder copies rather than mutates the LLM it is handed, so a
+        base_llm shared between agents does not take on one agent's temperature
+        or generation params. `kwargs` is copied for the same reason - it holds
+        those params. The SDK client is deliberately shared: it carries the
+        connection pool and nothing per-agent.
+        """
+        clone = self.__class__.__new__(self.__class__)
+        clone.__dict__.update(self.__dict__)
+        clone.kwargs = dict(self.kwargs)
+        return clone
+
+    def apply_generation_params(self, params: Dict[str, Any]) -> None:
+        """Merge canonically-named generation params into every request.
+
+        Applied on top of whatever the LLM was constructed with, so an agent's
+        YAML `settings:` outranks the LLM inference config it resolved from -
+        including when the two name the token limit differently.
+
+        Args:
+            params: Canonical names (`max_tokens`, `top_p`, ...), translated
+                here to the spellings this provider's API accepts
+        """
+        self.kwargs = merge_generation_params(self.kwargs, params, self.provider_name)
 
     @abstractmethod
     async def generate(

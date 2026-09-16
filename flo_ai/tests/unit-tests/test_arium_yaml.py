@@ -960,11 +960,13 @@ class TestAriumYamlBuilder:
 
         builder = AriumBuilder.from_yaml(yaml_str=yaml_config, base_llm=mock_base_llm)
 
-        # Verify agent was created with base LLM
+        # Verify agent was created from the base LLM. The agent declares a
+        # temperature, so it gets a copy: the base LLM is shared with every
+        # other agent in the workflow and must not take on this one's settings.
         assert len(builder._agents) == 1
         agent = builder._agents[0]
-        assert agent.llm == mock_base_llm
-        assert mock_base_llm.temperature == 0.7
+        assert agent.llm.temperature == 0.7
+        assert agent.llm is not mock_base_llm
 
     def test_from_yaml_prebuilt_agents(self):
         """Test using pre-built agents with YAML workflow."""

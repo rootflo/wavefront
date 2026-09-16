@@ -18,6 +18,8 @@ from opentelemetry import trace
 
 
 class Anthropic(BaseLLM):
+    provider_name = 'anthropic'
+
     def __init__(
         self,
         api_key: Optional[str] = None,
