@@ -2,7 +2,6 @@
 Utility functions for processing inference inputs
 """
 
-import re
 from typing import Any, List, Union
 from fastapi import HTTPException, status
 from flo_ai import (
@@ -48,30 +47,37 @@ def process_inference_inputs(
             elif input_item.get('role') == 'user':
                 input_content = input_item.get('content', {})
                 if is_image_message(input_content):
-                    # Extract image_bytes and mime_type from image_base64
-                    try:
-                        data_url_pattern = r'^data:(image/[a-zA-Z0-9.+-]+);base64,(.+)$'
-                        match = re.match(
-                            data_url_pattern, input_content.get('image_base64')
-                        )
-                        if match:
-                            image_base64 = match.group(2)
-                            image_mime_type = match.group(1)
-                        else:
-                            image_base64 = input_content.get('image_base64')
-                            image_mime_type = input_content.get('mime_type')
-                    except Exception as e:
+                    raw_image = input_content.get('image_base64')
+
+                    # Anything that is not a string cannot be parsed or
+                    # forwarded. Caught here so it keeps its own error rather
+                    # than reaching the mime gate as an unresolvable type.
+                    if not isinstance(raw_image, str):
                         logger.error(
-                            f'Error processing ImageMessage base64: {e}, message: {input_item}'
+                            f'Error processing ImageMessage base64: expected a string, '
+                            f'got {type(raw_image).__name__}, message: {input_item}'
                         )
                         raise HTTPException(
                             status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=f'Invalid base64 image data: {e}',
+                            detail=(
+                                'Invalid base64 image data: expected a string, '
+                                f'got {type(raw_image).__name__}'
+                            ),
                         )
 
-                    # Gated outside the try on purpose: an unsupported-type
-                    # rejection must not be swallowed by the except above and
-                    # relabelled as a base64 error.
+                    # The shared helper, so this resolves a data URL exactly as
+                    # validate_inference_inputs_media does for the async
+                    # endpoints — same handling of parameters before `;base64`,
+                    # of casing, and of a non-image mime declared on an image
+                    # field. A local regex here had diverged on all three.
+                    data_url_mime, stripped_image = split_data_url(raw_image)
+                    if stripped_image is not None:
+                        image_base64 = stripped_image
+                        image_mime_type = data_url_mime
+                    else:
+                        image_base64 = raw_image
+                        image_mime_type = input_content.get('mime_type')
+
                     image_mime_type = ensure_supported_image_mime_type(
                         mime_type=image_mime_type,
                         file_name=input_content.get('file_name'),
