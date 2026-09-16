@@ -96,13 +96,23 @@ async def test_create_user_success(
 @pytest.mark.asyncio
 async def test_send_reset_password_email_soft_deleted_user(
     test_client,
+    setup_containers,
     mock_auth_admin_user_functions,
     test_session,
     test_user_id,
     test_session_id,
     auth_token,
 ):
-    """Test that soft deleted users cannot send reset password emails"""
+    """Soft deleted users get no reset mail, and no hint that they did not.
+
+    The reply is byte-for-byte the one a live account gets, so the only thing
+    worth asserting on is that no mail went out -- a distinguishable response
+    here would turn the endpoint into an account enumeration oracle.
+    """
+    _, _, user_container = setup_containers
+    email_service = user_container.email_service()
+    email_service.send_forget_password_email.reset_mock()
+
     # Create test user and session
     await create_session(test_session, test_user_id, test_session_id)
 
@@ -122,8 +132,79 @@ async def test_send_reset_password_email_soft_deleted_user(
         '/floware/v1/user/send-reset-password-email?email=deleted_reset@example.com',
         headers={'Authorization': f'Bearer {auth_token}'},
     )
-    assert response.status_code == 400
-    assert 'No user found with this email ID' in response.json()['meta']['error']
+    assert response.status_code == 200
+    assert 'If an account exists' in response.json()['data']['message']
+    email_service.send_forget_password_email.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_send_reset_password_email_unknown_email(
+    test_client,
+    setup_containers,
+    mock_auth_admin_user_functions,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    """An address with no account behind it is answered exactly like one that has."""
+    _, _, user_container = setup_containers
+    email_service = user_container.email_service()
+    email_service.send_forget_password_email.reset_mock()
+
+    await create_session(test_session, test_user_id, test_session_id)
+
+    response = test_client.post(
+        '/floware/v1/user/send-reset-password-email?email=nobody@example.com',
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 200
+    assert 'If an account exists' in response.json()['data']['message']
+    email_service.send_forget_password_email.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_send_reset_password_email_locked_user(
+    test_client,
+    setup_containers,
+    mock_auth_admin_user_functions,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    """A locked account is not told it is locked.
+
+    Lockout details can only ever be produced for an address that does resolve
+    to a user, so returning them would leak the very fact the generic message
+    exists to hide. The login endpoint is where a locked user learns about it.
+    """
+    _, _, user_container = setup_containers
+    email_service = user_container.email_service()
+    email_service.send_forget_password_email.reset_mock()
+
+    await create_session(test_session, test_user_id, test_session_id)
+
+    async with test_session() as session:
+        user = User(
+            email='locked_reset@example.com',
+            password='hashedpassword',
+            first_name='Locked',
+            last_name='User',
+            failed_attempts=3,
+            locked_until=datetime.now(timezone.utc) + timedelta(hours=1),
+        )
+        session.add(user)
+        await session.commit()
+
+    response = test_client.post(
+        '/floware/v1/user/send-reset-password-email?email=locked_reset@example.com',
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 200
+    assert 'If an account exists' in response.json()['data']['message']
+    assert 'locked' not in response.text.lower()
+    email_service.send_forget_password_email.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -787,12 +868,17 @@ async def test_authenticate_enabled_user_without_roles_fails(
 @pytest.mark.asyncio
 async def test_send_reset_password_email(
     test_client,
+    setup_containers,
     mock_auth_admin_user_functions,
     test_session,
     test_user_id,
     test_session_id,
     auth_token,
 ):
+    _, _, user_container = setup_containers
+    email_service = user_container.email_service()
+    email_service.send_forget_password_email.reset_mock()
+
     # Create test user and session
     await create_session(test_session, test_user_id, test_session_id)
 
@@ -812,7 +898,10 @@ async def test_send_reset_password_email(
         headers={'Authorization': f'Bearer {auth_token}'},
     )
     assert response.status_code == 200
-    assert 'password reset link has been sent' in response.json()['data']['message']
+    # Same message the unknown-email, deleted and locked cases return; the mail
+    # itself is what separates a live account from those, not the reply.
+    assert 'If an account exists' in response.json()['data']['message']
+    email_service.send_forget_password_email.assert_called_once()
 
 
 @pytest.mark.asyncio

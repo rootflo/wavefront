@@ -53,7 +53,6 @@ from user_management_module.utils.password_utils import hash_password
 from user_management_module.utils.user_utils import (
     can_read_users,
     check_is_admin,
-    create_account_lockout_response,
 )
 from user_management_module.utils.user_utils import get_current_user
 import json
@@ -63,6 +62,26 @@ from common_module.utils.validators import is_valid_uuid
 user_router = APIRouter(prefix='/v1')
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl='token')
+
+# The reset-password-email endpoint is unauthenticated, so every outcome it can
+# reach has to look identical from the outside. Anything that varies with the
+# submitted address -- a distinct error, a different status code -- lets an
+# attacker enumerate registered accounts by feeding it a wordlist. Real reasons
+# for not sending (unknown address, deleted user, locked account, mail failure)
+# are logged instead of returned.
+PASSWORD_RESET_GENERIC_MESSAGE = (
+    'If an account exists for this email address, '
+    'a password reset link has been sent to it.'
+)
+
+
+def _password_reset_generic_response(response_formatter) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            {'message': PASSWORD_RESET_GENERIC_MESSAGE}
+        ),
+    )
 
 
 @user_router.post('/users')
@@ -761,28 +780,20 @@ async def send_reset_url(
     try:
         # checking if the user exists in the db
         user_with_email = await user_repository.find_one(email=email)
-        if not user_with_email:
-            return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content=response_formatter.buildErrorResponse(
-                    error='No user found with this email ID.'
-                ),
-            )
-        if user_with_email.deleted:
-            return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content=response_formatter.buildErrorResponse(
-                    error='No user found with this email ID.'
-                ),
-            )
+        if not user_with_email or user_with_email.deleted:
+            logger.info('Password reset requested for an unknown or deleted account')
+            return _password_reset_generic_response(response_formatter)
 
-        is_locked, locked_until = await account_lockout_service.check_account_lockout(
+        is_locked, _ = await account_lockout_service.check_account_lockout(
             user_with_email
         )
         if is_locked:
-            return create_account_lockout_response(
-                locked_until, account_lockout_service, response_formatter
+            # A locked account gets no reset link, but saying so would confirm the
+            # address is registered, so the caller sees the same message as always.
+            logger.info(
+                f'Password reset skipped for locked account {user_with_email.id}'
             )
+            return _password_reset_generic_response(response_formatter)
 
         # creating an jwt token for reseting the password
         random_digit = secrets.token_hex(16)
@@ -802,31 +813,15 @@ async def send_reset_url(
         email_response = email_service.send_forget_password_email(
             forget_url_link, email
         )
-        if email_response:
-            return JSONResponse(
-                status_code=status.HTTP_200_OK,
-                content=response_formatter.buildSuccessResponse(
-                    {
-                        'message': 'A password reset link has been sent to your registered email address.',
-                    }
-                ),
-            )
-        else:
-            logger.error('Erro while sending email')
-            return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content=response_formatter.buildErrorResponse(
-                    'An error occurred while sending the email. Please verify your email address and try again later.'
-                ),
-            )
+        if not email_response:
+            # Reachable only for an address that does resolve to a user, so a
+            # distinct error here would leak exactly what the generic message
+            # above is protecting.
+            logger.error('Error while sending password reset email')
+        return _password_reset_generic_response(response_formatter)
     except ValueError:
         logger.error('Error in email sending credentials')
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(
-                'Password reset failed. Please reach out to your administrator for assistance.'
-            ),
-        )
+        return _password_reset_generic_response(response_formatter)
 
 
 @user_router.post('/user/reset-password')
