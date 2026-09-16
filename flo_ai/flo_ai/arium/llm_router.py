@@ -42,6 +42,12 @@ class BaseLLMRouter(ABC):
             fallback_strategy: Strategy when LLM fails ("first", "last", "random")
         """
         self.llm = llm or OpenAI(model='gpt-4o-mini', temperature=temperature)
+        if llm is not None:
+            # A supplied LLM is built by the caller (from a YAML `model:` block,
+            # say) without knowing the routing temperature, so apply it here.
+            # Routing wants determinism, and silently running at the provider's
+            # default instead makes the same input take different branches.
+            self.llm.temperature = temperature
         self.temperature = temperature
         self.max_retries = max_retries
         self.fallback_strategy = fallback_strategy

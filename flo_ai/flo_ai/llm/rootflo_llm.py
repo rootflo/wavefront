@@ -23,6 +23,15 @@ class LLMProvider(Enum):
     AZURE_OPENAI = 'azure_openai'
 
 
+DEFAULT_TEMPERATURE = 0.7
+
+# Passed explicitly when the wrapper is built, so a fetched configuration
+# carrying one of these would be a duplicate keyword argument.
+RESERVED_CONFIG_PARAMETERS = frozenset(
+    {'model', 'api_key', 'base_url', 'azure_endpoint', 'temperature', 'custom_headers'}
+)
+
+
 class RootFloLLM(BaseLLM):
     """
     Proxy LLM class that routes to different SDK implementations based on type.
@@ -38,7 +47,7 @@ class RootFloLLM(BaseLLM):
         issuer: Optional[str] = None,
         audience: Optional[str] = None,
         access_token: Optional[str] = None,
-        temperature: float = 0.7,
+        temperature: Optional[float] = None,
         **kwargs,
     ):
         """
@@ -52,7 +61,8 @@ class RootFloLLM(BaseLLM):
             issuer: JWT issuer claim
             audience: JWT audience claim
             access_token: Optional pre-generated access token (if provided, skips JWT generation)
-            temperature: Temperature parameter for generation
+            temperature: Temperature parameter for generation. Left unset, the
+                fetched configuration's temperature applies instead.
             **kwargs: Additional parameters to pass to the underlying SDK
 
         Note:
@@ -91,9 +101,14 @@ class RootFloLLM(BaseLLM):
         super().__init__(
             model='',
             api_key='',
-            temperature=temperature,
+            temperature=DEFAULT_TEMPERATURE if temperature is None else temperature,
             **kwargs,
         )
+
+        # Set after super().__init__, whose `self.temperature = ...` runs the
+        # setter below and would otherwise mark the default as explicit. A
+        # caller-supplied temperature outranks the fetched configuration's.
+        self._temperature_explicit = temperature is not None
 
     @property
     def temperature(self) -> float:
@@ -106,8 +121,13 @@ class RootFloLLM(BaseLLM):
 
         The wrapper is built lazily, so a value set before then is picked up by
         _ensure_initialized(); an existing one is updated to match.
+
+        Assigning here counts as an explicit choice - it is how a YAML
+        `settings.temperature` reaches this class - so it outranks whatever the
+        fetched configuration specifies.
         """
         self._temperature = temperature
+        self._temperature_explicit = True
         if getattr(self, '_llm', None) is not None:
             self._llm.temperature = temperature
 
@@ -128,7 +148,7 @@ class RootFloLLM(BaseLLM):
             app_key: Optional application key for X-Rootflo-Key header
 
         Returns:
-            Dict containing llm_model and type
+            Dict containing llm_model, type and the configured generation parameters
 
         Raises:
             Exception: If API call fails or response is invalid
@@ -162,7 +182,11 @@ class RootFloLLM(BaseLLM):
                         f'API response missing required fields: llm_model={llm_model}, type={llm_type}'
                     )
 
-                return {'llm_model': llm_model, 'type': llm_type}
+                return {
+                    'llm_model': llm_model,
+                    'type': llm_type,
+                    'parameters': config_data.get('parameters') or {},
+                }
 
         except httpx.HTTPStatusError as e:
             raise Exception(
@@ -212,6 +236,25 @@ class RootFloLLM(BaseLLM):
             )
             llm_model = config['llm_model']
             llm_type = config['type']
+            config_parameters = config.get('parameters') or {}
+
+            # The configuration's own generation parameters ride through as
+            # kwargs. Nulls are dropped so the provider's defaults still apply,
+            # and self._kwargs wins because it came from the caller.
+            config_kwargs = {
+                key: value
+                for key, value in config_parameters.items()
+                if value is not None and key not in RESERVED_CONFIG_PARAMETERS
+            }
+            sdk_kwargs = {**config_kwargs, **self._kwargs}
+
+            # temperature is passed explicitly below rather than as a kwarg, so
+            # apply the configured one unless the caller asked for a specific
+            # value (a YAML `settings.temperature`, say).
+            if not self._temperature_explicit:
+                configured_temperature = config_parameters.get('temperature')
+                if configured_temperature is not None:
+                    self._temperature = configured_temperature
 
             # Map type string to LLMProvider enum
             try:
@@ -241,7 +284,7 @@ class RootFloLLM(BaseLLM):
                     api_key=api_token or 'no_token',
                     temperature=self.temperature,
                     custom_headers=custom_headers,
-                    **self._kwargs,
+                    **sdk_kwargs,
                 )
             elif llm_provider == LLMProvider.ANTHROPIC:
                 self._llm = Anthropic(
@@ -250,7 +293,7 @@ class RootFloLLM(BaseLLM):
                     api_key=api_token or 'no_token',
                     temperature=self.temperature,
                     custom_headers=custom_headers,
-                    **self._kwargs,
+                    **sdk_kwargs,
                 )
             elif llm_provider == LLMProvider.GEMINI:
                 # Gemini SDK - pass base_url which will be handled via http_options
@@ -260,7 +303,7 @@ class RootFloLLM(BaseLLM):
                     temperature=self.temperature,
                     base_url=full_url,
                     custom_headers=custom_headers,
-                    **self._kwargs,
+                    **sdk_kwargs,
                 )
             elif llm_provider == LLMProvider.VLLM:
                 # vLLM via OpenAI-compatible API
@@ -270,7 +313,7 @@ class RootFloLLM(BaseLLM):
                     api_key=api_token or 'no_token',
                     temperature=self.temperature,
                     custom_headers=custom_headers,
-                    **self._kwargs,
+                    **sdk_kwargs,
                 )
             else:
                 raise ValueError(f'Unsupported LLM provider: {llm_provider}')

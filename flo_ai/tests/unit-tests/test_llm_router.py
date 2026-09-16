@@ -334,5 +334,37 @@ class TestErrorHandling:
         assert fallback in routing_options.keys()
 
 
+class TestRouterTemperature:
+    """Routing wants determinism, so the configured temperature must be applied."""
+
+    ROUTING_OPTIONS = {'researcher': 'Research things', 'writer': 'Write things'}
+
+    def test_supplied_llm_receives_the_routing_temperature(self):
+        """A caller-built LLM knows nothing about the routing temperature.
+
+        It used to be dropped, so the router silently ran at the provider's
+        default and the same input could take different branches.
+        """
+        mock_llm = MockLLM('researcher')
+
+        router = SmartRouter(self.ROUTING_OPTIONS, llm=mock_llm, temperature=0.1)
+
+        assert router.llm.temperature == 0.1
+
+    def test_default_routing_temperature_is_applied(self):
+        mock_llm = MockLLM('researcher')
+
+        router = SmartRouter(self.ROUTING_OPTIONS, llm=mock_llm)
+
+        assert router.llm.temperature == router.temperature
+
+    def test_router_temperature_is_still_recorded(self):
+        mock_llm = MockLLM('researcher')
+
+        router = SmartRouter(self.ROUTING_OPTIONS, llm=mock_llm, temperature=1.2)
+
+        assert router.temperature == 1.2
+
+
 if __name__ == '__main__':
     pytest.main([__file__])

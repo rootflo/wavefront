@@ -419,6 +419,7 @@ class AriumBuilder:
                     yaml_str=agent_config.yaml_config,
                     base_llm=base_llm,
                     tool_registry=tool_registry,
+                    **kwargs,
                 )
                 agent = agent_builder.build()
 
@@ -428,6 +429,7 @@ class AriumBuilder:
                     yaml_file=agent_config.yaml_file,
                     base_llm=base_llm,
                     tool_registry=tool_registry,
+                    **kwargs,
                 )
                 agent = agent_builder.build()
 
@@ -910,10 +912,6 @@ class AriumBuilder:
         except KeyError:
             raise ValueError(f'Invalid reasoning pattern: {reasoning_pattern_str}')
 
-        # Set LLM temperature if specified
-        if temperature is not None:
-            llm.temperature = temperature
-
         # Extract and resolve tools
         agent_tools = []
         tool_configs = agent_config.tools or []
@@ -977,6 +975,18 @@ class AriumBuilder:
             .with_output_schema(output_schema if output_schema is not None else {})
             .with_role(role)
         )
+
+        # Deferred so the value survives with_llm() and reaches whichever LLM the
+        # agent ends up with, and so a shared base_llm is not mutated for every
+        # other agent using it. Mirrors AgentBuilder.from_yaml.
+        if (
+            agent_config.model is not None
+            and agent_config.model.temperature is not None
+        ):
+            builder.with_temperature(agent_config.model.temperature)
+        if temperature is not None:
+            # An explicit settings.temperature wins over the model block
+            builder.with_temperature(temperature)
 
         if act_as is not None:
             builder.with_actas(act_as)

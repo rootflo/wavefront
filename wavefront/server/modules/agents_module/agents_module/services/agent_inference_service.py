@@ -77,12 +77,19 @@ class AgentInferenceService:
         Args:
             yaml_content: YAML configuration content
             agent_name: The name of the agent for logging purposes
-            llm_config: Optional LLM configuration to override agent's default LLM
+            llm_config: Optional LLM configuration to override agent's default LLM.
+                When omitted, it is resolved from the YAML's `agent.model` block
+                (see _resolve_rootflo_llm_config), so every caller gets the same
+                treatment of `provider: rootflo` references.
 
         Returns:
             Agent instance created from YAML
         """
         logger.info(f'Creating agent from YAML for agent: {agent_name}')
+
+        # A caller-supplied config always wins; otherwise fall back to the YAML
+        if llm_config is None:
+            llm_config = await self._resolve_rootflo_llm_config(yaml_content)
 
         # Add tools if provided in the yaml file
         yaml_data = yaml.safe_load(yaml_content)
@@ -454,11 +461,8 @@ class AgentInferenceService:
             f'Retrieved agent - namespace: {namespace}, name: {name}, agent_id: {agent_id}'
         )
 
-        # Use caller-supplied config or fall back to resolving from the YAML
-        if llm_config is None:
-            llm_config = await self._resolve_rootflo_llm_config(yaml_content)
-
-        # Create agent from YAML with optional LLM override and tools
+        # Create agent from YAML with optional LLM override and tools.
+        # A None llm_config is resolved from the YAML by create_agent_from_yaml.
         agent = await self.create_agent_from_yaml(
             yaml_content, name, llm_config, access_token, app_key
         )
