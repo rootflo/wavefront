@@ -5,6 +5,7 @@ from openai import AsyncAzureOpenAI
 from .base_llm import (
     BaseLLM,
     file_name_text_block,
+    flatten_extra_body,
     split_client_kwargs,
     split_request_kwargs,
 )
@@ -88,11 +89,10 @@ class AzureOpenAI(BaseLLM):
             Params to splat into create()
         """
         declared, extra = split_request_kwargs(
-            self.client.chat.completions.create, params
+            self.client.chat.completions.create, flatten_extra_body(params)
         )
         if extra:
-            # A caller-supplied extra_body is more specific, so it wins
-            declared['extra_body'] = {**extra, **(declared.get('extra_body') or {})}
+            declared['extra_body'] = extra
         return declared
 
     @trace_llm_call(provider='azureopenai')
@@ -135,8 +135,8 @@ class AzureOpenAI(BaseLLM):
                 'model': self.model,
                 'messages': messages,
                 'temperature': self.temperature,
-                **self.kwargs,
-                **kwargs,
+                **flatten_extra_body(self.kwargs),
+                **flatten_extra_body(kwargs),
             }
         )
 
@@ -181,8 +181,8 @@ class AzureOpenAI(BaseLLM):
                 'messages': messages,
                 'temperature': self.temperature,
                 'stream': True,
-                **self.kwargs,
-                **kwargs,
+                **flatten_extra_body(self.kwargs),
+                **flatten_extra_body(kwargs),
             }
         )
 

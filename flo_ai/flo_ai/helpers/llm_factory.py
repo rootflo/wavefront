@@ -11,7 +11,10 @@ from typing import TYPE_CHECKING, Any, Dict
 if TYPE_CHECKING:
     from flo_ai.llm import BaseLLM
 
-from flo_ai.helpers.generation_params import normalize_generation_params
+from flo_ai.helpers.generation_params import (
+    CANONICAL_GENERATION_PARAMS,
+    merge_generation_params,
+)
 from flo_ai.models.agent import LLMConfigModel
 from flo_ai.utils.logger import logger
 
@@ -109,9 +112,14 @@ class LLMFactory:
             leaves unset is absent, so the wrapper's own default applies - for
             rootflo that is what lets the fetched configuration's value win.
         """
-        params = normalize_generation_params(
-            {'max_tokens': kwargs.get('max_tokens', model_config.max_tokens)},
-            provider,
+        # The block itself can only express a token limit; the rest of the
+        # canonical set arrives as caller kwargs. Both go through one merge so
+        # a caller's value wins and the token limit is named once.
+        caller_params = {
+            key: kwargs[key] for key in CANONICAL_GENERATION_PARAMS if key in kwargs
+        }
+        params = merge_generation_params(
+            {'max_tokens': model_config.max_tokens}, caller_params, provider
         )
 
         # `.get` with a fallback rather than `or`: 0.0 is a valid temperature

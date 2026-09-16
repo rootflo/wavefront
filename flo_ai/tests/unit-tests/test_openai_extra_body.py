@@ -15,7 +15,7 @@ import pytest
 from openai.resources.chat.completions import AsyncCompletions
 
 from flo_ai.llm import AzureOpenAI, OpenAI, OpenAIVLLM
-from flo_ai.llm.base_llm import split_request_kwargs
+from flo_ai.llm.base_llm import flatten_extra_body, split_request_kwargs
 
 
 def vllm_llm(**kwargs) -> OpenAIVLLM:
@@ -131,6 +131,41 @@ class TestCreateKwargs:
 
         assert body['top_p'] == 0.1
 
+    def test_a_per_call_bare_param_beats_an_instance_extra_body(self):
+        """The two forms are the same thing, so the later layer has to win.
+
+        Merging the layers first loses that: `extra_body={'top_k': 9}` and a
+        bare `top_k=5` are indistinguishable by then, and whichever branch the
+        merge favours is wrong half the time. Each layer is flattened first.
+        """
+        llm = vllm_llm(extra_body={'top_k': 9})
+
+        body = llm._create_kwargs(
+            {
+                'model': llm.model,
+                'messages': [],
+                **flatten_extra_body(llm.kwargs),
+                **flatten_extra_body({'top_k': 5}),
+            }
+        )
+
+        assert body['extra_body'] == {'top_k': 5}
+
+    def test_extra_body_dicts_merge_across_layers(self):
+        """A per-call extra_body used to replace the instance's wholesale."""
+        llm = vllm_llm(extra_body={'guided_regex': r'\d+'})
+
+        body = llm._create_kwargs(
+            {
+                'model': llm.model,
+                'messages': [],
+                **flatten_extra_body(llm.kwargs),
+                **flatten_extra_body({'extra_body': {'top_k': 5}}),
+            }
+        )
+
+        assert body['extra_body'] == {'guided_regex': r'\d+', 'top_k': 5}
+
     def test_azure_diverts_the_same_way(self):
         """Test azure diverts the same way."""
         llm = AzureOpenAI(
@@ -191,6 +226,15 @@ class TestRequestBody:
         await llm.generate([{'role': 'user', 'content': 'Hello'}], top_p=0.1)
 
         assert create.call_args[1]['top_p'] == 0.1
+
+    async def test_generate_resolves_a_cross_form_conflict(self):
+        """End to end: the per-call form wins whichever way each layer spelt it."""
+        llm = vllm_llm(extra_body={'top_k': 9})
+        create = self._record_create(llm)
+
+        await llm.generate([{'role': 'user', 'content': 'Hello'}], top_k=5)
+
+        assert create.call_args[1]['extra_body'] == {'top_k': 5}
 
     async def test_stream_sends_extra_body(self):
         """Test stream sends extra body."""

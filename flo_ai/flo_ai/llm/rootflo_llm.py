@@ -170,6 +170,13 @@ class RootFloLLM(BaseLLM):
         self._kwargs.update(supplied)
         self.kwargs.update(supplied)
 
+        if getattr(self, '_llm', None) is not None:
+            # Built already, so _ensure_initialized will not run again and these
+            # would reach nothing. The wrapper knows its own provider, so it can
+            # do the translation this method deferred. Mirrors the temperature
+            # setter, which propagates for the same reason.
+            self._llm.apply_generation_params(supplied)
+
     @staticmethod
     def _unreserved(params: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         """`params` without the keys the wrapper is given explicitly."""

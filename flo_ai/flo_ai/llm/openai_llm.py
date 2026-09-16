@@ -3,6 +3,7 @@ from openai import AsyncOpenAI
 from .base_llm import (
     BaseLLM,
     file_name_text_block,
+    flatten_extra_body,
     split_client_kwargs,
     split_request_kwargs,
 )
@@ -59,20 +60,20 @@ class OpenAI(BaseLLM):
         lets the server be the one to reject a param it does not support.
 
         Args:
-            params: The merged request params. Taken as a mapping rather than
-                **kwargs because callers merge the instance's params with the
-                per-call ones, and a key in both is a duplicate-argument
-                TypeError at the call rather than an override.
+            params: The merged request params, each layer already flattened by
+                the caller. Taken as a mapping rather than **kwargs because
+                callers merge the instance's params with the per-call ones, and
+                a key in both is a duplicate-argument TypeError at the call
+                rather than an override.
 
         Returns:
             Params to splat into create()
         """
         declared, extra = split_request_kwargs(
-            self.client.chat.completions.create, params
+            self.client.chat.completions.create, flatten_extra_body(params)
         )
         if extra:
-            # A caller-supplied extra_body is more specific, so it wins
-            declared['extra_body'] = {**extra, **(declared.get('extra_body') or {})}
+            declared['extra_body'] = extra
         return declared
 
     @trace_llm_call(provider='openai')
@@ -120,8 +121,8 @@ class OpenAI(BaseLLM):
                 'model': self.model,
                 'messages': messages,
                 'temperature': self.temperature,
-                **self.kwargs,
-                **kwargs,
+                **flatten_extra_body(self.kwargs),
+                **flatten_extra_body(kwargs),
             }
         )
 
@@ -171,8 +172,8 @@ class OpenAI(BaseLLM):
                 'messages': messages,
                 'temperature': self.temperature,
                 'stream': True,
-                **self.kwargs,
-                **kwargs,
+                **flatten_extra_body(self.kwargs),
+                **flatten_extra_body(kwargs),
             }
         )
 

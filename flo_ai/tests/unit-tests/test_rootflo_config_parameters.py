@@ -138,6 +138,20 @@ class TestTokenLimitIsNamedForTheProvider:
 
         assert llm._llm.kwargs == {'max_completion_tokens': 500}
 
+    async def test_a_param_set_after_the_first_call_still_applies(self):
+        """_ensure_initialized will not run again, so it has to propagate here.
+
+        The temperature setter already did; this method updated only the proxy's
+        own dictionaries, so a param set after first use reached nothing.
+        """
+        llm = build_llm()
+        stub_fetch(llm, {})
+        await llm._ensure_initialized()
+
+        llm.apply_generation_params({'top_p': 0.5, 'max_tokens': 500})
+
+        assert llm._llm.kwargs == {'top_p': 0.5, 'max_completion_tokens': 500}
+
     async def test_a_caller_param_outranks_the_configuration(self):
         llm = build_llm()
         llm.apply_generation_params({'max_tokens': 100})

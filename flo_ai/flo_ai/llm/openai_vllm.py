@@ -1,4 +1,5 @@
 from typing import Any, AsyncIterator, Dict, List, Optional
+from .base_llm import flatten_extra_body
 from .openai_llm import OpenAI
 from flo_ai.telemetry.instrumentation import trace_llm_stream
 
@@ -66,8 +67,8 @@ class OpenAIVLLM(OpenAI):
                 'model': self.model,
                 'messages': messages,
                 'temperature': self.temperature,
-                **self.kwargs,
-                **kwargs,
+                **flatten_extra_body(self.kwargs),
+                **flatten_extra_body(kwargs),
             }
         )
 
@@ -92,8 +93,8 @@ class OpenAIVLLM(OpenAI):
                 'messages': messages,
                 'temperature': self.temperature,
                 'stream': True,
-                **self.kwargs,
-                **kwargs,
+                **flatten_extra_body(self.kwargs),
+                **flatten_extra_body(kwargs),
             }
         )
 

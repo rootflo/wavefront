@@ -202,6 +202,68 @@ class TestModelBlockGenerationParams:
 
         assert llm.kwargs == {}
 
+    def test_caller_generation_kwargs_reach_the_wrapper(self):
+        """Only the token limit is expressible in the block; the rest are kwargs.
+
+        These were dropped, so a direct factory caller lost every generation
+        param except the three the block declares.
+        """
+        llm = LLMFactory.create_llm(
+            model_config(provider='openai', name='gpt-4o-mini', api_key='sk-test'),
+            top_p=0.9,
+            seed=42,
+            frequency_penalty=0.5,
+            presence_penalty=0.25,
+            max_tokens=500,
+        )
+
+        assert llm.kwargs == {
+            'top_p': 0.9,
+            'seed': 42,
+            'frequency_penalty': 0.5,
+            'presence_penalty': 0.25,
+            'max_completion_tokens': 500,
+        }
+
+    def test_a_caller_token_limit_beats_the_block(self):
+        """Test a caller token limit beats the block."""
+        llm = LLMFactory.create_llm(
+            model_config(
+                provider='openai',
+                name='gpt-4o-mini',
+                api_key='sk-test',
+                max_tokens=100,
+            ),
+            max_tokens=500,
+        )
+
+        assert llm.kwargs == {'max_completion_tokens': 500}
+
+    def test_caller_kwargs_are_guarded_by_provider(self):
+        """The support table applies to this path too, not just `settings:`."""
+        llm = LLMFactory.create_llm(
+            model_config(
+                provider='anthropic',
+                name='claude-3-5-sonnet-20240620',
+                api_key='sk-test',
+            ),
+            seed=42,
+            top_k=40,
+        )
+
+        assert llm.kwargs == {'top_k': 40}
+
+    def test_non_generation_kwargs_are_not_forwarded(self):
+        """Auth and routing kwargs are for the factory, not the request body."""
+        llm = LLMFactory.create_llm(
+            model_config(provider='openai', name='gpt-4o-mini'),
+            api_key='sk-test',
+            base_url='https://gateway.invalid/v1',
+        )
+
+        assert llm.kwargs == {}
+        assert llm.api_key == 'sk-test'
+
     def test_nothing_configured_leaves_kwargs_empty(self):
         """Test nothing configured leaves kwargs empty."""
         llm = LLMFactory.create_llm(

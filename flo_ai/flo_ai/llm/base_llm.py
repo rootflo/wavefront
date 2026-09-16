@@ -9,6 +9,7 @@ from typing import (
     Any,
     Iterable,
     List,
+    Mapping,
     Optional,
     AsyncIterator,
     Tuple,
@@ -67,6 +68,31 @@ def _declared_params(func: Callable[..., Any]) -> Tuple[frozenset, bool]:
         param.kind is inspect.Parameter.VAR_KEYWORD for param in params.values()
     )
     return frozenset(params), accepts_any
+
+
+def flatten_extra_body(params: Mapping[str, Any]) -> Dict[str, Any]:
+    """`extra_body` entries spelled out as ordinary request params.
+
+    The two forms mean the same thing, so keeping them apart loses precedence:
+    once an instance's params and a call's params are merged into one mapping,
+    there is no way to tell whether `extra_body={'top_k': 9}` or a bare
+    `top_k=5` came from the later layer. Flattening each layer *before* merging
+    makes the later one win whichever form it used, and stops a per-call
+    `extra_body` replacing the instance's wholesale instead of merging with it.
+
+    Within a single layer an `extra_body` entry wins over a bare key of the same
+    name. Writing both in one call is ambiguous either way, and the escape hatch
+    is the more deliberate of the two.
+
+    Args:
+        params: One layer's request params
+
+    Returns:
+        The same params with no `extra_body` key
+    """
+    flat = {key: value for key, value in params.items() if key != 'extra_body'}
+    flat.update(params.get('extra_body') or {})
+    return flat
 
 
 def split_request_kwargs(
