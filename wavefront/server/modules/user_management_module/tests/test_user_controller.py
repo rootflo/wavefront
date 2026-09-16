@@ -327,6 +327,171 @@ async def test_get_all_users(
     assert len(response.json()['data']['users']) >= 2
 
 
+async def _seed_listing_users(test_session):
+    """Two extra users so a listing has something to return beyond the caller."""
+    async with test_session() as session:
+        session.add_all(
+            [
+                User(
+                    email='user1@example.com',
+                    password='hashedpassword',
+                    first_name='User',
+                    last_name='One',
+                ),
+                User(
+                    email='user2@example.com',
+                    password='hashedpassword',
+                    first_name='User',
+                    last_name='Two',
+                ),
+            ]
+        )
+        await session.commit()
+
+
+# force_fetch=1 on every listing call below is load-bearing, not incidental. The
+# shared cache_manager mock returns a truthy session blob for *any* key, so a
+# cached read would short-circuit the endpoint and the assertions would be made
+# against the mock rather than against the query under test.
+
+
+@pytest.mark.asyncio
+async def test_get_all_users_non_admin_with_flag_omits_roles(
+    test_client,
+    mock_auth_non_admin_user_functions,
+    set_non_admin_data_access_flag,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    """A non-admin gets id/name/email only — no roles, groups or username."""
+    set_non_admin_data_access_flag(True)
+    await create_session(test_session, test_user_id, test_session_id)
+    await _seed_listing_users(test_session)
+
+    response = test_client.get(
+        '/floware/v1/users?force_fetch=1',
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+
+    assert response.status_code == 200
+    users = response.json()['data']['users']
+    assert len(users) >= 2
+    for user in users:
+        assert set(user.keys()) == {'id', 'first_name', 'last_name', 'email'}
+        assert 'roles' not in user
+        assert 'groups' not in user
+        assert 'username' not in user
+
+
+@pytest.mark.asyncio
+async def test_get_all_users_non_admin_cannot_filter_by_role(
+    test_client,
+    mock_auth_non_admin_user_functions,
+    set_non_admin_data_access_flag,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    """The role filter is refused: the filtered set would itself disclose roles.
+
+    Withholding the roles field is pointless if `?roles=admin` still returns
+    exactly the admins, so the parameter is rejected rather than ignored.
+    """
+    set_non_admin_data_access_flag(True)
+    await create_session(test_session, test_user_id, test_session_id)
+
+    response = test_client.get(
+        '/floware/v1/users?roles=admin&force_fetch=1',
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+
+    assert response.status_code == 403
+    assert 'admin access' in response.json()['meta']['error']
+
+
+@pytest.mark.asyncio
+async def test_get_all_users_non_admin_without_flag_denied(
+    test_client,
+    mock_auth_non_admin_user_functions,
+    set_non_admin_data_access_flag,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    """With the flag off the listing stays admin-only."""
+    set_non_admin_data_access_flag(False)
+    await create_session(test_session, test_user_id, test_session_id)
+    await _seed_listing_users(test_session)
+
+    response = test_client.get(
+        '/floware/v1/users?force_fetch=1',
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+
+    assert response.status_code == 401
+    # `data` is present but null on an error response, so no listing leaks
+    # through the denial.
+    assert response.json()['data'] is None
+    assert 'Access denied' in response.json()['meta']['error']
+
+
+@pytest.mark.asyncio
+async def test_get_all_users_admin_still_gets_roles_and_groups(
+    test_client,
+    mock_auth_admin_user_functions,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    """Regression guard: trimming the non-admin payload must not trim the admin one."""
+    await create_session(test_session, test_user_id, test_session_id)
+    await _seed_listing_users(test_session)
+
+    response = test_client.get(
+        '/floware/v1/users?force_fetch=1',
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+
+    assert response.status_code == 200
+    users = response.json()['data']['users']
+    assert len(users) >= 2
+    for user in users:
+        assert set(user.keys()) == {
+            'id',
+            'first_name',
+            'last_name',
+            'email',
+            'username',
+            'roles',
+            'groups',
+        }
+
+
+@pytest.mark.asyncio
+async def test_get_all_users_admin_can_filter_by_role(
+    test_client,
+    mock_auth_admin_user_functions,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    """The 403 above is scoped to non-admins — admins keep the filter."""
+    await create_session(test_session, test_user_id, test_session_id)
+
+    response = test_client.get(
+        '/floware/v1/users?roles=admin&force_fetch=1',
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+
+    assert response.status_code == 200
+
+
 @pytest.mark.asyncio
 async def test_delete_user_success(
     test_client,

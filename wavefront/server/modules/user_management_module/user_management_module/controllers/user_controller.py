@@ -1,6 +1,10 @@
 import secrets
 from typing import List, Optional
 
+from common_module.feature.feature_flag import (
+    ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG,
+    is_feature_enabled,
+)
 from common_module.log.logger import logger
 from db_repo_module.models.resource import Resource
 from db_repo_module.models.resource import ResourceScope
@@ -458,13 +462,40 @@ async def get_all_user(
     offset: int = Query(0),
     force_fetch: int = Query(0),
 ):
-    if not await can_read_users(request):
+    """List users.
+
+    Admins get the full directory entry: roles, groups and username alongside
+    the name and email. With ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG set, everyone
+    else gets a name-and-email lookup — id, email, first_name, last_name and
+    nothing more — which is what the console needs to put a name to an id it
+    already holds. Without the flag, non-admins are refused outright.
+    """
+    # This is can_read_users' gate, inlined: the admin bit decides the payload
+    # shape here, not just access, and calling both would re-resolve the role.
+    role_id, _, _ = get_current_user(request)
+    is_admin = await check_is_admin(role_id)
+
+    if not is_admin and not is_feature_enabled(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG):
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content=response_formatter.buildErrorResponse('Access denied'),
         )
+
+    # Refused rather than ignored: `?roles=admin` would partition the directory
+    # by role and hand back exactly the membership the trimmed payload withholds,
+    # and silently dropping the filter would answer a question that was not asked.
+    if not is_admin and roles:
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=response_formatter.buildErrorResponse(
+                'Filtering users by role requires admin access'
+            ),
+        )
+
     # checking the cache for the keys
-    cache_key = user_list_cache_key(offset, limit, search, roles)
+    cache_key = user_list_cache_key(
+        offset, limit, search, roles, include_roles=is_admin
+    )
     if not force_fetch:
         cached_result = cache_manager.get_str(cache_key)
         if cached_result:
@@ -475,67 +506,18 @@ async def get_all_user(
                 ),
             )
     async with user_repository.session() as session:
-        empty_json_array = cast(
-            postgresql.array([], type_=postgresql.JSON), ARRAY(JSON)
-        )
-
-        # Roles and groups are aggregated in correlated subqueries rather than by
-        # joining and grouping. Two reasons: joining both would multiply each
-        # user's roles by their groups, and de-duplicating that fan-out would need
-        # array_agg(DISTINCT ...), which Postgres rejects on json values for want
-        # of an equality operator.
-        #
-        # Aggregating over no rows yields NULL, so each coalesces to an empty
-        # array. That is what lets a user with no direct roles (drawing access
-        # from a group instead) or no groups still appear in the directory.
-        #
-        # `roles` stays direct-only. Roles inherited from a group are deliberately
-        # not merged in, so the field keeps the meaning it has always had.
-        roles_aggregate = (
-            select(
-                func.coalesce(
-                    func.array_agg(
-                        func.json_build_object('id', Role.id, 'name', Role.name)
-                    ),
-                    empty_json_array,
-                )
-            )
-            .select_from(UserRole)
-            .join(Role, Role.id == UserRole.role_id)
-            .where(UserRole.user_id == User.id)
-        )
-
-        # When filtering by role name the aggregate is filtered to match, so a
-        # filtered listing keeps reporting only the roles that matched, exactly
-        # as the previous join-and-group query did.
-        if roles:
-            roles_aggregate = roles_aggregate.where(Role.name.in_(roles))
-
-        groups_aggregate = (
-            select(
-                func.coalesce(
-                    func.array_agg(
-                        func.json_build_object(
-                            'id', UserGroup.id, 'name', UserGroup.name
-                        )
-                    ),
-                    empty_json_array,
-                )
-            )
-            .select_from(UserGroupMember)
-            .join(UserGroup, UserGroup.id == UserGroupMember.group_id)
-            .where(UserGroupMember.user_id == User.id)
-        )
-
-        query = select(
-            User.id,
-            User.first_name,
-            User.last_name,
-            User.email,
-            User.username,
-            roles_aggregate.scalar_subquery().label('roles'),
-            groups_aggregate.scalar_subquery().label('groups'),
-        ).where(User.deleted.is_(False))
+        if not is_admin:
+            # The trimmed directory: no roles, no groups, and no username. The
+            # columns are left out of the query rather than stripped from the
+            # result, so there is no shape for a later edit to forget to filter.
+            query = select(
+                User.id,
+                User.first_name,
+                User.last_name,
+                User.email,
+            ).where(User.deleted.is_(False))
+        else:
+            query = _admin_user_listing_query(roles)
 
         # Add search conditions
         if search and search.strip():
@@ -547,11 +529,15 @@ async def get_all_user(
             if len(name) > 1 and name[1]:
                 filters.append(User.last_name.ilike(f'%{name[1]}%'))
             filters.append(User.email.ilike(f'%{search}%'))
-            filters.append(User.username.ilike(f'%{search}%'))
+            # Username is not in the non-admin payload, so matching on it there
+            # would return rows with no visible reason for having matched.
+            if is_admin:
+                filters.append(User.username.ilike(f'%{search}%'))
             query = query.where(or_(*filters))
 
         # Add role filter. An EXISTS keeps this a row filter, so users are
-        # selected on their direct roles just as before.
+        # selected on their direct roles just as before. Admin-only: the guard
+        # above rejects the parameter for everyone else.
         if roles:
             query = query.where(
                 exists(
@@ -577,6 +563,67 @@ async def get_all_user(
         status_code=status.HTTP_200_OK,
         content=response_formatter.buildSuccessResponse({'users': serialize_result}),
     )
+
+
+def _admin_user_listing_query(roles: Optional[List[str]]):
+    """The full directory row: name, email, username, roles and groups."""
+    empty_json_array = cast(postgresql.array([], type_=postgresql.JSON), ARRAY(JSON))
+
+    # Roles and groups are aggregated in correlated subqueries rather than by
+    # joining and grouping. Two reasons: joining both would multiply each
+    # user's roles by their groups, and de-duplicating that fan-out would need
+    # array_agg(DISTINCT ...), which Postgres rejects on json values for want
+    # of an equality operator.
+    #
+    # Aggregating over no rows yields NULL, so each coalesces to an empty
+    # array. That is what lets a user with no direct roles (drawing access
+    # from a group instead) or no groups still appear in the directory.
+    #
+    # `roles` stays direct-only. Roles inherited from a group are deliberately
+    # not merged in, so the field keeps the meaning it has always had.
+    roles_aggregate = (
+        select(
+            func.coalesce(
+                func.array_agg(
+                    func.json_build_object('id', Role.id, 'name', Role.name)
+                ),
+                empty_json_array,
+            )
+        )
+        .select_from(UserRole)
+        .join(Role, Role.id == UserRole.role_id)
+        .where(UserRole.user_id == User.id)
+    )
+
+    # When filtering by role name the aggregate is filtered to match, so a
+    # filtered listing keeps reporting only the roles that matched, exactly
+    # as the previous join-and-group query did.
+    if roles:
+        roles_aggregate = roles_aggregate.where(Role.name.in_(roles))
+
+    groups_aggregate = (
+        select(
+            func.coalesce(
+                func.array_agg(
+                    func.json_build_object('id', UserGroup.id, 'name', UserGroup.name)
+                ),
+                empty_json_array,
+            )
+        )
+        .select_from(UserGroupMember)
+        .join(UserGroup, UserGroup.id == UserGroupMember.group_id)
+        .where(UserGroupMember.user_id == User.id)
+    )
+
+    return select(
+        User.id,
+        User.first_name,
+        User.last_name,
+        User.email,
+        User.username,
+        roles_aggregate.scalar_subquery().label('roles'),
+        groups_aggregate.scalar_subquery().label('groups'),
+    ).where(User.deleted.is_(False))
 
 
 @user_router.get('/users/{user_id}')
