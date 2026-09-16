@@ -13,6 +13,11 @@ from flo_ai import (
     UserMessage,
 )
 from common_module.log.logger import logger
+from agents_module.utils.mime_type_utils import (
+    ensure_supported_document_mime_type,
+    ensure_supported_image_mime_type,
+    split_data_url,
+)
 
 
 def process_inference_inputs(
@@ -35,7 +40,7 @@ def process_inference_inputs(
         return UserMessage(content=inputs)
     else:
         resolved_inputs = []
-        for input_item in inputs:
+        for index, input_item in enumerate(inputs):
             if input_item.get('role') == 'assistant':
                 resolved_inputs.append(
                     AssistantMessage(content=input_item.get('content'))
@@ -50,25 +55,11 @@ def process_inference_inputs(
                             data_url_pattern, input_content.get('image_base64')
                         )
                         if match:
-                            mime_type = match.group(1)
-                            processed_image = UserMessage(
-                                content=ImageMessageContent(
-                                    base64=match.group(2),
-                                    mime_type=mime_type,
-                                    file_name=input_content.get('file_name'),
-                                )
-                            )
-                            resolved_inputs.append(processed_image)
+                            image_base64 = match.group(2)
+                            image_mime_type = match.group(1)
                         else:
-                            resolved_inputs.append(
-                                UserMessage(
-                                    content=ImageMessageContent(
-                                        base64=input_content.get('image_base64'),
-                                        mime_type=input_content.get('mime_type'),
-                                        file_name=input_content.get('file_name'),
-                                    ),
-                                )
-                            )
+                            image_base64 = input_content.get('image_base64')
+                            image_mime_type = input_content.get('mime_type')
                     except Exception as e:
                         logger.error(
                             f'Error processing ImageMessage base64: {e}, message: {input_item}'
@@ -77,12 +68,52 @@ def process_inference_inputs(
                             status_code=status.HTTP_400_BAD_REQUEST,
                             detail=f'Invalid base64 image data: {e}',
                         )
+
+                    # Gated outside the try on purpose: an unsupported-type
+                    # rejection must not be swallowed by the except above and
+                    # relabelled as a base64 error.
+                    image_mime_type = ensure_supported_image_mime_type(
+                        mime_type=image_mime_type,
+                        file_name=input_content.get('file_name'),
+                        index=index,
+                    )
+
+                    resolved_inputs.append(
+                        UserMessage(
+                            content=ImageMessageContent(
+                                base64=image_base64,
+                                mime_type=image_mime_type,
+                                file_name=input_content.get('file_name'),
+                            ),
+                        )
+                    )
                 elif is_doc_message(input_content):
+                    raw_document = input_content.get('document_base64')
+
+                    document_mime_type = ensure_supported_document_mime_type(
+                        mime_type=input_content.get('mime_type'),
+                        base64_value=raw_document,
+                        file_name=input_content.get('file_name'),
+                        url=input_content.get('document_url'),
+                        index=index,
+                    )
+
+                    # Documents arrive as a `data:` URL just as often as images
+                    # do. The prefix has to come off here: every provider feeds
+                    # `.base64` straight to a decoder, and `data:...` decodes to
+                    # garbage rather than failing loudly.
+                    _, stripped_document = split_data_url(raw_document)
+                    document_base64 = (
+                        stripped_document
+                        if stripped_document is not None
+                        else raw_document
+                    )
+
                     resolved_inputs.append(
                         UserMessage(
                             content=DocumentMessageContent(
-                                base64=input_content.get('document_base64'),
-                                mime_type=input_content.get('mime_type'),
+                                base64=document_base64,
+                                mime_type=document_mime_type,
                                 url=input_content.get('document_url'),
                                 file_name=input_content.get('file_name'),
                             )
@@ -106,6 +137,56 @@ def process_inference_inputs(
                 )
 
     return resolved_inputs
+
+
+def validate_inference_inputs_media(
+    inputs: Union[List[dict | str], str],
+) -> None:
+    """Gate the mime types of an inference request's media inputs.
+
+    For the synchronous endpoints `process_inference_inputs` already gates as
+    it builds the messages. The async endpoints enqueue the raw payload and
+    only resolve it inside the worker, so without this the caller would get a
+    202 and discover the unsupported file as a failed execution later — after
+    the bytes had already been uploaded to cloud storage. Call this before
+    enqueueing.
+
+    Args:
+        inputs: The raw `inputs` field from the request body
+
+    Raises:
+        HTTPException: 400 Bad Request if a media input's mime type is not
+            supported
+    """
+    if isinstance(inputs, str):
+        return
+
+    for index, input_item in enumerate(inputs):
+        if not isinstance(input_item, dict):
+            continue
+        if input_item.get('role') == 'assistant':
+            continue
+
+        input_content = input_item.get('content')
+        if not isinstance(input_content, dict):
+            continue
+
+        if is_image_message(input_content):
+            ensure_supported_image_mime_type(
+                mime_type=input_content.get('mime_type'),
+                base64_value=input_content.get('image_base64'),
+                file_name=input_content.get('file_name'),
+                url=input_content.get('image_url'),
+                index=index,
+            )
+        elif is_doc_message(input_content):
+            ensure_supported_document_mime_type(
+                mime_type=input_content.get('mime_type'),
+                base64_value=input_content.get('document_base64'),
+                file_name=input_content.get('file_name'),
+                url=input_content.get('document_url'),
+                index=index,
+            )
 
 
 def is_image_message(input_item: dict) -> bool:

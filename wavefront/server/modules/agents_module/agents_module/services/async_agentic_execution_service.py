@@ -19,6 +19,7 @@ from agents_module.models.async_agentic_execution_schemas import (
 )
 from agents_module.utils.celery_client import get_celery_client
 from agents_module.utils.execution_variable_utils import with_execution_variables
+from agents_module.utils.mime_type_utils import split_data_url
 
 _MIME_TO_EXT = {
     'application/pdf': '.pdf',
@@ -112,18 +113,18 @@ class AsyncAgenticExecutionService:
                 elif img_b64 is not None:
                     input_type = 'image'
                     raw_b64 = img_b64
-                    # Strip data URL prefix if present
-                    if isinstance(raw_b64, str) and raw_b64.startswith('data:'):
-                        parts = raw_b64.split(',', 1)
-                        if len(parts) == 2:
-                            header = parts[0]  # e.g. "data:image/png;base64"
-                            raw_b64 = parts[1]
-                            if not mime_type and ';' in header:
-                                mime_type = header.split(':')[1].split(';')[0]
                 else:
                     # Unknown content structure — pass through as-is
                     clean_inputs.append(item)
                     continue
+
+                # Both kinds may arrive as a `data:<mime>;base64,...` URL. Strip
+                # the prefix before decoding, and take the mime from it when the
+                # caller did not send one separately.
+                data_url_mime, stripped_b64 = split_data_url(raw_b64)
+                if stripped_b64 is not None:
+                    raw_b64 = stripped_b64
+                    mime_type = mime_type or data_url_mime
 
                 safe_name = _safe_filename(idx, file_name, mime_type)
                 key = f'{prefix}inputs/{safe_name}'
