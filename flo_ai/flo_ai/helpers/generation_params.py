@@ -15,6 +15,8 @@ something else is silently ignored.
 
 from typing import Any, Dict, Mapping, Optional
 
+from flo_ai.utils.logger import logger
+
 # The name callers write. Every provider-specific spelling maps back to this.
 CANONICAL_TOKEN_LIMIT = 'max_tokens'
 
@@ -56,6 +58,24 @@ _PROVIDER_TOKEN_LIMIT = {
     'ollama': 'num_predict',
 }
 
+# Canonical params a provider's API has no equivalent for, read off the SDK
+# signatures: OpenAI's chat.completions.create, Anthropic's messages.create and
+# GenerateContentConfig's fields. Sending one anyway is a 400 from the vendor
+# endpoints, and a local TypeError for Anthropic, whose create() has no
+# **kwargs to absorb it.
+#
+# Only these canonical names are checked. An unrecognised key is somebody's own
+# server knob and passes through untouched - reaching the server through
+# extra_body is the point of that escape hatch. `vllm` is deliberately absent
+# for the same reason: its SDK is OpenAI's, so `top_k` is not in the signature,
+# but a vLLM server does accept it.
+_UNSUPPORTED_PARAMS = {
+    'openai': frozenset({'top_k'}),
+    'azure_openai': frozenset({'top_k'}),
+    'groq': frozenset({'top_k'}),
+    'anthropic': frozenset({'frequency_penalty', 'presence_penalty', 'seed'}),
+}
+
 
 def canonical_provider(provider: Optional[str]) -> str:
     """Resolve a provider spelling to the one used as a key here.
@@ -88,6 +108,19 @@ def token_limit_key(provider: Optional[str]) -> str:
     )
 
 
+def unsupported_params(provider: Optional[str]) -> frozenset:
+    """The canonical params `provider` has no equivalent for.
+
+    Args:
+        provider: Provider name or alias
+
+    Returns:
+        The canonical names to drop; empty for a provider with no known gaps,
+        so an unrecognised provider loses nothing
+    """
+    return _UNSUPPORTED_PARAMS.get(canonical_provider(provider), frozenset())
+
+
 def normalize_generation_params(
     params: Optional[Mapping[str, Any]], provider: Optional[str]
 ) -> Dict[str, Any]:
@@ -100,6 +133,13 @@ def normalize_generation_params(
     a value stored under another provider's key is carried over rather than
     dropped, since it is what the user last asked for.
 
+    A canonical param the provider has no equivalent for is dropped with a
+    warning, rather than sent for the provider to reject. `settings:` offers the
+    same names for every provider, so this is reachable from YAML: `top_k`
+    against OpenAI is a 400, and against Anthropic a `seed` is a local
+    TypeError. Anything outside the canonical set is left alone - see
+    _UNSUPPORTED_PARAMS.
+
     Args:
         params: Generation params under any mix of token-limit spellings
         provider: Provider name or alias the params are destined for
@@ -109,6 +149,14 @@ def normalize_generation_params(
     """
     if not params:
         return {}
+
+    dropped = sorted(unsupported_params(provider).intersection(params))
+    if dropped:
+        logger.warning(
+            f'Ignoring generation params not supported by {provider}: '
+            f'{", ".join(dropped)}'
+        )
+        params = {key: value for key, value in params.items() if key not in dropped}
 
     preferred = token_limit_key(provider)
 

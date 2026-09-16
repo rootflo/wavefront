@@ -11,7 +11,7 @@ import pytest
 
 from flo_ai.agent import AgentBuilder
 from flo_ai.arium.builder import AriumBuilder
-from flo_ai.llm import Gemini, OpenAI
+from flo_ai.llm import Anthropic, AzureOpenAI, Gemini, OpenAI, OpenAIVLLM
 from flo_ai.models.agent import SettingsModel
 
 
@@ -151,6 +151,89 @@ class TestAgentBuilderGenerationParams:
         agent = AgentBuilder().with_llm(llm).with_generation_params(top_p=0.9).build()
 
         assert agent.llm.kwargs == {'top_p': 0.9, 'seed': 7}
+
+
+class TestUnsupportedSettingsAreDropped:
+    """`settings:` offers one set of names; not every provider has them all.
+
+    Sending one anyway is a 400 from OpenAI and Azure, and for Anthropic a
+    local TypeError - its messages.create() has no **kwargs to absorb it. The
+    drop happens at the shared boundary, so no wrapper needs its own check.
+    """
+
+    def test_top_k_does_not_reach_openai(self):
+        """Test top k does not reach openai."""
+        agent = (
+            AgentBuilder()
+            .with_llm(OpenAI(model='gpt-4o-mini', api_key='sk-test'))
+            .with_generation_params(top_k=40, top_p=0.9)
+            .build()
+        )
+
+        assert agent.llm.kwargs == {'top_p': 0.9}
+
+    def test_top_k_does_not_reach_azure(self):
+        """The case the review flagged: it would ride through in extra_body."""
+        llm = AzureOpenAI(
+            model='gpt-4.1-mini',
+            api_key='sk-test',
+            azure_endpoint='https://example.cognitiveservices.azure.com',
+            api_version='2024-10-21',
+        )
+
+        agent = AgentBuilder().with_llm(llm).with_generation_params(top_k=40).build()
+
+        body = agent.llm._create_kwargs(
+            {'model': llm.model, 'messages': [], **agent.llm.kwargs}
+        )
+
+        assert agent.llm.kwargs == {}
+        assert 'extra_body' not in body
+
+    def test_seed_does_not_reach_anthropic(self):
+        """Test seed does not reach anthropic."""
+        llm = Anthropic(model='claude-3-5-sonnet-20240620', api_key='sk-test')
+
+        agent = (
+            AgentBuilder()
+            .with_llm(llm)
+            .with_generation_params(seed=42, top_k=40)
+            .build()
+        )
+
+        assert agent.llm.kwargs == {'top_k': 40}
+
+    def test_top_k_still_reaches_vllm(self):
+        """vLLM does accept it, which is what extra_body is for."""
+        llm = OpenAIVLLM(
+            base_url='http://localhost:8000/v1', model='mistral', api_key='sk-test'
+        )
+
+        agent = AgentBuilder().with_llm(llm).with_generation_params(top_k=40).build()
+        body = agent.llm._create_kwargs(
+            {'model': llm.model, 'messages': [], **agent.llm.kwargs}
+        )
+
+        assert body['extra_body'] == {'top_k': 40}
+
+    def test_top_k_still_reaches_gemini(self):
+        """Test top k still reaches gemini."""
+        agent = (
+            AgentBuilder()
+            .with_llm(Gemini(model='gemini-2.5-flash', api_key='sk-test'))
+            .with_generation_params(top_k=40)
+            .build()
+        )
+
+        assert agent.llm._generation_config('sys', {}).top_k == 40
+
+    def test_a_yaml_settings_block_is_guarded_too(self):
+        """Test a yaml settings block is guarded too."""
+        agent = AgentBuilder.from_yaml(
+            yaml_str=agent_yaml('    top_k: 40\n    top_p: 0.9')
+        ).build()
+
+        assert agent.llm.kwargs == {'top_p': 0.9}
 
 
 class TestAgentYamlGenerationParams:

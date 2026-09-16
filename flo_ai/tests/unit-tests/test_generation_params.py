@@ -17,6 +17,7 @@ from flo_ai.helpers.generation_params import (
     merge_generation_params,
     normalize_generation_params,
     token_limit_key,
+    unsupported_params,
 )
 
 
@@ -151,6 +152,90 @@ class TestNormalizeGenerationParams:
         twice = normalize_generation_params(once, 'gemini')
 
         assert twice == {'max_output_tokens': 500}
+
+
+class TestUnsupportedParamsAreDropped:
+    """`settings:` offers the same names for every provider; not all have them.
+
+    Forwarding one anyway is a 400 from the vendor endpoints, and for Anthropic
+    a local TypeError - its messages.create() has no **kwargs to absorb it.
+    """
+
+    def test_openai_family_has_no_top_k(self):
+        """Test openai family has no top k."""
+        for provider in ('openai', 'azure_openai', 'groq'):
+            normalized = normalize_generation_params(
+                {'top_k': 40, 'top_p': 0.9}, provider
+            )
+
+            assert normalized == {'top_p': 0.9}, provider
+
+    def test_anthropic_has_no_penalties_or_seed(self):
+        """Test anthropic has no penalties or seed."""
+        normalized = normalize_generation_params(
+            {
+                'top_k': 40,
+                'seed': 42,
+                'frequency_penalty': 0.5,
+                'presence_penalty': 0.25,
+            },
+            'anthropic',
+        )
+
+        assert normalized == {'top_k': 40}
+
+    def test_vllm_keeps_top_k(self):
+        """Its SDK is OpenAI's, but a vLLM server does accept it."""
+        assert normalize_generation_params({'top_k': 40}, 'vllm') == {'top_k': 40}
+        assert normalize_generation_params({'top_k': 40}, 'openai_vllm') == {
+            'top_k': 40
+        }
+
+    def test_gemini_and_ollama_keep_everything(self):
+        """Test gemini and ollama keep everything."""
+        params = {'top_k': 40, 'seed': 42, 'frequency_penalty': 0.5}
+
+        assert normalize_generation_params(params, 'gemini') == params
+        assert normalize_generation_params(params, 'ollama') == params
+
+    def test_a_non_canonical_key_is_never_dropped(self):
+        """It is somebody's own server knob; extra_body exists to carry it."""
+        normalized = normalize_generation_params(
+            {'guided_regex': r'\d+', 'repetition_penalty': 1.1}, 'openai'
+        )
+
+        assert normalized == {'guided_regex': r'\d+', 'repetition_penalty': 1.1}
+
+    def test_an_unknown_provider_loses_nothing(self):
+        """Test an unknown provider loses nothing."""
+        params = {'top_k': 40, 'seed': 42}
+
+        assert normalize_generation_params(params, 'something-new') == params
+        assert normalize_generation_params(params, None) == params
+
+    def test_the_token_limit_is_never_dropped(self):
+        """Every provider has one, under some name."""
+        assert normalize_generation_params({'max_tokens': 500}, 'anthropic') == {
+            'max_tokens': 500
+        }
+
+    def test_the_input_is_not_mutated(self):
+        """Test the input is not mutated."""
+        params = {'top_k': 40, 'top_p': 0.9}
+
+        normalize_generation_params(params, 'openai')
+
+        assert params == {'top_k': 40, 'top_p': 0.9}
+
+    def test_the_gap_table_is_queryable(self):
+        """Exposed so a caller can warn before a request rather than after."""
+        assert unsupported_params('azure_openai') == {'top_k'}
+        assert unsupported_params('claude') == {
+            'frequency_penalty',
+            'presence_penalty',
+            'seed',
+        }
+        assert unsupported_params('gemini') == frozenset()
 
 
 class TestMergeGenerationParams:
