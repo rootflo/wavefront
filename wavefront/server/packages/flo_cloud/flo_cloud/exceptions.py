@@ -9,6 +9,12 @@ class CloudStorageError(Exception):
     pass
 
 
+class KmsError(Exception):
+    """KMS encrypt/decrypt failed. Message is safe to return to API clients."""
+
+    pass
+
+
 class CloudStorageFileNotFoundError(CloudStorageError):
     """Exception raised when a file is not found in cloud storage"""
 
