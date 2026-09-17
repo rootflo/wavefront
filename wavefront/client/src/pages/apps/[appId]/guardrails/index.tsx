@@ -29,6 +29,34 @@ import AdapterCard from './AdapterCard';
 import PolicyTestPanel, { PolicyTestHandle } from './PolicyTestPanel';
 import { ADAPTER_META } from './adapter-meta';
 
+/**
+ * Canonical serialisation of a JSON-ish value: object keys and array members
+ * both ordered.
+ *
+ * Nothing in a policy payload is order-significant — `adapters`, `stages` and
+ * the PII `entities` list are all sets — but the editor rebuilds them in
+ * whichever order you clicked: toggling a provider off and on appends it at
+ * the end, and so does ticking a stage or an entity. Comparing raw
+ * `JSON.stringify` output would call those unsaved changes, and an indicator
+ * that cries wolf trains you to ignore the one time it is right.
+ */
+const canonicalJson = (value: unknown): string => {
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).sort().join(',')}]`;
+  }
+  if (value !== null && typeof value === 'object') {
+    const entries = Object.keys(value as Record<string, unknown>)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson((value as Record<string, unknown>)[key])}`);
+    return `{${entries.join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+};
+
+/** Value-equality fingerprint of everything this editor can change. */
+const fingerprintPolicy = (isEnabled: boolean, mode: EnforcementMode, adapters: GuardrailAdapterConfig[]): string =>
+  canonicalJson({ is_enabled: isEnabled, mode, adapters });
+
 const GuardrailsManagement: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();
   const navigate = useNavigate();
@@ -52,13 +80,31 @@ const GuardrailsManagement: React.FC = () => {
   const { data: policy, isLoading } = useGetGuardrailPolicy(appId, namespace);
   const { data: piiEntities } = useGetGuardrailPiiEntities(appId);
 
+  // Fingerprint of the policy as it stands on the server. Null until the
+  // first load, so nothing is reported as unsaved before there is a baseline
+  // to compare against.
+  const [savedFingerprint, setSavedFingerprint] = useState<string | null>(null);
+
   // Reset the form whenever a different namespace's policy arrives, so the
   // editor never shows one namespace's settings under another's name.
+  //
+  // The baseline is captured here, in the same effect, rather than derived
+  // from `policy` during render: on the render the new data lands the form
+  // still holds the previous namespace's values, so a render-time comparison
+  // would flash "Unsaved changes" over a form nobody had touched.
   useEffect(() => {
-    setIsEnabled(policy?.is_enabled ?? false);
-    setMode(policy?.mode ?? 'MONITOR');
-    setAdapters(policy?.adapters ?? []);
+    const loadedEnabled = policy?.is_enabled ?? false;
+    const loadedMode = policy?.mode ?? 'MONITOR';
+    const loadedAdapters = policy?.adapters ?? [];
+
+    setIsEnabled(loadedEnabled);
+    setMode(loadedMode);
+    setAdapters(loadedAdapters);
+    setSavedFingerprint(fingerprintPolicy(loadedEnabled, loadedMode, loadedAdapters));
   }, [policy, namespace]);
+
+  const draftFingerprint = useMemo(() => fingerprintPolicy(isEnabled, mode, adapters), [isEnabled, mode, adapters]);
+  const hasUnsavedChanges = savedFingerprint !== null && draftFingerprint !== savedFingerprint;
 
   const configuredByName = useMemo(() => new Map(adapters.map((adapter) => [adapter.name, adapter])), [adapters]);
 
@@ -104,6 +150,10 @@ const GuardrailsManagement: React.FC = () => {
         mode,
         adapters,
       });
+      // The refetch below lands on these same values and resets the baseline
+      // anyway, but not until it returns. Moving the baseline now stops the
+      // indicator from sitting there over an already-saved policy.
+      setSavedFingerprint(draftFingerprint);
       queryClient.invalidateQueries({ queryKey: getGuardrailPolicyKey(appId || '', namespace) });
       queryClient.invalidateQueries({ queryKey: getGuardrailPoliciesKey(appId || '') });
       notifySuccess('Guardrail policy saved');
@@ -169,6 +219,23 @@ const GuardrailsManagement: React.FC = () => {
           <Button variant="outline" onClick={() => testPanelRef.current?.focus()} disabled={isLoading}>
             Test policy
           </Button>
+          {/*
+            Next to Save, not near the edit that caused it: the test panel runs
+            the draft, so a policy can be built, verified and left unsaved
+            without anything contradicting you. This header stays on screen
+            while the form scrolls, so the reminder is visible from wherever
+            the last edit was made.
+          */}
+          {hasUnsavedChanges && (
+            <span
+              role="status"
+              title="These settings are not live yet. Agents and workflows in this namespace keep using the saved policy until you save."
+              className="flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden="true" />
+              Unsaved changes
+            </span>
+          )}
           <Button onClick={handleSave} disabled={saving || isLoading}>
             {saving ? 'Saving...' : 'Save policy'}
           </Button>

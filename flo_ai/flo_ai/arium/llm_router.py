@@ -31,6 +31,7 @@ class BaseLLMRouter(ABC):
         temperature: float = 0.1,
         max_retries: int = 3,
         fallback_strategy: str = 'first',
+        llm_decorator: Optional[Callable[[BaseLLM], BaseLLM]] = None,
     ):
         """
         Initialize the LLM router.
@@ -40,8 +41,17 @@ class BaseLLMRouter(ABC):
             temperature: Temperature for LLM calls (lower = more deterministic)
             max_retries: Maximum number of retries for LLM calls
             fallback_strategy: Strategy when LLM fails ("first", "last", "random")
+            llm_decorator: Wraps whichever LLM this router ends up using.
+
+                Applied here rather than by the caller because the default
+                below is only built when ``llm`` is None — so a caller that
+                decorates what it passes in covers every case except the one
+                where it passes nothing, and that case is then the only route
+                to the provider nobody is watching. A router configured with no
+                ``model:`` took exactly that route.
         """
-        self.llm = llm or OpenAI(model='gpt-4o-mini', temperature=temperature)
+        resolved_llm = llm or OpenAI(model='gpt-4o-mini', temperature=temperature)
+        self.llm = llm_decorator(resolved_llm) if llm_decorator else resolved_llm
         self.temperature = temperature
         self.max_retries = max_retries
         self.fallback_strategy = fallback_strategy

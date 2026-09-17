@@ -55,8 +55,14 @@ class GuardrailsContainer(containers.DeclarativeContainer):
 
     # One engine per process. Adapters hold expensive state — a spaCy model and
     # an HTTP connection pool — so they must not be rebuilt per request.
+    #
+    # The cache manager backs the shared tier of the verdict cache, which holds
+    # only content-free verdicts: Azure allows and blocks, never Presidio's
+    # redactions. Sharing those is what stops a freshly started worker paying a
+    # provider again for a conversation an older one already checked.
     guardrails_engine = providers.Singleton(
         build_guardrails_engine,
         policy_resolver=policy_resolver,
         audit_sink=audit_sink,
+        cache_manager=cache_manager,
     )

@@ -216,6 +216,21 @@ class PolicyDecision:
             and self.transformed_content is not None
         )
 
+    @property
+    def blocked_by_failure(self) -> bool:
+        """True when the block came from the checks failing, not from content.
+
+        A content block is the control working and is routine. A fail-closed
+        adapter or a policy naming an adapter that is not registered blocks
+        legitimate traffic until someone fixes it, so callers use this to log
+        the two at different levels instead of treating every block alike.
+        """
+        return any(
+            result.action is PolicyAction.BLOCK
+            and result.failure_class is not FailureClass.NONE
+            for result in self.results
+        )
+
     def block_reasons(self) -> List[str]:
         """Full detail for operators: logs, audit rows, debugging.
 
@@ -228,6 +243,32 @@ class PolicyDecision:
             if result.action is PolicyAction.BLOCK and result.message
         ]
         return reasons or ['Blocked by guardrail policy']
+
+    def operator_summary(self) -> str:
+        """One line naming every check that blocked, and why.
+
+        The exact counterpart of ``caller_message``: everything withheld from
+        the end user — adapter, finding code, severity, policy version —
+        belongs here, where only operators read it. Written as a single line
+        so a block needs no traceback to diagnose.
+        """
+        parts = []
+        for result in self.results:
+            if result.action is not PolicyAction.BLOCK:
+                continue
+            label = result.adapter or 'unknown'
+            if result.finding_code:
+                label += f'/{result.finding_code}'
+            if result.severity is not None:
+                label += f' severity={result.severity:.2f}'
+            if result.is_error:
+                label += f' error={result.failure_class.value}'
+            parts.append(f'{label}: {result.message or "no detail reported"}')
+
+        summary = '; '.join(parts) or 'no blocking finding recorded'
+        if self.policy_version:
+            summary += f' [policy={self.policy_version}]'
+        return summary
 
     def caller_message(self, subject: str = 'request') -> str:
         """A single message safe to show the end user.

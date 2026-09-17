@@ -84,6 +84,7 @@ from triggers_module.triggers_container import TriggersContainer
 from inference_module.inference_container import InferenceContainer
 from inference_module.controllers.inference_controller import inference_router
 
+from flo_ai.llm.guarded_llm import GuardrailBlocked
 from guardrails_module.container import GuardrailsContainer
 from guardrails_module.controllers.guardrails_controller import guardrails_router
 from llm_inference_config_module.container import LlmInferenceConfigContainer
@@ -259,6 +260,13 @@ async def lifespan(app: FastAPI):
             raise TypeError('db_client is not an instance of DatabaseClient')
 
         db_client.run_migration()
+
+        # Load the safety providers' models before the first request needs
+        # them. Presidio builds a spaCy model on first use, which takes longer
+        # than the per-check timeout the policy sets — so without this the
+        # first checked request times out and, under a FAIL_CLOSED policy, is
+        # rejected. Paid here, where nothing is waiting on it.
+        await guardrails_container.guardrails_engine().warmup()
 
         scheduled_job_service = application_container.scheduled_job_service()
 
@@ -472,6 +480,45 @@ app.include_router(message_processor_router, prefix='/floware')
 app.include_router(configuration_router, prefix='/floware')
 app.include_router(cloud_storage_router, prefix='/floware')
 app.include_router(trigger_router, prefix='/floware')
+
+
+@app.exception_handler(GuardrailBlocked)
+async def guardrail_blocked_handler(request: Request, exc: GuardrailBlocked):
+    """Turn a policy block into a plain error response.
+
+    A block is the guardrail working, not the server failing. Left to the
+    catch-all below, it arrives as an unhandled exception: a ~100-frame
+    traceback logged twice — once by that handler's ``exc_info``, then again
+    by uvicorn, because Starlette re-raises whatever reaches its 500 handler
+    — for an outcome whose whole explanation fits on one line.
+
+    Which adapter fired, on which finding, under which policy version goes to
+    the log only. The response carries the decision's own caller message,
+    which deliberately names none of that: telling whoever tripped a check
+    exactly which check they tripped is a map of how to phrase the next
+    attempt.
+    """
+    request_id = getattr(request.state, 'request_id', get_current_request_id())
+    detail = exc.decision.operator_summary() if exc.decision else str(exc)
+
+    # A content block is the control doing its job. A block because a check
+    # could not run - provider down with FAIL_CLOSED, or a policy naming an
+    # adapter that is not registered - is rejecting legitimate traffic until
+    # someone intervenes, and stays at error level so alerting still sees it.
+    emit = (
+        logger.error
+        if exc.decision is not None and exc.decision.blocked_by_failure
+        else logger.warning
+    )
+    emit(
+        f'Guardrail blocked {request.method} {request.url.path} '
+        f'[Request ID: {request_id}]: {detail}'
+    )
+
+    return JSONResponse(
+        status_code=500,
+        content=ResponseFormatter().buildErrorResponse(error=str(exc)),
+    )
 
 
 @app.exception_handler(Exception)

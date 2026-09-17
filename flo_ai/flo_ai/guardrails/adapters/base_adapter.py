@@ -33,6 +33,21 @@ class BaseAdapter(ABC):
     async def evaluate(self, request: AssessmentRequest) -> CheckResult:
         """Evaluate a payload and return a finding."""
 
+    async def warmup(self) -> None:
+        """Build whatever the first evaluation would otherwise build.
+
+        Default is a no-op; adapters with expensive lazy state override it.
+
+        Exists because that state is otherwise built inside a call the engine
+        has already put a timeout on — ``AdapterSpec.timeout_seconds``, which
+        is sized for checking a message rather than for loading a model. An
+        adapter whose first call has to load one blows that budget, reports a
+        timeout, and under a FAIL_CLOSED policy rejects the request. The cost
+        does not disappear; it moves to startup, where nothing is waiting on
+        it and no caller is refused because of it.
+        """
+        return None
+
     async def aclose(self) -> None:
         """Release any provider resources.
 

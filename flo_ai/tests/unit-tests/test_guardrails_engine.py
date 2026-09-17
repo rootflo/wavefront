@@ -166,6 +166,45 @@ class TestVerdicts:
         assert 'registered' not in caller
         assert 'administrator' in caller
 
+    async def test_operator_summary_carries_what_the_caller_message_omits(self):
+        """The log line must be self-sufficient for diagnosing a block.
+
+        Nothing else surfaces which check fired: the exception that reaches
+        the API layer carries only ``caller_message``, and a block is handled
+        rather than raised, so there is no traceback to fall back on.
+        """
+        engine = build(
+            policy(spec(), version='2026-09-17T10:00'),
+            FakeAdapter(behaviour='block', finding_code='safety.category_violation'),
+        )
+
+        decision = await engine.evaluate('bad', Principal(), BEFORE)
+
+        summary = decision.operator_summary()
+        assert 'fake' in summary
+        assert 'safety.category_violation' in summary
+        assert 'fake says no' in summary
+        assert '2026-09-17T10:00' in summary
+        # The same detail must stay out of what the end user is shown.
+        caller = decision.caller_message()
+        assert 'fake' not in caller
+        assert 'safety.category_violation' not in caller
+        # A content finding is routine, so it must not read as a failure.
+        assert not decision.blocked_by_failure
+
+    async def test_fail_closed_block_is_distinguishable_from_a_content_block(self):
+        """Both block, but only one of them needs someone woken up."""
+        engine = build(
+            policy(spec(on_error=FailureMode.FAIL_CLOSED)),
+            FakeAdapter(behaviour='infra_error'),
+        )
+
+        decision = await engine.evaluate('anything', Principal(), BEFORE)
+
+        assert decision.blocked
+        assert decision.blocked_by_failure
+        assert 'INFRASTRUCTURE' in decision.operator_summary()
+
     async def test_pii_block_tells_the_caller_what_to_change(self):
         engine = build(
             policy(spec()),

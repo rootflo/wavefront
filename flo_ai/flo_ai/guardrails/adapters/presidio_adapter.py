@@ -114,6 +114,18 @@ _IMPORT_HINT = (
 )
 
 
+def _swallow_result(task: 'asyncio.Future') -> None:
+    """Retrieve a finished build's outcome so asyncio does not complain.
+
+    Every caller of a build can be cancelled — the engine runs adapter calls
+    under a timeout — and a task whose exception nobody reads is reported at
+    shutdown as "exception was never retrieved". The real handling is in
+    ``_engines``; this only stops the noise.
+    """
+    if not task.cancelled():
+        task.exception()
+
+
 def _keep_last(keep: int, masking_char: str = '*'):
     """Mask everything but the trailing ``keep`` characters.
 
@@ -159,6 +171,8 @@ class PresidioAdapter(BaseAdapter):
         self._analyzer: Any = None
         self._anonymizer: Any = None
         self._init_lock = asyncio.Lock()
+        #: The in-flight build, so a cancelled caller cannot discard it.
+        self._init_task: Optional['asyncio.Future'] = None
         # spaCy analysis is CPU-heavy and would otherwise contend with every
         # other to_thread caller on the default executor.
         self._executor = ThreadPoolExecutor(
@@ -172,36 +186,117 @@ class PresidioAdapter(BaseAdapter):
     async def aclose(self) -> None:
         self._executor.shutdown(wait=False)
 
+    async def warmup(self) -> None:
+        """Do everything the first real check would do, now.
+
+        See ``BaseAdapter.warmup``. Call this at startup: the alternative is
+        that the first request to be checked absorbs the cost inside a
+        five-second check timeout, and is rejected for it.
+
+        Building the engines is not enough on its own. ``AnalyzerEngine()``
+        loads the spaCy model, but the first ``analyze`` after that is still
+        far slower than the ones following it — spaCy initialises pipeline
+        components lazily, and Presidio resolves its recognisers against the
+        requested entity list on the call rather than at construction. Warming
+        only the constructor left a smaller version of the same cliff, still
+        big enough to blow the timeout.
+
+        So this runs a real pass over a synthetic payload, chosen to produce a
+        finding so the anonymiser is exercised too rather than skipped as it is
+        on clean text.
+        """
+        await self._engines()
+
+        # Synthetic, and a documented test number rather than anything real:
+        # this string is only ever handed to a local model.
+        sample = 'card 4111111111111111'
+        try:
+            findings = await self._analyze(sample, list(self._entities), {})
+            await self._anonymize(sample, findings, {})
+        except Exception as exc:
+            # A warm-up failure is not a reason to refuse to start. The
+            # adapter will try again on first use, which is the behaviour
+            # there was before warming existed.
+            logger.warning(
+                f'Presidio warm-up pass failed ({exc}). The engines are built, '
+                f'but the first check may still be slow.'
+            )
+
     async def _engines(self) -> tuple:
         """Build the Presidio engines once, off the event loop.
 
         Construction loads a spaCy model and takes seconds, so it must not
         happen in ``__init__`` (which runs on the loop) nor per request.
+
+        The build is owned by a task on the instance rather than awaited
+        directly, and callers wait on it through ``shield``. Both halves of
+        that matter, because the engine runs every adapter call under
+        ``wait_for``: a timeout cancels the *caller*, and if the caller were
+        the one holding the build, the cancellation would land on the await
+        and skip the assignment that publishes the result. The executor thread
+        cannot be cancelled, so it would finish loading the model and throw it
+        away — leaving ``_analyzer`` unset, so the next request starts another
+        build, while the abandoned one still occupies one of two worker
+        threads. A handful of timeouts could then queue real checks behind
+        builds nobody is waiting for.
+
+        With the build owned here, a cancelled caller abandons only its own
+        wait. The load completes, publishes, and the next caller finds it done.
         """
         if self._analyzer is not None:
             return self._analyzer, self._anonymizer
 
         async with self._init_lock:
-            if self._analyzer is not None:
-                return self._analyzer, self._anonymizer
+            if self._analyzer is None and self._init_task is None:
+                self._init_task = asyncio.ensure_future(self._build_engines())
+                # Retrieves the exception of a build nobody is left waiting on,
+                # which asyncio would otherwise report as never retrieved.
+                self._init_task.add_done_callback(_swallow_result)
+            task = self._init_task
 
-            def _build() -> tuple:
-                try:
-                    from presidio_analyzer import AnalyzerEngine
-                    from presidio_anonymizer import AnonymizerEngine
-                except ImportError as exc:  # pragma: no cover - env dependent
-                    raise RuntimeError(_IMPORT_HINT) from exc
-                analyzer = AnalyzerEngine()
-                if self._load_optional_recognizers:
-                    self._augment_registry(analyzer)
-                return analyzer, AnonymizerEngine()
-
-            loop = asyncio.get_running_loop()
-            analyzer, anonymizer = await loop.run_in_executor(self._executor, _build)
-            self._analyzer, self._anonymizer = analyzer, anonymizer
-            logger.debug('Presidio engines initialised')
+        if task is not None:
+            try:
+                await asyncio.shield(task)
+            except BaseException:
+                # Distinguish "the build failed" from "our wait was cancelled".
+                # A cancelled wait leaves the build running, and the next caller
+                # joins it rather than starting a second one. A build that ended
+                # badly has to be forgotten, or it is replayed as a stale error
+                # on every later call and the adapter never recovers.
+                #
+                # Cleared here rather than from the done callback because that
+                # runs via call_soon: a retry issued immediately after the
+                # failure would still see the dead task.
+                if task.done() and (task.cancelled() or task.exception()):
+                    async with self._init_lock:
+                        if self._init_task is task:
+                            self._init_task = None
+                raise
 
         return self._analyzer, self._anonymizer
+
+    async def _build_engines(self) -> None:
+        """Construct the engines and publish them.
+
+        Publishing happens here, inside the task, rather than in whichever
+        caller happened to be waiting — see ``_engines``.
+        """
+
+        def _build() -> tuple:
+            try:
+                from presidio_analyzer import AnalyzerEngine
+                from presidio_anonymizer import AnonymizerEngine
+            except ImportError as exc:  # pragma: no cover - env dependent
+                raise RuntimeError(_IMPORT_HINT) from exc
+            analyzer = AnalyzerEngine()
+            if self._load_optional_recognizers:
+                self._augment_registry(analyzer)
+            return analyzer, AnonymizerEngine()
+
+        loop = asyncio.get_running_loop()
+        analyzer, anonymizer = await loop.run_in_executor(self._executor, _build)
+        self._analyzer, self._anonymizer = analyzer, anonymizer
+        logger.debug('Presidio engines initialised')
 
     def _augment_registry(self, analyzer: Any) -> None:
         """Load the country recognisers Presidio ships but leaves switched off.

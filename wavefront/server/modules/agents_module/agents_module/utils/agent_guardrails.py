@@ -7,7 +7,7 @@ unguarded while single-agent inference was protected: the settings page read
 """
 
 from contextlib import contextmanager
-from typing import Any, Iterator, Optional
+from typing import Any, Callable, Iterator, Optional
 
 from common_module.log.logger import logger
 from common_module.middleware.request_id_middleware import get_current_request_id
@@ -67,6 +67,58 @@ def apply_guardrails(
         f'adapters={getattr(guardrails_engine, "registered", ()) or "none"}]'
     )
     return agent
+
+
+def guardrail_llm_decorator(
+    guardrails_engine: Any,
+    namespace: Optional[str],
+) -> Optional[Callable[[Any, str], Any]]:
+    """Build the ``llm_decorator`` hook ``AriumBuilder.from_yaml`` accepts.
+
+    ``apply_guardrails`` can only reach agents the server itself built, which
+    in a workflow is just the ``namespace/name`` references. Agents declared
+    inline in the workflow YAML, and every router's model, are constructed
+    inside the builder — including the template the console pre-fills — and
+    called the provider with no policy applied. Handing the builder a
+    decorator is what closes that: it wraps each LLM at the moment it is
+    created, so coverage no longer depends on how an agent happened to be
+    declared.
+
+    Returns None when there is nothing to enforce, which keeps the builder on
+    its plain path instead of threading a no-op through every node.
+    """
+    if guardrails_engine is None or namespace is None:
+        return None
+
+    try:
+        from flo_ai.guardrails import Principal
+        from flo_ai.llm.guarded_llm import GuardedLLM
+    except ImportError:
+        logger.warning(
+            'Guardrails requested but flo_ai.guardrails is unavailable; '
+            'workflow nodes running unguarded'
+        )
+        return None
+
+    def decorate(llm: Any, node_name: str) -> Any:
+        # The builder only offers LLMs it created, so this should not trigger.
+        # It is here because the cost of being wrong is silent: a second
+        # wrapper evaluates every payload twice, which bills the safety
+        # provider twice per call and logs each decision two times.
+        if isinstance(llm, GuardedLLM):
+            return llm
+
+        logger.info(
+            f'Guardrails attached to workflow node {node_name} '
+            f'[ns={namespace}, llm={type(llm).__name__}]'
+        )
+        return GuardedLLM(
+            llm,
+            guardrails_engine,
+            Principal(namespace=namespace, agent_id=node_name),
+        )
+
+    return decorate
 
 
 @contextmanager

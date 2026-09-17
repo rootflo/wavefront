@@ -9,6 +9,7 @@ from db_repo_module.models.workflow_version import WorkflowVersion
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from agents_module.utils.agent_guardrails import (
     apply_guardrails,
+    guardrail_llm_decorator,
     guardrail_run_scope,
 )
 from flo_ai import AriumBuilder, BaseMessage, FloUtils, Arium, AgentBuilder, Agent
@@ -254,6 +255,7 @@ class WorkflowInferenceService:
         workflow_name: str,
         access_token: Optional[str] = None,
         app_key: Optional[str] = None,
+        namespace: Optional[str] = None,
     ):
         """
         Create workflow instance from YAML configuration
@@ -261,6 +263,11 @@ class WorkflowInferenceService:
         Args:
             yaml_content: YAML configuration content
             workflow_name: The name of the workflow for logging purposes
+            namespace: The workflow's namespace, which selects the guardrail
+                policy for the nodes built here. Inline agents carry no
+                namespace of their own — unlike a `namespace/name` reference —
+                so the workflow's own is the only one that applies. Omitted
+                means unguarded, for callers that never had a namespace.
 
         Returns:
             Workflow instance created from YAML
@@ -292,13 +299,21 @@ class WorkflowInferenceService:
                 agent_references, access_token, app_key
             )
 
-        # Build workflow with pre-built agents and inlined subworkflows
+        # Build workflow with pre-built agents and inlined subworkflows.
+        #
+        # The referenced agents above are already guarded individually. The
+        # decorator covers what this service cannot reach: agents declared
+        # inline in the YAML and every router's model, which the builder
+        # creates itself. Without it a workflow was only as guarded as its
+        # agents happened to be declared, and the console's default template
+        # declares all of them inline.
         workflow_builder = AriumBuilder.from_yaml(
             agents=agents_dict,
             yaml_str=yaml_content,
             function_registry=FUNCTION_NODE_REGISTRY,
             access_token=access_token,
             app_key=app_key,
+            llm_decorator=guardrail_llm_decorator(self.guardrails_engine, namespace),
         )
         workflow = workflow_builder.build()
 
@@ -403,7 +418,7 @@ class WorkflowInferenceService:
 
         # Create workflow from YAML
         workflow = await self.create_workflow_from_yaml(
-            yaml_content, workflow_name, access_token, app_key
+            yaml_content, workflow_name, access_token, app_key, namespace=namespace
         )
 
         # Run inference with optional event streaming
@@ -472,7 +487,7 @@ class WorkflowInferenceService:
 
         # Create workflow from YAML
         workflow = await self.create_workflow_from_yaml(
-            yaml_content, workflow_name, access_token, app_key
+            yaml_content, workflow_name, access_token, app_key, namespace=namespace
         )
 
         # Run inference with optional event streaming

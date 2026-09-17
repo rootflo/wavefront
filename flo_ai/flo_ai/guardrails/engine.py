@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
+import time
 from typing import Any, Dict, List, Optional, Protocol, Sequence, Tuple
 
 from flo_ai.utils.logger import logger
@@ -25,6 +28,11 @@ from .contracts import (
     WorkflowStage,
 )
 from .run_context import get_run_id
+from .verdict_cache import (
+    VERDICT_CACHE_CHAR_BUDGET,
+    VerdictCache,
+    build_local_cache,
+)
 
 #: Stages the interceptor implements today. Policies may reference the Phase 2
 #: tool stages, but routing a payload to them would silently do nothing, so the
@@ -67,6 +75,9 @@ class GuardrailsEngine:
         resolver: Optional[Any] = None,
         adapters: Optional[Sequence[BaseAdapter]] = None,
         audit_sink: Optional[AuditSink] = None,
+        verdict_cache_chars: int = VERDICT_CACHE_CHAR_BUDGET,
+        verdict_cache: Optional[VerdictCache] = None,
+        cache_key_secret: Optional[Any] = None,
     ) -> None:
         # No resolver means no policy, which means nothing is enabled. A
         # guardrails engine that enforces by default would surprise every
@@ -74,8 +85,41 @@ class GuardrailsEngine:
         self._resolver = resolver or StaticPolicyResolver(DISABLED_POLICY)
         self._adapters: Dict[str, BaseAdapter] = {}
         self._audit_sink = audit_sink
+        # Per instance, not per module: two engines in one process serve
+        # different configurations, and one cache would cross them. Callers
+        # that want a shared backend pass ``verdict_cache`` (normally a
+        # TieredVerdictCache wrapping a local tier); otherwise the local tier
+        # stands alone and ``verdict_cache_chars=0`` turns caching off.
+        self._verdicts: VerdictCache = verdict_cache or build_local_cache(
+            verdict_cache_chars
+        )
+        self._key_secret = self._coerce_secret(cache_key_secret)
+
+        if verdict_cache is not None and self._key_secret is None:
+            # Only worth saying when a backend was supplied, since that is the
+            # case where keys leave the process. A bare SHA-256 of short
+            # content is brute-forceable: anyone who can read the cache can
+            # enumerate every 10-digit number and match digests, which turns
+            # the key itself into a disclosure for payloads like a lone phone
+            # number or account ID.
+            logger.warning(
+                'Guardrail verdict cache has a shared backend but no key '
+                'secret; cache keys fall back to plain SHA-256, which is '
+                'brute-forceable for short payloads. Set a secret to close it.'
+            )
+
         for adapter in adapters or ():
             self.register_adapter(adapter)
+
+    @staticmethod
+    def _coerce_secret(secret: Optional[Any]) -> Optional[bytes]:
+        if secret is None:
+            return None
+        if isinstance(secret, bytes):
+            return secret or None
+        if isinstance(secret, str):
+            return secret.encode('utf-8') or None
+        raise TypeError('cache_key_secret must be str, bytes or None')
 
     def register_adapter(self, adapter: BaseAdapter) -> None:
         """Register an adapter under its own declared name.
@@ -99,6 +143,39 @@ class GuardrailsEngine:
         whenever it changes.
         """
         return self._adapters.get(name)
+
+    async def warmup(self) -> None:
+        """Build every adapter's lazy state before any request needs it.
+
+        Call once at startup. Without it, whichever request is checked first
+        pays for a provider's initialisation inside the per-check timeout the
+        policy sets — and a FAIL_CLOSED policy turns that into a rejected
+        request rather than a slow one.
+
+        A warmup failure is logged and swallowed. It is not a reason to refuse
+        to start: the adapter will try again on first use, which is exactly the
+        behaviour there was before warming existed. What it must not do is take
+        the process down for a provider the policy may not even name.
+        """
+        for adapter in self._adapters.values():
+            started = time.monotonic()
+            try:
+                await adapter.warmup()
+            except Exception as exc:
+                logger.warning(
+                    f'Guardrail adapter {adapter.name} failed to warm up: {exc}. '
+                    f'It will initialise on first use instead, which may time '
+                    f'out that request.'
+                )
+                continue
+            # INFO, and timed: this is how you tell a warm process from one
+            # that skipped warming and is about to reject its first request.
+            # If the number here is larger than the policy's timeout, that
+            # cost was previously being charged to a user.
+            logger.info(
+                f'Guardrail adapter {adapter.name} warmed in '
+                f'{time.monotonic() - started:.1f}s'
+            )
 
     async def aclose(self) -> None:
         """Release every adapter's resources."""
@@ -185,11 +262,73 @@ class GuardrailsEngine:
             )
             return PolicyDecision(policy_version=policy.version)
 
+        # A verdict already derived for this content under this policy is
+        # returned as it stands. It is deliberately not logged or audited a
+        # second time: the finding is the same finding, and one row per
+        # re-send would bury the trail rather than enrich it.
+        key = self._cache_key(content, principal, stage, policy)
+        if key is not None:
+            cached = await self._verdicts.get(key)
+            if cached is not None:
+                logger.debug(
+                    f'Guardrail {stage.value} verdict reused '
+                    f'[ns={principal.namespace or "-"} '
+                    f'agent={principal.agent_id or "-"}]'
+                )
+                return cached
+
         results = await self._run_adapters(content, context, specs)
         decision = await self._decide(content, results, policy, context, specs)
         self._log_decision(decision, context, specs)
         await self._audit(decision, context)
+
+        # An error verdict describes the provider, not the content. Fail-open
+        # turned an outage into ALLOW and fail-closed turned it into BLOCK;
+        # keeping either would outlive the outage that justified it - the
+        # first as a bypass, the second as an outage that never ends.
+        if key is not None and not any(r.is_error for r in decision.results):
+            await self._verdicts.store(key, decision)
         return decision
+
+    def _cache_key(
+        self,
+        content: Any,
+        principal: Principal,
+        stage: WorkflowStage,
+        policy: ResolvedPolicy,
+    ) -> Optional[str]:
+        """Identity of "this content, judged by this policy", or ``None`` when
+        the payload cannot be cached.
+
+        The namespace is in the key because policy is resolved per namespace:
+        two tenants can run different adapters over identical text and must
+        not share a verdict. The stage is in it because a policy can configure
+        different adapters before and after the model. The version is, so that
+        editing a policy retires every verdict it produced.
+
+        All four are folded into the digest rather than only concatenated into
+        the prefix, so a namespace containing the separator cannot be made to
+        collide with another one. The readable prefix is kept anyway: it is
+        what makes a shared cache greppable, and lets an operator scan or drop
+        one namespace's entries without being able to read any of them.
+
+        The digest is keyed when a secret is configured. Plain SHA-256 of a
+        short payload is not a privacy barrier — see the warning in __init__.
+        """
+        if not isinstance(content, str):
+            return None
+
+        namespace = principal.namespace or ''
+        identity = '\x00'.join(
+            (namespace, stage.value, policy.version or '', content)
+        ).encode('utf-8')
+
+        if self._key_secret is not None:
+            digest = hmac.new(self._key_secret, identity, hashlib.sha256).hexdigest()
+        else:
+            digest = hashlib.sha256(identity).hexdigest()
+
+        return f'{namespace}:{stage.value}:{digest}'
 
     def _log_decision(
         self,

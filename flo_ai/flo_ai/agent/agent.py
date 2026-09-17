@@ -2,6 +2,7 @@ import json
 from typing import Dict, Any, List, Optional
 from flo_ai.agent.base_agent import BaseAgent, AgentType, ReasoningPattern
 from flo_ai.llm.base_llm import BaseLLM
+from flo_ai.llm.guarded_llm import GuardrailBlocked
 from flo_ai.models.chat_message import (
     AssistantMessage,
     BaseMessage,
@@ -79,6 +80,18 @@ class Agent(BaseAgent):
         if isinstance(inputs, str):
             inputs = [UserMessage(content=resolve_variables(inputs, variables))]
 
+        # The conversation as it stood before this turn, so a turn the
+        # guardrails refuse can be undone. Inputs are added to the history
+        # below, before anything has looked at them — the check runs inside
+        # ``llm.generate``, several frames down.
+        #
+        # A copy of the list rather than its length: _setup_system_message
+        # rebuilds the history to strip old system messages, so by the time a
+        # block is raised an index into the original no longer points at the
+        # same message. Restoring the snapshot is exact regardless of what
+        # reordered the list in between.
+        history_before_turn = list(self.conversation_history)
+
         # Perform runtime variable validation if not already resolved (single agent usage)
         if not self.resolved_variables:
             # Extract variables from inputs and system prompt
@@ -119,12 +132,30 @@ class Agent(BaseAgent):
 
         retry_count = 0
 
-        # If no tools, act as conversational agent
-        if not self.tools:
-            return await self._run_conversational(retry_count, variables)
+        try:
+            # If no tools, act as conversational agent
+            if not self.tools:
+                return await self._run_conversational(retry_count, variables)
 
-        # Otherwise, run as tool agent
-        return await self._run_with_tools(retry_count, variables)
+            # Otherwise, run as tool agent
+            return await self._run_with_tools(retry_count, variables)
+        except GuardrailBlocked:
+            # A refused turn leaves no trace. The payload never reached the
+            # provider, so nothing about it is part of the conversation — and
+            # keeping it would poison every turn after it, since the history is
+            # re-scanned on each one and the refused message would still be
+            # sitting in it.
+            #
+            # The whole turn goes, not just the offending message: a block mid
+            # tool-loop leaves an assistant turn whose tool calls were never
+            # answered, which providers reject on the next request. There is no
+            # assistant reply to keep either way, because this path raises.
+            #
+            # The system prompt is re-added by _setup_system_message on the next
+            # run, which strips any existing one first, so restoring a snapshot
+            # taken before it moved is safe.
+            self.conversation_history = history_before_turn
+            raise
 
     async def _handle_response_with_parser(
         self, assistant_message: Optional[str], role: str, response: Dict[str, Any]
