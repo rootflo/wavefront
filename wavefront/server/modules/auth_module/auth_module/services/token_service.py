@@ -3,8 +3,7 @@ import json
 import jwt
 import hashlib
 
-from datetime import datetime
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any
 from flo_cloud._types import FloKMS
@@ -62,7 +61,7 @@ class TokenService:
         if not is_temporary and (sub is None or user_id is None or role_id is None):
             raise ValueError('Required values are missing for creating a token')
 
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         data = {
             key: value
             for key, value in [
@@ -111,7 +110,10 @@ class TokenService:
             )
             return decoded
         else:
-            header_b64, payload_b64, signature_b64 = token.split('.')
+            try:
+                header_b64, payload_b64, signature_b64 = token.split('.')
+            except ValueError as e:
+                raise jwt.InvalidTokenError("Invalid token format") from e
 
             message = f'{header_b64}.{payload_b64}'
             digest = hashlib.sha256(message.encode()).digest()
