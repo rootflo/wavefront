@@ -1,5 +1,6 @@
 export { default as AiAgentIcon } from './ai-agent-icon';
 export { ApiActiveIcon, ApiIcon } from './api-icon';
+export { default as ChatIcon } from './chat-icon';
 export { default as DatasourcesIcon } from './datasources';
 export { default as ModelInferenceIcon } from './model-inference-icon';
 export { default as ModelRepositoryIcon } from './model-repository-icon';

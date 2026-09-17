@@ -6,6 +6,7 @@ import { AgentApi, AgentListItem } from '@app/types/agent';
 import { ApiServiceItem } from '@app/types/api-service';
 import { App } from '@app/types/app';
 import { Authenticator } from '@app/types/authenticator';
+import { Chatbot } from '@app/types/chatbot';
 import { Datasource, DynamicQuery, ReadDynamicQueryData } from '@app/types/datasource';
 import { LLMInferenceConfig } from '@app/types/llm-inference-config';
 import { ConfigurationListItem, ConfigurationValue } from '@app/types/configuration';
@@ -36,6 +37,7 @@ import {
   getAppUsersQueryFn,
   getAuthenticatorQueryFn,
   getAuthenticatorsQueryFn,
+  getChatbotsQueryFn,
   getCurrentUserQueryFn,
   getDatasourceQueryFn,
   getDatasourceResourcesQueryFn,
@@ -88,6 +90,7 @@ import {
   getAppUsersKey,
   getAuthenticatorKey,
   getAuthenticatorsKey,
+  getChatbotsKey,
   getCurrentUserKey,
   getDatasourceKey,
   getDatasourceResourcesKey,
@@ -190,6 +193,10 @@ export const useGetAgents = (appId: string | undefined, namespace?: string): Use
 
 export const useGetNamespaces = (appId: string | undefined): UseQueryResult<NamespaceItem[], Error> => {
   return useQueryInit(getNamespacesKey(appId || ''), getNamespacesQueryFn, !!appId);
+};
+
+export const useGetChatbots = (appId: string | undefined, namespace?: string): UseQueryResult<Chatbot[], Error> => {
+  return useQueryInit(getChatbotsKey(appId || '', namespace), () => getChatbotsQueryFn(namespace), !!appId);
 };
 
 export const useGetApiServices = (appId: string | undefined): UseQueryResult<ApiServiceItem[], Error> => {

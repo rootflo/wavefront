@@ -1,6 +1,7 @@
 import {
   AiAgentIcon,
   ApiIcon,
+  ChatIcon,
   DatasourcesIcon,
   ModelInferenceIcon,
   ModelRepositoryIcon,
@@ -29,6 +30,13 @@ const navItems = [
     icon: PermissionIcon,
     link: `/apps/:appId/authenticators`,
     description: 'Manage authentication provider configurations',
+  },
+  {
+    id: 'chatbots',
+    name: 'Chatbots',
+    icon: ChatIcon,
+    link: `/apps/:appId/chatbots`,
+    description: 'Configure chatbots with a system prompt and model',
   },
   {
     id: 'configurations',
