@@ -28,10 +28,17 @@ application_container.wire(
 )
 
 
+# The interactive docs and the OpenAPI schema are off everywhere except dev,
+# so a new/unknown APP_ENV value stays closed rather than exposing the surface.
+is_dev = environment == 'dev'
+
 app = FastAPI(
     title='Call Processing API',
     description='Real-time voice call processing with Pipecat',
     version='1.0.0',
+    openapi_url='/openapi.json' if is_dev else None,
+    docs_url='/docs' if is_dev else None,
+    redoc_url='/redoc' if is_dev else None,
 )
 
 origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:8001')
@@ -87,8 +94,6 @@ async def global_exception_handler(request: Request, exc: Exception):
         content=error_message,
     )
 
-
-environment = os.getenv('APP_ENV', 'dev')
 
 # Running with Uvicorn (for local development)
 if __name__ == '__main__':

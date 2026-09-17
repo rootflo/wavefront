@@ -25,6 +25,12 @@ from floconsole.db import DatabaseClient
 
 load_dotenv()
 
+environment = os.getenv('APP_ENV', 'dev')
+
+# The interactive docs and the OpenAPI schema are off everywhere except dev,
+# so a new/unknown APP_ENV value stays closed rather than exposing the surface.
+is_dev = environment == 'dev'
+
 # Initialize containers
 common_container = CommonContainer(cache_manager=None)
 application_container = ApplicationContainer(common_container=common_container)
@@ -88,6 +94,9 @@ app = FastAPI(
     description='Console application for RootFlo platform',
     version='1.0.0',
     lifespan=lifespan,
+    openapi_url='/openapi.json' if is_dev else None,
+    docs_url='/docs' if is_dev else None,
+    redoc_url='/redoc' if is_dev else None,
 )
 
 origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:5173')
@@ -142,8 +151,6 @@ async def global_exception_handler(request: Request, exc: Exception):
         content=exception_response_formatter.buildErrorResponse(error=error_message),
     )
 
-
-environment = os.getenv('APP_ENV', 'dev')
 
 # Running with Uvicorn (for local development)
 if __name__ == '__main__':
