@@ -33,7 +33,7 @@ from user_management_module.dependencies.injection import (
     AccountLockoutServiceDep,
     CacheManagerDep,
     CommonCacheDep,
-    EmailServiceDep,
+    EmailSenderDep,
     ResponseFormatterDep,
     TokenServiceDep,
     UserConfigDep,
@@ -49,6 +49,10 @@ from user_management_module.constants.cache import (
 from user_management_module.models.user_schema import NewUser
 from user_management_module.models.user_schema import ResetUser
 from user_management_module.models.user_schema import UpdateUser
+from user_management_module.utils.email_templates import (
+    PASSWORD_RESET_SUBJECT,
+    build_password_reset_email,
+)
 from user_management_module.utils.password_utils import hash_password
 from user_management_module.utils.user_utils import (
     can_read_users,
@@ -755,7 +759,7 @@ async def send_reset_url(
     response_formatter: ResponseFormatterDep,
     token_service: TokenServiceDep,
     config: UserConfigDep,
-    email_service: EmailServiceDep,
+    email_sender: EmailSenderDep,
     account_lockout_service: AccountLockoutServiceDep,
 ):
     try:
@@ -798,9 +802,12 @@ async def send_reset_url(
         # generating the url
         forget_url_link = f'{config["web"]["url"]}/reset-password?token={decoded_url}'
 
-        # setting up the emial part
-        email_response = email_service.send_forget_password_email(
-            forget_url_link, email
+        # Sent from the primary email connection, so changing the platform
+        # sender is an admin action rather than a redeploy.
+        email_response = await email_sender.send(
+            subject=PASSWORD_RESET_SUBJECT,
+            body_html=build_password_reset_email(forget_url_link),
+            recipients=email,
         )
         if email_response:
             return JSONResponse(
