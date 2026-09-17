@@ -1,6 +1,5 @@
 from json import JSONDecodeError
 from typing import Optional
-from urllib.parse import urlparse
 from uuid import UUID
 
 from common_module.common_container import CommonContainer
@@ -8,7 +7,7 @@ from common_module.log.logger import logger
 from common_module.response_formatter import ResponseFormatter
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse
 
 from triggers_module.models.trigger_schemas import CreateTriggerRequest
 from triggers_module.services.trigger_crud_service import (
@@ -25,12 +24,6 @@ from triggers_module.triggers_container import TriggersContainer
 
 
 trigger_router = APIRouter(prefix='/v1/triggers', tags=['triggers'])
-
-
-def _is_safe_redirect(url: str) -> bool:
-    parsed = urlparse(url)
-    # Allow only relative URLs (no scheme, no host) to prevent open redirects.
-    return not parsed.scheme and not parsed.netloc
 
 
 @trigger_router.post('', status_code=status.HTTP_201_CREATED)
@@ -62,50 +55,6 @@ async def create_trigger(
         content=response_formatter.buildSuccessResponse(
             {
                 'message': 'Trigger created',
-                'data': result.model_dump(mode='json'),
-            }
-        ),
-    )
-
-
-@trigger_router.get('/oauth/google/callback')
-@inject
-async def gmail_oauth_callback(
-    state: str = Query(...),
-    code: str = Query(...),
-    success_redirect_url: Optional[str] = Query(default=None),
-    failure_redirect_url: Optional[str] = Query(default=None),
-    trigger_crud_service: TriggerCrudService = Depends(
-        Provide[TriggersContainer.trigger_crud_service]
-    ),
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter]
-    ),
-):
-    try:
-        result = await trigger_crud_service.complete_oauth(state=state, code=code)
-    except TriggerNotFound as exc:
-        if failure_redirect_url and _is_safe_redirect(failure_redirect_url):
-            return RedirectResponse(url=failure_redirect_url)
-        return JSONResponse(
-            status_code=status.HTTP_404_NOT_FOUND,
-            content=response_formatter.buildErrorResponse(str(exc)),
-        )
-    except InvalidTriggerState as exc:
-        if failure_redirect_url and _is_safe_redirect(failure_redirect_url):
-            return RedirectResponse(url=failure_redirect_url)
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(str(exc)),
-        )
-
-    if success_redirect_url and _is_safe_redirect(success_redirect_url):
-        return RedirectResponse(url=success_redirect_url)
-    return JSONResponse(
-        status_code=status.HTTP_200_OK,
-        content=response_formatter.buildSuccessResponse(
-            {
-                'message': 'Trigger activated',
                 'data': result.model_dump(mode='json'),
             }
         ),

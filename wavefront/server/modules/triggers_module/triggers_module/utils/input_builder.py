@@ -2,8 +2,7 @@ import base64
 from typing import Any, Dict, List, Optional, Sequence
 
 from common_module.log.logger import logger
-
-from triggers_module.providers.base import NormalizedEmailEvent
+from mailer import NormalizedEmail
 
 
 DEFAULT_ALLOWED_MIME_TYPES = (
@@ -23,7 +22,7 @@ class EmailTooLargeError(Exception):
 
 
 def build_inference_inputs(
-    event: NormalizedEmailEvent,
+    event: NormalizedEmail,
     allowed_mime_types: Optional[Sequence[str]] = None,
     max_total_bytes: int = 25 * 1024 * 1024,
 ) -> List[Dict[str, Any]]:
