@@ -3,14 +3,14 @@ import os
 from alembic import context
 from db_repo_module.database.base import Base
 from db_repo_module.models.documents import Document
-from db_repo_module.models.email import Email
+from db_repo_module.models.email_connection import EmailConnection
+from db_repo_module.models.oauth_app import OAuthApp
 from db_repo_module.models.kb_inferences import KnowledgeBaseInferences
 from db_repo_module.models.knowledge_base_documents import KnowledgeBaseDocuments
 from db_repo_module.models.knowledge_base_embeddings import KnowledgeBaseEmbeddings
 from db_repo_module.models.knowledge_bases import KnowledgeBase
 from db_repo_module.models.notification_users import NotificationUser
 from db_repo_module.models.notifications import Notification
-from db_repo_module.models.oauth_credential import OAuthCredential
 from db_repo_module.models.resource import Resource
 from db_repo_module.models.role import Role
 from db_repo_module.models.role_resource import RoleResource
@@ -39,7 +39,6 @@ from db_repo_module.models.message_processors import MessageProcessors
 from db_repo_module.models.scheduled_job import ScheduledJob
 from db_repo_module.models.scheduled_job_execution import ScheduledJobExecution
 from db_repo_module.models.async_agentic_execution import AsyncAgenticExecution
-from db_repo_module.models.agentic_trigger_credential import AgenticTriggerCredential
 from db_repo_module.models.agentic_configuration import AgenticConfiguration
 from db_repo_module.models.agentic_trigger import AgenticTrigger
 from db_repo_module.models.agentic_trigger_event import AgenticTriggerEvent
@@ -65,8 +64,8 @@ config = context.config
 # target_metadata = mymodel.Base.metadata
 models = [
     Document,
-    Email,
-    OAuthCredential,
+    OAuthApp,
+    EmailConnection,
     Role,
     SAMLConfig,
     Task,
@@ -100,7 +99,6 @@ models = [
     ScheduledJobExecution,
     AsyncAgenticExecution,
     AgenticConfiguration,
-    AgenticTriggerCredential,
     AgenticTrigger,
     AgenticTriggerEvent,
     Agent,
