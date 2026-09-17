@@ -8,15 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@app/components/ui/dialog';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@app/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -42,8 +34,7 @@ function:
     export default function(input) {
 
       return {
-        result: Number(input.number) * 2,
-      };
+        result: Number(input.number) * 2 };
     }
 
 input_schema:
@@ -183,9 +174,6 @@ const CreateMessageProcessorDialog: React.FC<CreateMessageProcessorDialogProps> 
                       />
                     </div>
                   </FormControl>
-                  <FormDescription>
-                    Define your processor function, input schema, and execution type in YAML format
-                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

@@ -156,8 +156,8 @@ function MultiSelect<T>({
             aria-expanded={open}
             disabled={disabled || loading}
             className={cn(
-              'border-input ring-offset-background focus:ring-ring flex min-h-9 w-full items-center justify-between rounded-md border bg-white px-3 py-2 text-sm shadow-sm focus:ring-1 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50',
-              selectedIds.length === 0 && 'text-[#878787]'
+              'frost-control ring-frost-border focus:border-brand/40 focus:ring-brand/25 flex min-h-9 w-full items-center justify-between rounded-md border px-3 py-2 text-[13px] tracking-normal normal-case ring-1 transition-colors focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50',
+              selectedIds.length === 0 && 'text-frost-text-subtle'
             )}
           >
             <span className="truncate text-left">{triggerLabel}</span>
@@ -232,7 +232,7 @@ function MultiSelect<T>({
         </PopoverContent>
       </Popover>
       {selectedItems.length > 0 || unresolvedSelectedIds.length > 0 ? (
-        <div className="mt-2 flex max-h-20 flex-wrap gap-2 overflow-y-auto rounded-md border border-[#EFF0F1] bg-[#FBFBFB] p-3">
+        <div className="frost-glass border-frost-border mt-2 flex max-h-20 flex-wrap gap-2 overflow-y-auto rounded-md border p-3">
           {selectedItems.map((item) => {
             const id = getId(item);
             const label = getLabel(item);
@@ -240,7 +240,7 @@ function MultiSelect<T>({
               <Badge
                 key={id}
                 variant="secondary"
-                className="shrink-0 gap-1 border border-[#EFF0F1] bg-white pr-1 font-normal"
+                className="frost-glass-strong frost-text border-frost-border shrink-0 gap-1 border pr-1 font-normal"
               >
                 <span className="max-w-60 truncate">{label}</span>
                 <button
@@ -258,7 +258,7 @@ function MultiSelect<T>({
             <Badge
               key={`unresolved-${id}`}
               variant="secondary"
-              className="shrink-0 gap-1 border border-[#EFF0F1] bg-white pr-1 font-normal"
+              className="frost-glass-strong frost-text border-frost-border shrink-0 gap-1 border pr-1 font-normal"
             >
               <span className="max-w-60 truncate" title={id}>
                 {id}

@@ -15,15 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@app/components/ui/dialog';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@app/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Popover, PopoverContent, PopoverTrigger } from '@app/components/ui/popover';
 import { cn } from '@app/lib/utils';
 import { ToolsDetailsData } from '@app/types/tool';
@@ -157,7 +149,7 @@ const EditAgentDialog: React.FC<EditAgentDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] w-full min-w-0 overflow-y-auto lg:max-w-5xl">
+      <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto lg:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Edit Agent{editingVersion !== undefined ? ` (v${editingVersion})` : ''}</DialogTitle>
           <DialogDescription>
@@ -167,7 +159,7 @@ const EditAgentDialog: React.FC<EditAgentDialogProps> = ({
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit((data) => onSubmit(data, false))} className="w-full space-y-6">
-            <div className="grid w-full grid-cols-4 gap-6">
+            <div className="grid w-full min-w-0 grid-cols-4 gap-6 overflow-x-hidden">
               <FormField
                 control={form.control}
                 name="yamlContent"
@@ -186,13 +178,10 @@ const EditAgentDialog: React.FC<EditAgentDialogProps> = ({
                           field.onChange(value);
                         }}
                         theme="dark"
-                        className="w-full min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2 font-mono text-sm text-black outline-none"
+                        className="frost-control ring-frost-border w-full min-w-0 rounded-lg border px-3 py-2 font-mono text-sm ring-1 outline-none"
                         placeholder="Enter your agent YAML configuration..."
                       />
                     </FormControl>
-                    <FormDescription>
-                      Define your agent configuration in YAML format. Configuration varies by agent type.
-                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -202,23 +191,23 @@ const EditAgentDialog: React.FC<EditAgentDialogProps> = ({
                 control={form.control}
                 name="selectedTools"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="min-w-0">
                     <FormLabel>Add Tools</FormLabel>
                     <FormControl>
                       <Popover open={toolsComboboxOpen} onOpenChange={setToolsComboboxOpen}>
                         <PopoverTrigger asChild>
                           <Button
                             type="button"
-                            className="w-[240px]"
+                            className="w-full min-w-0 justify-between"
                             variant="outline"
                             role="combobox"
                             aria-expanded={toolsComboboxOpen}
                           >
-                            Select Tools
+                            <span className="truncate">Select Tools</span>
                             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-full p-0" align="start">
+                        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
                           <Command>
                             <CommandInput placeholder="Search tools..." />
                             <CommandList>
@@ -249,7 +238,7 @@ const EditAgentDialog: React.FC<EditAgentDialogProps> = ({
                                       }}
                                     >
                                       <Check className={cn('mr-2 h-4 w-4', isSelected ? 'opacity-100' : 'opacity-0')} />
-                                      {tool.display_name}
+                                      <span className="truncate">{tool.display_name}</span>
                                     </CommandItem>
                                   );
                                 })}
@@ -259,7 +248,6 @@ const EditAgentDialog: React.FC<EditAgentDialogProps> = ({
                         </PopoverContent>
                       </Popover>
                     </FormControl>
-                    <FormDescription>Select tools to add to your agent.</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}

@@ -23,7 +23,7 @@ import {
 } from '@app/config/llm-providers';
 import { useGetLLMConfig } from '@app/hooks';
 import { getLLMConfigKey, getLLMConfigsKey } from '@app/hooks/data/query-keys';
-import { extractErrorMessage } from '@app/lib/utils';
+import { extractErrorMessage, formatAppName } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import {
   getBooleanParameterWithDefault,
@@ -196,7 +196,7 @@ const LLMInferenceConfigDetail: React.FC = () => {
   };
 
   return (
-    <div className="h-full bg-white px-8 pt-8 pb-[200px]">
+    <div className="h-full bg-transparent px-8 pt-8 pb-[200px]">
       <Breadcrumb className="mb-6">
         <BreadcrumbList>
           <BreadcrumbItem>
@@ -227,7 +227,7 @@ const LLMInferenceConfigDetail: React.FC = () => {
 
       <div className="flex w-full flex-col gap-10 pb-5">
         <div className="flex items-center justify-between">
-          <p className="text-2xl leading-normal font-semibold text-black">{config?.display_name}</p>
+          <p className="frost-text text-2xl leading-normal font-semibold">{formatAppName(config?.display_name)}</p>
           <div className="flex gap-4">
             {editing ? (
               <>
@@ -269,8 +269,8 @@ const LLMInferenceConfigDetail: React.FC = () => {
         </div>
 
         <div className="flex w-full flex-col gap-6">
-          <div className="flex w-full flex-col gap-6 rounded-lg border border-gray-200 bg-white p-6">
-            <h3 className="text-lg font-semibold text-gray-900">Model Details</h3>
+          <div className="frost-panel ring-frost-border flex w-full flex-col gap-6 rounded-lg border p-6 ring-1">
+            <h3 className="frost-text text-lg font-semibold">Model Details</h3>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(handleSave)} className="flex w-full flex-col gap-6">
                 <div className={clsx('grid w-full gap-6 lg:grid-cols-2', !editing && 'pointer-events-none opacity-80')}>
@@ -343,7 +343,7 @@ const LLMInferenceConfigDetail: React.FC = () => {
                             />
                           </FormControl>
                           <FormMessage />
-                          <p className="text-xs text-gray-500">
+                          <p className="frost-text-muted text-xs">
                             Leave blank to keep the current API key. Enter a new key to update it.
                           </p>
                         </FormItem>
@@ -407,8 +407,8 @@ const LLMInferenceConfigDetail: React.FC = () => {
             }
 
             return (
-              <div className="flex w-full flex-col gap-6 rounded-lg border border-gray-200 bg-white p-6">
-                <h3 className="text-lg font-semibold text-gray-900">Model Parameters</h3>
+              <div className="frost-panel ring-frost-border flex w-full flex-col gap-6 rounded-lg border p-6 ring-1">
+                <h3 className="frost-text text-lg font-semibold">Model Parameters</h3>
                 <Form {...form}>
                   <div className={clsx('grid w-full grid-cols-4 gap-6', !editing && 'pointer-events-none opacity-80')}>
                     {Object.entries(providerConfig.parameters).map(
@@ -517,7 +517,7 @@ const LLMInferenceConfigDetail: React.FC = () => {
                                 )}
                               </FormControl>
                               {paramConfig.description && (
-                                <p className="text-xs text-gray-500">{paramConfig.description}</p>
+                                <p className="frost-text-muted text-xs">{paramConfig.description}</p>
                               )}
                               <FormMessage />
                             </FormItem>

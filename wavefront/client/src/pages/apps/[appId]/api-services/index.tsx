@@ -110,8 +110,8 @@ const ApiServiceManagement: React.FC = () => {
 
       <div className="mb-8 flex w-full items-start justify-between">
         <div>
-          <h1 className="animate-fade-in text-3xl font-bold text-gray-900">API Services</h1>
-          <p className="animate-fade-in mt-2 text-gray-600">Manage API Connectors for {selectedApp?.app_name}</p>
+          <h1 className="animate-fade-in frost-text text-3xl font-bold">API Services</h1>
+          <p className="animate-fade-in frost-text-muted mt-2">Manage API Connectors for {selectedApp?.app_name}</p>
         </div>
         <div className="animate-fade-in flex items-center gap-4">
           <Input
@@ -124,7 +124,7 @@ const ApiServiceManagement: React.FC = () => {
           <Button onClick={handleCreateApiService}>Create Service</Button>
         </div>
       </div>
-      <div className="grid gap-6 overflow-y-auto py-2 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid w-full gap-6 px-1 pt-2 pb-10 sm:grid-cols-2 lg:grid-cols-3">
         {loading ? (
           <>
             {Array.from({ length: 20 }).map((_, index) => (

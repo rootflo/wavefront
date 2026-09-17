@@ -1,6 +1,7 @@
 export { default as AiAgentIcon } from './ai-agent-icon';
 export { ApiActiveIcon, ApiIcon } from './api-icon';
 export { default as DatasourcesIcon } from './datasources';
+export { default as EmailIcon } from './email-icon';
 export { default as ModelInferenceIcon } from './model-inference-icon';
 export { default as ModelRepositoryIcon } from './model-repository-icon';
 export { default as PermissionIcon } from './permission-icon';
@@ -8,4 +9,5 @@ export { PhoneActiveIcon, PhoneIcon } from './phone-icon';
 export { default as RagIcon } from './rag-icon';
 export { default as ScheduledJobsIcon } from './scheduled-jobs-icon';
 export { default as RootfloIcon } from './rootflo-icon';
+export { default as TriggerIcon } from './trigger-icon';
 export { default as WorkflowIcon } from './workflow-icon';

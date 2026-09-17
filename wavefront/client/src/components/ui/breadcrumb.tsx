@@ -2,7 +2,7 @@ import * as React from 'react';
 import { Slot } from '@radix-ui/react-slot';
 import { ChevronRight, MoreHorizontal } from 'lucide-react';
 
-import { cn } from '@app/lib/utils';
+import { cn, formatAppName } from '@app/lib/utils';
 
 const Breadcrumb = React.forwardRef<
   HTMLElement,
@@ -46,7 +46,7 @@ const BreadcrumbLink = React.forwardRef<
 BreadcrumbLink.displayName = 'BreadcrumbLink';
 
 const BreadcrumbPage = React.forwardRef<HTMLSpanElement, React.ComponentPropsWithoutRef<'span'>>(
-  ({ className, ...props }, ref) => (
+  ({ className, children, ...props }, ref) => (
     <span
       ref={ref}
       role="link"
@@ -54,7 +54,9 @@ const BreadcrumbPage = React.forwardRef<HTMLSpanElement, React.ComponentPropsWit
       aria-current="page"
       className={cn('text-foreground font-normal', className)}
       {...props}
-    />
+    >
+      {typeof children === 'string' || typeof children === 'number' ? formatAppName(String(children)) : children}
+    </span>
   )
 );
 BreadcrumbPage.displayName = 'BreadcrumbPage';

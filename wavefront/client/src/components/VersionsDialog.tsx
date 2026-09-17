@@ -55,7 +55,7 @@ const VersionsDialog: React.FC<VersionsDialogProps> = ({
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onOpenChange}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto lg:max-w-3xl">
+        <DialogContent className="lg:max-w-3xl">
           <DialogHeader>
             <DialogTitle>Versions</DialogTitle>
             <DialogDescription>
@@ -65,58 +65,60 @@ const VersionsDialog: React.FC<VersionsDialogProps> = ({
           </DialogHeader>
 
           {loading ? (
-            <div className="flex items-center justify-center py-8 text-sm text-gray-500">Loading versions...</div>
+            <div className="frost-text-muted flex h-80 items-center justify-center text-sm">Loading versions...</div>
           ) : sortedVersions.length === 0 ? (
-            <div className="flex items-center justify-center py-8 text-sm text-gray-500">No versions found</div>
+            <div className="frost-text-muted flex h-80 items-center justify-center text-sm">No versions found</div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Version</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead>Updated</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sortedVersions.map((v) => (
-                  <TableRow key={v.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">v{v.version}</span>
-                        {v.is_current && <Badge variant="default">Current</Badge>}
-                        {selectedVersion === v.version && !v.is_current && <Badge variant="secondary">Viewing</Badge>}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-gray-600">{formatDate(v.created_at)}</TableCell>
-                    <TableCell className="text-gray-600">{formatDate(v.updated_at)}</TableCell>
-                    <TableCell>
-                      <div className="flex justify-end gap-2">
-                        <Button variant="outline" size="sm" onClick={() => onView(v.version)}>
-                          View
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={v.is_current || actionPending}
-                          onClick={() => onPromote(v.version)}
-                        >
-                          Promote
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          disabled={v.is_current || actionPending}
-                          onClick={() => setDeleteTarget(v.version)}
-                        >
-                          Delete
-                        </Button>
-                      </div>
-                    </TableCell>
+            <div className="border-frost-border h-80 overflow-y-auto rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Version</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead>Updated</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {sortedVersions.map((v) => (
+                    <TableRow key={v.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">v{v.version}</span>
+                          {v.is_current && <Badge variant="default">Current</Badge>}
+                          {selectedVersion === v.version && !v.is_current && <Badge variant="secondary">Viewing</Badge>}
+                        </div>
+                      </TableCell>
+                      <TableCell className="frost-text-muted">{formatDate(v.created_at)}</TableCell>
+                      <TableCell className="frost-text-muted">{formatDate(v.updated_at)}</TableCell>
+                      <TableCell>
+                        <div className="flex justify-end gap-2">
+                          <Button variant="outline" size="sm" onClick={() => onView(v.version)}>
+                            View
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={v.is_current || actionPending}
+                            onClick={() => onPromote(v.version)}
+                          >
+                            Promote
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            disabled={v.is_current || actionPending}
+                            onClick={() => setDeleteTarget(v.version)}
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </DialogContent>
       </Dialog>

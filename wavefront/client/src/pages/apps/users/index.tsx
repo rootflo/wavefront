@@ -112,8 +112,8 @@ const UsersPage: React.FC = () => {
     <div className="h-full w-full overflow-hidden p-8">
       <div className="mb-8 flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Users</h1>
-          <p className="mt-2 text-gray-600">Manage user accounts</p>
+          <h1 className="frost-text text-3xl font-bold">Users</h1>
+          <p className="frost-text-muted mt-2">Manage user accounts</p>
         </div>
         <div className="flex items-center gap-4">
           <Input
@@ -133,7 +133,7 @@ const UsersPage: React.FC = () => {
 
       {consoleUsersLoading ? (
         <div className="flex justify-center py-10">
-          <div className="text-gray-500">Loading users...</div>
+          <div className="frost-text-muted">Loading users...</div>
         </div>
       ) : filteredUsers.length === 0 ? (
         <div className="mt-10 flex justify-center">
@@ -154,7 +154,7 @@ const UsersPage: React.FC = () => {
           )}
         </div>
       ) : (
-        <div className="rounded-md border">
+        <div className="frost-panel ring-frost-border rounded-xl border ring-1">
           <Table>
             <TableHeader>
               <TableRow>

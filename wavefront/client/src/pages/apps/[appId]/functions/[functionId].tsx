@@ -21,6 +21,7 @@ import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate, useParams } from 'react-router';
 import { z } from 'zod';
+import { formatAppName } from '@app/lib/utils';
 
 const functionFormSchema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -142,7 +143,7 @@ const FunctionDetail: React.FC = () => {
   };
 
   return (
-    <div className="h-full bg-white px-8 pt-8 pb-[200px]">
+    <div className="h-full bg-transparent px-8 pt-8 pb-[200px]">
       <Breadcrumb className="mb-6">
         <BreadcrumbList>
           <BreadcrumbItem>
@@ -173,7 +174,9 @@ const FunctionDetail: React.FC = () => {
 
       <div className="flex w-full flex-col gap-10 pb-5">
         <div className="flex items-center justify-between">
-          <p className="text-2xl leading-normal font-semibold text-black">{processor?.name || functionId}</p>
+          <p className="frost-text text-2xl leading-normal font-semibold">
+            {formatAppName(processor?.name || functionId)}
+          </p>
           <div className="flex gap-4">
             {editing ? (
               <>
@@ -249,7 +252,7 @@ const FunctionDetail: React.FC = () => {
                         YAML Configuration <span className="text-red-500">*</span>
                       </FormLabel>
                       <FormControl>
-                        <div className="rounded-lg border border-gray-300">
+                        <div className="frost-control ring-frost-border overflow-hidden rounded-lg border ring-1">
                           <CodeMirror
                             value={field.value}
                             height="400px"
@@ -270,16 +273,16 @@ const FunctionDetail: React.FC = () => {
 
           {/* Right Column: Execution */}
           <div className="flex h-full w-full flex-col gap-6">
-            <div className="flex h-full w-full flex-col gap-6 rounded-lg border border-gray-200 bg-white p-4">
-              <h3 className="text-lg font-semibold text-gray-900">Execute Function</h3>
+            <div className="frost-panel ring-frost-border flex h-full w-full flex-col gap-6 rounded-lg border p-4 ring-1">
+              <h3 className="frost-text text-lg font-semibold">Execute Function</h3>
 
               <div className="flex h-full flex-col gap-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label htmlFor="inputData" className="block pb-2 text-sm font-medium text-gray-700">
+                    <label htmlFor="inputData" className="frost-text block pb-2 text-sm font-medium">
                       Input Data (JSON) <span className="text-red-500">*</span>
                     </label>
-                    <div className="rounded-lg border border-gray-300">
+                    <div className="frost-control ring-frost-border overflow-hidden rounded-lg border ring-1">
                       <CodeMirror
                         value={executionInput}
                         height="150px"
@@ -291,10 +294,10 @@ const FunctionDetail: React.FC = () => {
                   </div>
 
                   <div>
-                    <label htmlFor="executionContext" className="block pb-2 text-sm font-medium text-gray-700">
+                    <label htmlFor="executionContext" className="frost-text block pb-2 text-sm font-medium">
                       Execution Context (optional)
                     </label>
-                    <div className="rounded-lg border border-gray-300">
+                    <div className="frost-control ring-frost-border overflow-hidden rounded-lg border ring-1">
                       <CodeMirror
                         value={executionContext}
                         height="150px"
@@ -307,8 +310,8 @@ const FunctionDetail: React.FC = () => {
                 </div>
 
                 <div className="flex flex-1 flex-col">
-                  <label className="block pb-2 text-sm font-medium text-gray-700">Result</label>
-                  <div className="flex-1 rounded-lg">
+                  <label className="frost-text block pb-2 text-sm font-medium">Result</label>
+                  <div className="frost-control ring-frost-border flex-1 overflow-hidden rounded-lg border ring-1">
                     <CodeMirror
                       value={JSON.stringify(executionResult, null, 2)}
                       extensions={[langs.json()]}

@@ -9,15 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@app/components/ui/dialog';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@app/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import {
@@ -214,20 +206,18 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
     // Handle nested object parameters
     if (paramConfig.type === 'object' && paramConfig.fields) {
       return (
-        <div className="col-span-2 space-y-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
-          <label className="block text-sm font-medium text-gray-700">
+        <div className="frost-glass border-frost-border ring-frost-border col-span-2 space-y-4 rounded-lg border p-4 ring-1">
+          <label className="frost-text block text-sm font-medium">
             {key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
             {paramConfig.required && <span className="text-red-500">*</span>}
           </label>
-          {paramConfig.description && <p className="text-xs text-gray-500">{paramConfig.description}</p>}
           <div className="grid grid-cols-2 gap-3">
             {Object.entries(paramConfig.fields).map(([nestedKey, nestedConfig]) => (
               <div key={nestedKey}>
-                <label className="mb-1 block text-xs font-medium text-gray-700">
+                <label className="frost-text mb-1 block text-xs font-medium">
                   {nestedKey.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
                   {nestedConfig.required && <span className="text-red-500">*</span>}
                 </label>
-                {nestedConfig.description && <p className="mb-1 text-xs text-gray-500">{nestedConfig.description}</p>}
                 {renderNestedField(key, nestedKey, nestedConfig)}
               </div>
             ))}
@@ -241,11 +231,10 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
       const arrayValue = Array.isArray(parameters[key]) ? parameters[key].join(', ') : '';
       return (
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">
+          <label className="frost-text mb-1 block text-sm font-medium">
             {key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
             {paramConfig.required && <span className="text-red-500">*</span>}
           </label>
-          {paramConfig.description && <p className="mb-1 text-xs text-gray-500">{paramConfig.description}</p>}
           <Input
             value={arrayValue}
             onChange={(e) => {
@@ -257,7 +246,6 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
             }}
             placeholder={paramConfig.placeholder}
           />
-          <p className="mt-1 text-xs text-gray-500">Separate multiple values with commas</p>
         </div>
       );
     }
@@ -271,11 +259,10 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
             onCheckedChange={(checked) => setParameter(key, checked)}
           />
           <div>
-            <label className="text-sm font-medium text-gray-700">
+            <label className="frost-text text-sm font-medium">
               {key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
               {paramConfig.required && <span className="text-red-500">*</span>}
             </label>
-            {paramConfig.description && <p className="text-xs text-gray-500">{paramConfig.description}</p>}
           </div>
         </div>
       );
@@ -285,11 +272,10 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
     if (paramConfig.type === 'number') {
       return (
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">
+          <label className="frost-text mb-1 block text-sm font-medium">
             {key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
             {paramConfig.required && <span className="text-red-500">*</span>}
           </label>
-          {paramConfig.description && <p className="mb-1 text-xs text-gray-500">{paramConfig.description}</p>}
           <Input
             type="number"
             value={getNumberOrStringParameter(parameters, key)}
@@ -307,11 +293,10 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
     if (paramConfig.type === 'select' && paramConfig.options) {
       return (
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">
+          <label className="frost-text mb-1 block text-sm font-medium">
             {key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
             {paramConfig.required && <span className="text-red-500">*</span>}
           </label>
-          {paramConfig.description && <p className="mb-1 text-xs text-gray-500">{paramConfig.description}</p>}
           <Select value={String(parameters[key] || '')} onValueChange={(value) => setParameter(key, value)}>
             <SelectTrigger>
               <SelectValue placeholder="Select an option" />
@@ -331,11 +316,10 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
     // Default: string input
     return (
       <div>
-        <label className="mb-1 block text-sm font-medium text-gray-700">
+        <label className="frost-text mb-1 block text-sm font-medium">
           {key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
           {paramConfig.required && <span className="text-red-500">*</span>}
         </label>
-        {paramConfig.description && <p className="mb-1 text-xs text-gray-500">{paramConfig.description}</p>}
         <Input
           type="text"
           value={getStringParameter(parameters, key)}
@@ -383,7 +367,7 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] w-[95vw] !max-w-6xl overflow-y-auto sm:!max-w-6xl">
+      <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto lg:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Create New Authenticator</DialogTitle>
           <DialogDescription>Configure a new authentication provider for {selectedApp?.app_name}</DialogDescription>
@@ -403,7 +387,6 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
                     <FormControl>
                       <Input placeholder="e.g., Google OAuth Corporate" maxLength={100} {...field} />
                     </FormControl>
-                    <FormDescription>{field.value?.length || 0}/100 characters</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -460,7 +443,6 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
                       {...field}
                     />
                   </FormControl>
-                  <FormDescription>{field.value?.length || 0}/500 characters</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -468,8 +450,8 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
 
             {/* Configuration Parameters */}
             {config && (
-              <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-6">
-                <h3 className="text-lg font-semibold text-gray-900">Configuration</h3>
+              <div className="frost-glass border-frost-border ring-frost-border space-y-4 rounded-lg border p-6 ring-1">
+                <h3 className="frost-text text-lg font-semibold">Configuration</h3>
                 <div className="grid grid-cols-2 gap-4">
                   {Object.keys(config.parameters).map((key) => (
                     <div key={key}>{renderParameterField(key)}</div>

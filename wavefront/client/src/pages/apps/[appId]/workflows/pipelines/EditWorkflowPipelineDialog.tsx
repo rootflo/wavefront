@@ -101,7 +101,7 @@ const EditWorkflowPipelineDialog: React.FC<EditWorkflowPipelineDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto lg:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Edit Pipeline</DialogTitle>
           <DialogDescription>Repoint this pipeline to a different workflow or version.</DialogDescription>

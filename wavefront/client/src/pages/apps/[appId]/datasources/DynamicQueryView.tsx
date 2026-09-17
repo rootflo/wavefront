@@ -169,14 +169,14 @@ const DynamicQueryView = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-h-[90vh] w-full max-w-[calc(100%-2rem)] min-w-0 overflow-y-auto sm:max-w-[1100px]">
+      <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto lg:max-w-4xl">
         <DialogHeader>
           <DialogTitle>{getDialogTitle()}</DialogTitle>
         </DialogHeader>
         {(queryCrud.view || queryCrud.edit) && (
-          <div className="w-full min-w-0 rounded-xl border border-[#EFF0F1]">
+          <div className="border-frost-border w-full min-w-0 rounded-xl border">
             <CodeMirror
-              className="w-full min-w-0 rounded-xl bg-white p-4 font-mono text-sm font-normal text-[#282828] outline-none"
+              className="frost-glass frost-text w-full min-w-0 rounded-xl p-4 font-mono text-sm font-normal outline-none"
               value={queryContent}
               height="400px"
               width="100%"
@@ -232,9 +232,9 @@ const DynamicQueryView = ({
                 </div>
               )}
               <div className="flex flex-col gap-4">
-                <h3 className="text-lg leading-4 font-medium text-black">Query Results</h3>
-                <div className="max-h-[300px] overflow-auto rounded-xl border border-[#EFF0F1] bg-[#FBFBFB] p-4">
-                  <pre className="text-sm font-normal whitespace-pre-wrap text-[#282828]">
+                <h3 className="frost-text text-lg leading-4 font-medium">Query Results</h3>
+                <div className="frost-glass border-frost-border max-h-[300px] overflow-auto rounded-xl border p-4">
+                  <pre className="frost-text text-sm font-normal whitespace-pre-wrap">
                     {JSON.stringify(executeResult, null, 2)}
                   </pre>
                 </div>
@@ -253,10 +253,10 @@ const DynamicQueryView = ({
 
         {(queryCrud.edit || queryCrud.view) && (
           <DialogFooter>
-            {queryCrud.edit && <Button onClick={() => handleDynamicQueryEdit(queryContent)}>Save</Button>}
             <Button type="button" variant="outline" onClick={handleClose}>
               Cancel
             </Button>
+            {queryCrud.edit && <Button onClick={() => handleDynamicQueryEdit(queryContent)}>Save</Button>}
           </DialogFooter>
         )}
       </DialogContent>

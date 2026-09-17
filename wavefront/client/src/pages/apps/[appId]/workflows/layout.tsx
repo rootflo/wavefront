@@ -36,7 +36,7 @@ const WorkflowsLayout: React.FC = () => {
   };
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col bg-white">
+    <div className="flex h-full min-h-0 w-full flex-col bg-transparent">
       <div className="flex min-h-0 flex-1 flex-col">
         {/* Breadcrumb */}
         <div className="px-8 pt-8">
@@ -70,10 +70,12 @@ const WorkflowsLayout: React.FC = () => {
         </div>
 
         {/* Header */}
-        <div className="border-gray-200 px-8">
+        <div className="border-frost-border px-8">
           <div className="mb-6">
-            <h1 className="animate-fade-in text-3xl font-bold text-gray-900">Workflows</h1>
-            <p className="animate-fade-in mt-2 text-gray-600">Manage AI workflows and pipelines for your application</p>
+            <h1 className="animate-fade-in frost-text text-3xl font-bold">Workflows</h1>
+            <p className="animate-fade-in frost-text-muted mt-2">
+              Manage AI workflows and pipelines for your application
+            </p>
           </div>
 
           {/* Navigation Tabs */}
@@ -86,7 +88,7 @@ const WorkflowsLayout: React.FC = () => {
         </div>
 
         {/* Child Route Content */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-8">
+        <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-8">
           <Outlet />
         </div>
       </div>

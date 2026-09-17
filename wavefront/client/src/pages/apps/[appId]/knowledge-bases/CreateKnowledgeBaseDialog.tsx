@@ -9,15 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@app/components/ui/dialog';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@app/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -102,7 +94,7 @@ const CreateKnowledgeBaseDialog: React.FC<CreateKnowledgeBaseDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto lg:max-w-4xl">
+      <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto lg:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Create New Knowledge Base</DialogTitle>
           <DialogDescription>Create a new knowledge base for {selectedApp?.app_name}</DialogDescription>
@@ -122,7 +114,6 @@ const CreateKnowledgeBaseDialog: React.FC<CreateKnowledgeBaseDialogProps> = ({
                     <FormControl>
                       <Input placeholder="e.g., Customer Support FAQ" {...field} />
                     </FormControl>
-                    <FormDescription>A unique name for your knowledge base</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -139,7 +130,6 @@ const CreateKnowledgeBaseDialog: React.FC<CreateKnowledgeBaseDialogProps> = ({
                     <FormControl>
                       <Input placeholder="e.g., General" {...field} />
                     </FormControl>
-                    <FormDescription>The type of your knowledge base</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -160,7 +150,6 @@ const CreateKnowledgeBaseDialog: React.FC<CreateKnowledgeBaseDialogProps> = ({
                       {...field}
                     />
                   </FormControl>
-                  <FormDescription>Provide a description for your knowledge base</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -183,7 +172,6 @@ const CreateKnowledgeBaseDialog: React.FC<CreateKnowledgeBaseDialogProps> = ({
                       value={field.value || ''}
                     />
                   </FormControl>
-                  <FormDescription>The vector size for your knowledge base</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

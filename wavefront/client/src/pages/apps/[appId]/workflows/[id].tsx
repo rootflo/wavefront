@@ -21,6 +21,7 @@ import CodeMirror from '@uiw/react-codemirror';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useParams } from 'react-router';
+import { formatAppName } from '@app/lib/utils';
 
 type MessageInput = { role: 'user' | 'assistant'; content: ChatMessageContent };
 
@@ -726,10 +727,10 @@ const WorkflowDetail: React.FC = () => {
   };
 
   return (
-    <div className="h-full bg-white py-5">
+    <div className="h-full bg-transparent py-5">
       <div className="flex h-full w-full flex-col gap-10">
         <div className="flex items-center justify-between">
-          <p className="text-2xl leading-normal font-semibold text-black">{workflow?.name}</p>
+          <p className="frost-text text-2xl leading-normal font-semibold">{formatAppName(workflow?.name)}</p>
           <div className="flex items-center gap-4">
             {workflowVersions.length > 0 && (
               <Select
@@ -766,7 +767,7 @@ const WorkflowDetail: React.FC = () => {
         <div className="flex w-full flex-1 gap-10 pb-5">
           <div className="flex h-full w-full flex-col gap-10">
             <div className="flex h-full flex-col gap-3">
-              <p className="text-lg leading-4 font-medium text-black">Configuration</p>
+              <p className="frost-text text-lg leading-4 font-medium">Configuration</p>
               <CodeMirror
                 value={yamlContent}
                 editable={false}
@@ -781,7 +782,7 @@ const WorkflowDetail: React.FC = () => {
 
           <div className="flex w-full flex-col gap-2">
             <div className="flex items-center justify-between pb-2">
-              <Label htmlFor="output-json-toggle" className="text-sm text-gray-700">
+              <Label htmlFor="output-json-toggle" className="frost-text text-sm">
                 JSON output
               </Label>
               <Switch id="output-json-toggle" checked={outputJsonEnabled} onCheckedChange={setOutputJsonEnabled} />

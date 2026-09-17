@@ -121,8 +121,8 @@ const KnowledgeBasesListPage: React.FC = () => {
 
       <div className="mb-8 flex w-full items-start justify-between">
         <div>
-          <h1 className="animate-fade-in text-3xl font-bold text-gray-900">Knowledge Bases</h1>
-          <p className="animate-fade-in mt-2 text-gray-600">Manage knowledge bases for {selectedApp?.app_name}</p>
+          <h1 className="animate-fade-in frost-text text-3xl font-bold">Knowledge Bases</h1>
+          <p className="animate-fade-in frost-text-muted mt-2">Manage knowledge bases for {selectedApp?.app_name}</p>
         </div>
         <div className="animate-fade-in flex items-center gap-4">
           <Input
@@ -135,7 +135,7 @@ const KnowledgeBasesListPage: React.FC = () => {
           <Button onClick={handleCreateKnowledgeBase}>Create Knowledge Base</Button>
         </div>
       </div>
-      <div className="grid gap-6 overflow-y-auto py-2 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid w-full gap-6 px-1 pt-2 pb-10 sm:grid-cols-2 lg:grid-cols-3">
         {loading ? (
           <>
             {Array.from({ length: 6 }).map((_, index) => (

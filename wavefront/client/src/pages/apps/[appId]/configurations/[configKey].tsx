@@ -4,6 +4,7 @@ import {
   BreadcrumbItem,
   BreadcrumbLink,
   BreadcrumbList,
+  BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@app/components/ui/breadcrumb';
 import { Button } from '@app/components/ui/button';
@@ -17,6 +18,7 @@ import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeMirror from '@uiw/react-codemirror';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
+import { formatAppName } from '@app/lib/utils';
 
 const ConfigurationDetail: React.FC = () => {
   const { app: appId, namespace, configKey } = useParams<{ app: string; namespace: string; configKey: string }>();
@@ -116,14 +118,16 @@ const ConfigurationDetail: React.FC = () => {
             </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />
-          <BreadcrumbItem>{configKey}</BreadcrumbItem>
+          <BreadcrumbItem>
+            <BreadcrumbPage>{configKey}</BreadcrumbPage>
+          </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
 
       <div className="mb-8 flex w-full items-start justify-between">
         <div>
-          <h1 className="animate-fade-in text-3xl font-bold text-gray-900">{configKey}</h1>
-          <p className="animate-fade-in mt-2 font-mono text-sm text-gray-600">{namespace}</p>
+          <h1 className="animate-fade-in frost-text text-3xl font-bold">{formatAppName(configKey)}</h1>
+          <p className="animate-fade-in frost-text-muted mt-2 font-mono text-sm">{namespace}</p>
         </div>
         <div className="animate-fade-in flex items-center gap-4">
           <Button variant="outline" onClick={() => navigate(`/apps/${appId}/configurations`)}>
@@ -150,7 +154,7 @@ const ConfigurationDetail: React.FC = () => {
 
         <div>
           <Label>Value</Label>
-          <p className="mt-1 mb-2 text-sm text-gray-600">
+          <p className="frost-text-muted mt-1 mb-2 text-sm">
             Replaced wholesale on save — the document is not merged into the stored one, so removing a field here
             removes it in storage.
           </p>

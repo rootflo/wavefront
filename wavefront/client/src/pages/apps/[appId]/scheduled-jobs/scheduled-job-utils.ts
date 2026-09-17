@@ -53,10 +53,18 @@ export const getDatasourceIdFromPayload = (payload: Record<string, unknown>): st
   return '';
 };
 
+export const getEmailConnectionIdFromPayload = (payload: Record<string, unknown>): string => {
+  if (typeof payload.email_connection_id === 'string' && payload.email_connection_id.trim()) {
+    return payload.email_connection_id.trim();
+  }
+  return '';
+};
+
 export const buildEmailPayload = (args: {
   datasourceId: string;
   queryIds: string[];
   recipientUserIds: string[];
+  emailConnectionId: string;
   subject?: string;
   emailContent?: string;
   columnStyles?: ScheduledJobEmailPayload['column_styles'];
@@ -68,6 +76,7 @@ export const buildEmailPayload = (args: {
   datasource_id: args.datasourceId,
   queries: args.queryIds.map((query_id) => ({ query_id })),
   recipient_user_ids: args.recipientUserIds,
+  email_connection_id: args.emailConnectionId,
   subject: args.subject,
   email_content: args.emailContent,
   column_styles: args.columnStyles,

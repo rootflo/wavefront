@@ -13,7 +13,13 @@ import { Label } from '@app/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@app/components/ui/tabs';
 import { useGetAllDynamicQueries, useGetDatasource, useReadDynamicQuery } from '@app/hooks/data/fetch-hooks';
 import { getAllDynamicQueriesKey, getDatasourceKey, readDynamicQueryKey } from '@app/hooks/data/query-keys';
-import { copyToClipboard, createZipBlob, downloadBlobFile, validateDynamicQueryYaml } from '@app/lib/utils';
+import {
+  copyToClipboard,
+  createZipBlob,
+  downloadBlobFile,
+  validateDynamicQueryYaml,
+  formatAppName,
+} from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { DynamicQuery, DynamicQueryItem } from '@app/types/datasource';
 import { useQueryClient } from '@tanstack/react-query';
@@ -315,8 +321,8 @@ const DatasourceDetail: React.FC = () => {
   };
 
   return (
-    <div className="h-full bg-white px-6 pt-6 pb-[200px]">
-      <Breadcrumb className="mb-6">
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden px-6 pt-6 pb-6">
+      <Breadcrumb className="mb-6 shrink-0">
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
@@ -344,10 +350,12 @@ const DatasourceDetail: React.FC = () => {
         </BreadcrumbList>
       </Breadcrumb>
 
-      <div className="flex w-full flex-col gap-10 pb-5">
-        <div className="flex items-center justify-between">
+      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-hidden">
+        <div className="flex shrink-0 items-center justify-between">
           <div className="flex flex-col gap-3">
-            <p className="text-2xl leading-normal font-semibold text-black">{datasource?.name || datasourceId}</p>
+            <p className="frost-text text-2xl leading-normal font-semibold">
+              {formatAppName(datasource?.name || datasourceId)}
+            </p>
           </div>
           <div className="flex gap-4">
             <Button onClick={() => setEditDialogOpen(true)} variant="outline">
@@ -359,8 +367,8 @@ const DatasourceDetail: React.FC = () => {
           </div>
         </div>
 
-        <Tabs defaultValue="configuration" className="w-full">
-          <TabsList>
+        <Tabs defaultValue="configuration" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <TabsList className="shrink-0 self-start">
             <TabsTrigger className="cursor-pointer" value="configuration">
               Info
             </TabsTrigger>
@@ -369,12 +377,12 @@ const DatasourceDetail: React.FC = () => {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="configuration" className="mt-6">
+          <TabsContent value="configuration" className="mt-6 min-h-0 flex-1 overflow-auto">
             <div className="grid w-full gap-6 lg:grid-cols-3">
               <div className="flex flex-col gap-6 lg:col-span-2">
                 <div className="flex flex-col gap-2">
                   <Label>Description</Label>
-                  <p className="text-sm text-gray-900">{datasource?.description || '—'}</p>
+                  <p className="frost-text text-sm">{datasource?.description || '—'}</p>
                 </div>
                 <div>
                   <Button onClick={handleTestConnection} loading={testingConnection} disabled={testingConnection}>
@@ -384,15 +392,15 @@ const DatasourceDetail: React.FC = () => {
               </div>
 
               {datasource && (
-                <div className="rounded-lg border border-[#EFF0F1]">
+                <div className="frost-panel ring-frost-border rounded-xl border ring-1">
                   <div className="border-b border-[#EFF0F1] px-6 py-4">
-                    <h2 className="text-lg font-semibold text-gray-900">Metadata</h2>
+                    <h2 className="frost-text text-lg font-semibold">Metadata</h2>
                   </div>
                   <dl className="space-y-4 p-6">
                     <div>
-                      <dt className="text-xs font-medium text-gray-500">Datasource ID</dt>
+                      <dt className="frost-text-muted text-xs font-medium">Datasource ID</dt>
                       <dd className="mt-1 flex items-center gap-1">
-                        <span className="truncate font-mono text-sm text-gray-900" title={datasource.id}>
+                        <span className="frost-text truncate font-mono text-sm" title={datasource.id}>
                           {datasource.id}
                         </span>
                         <Button
@@ -406,18 +414,18 @@ const DatasourceDetail: React.FC = () => {
                       </dd>
                     </div>
                     <div>
-                      <dt className="text-xs font-medium text-gray-500">Type</dt>
-                      <dd className="mt-1 text-sm text-gray-900">
+                      <dt className="frost-text-muted text-xs font-medium">Type</dt>
+                      <dd className="frost-text mt-1 text-sm">
                         {DATASOURCE_TYPE_LABELS[datasource.type] || datasource.type || '—'}
                       </dd>
                     </div>
                     <div>
-                      <dt className="text-xs font-medium text-gray-500">Created At</dt>
-                      <dd className="mt-1 text-sm text-gray-900">{formatDatasourceDate(datasource.created_at)}</dd>
+                      <dt className="frost-text-muted text-xs font-medium">Created At</dt>
+                      <dd className="frost-text mt-1 text-sm">{formatDatasourceDate(datasource.created_at)}</dd>
                     </div>
                     <div>
-                      <dt className="text-xs font-medium text-gray-500">Updated At</dt>
-                      <dd className="mt-1 text-sm text-gray-900">{formatDatasourceDate(datasource.updated_at)}</dd>
+                      <dt className="frost-text-muted text-xs font-medium">Updated At</dt>
+                      <dd className="frost-text mt-1 text-sm">{formatDatasourceDate(datasource.updated_at)}</dd>
                     </div>
                   </dl>
                 </div>
@@ -425,7 +433,10 @@ const DatasourceDetail: React.FC = () => {
             </div>
           </TabsContent>
 
-          <TabsContent value="dynamic-queries" className="mt-6">
+          <TabsContent
+            value="dynamic-queries"
+            className="mt-6 min-h-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col"
+          >
             <DynamicQueries
               dynamicQueries={dynamicQueries}
               isLoading={dynamicQueriesLoading}
@@ -438,69 +449,69 @@ const DatasourceDetail: React.FC = () => {
             />
           </TabsContent>
         </Tabs>
-
-        {/* Edit Datasource Dialog */}
-        {appId && datasource && (
-          <EditDatasourceDialog
-            isOpen={editDialogOpen}
-            onOpenChange={setEditDialogOpen}
-            appId={appId}
-            datasource={datasource}
-            onSuccess={handleEditSuccess}
-          />
-        )}
-
-        {/* Delete Confirmation Dialog */}
-        {showDeleteConfirm && (
-          <DeleteConfirmationDialog
-            isOpen={showDeleteConfirm}
-            title="Delete Datasource"
-            message={`Are you sure you want to delete "${datasource?.name || ''}"? This action cannot be undone.`}
-            onConfirm={handleDelete}
-            onCancel={() => setShowDeleteConfirm(false)}
-            loading={deleting}
-            confirmLabel="Delete"
-            cancelLabel="Cancel"
-          />
-        )}
-
-        <DynamicQueryCreation
-          queryContent={queryContent}
-          setQueryContent={setQueryContent}
-          isOpen={queryCreation}
-          setIsOpen={setQueryCreation}
-          onCreate={createDynamicQuery}
-        />
-
-        <DynamicQueryView
-          queryItems={queryItems}
-          setQueryCrud={setQueryCrud}
-          setQueryItems={setQueryItems}
-          setSelectedQuery={setSelectedQuery}
-          queryCrud={queryCrud}
-          selectedQuery={selectedQuery}
-          queryName={queryName}
-          handleDynamicQueryEdit={handleDynamicQueryEdit}
-          handleClose={handleClose}
-          handleDynamicQueryExecute={handleDynamicQueryExecute}
-          executeResult={executeResult}
-          setExecuteResult={setExecuteResult}
-          executing={executing}
-        />
-
-        {queryCrud.delete && selectedQuery && (
-          <DeleteConfirmationDialog
-            isOpen={queryCrud.delete}
-            title="Delete Dynamic Query"
-            message={`Are you sure you want to delete "${selectedQuery}"? This action cannot be undone.`}
-            onConfirm={handleDynamicQueryDelete}
-            onCancel={handleClose}
-            loading={deleting}
-            confirmLabel="Delete"
-            cancelLabel="Cancel"
-          />
-        )}
       </div>
+
+      {/* Edit Datasource Dialog */}
+      {appId && datasource && (
+        <EditDatasourceDialog
+          isOpen={editDialogOpen}
+          onOpenChange={setEditDialogOpen}
+          appId={appId}
+          datasource={datasource}
+          onSuccess={handleEditSuccess}
+        />
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {showDeleteConfirm && (
+        <DeleteConfirmationDialog
+          isOpen={showDeleteConfirm}
+          title="Delete Datasource"
+          message={`Are you sure you want to delete "${datasource?.name || ''}"? This action cannot be undone.`}
+          onConfirm={handleDelete}
+          onCancel={() => setShowDeleteConfirm(false)}
+          loading={deleting}
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+        />
+      )}
+
+      <DynamicQueryCreation
+        queryContent={queryContent}
+        setQueryContent={setQueryContent}
+        isOpen={queryCreation}
+        setIsOpen={setQueryCreation}
+        onCreate={createDynamicQuery}
+      />
+
+      <DynamicQueryView
+        queryItems={queryItems}
+        setQueryCrud={setQueryCrud}
+        setQueryItems={setQueryItems}
+        setSelectedQuery={setSelectedQuery}
+        queryCrud={queryCrud}
+        selectedQuery={selectedQuery}
+        queryName={queryName}
+        handleDynamicQueryEdit={handleDynamicQueryEdit}
+        handleClose={handleClose}
+        handleDynamicQueryExecute={handleDynamicQueryExecute}
+        executeResult={executeResult}
+        setExecuteResult={setExecuteResult}
+        executing={executing}
+      />
+
+      {queryCrud.delete && selectedQuery && (
+        <DeleteConfirmationDialog
+          isOpen={queryCrud.delete}
+          title="Delete Dynamic Query"
+          message={`Are you sure you want to delete "${selectedQuery}"? This action cannot be undone.`}
+          onConfirm={handleDynamicQueryDelete}
+          onCancel={handleClose}
+          loading={deleting}
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+        />
+      )}
     </div>
   );
 };

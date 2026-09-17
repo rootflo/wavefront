@@ -6,6 +6,22 @@
     <link rel="preload" as="image" href="/background.webp" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script src="/config.js"></script>
+    <script>
+      (function () {
+        try {
+          var hour = new Date().getHours();
+          var theme = hour >= 18 || hour < 6 ? 'dark' : 'light';
+          localStorage.setItem('wavefront-theme', theme);
+          if (theme === 'dark') {
+            document.documentElement.classList.add('dark');
+            document.documentElement.style.colorScheme = 'dark';
+          } else {
+            document.documentElement.classList.remove('dark');
+            document.documentElement.style.colorScheme = 'light';
+          }
+        } catch (e) {}
+      })();
+    </script>
     <title>Rootflo Console</title>
   </head>
 

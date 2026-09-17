@@ -1,6 +1,6 @@
 import floConsoleService from '@app/api';
 import { useGetPipeline, useGetPipelineFiles } from '@app/hooks/data/fetch-hooks';
-import { extractErrorMessage } from '@app/lib/utils';
+import { extractErrorMessage, formatAppName } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { FileType, PipelineFile } from '@app/types/pipeline';
 import { useQueryClient } from '@tanstack/react-query';
@@ -368,9 +368,9 @@ const PipelineDetail: React.FC = () => {
 
   if (pipelineLoading) {
     return (
-      <div className="min-h-screen bg-white p-6">
+      <div className="min-h-screen bg-transparent p-6">
         <div className="flex justify-center">
-          <div className="text-gray-500">Loading pipeline...</div>
+          <div className="frost-text-muted">Loading pipeline...</div>
         </div>
       </div>
     );
@@ -378,7 +378,7 @@ const PipelineDetail: React.FC = () => {
 
   if (pipelineError || !pipeline) {
     return (
-      <div className="min-h-screen bg-white p-6">
+      <div className="min-h-screen bg-transparent p-6">
         <div className="flex justify-center">
           <div className="text-red-500">Error loading pipeline. Please try again.</div>
         </div>
@@ -387,12 +387,12 @@ const PipelineDetail: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen bg-white">
+    <div className="flex h-screen bg-transparent">
       {/* Left sidebar - File browser */}
       <div className="w-80 overflow-y-auto border-r border-gray-200">
         <div className="p-4">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">Files</h2>
+            <h2 className="frost-text text-lg font-semibold">Files</h2>
             <button
               onClick={() => setShowCreateModal(true)}
               className="rounded-lg bg-black px-3 py-1 text-sm text-white hover:bg-gray-800"
@@ -401,7 +401,7 @@ const PipelineDetail: React.FC = () => {
             </button>
           </div>
           {filesLoading ? (
-            <div className="mt-4 text-sm text-gray-500">Loading files...</div>
+            <div className="frost-text-muted mt-4 text-sm">Loading files...</div>
           ) : (
             <div className="space-y-1">
               {fileTree.map((node) => (
@@ -418,15 +418,15 @@ const PipelineDetail: React.FC = () => {
         <div className="border-b border-gray-200 p-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">{pipeline.project_name}</h1>
-              {pipeline.description && <p className="mt-1 text-gray-600">{pipeline.description}</p>}
+              <h1 className="frost-text text-2xl font-bold">{formatAppName(pipeline.project_name)}</h1>
+              {pipeline.description && <p className="frost-text-muted mt-1">{pipeline.description}</p>}
               <div className="mt-2 flex items-center gap-4">
                 {getStatusBadge(pipeline.status)}
                 <div className="flex items-center gap-2">
                   {pipeline.schedule_interval ? (
-                    <span className="text-sm text-gray-600">Schedule: {pipeline.schedule_interval}</span>
+                    <span className="frost-text-muted text-sm">Schedule: {pipeline.schedule_interval}</span>
                   ) : (
-                    <span className="text-sm text-gray-500">No schedule set</span>
+                    <span className="frost-text-muted text-sm">No schedule set</span>
                   )}
                   <button
                     onClick={handleOpenScheduleModal}
@@ -452,7 +452,7 @@ const PipelineDetail: React.FC = () => {
                 <button
                   onClick={handlePause}
                   disabled={pauseLoading}
-                  className="rounded-lg border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-100"
+                  className="frost-text rounded-lg border border-gray-300 px-4 py-2 hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-100"
                 >
                   {pauseLoading
                     ? pipeline.status === 'published'
@@ -477,7 +477,7 @@ const PipelineDetail: React.FC = () => {
 
               <button
                 onClick={() => navigate(`/apps/${app}/data-pipelines`)}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50"
+                className="frost-text rounded-lg border border-gray-300 px-4 py-2 hover:bg-gray-50"
               >
                 Back
               </button>
@@ -490,7 +490,7 @@ const PipelineDetail: React.FC = () => {
           {selectedFile ? (
             <div className="flex h-full flex-col">
               <div className="flex items-center justify-between border-b border-gray-200 p-4">
-                <h3 className="text-sm font-medium text-gray-900">{selectedFile.path}</h3>
+                <h3 className="frost-text text-sm font-medium">{selectedFile.path}</h3>
                 <div className="flex gap-2">
                   {!isEditing ? (
                     <button
@@ -511,7 +511,7 @@ const PipelineDetail: React.FC = () => {
                       <button
                         onClick={() => setIsEditing(false)}
                         disabled={saveLoading}
-                        className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                        className="frost-text rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
                       >
                         Cancel
                       </button>
@@ -532,7 +532,9 @@ const PipelineDetail: React.FC = () => {
               </div>
             </div>
           ) : (
-            <div className="flex h-full items-center justify-center text-gray-500">Select a file to view or edit</div>
+            <div className="frost-text-muted flex h-full items-center justify-center">
+              Select a file to view or edit
+            </div>
           )}
         </div>
       </div>
@@ -541,10 +543,10 @@ const PipelineDetail: React.FC = () => {
       {showCreateModal && (
         <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black">
           <div className="w-full max-w-2xl rounded-lg bg-white p-6">
-            <h2 className="mb-4 text-xl font-bold text-gray-900">Create New File</h2>
+            <h2 className="frost-text mb-4 text-xl font-bold">Create New File</h2>
             <div className="space-y-4">
               <div>
-                <label htmlFor="file-path" className="mb-1 block text-sm font-medium text-gray-700">
+                <label htmlFor="file-path" className="frost-text mb-1 block text-sm font-medium">
                   File Path
                 </label>
                 <input
@@ -559,12 +561,12 @@ const PipelineDetail: React.FC = () => {
                   className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-black focus:ring-1 focus:ring-black focus:outline-none"
                 />
                 {filePathError && <p className="mt-1 text-sm text-red-600">{filePathError}</p>}
-                <p className="mt-1 text-sm text-gray-500">
+                <p className="frost-text-muted mt-1 text-sm">
                   Supported extensions: .sql, .yml, .yaml, .md. Directories will be created automatically.
                 </p>
               </div>
               <div>
-                <label htmlFor="file-content" className="mb-1 block text-sm font-medium text-gray-700">
+                <label htmlFor="file-content" className="frost-text mb-1 block text-sm font-medium">
                   Initial Content (Optional)
                 </label>
                 <textarea
@@ -585,7 +587,7 @@ const PipelineDetail: React.FC = () => {
                     setFilePathError('');
                   }}
                   disabled={createLoading}
-                  className="rounded-lg border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  className="frost-text rounded-lg border border-gray-300 px-4 py-2 hover:bg-gray-50 disabled:opacity-50"
                 >
                   Cancel
                 </button>
@@ -606,14 +608,14 @@ const PipelineDetail: React.FC = () => {
       {fileToDelete && (
         <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black">
           <div className="w-full max-w-md rounded-lg bg-white p-6">
-            <h2 className="mb-4 text-xl font-bold text-gray-900">Delete File</h2>
-            <p className="mb-6 text-gray-600">
+            <h2 className="frost-text mb-4 text-xl font-bold">Delete File</h2>
+            <p className="frost-text-muted mb-6">
               Are you sure you want to delete <strong>{fileToDelete.path}</strong>? This action cannot be undone.
             </p>
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setFileToDelete(null)}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50"
+                className="frost-text rounded-lg border border-gray-300 px-4 py-2 hover:bg-gray-50"
               >
                 Cancel
               </button>
@@ -632,10 +634,10 @@ const PipelineDetail: React.FC = () => {
       {showScheduleModal && (
         <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black">
           <div className="w-full max-w-md rounded-lg bg-white p-6">
-            <h2 className="mb-4 text-xl font-bold text-gray-900">Edit Schedule</h2>
+            <h2 className="frost-text mb-4 text-xl font-bold">Edit Schedule</h2>
             <div className="space-y-4">
               <div>
-                <label htmlFor="schedule-interval" className="mb-1 block text-sm font-medium text-gray-700">
+                <label htmlFor="schedule-interval" className="frost-text mb-1 block text-sm font-medium">
                   Schedule Interval (Cron Expression)
                 </label>
                 <input
@@ -646,7 +648,7 @@ const PipelineDetail: React.FC = () => {
                   placeholder="0 6 * * *"
                   className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-black focus:ring-1 focus:ring-black focus:outline-none"
                 />
-                <div className="mt-2 space-y-1 text-sm text-gray-500">
+                <div className="frost-text-muted mt-2 space-y-1 text-sm">
                   <p>Examples:</p>
                   <p>
                     • <code className="rounded bg-gray-100 px-1">0 6 * * *</code> - Daily at 6 AM UTC
@@ -667,7 +669,7 @@ const PipelineDetail: React.FC = () => {
                     setScheduleValue('');
                   }}
                   disabled={scheduleLoading}
-                  className="rounded-lg border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  className="frost-text rounded-lg border border-gray-300 px-4 py-2 hover:bg-gray-50 disabled:opacity-50"
                 >
                   Cancel
                 </button>

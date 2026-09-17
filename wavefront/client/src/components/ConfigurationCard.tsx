@@ -9,8 +9,6 @@ interface ConfigurationCardProps {
 }
 
 const ConfigurationCard: React.FC<ConfigurationCardProps> = ({ configuration, onClick, onDeleteClick }) => {
-  // The key is the title, so the namespace is what distinguishes two configs
-  // that share a key — it earns the metadata row ahead of the surrogate id.
   const metadata: ResourceCardMetadata[] = [
     {
       label: 'Namespace',

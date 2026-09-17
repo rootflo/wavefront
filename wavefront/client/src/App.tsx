@@ -15,8 +15,11 @@ function App() {
   }, []);
 
   return (
-    <div className="flex h-full w-screen flex-col items-center justify-center bg-white">
-      <AppRouter />
+    <div className="frost-canvas relative flex h-full w-full flex-col items-center justify-center">
+      <div aria-hidden className="frost-card-glow pointer-events-none absolute inset-0" />
+      <div className="relative flex h-full w-full flex-col items-center justify-center">
+        <AppRouter />
+      </div>
       <Toast visible={visible} reset={reset} type={type} message={message} />
     </div>
   );

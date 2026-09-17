@@ -33,14 +33,14 @@ const Toast = ({
   return (
     <>
       <div
-        className="animate-fade-in fixed bottom-10 left-1/2 z-[1000] flex w-full max-w-xs -translate-x-1/2 items-center rounded-lg bg-white p-4 text-gray-500 shadow duration-150 dark:bg-gray-800 dark:text-gray-400"
+        className="frost-glass-strong frost-text animate-fade-in border-frost-border ring-frost-border fixed bottom-10 left-1/2 z-[1000] flex w-full max-w-xs -translate-x-1/2 items-center rounded-lg border p-4 shadow-[var(--frost-dialog-shadow)] ring-1 backdrop-blur-xl duration-150"
         role="alert"
       >
         {type && iconMap[type]}
         <div className="ml-3 text-sm font-normal break-all">{message}</div>
         <button
           type="button"
-          className="-mx-1.5 -my-1.5 ml-auto inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-900 focus:ring-2 focus:ring-gray-300 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-white"
+          className="frost-text-muted hover:bg-frost-glass hover:text-frost-text focus:ring-frost-border -mx-1.5 -my-1.5 ml-auto inline-flex h-8 w-8 items-center justify-center rounded-lg p-1.5 focus:ring-2"
           data-dismiss-target="#toast-success"
           aria-label="Close"
           onClick={() => reset()}

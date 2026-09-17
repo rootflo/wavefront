@@ -8,15 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@app/components/ui/dialog';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@app/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
 import { extractErrorMessage } from '@app/lib/utils';
@@ -169,7 +161,7 @@ const CreateWorkflowDialog: React.FC<CreateWorkflowDialogProps> = ({ isOpen, onO
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] min-w-0 overflow-y-auto lg:max-w-4xl">
+      <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto lg:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Create New Workflow</DialogTitle>
           <DialogDescription>Create a new AI workflow for voice-intelligence</DialogDescription>
@@ -187,7 +179,6 @@ const CreateWorkflowDialog: React.FC<CreateWorkflowDialogProps> = ({ isOpen, onO
                     <FormControl>
                       <Input placeholder="my-workflow" {...field} />
                     </FormControl>
-                    <FormDescription>Unique identifier for your workflow (lowercase, hyphens allowed)</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -202,7 +193,6 @@ const CreateWorkflowDialog: React.FC<CreateWorkflowDialogProps> = ({ isOpen, onO
                     <FormControl>
                       <Input placeholder="default" {...field} />
                     </FormControl>
-                    <FormDescription>Organization namespace for your workflow</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -216,7 +206,7 @@ const CreateWorkflowDialog: React.FC<CreateWorkflowDialogProps> = ({ isOpen, onO
                 <FormItem className="col-span-2 w-full min-w-0">
                   <FormLabel>Workflow Configuration (YAML)</FormLabel>
                   <FormControl>
-                    <div className="w-full min-w-0 rounded-lg border border-gray-300">
+                    <div className="border-frost-border w-full min-w-0 rounded-lg border">
                       <CodeMirror
                         value={field.value}
                         onChange={field.onChange}
@@ -229,9 +219,6 @@ const CreateWorkflowDialog: React.FC<CreateWorkflowDialogProps> = ({ isOpen, onO
                       />
                     </div>
                   </FormControl>
-                  <FormDescription>
-                    Define your workflow's steps, configuration, and processing logic in YAML format
-                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
