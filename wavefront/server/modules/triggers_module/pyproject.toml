@@ -13,10 +13,8 @@ dependencies = [
     "agents-module",
     "flo-cloud",
     "flo-utils",
-    "google-auth>=2.30.0",
-    "google-auth-oauthlib>=1.2.0",
-    "google-api-python-client>=2.130.0",
-    "google-cloud-pubsub>=2.21.0",
+    "mailer",
+    "plugins-module",
     "beautifulsoup4>=4.8.0,<4.9.dev0",
     "fastapi>=0.110.0",
     "pydantic>=2.0.0",
@@ -29,6 +27,8 @@ db-repo-module = { workspace = true }
 agents-module = { workspace = true }
 flo-cloud = { workspace = true }
 flo-utils = { workspace = true }
+mailer = { workspace = true }
+plugins-module = { workspace = true }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -13,6 +13,8 @@ dependencies = [
     "common-module",
     "db-repo-module",
     "datasource",
+    "mailer",
+    "flo-cloud",
     "user-management-module",
 
     "dependency-injector>=4.42.0,<5.0.0",
@@ -24,6 +26,8 @@ auth-module = { workspace = true }
 common-module = { workspace = true }
 db-repo-module = { workspace = true }
 datasource = { workspace = true }
+mailer = { workspace = true }
+flo-cloud = { workspace = true }
 user-management-module = { workspace = true}
 
 [dependency-groups]
