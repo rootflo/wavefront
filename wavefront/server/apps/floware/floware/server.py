@@ -342,7 +342,7 @@ async def lifespan(app: FastAPI):
         raise
 
 
-environment = os.getenv('APP_ENV', 'dev')
+environment = os.getenv('APP_ENV', 'production')
 
 # The interactive docs and the OpenAPI schema are off everywhere except dev,
 # so a new/unknown APP_ENV value stays closed rather than exposing the surface.

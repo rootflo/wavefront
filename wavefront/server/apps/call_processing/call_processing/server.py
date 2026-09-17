@@ -14,7 +14,7 @@ from call_processing.controllers.cache_controller import cache_router
 
 load_dotenv()
 
-environment = os.getenv('APP_ENV', 'dev')
+environment = os.getenv('APP_ENV', 'production')
 
 # Initialize containers
 application_container = ApplicationContainer()
