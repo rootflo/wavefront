@@ -50,6 +50,9 @@ from db_repo_module.models.workflow_version import WorkflowVersion
 from db_repo_module.models.workflow_pipeline import WorkflowPipeline
 from db_repo_module.models.workflow_runs import WorkflowRuns
 from db_repo_module.models.datasource_audit_log import DatasourceAuditLog
+from db_repo_module.models.chatbot import Chatbot
+from db_repo_module.models.chat_session import ChatSession
+from db_repo_module.models.chat_message import ChatMessage
 from dotenv import load_dotenv
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
@@ -110,6 +113,9 @@ models = [
     WorkflowPipeline,
     WorkflowRuns,
     DatasourceAuditLog,
+    Chatbot,
+    ChatSession,
+    ChatMessage,
 ]
 target_metadata = Base.metadata
 

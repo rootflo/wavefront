@@ -93,6 +93,9 @@ from llm_inference_config_module.controllers.inference_proxy_controller import (
 )
 from tools_module.controllers.tools_controller import tools_router
 from tools_module.tools_container import ToolsContainer
+from chatbots_module.chatbots_container import ChatbotsContainer
+from chatbots_module.controllers.chatbot_controller import chatbot_router
+from chatbots_module.controllers.chat_session_controller import chat_session_router
 from voice_agents_module.voice_agents_container import VoiceAgentsContainer
 from voice_agents_module.controllers.telephony_config_controller import (
     telephony_config_router,
@@ -220,6 +223,12 @@ voice_agents_container = VoiceAgentsContainer(
     db_client=db_repo_container.db_client,
     cache_manager=db_repo_container.cache_manager,
     cloud_storage_manager=common_container.cloud_storage_manager,
+)
+
+chatbots_container = ChatbotsContainer(
+    db_client=db_repo_container.db_client,
+    cache_manager=db_repo_container.cache_manager,
+    llm_inference_config_service=llm_inference_config_container.llm_inference_config_service,
 )
 
 triggers_container = TriggersContainer(
@@ -469,6 +478,8 @@ app.include_router(telephony_config_router, prefix='/floware')
 app.include_router(tts_config_router, prefix='/floware')
 app.include_router(stt_config_router, prefix='/floware')
 app.include_router(voice_agent_router, prefix='/floware')
+app.include_router(chatbot_router, prefix='/floware')
+app.include_router(chat_session_router, prefix='/floware')
 app.include_router(tool_router, prefix='/floware')
 app.include_router(message_processor_router, prefix='/floware')
 app.include_router(configuration_router, prefix='/floware')
@@ -555,6 +566,7 @@ common_container.wire(
         'auth_module.controllers',
         'user_management_module.controllers',
         'user_management_module.authorization',
+        'chatbots_module.controllers',
         'floware.controllers',
         'knowledge_base_module.controllers',
         'gold_module.controllers',
@@ -642,6 +654,12 @@ voice_agents_container.wire(
     ],
 )
 
+chatbots_container.wire(
+    modules=[__name__],
+    packages=[
+        'chatbots_module.controllers',
+    ],
+)
 # Running with Uvicorn (for local development)
 if __name__ == '__main__':
     worker_count = os.getenv('FLOWARE_WORKER_COUNT', 4)

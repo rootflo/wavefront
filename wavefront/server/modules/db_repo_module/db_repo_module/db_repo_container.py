@@ -43,6 +43,9 @@ from db_repo_module.models.async_agentic_execution import AsyncAgenticExecution
 from db_repo_module.models.agentic_trigger_credential import AgenticTriggerCredential
 from db_repo_module.models.agentic_trigger import AgenticTrigger
 from db_repo_module.models.agentic_trigger_event import AgenticTriggerEvent
+from db_repo_module.models.chatbot import Chatbot
+from db_repo_module.models.chat_session import ChatSession
+from db_repo_module.models.chat_message import ChatMessage
 from dependency_injector import containers
 from dependency_injector import providers
 
@@ -290,5 +293,23 @@ class DatabaseModuleContainer(containers.DeclarativeContainer):
     agentic_trigger_event_repository = providers.Singleton(
         SQLAlchemyRepository[AgenticTriggerEvent],
         model=AgenticTriggerEvent,
+        db_client=db_client,
+    )
+
+    chatbot_repository = providers.Singleton(
+        SQLAlchemyRepository[Chatbot],
+        model=Chatbot,
+        db_client=db_client,
+    )
+
+    chat_session_repository = providers.Singleton(
+        SQLAlchemyRepository[ChatSession],
+        model=ChatSession,
+        db_client=db_client,
+    )
+
+    chat_message_repository = providers.Singleton(
+        SQLAlchemyRepository[ChatMessage],
+        model=ChatMessage,
         db_client=db_client,
     )
