@@ -35,7 +35,9 @@ async def lifespan(app: FastAPI):
     clip_dir, dino_dir = sync_embedding_models()
     logger.info('Cloud sync complete. Preloading ML models...')
     inference_app_container.image_embedding.override(
-        providers.Singleton(ImageEmbedding, clip_model_dir=clip_dir, dino_model_dir=dino_dir)
+        providers.Singleton(
+            ImageEmbedding, clip_model_dir=clip_dir, dino_model_dir=dino_dir
+        )
     )
     inference_app_container.image_embedding()
     logger.info('ML models loaded and ready.')
@@ -102,7 +104,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-environment = os.getenv('APP_ENV', 'dev')
+environment = os.getenv('APP_ENV', 'production')
 
 
 common_container.wire(
