@@ -54,8 +54,9 @@ def process_inference_inputs(
                     # than reaching the mime gate as an unresolvable type.
                     if not isinstance(raw_image, str):
                         logger.error(
-                            f'Error processing ImageMessage base64: expected a string, '
-                            f'got {type(raw_image).__name__}, message: {input_item}'
+                            f'Error processing ImageMessage base64 at input index '
+                            f'{index}: expected a string, '
+                            f'got {type(raw_image).__name__}'
                         )
                         raise HTTPException(
                             status_code=status.HTTP_400_BAD_REQUEST,
@@ -132,14 +133,24 @@ def process_inference_inputs(
                         )
                     )
                 else:
+                    # The item itself is deliberately not echoed: on the media
+                    # branches it carries the base64 payload, so reflecting it
+                    # sends a multi-megabyte body back for a 400. The index
+                    # locates it for the caller.
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f'Invalid input: {input_item}',
+                        detail=(
+                            f'Invalid input at index {index}: content must be a '
+                            'string, an image or a document'
+                        ),
                     )
             else:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f'Invalid input: {input_item}',
+                    detail=(
+                        f'Invalid input at index {index}: role must be '
+                        "'user' or 'assistant'"
+                    ),
                 )
 
     return resolved_inputs
