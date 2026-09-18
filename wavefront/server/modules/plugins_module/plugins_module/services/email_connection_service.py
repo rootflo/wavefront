@@ -1,6 +1,10 @@
+import asyncio
+import time
+import weakref
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Sequence, Tuple
-from uuid import UUID
+from typing import Any, AsyncIterator, Dict, List, Optional, Sequence, Tuple
+from uuid import UUID, uuid4
 
 from common_module.common_cache import CommonCache
 from common_module.log.logger import logger
@@ -23,6 +27,14 @@ from plugins_module.utils.email_helper import (
 # Refresh a little early so a token cannot expire between the check and the API
 # call it was fetched for.
 TOKEN_REFRESH_SKEW = timedelta(seconds=60)
+
+# Cross-process refresh lock. The TTL has to outlive a slow provider call so the
+# lock is not handed to a second node mid-refresh, and the wait has to be short
+# enough that a stuck holder cannot stall a send for long.
+TOKEN_REFRESH_LOCK_KEY_PREFIX = 'email_connection:token_refresh:'
+TOKEN_REFRESH_LOCK_TTL_SECONDS = 60
+TOKEN_REFRESH_LOCK_WAIT_SECONDS = 15.0
+TOKEN_REFRESH_LOCK_POLL_SECONDS = 0.25
 
 
 class EmailConnectionError(Exception):
@@ -89,6 +101,9 @@ class EmailConnectionService:
         self._app_service = oauth_app_service
         self._kms = kms_service
         self._cache = cache_manager
+        self._refresh_locks: weakref.WeakKeyDictionary[
+            asyncio.AbstractEventLoop, Dict[UUID, asyncio.Lock]
+        ] = weakref.WeakKeyDictionary()
 
     # ---- Lifecycle -------------------------------------------------------
 
@@ -467,16 +482,120 @@ class EmailConnectionService:
         if capabilities:
             self._assert_capabilities(connection, provider_impl, capabilities)
 
-        now = datetime.now(timezone.utc)
-        if (
-            connection.encrypted_access_token
-            and connection.token_expires_at
-            and self._as_aware(connection.token_expires_at) - TOKEN_REFRESH_SKEW > now
-        ):
-            token = self._kms.decrypt_from_storage(connection.encrypted_access_token)
-            if token:
-                return token, connection.mailbox_email
+        token = self._usable_access_token(connection)
+        if token:
+            return token, connection.mailbox_email
 
+        # Serialize refreshes per connection. Providers such as Microsoft rotate
+        # the refresh token on use, so parallel refreshes invalidate each other:
+        # one wins and the losers both flip a healthy connection to `error` and
+        # write back a stale token. The local lock settles coroutines inside this
+        # process; the shared one settles the app, workers and jobs against each
+        # other.
+        async with self._local_refresh_lock(connection.id):
+            async with self._shared_refresh_lock(connection.id):
+                # Whoever held the lock before may have refreshed already, so
+                # work off the stored row, not the pre-lock snapshot.
+                connection = await self._require_connection(connection.id)
+                token = self._usable_access_token(connection)
+                if token:
+                    return token, connection.mailbox_email
+                return await self._refresh_access_token(connection, provider_impl)
+
+    def _usable_access_token(self, connection: EmailConnection) -> Optional[str]:
+        """The stored access token when it is present and not near expiry."""
+        if not connection.encrypted_access_token or not connection.token_expires_at:
+            return None
+        expires_at = self._as_aware(connection.token_expires_at)
+        if expires_at - TOKEN_REFRESH_SKEW <= datetime.now(timezone.utc):
+            return None
+        return self._kms.decrypt_from_storage(connection.encrypted_access_token)
+
+    def _local_refresh_lock(self, connection_id: UUID) -> asyncio.Lock:
+        """A per-connection lock, scoped to the running loop.
+
+        This service is a singleton but is driven from more than one event loop
+        (the app, Celery tasks, scheduled jobs), and an `asyncio.Lock` cannot
+        cross loops. Keying by loop keeps each one with its own locks, and the
+        weak map lets them go when the loop does.
+        """
+        loop = asyncio.get_running_loop()
+        locks = self._refresh_locks.get(loop)
+        if locks is None:
+            locks = {}
+            self._refresh_locks[loop] = locks
+        lock = locks.get(connection_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            locks[connection_id] = lock
+        return lock
+
+    @asynccontextmanager
+    async def _shared_refresh_lock(self, connection_id: UUID) -> AsyncIterator[None]:
+        """Hold a Redis lock for this connection across processes, best effort.
+
+        Deliberately not fail-closed: if Redis is down or the holder is slow, the
+        caller still gets to refresh rather than losing the ability to send mail.
+        Losing the race then costs a redundant refresh, which is what the
+        re-check under the lock is there to catch.
+        """
+        key = f'{TOKEN_REFRESH_LOCK_KEY_PREFIX}{connection_id}'
+        owner = uuid4().hex
+        held = await self._acquire_shared_refresh_lock(key, owner)
+        try:
+            yield
+        finally:
+            if held:
+                self._release_shared_refresh_lock(key, owner)
+
+    async def _acquire_shared_refresh_lock(self, key: str, owner: str) -> bool:
+        deadline = time.monotonic() + TOKEN_REFRESH_LOCK_WAIT_SECONDS
+        while True:
+            try:
+                if self._cache.add(
+                    key, owner, expiry=TOKEN_REFRESH_LOCK_TTL_SECONDS, nx=True
+                ):
+                    return True
+            except Exception as exc:
+                logger.warning(
+                    f'Cannot reach the token refresh lock for {key}, refreshing '
+                    f'without it: {exc}'
+                )
+                return False
+            if time.monotonic() >= deadline:
+                logger.warning(
+                    f'Timed out waiting for the token refresh lock on {key}; '
+                    'refreshing without it'
+                )
+                return False
+            await asyncio.sleep(TOKEN_REFRESH_LOCK_POLL_SECONDS)
+
+    def _release_shared_refresh_lock(self, key: str, owner: str) -> None:
+        """Drop the lock only while we still own it.
+
+        Checking the owner keeps a slow refresh whose lock already expired from
+        deleting the lock its successor now holds. There is no compare-and-delete
+        in the cache interface, so this narrows the window rather than closing
+        it; the TTL bounds the damage either way.
+        """
+        try:
+            if self._cache.get_str(key) == owner:
+                self._cache.remove(key)
+        except Exception as exc:
+            logger.warning(
+                f'Failed to release the token refresh lock {key}; it expires in '
+                f'{TOKEN_REFRESH_LOCK_TTL_SECONDS}s: {exc}'
+            )
+
+    async def _refresh_access_token(
+        self,
+        connection: EmailConnection,
+        provider_impl: EmailProviderABC,
+    ) -> Tuple[str, str]:
+        """Exchange the stored refresh token and persist the new credentials.
+
+        Callers must hold `_refresh_lock` for the connection.
+        """
         refresh_token = (
             self._kms.decrypt_from_storage(connection.encrypted_refresh_token)
             if connection.encrypted_refresh_token
