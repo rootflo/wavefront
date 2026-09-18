@@ -108,12 +108,10 @@ class InferenceProxyService:
     def _prepare_gemini_auth(self, headers: Dict[str, str], api_key: str) -> None:
         """Prepare Gemini authentication headers.
 
-        Popped rather than deleted: the Gemini SDK authenticates on
-        `x-goog-api-key` and sends no Authorization header of its own, so the
-        inbound request usually has none to remove.
+        Gemini authenticates on `x-goog-api-key`; any inbound Authorization
+        header was already dropped by prepare_headers.
         """
         headers['x-goog-api-key'] = api_key
-        headers.pop('authorization', None)
 
     def _prepare_anthropic_auth(self, headers: Dict[str, str], api_key: str) -> None:
         """Prepare Anthropic authentication headers."""
@@ -122,7 +120,6 @@ class InferenceProxyService:
     def _prepare_azure_openai_auth(self, headers: Dict[str, str], api_key: str) -> None:
         """Prepare Azure OpenAI authentication headers."""
         headers['api-key'] = api_key
-        headers.pop('authorization', None)
 
     def _prepare_ollama_auth(self, headers: Dict[str, str], api_key: str) -> None:
         """Prepare Ollama authentication headers (typically no auth required)."""
@@ -212,13 +209,22 @@ class InferenceProxyService:
         """Prepare headers for the forwarded request with provider-specific auth."""
         headers = {}
 
-        # Copy most headers from the original request
+        # Copy most headers from the original request.
+        #
+        # 'authorization' is always dropped here rather than per provider: on
+        # this route it can only hold the caller's Floware credential (the
+        # route is not in optional_auth_apis, and the mTLS branch only applies
+        # when no bearer token was sent), so forwarding it upstream would leak
+        # that credential to the provider. Each provider re-adds its own
+        # credential below. Comparing on key.lower() also means an inbound
+        # 'Authorization'/'AUTHORIZATION' spelling is dropped too.
         excluded_headers = {
             'host',
             'content-length',
             'transfer-encoding',
             'connection',
             'upgrade',
+            'authorization',
             'proxy-authenticate',
             'proxy-authorization',
         }
