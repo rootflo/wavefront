@@ -30,9 +30,18 @@ def user_list_cache_key(
     limit: int,
     search: Optional[str],
     roles: Optional[List[str]],
+    include_roles: bool = True,
 ) -> str:
-    """Key for one page of the user listing, per filter combination."""
-    return f'{USER_DATA_TAG}_{offset}_{limit}_{search}_{roles}'
+    """Key for one page of the user listing, per filter combination.
+
+    `include_roles` is part of the key because the listing serves two different
+    payloads from the same filters: admins get roles, groups and usernames,
+    non-admins get a trimmed directory. Without it the two would collide on one
+    entry and whichever call populated it first would serve its shape to the
+    other — handing a non-admin the role membership the trimmed payload exists
+    to withhold.
+    """
+    return f'{USER_DATA_TAG}_{offset}_{limit}_{search}_{roles}_{include_roles}'
 
 
 def user_by_id_cache_key(user_id: str) -> str:

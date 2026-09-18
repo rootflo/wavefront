@@ -347,6 +347,58 @@ def mock_auth_admin_user_functions(monkeypatch, test_user_id):
 
 
 @pytest.fixture
+def mock_auth_non_admin_user_functions(monkeypatch, test_user_id):
+    """Non-admin caller for the user endpoints.
+
+    Mirrors mock_auth_admin_user_functions and patches the same two namespaces:
+    the listing endpoint resolves check_is_admin from the controller, while
+    fetch-by-id reaches it through can_read_users in user_utils.
+    """
+
+    def mock_get_current_user(request):
+        return ('test_role_id', test_user_id, 'test_session_id')
+
+    monkeypatch.setattr(
+        'user_management_module.controllers.user_controller.get_current_user',
+        mock_get_current_user,
+    )
+    monkeypatch.setattr(
+        'user_management_module.utils.user_utils.get_current_user',
+        mock_get_current_user,
+    )
+
+    async def mock_check_is_not_admin(role_id, role_repository=None):
+        return False
+
+    monkeypatch.setattr(
+        'user_management_module.controllers.user_controller.check_is_admin',
+        mock_check_is_not_admin,
+    )
+    monkeypatch.setattr(
+        'user_management_module.utils.user_utils.check_is_admin',
+        mock_check_is_not_admin,
+    )
+
+
+@pytest.fixture
+def set_non_admin_data_access_flag(monkeypatch):
+    """Toggle ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG for the user controller.
+
+    The controller imports is_feature_enabled into its own namespace, so that is
+    where it has to be patched. Returns a setter rather than a value so one
+    fixture serves both the flag-on and flag-off cases.
+    """
+
+    def _set(enabled: bool):
+        monkeypatch.setattr(
+            'user_management_module.controllers.user_controller.is_feature_enabled',
+            lambda flag: enabled,
+        )
+
+    return _set
+
+
+@pytest.fixture
 def mocking_user_controller_is_admin(monkeypatch):
     async def mock_check_is_admin(role_id):
         return True

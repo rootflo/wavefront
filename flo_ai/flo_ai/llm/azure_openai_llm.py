@@ -2,7 +2,13 @@ from typing import Dict, Any, List, AsyncIterator, Optional
 
 from openai import AsyncAzureOpenAI
 
-from .base_llm import BaseLLM, file_name_text_block
+from .base_llm import (
+    BaseLLM,
+    file_name_text_block,
+    flatten_extra_body,
+    split_client_kwargs,
+    split_request_kwargs,
+)
 from flo_ai.models.chat_message import DocumentMessageContent, ImageMessageContent
 from flo_ai.tool.base_tool import Tool
 from flo_ai.telemetry.instrumentation import (
@@ -16,6 +22,8 @@ from opentelemetry import trace
 
 
 class AzureOpenAI(BaseLLM):
+    provider_name = 'azure_openai'
+
     def __init__(
         self,
         model: str,
@@ -36,28 +44,56 @@ class AzureOpenAI(BaseLLM):
             api_version: Azure OpenAI API version
             temperature: Sampling temperature
             custom_headers: Optional additional headers to send with each request
-            **kwargs: Extra parameters forwarded to the SDK client / calls
+            **kwargs: Client options for the SDK client (timeout,
+                max_retries), and generation params for every request
 
         PDFs are sent to the underlying deployment as rasterized page images
         via the Chat Completions multimodal format. The deployment must be
         vision-capable (gpt-4o, gpt-4.1, gpt-5, etc.); text-only deployments
         will error on the first document call.
         """
+        client_kwargs, request_kwargs = split_client_kwargs(
+            AsyncAzureOpenAI, kwargs, reserved=('default_headers',)
+        )
+
         super().__init__(
             model=model,
             api_key=api_key,
             temperature=temperature,
-            **kwargs,
+            **request_kwargs,
         )
         self.client = AsyncAzureOpenAI(
             api_key=self.api_key,
             azure_endpoint=azure_endpoint,
             api_version=api_version,
             default_headers=custom_headers,
-            **kwargs,
+            **client_kwargs,
         )
         self.model = model
-        self.kwargs = kwargs
+        self.kwargs = request_kwargs
+
+    def _create_kwargs(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Request params for chat.completions.create, unknowns in extra_body.
+
+        A deployment-specific param the SDK's create() does not declare would
+        otherwise be a local TypeError rather than something the deployment
+        gets to accept or reject.
+
+        Args:
+            params: The merged request params. Taken as a mapping rather than
+                **kwargs because callers merge the instance's params with the
+                per-call ones, and a key in both is a duplicate-argument
+                TypeError at the call rather than an override.
+
+        Returns:
+            Params to splat into create()
+        """
+        declared, extra = split_request_kwargs(
+            self.client.chat.completions.create, flatten_extra_body(params)
+        )
+        if extra:
+            declared['extra_body'] = extra
+        return declared
 
     @trace_llm_call(provider='azureopenai')
     async def generate(
@@ -94,13 +130,15 @@ class AzureOpenAI(BaseLLM):
         elif functions:
             kwargs['functions'] = functions
 
-        azure_kwargs = {
-            'model': self.model,
-            'messages': messages,
-            'temperature': self.temperature,
-            **self.kwargs,
-            **kwargs,
-        }
+        azure_kwargs = self._create_kwargs(
+            {
+                'model': self.model,
+                'messages': messages,
+                'temperature': self.temperature,
+                **flatten_extra_body(self.kwargs),
+                **flatten_extra_body(kwargs),
+            }
+        )
 
         response = await self.client.chat.completions.create(**azure_kwargs)
         message = response.choices[0].message
@@ -137,14 +175,16 @@ class AzureOpenAI(BaseLLM):
         **kwargs: Any,
     ) -> AsyncIterator[Dict[str, Any]]:
         """Stream partial responses from Azure OpenAI Chat Completions API."""
-        azure_kwargs = {
-            'model': self.model,
-            'messages': messages,
-            'temperature': self.temperature,
-            'stream': True,
-            **self.kwargs,
-            **kwargs,
-        }
+        azure_kwargs = self._create_kwargs(
+            {
+                'model': self.model,
+                'messages': messages,
+                'temperature': self.temperature,
+                'stream': True,
+                **flatten_extra_body(self.kwargs),
+                **flatten_extra_body(kwargs),
+            }
+        )
 
         if functions:
             azure_kwargs['functions'] = functions

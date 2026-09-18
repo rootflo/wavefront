@@ -1,11 +1,13 @@
-import { Pencil, TrashIcon } from 'lucide-react';
-import React from 'react';
+import { Pencil, TrashIcon, Copy, Check } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { useNotifyStore } from '@app/store';
 
 export interface ResourceCardMetadata {
   label: string;
   value: string;
   className?: string;
   isMono?: boolean;
+  isCopyable?: boolean;
 }
 
 interface ResourceCardProps {
@@ -29,6 +31,36 @@ const ResourceCard: React.FC<ResourceCardProps> = ({
   deleteTitle = 'Delete',
   editTitle = 'Edit',
 }) => {
+  const { notifySuccess, notifyError } = useNotifyStore();
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleCopy = async (e: React.MouseEvent, value: string, index: number) => {
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(value);
+    } catch {
+      notifyError('Failed to copy to clipboard');
+      return;
+    }
+    notifySuccess('Copied to clipboard');
+    setCopiedIndex(index);
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    timeoutRef.current = setTimeout(() => {
+      setCopiedIndex(null);
+    }, 2000);
+  };
+
   return (
     <div
       onClick={onClick}
@@ -49,7 +81,10 @@ const ResourceCard: React.FC<ResourceCardProps> = ({
             </button>
           )}
           <button
-            onClick={onDeleteClick}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDeleteClick(e);
+            }}
             className="cursor-pointer rounded p-1 text-red-500 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-50 hover:text-red-700"
             title={deleteTitle}
           >
@@ -62,13 +97,28 @@ const ResourceCard: React.FC<ResourceCardProps> = ({
         {metadata.map((item, index) => (
           <div key={index} className="flex items-center justify-between text-xs">
             <span className="font-medium text-gray-500">{item.label}</span>
-            <span
-              className={`rounded px-2 py-1 font-medium ${
-                item.className || (item.isMono ? 'bg-gray-50 font-mono text-gray-700' : 'bg-gray-50 text-gray-700')
-              }`}
-            >
-              {item.value}
-            </span>
+            <div className="flex items-center space-x-1">
+              {item.isCopyable && (
+                <button
+                  onClick={(e) => void handleCopy(e, item.value, index)}
+                  className={`cursor-pointer rounded p-1 transition-colors ${
+                    copiedIndex === index
+                      ? 'text-green-600 hover:bg-green-50'
+                      : 'text-gray-400 hover:bg-gray-100 hover:text-gray-700'
+                  }`}
+                  title={copiedIndex === index ? 'Copied to clipboard' : 'Copy to clipboard'}
+                >
+                  {copiedIndex === index ? <Check className="h-3 w-3 text-green-600" /> : <Copy className="h-3 w-3" />}
+                </button>
+              )}
+              <span
+                className={`rounded px-2 py-1 font-medium ${
+                  item.className || (item.isMono ? 'bg-gray-50 font-mono text-gray-700' : 'bg-gray-50 text-gray-700')
+                }`}
+              >
+                {item.value}
+              </span>
+            </div>
           </div>
         ))}
       </div>

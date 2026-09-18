@@ -4,11 +4,31 @@ import json
 
 from flo_ai.models.chat_message import ImageMessageContent
 from .base_llm import BaseLLM
+from flo_ai.helpers.generation_params import normalize_generation_params
 from flo_ai.tool.base_tool import Tool
 from flo_ai.telemetry.instrumentation import trace_llm_call, trace_llm_stream
 
 
 class OllamaLLM(BaseLLM):
+    provider_name = 'ollama'
+
+    # Keys /api/generate reads from the payload root. Everything else it only
+    # reads from `options`, so anything not listed here has to be nested.
+    _ROOT_KEYS = frozenset(
+        {
+            'format',
+            'system',
+            'template',
+            'context',
+            'raw',
+            'keep_alive',
+            'images',
+            'suffix',
+            'think',
+            'options',
+        }
+    )
+
     def __init__(
         self,
         model: str = 'llama2',
@@ -19,6 +39,39 @@ class OllamaLLM(BaseLLM):
     ):
         super().__init__(model, api_key, temperature, **kwargs)
         self.base_url = base_url.rstrip('/')
+
+    def _request_payload(self, prompt: str, **overrides: Any) -> Dict[str, Any]:
+        """An /api/generate payload with the generation params where Ollama reads them.
+
+        Ollama ignores generation params sent at the payload root - temperature
+        included - and calls the token limit `num_predict`. Spreading kwargs at
+        the root therefore sent every configured param into a dead end.
+
+        Args:
+            prompt: The rendered prompt text
+            overrides: Payload-level keys to set, e.g. stream or functions
+
+        Returns:
+            The request payload
+        """
+        params = normalize_generation_params(
+            {'temperature': self.temperature, **self.kwargs}, self.provider_name
+        )
+
+        payload: Dict[str, Any] = {'model': self.model, 'prompt': prompt}
+        options: Dict[str, Any] = {}
+        for key, value in params.items():
+            if key in self._ROOT_KEYS:
+                payload[key] = value
+            else:
+                options[key] = value
+
+        if options:
+            # A caller-supplied options dict is more specific, so it wins
+            payload['options'] = {**options, **(payload.get('options') or {})}
+
+        payload.update(overrides)
+        return payload
 
     @trace_llm_call(provider='ollama')
     async def generate(
@@ -44,13 +97,7 @@ class OllamaLLM(BaseLLM):
             prompt += f'\nPlease provide your response in JSON format according to this schema:\n{json.dumps(output_schema, indent=2)}\n'
 
         # Prepare request payload
-        payload = {
-            'model': self.model,
-            'prompt': prompt,
-            'temperature': self.temperature,
-            'stream': False,
-            **self.kwargs,
-        }
+        payload = self._request_payload(prompt, stream=False)
 
         # Add function information if provided
         if functions:
@@ -93,12 +140,7 @@ class OllamaLLM(BaseLLM):
                 prompt += f'Assistant: {content}\n'
 
         # Prepare request payload without 'stream' key for streaming
-        payload = {
-            'model': self.model,
-            'prompt': prompt,
-            'temperature': self.temperature,
-            **self.kwargs,
-        }
+        payload = self._request_payload(prompt)
 
         if functions:
             payload['functions'] = functions

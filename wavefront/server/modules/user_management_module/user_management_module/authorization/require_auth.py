@@ -68,7 +68,7 @@ floware_jwt_validation_issuer = os.getenv('FLOWARE_JWT_VALIDATION_ISSUER', '').s
 
 console_token_prefix = os.getenv('CONSOLE_TOKEN_PREFIX', 'fc_')
 passthrough_secret = os.getenv('PASSTHROUGH_SECRET')
-environment = os.getenv('APP_ENV', 'dev')
+environment = os.getenv('APP_ENV', 'production')
 
 mtls_allowed_namespaces = [
     namespace.strip()

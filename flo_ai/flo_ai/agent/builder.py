@@ -1,3 +1,4 @@
+import copy
 from typing import List, Optional, Dict, Any, Union, Type
 from flo_ai.models import AssistantMessage
 import yaml
@@ -21,6 +22,9 @@ class AgentBuilder:
         self._name = 'AI Assistant'
         self._system_prompt: str | AssistantMessage = 'You are a helpful AI assistant.'
         self._llm: Optional[BaseLLM] = None
+        self._owns_llm = False
+        self._temperature: Optional[float] = None
+        self._generation_params: Dict[str, Any] = {}
         self._tools: List[Tool] = []
         self._max_retries = 3
         self._reasoning_pattern = ReasoningPattern.DIRECT
@@ -44,13 +48,47 @@ class AgentBuilder:
         self._system_prompt = system_prompt
         return self
 
-    def with_llm(self, llm: BaseLLM) -> 'AgentBuilder':
+    def with_llm(self, llm: BaseLLM, owned: bool = False) -> 'AgentBuilder':
         """Configure the LLM to use
 
         Args:
             llm: An instance of a BaseLLM implementation
+            owned: True when this agent is the only holder of `llm` - one just
+                built from its own `model:` block, say. Otherwise build()
+                applies the agent's temperature and generation params to a
+                copy, so an instance shared between agents does not take on
+                any one agent's settings.
         """
         self._llm = llm
+        self._owns_llm = owned
+        return self
+
+    def with_temperature(self, temperature: float) -> 'AgentBuilder':
+        """Set the sampling temperature, applied to the LLM in build()
+
+        Deferred so it survives a later with_llm() replacing the instance.
+
+        Args:
+            temperature: Sampling temperature
+        """
+        self._temperature = temperature
+        return self
+
+    def with_generation_params(self, **params: Any) -> 'AgentBuilder':
+        """Set generation params for every request this agent makes.
+
+        Deferred to build() for the same reason as with_temperature, and named
+        canonically: `max_tokens` is translated to whatever the agent's provider
+        calls its token limit. Nulls are ignored, so an unset YAML field falls
+        through to the provider's own default.
+
+        Args:
+            params: Canonical generation params - max_tokens, top_p, top_k,
+                frequency_penalty, presence_penalty, seed
+        """
+        self._generation_params.update(
+            {key: value for key, value in params.items() if value is not None}
+        )
         return self
 
     def with_tools(
@@ -173,10 +211,25 @@ class AgentBuilder:
         if not self._llm:
             raise ValueError('LLM must be configured before building the agent')
 
+        # Applied here so the values reach whichever LLM the agent ends up
+        # with, whatever order the builder was configured in.
+        llm = self._llm
+        if self._temperature is not None or self._generation_params:
+            if not self._owns_llm:
+                # On a copy: a base_llm shared between agents would otherwise
+                # give every one of them the last settings written to it,
+                # including agents that declared none. Shallow, so the SDK
+                # client is shared and only the params differ.
+                llm = copy.copy(llm)
+            if self._temperature is not None:
+                llm.temperature = self._temperature
+            if self._generation_params:
+                llm.apply_generation_params(self._generation_params)
+
         return Agent(
             name=self._name,
             system_prompt=self._system_prompt,
-            llm=self._llm,
+            llm=llm,
             tools=self._tools,
             max_retries=self._max_retries,
             reasoning_pattern=self._reasoning_pattern,
@@ -275,14 +328,21 @@ class AgentBuilder:
                     update={'base_url': agent.base_url}
                 )
 
+            # Built here for this agent alone, so build() can configure it in
+            # place rather than working on a copy.
             llm = create_llm_from_config(model_config, **kwargs)
-            builder.with_llm(llm)
+            builder.with_llm(llm, owned=True)
         else:
             if base_llm is None:
                 raise ValueError(
                     'Model must be specified in YAML configuration or base_llm must be provided'
                 )
             builder.with_llm(base_llm)
+
+        # Applied here because several factories build their client without
+        # it; an explicit settings.temperature below still wins.
+        if agent.model is not None and agent.model.temperature is not None:
+            builder.with_temperature(agent.model.temperature)
 
         if agent.tools is not None:
             tools_list = []
@@ -307,11 +367,12 @@ class AgentBuilder:
         if agent.settings is not None:
             settings = agent.settings
             if settings.temperature is not None:
-                builder._llm.temperature = settings.temperature
+                builder.with_temperature(settings.temperature)
             if settings.max_retries is not None:
                 builder.with_retries(settings.max_retries)
             if settings.reasoning_pattern is not None:
                 builder.with_reasoning(ReasoningPattern[settings.reasoning_pattern])
+            builder.with_generation_params(**settings.generation_params())
 
         return builder
 

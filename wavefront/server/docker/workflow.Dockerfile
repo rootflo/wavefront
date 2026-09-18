@@ -20,6 +20,7 @@ COPY wavefront/server/modules/agents_module /app/modules/agents_module
 COPY wavefront/server/modules/common_module /app/modules/common_module
 COPY wavefront/server/modules/db_repo_module /app/modules/db_repo_module
 COPY wavefront/server/modules/knowledge_base_module /app/modules/knowledge_base_module
+COPY wavefront/server/modules/llm_inference_config_module /app/modules/llm_inference_config_module
 COPY wavefront/server/modules/plugins_module /app/modules/plugins_module
 COPY wavefront/server/modules/tools_module /app/modules/tools_module
 COPY wavefront/server/modules/user_management_module /app/modules/user_management_module
