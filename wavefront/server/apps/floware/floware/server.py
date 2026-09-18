@@ -46,6 +46,7 @@ from inference_module.inference_container import InferenceContainer
 
 from llm_inference_config_module.container import LlmInferenceConfigContainer
 from tools_module.tools_container import ToolsContainer
+from chatbots_module.chatbots_container import ChatbotsContainer
 from voice_agents_module.voice_agents_container import VoiceAgentsContainer
 
 # API Services Module
@@ -167,6 +168,12 @@ voice_agents_container = VoiceAgentsContainer(
     db_client=db_repo_container.db_client,
     cache_manager=db_repo_container.cache_manager,
     cloud_storage_manager=common_container.cloud_storage_manager,
+)
+
+chatbots_container = ChatbotsContainer(
+    db_client=db_repo_container.db_client,
+    cache_manager=db_repo_container.cache_manager,
+    llm_inference_config_service=llm_inference_config_container.llm_inference_config_service,
 )
 
 triggers_container = TriggersContainer(
@@ -435,6 +442,7 @@ common_container.wire(
         'auth_module.controllers',
         'user_management_module.controllers',
         'user_management_module.authorization',
+        'chatbots_module.controllers',
         'floware.controllers',
         'knowledge_base_module.controllers',
         'gold_module.controllers',
@@ -523,6 +531,12 @@ voice_agents_container.wire(
     ],
 )
 
+chatbots_container.wire(
+    modules=[__name__],
+    packages=[
+        'chatbots_module.controllers',
+    ],
+)
 # Running with Uvicorn (for local development)
 if __name__ == '__main__':
     worker_count = os.getenv('FLOWARE_WORKER_COUNT', 4)

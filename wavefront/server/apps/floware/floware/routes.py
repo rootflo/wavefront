@@ -10,6 +10,8 @@ from agents_module.controllers.workflow_pipeline_controller import (
 from agents_module.controllers.workflow_runs import workflow_runs_router
 from auth_module.controllers.hmac_controller import hmac_router
 from auth_module.controllers.superset_controller import superset_controller
+from chatbots_module.controllers.chatbot_controller import chatbot_router
+from chatbots_module.controllers.chat_session_controller import chat_session_router
 from floware.controllers.config_controller import config_router
 from floware.controllers.notification_controller import notification_router
 from floware.controllers.scheduled_job_controller import scheduled_job_router
@@ -66,6 +68,8 @@ FLOWARE_ROUTERS = [
     agents_router,
     async_router,
     authenticator_router,
+    chatbot_router,
+    chat_session_router,
     cloud_storage_router,
     config_router,
     configuration_router,
