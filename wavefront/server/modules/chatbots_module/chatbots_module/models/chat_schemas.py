@@ -2,6 +2,8 @@ from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
+from chatbots_module.utils.constants import MAX_MESSAGE_LENGTH
+
 
 class CreateChatSessionPayload(BaseModel):
     title: Optional[str] = Field(
@@ -15,7 +17,14 @@ class UpdateChatSessionPayload(BaseModel):
 
 
 class SendMessagePayload(BaseModel):
-    content: str = Field(..., description='The user message')
+    # Bounded at the API boundary so an oversized turn is rejected before it is
+    # written to a Text column and then refused by the provider -- both the
+    # insert and the round trip are paid for before that refusal arrives.
+    content: str = Field(
+        ...,
+        max_length=MAX_MESSAGE_LENGTH,
+        description=f'The user message (max {MAX_MESSAGE_LENGTH} characters)',
+    )
 
     @field_validator('content')
     @classmethod
