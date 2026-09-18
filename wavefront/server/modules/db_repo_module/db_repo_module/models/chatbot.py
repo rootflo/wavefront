@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -22,7 +22,19 @@ class Chatbot(Base):
 
     __tablename__ = 'chatbots'
     __table_args__ = (
-        UniqueConstraint('namespace', 'name', name='uq_chatbots_namespace_name'),
+        # Partial, not a plain UniqueConstraint: deletes here are soft, so a
+        # global constraint would let a deleted row keep reserving its name
+        # forever. Deleting `support-bot` and creating it again is a routine
+        # admin action, and it would fail against a chatbot no longer visible
+        # anywhere. `agents` gets away with a table-level constraint because it
+        # hard-deletes.
+        Index(
+            'uq_chatbots_namespace_name_active',
+            'namespace',
+            'name',
+            unique=True,
+            postgresql_where=text('is_deleted = false'),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(

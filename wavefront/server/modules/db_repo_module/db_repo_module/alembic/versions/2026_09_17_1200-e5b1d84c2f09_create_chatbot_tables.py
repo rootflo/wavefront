@@ -80,7 +80,6 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(['namespace'], ['namespaces.name']),
         sa.ForeignKeyConstraint(['llm_config_id'], ['llm_inference_config.id']),
         sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('namespace', 'name', name='uq_chatbots_namespace_name'),
     )
     op.create_index(op.f('ix_chatbots_id'), 'chatbots', ['id'], unique=False)
     op.create_index(
@@ -88,6 +87,19 @@ def upgrade() -> None:
     )
     op.create_index(
         op.f('ix_chatbots_llm_config_id'), 'chatbots', ['llm_config_id'], unique=False
+    )
+    # Name uniqueness is a PARTIAL index rather than a table constraint,
+    # because deletes here are soft: a plain UniqueConstraint would let a
+    # deleted row keep reserving its name forever, so deleting a chatbot and
+    # creating it again under the same name would fail against a row that is
+    # no longer visible anywhere. Scoping it to live rows also makes the
+    # "already exists" error the service raises truthful.
+    op.create_index(
+        'uq_chatbots_namespace_name_active',
+        'chatbots',
+        ['namespace', 'name'],
+        unique=True,
+        postgresql_where=sa.text('is_deleted = false'),
     )
 
     op.create_table(
@@ -170,6 +182,7 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_chat_sessions_id'), table_name='chat_sessions')
     op.drop_table('chat_sessions')
 
+    op.drop_index('uq_chatbots_namespace_name_active', table_name='chatbots')
     op.drop_index(op.f('ix_chatbots_llm_config_id'), table_name='chatbots')
     op.drop_index(op.f('ix_chatbots_namespace'), table_name='chatbots')
     op.drop_index(op.f('ix_chatbots_id'), table_name='chatbots')
