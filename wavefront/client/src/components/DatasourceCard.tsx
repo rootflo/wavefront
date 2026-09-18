@@ -43,6 +43,7 @@ const DatasourceCard: React.FC<DatasourceCardProps> = ({ datasource, onClick, on
       label: 'Id',
       value: datasource.id,
       isMono: true,
+      isCopyable: true,
     },
     {
       label: 'Type',

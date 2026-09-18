@@ -16,6 +16,12 @@ const AuthenticatorCard: React.FC<AuthenticatorCardProps> = ({ authenticator, on
 
   const metadata: ResourceCardMetadata[] = [
     {
+      label: 'Id',
+      value: authenticator.auth_id,
+      isMono: true,
+      isCopyable: true,
+    },
+    {
       label: 'Type',
       value: providerConfig?.name || authenticator.auth_type,
       className: clsx(badge.bg, badge.text, 'ring-1 ring-white/40'),
