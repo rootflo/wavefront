@@ -101,6 +101,11 @@ def _restrict_propagation() -> None:
     observability — ``traceparent`` still goes out, so distributed traces stay
     connected — and it additionally stops an untrusted caller from spoofing
     ``app.*`` baggage into our spans.
+
+    Called unconditionally, before the collector-endpoint check: baggage is
+    attached to the context by middleware that runs even with telemetry
+    switched off, so the wire format must be locked down either way rather
+    than relying on no other library ever calling ``propagate.inject()``.
     """
     set_global_textmap(TraceContextTextMapPropagator())
 
@@ -113,6 +118,11 @@ def configure_telemetry_providers(default_service_name: str) -> bool:
     telemetry setup must not stop a service from serving traffic.
     """
     global _providers_configured
+
+    # First, and on every path: BaggageMiddleware populates the context whether
+    # or not telemetry is enabled, so the baggage propagator has to go even when
+    # we bail out below. Idempotent, so repeat calls are harmless.
+    _restrict_propagation()
 
     if _providers_configured:
         return True
@@ -142,7 +152,6 @@ def configure_telemetry_providers(default_service_name: str) -> bool:
         if hasattr(tracer_provider, 'add_span_processor'):
             tracer_provider.add_span_processor(BaggageSpanProcessor())
 
-        _restrict_propagation()
         _instrument_clients()
 
         _providers_configured = True
