@@ -1,8 +1,9 @@
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Protocol, Tuple, Union
 from urllib.parse import urlparse
 from uuid import UUID
-import base64
 import json
+import secrets
+import time
 
 from mailer import EmailCapability, EmailProviderType, get_email_provider_factory
 from pydantic import BaseModel, field_validator
@@ -10,6 +11,22 @@ from pydantic import BaseModel, field_validator
 # Every connection needs at least this much to be useful, and asking for it up
 # front avoids a second consent round for the common case.
 DEFAULT_CAPABILITIES: List[str] = [EmailCapability.READ.value]
+
+# Opaque OAuth `state` lives in Redis for one authorize→callback round-trip.
+EMAIL_OAUTH_STATE_TTL_SECONDS = 600
+_EMAIL_OAUTH_STATE_KEY_PREFIX = 'email_oauth:state:'
+
+
+class _EmailOAuthStateCache(Protocol):
+    def add(
+        self,
+        key: str,
+        value: Union[str, int, float, bytes],
+        expiry: int = 3600,
+        nx: bool = False,
+    ) -> bool: ...
+
+    def pop_str(self, key: str, default: Any = None) -> Optional[str]: ...
 
 
 class CreateOAuthAppPayload(BaseModel):
@@ -123,50 +140,89 @@ def split_client_secret(config: Dict[str, Any]) -> tuple[Dict[str, Any], str]:
     return remaining, client_secret
 
 
-def encode_email_oauth_state(
+def issue_email_oauth_state(
+    cache: _EmailOAuthStateCache,
+    *,
     connection_id: UUID,
+    session_id: str,
+    user_id: Optional[str] = None,
     success_redirect_url: Optional[str] = None,
     failure_redirect_url: Optional[str] = None,
 ) -> str:
-    """Pack connection id + post-consent URLs into the OAuth `state` param.
+    """Mint an opaque OAuth `state` nonce and persist the flow server-side.
 
-    Providers only echo `state` back; they do not preserve custom callback query
-    params, so redirects ride along here. Plain UUID state is kept when no
-    redirects are set.
+    Providers only echo `state` back; connection id, initiating session, and
+    post-consent redirects are looked up from the cache on callback — never
+    trusted from the query string alone.
     """
-    if not success_redirect_url and not failure_redirect_url:
-        return str(connection_id)
+    if not session_id:
+        raise ValueError('session_id is required to start email OAuth')
 
-    payload: Dict[str, str] = {'id': str(connection_id)}
+    state = secrets.token_urlsafe(32)
+    now = int(time.time())
+    payload: Dict[str, Any] = {
+        'connection_id': str(connection_id),
+        'session_id': str(session_id),
+        'exp': now + EMAIL_OAUTH_STATE_TTL_SECONDS,
+    }
+    if user_id:
+        payload['user_id'] = str(user_id)
     if success_redirect_url:
         payload['s'] = success_redirect_url
     if failure_redirect_url:
         payload['f'] = failure_redirect_url
-    raw = json.dumps(payload, separators=(',', ':')).encode('utf-8')
-    return base64.urlsafe_b64encode(raw).decode('ascii').rstrip('=')
+
+    stored = cache.add(
+        f'{_EMAIL_OAUTH_STATE_KEY_PREFIX}{state}',
+        json.dumps(payload, separators=(',', ':')),
+        expiry=EMAIL_OAUTH_STATE_TTL_SECONDS,
+        nx=True,
+    )
+    if not stored:
+        raise ValueError('Failed to persist OAuth state')
+    return state
 
 
-def decode_email_oauth_state(
+def consume_email_oauth_state(
+    cache: _EmailOAuthStateCache,
     state: str,
-) -> Tuple[UUID, Optional[str], Optional[str]]:
-    """Inverse of `encode_email_oauth_state`."""
-    try:
-        return UUID(state), None, None
-    except ValueError:
-        pass
+    *,
+    session_id: Optional[str] = None,
+) -> Tuple[UUID, Optional[str], Optional[str], Optional[str]]:
+    """Atomically consume OAuth state. Returns connection id, redirects, user_id.
 
-    padded = state + '=' * (-len(state) % 4)
+    Rejects missing, expired, already-consumed, or session-mismatched state.
+    """
+    if not state or not state.strip():
+        raise ValueError('Invalid OAuth state')
+
+    key = f'{_EMAIL_OAUTH_STATE_KEY_PREFIX}{state}'
+    raw = cache.pop_str(key)
+    if not raw:
+        raise ValueError('Invalid or expired OAuth state')
+
     try:
-        payload = json.loads(base64.urlsafe_b64decode(padded.encode('ascii')))
+        payload = json.loads(raw)
         if not isinstance(payload, dict):
             raise ValueError('OAuth state payload must be a JSON object')
-        connection_id = UUID(payload['id'])
+        connection_id = UUID(payload['connection_id'])
+        stored_session_id = payload.get('session_id')
+        if not stored_session_id:
+            raise ValueError('OAuth state missing session binding')
+        if session_id is not None and str(session_id) != str(stored_session_id):
+            raise ValueError('OAuth state session mismatch')
+        exp = int(payload['exp'])
+        if exp < int(time.time()):
+            raise ValueError('OAuth state has expired')
         success = payload.get('s')
         failure = payload.get('f')
         if success is not None:
             success = _require_absolute_redirect(success)
         if failure is not None:
             failure = _require_absolute_redirect(failure)
+        user_id = payload.get('user_id')
+        if user_id is not None:
+            user_id = str(user_id)
     except (
         KeyError,
         TypeError,
@@ -174,9 +230,9 @@ def decode_email_oauth_state(
         ValueError,
         json.JSONDecodeError,
     ) as exc:
-        raise ValueError(f'Invalid OAuth state: {state}') from exc
+        raise ValueError('Invalid or expired OAuth state') from exc
 
-    return connection_id, success, failure
+    return connection_id, success, failure, user_id
 
 
 def is_allowed_client_redirect(url: str, web_url: str) -> bool:

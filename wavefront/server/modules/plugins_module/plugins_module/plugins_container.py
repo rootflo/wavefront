@@ -125,6 +125,7 @@ class PluginsContainer(containers.DeclarativeContainer):
         oauth_app_repository=oauth_app_repository,
         oauth_app_service=oauth_app_service,
         kms_service=kms_service,
+        cache_manager=cache_manager,
     )
 
     email_send_service = providers.Singleton(

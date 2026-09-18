@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from uuid import UUID
 
+from common_module.common_cache import CommonCache
 from common_module.log.logger import logger
 from db_repo_module.models.email_connection import EmailConnection
 from db_repo_module.models.oauth_app import OAuthApp
@@ -12,7 +13,8 @@ from sqlalchemy import update
 
 from plugins_module.services.oauth_app_service import OAuthAppService
 from plugins_module.utils.email_helper import (
-    encode_email_oauth_state,
+    consume_email_oauth_state,
+    issue_email_oauth_state,
     parse_capabilities,
     parse_provider,
 )
@@ -79,11 +81,13 @@ class EmailConnectionService:
         oauth_app_repository: SQLAlchemyRepository[OAuthApp],
         oauth_app_service: OAuthAppService,
         kms_service: FloKmsService,
+        cache_manager: CommonCache,
     ):
         self._connections = connection_repository
         self._apps = oauth_app_repository
         self._app_service = oauth_app_service
         self._kms = kms_service
+        self._cache = cache_manager
 
     # ---- Lifecycle -------------------------------------------------------
 
@@ -94,6 +98,7 @@ class EmailConnectionService:
         capabilities: Sequence[str],
         oauth_app_id: UUID,
         created_by: Optional[str] = None,
+        session_id: Optional[str] = None,
         success_redirect_url: Optional[str] = None,
         failure_redirect_url: Optional[str] = None,
     ) -> Tuple[Dict[str, Any], str]:
@@ -117,8 +122,11 @@ class EmailConnectionService:
 
         provider_impl = await self._app_service.get_provider_for_app(app)
         consent_url = provider_impl.build_consent_url(
-            state=encode_email_oauth_state(
-                connection.id,
+            state=issue_email_oauth_state(
+                self._cache,
+                connection_id=connection.id,
+                session_id=session_id or '',
+                user_id=created_by,
                 success_redirect_url=success_redirect_url,
                 failure_redirect_url=failure_redirect_url,
             ),
@@ -130,6 +138,8 @@ class EmailConnectionService:
         self,
         connection_id: UUID,
         capabilities: Sequence[str],
+        session_id: Optional[str] = None,
+        user_id: Optional[str] = None,
         success_redirect_url: Optional[str] = None,
         failure_redirect_url: Optional[str] = None,
     ) -> str:
@@ -151,13 +161,25 @@ class EmailConnectionService:
                 merged.append(capability)
 
         return provider_impl.build_consent_url(
-            state=encode_email_oauth_state(
-                connection.id,
+            state=issue_email_oauth_state(
+                self._cache,
+                connection_id=connection.id,
+                session_id=session_id or '',
+                user_id=user_id or connection.created_by,
                 success_redirect_url=success_redirect_url,
                 failure_redirect_url=failure_redirect_url,
             ),
             scopes=provider_impl.scopes_for(merged),
         )
+
+    def consume_oauth_state(
+        self,
+        state: str,
+        *,
+        session_id: Optional[str] = None,
+    ) -> Tuple[UUID, Optional[str], Optional[str], Optional[str]]:
+        """Validate and consume opaque OAuth state before exchanging the code."""
+        return consume_email_oauth_state(self._cache, state, session_id=session_id)
 
     async def complete_oauth(self, connection_id: UUID, code: str) -> Dict[str, Any]:
         connection = await self._require_connection(connection_id)
