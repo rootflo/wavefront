@@ -85,8 +85,8 @@ const Dashboard: React.FC = () => {
 
         <div className="flex min-h-0 flex-1 flex-col gap-4">
           <p className="frost-text-muted shrink-0 text-base font-medium">Your applications</p>
-          <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto pb-2">
-            <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto">
+            <div className="grid w-full grid-cols-2 gap-3 p-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               <div className={`${appCardShell} items-center justify-center gap-2`} onClick={handleCreateApp}>
                 <PlusIcon className="frost-text relative h-4 w-4" />
                 <p className="frost-text relative text-center text-[13px] font-medium tracking-normal normal-case">

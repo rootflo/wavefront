@@ -192,6 +192,15 @@ def discard_email_oauth_state(cache: _EmailOAuthStateCache, state: str) -> None:
     cache.pop_str(f'{_EMAIL_OAUTH_STATE_KEY_PREFIX}{state}')
 
 
+def _is_user_session_id(session_id: str) -> bool:
+    """True for DB session ids; service-auth ids like `passthrough-token` are not."""
+    try:
+        UUID(str(session_id))
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
 def consume_email_oauth_state(
     cache: _EmailOAuthStateCache,
     state: str,
@@ -200,8 +209,8 @@ def consume_email_oauth_state(
 ) -> Tuple[UUID, Optional[str], Optional[str], Optional[str]]:
     """Atomically consume OAuth state. Returns connection id, redirects, user_id.
 
-    Rejects missing, expired, already-consumed, or session-mismatched state.
-    The initiating session from the stored record must still be live server-side
+    Rejects missing, expired, already-consumed, or session-mismatched state. For
+    real user sessions the initiating session must still be live server-side
     before any caller may exchange an authorization code.
     """
     if not state or not state.strip():
@@ -220,12 +229,16 @@ def consume_email_oauth_state(
         stored_session_id = payload.get('session_id')
         if not stored_session_id:
             raise ValueError('OAuth state missing session binding')
-        # Caller-supplied id (when present) must match; always require a live
-        # initiating session so code exchange cannot proceed unbound.
+        # Caller-supplied id (when present) must match the stored binding.
         if session_id is not None and str(session_id) != str(stored_session_id):
             raise ValueError('OAuth state session mismatch')
-        if not cache.get_str(f'session_{stored_session_id}'):
-            raise ValueError('OAuth state session mismatch')
+        # Liveness only applies to real user sessions. Service auth paths
+        # (passthrough, hmac, mTLS) use synthetic ids with no session cache
+        # entry, so requiring one there would reject every valid callback.
+        if _is_user_session_id(stored_session_id) and not cache.get_str(
+            f'session_{stored_session_id}'
+        ):
+            raise ValueError('OAuth state session is no longer active')
         exp = int(payload['exp'])
         if exp < int(time.time()):
             raise ValueError('OAuth state has expired')
