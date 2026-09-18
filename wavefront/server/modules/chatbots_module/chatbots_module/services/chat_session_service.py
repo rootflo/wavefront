@@ -66,14 +66,47 @@ class ChatSessionService:
         The snapshot is what makes an old conversation explainable: editing
         `chatbots.system_prompt` afterwards must not retroactively change the
         premise of replies that were already given.
+
+        The session row and the welcome message are written in ONE transaction,
+        unlike every later turn. Committing the session first would mean a failed
+        welcome insert still left the session behind, so each retry of a failing
+        create stranded another empty thread. Here either both land or neither
+        does, and a retry starts clean.
+
+        This does not weaken the ordering rule that keeps `chat_messages`
+        sequence-free: only one message row is written here, so there is nothing
+        for it to collide with.
         """
         try:
-            session = await self.chat_session_repository.create(
-                chatbot_id=chatbot.id,
-                user_id=user_id,
-                title=title,
-                system_prompt_snapshot=chatbot.system_prompt,
-            )
+            async with self.chat_session_repository.session() as db_session:
+                session = ChatSession(
+                    chatbot_id=chatbot.id,
+                    user_id=user_id,
+                    title=title,
+                    system_prompt_snapshot=chatbot.system_prompt,
+                )
+                db_session.add(session)
+                # Assigns session.id, which the welcome message needs for its
+                # foreign key.
+                await db_session.flush()
+
+                # Stored rather than returned-and-forgotten so a reloaded thread
+                # renders identically, and so the model sees what it already
+                # "said".
+                if chatbot.welcome_message and chatbot.welcome_message.strip():
+                    db_session.add(
+                        ChatMessage(
+                            session_id=session.id,
+                            role=ROLE_ASSISTANT,
+                            content=chatbot.welcome_message,
+                        )
+                    )
+
+                await db_session.commit()
+                # expire_on_commit is on, so the caller would otherwise get a
+                # detached row with every attribute expired.
+                await db_session.refresh(session)
+                return session
         except IntegrityError as exc:
             # The only foreign key that can fail here is user_id -> user.id;
             # chatbot_id was just read successfully. Let the constraint be the
@@ -81,17 +114,6 @@ class ChatSessionService:
             raise UnknownChatUserError(
                 f'No wavefront user exists for id {user_id}'
             ) from exc
-
-        # Stored rather than returned-and-forgotten so a reloaded thread renders
-        # identically, and so the model sees what it already "said".
-        if chatbot.welcome_message and chatbot.welcome_message.strip():
-            await self.add_message(
-                session_id=session.id,
-                role=ROLE_ASSISTANT,
-                content=chatbot.welcome_message,
-            )
-
-        return session
 
     async def get_owned_session(
         self, session_id: uuid.UUID, user_id: uuid.UUID
@@ -163,6 +185,10 @@ class ChatSessionService:
         metadata: Optional[dict[str, Any]] = None,
     ) -> ChatMessage:
         """Insert one message and commit it on its own.
+
+        Used for every conversational turn. The welcome message is the one
+        exception and is written inside create_session's transaction instead --
+        see there for why.
 
         Each turn is committed separately on purpose. `chat_messages` has no
         sequence column, so ordering rests on `created_at` being distinct; two

@@ -3,12 +3,16 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from db_repo_module.models.chat_message import ChatMessage
+from db_repo_module.models.chat_session import ChatSession
 
 from chatbots_module.services.chat_session_service import (
     ChatSessionNotFoundError,
     ChatSessionService,
 )
 from chatbots_module.utils.constants import ROLE_ASSISTANT
+
+from .fakes import FakeDbSession, repository_with_session
 
 
 def _service(session_repo=None, message_repo=None):
@@ -59,56 +63,86 @@ class TestOwnership:
 
 
 class TestPromptSnapshot:
+    """The session row and its welcome message share one transaction.
+
+    Asserted through a fake unit of work rather than on repository calls: the
+    point of the design is that both writes go through a single session, so a
+    failed welcome cannot leave a stranded thread behind.
+    """
+
     async def test_session_pins_the_chatbots_current_prompt(self):
         chatbot = SimpleNamespace(
             id=uuid.uuid4(), system_prompt='be terse', welcome_message=None
         )
-        repo = AsyncMock()
-        repo.create.return_value = SimpleNamespace(id=uuid.uuid4())
+        db = FakeDbSession()
         user_id = uuid.uuid4()
 
-        await _service(repo).create_session(chatbot=chatbot, user_id=user_id)
-
-        repo.create.assert_awaited_once_with(
-            chatbot_id=chatbot.id,
-            user_id=user_id,
-            title=None,
-            system_prompt_snapshot='be terse',
+        await _service(repository_with_session(db)).create_session(
+            chatbot=chatbot, user_id=user_id
         )
+
+        (session,) = db.added_of(ChatSession)
+        assert session.system_prompt_snapshot == 'be terse'
+        assert session.chatbot_id == chatbot.id
+        assert session.user_id == user_id
+        assert session.title is None
+        assert db.commits == 1
 
     async def test_welcome_message_is_stored_as_the_first_assistant_turn(self):
         chatbot = SimpleNamespace(
             id=uuid.uuid4(), system_prompt='p', welcome_message='Hi there'
         )
-        session_repo = AsyncMock()
-        new_session = SimpleNamespace(id=uuid.uuid4())
-        session_repo.create.return_value = new_session
-        message_repo = AsyncMock()
+        db = FakeDbSession()
 
-        await _service(session_repo, message_repo).create_session(
+        await _service(repository_with_session(db)).create_session(
             chatbot=chatbot, user_id=uuid.uuid4()
         )
 
-        message_repo.create.assert_awaited_once_with(
-            session_id=new_session.id,
-            role=ROLE_ASSISTANT,
-            content='Hi there',
-            metadata_=None,
+        (session,) = db.added_of(ChatSession)
+        (message,) = db.added_of(ChatMessage)
+        assert message.role == ROLE_ASSISTANT
+        assert message.content == 'Hi there'
+        assert message.session_id == session.id
+
+    async def test_both_rows_are_committed_together(self):
+        chatbot = SimpleNamespace(
+            id=uuid.uuid4(), system_prompt='p', welcome_message='Hi there'
         )
+        db = FakeDbSession()
+        repository = repository_with_session(db)
+
+        await _service(repository).create_session(chatbot=chatbot, user_id=uuid.uuid4())
+
+        # One session, one commit: two commits would mean the old behaviour,
+        # where a failed welcome insert left the thread behind.
+        assert repository.session.call_count == 1
+        assert db.commits == 1
 
     async def test_blank_welcome_message_is_not_stored(self):
         chatbot = SimpleNamespace(
             id=uuid.uuid4(), system_prompt='p', welcome_message='   '
         )
-        session_repo = AsyncMock()
-        session_repo.create.return_value = SimpleNamespace(id=uuid.uuid4())
-        message_repo = AsyncMock()
+        db = FakeDbSession()
 
-        await _service(session_repo, message_repo).create_session(
+        await _service(repository_with_session(db)).create_session(
             chatbot=chatbot, user_id=uuid.uuid4()
         )
 
-        message_repo.create.assert_not_awaited()
+        assert db.added_of(ChatMessage) == []
+
+    async def test_the_returned_session_is_refreshed(self):
+        # expire_on_commit is on, so without the refresh the controller would
+        # read a detached row with every attribute expired.
+        chatbot = SimpleNamespace(
+            id=uuid.uuid4(), system_prompt='p', welcome_message=None
+        )
+        db = FakeDbSession()
+
+        session = await _service(repository_with_session(db)).create_session(
+            chatbot=chatbot, user_id=uuid.uuid4()
+        )
+
+        assert db.refreshed == [session]
 
 
 class TestEnsureTitle:
