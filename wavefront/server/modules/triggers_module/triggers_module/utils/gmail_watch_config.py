@@ -26,6 +26,10 @@ def build_gmail_watch_config(
         missing.append('triggers_gmail.pubsub_project_id')
     if not push_endpoint:
         missing.append('triggers_gmail.push_endpoint_template')
+    # Push receiver refuses watches without oidc_audience; that audience is only
+    # set when the Pub/Sub subscription is created with an OIDC service account.
+    if not oidc_sa:
+        missing.append('triggers_gmail.oidc_service_account_email')
     if missing:
         raise GmailWatchConfigError(
             'Gmail inbox watch is not configured: missing ' + ', '.join(missing)

@@ -19,5 +19,10 @@ class CommonCache(ABC):
         pass
 
     @abstractmethod
+    def pop_str(self, key: str, default: Any = None) -> Optional[str]:
+        """Atomically get-and-delete a string value (single-use consume)."""
+        pass
+
+    @abstractmethod
     def remove(self, key: str) -> bool:
         pass

@@ -34,7 +34,11 @@ class GmailWatchConfig:
 
     @staticmethod
     def required_fields() -> list[str]:
-        return ['pubsub_project_id', 'push_endpoint_template']
+        return [
+            'pubsub_project_id',
+            'push_endpoint_template',
+            'oidc_service_account_email',
+        ]
 
     def push_endpoint(self, params: dict[str, str]) -> str:
         return self.push_endpoint_template.format(**params)

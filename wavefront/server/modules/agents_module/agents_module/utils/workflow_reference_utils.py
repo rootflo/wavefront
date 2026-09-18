@@ -12,7 +12,7 @@ Both WorkflowCrudService (validation) and WorkflowInferenceService (runtime) use
 these, passing their own YAML-fetch callable.
 """
 
-from typing import Awaitable, Callable, List
+from typing import Awaitable, Callable, List, Tuple
 
 import yaml
 
@@ -22,6 +22,11 @@ from agents_module.utils.version_reference_utils import parse_versioned_referenc
 # Keys whose presence on an ``ariums[]`` entry means it is an inline definition
 # rather than a bare ``namespace/name`` reference. Mirrors the historical check.
 _INLINE_ARIUM_KEYS = ('agents', 'workflow', 'function_nodes', 'yaml_file')
+
+
+# Keys an inline ``agents[]`` entry carries for the arium itself, which an agent YAML
+# document has no place for. Stripped before handing the entry to the agent builder.
+ARIUM_ONLY_AGENT_KEYS = frozenset({'yaml_config', 'yaml_file', 'input_filter'})
 
 
 def _is_subworkflow_reference(arium_def: dict) -> bool:
@@ -129,3 +134,42 @@ def extract_agent_references(arium_config: dict) -> List[str]:
 
     _walk(arium_config)
     return references
+
+
+def extract_inline_agent_definitions(arium_config: dict) -> List[Tuple[str, dict]]:
+    """
+    Return the ordered, de-duplicated ``(name, agent_def)`` pairs for agents defined
+    *inline* in the arium config, at any nesting depth.
+
+    An inline agent carries its own configuration in the workflow YAML instead of
+    pointing at a stored agent, so it has a bare ``name`` (no ``/``) plus either a
+    ``job``/``prompt`` or a ``yaml_config``/``yaml_file``. Left alone, AriumBuilder
+    builds these itself and cannot resolve a ``provider: rootflo`` ``model_id``
+    against the database, so the LlmInferenceConfig's parameters are dropped.
+    Callers build them through AgentInferenceService instead and pass the result to
+    AriumBuilder, which prefers a supplied agent over constructing its own.
+
+    Entries whose name contains ``/`` are references and belong to
+    :func:`extract_agent_references`; entries with only a name refer to an agent the
+    caller has already built, so both are skipped here.
+    """
+    definitions: List[Tuple[str, dict]] = []
+    seen = set()
+
+    def _walk(config: dict) -> None:
+        for agent_def in config.get('agents', []) or []:
+            name = agent_def.get('name', '')
+            if not name or '/' in name or name in seen:
+                continue
+            is_inline = any(
+                agent_def.get(key) is not None
+                for key in ('job', 'prompt', 'yaml_config', 'yaml_file')
+            )
+            if is_inline:
+                seen.add(name)
+                definitions.append((name, agent_def))
+        for nested in config.get('ariums', []) or []:
+            _walk(nested)
+
+    _walk(arium_config)
+    return definitions

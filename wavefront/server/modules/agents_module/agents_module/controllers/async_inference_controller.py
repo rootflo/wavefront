@@ -17,6 +17,7 @@ from agents_module.services.workflow_crud_service import WorkflowCrudService
 from agents_module.models.agent_schemas import AgentInferenceRequest
 from agents_module.models.workflow_schemas import WorkflowInferenceRequest
 from agents_module.utils.auth_utils import extract_auth_credentials
+from agents_module.utils.input_processing_utils import validate_inference_inputs_media
 from llm_inference_config_module.container import LlmInferenceConfigContainer
 from llm_inference_config_module.services.llm_inference_config_service import (
     LlmInferenceConfigService,
@@ -54,6 +55,11 @@ async def async_agent_inference(
     )
 
     access_token, app_key = extract_auth_credentials(request)
+
+    # Before the version lookup and before pre_save_binary_inputs uploads
+    # anything: an unsupported file should cost the caller a 400, not a 202
+    # plus a stored blob and a failed execution.
+    validate_inference_inputs_media(payload.inputs)
 
     # Resolve the concrete version now (rejecting a missing/deleted explicit
     # version) so the enqueued job runs the version observed by this request,
@@ -137,6 +143,8 @@ async def async_workflow_inference(
     )
 
     access_token, app_key = extract_auth_credentials(request)
+
+    validate_inference_inputs_media(payload.inputs)
 
     try:
         workflow_data = await workflow_crud_service.get_workflow(

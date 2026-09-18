@@ -1,13 +1,15 @@
 import { Button } from '@app/components/ui/button';
-import { formatAppName } from '@app/lib/utils';
-import { Pencil, Trash2 } from 'lucide-react';
-import React from 'react';
+import { copyToClipboard, formatAppName } from '@app/lib/utils';
+import { useNotifyStore } from '@app/store';
+import { Check, Copy, Pencil, Trash2 } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
 
 export interface ResourceCardMetadata {
   label: string;
   value: string;
   className?: string;
   isMono?: boolean;
+  isCopyable?: boolean;
 }
 
 interface ResourceCardProps {
@@ -36,6 +38,35 @@ const ResourceCard: React.FC<ResourceCardProps> = ({
   deleteTitle = 'Delete',
   editTitle = 'Edit',
 }) => {
+  const { notifySuccess, notifyError } = useNotifyStore();
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleCopy = async (e: React.MouseEvent, value: string, index: number) => {
+    e.stopPropagation();
+    const copied = await copyToClipboard(value);
+    if (!copied) {
+      notifyError('Failed to copy to clipboard');
+      return;
+    }
+    notifySuccess('Copied to clipboard');
+    setCopiedIndex(index);
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    timeoutRef.current = setTimeout(() => {
+      setCopiedIndex(null);
+    }, 2000);
+  };
+
   return (
     <div onClick={onClick} className={cardShell}>
       <div aria-hidden className="frost-card-glow pointer-events-none absolute inset-0" />
@@ -79,21 +110,38 @@ const ResourceCard: React.FC<ResourceCardProps> = ({
       ) : null}
 
       <div className="relative space-y-2">
-        {metadata.map((item, index) => (
-          <div key={index} className="flex items-center justify-between gap-3 text-[11px]">
-            <span className="frost-text-muted shrink-0 font-medium tracking-normal normal-case">{item.label}</span>
-            <span
-              className={`max-w-[60%] truncate rounded-md px-2 py-1 font-medium tracking-normal normal-case ${
-                item.className ||
-                (item.isMono
-                  ? 'frost-control frost-text ring-frost-border font-mono ring-1'
-                  : 'frost-control frost-text ring-frost-border ring-1')
-              }`}
-            >
-              {item.value}
-            </span>
-          </div>
-        ))}
+        {metadata.map((item, index) => {
+          const valueClassName = `truncate rounded-md px-2 py-1 font-medium tracking-normal normal-case ${
+            item.className ||
+            (item.isMono
+              ? 'frost-control frost-text ring-frost-border font-mono ring-1'
+              : 'frost-control frost-text ring-frost-border ring-1')
+          }`;
+
+          return (
+            <div key={index} className="flex items-center justify-between gap-3 text-[11px]">
+              <span className="frost-text-muted shrink-0 font-medium tracking-normal normal-case">{item.label}</span>
+              {item.isCopyable ? (
+                <div className="flex max-w-[60%] min-w-0 items-center gap-0.5">
+                  <span className={`min-w-0 ${valueClassName}`}>{item.value}</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    title={copiedIndex === index ? 'Copied to clipboard' : 'Copy to clipboard'}
+                    aria-label={copiedIndex === index ? 'Copied to clipboard' : 'Copy to clipboard'}
+                    className={`size-5 shrink-0 ${copiedIndex === index ? 'text-emerald-600' : 'frost-text-muted'}`}
+                    onClick={(e) => void handleCopy(e, item.value, index)}
+                  >
+                    {copiedIndex === index ? <Check className="size-3" /> : <Copy className="size-3" />}
+                  </Button>
+                </div>
+              ) : (
+                <span className={`max-w-[60%] ${valueClassName}`}>{item.value}</span>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

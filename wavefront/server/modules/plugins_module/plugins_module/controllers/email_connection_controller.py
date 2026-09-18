@@ -9,7 +9,6 @@ from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
 from mailer import EmailProviderError
-from user_management_module.utils.user_utils import check_is_admin
 
 from plugins_module.plugins_container import PluginsContainer
 from plugins_module.services.oauth_app_service import OAuthAppNotFound
@@ -26,9 +25,9 @@ from plugins_module.utils.email_helper import (
     AuthorizeEmailConnectionPayload,
     CreateEmailConnectionPayload,
     SendEmailPayload,
-    decode_email_oauth_state,
     is_allowed_client_redirect,
 )
+from user_management_module.utils.user_utils import check_is_admin, get_current_user
 
 email_connection_router = APIRouter(prefix='/v1/email-connections', tags=['email'])
 
@@ -51,8 +50,7 @@ def _client_redirect(
 async def _forbid_non_admin(request: Request, response_formatter: ResponseFormatter):
     """None when the caller is an admin, otherwise the 403 to return.
 
-    Connecting a mailbox grants the platform ongoing access to it, so every
-    mutation here is admin-only.
+    Email connection APIs are admin-only for now; finer RBAC comes later.
     """
     is_admin = await check_is_admin(request.state.session.role_id)
     if is_admin:
@@ -61,6 +59,17 @@ async def _forbid_non_admin(request: Request, response_formatter: ResponseFormat
         status_code=status.HTTP_403_FORBIDDEN,
         content=response_formatter.buildErrorResponse('Admin access required'),
     )
+
+
+# Unauthenticated OAuth callback: never echo exception text (mailbox addresses,
+# state details) to the browser. Map failures to fixed public messages; details
+# stay in server logs.
+_OAUTH_CALLBACK_PUBLIC_ERRORS = {
+    status.HTTP_400_BAD_REQUEST: 'Email connection could not be completed.',
+    status.HTTP_404_NOT_FOUND: 'Email connection could not be completed.',
+    status.HTTP_502_BAD_GATEWAY: 'Email provider authorization failed. Please try again.',
+}
+_OAUTH_STATE_PUBLIC_ERROR = 'Invalid or expired authorization request.'
 
 
 # Declared before '/{connection_id}': FastAPI matches in declaration order, so
@@ -81,19 +90,21 @@ async def email_oauth_callback(
     """Where the provider returns after consent.
 
     Unauthenticated by necessity: the user arrives here from the provider's
-    domain. `state` carries the connection id (and optional absolute client
-    redirect URLs). Tokens are only accepted for the mailbox that connection
-    expects.
+    domain. `state` is an opaque nonce; connection id and redirects come from
+    the server-side record consumed here (single-use, session-bound, TTL).
     """
     web_url = ((config.get('web') or {}).get('url') or '').strip()
+    success_redirect_url: Optional[str] = None
+    failure_redirect_url: Optional[str] = None
     try:
-        connection_id, success_redirect_url, failure_redirect_url = (
-            decode_email_oauth_state(state)
+        connection_id, success_redirect_url, failure_redirect_url, _ = (
+            email_connection_service.consume_oauth_state(state)
         )
     except ValueError as exc:
+        logger.warning('Email OAuth callback rejected invalid state: %s', exc)
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(str(exc)),
+            content=response_formatter.buildErrorResponse(_OAUTH_STATE_PUBLIC_ERROR),
         )
 
     try:
@@ -117,7 +128,6 @@ async def email_oauth_callback(
             response_formatter,
         )
     except EmailProviderError as exc:
-        logger.exception('Email OAuth callback failed at the provider')
         return _callback_failure(
             exc,
             status.HTTP_502_BAD_GATEWAY,
@@ -144,12 +154,18 @@ def _callback_failure(
     web_url: str,
     response_formatter: ResponseFormatter,
 ):
-    redirect = _client_redirect(failure_redirect_url, web_url, error=str(exc))
+    logger.warning(
+        'Email OAuth callback failed (%s): %s', type(exc).__name__, exc, exc_info=True
+    )
+    public_message = _OAUTH_CALLBACK_PUBLIC_ERRORS.get(
+        status_code, 'Email connection could not be completed.'
+    )
+    redirect = _client_redirect(failure_redirect_url, web_url, error=public_message)
     if redirect:
         return RedirectResponse(url=redirect)
     return JSONResponse(
         status_code=status_code,
-        content=response_formatter.buildErrorResponse(str(exc)),
+        content=response_formatter.buildErrorResponse(public_message),
     )
 
 
@@ -185,12 +201,14 @@ async def create_email_connection(
             )
 
     try:
+        _, user_id, session_id = get_current_user(request)
         connection, consent_url = await email_connection_service.create_connection(
             name=payload.name,
             provider=payload.provider,
             capabilities=payload.capabilities,
             oauth_app_id=UUID(payload.oauth_app_id),
-            created_by=request.state.session.user_id,
+            created_by=user_id,
+            session_id=session_id,
             success_redirect_url=payload.success_redirect_url,
             failure_redirect_url=payload.failure_redirect_url,
         )
@@ -231,9 +249,11 @@ async def list_email_connections(
         Provide[PluginsContainer.email_connection_service]
     ),
 ):
-    """List connections. Readable by any authenticated user, because agent and
-    scheduled job authors pick a sender from this list; the payload carries no
-    tokens or scopes anyone could use."""
+    """List connections. Admin-only until email RBAC is configured."""
+    forbidden = await _forbid_non_admin(request, response_formatter)
+    if forbidden:
+        return forbidden
+
     try:
         connections = await email_connection_service.list_connections(
             provider=provider, status=status_filter, limit=limit
@@ -257,6 +277,7 @@ async def list_email_connections(
 @email_connection_router.get('/{connection_id}')
 @inject
 async def get_email_connection(
+    request: Request,
     connection_id: UUID,
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
@@ -265,6 +286,11 @@ async def get_email_connection(
         Provide[PluginsContainer.email_connection_service]
     ),
 ):
+    """Fetch one connection. Admin-only until email RBAC is configured."""
+    forbidden = await _forbid_non_admin(request, response_formatter)
+    if forbidden:
+        return forbidden
+
     try:
         connection = await email_connection_service.get_connection(connection_id)
         return JSONResponse(
@@ -315,9 +341,12 @@ async def authorize_email_connection(
             )
 
     try:
+        _, user_id, session_id = get_current_user(request)
         url = await email_connection_service.build_authorize_url(
             connection_id,
             payload.capabilities,
+            session_id=session_id,
+            user_id=user_id,
             success_redirect_url=payload.success_redirect_url,
             failure_redirect_url=payload.failure_redirect_url,
         )
@@ -449,6 +478,7 @@ async def set_primary_email_connection(
 @email_connection_router.post('/{connection_id}/send')
 @inject
 async def send_from_email_connection(
+    request: Request,
     connection_id: UUID,
     payload: SendEmailPayload,
     response_formatter: ResponseFormatter = Depends(
@@ -460,8 +490,13 @@ async def send_from_email_connection(
 ):
     """Send one message from this connection.
 
-    The agent email tool posts here so it never handles tokens itself.
+    Admin-only until email RBAC is configured. The agent email tool posts here
+    so it never handles tokens itself.
     """
+    forbidden = await _forbid_non_admin(request, response_formatter)
+    if forbidden:
+        return forbidden
+
     try:
         await email_send_service.send(
             subject=payload.subject,

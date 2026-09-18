@@ -57,13 +57,17 @@ async def check_is_admin(
 
 
 async def can_read_users(req: Request) -> bool:
-    """Read access for the user directory endpoints (list and fetch-by-id).
+    """Read access for the fetch-by-id user endpoint.
 
     Admin-only by default. Deployments where every authenticated user needs to
     resolve a user id to a name — a quotation's assignee, say — can open the
-    two read endpoints up by setting ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG=true.
+    read endpoints up by setting ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG=true.
     The flag covers reads only; create/update/delete stay admin-gated
     regardless.
+
+    The listing endpoint applies the same rule but inlines it, because there the
+    admin bit also selects which payload shape to build, not just whether to
+    answer at all.
     """
     if is_feature_enabled(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG):
         return True

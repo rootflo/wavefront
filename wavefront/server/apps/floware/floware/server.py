@@ -289,8 +289,19 @@ async def lifespan(app: FastAPI):
         raise
 
 
+environment = os.getenv('APP_ENV', 'production')
+
+# The interactive docs and the OpenAPI schema are off everywhere except dev,
+# so a new/unknown APP_ENV value stays closed rather than exposing the surface.
+is_dev = environment == 'dev'
+
 # Define FastAPI app with the lifespan context manager
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    lifespan=lifespan,
+    openapi_url='/openapi.json' if is_dev else None,
+    docs_url='/docs' if is_dev else None,
+    redoc_url='/redoc' if is_dev else None,
+)
 
 floware_base_url = os.getenv('FLOWARE_BASE_URL', 'http://localhost:8001')
 
@@ -357,7 +368,7 @@ async def global_exception_handler(request: Request, exc: Exception):
         prometheus_middleware.http_errors_total.labels(**labels, status_code=500).inc()
 
     error_message = 'An unexpected error has occurred while performing this action, please try again'
-    if environment == 'dev':
+    if is_dev:
         error_message += f' - {str(exc)}'
 
     request_id = getattr(request.state, 'request_id', get_current_request_id())
@@ -511,8 +522,6 @@ voice_agents_container.wire(
         'voice_agents_module.services',
     ],
 )
-
-environment = os.getenv('APP_ENV', 'dev')
 
 # Running with Uvicorn (for local development)
 if __name__ == '__main__':

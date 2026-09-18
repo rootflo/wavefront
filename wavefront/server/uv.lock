@@ -82,6 +82,12 @@ dependencies = [
     { name = "tools-module" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "api-services-module", editable = "modules/api_services_module" },
@@ -92,6 +98,12 @@ requires-dist = [
     { name = "flo-utils", editable = "packages/flo_utils" },
     { name = "llm-inference-config-module", editable = "modules/llm_inference_config_module" },
     { name = "tools-module", editable = "modules/tools_module" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8.3.3,<9.0.0" },
+    { name = "pytest-asyncio", specifier = ">=0.24.0,<1.0.0" },
 ]
 
 [[package]]
@@ -6288,6 +6300,7 @@ dependencies = [
     { name = "common-module" },
     { name = "flo-cloud" },
     { name = "flo-utils" },
+    { name = "llm-inference-config-module" },
     { name = "python-dotenv" },
 ]
 
@@ -6297,6 +6310,7 @@ requires-dist = [
     { name = "common-module", editable = "modules/common_module" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "flo-utils", editable = "packages/flo_utils" },
+    { name = "llm-inference-config-module", editable = "modules/llm_inference_config_module" },
     { name = "python-dotenv", specifier = ">=1.1.0,<2.0.0" },
 ]
 

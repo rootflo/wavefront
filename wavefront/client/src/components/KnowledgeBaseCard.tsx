@@ -15,6 +15,7 @@ const KnowledgeBaseCard: React.FC<KnowledgeBaseCardProps> = ({ kb, onClick, onDe
       label: 'Knowledge base id',
       value: kb.id,
       isMono: true,
+      isCopyable: true,
     },
   ];
 

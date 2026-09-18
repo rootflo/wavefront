@@ -71,14 +71,21 @@ class TriggerPushReceiver:
 
         # Only verifiable when the watch was registered with an OIDC push config;
         # without an audience there is no signature to check.
-        oidc_audience = (trigger.provider_config or {}).get('oidc_audience')
+        provider_config = trigger.provider_config or {}
+        oidc_audience = provider_config.get('oidc_audience')
         if not oidc_audience:
             logger.warning(
                 f'Missing oidc_audience for trigger {trigger_id}; refusing push'
             )
             return {'status': 'ignored', 'reason': 'missing_oidc_audience'}
         try:
-            provider.verify_push(authorization_header, expected_audience=oidc_audience)
+            provider.verify_push(
+                authorization_header,
+                expected_audience=oidc_audience,
+                expected_service_account_email=provider_config.get(
+                    'oidc_service_account_email'
+                ),
+            )
         except PushSignatureError as exc:
             logger.warning(
                 f'Push signature verification failed for trigger {trigger_id}: {exc}'
@@ -87,7 +94,7 @@ class TriggerPushReceiver:
 
         # Layer-2 dedup: skip pushes whose cursor we've already processed.
         incoming_cursor = provider.extract_push_cursor(raw_payload)
-        stored_cursor = (trigger.provider_config or {}).get('history_id')
+        stored_cursor = provider_config.get('history_id')
         if (
             incoming_cursor is not None
             and stored_cursor is not None

@@ -1,6 +1,10 @@
 import secrets
 from typing import List, Optional
 
+from common_module.feature.feature_flag import (
+    ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG,
+    is_feature_enabled,
+)
 from common_module.log.logger import logger
 from db_repo_module.models.resource import Resource
 from db_repo_module.models.resource import ResourceScope
@@ -57,7 +61,6 @@ from user_management_module.utils.password_utils import hash_password
 from user_management_module.utils.user_utils import (
     can_read_users,
     check_is_admin,
-    create_account_lockout_response,
 )
 from user_management_module.utils.user_utils import get_current_user
 import json
@@ -67,6 +70,26 @@ from common_module.utils.validators import is_valid_uuid
 user_router = APIRouter(prefix='/v1')
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl='token')
+
+# The reset-password-email endpoint is unauthenticated, so every outcome it can
+# reach has to look identical from the outside. Anything that varies with the
+# submitted address -- a distinct error, a different status code -- lets an
+# attacker enumerate registered accounts by feeding it a wordlist. Real reasons
+# for not sending (unknown address, deleted user, locked account, mail failure)
+# are logged instead of returned.
+PASSWORD_RESET_GENERIC_MESSAGE = (
+    'If an account exists for this email address, '
+    'a password reset link has been sent to it.'
+)
+
+
+def _password_reset_generic_response(response_formatter) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            {'message': PASSWORD_RESET_GENERIC_MESSAGE}
+        ),
+    )
 
 
 @user_router.post('/users')
@@ -443,13 +466,40 @@ async def get_all_user(
     offset: int = Query(0),
     force_fetch: int = Query(0),
 ):
-    if not await can_read_users(request):
+    """List users.
+
+    Admins get the full directory entry: roles, groups and username alongside
+    the name and email. With ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG set, everyone
+    else gets a name-and-email lookup — id, email, first_name, last_name and
+    nothing more — which is what the console needs to put a name to an id it
+    already holds. Without the flag, non-admins are refused outright.
+    """
+    # This is can_read_users' gate, inlined: the admin bit decides the payload
+    # shape here, not just access, and calling both would re-resolve the role.
+    role_id, _, _ = get_current_user(request)
+    is_admin = await check_is_admin(role_id)
+
+    if not is_admin and not is_feature_enabled(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG):
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content=response_formatter.buildErrorResponse('Access denied'),
         )
+
+    # Refused rather than ignored: `?roles=admin` would partition the directory
+    # by role and hand back exactly the membership the trimmed payload withholds,
+    # and silently dropping the filter would answer a question that was not asked.
+    if not is_admin and roles:
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=response_formatter.buildErrorResponse(
+                'Filtering users by role requires admin access'
+            ),
+        )
+
     # checking the cache for the keys
-    cache_key = user_list_cache_key(offset, limit, search, roles)
+    cache_key = user_list_cache_key(
+        offset, limit, search, roles, include_roles=is_admin
+    )
     if not force_fetch:
         cached_result = cache_manager.get_str(cache_key)
         if cached_result:
@@ -460,67 +510,18 @@ async def get_all_user(
                 ),
             )
     async with user_repository.session() as session:
-        empty_json_array = cast(
-            postgresql.array([], type_=postgresql.JSON), ARRAY(JSON)
-        )
-
-        # Roles and groups are aggregated in correlated subqueries rather than by
-        # joining and grouping. Two reasons: joining both would multiply each
-        # user's roles by their groups, and de-duplicating that fan-out would need
-        # array_agg(DISTINCT ...), which Postgres rejects on json values for want
-        # of an equality operator.
-        #
-        # Aggregating over no rows yields NULL, so each coalesces to an empty
-        # array. That is what lets a user with no direct roles (drawing access
-        # from a group instead) or no groups still appear in the directory.
-        #
-        # `roles` stays direct-only. Roles inherited from a group are deliberately
-        # not merged in, so the field keeps the meaning it has always had.
-        roles_aggregate = (
-            select(
-                func.coalesce(
-                    func.array_agg(
-                        func.json_build_object('id', Role.id, 'name', Role.name)
-                    ),
-                    empty_json_array,
-                )
-            )
-            .select_from(UserRole)
-            .join(Role, Role.id == UserRole.role_id)
-            .where(UserRole.user_id == User.id)
-        )
-
-        # When filtering by role name the aggregate is filtered to match, so a
-        # filtered listing keeps reporting only the roles that matched, exactly
-        # as the previous join-and-group query did.
-        if roles:
-            roles_aggregate = roles_aggregate.where(Role.name.in_(roles))
-
-        groups_aggregate = (
-            select(
-                func.coalesce(
-                    func.array_agg(
-                        func.json_build_object(
-                            'id', UserGroup.id, 'name', UserGroup.name
-                        )
-                    ),
-                    empty_json_array,
-                )
-            )
-            .select_from(UserGroupMember)
-            .join(UserGroup, UserGroup.id == UserGroupMember.group_id)
-            .where(UserGroupMember.user_id == User.id)
-        )
-
-        query = select(
-            User.id,
-            User.first_name,
-            User.last_name,
-            User.email,
-            User.username,
-            roles_aggregate.scalar_subquery().label('roles'),
-            groups_aggregate.scalar_subquery().label('groups'),
-        ).where(User.deleted.is_(False))
+        if not is_admin:
+            # The trimmed directory: no roles, no groups, and no username. The
+            # columns are left out of the query rather than stripped from the
+            # result, so there is no shape for a later edit to forget to filter.
+            query = select(
+                User.id,
+                User.first_name,
+                User.last_name,
+                User.email,
+            ).where(User.deleted.is_(False))
+        else:
+            query = _admin_user_listing_query(roles)
 
         # Add search conditions
         if search and search.strip():
@@ -532,11 +533,15 @@ async def get_all_user(
             if len(name) > 1 and name[1]:
                 filters.append(User.last_name.ilike(f'%{name[1]}%'))
             filters.append(User.email.ilike(f'%{search}%'))
-            filters.append(User.username.ilike(f'%{search}%'))
+            # Username is not in the non-admin payload, so matching on it there
+            # would return rows with no visible reason for having matched.
+            if is_admin:
+                filters.append(User.username.ilike(f'%{search}%'))
             query = query.where(or_(*filters))
 
         # Add role filter. An EXISTS keeps this a row filter, so users are
-        # selected on their direct roles just as before.
+        # selected on their direct roles just as before. Admin-only: the guard
+        # above rejects the parameter for everyone else.
         if roles:
             query = query.where(
                 exists(
@@ -562,6 +567,67 @@ async def get_all_user(
         status_code=status.HTTP_200_OK,
         content=response_formatter.buildSuccessResponse({'users': serialize_result}),
     )
+
+
+def _admin_user_listing_query(roles: Optional[List[str]]):
+    """The full directory row: name, email, username, roles and groups."""
+    empty_json_array = cast(postgresql.array([], type_=postgresql.JSON), ARRAY(JSON))
+
+    # Roles and groups are aggregated in correlated subqueries rather than by
+    # joining and grouping. Two reasons: joining both would multiply each
+    # user's roles by their groups, and de-duplicating that fan-out would need
+    # array_agg(DISTINCT ...), which Postgres rejects on json values for want
+    # of an equality operator.
+    #
+    # Aggregating over no rows yields NULL, so each coalesces to an empty
+    # array. That is what lets a user with no direct roles (drawing access
+    # from a group instead) or no groups still appear in the directory.
+    #
+    # `roles` stays direct-only. Roles inherited from a group are deliberately
+    # not merged in, so the field keeps the meaning it has always had.
+    roles_aggregate = (
+        select(
+            func.coalesce(
+                func.array_agg(
+                    func.json_build_object('id', Role.id, 'name', Role.name)
+                ),
+                empty_json_array,
+            )
+        )
+        .select_from(UserRole)
+        .join(Role, Role.id == UserRole.role_id)
+        .where(UserRole.user_id == User.id)
+    )
+
+    # When filtering by role name the aggregate is filtered to match, so a
+    # filtered listing keeps reporting only the roles that matched, exactly
+    # as the previous join-and-group query did.
+    if roles:
+        roles_aggregate = roles_aggregate.where(Role.name.in_(roles))
+
+    groups_aggregate = (
+        select(
+            func.coalesce(
+                func.array_agg(
+                    func.json_build_object('id', UserGroup.id, 'name', UserGroup.name)
+                ),
+                empty_json_array,
+            )
+        )
+        .select_from(UserGroupMember)
+        .join(UserGroup, UserGroup.id == UserGroupMember.group_id)
+        .where(UserGroupMember.user_id == User.id)
+    )
+
+    return select(
+        User.id,
+        User.first_name,
+        User.last_name,
+        User.email,
+        User.username,
+        roles_aggregate.scalar_subquery().label('roles'),
+        groups_aggregate.scalar_subquery().label('groups'),
+    ).where(User.deleted.is_(False))
 
 
 @user_router.get('/users/{user_id}')
@@ -765,28 +831,20 @@ async def send_reset_url(
     try:
         # checking if the user exists in the db
         user_with_email = await user_repository.find_one(email=email)
-        if not user_with_email:
-            return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content=response_formatter.buildErrorResponse(
-                    error='No user found with this email ID.'
-                ),
-            )
-        if user_with_email.deleted:
-            return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content=response_formatter.buildErrorResponse(
-                    error='No user found with this email ID.'
-                ),
-            )
+        if not user_with_email or user_with_email.deleted:
+            logger.info('Password reset requested for an unknown or deleted account')
+            return _password_reset_generic_response(response_formatter)
 
-        is_locked, locked_until = await account_lockout_service.check_account_lockout(
+        is_locked, _ = await account_lockout_service.check_account_lockout(
             user_with_email
         )
         if is_locked:
-            return create_account_lockout_response(
-                locked_until, account_lockout_service, response_formatter
+            # A locked account gets no reset link, but saying so would confirm the
+            # address is registered, so the caller sees the same message as always.
+            logger.info(
+                f'Password reset skipped for locked account {user_with_email.id}'
             )
+            return _password_reset_generic_response(response_formatter)
 
         # creating an jwt token for reseting the password
         random_digit = secrets.token_hex(16)
@@ -804,36 +862,21 @@ async def send_reset_url(
 
         # Sent from the primary email connection, so changing the platform
         # sender is an admin action rather than a redeploy.
-        email_response = await email_sender.send(
-            subject=PASSWORD_RESET_SUBJECT,
-            body_html=build_password_reset_email(forget_url_link),
-            recipients=email,
-        )
-        if email_response:
-            return JSONResponse(
-                status_code=status.HTTP_200_OK,
-                content=response_formatter.buildSuccessResponse(
-                    {
-                        'message': 'A password reset link has been sent to your registered email address.',
-                    }
-                ),
+        try:
+            email_response = await email_sender.send(
+                subject=PASSWORD_RESET_SUBJECT,
+                body_html=build_password_reset_email(forget_url_link),
+                recipients=email,
             )
-        else:
-            logger.error('Erro while sending email')
-            return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content=response_formatter.buildErrorResponse(
-                    'An error occurred while sending the email. Please verify your email address and try again later.'
-                ),
-            )
+            if not email_response:
+                logger.error('Error while sending password reset email')
+        except Exception as exc:
+            logger.error(f'Error while sending password reset email: {exc}')
+
+        return _password_reset_generic_response(response_formatter)
     except ValueError:
         logger.error('Error in email sending credentials')
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(
-                'Password reset failed. Please reach out to your administrator for assistance.'
-            ),
-        )
+        return _password_reset_generic_response(response_formatter)
 
 
 @user_router.post('/user/reset-password')

@@ -15,6 +15,7 @@ dependencies = [
     "flo-utils",
     "mailer",
     "plugins-module",
+    "user-management-module",
     "beautifulsoup4>=4.8.0,<4.9.dev0",
     "fastapi>=0.110.0",
     "pydantic>=2.0.0",
@@ -29,6 +30,7 @@ flo-cloud = { workspace = true }
 flo-utils = { workspace = true }
 mailer = { workspace = true }
 plugins-module = { workspace = true }
+user-management-module = { workspace = true }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
