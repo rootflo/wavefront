@@ -228,8 +228,16 @@ class TestGeminiGenerationParams:
         }
 
     def test_unsupported_param_is_skipped_not_raised(self):
-        """service_tier is an OpenAI-only setting; it must not fail the call."""
-        llm = self._llm(service_tier='auto', top_p=0.9)
+        """A param Gemini's config has no field for is dropped, not raised.
+
+        Deliberately a sentinel rather than a real vendor param. This asserted
+        on service_tier='auto' until google-genai 1.75.0 promoted service_tier
+        to a real GenerateContentConfig field, at which point the filter began
+        keeping it and the assertion flipped. Any param Gemini could plausibly
+        adopt carries that same expiry; a name that cannot become a field does
+        not, and the mechanism under test is the name lookup either way.
+        """
+        llm = self._llm(not_a_gemini_config_field='x', top_p=0.9)
 
         assert llm._generation_config_kwargs({}) == {'top_p': 0.9}
 
