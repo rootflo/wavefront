@@ -106,9 +106,14 @@ class InferenceProxyService:
         headers['authorization'] = f'Bearer {api_key}'
 
     def _prepare_gemini_auth(self, headers: Dict[str, str], api_key: str) -> None:
-        """Prepare Gemini authentication headers."""
+        """Prepare Gemini authentication headers.
+
+        Popped rather than deleted: the Gemini SDK authenticates on
+        `x-goog-api-key` and sends no Authorization header of its own, so the
+        inbound request usually has none to remove.
+        """
         headers['x-goog-api-key'] = api_key
-        del headers['authorization']
+        headers.pop('authorization', None)
 
     def _prepare_anthropic_auth(self, headers: Dict[str, str], api_key: str) -> None:
         """Prepare Anthropic authentication headers."""
@@ -117,7 +122,7 @@ class InferenceProxyService:
     def _prepare_azure_openai_auth(self, headers: Dict[str, str], api_key: str) -> None:
         """Prepare Azure OpenAI authentication headers."""
         headers['api-key'] = api_key
-        del headers['authorization']
+        headers.pop('authorization', None)
 
     def _prepare_ollama_auth(self, headers: Dict[str, str], api_key: str) -> None:
         """Prepare Ollama authentication headers (typically no auth required)."""

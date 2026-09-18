@@ -32,21 +32,25 @@ class Gemini(BaseLLM):
         super().__init__(model, api_key, temperature, **kwargs)
         # Configure http_options for proxy or custom base_url
         http_options: types.HttpOptionsDict = {'base_url': base_url} if base_url else {}
-        if base_url and self.api_key:
-            # For custom base_url (proxy), set Authorization header explicitly
-            http_options['headers'] = {'Authorization': f'Bearer {self.api_key}'}
-            # Merge custom headers if provided (proxy scenario)
-            if custom_headers:
-                http_options['headers'].update(custom_headers)
+        # The key travels as `x-goog-api-key`, which the SDK sets from the key
+        # passed below. It used to also go out as `Authorization: Bearer`, but
+        # an Authorization header makes Google's frontend look for an OAuth2
+        # principal instead of accepting the key, and reject the request - so a
+        # proxy in front has to authenticate on the SDK's own header.
+        # `custom_headers` is unrelated: it identifies the caller to the proxy
+        # (X-Rootflo-Key), so it does not depend on an api_key having been
+        # passed - the SDK resolves that from the environment on its own, and
+        # gating on the argument would drop the caller's identity from a
+        # request that goes on to authenticate to Google perfectly well.
+        if base_url and custom_headers:
+            http_options['headers'] = dict(custom_headers)
 
         # Initialize client based on configuration
         if http_options:
-            # The key goes to the SDK as well as into the header above: the SDK
-            # refuses to construct without a key of some kind, so passing only
-            # the header made every base_url configuration raise `Missing key
-            # inputs argument!` unless the environment happened to carry one.
-            # A proxy that authenticates on Authorization ignores the header
-            # the SDK adds from this.
+            # The SDK refuses to construct without a key of some kind, so a
+            # base_url configuration has to pass one here too - otherwise it
+            # raises `Missing key inputs argument!` unless the environment
+            # happens to carry one.
             self.client = genai.Client(api_key=self.api_key, http_options=http_options)
         elif self.api_key:
             self.client = genai.Client(api_key=self.api_key)
