@@ -102,11 +102,16 @@ services:
       - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT:-}
       - OTEL_CLOUD_ENDPOINT=${OTEL_CLOUD_ENDPOINT:-}
       - OTEL_CLOUD_HEADERS_AUTHORIZATION=${OTEL_CLOUD_HEADERS_AUTHORIZATION:-}
+    # Bound to the loopback interface, not 0.0.0.0. Only the host needs these:
+    # the application containers reach the collector over the floware-network
+    # bridge by service name, which publishing does not affect. 4317/4318 are
+    # unauthenticated OTLP *ingest*, so an all-interfaces bind lets anyone who
+    # can route to this host inject arbitrary spans into your telemetry.
     ports:
-      - "4317:4317"
-      - "4318:4318"
-      - "13133:13133"
-      - "8888:8888"
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+      - "127.0.0.1:13133:13133"
+      - "127.0.0.1:8888:8888"
     # No container healthcheck: the collector-contrib image is distroless (no
     # shell, wget or curl) and the collector binary has no probe subcommand, so
     # any in-container probe fails by construction. The health_check extension
@@ -122,8 +127,14 @@ services:
     image: jaegertracing/jaeger:2.20.0
     container_name: jaeger
     restart: unless-stopped
+    # Loopback only. Jaeger ships with no authentication, and the local pipeline
+    # keeps app.user.id / app.session.id / app.role.id unhashed on purpose (the
+    # collector only redacts on the cloud-export path), so this UI serves raw
+    # authenticated identifiers alongside request paths and DB query spans.
+    # For remote access put it behind authenticated ingress rather than
+    # widening this bind.
     ports:
-      - "16686:16686" # Jaeger Web UI
+      - "127.0.0.1:16686:16686" # Jaeger Web UI
     networks:
       - floware-network
 
