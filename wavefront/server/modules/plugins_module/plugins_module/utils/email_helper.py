@@ -185,6 +185,13 @@ def issue_email_oauth_state(
     return state
 
 
+def discard_email_oauth_state(cache: _EmailOAuthStateCache, state: str) -> None:
+    """Drop a just-minted OAuth state when setup fails before the consent URL is used."""
+    if not state:
+        return
+    cache.pop_str(f'{_EMAIL_OAUTH_STATE_KEY_PREFIX}{state}')
+
+
 def consume_email_oauth_state(
     cache: _EmailOAuthStateCache,
     state: str,

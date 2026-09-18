@@ -240,9 +240,9 @@ class GmailProvider(EmailProviderABC):
             'pubsub_topic': topic_path,
             'pubsub_subscription': subscription_path,
             'push_endpoint': push_endpoint,
-            'oidc_audience': push_endpoint
-            if watch_config.oidc_service_account_email
-            else None,
+            # Always set: GmailWatchConfig requires oidc_service_account_email,
+            # and the push receiver refuses watches without this audience.
+            'oidc_audience': push_endpoint,
             'oidc_service_account_email': watch_config.oidc_service_account_email,
             'history_id': history_id,
             'watch_expiration': watch_expiration.isoformat()
@@ -292,15 +292,20 @@ class GmailProvider(EmailProviderABC):
     ) -> Dict[str, Any]:
         """Verify the OIDC JWT Pub/Sub attaches to push requests.
 
-        Pub/Sub only signs pushes when the subscription was created with an
-        `oidc_token` PushConfig, so callers skip this unless the stored config
-        records that OIDC was configured.
+        Requires the persisted OIDC service-account identity from start_watch so
+        token `email`/`sub` can be checked before any event fetch.
         """
         if not authorization_header or not authorization_header.lower().startswith(
             'bearer '
         ):
             raise PushSignatureError(
                 'Missing or malformed Authorization header on Pub/Sub push'
+            )
+
+        expected_identity = (expected_service_account_email or '').strip()
+        if not expected_identity:
+            raise PushSignatureError(
+                'OIDC service account identity is required to verify Pub/Sub pushes'
             )
 
         token = authorization_header.split(' ', 1)[1].strip()
@@ -318,15 +323,14 @@ class GmailProvider(EmailProviderABC):
         if issuer not in ('https://accounts.google.com', 'accounts.google.com'):
             raise PushSignatureError(f'Unexpected JWT issuer: {issuer}')
 
-        if expected_service_account_email:
-            expected = expected_service_account_email.strip().lower()
-            token_email = (claims.get('email') or '').strip().lower()
-            token_sub = (claims.get('sub') or '').strip().lower()
-            if expected not in (token_email, token_sub):
-                raise PushSignatureError(
-                    'Pub/Sub push token identity does not match the configured '
-                    'OIDC service account'
-                )
+        expected = expected_identity.lower()
+        token_email = (claims.get('email') or '').strip().lower()
+        token_sub = (claims.get('sub') or '').strip().lower()
+        if expected not in (token_email, token_sub):
+            raise PushSignatureError(
+                'Pub/Sub push token identity does not match the configured '
+                'OIDC service account'
+            )
 
         return claims
 
@@ -444,13 +448,13 @@ class GmailProvider(EmailProviderABC):
             ),
         }
         if push_endpoint:
-            push_config_kwargs: Dict[str, Any] = {'push_endpoint': push_endpoint}
-            if watch_config.oidc_service_account_email:
-                push_config_kwargs['oidc_token'] = pubsub_v1.types.PushConfig.OidcToken(
+            request['push_config'] = pubsub_v1.types.PushConfig(
+                push_endpoint=push_endpoint,
+                oidc_token=pubsub_v1.types.PushConfig.OidcToken(
                     service_account_email=watch_config.oidc_service_account_email,
                     audience=push_endpoint,
-                )
-            request['push_config'] = pubsub_v1.types.PushConfig(**push_config_kwargs)
+                ),
+            )
         try:
             subscriber.create_subscription(request=request, timeout=30)
         except google_exceptions.AlreadyExists:

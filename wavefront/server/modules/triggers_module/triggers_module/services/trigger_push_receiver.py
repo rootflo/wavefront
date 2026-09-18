@@ -70,21 +70,20 @@ class TriggerPushReceiver:
             return {'status': 'ignored', 'reason': 'connection_unavailable'}
 
         # Only verifiable when the watch was registered with an OIDC push config;
-        # without an audience there is no signature to check.
+        # without an audience/identity there is no signature to check.
         provider_config = trigger.provider_config or {}
         oidc_audience = provider_config.get('oidc_audience')
-        if not oidc_audience:
+        oidc_service_account_email = provider_config.get('oidc_service_account_email')
+        if not oidc_audience or not oidc_service_account_email:
             logger.warning(
-                f'Missing oidc_audience for trigger {trigger_id}; refusing push'
+                f'Missing OIDC push binding for trigger {trigger_id}; refusing push'
             )
             return {'status': 'ignored', 'reason': 'missing_oidc_audience'}
         try:
             provider.verify_push(
                 authorization_header,
                 expected_audience=oidc_audience,
-                expected_service_account_email=provider_config.get(
-                    'oidc_service_account_email'
-                ),
+                expected_service_account_email=oidc_service_account_email,
             )
         except PushSignatureError as exc:
             logger.warning(

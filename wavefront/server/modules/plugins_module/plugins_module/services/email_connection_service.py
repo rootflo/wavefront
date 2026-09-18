@@ -14,6 +14,7 @@ from sqlalchemy import update
 from plugins_module.services.oauth_app_service import OAuthAppService
 from plugins_module.utils.email_helper import (
     consume_email_oauth_state,
+    discard_email_oauth_state,
     issue_email_oauth_state,
     parse_capabilities,
     parse_provider,
@@ -105,34 +106,50 @@ class EmailConnectionService:
         """Create a placeholder connection and the consent URL that fills it in.
 
         The mailbox address is unknown until the user consents, so the row starts
-        with a blank address and is keyed only by its id.
+        with a blank address and is keyed only by its id. The placeholder is
+        flushed in a transaction and only committed after OAuth setup succeeds,
+        so a failed consent-URL build never leaves an orphaned pending_auth row.
         """
         parse_provider(provider)
         requested = parse_capabilities(list(capabilities))
 
         app = await self._resolve_app_for_provider(provider, oauth_app_id)
-        connection = await self._connections.create(
-            name=name,
-            provider=provider,
-            oauth_app_id=app.id,
-            mailbox_email='',
-            status='pending_auth',
-            created_by=created_by,
-        )
 
-        provider_impl = await self._app_service.get_provider_for_app(app)
-        consent_url = provider_impl.build_consent_url(
-            state=issue_email_oauth_state(
-                self._cache,
-                connection_id=connection.id,
-                session_id=session_id or '',
-                user_id=created_by,
-                success_redirect_url=success_redirect_url,
-                failure_redirect_url=failure_redirect_url,
-            ),
-            scopes=provider_impl.scopes_for(requested),
-        )
-        return connection.to_dict(), consent_url
+        async with self._connections.session() as session:
+            connection = await self._connections.create(
+                session=session,
+                name=name,
+                provider=provider,
+                oauth_app_id=app.id,
+                mailbox_email='',
+                status='pending_auth',
+                created_by=created_by,
+            )
+
+            oauth_state: Optional[str] = None
+            try:
+                provider_impl = await self._app_service.get_provider_for_app(app)
+                oauth_state = issue_email_oauth_state(
+                    self._cache,
+                    connection_id=connection.id,
+                    session_id=session_id or '',
+                    user_id=created_by,
+                    success_redirect_url=success_redirect_url,
+                    failure_redirect_url=failure_redirect_url,
+                )
+                consent_url = provider_impl.build_consent_url(
+                    state=oauth_state,
+                    scopes=provider_impl.scopes_for(requested),
+                )
+                connection_dict = connection.to_dict()
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                if oauth_state:
+                    discard_email_oauth_state(self._cache, oauth_state)
+                raise
+
+        return connection_dict, consent_url
 
     async def build_authorize_url(
         self,
