@@ -11,6 +11,13 @@ from .types import EmailCapability, OutboundMessage
 
 ScopeCatalog = Mapping[EmailCapability, List[str]]
 
+# Provider scopes that include another capability's access. Catalogs list
+# distinct OAuth scope strings, so exact matching alone would miss that
+# gmail.modify / Mail.ReadWrite already cover read.
+CAPABILITY_IMPLIES: Mapping[EmailCapability, frozenset[EmailCapability]] = {
+    EmailCapability.MODIFY: frozenset({EmailCapability.READ}),
+}
+
 
 def resolve_scopes(
     catalog: ScopeCatalog,
@@ -36,17 +43,23 @@ def capabilities_from_scopes(
 ) -> List[EmailCapability]:
     """Which capabilities a granted scope string satisfies.
 
-    A capability counts as granted only when every scope backing it is present,
-    so a partially granted consent never reads as full permission.
+    A capability counts as granted when every scope backing it is present, so a
+    partially granted consent never reads as full permission. Capabilities that
+    imply others (e.g. MODIFY → READ) are expanded afterward.
     """
     if not granted_scopes:
         return []
     granted = set(granted_scopes.split())
-    return [
+    matched = [
         capability
         for capability, required in catalog.items()
         if required and granted.issuperset(required)
     ]
+    derived = set(matched)
+    for capability in matched:
+        derived.update(CAPABILITY_IMPLIES.get(capability, ()))
+    # Preserve catalog declaration order for stable UI/API output.
+    return [capability for capability in catalog if capability in derived]
 
 
 def build_mime_message(sender: str, message: OutboundMessage) -> MIMEMultipart:
@@ -62,7 +75,8 @@ def build_mime_message(sender: str, message: OutboundMessage) -> MIMEMultipart:
     mime.attach(MIMEText(message.body_html, 'html'))
 
     for attachment in message.attachments:
-        part = MIMEBase('application', 'octet-stream')
+        maintype, subtype = _split_mime_type(attachment.mime_type)
+        part = MIMEBase(maintype, subtype)
         part.set_payload(attachment.content_bytes)
         encoders.encode_base64(part)
         part.add_header(
@@ -72,6 +86,17 @@ def build_mime_message(sender: str, message: OutboundMessage) -> MIMEMultipart:
         mime.attach(part)
 
     return mime
+
+
+def _split_mime_type(mime_type: Optional[str]) -> tuple[str, str]:
+    """Parse `type/subtype`, falling back to application/octet-stream."""
+    raw = (mime_type or '').strip()
+    if '/' in raw:
+        maintype, subtype = raw.split('/', 1)
+        maintype, subtype = maintype.strip(), subtype.strip()
+        if maintype and subtype and ' ' not in maintype and ' ' not in subtype:
+            return maintype, subtype
+    return 'application', 'octet-stream'
 
 
 def encode_raw_message(sender: str, message: OutboundMessage) -> str:

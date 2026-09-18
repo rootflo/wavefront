@@ -158,16 +158,24 @@ def decode_email_oauth_state(
     padded = state + '=' * (-len(state) % 4)
     try:
         payload = json.loads(base64.urlsafe_b64decode(padded.encode('ascii')))
+        if not isinstance(payload, dict):
+            raise ValueError('OAuth state payload must be a JSON object')
         connection_id = UUID(payload['id'])
-    except (KeyError, ValueError, json.JSONDecodeError) as exc:
+        success = payload.get('s')
+        failure = payload.get('f')
+        if success is not None:
+            success = _require_absolute_redirect(success)
+        if failure is not None:
+            failure = _require_absolute_redirect(failure)
+    except (
+        KeyError,
+        TypeError,
+        AttributeError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as exc:
         raise ValueError(f'Invalid OAuth state: {state}') from exc
 
-    success = payload.get('s')
-    failure = payload.get('f')
-    if success is not None:
-        success = _require_absolute_redirect(success)
-    if failure is not None:
-        failure = _require_absolute_redirect(failure)
     return connection_id, success, failure
 
 

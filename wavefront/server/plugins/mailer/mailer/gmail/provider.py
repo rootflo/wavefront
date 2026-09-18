@@ -243,6 +243,7 @@ class GmailProvider(EmailProviderABC):
             'oidc_audience': push_endpoint
             if watch_config.oidc_service_account_email
             else None,
+            'oidc_service_account_email': watch_config.oidc_service_account_email,
             'history_id': history_id,
             'watch_expiration': watch_expiration.isoformat()
             if watch_expiration
@@ -287,6 +288,7 @@ class GmailProvider(EmailProviderABC):
         self,
         authorization_header: Optional[str],
         expected_audience: Optional[str] = None,
+        expected_service_account_email: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Verify the OIDC JWT Pub/Sub attaches to push requests.
 
@@ -315,6 +317,16 @@ class GmailProvider(EmailProviderABC):
         issuer = claims.get('iss')
         if issuer not in ('https://accounts.google.com', 'accounts.google.com'):
             raise PushSignatureError(f'Unexpected JWT issuer: {issuer}')
+
+        if expected_service_account_email:
+            expected = expected_service_account_email.strip().lower()
+            token_email = (claims.get('email') or '').strip().lower()
+            token_sub = (claims.get('sub') or '').strip().lower()
+            if expected not in (token_email, token_sub):
+                raise PushSignatureError(
+                    'Pub/Sub push token identity does not match the configured '
+                    'OIDC service account'
+                )
 
         return claims
 

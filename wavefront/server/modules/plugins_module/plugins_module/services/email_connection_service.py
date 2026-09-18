@@ -183,13 +183,28 @@ class EmailConnectionService:
 
         await self._assert_mailbox_available(connection, mailbox)
 
+        # Google may omit refresh_token on re-consent when one was already
+        # issued; keep the stored token in that case rather than wiping it.
+        if bundle.refresh_token:
+            encrypted_refresh_token = self._kms.encrypt_for_storage(
+                bundle.refresh_token
+            )
+        else:
+            encrypted_refresh_token = connection.encrypted_refresh_token
+
+        if not encrypted_refresh_token:
+            raise InvalidConnectionState(
+                'Provider did not return a refresh token and none is stored for '
+                'this connection. Re-authorize with consent to restore access.'
+            )
+
         updated = await self._connections.find_one_and_update(
             {'id': connection_id},
             refresh=True,
             mailbox_email=mailbox,
             status='active',
             granted_scopes=bundle.scopes,
-            encrypted_refresh_token=self._kms.encrypt_for_storage(bundle.refresh_token),
+            encrypted_refresh_token=encrypted_refresh_token,
             encrypted_access_token=self._kms.encrypt_for_storage(bundle.access_token),
             token_expires_at=bundle.expires_at,
             last_error=None,

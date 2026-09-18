@@ -3,7 +3,7 @@ import base64
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Sequence
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 import requests
 
@@ -207,8 +207,9 @@ class OutlookProvider(EmailProviderABC):
         return await asyncio.to_thread(self._get_message_sync, access_token, message_id)
 
     def _get_message_sync(self, access_token: str, message_id: str) -> NormalizedEmail:
+        encoded_id = quote(message_id, safe='')
         response = requests.get(
-            f'{GRAPH_BASE_URL}/me/messages/{message_id}',
+            f'{GRAPH_BASE_URL}/me/messages/{encoded_id}',
             headers=self._headers(access_token),
             params={'$select': 'subject,from,body,bodyPreview,hasAttachments'},
             timeout=30,
@@ -243,8 +244,9 @@ class OutlookProvider(EmailProviderABC):
     def _fetch_attachments(
         self, access_token: str, message_id: str
     ) -> List[Attachment]:
+        encoded_id = quote(message_id, safe='')
         response = requests.get(
-            f'{GRAPH_BASE_URL}/me/messages/{message_id}/attachments',
+            f'{GRAPH_BASE_URL}/me/messages/{encoded_id}/attachments',
             headers=self._headers(access_token),
             timeout=30,
         )

@@ -862,16 +862,17 @@ async def send_reset_url(
 
         # Sent from the primary email connection, so changing the platform
         # sender is an admin action rather than a redeploy.
-        email_response = await email_sender.send(
-            subject=PASSWORD_RESET_SUBJECT,
-            body_html=build_password_reset_email(forget_url_link),
-            recipients=email,
-        )
-        if not email_response:
-            # Reachable only for an address that does resolve to a user, so a
-            # distinct error here would leak exactly what the generic message
-            # above is protecting.
-            logger.error('Error while sending password reset email')
+        try:
+            email_response = await email_sender.send(
+                subject=PASSWORD_RESET_SUBJECT,
+                body_html=build_password_reset_email(forget_url_link),
+                recipients=email,
+            )
+            if not email_response:
+                logger.error('Error while sending password reset email')
+        except Exception as exc:
+            logger.error(f'Error while sending password reset email: {exc}')
+
         return _password_reset_generic_response(response_formatter)
     except ValueError:
         logger.error('Error in email sending credentials')

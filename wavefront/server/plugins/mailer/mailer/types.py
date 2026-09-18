@@ -177,6 +177,7 @@ class EmailProviderABC(ABC):
         self,
         authorization_header: Optional[str],
         expected_audience: Optional[str] = None,
+        expected_service_account_email: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Authenticate a push request. Raises `PushSignatureError` if it cannot
         be attributed to the provider. Providers that do not sign pushes leave

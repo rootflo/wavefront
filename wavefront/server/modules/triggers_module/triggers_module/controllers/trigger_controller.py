@@ -8,6 +8,7 @@ from common_module.response_formatter import ResponseFormatter
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
 from fastapi.responses import JSONResponse
+from user_management_module.utils.user_utils import check_is_admin
 
 from triggers_module.models.trigger_schemas import CreateTriggerRequest
 from triggers_module.services.trigger_crud_service import (
@@ -26,9 +27,24 @@ from triggers_module.triggers_container import TriggersContainer
 trigger_router = APIRouter(prefix='/v1/triggers', tags=['triggers'])
 
 
+async def _forbid_non_admin(request: Request, response_formatter: ResponseFormatter):
+    """None when the caller is an admin, otherwise the 403 to return.
+
+    Trigger management APIs are admin-only for now; finer RBAC comes later.
+    """
+    is_admin = await check_is_admin(request.state.session.role_id)
+    if is_admin:
+        return None
+    return JSONResponse(
+        status_code=status.HTTP_403_FORBIDDEN,
+        content=response_formatter.buildErrorResponse('Admin access required'),
+    )
+
+
 @trigger_router.post('', status_code=status.HTTP_201_CREATED)
 @inject
 async def create_trigger(
+    request: Request,
     payload: CreateTriggerRequest,
     trigger_crud_service: TriggerCrudService = Depends(
         Provide[TriggersContainer.trigger_crud_service]
@@ -37,6 +53,10 @@ async def create_trigger(
         Provide[CommonContainer.response_formatter]
     ),
 ):
+    forbidden = await _forbid_non_admin(request, response_formatter)
+    if forbidden:
+        return forbidden
+
     try:
         result = await trigger_crud_service.create_trigger(payload)
     except EntityNotFound as exc:
@@ -64,6 +84,7 @@ async def create_trigger(
 @trigger_router.get('')
 @inject
 async def list_triggers(
+    request: Request,
     provider: Optional[str] = Query(default=None),
     namespace: Optional[str] = Query(default=None),
     status_filter: Optional[str] = Query(default=None, alias='status'),
@@ -75,6 +96,10 @@ async def list_triggers(
         Provide[CommonContainer.response_formatter]
     ),
 ):
+    forbidden = await _forbid_non_admin(request, response_formatter)
+    if forbidden:
+        return forbidden
+
     triggers = await trigger_crud_service.list_triggers(
         provider=provider, namespace=namespace, status=status_filter, limit=limit
     )
@@ -89,6 +114,7 @@ async def list_triggers(
 @trigger_router.get('/{trigger_id}')
 @inject
 async def get_trigger(
+    request: Request,
     trigger_id: UUID,
     trigger_crud_service: TriggerCrudService = Depends(
         Provide[TriggersContainer.trigger_crud_service]
@@ -97,6 +123,10 @@ async def get_trigger(
         Provide[CommonContainer.response_formatter]
     ),
 ):
+    forbidden = await _forbid_non_admin(request, response_formatter)
+    if forbidden:
+        return forbidden
+
     try:
         result = await trigger_crud_service.get_trigger(trigger_id)
     except TriggerNotFound as exc:
@@ -115,6 +145,7 @@ async def get_trigger(
 @trigger_router.post('/{trigger_id}/pause')
 @inject
 async def pause_trigger(
+    request: Request,
     trigger_id: UUID,
     trigger_crud_service: TriggerCrudService = Depends(
         Provide[TriggersContainer.trigger_crud_service]
@@ -123,6 +154,10 @@ async def pause_trigger(
         Provide[CommonContainer.response_formatter]
     ),
 ):
+    forbidden = await _forbid_non_admin(request, response_formatter)
+    if forbidden:
+        return forbidden
+
     try:
         result = await trigger_crud_service.pause_trigger(trigger_id)
     except TriggerNotFound as exc:
@@ -141,6 +176,7 @@ async def pause_trigger(
 @trigger_router.post('/{trigger_id}/resume')
 @inject
 async def resume_trigger(
+    request: Request,
     trigger_id: UUID,
     trigger_crud_service: TriggerCrudService = Depends(
         Provide[TriggersContainer.trigger_crud_service]
@@ -149,6 +185,10 @@ async def resume_trigger(
         Provide[CommonContainer.response_formatter]
     ),
 ):
+    forbidden = await _forbid_non_admin(request, response_formatter)
+    if forbidden:
+        return forbidden
+
     try:
         result = await trigger_crud_service.resume_trigger(trigger_id)
     except TriggerNotFound as exc:
@@ -167,6 +207,7 @@ async def resume_trigger(
 @trigger_router.post('/{trigger_id}/retry')
 @inject
 async def retry_trigger(
+    request: Request,
     trigger_id: UUID,
     trigger_crud_service: TriggerCrudService = Depends(
         Provide[TriggersContainer.trigger_crud_service]
@@ -175,6 +216,10 @@ async def retry_trigger(
         Provide[CommonContainer.response_formatter]
     ),
 ):
+    forbidden = await _forbid_non_admin(request, response_formatter)
+    if forbidden:
+        return forbidden
+
     try:
         result = await trigger_crud_service.retry_trigger(trigger_id)
     except TriggerNotFound as exc:
@@ -198,11 +243,19 @@ async def retry_trigger(
 @trigger_router.delete('/{trigger_id}', status_code=status.HTTP_204_NO_CONTENT)
 @inject
 async def delete_trigger(
+    request: Request,
     trigger_id: UUID,
     trigger_crud_service: TriggerCrudService = Depends(
         Provide[TriggersContainer.trigger_crud_service]
     ),
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
 ):
+    forbidden = await _forbid_non_admin(request, response_formatter)
+    if forbidden:
+        return forbidden
+
     try:
         await trigger_crud_service.delete_trigger(trigger_id)
     except TriggerNotFound:
@@ -224,6 +277,7 @@ async def invoke_trigger(
         Provide[CommonContainer.response_formatter]
     ),
 ):
+    """Inbox push webhook. Authenticated by provider OIDC, not by admin session."""
     try:
         raw_payload = await request.json()
     except (JSONDecodeError, ValueError) as exc:

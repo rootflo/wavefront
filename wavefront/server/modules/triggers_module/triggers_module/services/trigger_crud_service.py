@@ -200,6 +200,11 @@ class TriggerCrudService:
                 provider, access_token, mailbox = await self._watch_context(
                     trigger.connection_id
                 )
+                # Planned for later: Gmail allows only one users.watch per
+                # mailbox. Watches should be keyed by connection_id (shared
+                # topic/history, fan-out to all active triggers on that
+                # connection) and stop_watch should run only when deleting the
+                # last trigger for the connection — not once per trigger.id.
                 await provider.stop_watch(
                     access_token=access_token,
                     mailbox=mailbox,
@@ -222,6 +227,9 @@ class TriggerCrudService:
         watch_config = (
             self._gmail_watch_config if connection.provider == 'gmail' else None
         )
+        # Planned for later: key watch_key by connection.id and route pushes to
+        # every active trigger on that connection. Per-trigger watches can
+        # replace each other on the same Gmail mailbox (one watch at a time).
         return await provider.start_watch(
             access_token=access_token,
             mailbox=mailbox,
