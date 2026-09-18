@@ -15,6 +15,8 @@ import socket
 from typing import Any, Dict, Optional
 
 from opentelemetry import trace
+from opentelemetry.propagate import set_global_textmap
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 from common_module.log.logger import logger
 from common_module.telemetry.baggage_span_processor import BaggageSpanProcessor
@@ -81,6 +83,28 @@ def _rebuild_flo_ai_metric_singletons() -> None:
         )
 
 
+def _restrict_propagation() -> None:
+    """Keep W3C trace context on the wire, and drop baggage.
+
+    OpenTelemetry defaults ``OTEL_PROPAGATORS`` to ``tracecontext,baggage``, so
+    every request the httpx instrumentation injects into would carry a
+    ``baggage`` header. ``BaggageMiddleware`` puts ``app.user.id``,
+    ``app.role.id`` and ``app.session.id`` on the context, and the LLM clients
+    (OpenAI, Anthropic, Azure OpenAI) are all httpx-based — so those
+    authenticated identifiers would travel to third-party APIs on every model
+    call. The collector-side hashing protects the *export* path only; it can do
+    nothing about a header we send ourselves.
+
+    Nothing here consumes propagated baggage: the sole reader is
+    ``BaggageSpanProcessor``, which takes it off the in-process context rather
+    than the header. Dropping the baggage propagator therefore costs no
+    observability — ``traceparent`` still goes out, so distributed traces stay
+    connected — and it additionally stops an untrusted caller from spoofing
+    ``app.*`` baggage into our spans.
+    """
+    set_global_textmap(TraceContextTextMapPropagator())
+
+
 def configure_telemetry_providers(default_service_name: str) -> bool:
     """Set up trace/metric providers and library instrumentation.
 
@@ -118,6 +142,7 @@ def configure_telemetry_providers(default_service_name: str) -> bool:
         if hasattr(tracer_provider, 'add_span_processor'):
             tracer_provider.add_span_processor(BaggageSpanProcessor())
 
+        _restrict_propagation()
         _instrument_clients()
 
         _providers_configured = True

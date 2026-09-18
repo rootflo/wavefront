@@ -41,6 +41,13 @@ class BaggageMiddleware:
     Note that ``app.user.id`` is carried in the clear here on purpose: the local
     Jaeger pipeline keeps it for debugging, and the collector hashes it before
     anything is exported to a cloud backend.
+
+    These identifiers stay inside the process. Although they live in baggage,
+    ``_restrict_propagation()`` removes the baggage propagator at startup, so
+    they are never serialised into a ``baggage`` header on outbound requests —
+    which would otherwise hand them to every third-party API the httpx-based
+    LLM clients talk to. Keep it that way: putting anything user-identifying in
+    baggage is only safe while nothing injects baggage onto the wire.
     """
 
     def __init__(self, app: Any) -> None:
