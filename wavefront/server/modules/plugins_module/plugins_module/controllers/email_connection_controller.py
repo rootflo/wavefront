@@ -91,31 +91,28 @@ async def email_oauth_callback(
 
     Unauthenticated by necessity: the user arrives here from the provider's
     domain. `state` is an opaque nonce; connection id and redirects come from
-    the server-side record consumed here (single-use, session-bound, TTL).
+    the server-side record. The initiating session bound into that record must
+    still be live before any authorization code is exchanged.
     """
     web_url = ((config.get('web') or {}).get('url') or '').strip()
-    success_redirect_url: Optional[str] = None
-    failure_redirect_url: Optional[str] = None
+
     try:
-        connection_id, success_redirect_url, failure_redirect_url, _ = (
-            email_connection_service.consume_oauth_state(state)
-        )
+        (
+            connection,
+            success_redirect_url,
+            failure_redirect_url,
+        ) = await email_connection_service.complete_oauth(state=state, code=code)
     except ValueError as exc:
         logger.warning('Email OAuth callback rejected invalid state: %s', exc)
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content=response_formatter.buildErrorResponse(_OAUTH_STATE_PUBLIC_ERROR),
         )
-
-    try:
-        connection = await email_connection_service.complete_oauth(
-            connection_id=connection_id, code=code
-        )
     except ConnectionNotFound as exc:
         return _callback_failure(
             exc,
             status.HTTP_404_NOT_FOUND,
-            failure_redirect_url,
+            getattr(exc, 'oauth_failure_redirect_url', None),
             web_url,
             response_formatter,
         )
@@ -123,7 +120,7 @@ async def email_oauth_callback(
         return _callback_failure(
             exc,
             status.HTTP_400_BAD_REQUEST,
-            failure_redirect_url,
+            getattr(exc, 'oauth_failure_redirect_url', None),
             web_url,
             response_formatter,
         )
@@ -131,7 +128,7 @@ async def email_oauth_callback(
         return _callback_failure(
             exc,
             status.HTTP_502_BAD_GATEWAY,
-            failure_redirect_url,
+            getattr(exc, 'oauth_failure_redirect_url', None),
             web_url,
             response_formatter,
         )
