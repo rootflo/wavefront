@@ -8,12 +8,13 @@ from db_repo_module.models.email_connection import EmailConnection
 from db_repo_module.models.oauth_app import OAuthApp
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from flo_cloud.kms import FloKmsService
-from mailer import EmailCapability, EmailProviderABC, TokenBundle
+from mailer import EmailCapability, EmailProviderABC, EmailProviderError, TokenBundle
 from sqlalchemy import update
 
 from plugins_module.services.oauth_app_service import OAuthAppService
 from plugins_module.utils.email_helper import (
     consume_email_oauth_state,
+    discard_email_oauth_state,
     issue_email_oauth_state,
     parse_capabilities,
     parse_provider,
@@ -105,34 +106,50 @@ class EmailConnectionService:
         """Create a placeholder connection and the consent URL that fills it in.
 
         The mailbox address is unknown until the user consents, so the row starts
-        with a blank address and is keyed only by its id.
+        with a blank address and is keyed only by its id. The placeholder is
+        flushed in a transaction and only committed after OAuth setup succeeds,
+        so a failed consent-URL build never leaves an orphaned pending_auth row.
         """
         parse_provider(provider)
         requested = parse_capabilities(list(capabilities))
 
         app = await self._resolve_app_for_provider(provider, oauth_app_id)
-        connection = await self._connections.create(
-            name=name,
-            provider=provider,
-            oauth_app_id=app.id,
-            mailbox_email='',
-            status='pending_auth',
-            created_by=created_by,
-        )
 
-        provider_impl = await self._app_service.get_provider_for_app(app)
-        consent_url = provider_impl.build_consent_url(
-            state=issue_email_oauth_state(
-                self._cache,
-                connection_id=connection.id,
-                session_id=session_id or '',
-                user_id=created_by,
-                success_redirect_url=success_redirect_url,
-                failure_redirect_url=failure_redirect_url,
-            ),
-            scopes=provider_impl.scopes_for(requested),
-        )
-        return connection.to_dict(), consent_url
+        async with self._connections.session() as session:
+            connection = await self._connections.create(
+                session=session,
+                name=name,
+                provider=provider,
+                oauth_app_id=app.id,
+                mailbox_email='',
+                status='pending_auth',
+                created_by=created_by,
+            )
+
+            oauth_state: Optional[str] = None
+            try:
+                provider_impl = await self._app_service.get_provider_for_app(app)
+                oauth_state = issue_email_oauth_state(
+                    self._cache,
+                    connection_id=connection.id,
+                    session_id=session_id or '',
+                    user_id=created_by,
+                    success_redirect_url=success_redirect_url,
+                    failure_redirect_url=failure_redirect_url,
+                )
+                consent_url = provider_impl.build_consent_url(
+                    state=oauth_state,
+                    scopes=provider_impl.scopes_for(requested),
+                )
+                connection_dict = connection.to_dict()
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                if oauth_state:
+                    discard_email_oauth_state(self._cache, oauth_state)
+                raise
+
+        return connection_dict, consent_url
 
     async def build_authorize_url(
         self,
@@ -181,58 +198,83 @@ class EmailConnectionService:
         """Validate and consume opaque OAuth state before exchanging the code."""
         return consume_email_oauth_state(self._cache, state, session_id=session_id)
 
-    async def complete_oauth(self, connection_id: UUID, code: str) -> Dict[str, Any]:
-        connection = await self._require_connection(connection_id)
-        app = await self._require_app(connection)
-        provider_impl = await self._app_service.get_provider_for_app(app)
+    async def complete_oauth(
+        self,
+        state: str,
+        code: str,
+        *,
+        session_id: Optional[str] = None,
+    ) -> Tuple[Dict[str, Any], Optional[str], Optional[str]]:
+        """Consume bound OAuth state, then exchange `code` for mailbox tokens.
 
-        bundle = await provider_impl.exchange_code(code)
-
-        mailbox = (bundle.external_account_id or '').strip().lower()
-        if not mailbox:
-            raise InvalidConnectionState(
-                'Provider did not report which mailbox consented'
-            )
-
-        # Reconnecting an existing connection must not silently point at someone
-        # else's inbox: triggers and tools already reference this id.
-        if connection.mailbox_email and connection.mailbox_email.lower() != mailbox:
-            raise MailboxMismatch(
-                f'This connection is bound to {connection.mailbox_email}, but '
-                f'consent was granted for {mailbox}. Sign in with the correct '
-                'account or create a separate connection.'
-            )
-
-        await self._assert_mailbox_available(connection, mailbox)
-
-        # Google may omit refresh_token on re-consent when one was already
-        # issued; keep the stored token in that case rather than wiping it.
-        if bundle.refresh_token:
-            encrypted_refresh_token = self._kms.encrypt_for_storage(
-                bundle.refresh_token
-            )
-        else:
-            encrypted_refresh_token = connection.encrypted_refresh_token
-
-        if not encrypted_refresh_token:
-            raise InvalidConnectionState(
-                'Provider did not return a refresh token and none is stored for '
-                'this connection. Re-authorize with consent to restore access.'
-            )
-
-        updated = await self._connections.find_one_and_update(
-            {'id': connection_id},
-            refresh=True,
-            mailbox_email=mailbox,
-            status='active',
-            granted_scopes=bundle.scopes,
-            encrypted_refresh_token=encrypted_refresh_token,
-            encrypted_access_token=self._kms.encrypt_for_storage(bundle.access_token),
-            token_expires_at=bundle.expires_at,
-            last_error=None,
+        The initiating session id stored with the state is always validated
+        (and must still be live) before any provider token request. When the
+        caller also supplies `session_id`, it must match that binding.
+        Returns (connection dict, success_redirect, failure_redirect).
+        """
+        connection_id, success_redirect_url, failure_redirect_url, _ = (
+            self.consume_oauth_state(state, session_id=session_id)
         )
+
+        try:
+            connection = await self._require_connection(connection_id)
+            app = await self._require_app(connection)
+            provider_impl = await self._app_service.get_provider_for_app(app)
+
+            bundle = await provider_impl.exchange_code(code)
+
+            mailbox = (bundle.external_account_id or '').strip().lower()
+            if not mailbox:
+                raise InvalidConnectionState(
+                    'Provider did not report which mailbox consented'
+                )
+
+            # Reconnecting an existing connection must not silently point at someone
+            # else's inbox: triggers and tools already reference this id.
+            if connection.mailbox_email and connection.mailbox_email.lower() != mailbox:
+                raise MailboxMismatch(
+                    f'This connection is bound to {connection.mailbox_email}, but '
+                    f'consent was granted for {mailbox}. Sign in with the correct '
+                    'account or create a separate connection.'
+                )
+
+            await self._assert_mailbox_available(connection, mailbox)
+
+            # Google may omit refresh_token on re-consent when one was already
+            # issued; keep the stored token in that case rather than wiping it.
+            if bundle.refresh_token:
+                encrypted_refresh_token = self._kms.encrypt_for_storage(
+                    bundle.refresh_token
+                )
+            else:
+                encrypted_refresh_token = connection.encrypted_refresh_token
+
+            if not encrypted_refresh_token:
+                raise InvalidConnectionState(
+                    'Provider did not return a refresh token and none is stored for '
+                    'this connection. Re-authorize with consent to restore access.'
+                )
+
+            updated = await self._connections.find_one_and_update(
+                {'id': connection_id},
+                refresh=True,
+                mailbox_email=mailbox,
+                status='active',
+                granted_scopes=bundle.scopes,
+                encrypted_refresh_token=encrypted_refresh_token,
+                encrypted_access_token=self._kms.encrypt_for_storage(
+                    bundle.access_token
+                ),
+                token_expires_at=bundle.expires_at,
+                last_error=None,
+            )
+        except (EmailConnectionError, EmailProviderError) as exc:
+            # State is already consumed; surface stored redirects for the callback.
+            setattr(exc, 'oauth_failure_redirect_url', failure_redirect_url)
+            raise
+
         logger.info(f'Email connection {connection_id} activated for {mailbox}')
-        return updated.to_dict()
+        return updated.to_dict(), success_redirect_url, failure_redirect_url
 
     async def list_connections(
         self,

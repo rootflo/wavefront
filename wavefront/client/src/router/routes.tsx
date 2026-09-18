@@ -5,6 +5,7 @@ import ApiServiceManagement from '@app/pages/apps/[appId]/api-services';
 import ApiServiceDetail from '@app/pages/apps/[appId]/api-services/[id]';
 import AuthenticatorsPage from '@app/pages/apps/[appId]/authenticators';
 import AuthenticatorDetailPage from '@app/pages/apps/[appId]/authenticators/[authId]';
+import ChatbotsPage from '@app/pages/apps/[appId]/chatbots';
 import DatasourcesManagement from '@app/pages/apps/[appId]/datasources';
 import DatasourceDetail from '@app/pages/apps/[appId]/datasources/[datasourceId]';
 import EmailConnectionsPage from '@app/pages/apps/[appId]/email-connections';
@@ -166,6 +167,10 @@ const routes = {
         {
           path: 'workflows/pipelines/:workflowPipelineId',
           element: <WorkflowPipelineDetail />,
+        },
+        {
+          path: 'chatbots',
+          element: <ChatbotsPage />,
         },
         {
           path: 'configurations',

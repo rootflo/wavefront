@@ -19,7 +19,7 @@ dependencies = [
     "textract~=1.6.5",
     "flo-ai==1.1.11",
     "google-cloud-pubsub~=2.30.0",
-    "boto3<=1.38.40",
+    "boto3>=1.42.22,<2.0.0",
     "pyyaml>=6.0.3,<7",
     "flo-cloud",
     "python-multipart",

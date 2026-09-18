@@ -26,6 +26,8 @@ class _EmailOAuthStateCache(Protocol):
         nx: bool = False,
     ) -> bool: ...
 
+    def get_str(self, key: str, default: Any = None) -> Optional[str]: ...
+
     def pop_str(self, key: str, default: Any = None) -> Optional[str]: ...
 
 
@@ -183,6 +185,13 @@ def issue_email_oauth_state(
     return state
 
 
+def discard_email_oauth_state(cache: _EmailOAuthStateCache, state: str) -> None:
+    """Drop a just-minted OAuth state when setup fails before the consent URL is used."""
+    if not state:
+        return
+    cache.pop_str(f'{_EMAIL_OAUTH_STATE_KEY_PREFIX}{state}')
+
+
 def consume_email_oauth_state(
     cache: _EmailOAuthStateCache,
     state: str,
@@ -192,6 +201,8 @@ def consume_email_oauth_state(
     """Atomically consume OAuth state. Returns connection id, redirects, user_id.
 
     Rejects missing, expired, already-consumed, or session-mismatched state.
+    The initiating session from the stored record must still be live server-side
+    before any caller may exchange an authorization code.
     """
     if not state or not state.strip():
         raise ValueError('Invalid OAuth state')
@@ -209,7 +220,11 @@ def consume_email_oauth_state(
         stored_session_id = payload.get('session_id')
         if not stored_session_id:
             raise ValueError('OAuth state missing session binding')
+        # Caller-supplied id (when present) must match; always require a live
+        # initiating session so code exchange cannot proceed unbound.
         if session_id is not None and str(session_id) != str(stored_session_id):
+            raise ValueError('OAuth state session mismatch')
+        if not cache.get_str(f'session_{stored_session_id}'):
             raise ValueError('OAuth state session mismatch')
         exp = int(payload['exp'])
         if exp < int(time.time()):

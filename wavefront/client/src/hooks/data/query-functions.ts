@@ -7,6 +7,7 @@ import { ApiServiceItem } from '@app/types/api-service';
 import { Authenticator } from '@app/types/authenticator';
 import { EmailConnection } from '@app/types/email';
 import { OAuthApp } from '@app/types/oauth-app';
+import { Chatbot } from '@app/types/chatbot';
 import { ConfigurationListItem, ConfigurationValue } from '@app/types/configuration';
 import { Datasource, DynamicQuery, ReadDynamicQueryData } from '@app/types/datasource';
 import { LLMInferenceConfig } from '@app/types/llm-inference-config';
@@ -249,6 +250,14 @@ const getWorkflowRunsQueryFn = async (
     page_number: Math.floor(offset / limit),
     total_pages: 0,
   };
+};
+
+const getChatbotsQueryFn = async (namespace?: string): Promise<Chatbot[]> => {
+  const response = await floConsoleService.chatbotService.listAllChatbots(namespace);
+  if (response.data?.meta?.status === 'success' && response.data.data?.chatbots) {
+    return response.data.data.chatbots;
+  }
+  return [];
 };
 
 const getVoiceAgentsQueryFn = async (): Promise<VoiceAgent[]> => {
@@ -527,11 +536,9 @@ export {
   getAuthenticatorsQueryFn,
   getEmailConnectionQueryFn,
   getEmailConnectionsQueryFn,
-  getOAuthAppQueryFn,
   getOAuthAppsQueryFn,
-  getCurrentUserQueryFn,
+  getChatbotsQueryFn,
   getDatasourceQueryFn,
-  getDatasourceResourcesQueryFn,
   getKnowledgeBaseDocumentsQueryFn,
   getKnowledgeBaseInferencesQueryFn,
   getKnowledgeBaseQueryFn,

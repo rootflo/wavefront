@@ -30,6 +30,22 @@ members = [
 required-version = ">=0.7.3"
 override-dependencies = [
     "torch>=2.6.0 ; sys_platform != 'darwin'",
+    # redshift-connector >=2.1.14 (fixes an eval() RCE in its vector_in result
+    # handler) needs beautifulsoup4 >=4.13.5, but abandoned textract 1.6.5 caps
+    # it at <4.9. textract only touches bs4 in its epub/html parsers; we call it
+    # solely as process(pdf, method='pdfminer'), so that cap is inert for us.
+    "beautifulsoup4>=4.13.5,<5.0.0",
+]
+
+# Security floors for packages nothing here declares directly -- they arrive via
+# flo-ai, pipecat-ai, twilio and the azure-* SDKs, so there is no member
+# pyproject to raise. Constraints rather than overrides: a constraint intersects
+# with what upstream declares and fails the resolve if that intersection is
+# empty, where an override would silently defeat a real cap.
+constraint-dependencies = [
+    "aiohttp>=3.14.3",                  # CVE-2026-69244, OOB read in the C parser
+    "azure-core>=1.38.0",               # CVE-2026-21226, untrusted deserialization
+    "google-cloud-aiplatform>=1.131.0", # CVE-2026-2472, XSS in evals visualization
 ]
 
 # No workspace member currently runs torch/torchvision on GPU nodes

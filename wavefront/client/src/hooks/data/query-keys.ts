@@ -4,6 +4,12 @@ const getAgentsKey = (appId: string, namespace?: string) => {
   }
   return ['agents', appId];
 };
+const getChatbotsKey = (appId: string, namespace?: string) => {
+  if (namespace) {
+    return ['chatbots', appId, namespace];
+  }
+  return ['chatbots', appId];
+};
 const getNamespacesKey = (appId: string) => ['namespaces', appId];
 const getAllAppsKey = () => ['apps'];
 const getAllDatasourcesKey = (appId: string) => ['datasources', appId];
@@ -98,6 +104,7 @@ export {
   getApiServicesKey,
   getAuthenticatorKey,
   getAuthenticatorsKey,
+  getChatbotsKey,
   getCurrentUserKey,
   getDatasourceKey,
   getDatasourceResourcesKey,
