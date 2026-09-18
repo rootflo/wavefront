@@ -51,8 +51,7 @@ def _client_redirect(
 async def _forbid_non_admin(request: Request, response_formatter: ResponseFormatter):
     """None when the caller is an admin, otherwise the 403 to return.
 
-    Connecting a mailbox grants the platform ongoing access to it, so every
-    mutation here is admin-only.
+    Email connection APIs are admin-only for now; finer RBAC comes later.
     """
     is_admin = await check_is_admin(request.state.session.role_id)
     if is_admin:
@@ -231,9 +230,11 @@ async def list_email_connections(
         Provide[PluginsContainer.email_connection_service]
     ),
 ):
-    """List connections. Readable by any authenticated user, because agent and
-    scheduled job authors pick a sender from this list; the payload carries no
-    tokens or scopes anyone could use."""
+    """List connections. Admin-only until email RBAC is configured."""
+    forbidden = await _forbid_non_admin(request, response_formatter)
+    if forbidden:
+        return forbidden
+
     try:
         connections = await email_connection_service.list_connections(
             provider=provider, status=status_filter, limit=limit
@@ -257,6 +258,7 @@ async def list_email_connections(
 @email_connection_router.get('/{connection_id}')
 @inject
 async def get_email_connection(
+    request: Request,
     connection_id: UUID,
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
@@ -265,6 +267,11 @@ async def get_email_connection(
         Provide[PluginsContainer.email_connection_service]
     ),
 ):
+    """Fetch one connection. Admin-only until email RBAC is configured."""
+    forbidden = await _forbid_non_admin(request, response_formatter)
+    if forbidden:
+        return forbidden
+
     try:
         connection = await email_connection_service.get_connection(connection_id)
         return JSONResponse(
@@ -449,6 +456,7 @@ async def set_primary_email_connection(
 @email_connection_router.post('/{connection_id}/send')
 @inject
 async def send_from_email_connection(
+    request: Request,
     connection_id: UUID,
     payload: SendEmailPayload,
     response_formatter: ResponseFormatter = Depends(
@@ -460,8 +468,13 @@ async def send_from_email_connection(
 ):
     """Send one message from this connection.
 
-    The agent email tool posts here so it never handles tokens itself.
+    Admin-only until email RBAC is configured. The agent email tool posts here
+    so it never handles tokens itself.
     """
+    forbidden = await _forbid_non_admin(request, response_formatter)
+    if forbidden:
+        return forbidden
+
     try:
         await email_send_service.send(
             subject=payload.subject,
