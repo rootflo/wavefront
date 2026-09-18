@@ -185,7 +185,7 @@ const PiiEntitySelector: React.FC<Props> = ({ groups, selected, disabled, onChan
           size="sm"
           disabled={disabled}
           onClick={() => onChange(defaults)}
-          title="Return to the provider's default set"
+          title="Return to the default set of identifiers"
         >
           Reset to defaults
         </Button>
@@ -262,8 +262,8 @@ const PiiEntitySelector: React.FC<Props> = ({ groups, selected, disabled, onChan
 
       {effective.length === 0 && (
         <p className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
-          Nothing is selected, so this provider would detect nothing while still appearing to be on. Select at least one
-          type, or switch the provider off.
+          Nothing is selected, so this check would detect nothing while still appearing to be on. Select at least one
+          type, or switch the check off.
         </p>
       )}
 

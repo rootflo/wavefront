@@ -2,6 +2,7 @@ import floConsoleService from '@app/api';
 import {
   EnforcementMode,
   GuardrailAdapterConfig,
+  PiiEntityGroup,
   PolicyPreviewStage,
   PolicyPreviewResult,
 } from '@app/api/guardrails-service';
@@ -10,7 +11,8 @@ import { Label } from '@app/components/ui/label';
 import { Textarea } from '@app/components/ui/textarea';
 import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
-import React, { forwardRef, useImperativeHandle, useRef, useState } from 'react';
+import React, { forwardRef, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { adapterLabel, buildEntityLabels } from './adapter-meta';
 
 export interface PolicyTestHandle {
   /** Scroll the panel into view and put the cursor in the textarea. */
@@ -21,6 +23,8 @@ interface Props {
   isEnabled: boolean;
   mode: EnforcementMode;
   adapters: GuardrailAdapterConfig[];
+  /** Entity catalog, used to name detections the way the selector does. */
+  piiGroups?: PiiEntityGroup[];
 }
 
 const ACTION_STYLES: Record<string, string> = {
@@ -40,20 +44,51 @@ const ActionBadge: React.FC<{ action: string }> = ({ action }) => (
   </span>
 );
 
-const ResultRow: React.FC<{ result: PolicyPreviewResult }> = ({ result }) => (
-  <div className="flex items-start justify-between gap-4 border-t border-gray-100 py-2 text-sm">
-    <div>
-      <span className="font-medium text-gray-800">{result.adapter}</span>
-      {result.message && <p className="mt-0.5 text-gray-600">{result.message}</p>}
-      {result.failure_class !== 'NONE' && (
-        <p className="mt-0.5 text-xs text-red-700">failure: {result.failure_class}</p>
-      )}
-    </div>
-    <ActionBadge action={result.action} />
-  </div>
-);
+/**
+ * Restate a PII verdict using the names from the selector.
+ *
+ * The check's own message lists entity ids — "Redacted 4 PII entities:
+ * CREDIT_CARD, IN_AADHAAR, ..." — which is the vocabulary of the detection
+ * engine, not of the page the reader just ticked boxes on. The same verdict
+ * carries `entity_counts` in its metadata, so the list can be rebuilt here in
+ * the selector's words instead.
+ *
+ * Returns null for anything without that metadata, which is every other check;
+ * those keep their own message verbatim.
+ */
+const piiSummary = (result: PolicyPreviewResult, labels: Map<string, string>): string | null => {
+  const counts = result.metadata?.entity_counts;
+  if (!counts || typeof counts !== 'object') return null;
 
-const StageResult: React.FC<{ stage: PolicyPreviewStage }> = ({ stage }) => {
+  const entries = Object.entries(counts as Record<string, unknown>);
+  if (entries.length === 0) return null;
+
+  const total = entries.reduce((sum, [, count]) => sum + (Number(count) || 0), 0);
+  // By label, not by id: sorting on ids would order the list by words the
+  // reader cannot see.
+  const names = entries.map(([id]) => labels.get(id) ?? id).sort((a, b) => a.localeCompare(b));
+  return `Redacted ${total} ${total === 1 ? 'identifier' : 'identifiers'}: ${names.join(', ')}`;
+};
+
+const ResultRow: React.FC<{ result: PolicyPreviewResult; labels: Map<string, string> }> = ({ result, labels }) => {
+  const message = piiSummary(result, labels) ?? result.message;
+
+  return (
+    <div className="flex items-start justify-between gap-4 border-t border-gray-100 py-2 text-sm">
+      <div>
+        {/* The API answers with adapter keys; those name the engine, so they are labelled before display. */}
+        <span className="font-medium text-gray-800">{adapterLabel(result.adapter)}</span>
+        {message && <p className="mt-0.5 text-gray-600">{message}</p>}
+        {result.failure_class !== 'NONE' && (
+          <p className="mt-0.5 text-xs text-red-700">failure: {result.failure_class}</p>
+        )}
+      </div>
+      <ActionBadge action={result.action} />
+    </div>
+  );
+};
+
+const StageResult: React.FC<{ stage: PolicyPreviewStage; labels: Map<string, string> }> = ({ stage, labels }) => {
   // In monitor mode `action` is always ALLOW, so showing it alone would make
   // every policy look inert. The verdict is what the admin is testing.
   const verdict = stage.enforced ? stage.action : stage.observed_action;
@@ -71,11 +106,11 @@ const StageResult: React.FC<{ stage: PolicyPreviewStage }> = ({ stage }) => {
       </div>
 
       {stage.results.length === 0 ? (
-        <p className="mt-2 text-sm text-gray-500">No provider runs at this stage.</p>
+        <p className="mt-2 text-sm text-gray-500">No checks run at this stage.</p>
       ) : (
         <div className="mt-2">
           {stage.results.map((result, i) => (
-            <ResultRow key={`${result.adapter}-${i}`} result={result} />
+            <ResultRow key={`${result.adapter}-${i}`} result={result} labels={labels} />
           ))}
         </div>
       )}
@@ -95,11 +130,12 @@ const StageResult: React.FC<{ stage: PolicyPreviewStage }> = ({ stage }) => {
 /**
  * Runs the unsaved policy through the real engine against sample text.
  *
- * Deliberately behind an explicit button rather than firing as you type:
- * Azure Content Safety bills per call and rate-limits, so a debounced preview
- * would quietly cost money on every keystroke.
+ * Deliberately behind an explicit button rather than firing as you type: the
+ * content safety check calls a metered external service (Azure Content Safety)
+ * that bills per call and rate-limits, so a debounced preview would quietly
+ * cost money on every keystroke.
  */
-const PolicyTestPanel = forwardRef<PolicyTestHandle, Props>(({ isEnabled, mode, adapters }, ref) => {
+const PolicyTestPanel = forwardRef<PolicyTestHandle, Props>(({ isEnabled, mode, adapters, piiGroups }, ref) => {
   const { notifyError } = useNotifyStore();
   const [text, setText] = useState('');
   const [running, setRunning] = useState(false);
@@ -120,13 +156,17 @@ const PolicyTestPanel = forwardRef<PolicyTestHandle, Props>(({ isEnabled, mode, 
     },
   }));
 
-  // Only warn when a run would actually bill. Presidio is in-process and free,
-  // so showing a cost notice on a PII-only policy trains people to ignore it.
-  const azure = adapters.find((adapter) => adapter.name === 'azure_content_safety');
-  const azureStages = azure?.stages.length ?? 0;
-  const shieldsOn =
-    Boolean(azure) && azure?.options?.enable_prompt_shields !== false && azure.stages.includes('BEFORE_MODEL');
-  const billable = isEnabled && azureStages > 0;
+  const entityLabels = useMemo(() => buildEntityLabels(piiGroups), [piiGroups]);
+
+  // Only warn when a run would actually bill. PII redaction is in-process and
+  // free, so a cost notice on a PII-only policy trains people to ignore it.
+  const contentSafety = adapters.find((adapter) => adapter.name === 'azure_content_safety');
+  const contentSafetyStages = contentSafety?.stages.length ?? 0;
+  const injectionCheckOn =
+    !!contentSafety &&
+    contentSafety.options?.enable_prompt_shields !== false &&
+    contentSafety.stages.includes('BEFORE_MODEL');
+  const billable = isEnabled && contentSafetyStages > 0;
 
   const handleRun = async () => {
     setRunning(true);
@@ -188,13 +228,14 @@ const PolicyTestPanel = forwardRef<PolicyTestHandle, Props>(({ isEnabled, mode, 
 
           {billable && (
             <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
-              <p className="text-sm font-medium text-amber-900">Azure Content Safety is on — test runs are billed</p>
+              <p className="text-sm font-medium text-amber-900">Content safety policy is on — test runs are billed</p>
               <p className="mt-1 text-sm text-amber-800">
-                Each run sends this text to Azure once for every stage it checks ({azureStages}
-                {azureStages === 1 ? ' stage' : ' stages'})
-                {shieldsOn ? ', and Prompt Shields is a further call on the prompt' : ''}. Text over 10,000 characters
-                is split into chunks that are billed separately. Presidio runs locally and costs nothing. Nothing is
-                sent until you press Run test.
+                Each run sends this text to an external moderation service once for every stage it checks (
+                {contentSafetyStages}
+                {contentSafetyStages === 1 ? ' stage' : ' stages'})
+                {injectionCheckOn ? ', and prompt injection detection is a further call on the prompt' : ''}. Text over
+                10,000 characters is split into chunks that are billed separately. PII redaction runs inside your
+                deployment and costs nothing. Nothing is sent until you press Run test.
               </p>
             </div>
           )}
@@ -212,20 +253,20 @@ const PolicyTestPanel = forwardRef<PolicyTestHandle, Props>(({ isEnabled, mode, 
 
           {!error && stages === null && (
             <div className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">
-              Run a test to see what each provider does to your text, at both stages.
+              Run a test to see what each check does to your text, at both stages.
             </div>
           )}
 
           {!error && stages?.length === 0 && (
             <div className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">
-              No providers ran. Nothing is configured for either stage.
+              No checks ran. Nothing is configured for either stage.
             </div>
           )}
 
           {!error && stages && stages.length > 0 && (
             <div className="flex flex-col gap-3">
               {stages.map((stage) => (
-                <StageResult key={stage.stage} stage={stage} />
+                <StageResult key={stage.stage} stage={stage} labels={entityLabels} />
               ))}
             </div>
           )}

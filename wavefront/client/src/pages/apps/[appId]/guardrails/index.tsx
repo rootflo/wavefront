@@ -27,7 +27,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import AdapterCard from './AdapterCard';
 import PolicyTestPanel, { PolicyTestHandle } from './PolicyTestPanel';
-import { ADAPTER_META } from './adapter-meta';
+import { ADAPTER_META, DEFAULT_UNAVAILABLE_HINT, adapterLabel } from './adapter-meta';
 
 /**
  * Canonical serialisation of a JSON-ish value: object keys and array members
@@ -35,7 +35,7 @@ import { ADAPTER_META } from './adapter-meta';
  *
  * Nothing in a policy payload is order-significant — `adapters`, `stages` and
  * the PII `entities` list are all sets — but the editor rebuilds them in
- * whichever order you clicked: toggling a provider off and on appends it at
+ * whichever order you clicked: toggling a check off and on appends it at
  * the end, and so does ticking a stage or an entity. Comparing raw
  * `JSON.stringify` output would call those unsaved changes, and an indicator
  * that cries wolf trains you to ignore the one time it is right.
@@ -108,7 +108,7 @@ const GuardrailsManagement: React.FC = () => {
 
   const configuredByName = useMemo(() => new Map(adapters.map((adapter) => [adapter.name, adapter])), [adapters]);
 
-  // Providers stored in the policy that this deployment cannot run.
+  // Checks stored in the policy that this deployment cannot run.
   //
   // These have to be surfaced, not filtered out. An unregistered adapter fails
   // closed, so one left in a policy blocks every request in the namespace --
@@ -211,7 +211,7 @@ const GuardrailsManagement: React.FC = () => {
             </SelectContent>
           </Select>
           {/*
-            The panel sits below the provider list, which is long enough that
+            The panel sits below the list of checks, which is long enough that
             it is off screen on load. This header is outside the scroll
             container, so it is the one place a jump-to control is always
             reachable.
@@ -252,7 +252,7 @@ const GuardrailsManagement: React.FC = () => {
         <div className="overflow-y-auto pb-8">
           {/*
             Two columns once there is room for them. The policy-wide switches
-            are short and the provider list is very long, so the left column is
+            are short and the list of checks is very long, so the left column is
             sticky: the master switch and enforcement mode stay reachable while
             scrolling a long entity selection, which is exactly when you want to
             flip back to Monitor.
@@ -265,8 +265,8 @@ const GuardrailsManagement: React.FC = () => {
                   <Switch checked={isEnabled} onCheckedChange={setIsEnabled} />
                 </div>
                 <p className="mt-1.5 text-sm text-gray-600">
-                  The master switch for <span className="font-medium">{namespace}</span>. While off, no safety provider
-                  is called and no checks run.
+                  The master switch for <span className="font-medium">{namespace}</span>. While off, none of the checks
+                  below run.
                 </p>
               </div>
 
@@ -295,14 +295,14 @@ const GuardrailsManagement: React.FC = () => {
 
             <div>
               {/*
-                Opaque background and a z-index, not just `sticky`: the provider
+                Opaque background and a z-index, not just `sticky`: the check
                 cards scroll underneath this, and a transparent header would let
                 their text show through it.
               */}
               <div className="sticky top-0 z-10 bg-white pb-4">
-                <h2 className="text-lg font-semibold text-gray-900">Safety providers</h2>
+                <h2 className="text-lg font-semibold text-gray-900">Safety checks</h2>
                 <p className="mt-1 text-sm text-gray-600">
-                  Each provider runs at the stages you select. Providers not enabled here are never called.
+                  Each check runs at the stages you select. Checks not enabled here are never called.
                 </p>
               </div>
               <div className="flex flex-col gap-4">
@@ -319,8 +319,8 @@ const GuardrailsManagement: React.FC = () => {
                 ))}
                 {supportedAdapters.length === 0 && (
                   <p className="text-sm text-gray-500">
-                    No safety providers are available on this deployment. Enabling guardrails without a working provider
-                    would block all traffic for this namespace, so none can be selected here.
+                    No safety checks are available on this deployment. Enabling guardrails without a working check would
+                    block all traffic for this namespace, so none can be selected here.
                   </p>
                 )}
                 {strandedAdapters.map((name) => (
@@ -329,10 +329,12 @@ const GuardrailsManagement: React.FC = () => {
                     className="flex items-center justify-between gap-4 rounded-lg border border-red-300 bg-red-50 p-4"
                   >
                     <div>
-                      <p className="text-sm font-medium text-red-900">{name} — not available on this deployment</p>
+                      <p className="text-sm font-medium text-red-900">
+                        {adapterLabel(name)} — not available on this deployment
+                      </p>
                       <p className="mt-1 text-sm text-red-700">
-                        This provider is saved in the policy but cannot run, so in Enforce mode it blocks every request
-                        for this namespace. Remove it, or switch back to Monitor while you fix the deployment.
+                        This check is saved in the policy but cannot run, so in Enforce mode it blocks every request for
+                        this namespace. Remove it, or switch back to Monitor while you fix the deployment.
                       </p>
                     </div>
                     <Button variant="outline" size="sm" onClick={() => handleToggleAdapter(name, false)}>
@@ -345,9 +347,9 @@ const GuardrailsManagement: React.FC = () => {
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <p className="text-sm font-medium text-gray-700">
-                          {ADAPTER_META[name]?.title ?? name}
+                          {adapterLabel(name)}
                           <span className="ml-2 rounded bg-gray-200 px-2 py-0.5 text-xs font-normal text-gray-600">
-                            Not installed
+                            Not available
                           </span>
                         </p>
                         {ADAPTER_META[name]?.description && (
@@ -357,9 +359,7 @@ const GuardrailsManagement: React.FC = () => {
                       <Switch checked={false} disabled />
                     </div>
                     <p className="mt-3 text-sm text-gray-600">
-                      {name === 'azure_content_safety'
-                        ? 'Set AZURE_CONTENT_SAFETY_ENDPOINT and AZURE_CONTENT_SAFETY_KEY on the server, then restart it. This provider becomes selectable here once it loads.'
-                        : 'This provider is missing a server-side dependency. Install it and restart the server to make it selectable here.'}
+                      {ADAPTER_META[name]?.unavailableHint ?? DEFAULT_UNAVAILABLE_HINT}
                     </p>
                   </div>
                 ))}
@@ -369,7 +369,13 @@ const GuardrailsManagement: React.FC = () => {
 
           <div className="max-w-[1400px]">
             <Separator className="my-6" />
-            <PolicyTestPanel ref={testPanelRef} isEnabled={isEnabled} mode={mode} adapters={adapters} />
+            <PolicyTestPanel
+              ref={testPanelRef}
+              isEnabled={isEnabled}
+              mode={mode}
+              adapters={adapters}
+              piiGroups={piiEntities?.groups}
+            />
           </div>
         </div>
       )}

@@ -29,8 +29,8 @@ const AdapterCard: React.FC<Props> = ({ name, config, disabled, onToggle, onChan
   const toggleStage = (stage: WorkflowStage, checked: boolean) => {
     if (!config) return;
     const stages = checked ? [...config.stages, stage] : config.stages.filter((item) => item !== stage);
-    // A provider with no stages would be saved but never invoked, which reads
-    // as "configured and working" while doing nothing.
+    // A check with no stages would be saved but never invoked, which reads as
+    // "configured and working" while doing nothing.
     onChange({ stages: stages.length ? stages : config.stages });
   };
 
@@ -75,7 +75,7 @@ const AdapterCard: React.FC<Props> = ({ name, config, disabled, onToggle, onChan
             {name === 'presidio_pii' && (piiGroups?.length ?? 0) === 0 && (
               <p className="rounded-md border border-dashed border-gray-300 bg-gray-50 p-3 text-xs text-gray-600">
                 The list of detectable identifiers could not be loaded, so there is nothing to choose from here. This
-                provider keeps running with its default set of high-precision identifiers — emails, phone numbers, card
+                check keeps running with its default set of high-precision identifiers — emails, phone numbers, card
                 numbers and similar.
               </p>
             )}
@@ -106,6 +106,7 @@ const AdapterCard: React.FC<Props> = ({ name, config, disabled, onToggle, onChan
                   open={testing}
                   onOpenChange={setTesting}
                   options={(config.options ?? {}) as Record<string, unknown>}
+                  groups={piiGroups}
                 />
               </>
             )}
@@ -127,8 +128,8 @@ const AdapterCard: React.FC<Props> = ({ name, config, disabled, onToggle, onChan
                     onValueChange={([value]) => setOption('severity_threshold', value)}
                   />
                   <p className="mt-2 text-xs text-gray-500">
-                    Azure reports 0, 2, 4 or 6. Blocking at low rejects a large share of ordinary traffic; medium is the
-                    usual starting point.
+                    Content is scored 0, 2, 4 or 6. Blocking at low rejects a large share of ordinary traffic; medium is
+                    the usual starting point.
                   </p>
                 </div>
 
@@ -138,7 +139,7 @@ const AdapterCard: React.FC<Props> = ({ name, config, disabled, onToggle, onChan
                     disabled={disabled}
                     onCheckedChange={(checked) => setOption('enable_prompt_shields', checked === true)}
                   />
-                  Detect prompt injection and jailbreak attempts (Prompt Shields)
+                  Detect prompt injection and jailbreak attempts
                 </label>
               </>
             )}
@@ -146,10 +147,10 @@ const AdapterCard: React.FC<Props> = ({ name, config, disabled, onToggle, onChan
             <div>
               <div className="flex items-center justify-between">
                 <div className="pr-8">
-                  <Label className="text-sm font-medium">If the provider is unavailable</Label>
+                  <Label className="text-sm font-medium">If this check cannot run</Label>
                   <p className="mt-1 text-xs text-gray-500">
-                    Applies to outages, timeouts and rate limiting. Content this provider refuses to process — oversized
-                    or non-text — is always blocked regardless of this setting.
+                    Applies to outages, timeouts and rate limiting. Content this check refuses to process — oversized or
+                    non-text — is always blocked regardless of this setting.
                   </p>
                 </div>
                 <Select value={config.on_error} onValueChange={(value) => onChange({ on_error: value as FailureMode })}>

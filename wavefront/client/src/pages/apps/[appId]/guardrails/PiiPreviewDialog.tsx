@@ -1,5 +1,5 @@
 import floConsoleService from '@app/api';
-import { PiiPreviewResult } from '@app/api/guardrails-service';
+import { PiiEntityGroup, PiiPreviewResult } from '@app/api/guardrails-service';
 import { Button } from '@app/components/ui/button';
 import {
   Dialog,
@@ -12,13 +12,16 @@ import {
 import { Label } from '@app/components/ui/label';
 import { Textarea } from '@app/components/ui/textarea';
 import { extractErrorMessage } from '@app/lib/utils';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { buildEntityLabels } from './adapter-meta';
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** The draft options being edited, sent as-is so preview matches the policy. */
   options: Record<string, unknown>;
+  /** Entity catalog, used to name detections the way the selector does. */
+  groups?: PiiEntityGroup[];
 }
 
 const MAX_CHARS = 4000;
@@ -68,7 +71,8 @@ const segments = (text: string, findings: PiiPreviewResult['findings']) => {
   return parts;
 };
 
-const PiiPreviewDialog: React.FC<Props> = ({ open, onOpenChange, options }) => {
+const PiiPreviewDialog: React.FC<Props> = ({ open, onOpenChange, options, groups }) => {
+  const labels = useMemo(() => buildEntityLabels(groups), [groups]);
   const [text, setText] = useState(SAMPLE);
   const [result, setResult] = useState<PiiPreviewResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -152,7 +156,11 @@ const PiiPreviewDialog: React.FC<Props> = ({ open, onOpenChange, options }) => {
                   ) : (
                     segments(text, result.findings).map((part, index) =>
                       part.entities ? (
-                        <mark key={index} title={part.entities.join(', ')} className="rounded bg-amber-200 px-0.5">
+                        <mark
+                          key={index}
+                          title={part.entities.map((entity) => labels.get(entity) ?? entity).join(', ')}
+                          className="rounded bg-amber-200 px-0.5"
+                        >
                           {part.text}
                         </mark>
                       ) : (
@@ -174,7 +182,7 @@ const PiiPreviewDialog: React.FC<Props> = ({ open, onOpenChange, options }) => {
                 <div className="flex flex-wrap gap-1.5">
                   {Object.entries(counts).map(([entity, count]) => (
                     <span key={entity} className="rounded bg-gray-100 px-2 py-0.5 text-[11px] text-gray-700">
-                      {entity} × {count}
+                      {labels.get(entity) ?? entity} × {count}
                     </span>
                   ))}
                 </div>
