@@ -4,8 +4,15 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
-# Matches agents/workflows: a name is a path-safe identifier, not free text.
-NAME_PATTERN = re.compile(r'^[a-zA-Z][a-zA-Z0-9_-]*$')
+# A name is an identifier, not free text -- close to the agents/workflows rule
+# in agents_module/utils/validation_utils.py, but requiring a leading letter
+# rather than a letter or digit.
+#
+# Anchored with \Z, not $: Python's $ also matches just before a trailing
+# newline, so `support-bot\n` would pass and be stored as a row distinct from
+# `support-bot` while rendering identically in the console -- two chatbots that
+# look the same and that the unique index cannot tell apart.
+NAME_PATTERN = re.compile(r'^[a-zA-Z][a-zA-Z0-9_-]*\Z')
 
 DEFAULT_NAMESPACE = 'default'
 

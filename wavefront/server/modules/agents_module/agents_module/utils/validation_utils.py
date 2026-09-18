@@ -18,8 +18,11 @@ def validate_agent_workflow_name(name: str, type: str = 'agent') -> None:
     if not name:
         raise ValueError(f'{type.capitalize()} name cannot be empty')
 
-    # Must start with a letter or number, followed by letters, numbers, hyphens, or underscores
-    pattern = r'^[a-zA-Z0-9][a-zA-Z0-9_-]*$'
+    # Must start with a letter or number, followed by letters, numbers, hyphens, or underscores.
+    # Anchored with \Z, not $: Python's $ also matches just before a trailing
+    # newline, so `my-agent\n` passed and then went straight into the cloud
+    # storage key agents/{namespace}/{name}/{version}.yaml.
+    pattern = r'^[a-zA-Z0-9][a-zA-Z0-9_-]*\Z'
 
     if not re.match(pattern, name):
         raise ValueError(

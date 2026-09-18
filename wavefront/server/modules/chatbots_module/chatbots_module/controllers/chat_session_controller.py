@@ -36,6 +36,18 @@ from chatbots_module.utils.constants import ROLE_ASSISTANT, ROLE_USER
 
 chat_session_router = APIRouter()
 
+# Shown to the caller when generation fails, on both the JSON and the SSE path.
+#
+# A single constant because the two paths must not drift, and because the
+# underlying exception must never reach the client: it comes from the provider
+# SDK, so it can carry the configured base_url (potentially an internal gateway
+# host), deployment names, org identifiers, or an API-key prefix on an auth
+# failure. Every route here is open to any authenticated user, not just admins.
+# The real error goes to the logs via logger.exception.
+MODEL_FAILURE_MESSAGE = (
+    'The model failed to respond. Your message was saved; please retry.'
+)
+
 SSE_HEADERS = {
     'Cache-Control': 'no-cache',
     'Connection': 'keep-alive',
@@ -423,9 +435,7 @@ async def send_message(
         logger.exception(f'Chat inference failed for session {session_id}')
         return JSONResponse(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            content=response_formatter.buildErrorResponse(
-                'The model failed to respond. Your message was saved; please retry.'
-            ),
+            content=response_formatter.buildErrorResponse(MODEL_FAILURE_MESSAGE),
         )
 
     assistant_message = await chat_session_service.add_message(
@@ -498,10 +508,11 @@ async def _stream_reply(
         with contextlib.suppress(asyncio.CancelledError):
             await asyncio.shield(persist())
         raise
-    except Exception as exc:
+    except Exception:
+        # The exception itself stays in the logs -- see MODEL_FAILURE_MESSAGE.
         logger.exception(f'Chat streaming failed for session {session.id}')
         await persist()
-        yield f'data: {json.dumps({"error": str(exc)})}\n\n'
+        yield f'data: {json.dumps({"error": MODEL_FAILURE_MESSAGE})}\n\n'
         return
 
     message_id = await persist()

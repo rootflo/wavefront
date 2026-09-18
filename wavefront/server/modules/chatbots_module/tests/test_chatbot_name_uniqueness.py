@@ -41,7 +41,20 @@ def test_it_is_restricted_to_live_rows():
         'without a WHERE clause this is a global unique index, and a '
         'soft-deleted chatbot keeps its name reserved'
     )
-    assert 'is_deleted' in str(where)
+
+    # Normalised rather than compared verbatim: `text('is_deleted = false')`
+    # and `Chatbot.is_deleted.is_(False)` mean the same thing but stringify
+    # differently ('is_deleted = false' vs 'chatbots.is_deleted IS false'), and
+    # a spelling change should not fail this test.
+    predicate = ' '.join(str(where).lower().split())
+
+    assert 'is_deleted' in predicate
+    # The value matters as much as the column. `is_deleted = true` would invert
+    # the index -- uniqueness enforced across deleted rows only, so two live
+    # chatbots could share a name -- and would satisfy a bare column-name check.
+    assert predicate.endswith(
+        'false'
+    ), f'predicate must restrict the index to live rows, got: {predicate}'
 
 
 def test_no_table_level_unique_constraint_on_the_name():

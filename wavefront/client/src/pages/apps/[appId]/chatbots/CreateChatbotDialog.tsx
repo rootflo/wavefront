@@ -15,7 +15,7 @@ import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { CreateChatbotRequest } from '@app/types/chatbot';
 import { zodResolver } from '@hookform/resolvers/zod';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 
 import ChatbotFormFields from './ChatbotFormFields';
@@ -29,6 +29,17 @@ interface CreateChatbotDialogProps {
   defaultNamespace?: string;
   onSuccess: () => void;
 }
+
+const buildDefaultValues = (namespace: string): ChatbotFormValues => ({
+  name: '',
+  namespace,
+  description: '',
+  system_prompt: '',
+  welcome_message: '',
+  llm_config_id: '',
+  temperature: '',
+  enabled: false,
+});
 
 const CreateChatbotDialog: React.FC<CreateChatbotDialogProps> = ({
   isOpen,
@@ -44,17 +55,22 @@ const CreateChatbotDialog: React.FC<CreateChatbotDialogProps> = ({
 
   const form = useForm<ChatbotFormValues>({
     resolver: zodResolver(chatbotFormSchema),
-    defaultValues: {
-      name: '',
-      namespace: defaultNamespace,
-      description: '',
-      system_prompt: '',
-      welcome_message: '',
-      llm_config_id: '',
-      temperature: '',
-      enabled: false,
-    },
+    defaultValues: buildDefaultValues(defaultNamespace),
   });
+
+  // This dialog is mounted for the life of the page and only toggled via
+  // isOpen, so defaultValues is read once on first render. Without this reset,
+  // changing the list's namespace filter and then opening the dialog would show
+  // the namespace that was selected when the page first loaded -- and a chatbot
+  // created under it would immediately vanish from the filtered list.
+  //
+  // Safe to depend on defaultNamespace: the dialog is modal, so the filter
+  // behind it cannot be changed while the form is open and being edited.
+  useEffect(() => {
+    if (isOpen) {
+      form.reset(buildDefaultValues(defaultNamespace));
+    }
+  }, [defaultNamespace, form, isOpen]);
 
   const onSubmit = async (data: ChatbotFormValues) => {
     setSubmitting(true);
@@ -76,7 +92,7 @@ const CreateChatbotDialog: React.FC<CreateChatbotDialogProps> = ({
 
       await floConsoleService.chatbotService.createChatbot(payload);
       notifySuccess('Chatbot created successfully');
-      form.reset();
+      form.reset(buildDefaultValues(defaultNamespace));
       onSuccess();
     } catch (error) {
       notifyError(extractErrorMessage(error) || 'Failed to create chatbot');
@@ -86,7 +102,7 @@ const CreateChatbotDialog: React.FC<CreateChatbotDialogProps> = ({
   };
 
   const handleOpenChange = (open: boolean) => {
-    if (!open) form.reset();
+    if (!open) form.reset(buildDefaultValues(defaultNamespace));
     onOpenChange(open);
   };
 
