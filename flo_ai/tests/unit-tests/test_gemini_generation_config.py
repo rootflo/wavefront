@@ -79,8 +79,8 @@ class TestGenerationConfig:
         assert config.max_output_tokens == 500
 
     def test_an_unsupported_param_is_skipped_not_raised(self):
-        """Gemini has no top_k equivalent on this config; warn and carry on."""
-        llm = gemini_llm(service_tier='auto', top_p=0.9)
+        """A param with no field on this config is warned about, not raised."""
+        llm = gemini_llm(not_a_gemini_config_field='x', top_p=0.9)
 
         config = llm._generation_config('sys', {})
 
