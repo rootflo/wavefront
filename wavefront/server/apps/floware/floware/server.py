@@ -324,7 +324,7 @@ app = FastAPI(
 
 # Providers must exist before any instrumentation is attached. The FastAPI app
 # itself is instrumented further down, after all other middleware is registered.
-configure_telemetry_providers(default_service_name='wavefront-floware')
+configure_telemetry_providers(default_service_name=config['env_config']['app_name'])
 
 floware_base_url = os.getenv('FLOWARE_BASE_URL', 'http://localhost:8001')
 
