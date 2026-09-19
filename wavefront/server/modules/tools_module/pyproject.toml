@@ -26,9 +26,6 @@ dev = [
     "pytest-asyncio>=0.24.0,<1.0.0",
 ]
 
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-
 [tool.uv]
 package = true
 

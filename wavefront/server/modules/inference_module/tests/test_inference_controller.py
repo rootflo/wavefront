@@ -1,32 +1,11 @@
 import pytest
 from fastapi import status
 from sqlalchemy.ext.asyncio import AsyncSession
-from db_repo_module.models.session import Session
-from db_repo_module.models.user import User
 from db_repo_module.models.model_schema import ModelSchema
 import io
 from unittest.mock import Mock
 import uuid
-
-
-async def create_session(test_session: AsyncSession, test_user_id, test_session_id):
-    user = User(
-        id=test_user_id,
-        email='test@example.com',
-        password='hashed_password',
-        first_name='Test',
-        last_name='User',
-    )
-
-    # Create a session in the database
-    db_session = Session(
-        id=test_session_id, user_id=test_user_id, device_info='test_device'
-    )
-
-    async with test_session() as session:
-        session.add(user)
-        session.add(db_session)
-        await session.commit()
+from flo_testing import seed_user_session as create_session
 
 
 @pytest.mark.asyncio
