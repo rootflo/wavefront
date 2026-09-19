@@ -24,5 +24,10 @@ class CommonCache(ABC):
         pass
 
     @abstractmethod
+    def incr_with_expiry(self, key: str, expiry: int) -> int:
+        """INCR a fixed-window counter, setting the TTL on the first hit."""
+        pass
+
+    @abstractmethod
     def remove(self, key: str) -> bool:
         pass

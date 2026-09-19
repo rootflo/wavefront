@@ -170,6 +170,27 @@ class UpdateUser(BaseModel):
         return v
 
 
+class SendResetPasswordEmail(BaseModel):
+    email: EmailStr = Field(..., max_length=254)
+
+    @field_validator('email')
+    @classmethod
+    def validate_email_format(cls, v):
+        if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', v):
+            raise ValueError('Invalid email format')
+        if '..' in v:
+            raise ValueError('Email cannot contain consecutive dots')
+        domain = v.split('@')[1]
+        if len(domain.split('.')) < 2:
+            raise ValueError('Invalid email domain')
+        if len(domain) > 255:
+            raise ValueError('Email domain too long')
+        tld = domain.split('.')[-1]
+        if not 2 <= len(tld) <= 63:
+            raise ValueError('Invalid TLD length')
+        return v.lower()
+
+
 class ResetUser(BaseModel):
     secret_token: str = Field(..., min_length=1)
     new_password: str = Field(..., min_length=8)

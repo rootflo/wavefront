@@ -30,7 +30,7 @@ from plugins_module.services.authenticator_services import (
 from user_management_module.user_container import UserContainer
 from user_management_module.services.user_service import UserService
 from user_management_module.utils.password_utils import verify_password
-from user_management_module.utils.user_utils import get_session_cache_key
+from user_management_module.constants.cache import get_session_cache_key
 
 from authenticator import AuthenticatorType
 from authenticator.helper import validate_email
