@@ -21,7 +21,7 @@ from fastapi import Depends
 from user_management_module.services.account_lockout_service import (
     AccountLockoutService,
 )
-from user_management_module.services.email_service import EmailService
+from user_management_module.services.email_sender import EmailSender
 from user_management_module.services.user_service import UserService
 from user_management_module.user_container import UserContainer
 
@@ -62,7 +62,9 @@ UserServiceDep = Annotated[UserService, Depends(Provide[UserContainer.user_servi
 CacheManagerDep = Annotated[CacheManager, Depends(Provide[UserContainer.cache_manager])]
 CommonCacheDep = Annotated[CommonCache, Depends(Provide[CommonContainer.cache_manager])]
 TokenServiceDep = Annotated[TokenService, Depends(Provide[AuthContainer.token_service])]
-EmailServiceDep = Annotated[EmailService, Depends(Provide[UserContainer.email_service])]
+EmailSenderDep = Annotated[
+    EmailSender, Depends(Provide[UserContainer.email_send_service])
+]
 AccountLockoutServiceDep = Annotated[
     AccountLockoutService,
     Depends(Provide[UserContainer.account_lockout_service]),

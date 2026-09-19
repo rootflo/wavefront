@@ -39,10 +39,10 @@ class AgenticTrigger(Base):
     )
     filter_config: Mapped[dict] = mapped_column(JSONB, nullable=True)
     provider_config: Mapped[dict] = mapped_column(JSONB, nullable=True)
-    credential_id: Mapped[uuid.UUID] = mapped_column(
+    connection_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey('agentic_trigger_credentials.id', ondelete='SET NULL'),
-        nullable=True,
+        ForeignKey('email_connections.id', ondelete='RESTRICT'),
+        nullable=False,
         index=True,
     )
     last_error: Mapped[str] = mapped_column(Text, nullable=True)
@@ -62,7 +62,7 @@ class AgenticTrigger(Base):
             'status': self.status,
             'filter_config': self.filter_config,
             'provider_config': self.provider_config,
-            'credential_id': str(self.credential_id) if self.credential_id else None,
+            'connection_id': str(self.connection_id),
             'last_error': self.last_error,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,

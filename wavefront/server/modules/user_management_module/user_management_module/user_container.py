@@ -12,10 +12,6 @@ from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyReposit
 from dependency_injector import containers
 from dependency_injector import providers
 from user_management_module.services.user_service import UserService
-from user_management_module.services.email_service import (
-    OutlookEmailService,
-    GmailEmailService,
-)
 from user_management_module.services.account_lockout_service import (
     AccountLockoutService,
 )
@@ -28,6 +24,11 @@ class UserContainer(containers.DeclarativeContainer):
     config = providers.Configuration(ini_files=['config.ini'])
     db_client = providers.Dependency()
     cache_manager = providers.Dependency()
+
+    # plugins_module's EmailSendService, handed in by the app: it depends on this
+    # module, so the dependency cannot point the other way. Password reset mail
+    # goes out through the primary email connection.
+    email_send_service = providers.Dependency()
     user_repository = providers.Singleton(
         SQLAlchemyRepository[User], model=User, db_client=db_client
     )
@@ -74,24 +75,6 @@ class UserContainer(containers.DeclarativeContainer):
         SQLAlchemyRepository[AuthSecrets],
         model=AuthSecrets,
         db_client=db_client,
-    )
-
-    email_service = providers.Selector(
-        selector=config.email.email_provider,
-        outlook=providers.Singleton(
-            OutlookEmailService,
-            client_id=config.outlook.client_id,
-            client_secret=config.outlook.client_secret,
-            tenant_id=config.outlook.tenant_id,
-            email_sender=config.outlook.email_id,
-        ),
-        gmail=providers.Singleton(
-            GmailEmailService,
-            client_id=config.gmail.client_id,
-            client_secret=config.gmail.client_secret,
-            refresh_token=config.gmail.refresh_token,
-            email_sender=config.gmail.email_sender,
-        ),
     )
 
     user_service = providers.Singleton(

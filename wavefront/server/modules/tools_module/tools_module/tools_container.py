@@ -5,6 +5,7 @@ from tools_module.services.tool_service import ToolService
 
 
 from tools_module.datasources.provider import DatasourceToolDetailsProvider
+from tools_module.email.provider import EmailToolDetailsProvider
 from tools_module.knowlegebase.provider import KnowledgeBaseToolDetailsProvider
 from tools_module.message_processor.provider import MessageProcessorToolDetailsProvider
 from tools_module.api_service.provider import ApiServiceToolDetailsProvider
@@ -15,6 +16,7 @@ class ToolsContainer(containers.DeclarativeContainer):
     """Dependency injection container for tools module"""
 
     datasource_repository = providers.Dependency()
+    email_connection_repository = providers.Dependency()
     knowledge_base_repository = providers.Dependency()
     knowledge_base_inference_repository = providers.Dependency()
     message_processor_repository = providers.Dependency()
@@ -30,6 +32,11 @@ class ToolsContainer(containers.DeclarativeContainer):
     # Tool Providers
     datasource_tool_provider = providers.Singleton(
         DatasourceToolDetailsProvider, datasource_repository=datasource_repository
+    )
+
+    email_tool_provider = providers.Singleton(
+        EmailToolDetailsProvider,
+        email_connection_repository=email_connection_repository,
     )
 
     knowledge_base_tool_provider = providers.Singleton(
@@ -58,6 +65,7 @@ class ToolsContainer(containers.DeclarativeContainer):
         tool_loader=tool_loader,
         tool_providers=providers.List(
             datasource_tool_provider,
+            email_tool_provider,
             knowledge_base_tool_provider,
             message_processor_tool_provider,
             api_service_tool_provider,

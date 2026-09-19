@@ -3,12 +3,12 @@ from abc import ABC, abstractmethod
 
 class FloKMS(ABC):
     @abstractmethod
-    def encrypt(self, plaintext: str) -> bytes:
-        pass
+    def encrypt(self, plaintext: str | bytes) -> bytes:
+        """Encrypt plaintext. Returns raw ciphertext bytes."""
 
     @abstractmethod
-    def decrypt(self, ciphertext: str) -> bytes:
-        pass
+    def decrypt(self, ciphertext: bytes) -> bytes:
+        """Decrypt raw ciphertext bytes. Returns plaintext bytes."""
 
     @abstractmethod
     def sign(self, message: bytes, **kwargs) -> bytes:

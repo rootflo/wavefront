@@ -41,7 +41,6 @@ optional_auth_apis = [
     '/openapi.json',
     '/floware/v1/user/send-reset-password-email',
     '/floware/v1/user/reset-password',
-    '/floware/v1/data-sources/outlook/webhook/email_received',
     '/v1/_metrics',
     '/floware/v1/plugin-auth/authenticate',
     '/floware/v1/oauth/google/callback',
@@ -49,7 +48,9 @@ optional_auth_apis = [
     '/floware/v1/oauth/adfs/callback',
     '/floware/v1/plugin-auth/oauth/init',
     '/floware/v1/settings/config',
-    '/floware/v1/triggers/oauth/google/callback',
+    # The user arrives here from the provider's consent screen, so there is no
+    # session to check; the OAuth state binds the callback to its connection.
+    '/floware/v1/email-connections/oauth/callback',
     '/floware/v1/triggers/{trigger_id}/{agentic_id}/invoke',
 ]
 

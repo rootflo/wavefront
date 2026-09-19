@@ -27,6 +27,12 @@ class CreateTriggerRequest(BaseModel):
     provider: TriggerProviderLiteral
     entity_type: TriggerEntityTypeLiteral
     entity_id: UUID
+    connection_id: UUID = Field(
+        description=(
+            'An existing active email connection to watch. Connect the mailbox '
+            'through /v1/email-connections first.'
+        ),
+    )
     namespace: Optional[str] = None
     filter_config: TriggerFilterConfig = Field(default_factory=TriggerFilterConfig)
     provider_config: Optional[Dict[str, Any]] = None
@@ -35,9 +41,9 @@ class CreateTriggerRequest(BaseModel):
 class CreateTriggerResponse(BaseModel):
     trigger_id: UUID
     status: TriggerStatusLiteral
-    consent_url: Optional[str] = Field(
+    mailbox_email: Optional[str] = Field(
         default=None,
-        description='OAuth consent URL when the provider requires user authorization.',
+        description='The mailbox being watched, taken from the connection.',
     )
 
 
@@ -51,7 +57,7 @@ class TriggerResponse(BaseModel):
     status: TriggerStatusLiteral
     filter_config: Optional[Dict[str, Any]] = None
     provider_config: Optional[Dict[str, Any]] = None
-    credential_id: Optional[UUID] = None
+    connection_id: UUID
     last_error: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

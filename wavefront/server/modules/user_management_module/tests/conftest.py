@@ -1,5 +1,5 @@
 import json
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
 from auth_module.auth_container import AuthContainer
@@ -127,17 +127,17 @@ def setup_containers(
     mock_superset_service.generate_guest_token.return_value = 'mock_guest_token'
     auth_container.superset_service.override(mock_superset_service)
 
+    # Password reset mail goes out through plugins_module's EmailSendService,
+    # which the app hands in; the tests stand in a mock for it.
+    mock_email_sender = Mock()
+    mock_email_sender.send = AsyncMock(return_value=True)
+
     user_container = UserContainer(
         db_client=db_repo_container.db_client,
         cache_manager=cache_manager_mock,
+        email_send_service=mock_email_sender,
     )
     user_container.config.override(mock_config)
-
-    # Mock email service
-    # Mock email service
-    mock_email_service = Mock()
-    mock_email_service.send_forget_password_email.return_value = True
-    user_container.email_service.override(mock_email_service)
 
     # Setup KnowledgeBaseContainer for auth_module.controllers (outlook_controller)
     knowledge_base_container = KnowledgeBaseContainer(
@@ -166,7 +166,7 @@ def setup_containers(
         'cloud_config': {'cloud_provider': 'gcp'},
         'floware': {'asset_storage_bucket': 'test_bucket'},
         'gcp': {
-            'email_topic_id': 'test_topic',
+            'rag_topic_id': 'test_topic',
         },
         'aws': {
             'queue_url': 'test_queue_url',
@@ -180,9 +180,6 @@ def setup_containers(
             'auth_module.controllers',
         ]
     )
-
-    mock_email_service.send_forget_password_email.return_value = True
-    user_container.email_service.override(mock_email_service)
 
     common_container.wire(
         packages=[

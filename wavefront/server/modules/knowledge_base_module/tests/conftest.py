@@ -217,7 +217,7 @@ def setup_containers(test_engine, test_session, test_user_id, test_session_id):
         'cloud_config': {'cloud_provider': 'gcp'},
         'floware': {'asset_storage_bucket': 'test_bucket'},
         'gcp': {
-            'email_topic_id': 'test_topic',
+            'rag_topic_id': 'test_topic',
         },
         'aws': {
             'queue_url': 'test_queue_url',

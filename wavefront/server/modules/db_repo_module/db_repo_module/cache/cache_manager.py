@@ -151,6 +151,28 @@ class CacheManager(CommonCache):
         value = self.get_str(key, default)
         return int(value) if value is not None else default
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        retry=retry_if_exception_type((RedisError, ConnectionError, TimeoutError)),
+    )
+    def pop_str(self, key: str, default: Any = None) -> Optional[str]:
+        """GETDEL when available; otherwise a GET+DEL pipeline."""
+        namespaced = f'{self.namespace}/{key}'
+        try:
+            getdel = getattr(self.redis, 'getdel', None)
+            if callable(getdel):
+                value = getdel(namespaced)
+            else:
+                pipe = self.redis.pipeline()
+                pipe.get(namespaced)
+                pipe.delete(namespaced)
+                value, _ = pipe.execute()
+            return value if value is not None else default
+        except (RedisError, ConnectionError, TimeoutError) as e:
+            logger.error(f'Error popping key: {key} from cache: {e}')
+            raise
+
     # Retries on the same terms as add()/get_str(). A dropped delete is the one
     # failure that outlives the request: the key keeps serving the pre-write
     # value until its TTL expires, so a transient blip here means stale reads

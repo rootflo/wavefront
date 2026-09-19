@@ -2,17 +2,15 @@ import uuid
 from typing import Any, Dict, Optional
 from uuid import UUID
 
+from agents_module.utils.celery_client import get_celery_client
 from common_module.log.logger import logger
 from db_repo_module.models.agentic_trigger import AgenticTrigger
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
-
-from agents_module.utils.celery_client import get_celery_client
-from triggers_module.providers.gmail.pubsub_signature import (
-    PubSubPushVerifier,
-    PubSubSignatureError,
+from mailer import PushSignatureError
+from plugins_module.services.email_connection_service import (
+    EmailConnectionError,
+    EmailConnectionService,
 )
-from triggers_module.providers.registry import TriggerProviderRegistry
-
 
 _TRIGGER_EVENT_TASK_NAME = (
     'celery_worker.tasks.trigger_event_task.process_trigger_event_task'
@@ -37,12 +35,10 @@ class TriggerPushReceiver:
     def __init__(
         self,
         trigger_repository: SQLAlchemyRepository[AgenticTrigger],
-        pubsub_verifier: PubSubPushVerifier,
-        provider_registry: TriggerProviderRegistry,
+        email_connection_service: EmailConnectionService,
     ):
         self._triggers = trigger_repository
-        self._verifier = pubsub_verifier
-        self._registry = provider_registry
+        self._connections = email_connection_service
 
     async def handle_push(
         self,
@@ -64,27 +60,40 @@ class TriggerPushReceiver:
                 f'{trigger.entity_id}'
             )
 
-        if trigger.provider == 'gmail':
-            oidc_audience = (trigger.provider_config or {}).get('oidc_audience')
-            if not oidc_audience:
-                logger.warning(
-                    f'Missing oidc_audience for gmail trigger {trigger_id}; refusing push'
-                )
-                return {'status': 'ignored', 'reason': 'missing_oidc_audience'}
-            try:
-                self._verifier.verify(
-                    authorization_header, expected_audience=oidc_audience
-                )
-            except PubSubSignatureError as exc:
-                logger.warning(
-                    f'Pub/Sub signature verification failed for trigger {trigger_id}: {exc}'
-                )
-                return {'status': 'ignored', 'reason': 'invalid_signature'}
+        try:
+            connection = await self._connections.require_active(trigger.connection_id)
+            provider = await self._connections.get_provider(connection)
+        except EmailConnectionError as exc:
+            logger.warning(
+                f'Cannot resolve email connection for trigger {trigger_id}: {exc}'
+            )
+            return {'status': 'ignored', 'reason': 'connection_unavailable'}
+
+        # Only verifiable when the watch was registered with an OIDC push config;
+        # without an audience/identity there is no signature to check.
+        provider_config = trigger.provider_config or {}
+        oidc_audience = provider_config.get('oidc_audience')
+        oidc_service_account_email = provider_config.get('oidc_service_account_email')
+        if not oidc_audience or not oidc_service_account_email:
+            logger.warning(
+                f'Missing OIDC push binding for trigger {trigger_id}; refusing push'
+            )
+            return {'status': 'ignored', 'reason': 'missing_oidc_audience'}
+        try:
+            provider.verify_push(
+                authorization_header,
+                expected_audience=oidc_audience,
+                expected_service_account_email=oidc_service_account_email,
+            )
+        except PushSignatureError as exc:
+            logger.warning(
+                f'Push signature verification failed for trigger {trigger_id}: {exc}'
+            )
+            return {'status': 'ignored', 'reason': 'invalid_signature'}
 
         # Layer-2 dedup: skip pushes whose cursor we've already processed.
-        provider = self._registry.get(trigger.provider)
         incoming_cursor = provider.extract_push_cursor(raw_payload)
-        stored_cursor = (trigger.provider_config or {}).get('history_id')
+        stored_cursor = provider_config.get('history_id')
         if (
             incoming_cursor is not None
             and stored_cursor is not None

@@ -6,12 +6,16 @@ from db_repo_module.models.message_processors import MessageProcessors
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from plugins_module.services.configuration_service import ConfigurationService
 from plugins_module.services.dynamic_query_service import DynamicQueryService
+from plugins_module.services.oauth_app_service import OAuthAppService
+from plugins_module.services.email_connection_service import EmailConnectionService
+from plugins_module.services.email_send_service import EmailSendService
 from plugins_module.services.message_processor_service import MessageProcessorService
 from plugins_module.services.datasource_audit_service import DatasourceAuditService
 from plugins_module.services.change_notification_service import (
     ChangeNotificationService,
 )
 from flo_cloud.cloud_storage import CloudStorageManager
+from flo_cloud.kms import FloKmsService
 
 
 class PluginsContainer(containers.DeclarativeContainer):
@@ -35,6 +39,12 @@ class PluginsContainer(containers.DeclarativeContainer):
     datasource_audit_log_repository = providers.Dependency()
 
     notification_repository = providers.Dependency()
+
+    # Declared in db_repo_container with every other repository; the email
+    # services read and write them through this container.
+    oauth_app_repository = providers.Dependency()
+
+    email_connection_repository = providers.Dependency()
 
     datasource_repository = providers.Singleton(
         SQLAlchemyRepository[Datasource],
@@ -96,4 +106,29 @@ class PluginsContainer(containers.DeclarativeContainer):
         message_processor_repository=message_processor_repository,
         hermes_url=config.hermes.url,
         bucket_name=config.floware.asset_storage_bucket,
+    )
+
+    # Email: OAuth apps hold client secrets and connections hold mailbox tokens.
+    kms_service = providers.Singleton(
+        FloKmsService, cloud_provider=config.cloud_config.cloud_provider
+    )
+
+    oauth_app_service = providers.Singleton(
+        OAuthAppService,
+        oauth_app_repository=oauth_app_repository,
+        kms_service=kms_service,
+    )
+
+    email_connection_service = providers.Singleton(
+        EmailConnectionService,
+        connection_repository=email_connection_repository,
+        oauth_app_repository=oauth_app_repository,
+        oauth_app_service=oauth_app_service,
+        kms_service=kms_service,
+        cache_manager=cache_manager,
+    )
+
+    email_send_service = providers.Singleton(
+        EmailSendService,
+        connection_service=email_connection_service,
     )

@@ -6,6 +6,7 @@ import os
 import re
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from apscheduler.triggers.cron import CronTrigger
@@ -29,10 +30,15 @@ from plugins_module.services.datasource_services import (
     fetch_data_filters,
     get_datasource_config,
 )
+from plugins_module.services.email_connection_service import (
+    EmailConnectionError,
+    EmailConnectionService,
+)
+from plugins_module.services.email_send_service import EmailSendService
+from mailer import EmailCapability
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from user_management_module.constants.auth import SERVICE_AUTH_ROLE_ID
-from user_management_module.services.email_service import EmailService
 from user_management_module.services.user_service import UserService
 
 STALE_LOCK_TIMEOUT_MINUTES = 30
@@ -63,7 +69,8 @@ class ScheduledJobService:
         dynamic_query_repository: SQLAlchemyRepository[DynamicQueryYaml],
         cloud_storage_manager,
         bucket_name: str,
-        email_service: EmailService,
+        email_send_service: EmailSendService,
+        email_connection_service: EmailConnectionService,
         user_repository: SQLAlchemyRepository[User],
         user_service: UserService,
         role_repository: SQLAlchemyRepository[Role],
@@ -76,7 +83,8 @@ class ScheduledJobService:
         self.dynamic_query_repository = dynamic_query_repository
         self.cloud_storage_manager = cloud_storage_manager
         self.bucket_name = bucket_name
-        self.email_service = email_service
+        self.email_send_service = email_send_service
+        self.email_connection_service = email_connection_service
         self.user_repository = user_repository
         self.user_service = user_service
         self.role_repository = role_repository
@@ -154,6 +162,7 @@ class ScheduledJobService:
         max_retries: int,
     ) -> ScheduledJob:
         next_run_at = self._compute_next_run_at(cron_expr, timezone_name)
+        await self._validate_email_connection(payload)
         return await self.scheduled_job_repository.create(
             job_type=job_type,
             cron_expr=cron_expr,
@@ -230,6 +239,7 @@ class ScheduledJobService:
             updates['timezone'] = effective_tz
 
         if payload is not None:
+            await self._validate_email_connection(payload)
             updates['payload'] = payload
         if max_retries is not None:
             updates['max_retries'] = max_retries
@@ -485,6 +495,45 @@ class ScheduledJobService:
             ),
             'params': merged_params,
         }
+
+    async def _validate_email_connection(self, payload: dict) -> None:
+        """Reject a sender that cannot actually send, at save time.
+
+        A job that names an unusable connection would otherwise fail on its next
+        scheduled run, long after whoever configured it stopped watching.
+        """
+        connection_id = self._email_connection_id(payload)
+        if connection_id is None:
+            raise ValueError('payload.email_connection_id is required')
+
+        try:
+            connection = await self.email_connection_service.require_active(
+                connection_id
+            )
+            provider = await self.email_connection_service.get_provider(connection)
+        except EmailConnectionError as exc:
+            raise ValueError(f'payload.email_connection_id is unusable: {exc}') from exc
+
+        if EmailCapability.SEND not in provider.capabilities_for(
+            connection.granted_scopes
+        ):
+            raise ValueError(
+                f'Email connection {connection.mailbox_email} has not been granted '
+                'permission to send email'
+            )
+
+    @staticmethod
+    def _email_connection_id(payload: dict) -> UUID | None:
+        """The job's sender connection id, or None when absent."""
+        raw = payload.get('email_connection_id')
+        if raw is None or not str(raw).strip():
+            return None
+        try:
+            return UUID(str(raw).strip())
+        except ValueError:
+            raise ValueError(
+                f'payload.email_connection_id is not a valid id: {raw!r}'
+            ) from None
 
     @staticmethod
     def _normalize_recipient_user_ids(payload: dict) -> list[str]:
@@ -1026,6 +1075,9 @@ class ScheduledJobService:
     async def _execute_email_dynamic_query_job(self, payload: dict, job_timezone: str):
         query_specs = self._normalize_query_specs(payload)
         recipient_user_ids = self._normalize_recipient_user_ids(payload)
+        email_connection_id = self._email_connection_id(payload)
+        if email_connection_id is None:
+            raise ValueError('payload.email_connection_id is required')
         email_content = payload.get('email_content')
         if email_content is not None and not isinstance(email_content, str):
             email_content = None
@@ -1235,11 +1287,12 @@ class ScheduledJobService:
                 for r in prepared_reports
                 if r['use_attachment']
             ]
-            is_sent = self.email_service.send_email(
-                subject,
-                body,
-                user.email,
+            is_sent = await self.email_send_service.send(
+                subject=subject,
+                body_html=body,
+                recipients=user.email,
                 attachments=attachments or None,
+                connection_id=email_connection_id,
             )
             if not is_sent:
                 failed_recipient_user_ids.append(user_id)
