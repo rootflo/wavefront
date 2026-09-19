@@ -1,10 +1,10 @@
 import base64
+import binascii
 import json
 import jwt
 import hashlib
 
-from datetime import datetime
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any
 from flo_cloud._types import FloKMS
@@ -62,7 +62,7 @@ class TokenService:
         if not is_temporary and (sub is None or user_id is None or role_id is None):
             raise ValueError('Required values are missing for creating a token')
 
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         data = {
             key: value
             for key, value in [
@@ -111,25 +111,47 @@ class TokenService:
             )
             return decoded
         else:
-            header_b64, payload_b64, signature_b64 = token.split('.')
+            try:
+                header_b64, payload_b64, signature_b64 = token.split('.')
+            except ValueError as e:
+                raise jwt.InvalidTokenError("Invalid token format") from e
 
-            message = f'{header_b64}.{payload_b64}'
-            digest = hashlib.sha256(message.encode()).digest()
-            signature = self._base64url_decode(signature_b64)
+            try:
+                message = f'{header_b64}.{payload_b64}'
+                digest = hashlib.sha256(message.encode()).digest()
+                signature = self._base64url_decode(signature_b64)
+            except (binascii.Error, ValueError) as e:
+                raise jwt.InvalidTokenError("Invalid token format") from e
 
-            is_valid = self.kms_service.verify(message=digest, signature=signature)
+            try:
+                is_valid = self.kms_service.verify(message=digest, signature=signature)
+            except (binascii.Error, ValueError, TypeError, json.JSONDecodeError) as e:
+                raise jwt.InvalidTokenError("Invalid token signature") from e
+            except Exception as e:
+                raise jwt.InvalidTokenError("Invalid token signature") from e
+
             if not is_valid:
                 return {}
 
-            public_key_pem = self.kms_service.get_public_key_pem()
+            try:
+                public_key_pem = self.kms_service.get_public_key_pem()
+            except Exception as e:
+                raise jwt.InvalidTokenError("Invalid token") from e
 
-            decoded = jwt.decode(
-                token,
-                public_key_pem,
-                algorithms=[self.algorithm],
-                issuer=self.issuer,
-                audience=self.audience,
-            )
+            try:
+                decoded = jwt.decode(
+                    token,
+                    public_key_pem,
+                    algorithms=[self.algorithm],
+                    issuer=self.issuer,
+                    audience=self.audience,
+                )
+            except jwt.InvalidTokenError:
+                raise
+            except (binascii.Error, ValueError, json.JSONDecodeError, KeyError) as e:
+                raise jwt.InvalidTokenError("Invalid token") from e
+            except Exception as e:
+                raise jwt.InvalidTokenError("Invalid token") from e
             return decoded
 
     def _base64url_encode(self, data: bytes) -> str:
