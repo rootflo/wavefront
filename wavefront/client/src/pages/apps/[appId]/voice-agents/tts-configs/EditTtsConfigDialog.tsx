@@ -9,15 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@app/components/ui/dialog';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@app/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Textarea } from '@app/components/ui/textarea';
@@ -112,7 +104,7 @@ const EditTtsConfigDialog: React.FC<EditTtsConfigDialogProps> = ({ isOpen, onOpe
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto lg:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Edit TTS Configuration</DialogTitle>
           <DialogDescription>Update the Text-to-Speech provider configuration</DialogDescription>
@@ -132,7 +124,6 @@ const EditTtsConfigDialog: React.FC<EditTtsConfigDialogProps> = ({ isOpen, onOpe
                     <FormControl>
                       <Input placeholder="e.g., ElevenLabs Production" maxLength={100} {...field} />
                     </FormControl>
-                    <FormDescription>{field.value?.length || 0}/100 characters</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -163,7 +154,6 @@ const EditTtsConfigDialog: React.FC<EditTtsConfigDialogProps> = ({ isOpen, onOpe
                         })}
                       </SelectContent>
                     </Select>
-                    <FormDescription>Provider cannot be changed after creation</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -184,7 +174,6 @@ const EditTtsConfigDialog: React.FC<EditTtsConfigDialogProps> = ({ isOpen, onOpe
                       {...field}
                     />
                   </FormControl>
-                  <FormDescription>{field.value?.length || 0}/500 characters</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

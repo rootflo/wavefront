@@ -8,15 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@app/components/ui/dialog';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@app/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { useGetNamespaces } from '@app/hooks';
@@ -214,10 +206,6 @@ const CreateConfigurationDialog: React.FC<CreateConfigurationDialogProps> = ({
                       />
                     </div>
                   </FormControl>
-                  <FormDescription>
-                    Any JSON document. A workflow reads it with a <code>fetch_configuration</code> node and passes it to
-                    a function for calculations.
-                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

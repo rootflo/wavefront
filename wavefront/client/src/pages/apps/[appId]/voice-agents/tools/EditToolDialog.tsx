@@ -9,15 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@app/components/ui/dialog';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@app/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Textarea } from '@app/components/ui/textarea';
@@ -175,7 +167,7 @@ const EditToolDialog: React.FC<EditToolDialogProps> = ({ isOpen, onOpenChange, t
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto lg:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Edit Tool</DialogTitle>
           <DialogDescription>Update tool configuration</DialogDescription>
@@ -187,9 +179,9 @@ const EditToolDialog: React.FC<EditToolDialogProps> = ({ isOpen, onOpenChange, t
             <div className="space-y-4">
               <h3 className="text-lg font-semibold">Basic Information</h3>
 
-              <div className="rounded-md bg-gray-50 p-3">
-                <div className="text-sm text-gray-600">Function Name (cannot be changed)</div>
-                <div className="font-mono text-sm font-medium">{tool.name}</div>
+              <div className="frost-glass border-frost-border rounded-md border p-3">
+                <div className="frost-text-muted text-sm">Function Name (cannot be changed)</div>
+                <div className="frost-text font-mono text-sm font-medium">{tool.name}</div>
               </div>
 
               <FormField
@@ -201,7 +193,6 @@ const EditToolDialog: React.FC<EditToolDialogProps> = ({ isOpen, onOpenChange, t
                     <FormControl>
                       <Input placeholder="e.g., Weather API, Booking System" {...field} />
                     </FormControl>
-                    <FormDescription>Human-readable name for the tool</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -220,15 +211,14 @@ const EditToolDialog: React.FC<EditToolDialogProps> = ({ isOpen, onOpenChange, t
                         {...field}
                       />
                     </FormControl>
-                    <FormDescription>The LLM uses this description to decide when to call this tool</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
 
-              <div className="rounded-md bg-gray-50 p-3">
-                <div className="text-sm text-gray-600">Tool Type (cannot be changed)</div>
-                <div className="font-medium uppercase">{tool.tool_type}</div>
+              <div className="frost-glass border-frost-border rounded-md border p-3">
+                <div className="frost-text-muted text-sm">Tool Type (cannot be changed)</div>
+                <div className="frost-text font-medium uppercase">{tool.tool_type}</div>
               </div>
             </div>
 
@@ -291,7 +281,6 @@ const EditToolDialog: React.FC<EditToolDialogProps> = ({ isOpen, onOpenChange, t
                       <FormControl>
                         <Input placeholder="https://api.example.com/endpoint" {...field} />
                       </FormControl>
-                      <FormDescription>Full URL to the API endpoint</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -430,7 +419,6 @@ const EditToolDialog: React.FC<EditToolDialogProps> = ({ isOpen, onOpenChange, t
                         {...field}
                       />
                     </FormControl>
-                    <FormDescription>JSON Schema defining the parameters this tool accepts</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}

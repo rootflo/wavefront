@@ -9,27 +9,46 @@ interface DatasourceCardProps {
   onDeleteClick: (e: React.MouseEvent, datasource: Datasource) => void;
 }
 
-const getTypeColor = (type: string) => {
-  const colors: Record<string, string> = {
-    database: 'text-blue-700 bg-blue-50',
-    api: 'text-purple-700 bg-purple-50',
-    file: 'text-green-700 bg-green-50',
-    cloud: 'text-orange-700 bg-orange-50',
-  };
-  return colors[type.toLowerCase()] || 'text-gray-700 bg-gray-50';
+/** Short chip labels for datasource types. */
+const DATASOURCE_TYPE_CHIPS: Record<string, { label: string; className: string }> = {
+  gcp_bigquery: {
+    label: 'BigQuery',
+    className: 'text-sky-800 bg-sky-400/15 ring-1 ring-sky-400/20 dark:text-sky-300',
+  },
+  aws_redshift: {
+    label: 'Redshift',
+    className: 'text-violet-800 bg-violet-400/15 ring-1 ring-violet-400/20 dark:text-violet-300',
+  },
+  postgres: {
+    label: 'PostgreSQL',
+    className: 'text-indigo-800 bg-indigo-400/15 ring-1 ring-indigo-400/20 dark:text-indigo-300',
+  },
+  mssql: {
+    label: 'MSSQL',
+    className: 'text-amber-800 bg-amber-400/15 ring-1 ring-amber-400/20 dark:text-amber-300',
+  },
 };
 
+const getTypeChip = (type: string) =>
+  DATASOURCE_TYPE_CHIPS[type] || {
+    label: type,
+    className: 'frost-text bg-frost-glass-strong ring-1 ring-frost-border',
+  };
+
 const DatasourceCard: React.FC<DatasourceCardProps> = ({ datasource, onClick, onDeleteClick }) => {
+  const typeChip = getTypeChip(datasource.type);
+
   const metadata: ResourceCardMetadata[] = [
     {
-      label: 'ID',
+      label: 'Id',
       value: datasource.id,
       isMono: true,
+      isCopyable: true,
     },
     {
       label: 'Type',
-      value: datasource.type,
-      className: `capitalize ${getTypeColor(datasource.type)}`,
+      value: typeChip.label,
+      className: typeChip.className,
     },
   ];
 

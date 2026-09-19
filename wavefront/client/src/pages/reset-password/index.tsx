@@ -1,11 +1,12 @@
 import floService from '@app/api';
+import ThemeToggle from '@app/components/ThemeToggle';
 import { Button } from '@app/components/ui/button';
-import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
-import { useNavigate, useSearchParams } from 'react-router';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import { z } from 'zod';
 
 export const ResetPasswordSchema = z.object({
@@ -53,48 +54,55 @@ const ResetPasswordPage = () => {
   };
 
   return (
-    <div className="flex w-full max-w-[320px] flex-col items-center justify-center gap-8 rounded-2xl bg-white p-8 shadow-[0px_0px_32px_0px_rgba(0,0,0,0.06)] sm:max-w-[480px]">
-      <div className="flex w-full flex-col items-center justify-center">
-        <p className="text-2xl font-medium text-black">Only one step left</p>
-        <p className="text-gray_text text-base font-normal">Enter your new password</p>
+    <div className="relative flex h-full w-full flex-col items-center justify-center gap-8">
+      <div className="absolute top-5 right-5">
+        <ThemeToggle />
       </div>
-
-      <form className="flex w-full flex-col gap-4" onSubmit={form.handleSubmit(handleResetSubmit)}>
-        <div className="flex w-full flex-col gap-5">
-          <FormField
-            control={form.control}
-            name="password"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Password</FormLabel>
-                <FormControl>
-                  <Input type="password" placeholder="New password" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="confirmPassword"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Confirm Password</FormLabel>
-                <FormControl>
-                  <Input type="password" placeholder="Confirm password" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+      <div className="frost-card ring-frost-border flex w-full max-w-[320px] flex-col items-center justify-center gap-8 rounded-2xl border p-8 ring-1 sm:max-w-[480px]">
+        <div className="flex w-full flex-col items-center justify-center">
+          <p className="frost-text text-2xl font-medium">Only one step left</p>
+          <p className="frost-text-muted text-base font-normal">Enter your new password</p>
         </div>
-        <Button
-          type="submit"
-          className="bg-heading flex h-12 w-full items-center justify-center gap-2.5 rounded-xl text-base font-semibold text-white"
-        >
-          Submit
-        </Button>
-      </form>
+
+        <Form {...form}>
+          <form className="flex w-full flex-col gap-4" onSubmit={form.handleSubmit(handleResetSubmit)}>
+            <div className="flex w-full flex-col gap-5">
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="frost-text">Password</FormLabel>
+                    <FormControl>
+                      <Input type="password" placeholder="New password" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="confirmPassword"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="frost-text">Confirm Password</FormLabel>
+                    <FormControl>
+                      <Input type="password" placeholder="Confirm password" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+            <Button type="submit" className="h-12 w-full">
+              Submit
+            </Button>
+          </form>
+        </Form>
+      </div>
+      <Link to="/login" className="text-brand text-sm font-medium hover:underline">
+        Back to login
+      </Link>
     </div>
   );
 };

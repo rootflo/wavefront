@@ -25,7 +25,7 @@ import {
 } from '@app/config/authenticators';
 import { useGetAuthenticator } from '@app/hooks/data/fetch-hooks';
 import { getAuthenticatorKey, getAuthenticatorsKey } from '@app/hooks/data/query-keys';
-import { copyToClipboard, extractErrorMessage } from '@app/lib/utils';
+import { copyToClipboard, extractErrorMessage, formatAppName } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import {
   getBooleanNestedParameter,
@@ -177,7 +177,7 @@ const AuthenticatorDetailPage: React.FC = () => {
 
     if (paramConfig.type === 'object' && paramConfig.fields) {
       return (
-        <div className="col-span-full space-y-4 rounded-lg border border-[#EFF0F1] p-4">
+        <div className="frost-panel ring-frost-border col-span-full space-y-4 rounded-xl border p-4 ring-1">
           <Label>{formatFieldName(key)}</Label>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {Object.entries(paramConfig.fields).map(([nestedKey, nestedConfig]) => (
@@ -364,7 +364,7 @@ const AuthenticatorDetailPage: React.FC = () => {
       </Breadcrumb>
 
       {authenticatorLoading ? (
-        <p className="text-sm text-gray-500">Loading authenticator...</p>
+        <p className="frost-text-muted text-sm">Loading authenticator...</p>
       ) : !authenticator ? (
         <p className="text-sm text-red-500">Authenticator not found</p>
       ) : (
@@ -372,7 +372,7 @@ const AuthenticatorDetailPage: React.FC = () => {
           <div className="mb-8 flex w-full items-start justify-between">
             <div>
               <div className="flex items-center gap-3">
-                <h1 className="text-3xl font-bold text-gray-900">{authenticator.auth_name}</h1>
+                <h1 className="frost-text text-3xl font-bold">{formatAppName(authenticator.auth_name)}</h1>
                 {badge && (
                   <Badge variant="secondary" className={`${badge.bg} ${badge.text} border-0 font-normal`}>
                     {config?.name || authenticator.auth_type}
@@ -422,13 +422,13 @@ const AuthenticatorDetailPage: React.FC = () => {
                   maxLength={500}
                   placeholder="Optional description for this authenticator"
                 />
-                {isEditing && <p className="text-xs text-gray-500">{authDesc.length}/500 characters</p>}
+                {isEditing && <p className="frost-text-muted text-xs">{authDesc.length}/500 characters</p>}
               </div>
 
               {config && (
-                <div className="rounded-lg border border-[#EFF0F1]">
+                <div className="frost-panel ring-frost-border rounded-xl border ring-1">
                   <div className="border-b border-[#EFF0F1] px-6 py-4">
-                    <h2 className="text-lg font-semibold text-gray-900">Configuration</h2>
+                    <h2 className="frost-text text-lg font-semibold">Configuration</h2>
                   </div>
                   <div className="grid grid-cols-1 gap-6 p-6 md:grid-cols-2">
                     {Object.keys(config.parameters).map((key) => (
@@ -439,15 +439,15 @@ const AuthenticatorDetailPage: React.FC = () => {
               )}
             </div>
 
-            <div className="rounded-lg border border-[#EFF0F1]">
+            <div className="frost-panel ring-frost-border rounded-xl border ring-1">
               <div className="border-b border-[#EFF0F1] px-6 py-4">
-                <h2 className="text-lg font-semibold text-gray-900">Metadata</h2>
+                <h2 className="frost-text text-lg font-semibold">Metadata</h2>
               </div>
               <dl className="space-y-4 p-6">
                 <div>
-                  <dt className="text-xs font-medium text-gray-500">Authenticator ID</dt>
+                  <dt className="frost-text-muted text-xs font-medium">Authenticator ID</dt>
                   <dd className="mt-1 flex items-center gap-1">
-                    <span className="truncate font-mono text-sm text-gray-900" title={authenticator.auth_id}>
+                    <span className="frost-text truncate font-mono text-sm" title={authenticator.auth_id}>
                       {authenticator.auth_id}
                     </span>
                     <Button
@@ -461,12 +461,12 @@ const AuthenticatorDetailPage: React.FC = () => {
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-xs font-medium text-gray-500">Created At</dt>
-                  <dd className="mt-1 text-sm text-gray-900">{new Date(authenticator.created_at).toLocaleString()}</dd>
+                  <dt className="frost-text-muted text-xs font-medium">Created At</dt>
+                  <dd className="frost-text mt-1 text-sm">{new Date(authenticator.created_at).toLocaleString()}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs font-medium text-gray-500">Updated At</dt>
-                  <dd className="mt-1 text-sm text-gray-900">{new Date(authenticator.updated_at).toLocaleString()}</dd>
+                  <dt className="frost-text-muted text-xs font-medium">Updated At</dt>
+                  <dd className="frost-text mt-1 text-sm">{new Date(authenticator.updated_at).toLocaleString()}</dd>
                 </div>
               </dl>
             </div>

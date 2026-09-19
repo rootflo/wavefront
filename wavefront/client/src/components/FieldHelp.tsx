@@ -16,7 +16,7 @@ const FieldHelp: React.FC<FieldHelpProps> = ({ children, ariaLabel, side = 'top'
       <TooltipTrigger asChild>
         <button
           type="button"
-          className="inline-flex cursor-pointer text-[#878787] hover:text-[#555555]"
+          className="frost-text-muted hover:text-frost-text inline-flex cursor-pointer"
           aria-label={ariaLabel}
         >
           <Info className="h-3.5 w-3.5" />

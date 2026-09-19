@@ -82,8 +82,8 @@ const DynamicQueries = ({
   };
 
   return (
-    <div>
-      <div className="mb-8 flex w-full items-center justify-end gap-3">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <div className="mb-4 flex w-full shrink-0 items-center justify-end gap-3">
         <Input
           className="w-[200px]"
           type="text"
@@ -103,7 +103,7 @@ const DynamicQueries = ({
       {bulkError ? <ErrorBanner message={bulkError} onDismiss={() => setBulkError('')} /> : null}
 
       {isLoading ? (
-        <p className="text-sm text-gray-500">Loading dynamic queries...</p>
+        <p className="frost-text-muted text-sm">Loading dynamic queries...</p>
       ) : filteredQueries.length === 0 ? (
         <div className="mt-10 flex justify-center">
           <EmptyStateCard
@@ -114,7 +114,7 @@ const DynamicQueries = ({
           />
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-[#EFF0F1]">
+        <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-xl border ring-1">
           <Table>
             <TableHeader>
               <TableRow>

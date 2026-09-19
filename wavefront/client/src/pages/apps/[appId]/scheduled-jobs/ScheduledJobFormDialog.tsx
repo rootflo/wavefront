@@ -1,5 +1,4 @@
 import floConsoleService from '@app/api';
-import FieldHelp from '@app/components/FieldHelp';
 import MultiSelect from '@app/components/MultiSelect';
 import OptionChips from '@app/components/OptionChips';
 import { Button } from '@app/components/ui/button';
@@ -31,7 +30,7 @@ import {
   isFormTab,
   isPayloadDateRange,
 } from '@app/constants/scheduled-job';
-import { useGetAllDatasources, useGetAllDynamicQueries, useGetAppUsers } from '@app/hooks';
+import { useGetAllDatasources, useGetAllDynamicQueries, useGetAppUsers, useGetEmailConnections } from '@app/hooks';
 import { useNotifyStore } from '@app/store';
 import { ColumnStyleConfig, DateRangeOption, FormTab, ScheduledJob } from '@app/types/scheduled-job';
 import { IUser } from '@app/types/user';
@@ -41,6 +40,7 @@ import {
   extractRecipientUserIdsFromPayload,
   formatUserLabel,
   getDatasourceIdFromPayload,
+  getEmailConnectionIdFromPayload,
   getQueryIdsFromPayload,
   normalizeUserId,
 } from './scheduled-job-utils';
@@ -81,6 +81,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
   const isEditing = Boolean(job?.id);
   const { data: datasources = [] } = useGetAllDatasources(appId);
   const { data: appUsers = [], isLoading: appUsersLoading } = useGetAppUsers(appId);
+  const { data: emailConnections = [] } = useGetEmailConnections(appId);
 
   const [datasourceId, setDatasourceId] = useState('');
   const [selectedQueryIds, setSelectedQueryIds] = useState<string[]>([]);
@@ -92,6 +93,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
   const [cronExpr, setCronExpr] = useState(DEFAULT_CRON_EXPR);
   const [timezone, setTimezone] = useState(DEFAULT_TIMEZONE);
   const [selectedRecipientUserIds, setSelectedRecipientUserIds] = useState<string[]>([]);
+  const [emailConnectionId, setEmailConnectionId] = useState('');
   const [subject, setSubject] = useState('');
   const [emailContent, setEmailContent] = useState('');
   const [queryParamsJson, setQueryParamsJson] = useState('');
@@ -109,6 +111,17 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
     [dynamicQueries]
   );
 
+  // Only active connections can send; the API rejects anything else at save time,
+  // so they are left out rather than offered and refused.
+  const sendableConnections = useMemo(
+    () => emailConnections.filter((connection) => connection.status === 'active'),
+    [emailConnections]
+  );
+
+  const handleSenderChange = (value: string) => {
+    setEmailConnectionId(value);
+  };
+
   const toggleQueryId = (queryId: string) => {
     setSelectedQueryIds((prev) => (prev.includes(queryId) ? prev.filter((id) => id !== queryId) : [...prev, queryId]));
   };
@@ -119,6 +132,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
     setCronExpr(DEFAULT_CRON_EXPR);
     setTimezone(DEFAULT_TIMEZONE);
     setSelectedRecipientUserIds([]);
+    setEmailConnectionId('');
     setSubject('');
     setEmailContent('');
     setQueryParamsJson('');
@@ -139,6 +153,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
     setTimezone(existingJob.timezone || DEFAULT_TIMEZONE);
     setMaxRetries(String(existingJob.max_retries ?? Number(DEFAULT_MAX_RETRIES)));
     setSelectedRecipientUserIds(extractRecipientUserIdsFromPayload(payload));
+    setEmailConnectionId(getEmailConnectionIdFromPayload(payload));
     setSubject(typeof payload.subject === 'string' ? payload.subject : '');
     setEmailContent(typeof payload.email_content === 'string' ? payload.email_content : '');
     const paramsValue = payload.params;
@@ -212,6 +227,11 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
       setActiveTab(FORM_TAB.EMAIL);
       return;
     }
+    if (!emailConnectionId) {
+      setError('Select an email connection to send from');
+      setActiveTab(FORM_TAB.EMAIL);
+      return;
+    }
     if (!Number.isInteger(retries) || retries < 0 || retries > MAX_RETRIES_LIMIT) {
       setError(`Max retries must be an integer between 0 and ${MAX_RETRIES_LIMIT}`);
       setActiveTab(FORM_TAB.SCHEDULE);
@@ -256,6 +276,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
       datasourceId: datasourceId.trim(),
       queryIds: selectedQueryIds,
       recipientUserIds: selectedRecipientUserIds,
+      emailConnectionId,
       subject: subject.trim() || undefined,
       emailContent: emailContent.trim() || undefined,
       columnStyles: parsedColumnStyles,
@@ -297,7 +318,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto lg:max-w-[800px] xl:max-w-[1000px]">
+      <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto lg:max-w-4xl">
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Edit Scheduled Job' : 'Create Scheduled Job'}</DialogTitle>
           <DialogDescription>
@@ -425,15 +446,28 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
               <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Daily report" />
             </div>
 
+            <div>
+              <div className="mb-1 flex items-center gap-1.5">
+                <p className="text-xs text-[#878787]">Send from</p>
+              </div>
+              <Select value={emailConnectionId || undefined} onValueChange={handleSenderChange}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select a mailbox" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sendableConnections.map((connection) => (
+                    <SelectItem key={connection.id} value={connection.id}>
+                      {connection.name} ({connection.mailbox_email})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <div className="mb-1 flex items-center gap-1.5">
                   <p className="text-xs text-[#878787]">Email content (optional)</p>
-                  <FieldHelp ariaLabel="Email content help" contentClassName="max-w-md">
-                    Use {'{query_id}'} placeholders to embed result tables inline (e.g. {'{sales_summary}'}). Plain text
-                    or HTML. Excel files are still attached when under the size limit. Leave empty for the default
-                    summary.
-                  </FieldHelp>
                 </div>
                 <Textarea
                   value={emailContent}
@@ -446,9 +480,6 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
               <div>
                 <div className="mb-1 flex items-center gap-1.5">
                   <p className="text-xs text-[#878787]">Column styles (optional JSON)</p>
-                  <FieldHelp ariaLabel="Column styles help">
-                    Rules are evaluated top-to-bottom; first match wins.
-                  </FieldHelp>
                 </div>
                 <Textarea
                   value={columnStylesJson}
@@ -462,9 +493,6 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
             <div>
               <div className="mb-1 flex items-center gap-1.5">
                 <p className="text-xs text-[#878787]">Recipient users</p>
-                <FieldHelp ariaLabel="Recipient users help">
-                  Each user receives reports filtered by their data access (RLS).
-                </FieldHelp>
               </div>
               <MultiSelect
                 items={appUsers}

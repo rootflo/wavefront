@@ -1,6 +1,8 @@
-import { Pencil, TrashIcon, Copy, Check } from 'lucide-react';
-import React, { useEffect, useRef, useState } from 'react';
+import { Button } from '@app/components/ui/button';
+import { copyToClipboard, formatAppName } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
+import { Check, Copy, Pencil, Trash2 } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
 
 export interface ResourceCardMetadata {
   label: string;
@@ -21,6 +23,11 @@ interface ResourceCardProps {
   editTitle?: string;
 }
 
+const cardShell =
+  'frost-card group relative cursor-pointer overflow-hidden rounded-xl border p-5 ring-1 ring-frost-border transition-all duration-300 hover:-translate-y-0.5 hover:bg-frost-glass-strong';
+
+const cardIconButtonClass = 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100';
+
 const ResourceCard: React.FC<ResourceCardProps> = ({
   title,
   description,
@@ -33,7 +40,7 @@ const ResourceCard: React.FC<ResourceCardProps> = ({
 }) => {
   const { notifySuccess, notifyError } = useNotifyStore();
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
@@ -45,9 +52,8 @@ const ResourceCard: React.FC<ResourceCardProps> = ({
 
   const handleCopy = async (e: React.MouseEvent, value: string, index: number) => {
     e.stopPropagation();
-    try {
-      await navigator.clipboard.writeText(value);
-    } catch {
+    const copied = await copyToClipboard(value);
+    if (!copied) {
       notifyError('Failed to copy to clipboard');
       return;
     }
@@ -62,65 +68,80 @@ const ResourceCard: React.FC<ResourceCardProps> = ({
   };
 
   return (
-    <div
-      onClick={onClick}
-      className="group cursor-pointer rounded-xl border-[0.5px] bg-white p-6 shadow-sm transition-all duration-500 hover:translate-y-[-4px] hover:shadow-md"
-    >
-      <div className="mb-3 flex items-start justify-between">
-        <h3 className="overflow-hidden pr-2 text-lg font-semibold text-ellipsis text-gray-900 transition-colors group-hover:text-blue-500">
-          {title}
+    <div onClick={onClick} className={cardShell}>
+      <div aria-hidden className="frost-card-glow pointer-events-none absolute inset-0" />
+
+      <div className="relative mb-3 flex items-start justify-between gap-3">
+        <h3 className="frost-text group-hover:text-brand overflow-hidden pr-2 text-[15px] font-medium tracking-normal text-ellipsis normal-case transition-colors dark:group-hover:text-slate-100">
+          {formatAppName(title)}
         </h3>
-        <div className="flex items-center space-x-2">
-          {onEditClick && (
-            <button
-              onClick={onEditClick}
-              className="cursor-pointer rounded p-1 text-gray-600 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-gray-100 hover:text-gray-900"
+        <div className="flex shrink-0 items-center gap-1">
+          {onEditClick ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
               title={editTitle}
+              aria-label={editTitle}
+              className={cardIconButtonClass}
+              onClick={onEditClick}
             >
-              <Pencil className="h-4 w-4" />
-            </button>
-          )}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onDeleteClick(e);
-            }}
-            className="cursor-pointer rounded p-1 text-red-500 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-50 hover:text-red-700"
+              <Pencil className="size-3.5" />
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            variant="ghost-destructive"
+            size="icon-xs"
             title={deleteTitle}
+            aria-label={deleteTitle}
+            className={cardIconButtonClass}
+            onClick={onDeleteClick}
           >
-            <TrashIcon className="h-4 w-4" />
-          </button>
+            <Trash2 className="size-3.5" />
+          </Button>
         </div>
       </div>
-      {description && <p className="mb-4 line-clamp-2 text-sm text-gray-600">{description}</p>}
-      <div className="space-y-2">
-        {metadata.map((item, index) => (
-          <div key={index} className="flex items-center justify-between text-xs">
-            <span className="font-medium text-gray-500">{item.label}</span>
-            <div className="flex items-center space-x-1">
-              {item.isCopyable && (
-                <button
-                  onClick={(e) => void handleCopy(e, item.value, index)}
-                  className={`cursor-pointer rounded p-1 transition-colors ${
-                    copiedIndex === index
-                      ? 'text-green-600 hover:bg-green-50'
-                      : 'text-gray-400 hover:bg-gray-100 hover:text-gray-700'
-                  }`}
-                  title={copiedIndex === index ? 'Copied to clipboard' : 'Copy to clipboard'}
-                >
-                  {copiedIndex === index ? <Check className="h-3 w-3 text-green-600" /> : <Copy className="h-3 w-3" />}
-                </button>
+
+      {description ? (
+        <p className="frost-text-muted relative mb-4 line-clamp-2 text-[13px] leading-relaxed font-normal tracking-normal normal-case">
+          {description}
+        </p>
+      ) : null}
+
+      <div className="relative space-y-2">
+        {metadata.map((item, index) => {
+          const valueClassName = `truncate rounded-md px-2 py-1 font-medium tracking-normal normal-case ${
+            item.className ||
+            (item.isMono
+              ? 'frost-control frost-text ring-frost-border font-mono ring-1'
+              : 'frost-control frost-text ring-frost-border ring-1')
+          }`;
+
+          return (
+            <div key={index} className="flex items-center justify-between gap-3 text-[11px]">
+              <span className="frost-text-muted shrink-0 font-medium tracking-normal normal-case">{item.label}</span>
+              {item.isCopyable ? (
+                <div className="flex max-w-[60%] min-w-0 items-center gap-0.5">
+                  <span className={`min-w-0 ${valueClassName}`}>{item.value}</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    title={copiedIndex === index ? 'Copied to clipboard' : 'Copy to clipboard'}
+                    aria-label={copiedIndex === index ? 'Copied to clipboard' : 'Copy to clipboard'}
+                    className={`size-5 shrink-0 ${copiedIndex === index ? 'text-emerald-600' : 'frost-text-muted'}`}
+                    onClick={(e) => void handleCopy(e, item.value, index)}
+                  >
+                    {copiedIndex === index ? <Check className="size-3" /> : <Copy className="size-3" />}
+                  </Button>
+                </div>
+              ) : (
+                <span className={`max-w-[60%] ${valueClassName}`}>{item.value}</span>
               )}
-              <span
-                className={`rounded px-2 py-1 font-medium ${
-                  item.className || (item.isMono ? 'bg-gray-50 font-mono text-gray-700' : 'bg-gray-50 text-gray-700')
-                }`}
-              >
-                {item.value}
-              </span>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -136,25 +157,25 @@ export const ResourceCardSkeleton: React.FC<ResourceCardSkeletonProps> = ({
   metadataCount = 2,
 }) => {
   return (
-    <div className="animate-fade-in rounded-xl bg-white p-6 shadow-sm">
+    <div className="frost-card animate-fade-in ring-frost-border rounded-xl border p-5 ring-1">
       <div className="mb-3 flex items-start justify-between">
-        <div className="h-6 w-32 animate-pulse rounded bg-gray-200"></div>
-        <div className="flex items-center space-x-2">
-          <div className="h-4 w-4 rounded bg-gray-200"></div>
-          <div className="h-5 w-5 rounded bg-gray-200"></div>
+        <div className="bg-frost-text-subtle/20 h-5 w-32 animate-pulse rounded-md" />
+        <div className="flex items-center gap-2">
+          <div className="bg-frost-text-subtle/20 h-4 w-4 rounded" />
+          <div className="bg-frost-text-subtle/20 h-4 w-4 rounded" />
         </div>
       </div>
-      {showDescription && (
+      {showDescription ? (
         <div className="mb-4 space-y-2">
-          <div className="h-4 w-full animate-pulse rounded bg-gray-200"></div>
-          <div className="h-4 w-3/4 animate-pulse rounded bg-gray-200"></div>
+          <div className="bg-frost-text-subtle/20 h-3.5 w-full animate-pulse rounded" />
+          <div className="bg-frost-text-subtle/20 h-3.5 w-3/4 animate-pulse rounded" />
         </div>
-      )}
+      ) : null}
       <div className="space-y-2">
         {Array.from({ length: metadataCount }).map((_, index) => (
           <div key={index} className="flex items-center justify-between text-xs">
-            <div className="h-3 w-16 animate-pulse rounded bg-gray-200"></div>
-            <div className="h-5 w-20 animate-pulse rounded bg-gray-200"></div>
+            <div className="bg-frost-text-subtle/20 h-3 w-16 animate-pulse rounded" />
+            <div className="bg-frost-text-subtle/20 h-5 w-20 animate-pulse rounded-md" />
           </div>
         ))}
       </div>

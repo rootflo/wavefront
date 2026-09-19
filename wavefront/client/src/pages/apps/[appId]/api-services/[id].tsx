@@ -16,7 +16,7 @@ import { Label } from '@app/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { useGetApiService } from '@app/hooks';
 import { getApiServiceKey } from '@app/hooks/data/query-keys';
-import { extractErrorMessage } from '@app/lib/utils';
+import { extractErrorMessage, formatAppName } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { ApiServiceItem } from '@app/types/api-service';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -596,7 +596,7 @@ const ApiServiceDetail: React.FC = () => {
   };
 
   return (
-    <div className="h-full bg-white px-8 pt-8 pb-[200px]">
+    <div className="h-full bg-transparent px-8 pt-8 pb-[200px]">
       <Breadcrumb className="mb-6">
         <BreadcrumbList>
           <BreadcrumbItem>
@@ -627,7 +627,9 @@ const ApiServiceDetail: React.FC = () => {
 
       <div className="flex w-full flex-col gap-10 pb-5">
         <div className="flex items-center justify-between">
-          <p className="text-2xl leading-normal font-semibold text-black">{service?.name || service?.service_id}</p>
+          <p className="frost-text text-2xl leading-normal font-semibold">
+            {formatAppName(service?.name || service?.service_id)}
+          </p>
           <div className="flex gap-4">
             {editing ? (
               <>
@@ -665,11 +667,11 @@ const ApiServiceDetail: React.FC = () => {
 
         <div className="flex w-full flex-col gap-6">
           {/* Tabs */}
-          <div className="flex border-b border-gray-200">
+          <div className="border-frost-border flex border-b">
             <button
               className={clsx(
                 'px-4 py-2 text-sm font-medium transition-colors',
-                view === 'form' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-700'
+                view === 'form' ? 'border-brand text-brand border-b-2' : 'frost-text-muted hover:text-frost-text'
               )}
               onClick={() => setView('form')}
             >
@@ -678,7 +680,7 @@ const ApiServiceDetail: React.FC = () => {
             <button
               className={clsx(
                 'px-4 py-2 text-sm font-medium transition-colors',
-                view === 'yaml' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-700'
+                view === 'yaml' ? 'border-brand text-brand border-b-2' : 'frost-text-muted hover:text-frost-text'
               )}
               onClick={() => setView('yaml')}
             >
@@ -693,8 +695,8 @@ const ApiServiceDetail: React.FC = () => {
                 className={clsx('flex w-full flex-col gap-8', !editing && 'pointer-events-none opacity-80')}
               >
                 {/* Service Details */}
-                <div className="flex w-full flex-col gap-6 rounded-lg border border-gray-200 bg-white p-6">
-                  <h3 className="text-lg font-semibold text-gray-900">Service Details</h3>
+                <div className="frost-panel ring-frost-border flex w-full flex-col gap-6 rounded-lg border p-6 ring-1">
+                  <h3 className="frost-text text-lg font-semibold">Service Details</h3>
                   <div className="grid w-full gap-6 lg:grid-cols-2">
                     <FormField
                       control={form.control}
@@ -726,8 +728,8 @@ const ApiServiceDetail: React.FC = () => {
                 </div>
 
                 {/* Authentication */}
-                <div className="flex w-full flex-col gap-6 rounded-lg border border-gray-200 bg-white p-6">
-                  <h3 className="text-lg font-semibold text-gray-900">Authentication</h3>
+                <div className="frost-panel ring-frost-border flex w-full flex-col gap-6 rounded-lg border p-6 ring-1">
+                  <h3 className="frost-text text-lg font-semibold">Authentication</h3>
                   <div className="grid w-full gap-6 lg:grid-cols-4">
                     <FormField
                       control={form.control}
@@ -933,9 +935,9 @@ const ApiServiceDetail: React.FC = () => {
                 </div>
 
                 {/* APIs */}
-                <div className="flex w-full flex-col gap-6 rounded-lg border border-gray-200 bg-white p-6">
+                <div className="frost-panel ring-frost-border flex w-full flex-col gap-6 rounded-lg border p-6 ring-1">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-semibold text-gray-900">API Endpoints</h3>
+                    <h3 className="frost-text text-lg font-semibold">API Endpoints</h3>
                     <Button type="button" onClick={handleAddApi} variant="outline" size="icon" disabled={!editing}>
                       <Plus />
                     </Button>
@@ -946,7 +948,7 @@ const ApiServiceDetail: React.FC = () => {
                       <div key={field.id} className="flex w-full gap-6">
                         <div
                           key={field.id}
-                          className="relative w-full rounded-lg border border-gray-200 bg-gray-50 p-6"
+                          className="frost-control ring-frost-border relative w-full rounded-lg border p-6 ring-1"
                         >
                           <div className="grid w-full gap-6 lg:grid-cols-3">
                             <FormField
@@ -1266,7 +1268,7 @@ const ApiServiceDetail: React.FC = () => {
                           )}
 
                           {/* Output Mapper */}
-                          <div className="mt-6 w-full border-t border-gray-200 pt-6">
+                          <div className="border-frost-border mt-6 w-full border-t pt-6">
                             <div className="mb-4 flex items-center justify-between">
                               <div className="flex items-center gap-2">
                                 <FormField
@@ -1356,7 +1358,7 @@ const ApiServiceDetail: React.FC = () => {
                       </div>
                     ))}
                     {apisFieldArray.fields.length === 0 && (
-                      <div className="py-8 text-center text-sm text-gray-500">
+                      <div className="frost-text-muted py-8 text-center text-sm">
                         No endpoints added yet. Click "Add Endpoint" to start.
                       </div>
                     )}
@@ -1374,7 +1376,7 @@ const ApiServiceDetail: React.FC = () => {
                 onChange={(value: string) => setYamlContent(value)}
                 theme="dark"
                 className={clsx(
-                  'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 font-mono text-sm text-black outline-none',
+                  'frost-control ring-frost-border frost-text w-full rounded-lg border px-3 py-2 font-mono text-sm ring-1 outline-none',
                   !editing && 'pointer-events-none opacity-80'
                 )}
                 placeholder="Enter your API service YAML configuration..."

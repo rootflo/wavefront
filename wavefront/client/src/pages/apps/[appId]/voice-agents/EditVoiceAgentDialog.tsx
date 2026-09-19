@@ -9,15 +9,7 @@ import {
   DialogTitle,
 } from '@app/components/ui/dialog';
 import VoiceAgentToolsManager from './VoiceAgentToolsManager';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@app/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Label } from '@app/components/ui/label';
 import { Slider } from '@app/components/ui/slider';
@@ -563,7 +555,7 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] min-w-0 overflow-y-auto lg:max-w-5xl">
+      <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto lg:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Edit Voice Agent</DialogTitle>
           <DialogDescription>Update the voice agent configuration for {selectedApp?.app_name}</DialogDescription>
@@ -587,7 +579,6 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                         <FormControl>
                           <Input placeholder="e.g., Customer Support Agent" maxLength={100} {...field} />
                         </FormControl>
-                        <FormDescription>{field.value?.length || 0}/100 characters</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -610,7 +601,6 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                             <SelectItem value="active">Active (Ready for Production)</SelectItem>
                           </SelectContent>
                         </Select>
-                        <FormDescription>Active agents can be used to initiate calls</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -632,7 +622,6 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                           {...field}
                         />
                       </FormControl>
-                      <FormDescription>{field.value?.length || 0}/500 characters</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -665,11 +654,6 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                             ))}
                           </SelectContent>
                         </Select>
-                        {llmConfigs.length === 0 && (
-                          <FormDescription className="text-amber-600">
-                            No LLM configurations found. Create one first.
-                          </FormDescription>
-                        )}
                         <FormMessage />
                       </FormItem>
                     )}
@@ -697,11 +681,6 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                             ))}
                           </SelectContent>
                         </Select>
-                        {ttsConfigs.length === 0 && (
-                          <FormDescription className="text-amber-600">
-                            No TTS configurations found. Create one first.
-                          </FormDescription>
-                        )}
                         <FormMessage />
                       </FormItem>
                     )}
@@ -729,11 +708,6 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                             ))}
                           </SelectContent>
                         </Select>
-                        {sttConfigs.length === 0 && (
-                          <FormDescription className="text-amber-600">
-                            No STT configurations found. Create one first.
-                          </FormDescription>
-                        )}
                         <FormMessage />
                       </FormItem>
                     )}
@@ -761,11 +735,6 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                             ))}
                           </SelectContent>
                         </Select>
-                        {telephonyConfigs.length === 0 && (
-                          <FormDescription className="text-amber-600">
-                            No telephony configurations found. Create one first.
-                          </FormDescription>
-                        )}
                         <FormMessage />
                       </FormItem>
                     )}
@@ -799,9 +768,6 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                             </div>
                           ))}
                         </div>
-                        <FormDescription>
-                          Provider-specific voice identifiers per language (e.g., "aura-2-helena-en" for Deepgram)
-                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -846,9 +812,6 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                         <FormControl>
                           <Input placeholder="e.g., +1234567890, +9876543210" {...field} />
                         </FormControl>
-                        <FormDescription>
-                          Phone numbers for receiving inbound calls (E.164 format, comma-separated, globally unique)
-                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -863,9 +826,6 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                         <FormControl>
                           <Input placeholder="e.g., +1234567890, +9876543210" {...field} />
                         </FormControl>
-                        <FormDescription>
-                          Phone numbers for making outbound calls (E.164 format, comma-separated)
-                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -906,10 +866,6 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                           ))}
                         </div>
                       </div>
-                      <FormDescription>
-                        Select languages this agent can converse in. If multiple languages are selected, the agent will
-                        detect the caller's language.
-                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -939,10 +895,6 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                           ))}
                         </SelectContent>
                       </Select>
-                      <FormDescription>
-                        Language used if detection fails or for single-language agents. Must be one of the supported
-                        languages.
-                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -968,7 +920,6 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                           {...field}
                         />
                       </FormControl>
-                      <FormDescription>Defines the agent's personality, behavior, and capabilities</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -990,9 +941,6 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                           {...field}
                         />
                       </FormControl>
-                      <FormDescription>
-                        Message played at the start of the call (converted to audio via TTS)
-                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -1023,9 +971,6 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                           />
                         </div>
                       </FormControl>
-                      <FormDescription>
-                        JSON object with conversation settings (e.g., timeouts, interruption handling)
-                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}

@@ -9,15 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@app/components/ui/dialog';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@app/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Textarea } from '@app/components/ui/textarea';
@@ -103,7 +95,7 @@ const CreateTtsConfigDialog: React.FC<CreateTtsConfigDialogProps> = ({ isOpen, o
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto lg:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Create TTS Configuration</DialogTitle>
           <DialogDescription>Configure a new Text-to-Speech provider</DialogDescription>
@@ -123,7 +115,6 @@ const CreateTtsConfigDialog: React.FC<CreateTtsConfigDialogProps> = ({ isOpen, o
                     <FormControl>
                       <Input placeholder="e.g., ElevenLabs Production" maxLength={100} {...field} />
                     </FormControl>
-                    <FormDescription>{field.value?.length || 0}/100 characters</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -174,7 +165,6 @@ const CreateTtsConfigDialog: React.FC<CreateTtsConfigDialogProps> = ({ isOpen, o
                       {...field}
                     />
                   </FormControl>
-                  <FormDescription>{field.value?.length || 0}/500 characters</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

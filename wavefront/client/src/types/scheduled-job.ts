@@ -57,6 +57,8 @@ export interface ScheduledJobEmailPayload {
   datasource_id: string;
   queries: ScheduledJobQuerySpec[];
   recipient_user_ids: string[];
+  /** Sender mailbox. Absent means the primary email connection. */
+  email_connection_id: string;
   subject?: string;
   email_content?: string;
   column_styles?: ColumnStyleConfig[];

@@ -9,15 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@app/components/ui/dialog';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@app/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { extractErrorMessage } from '@app/lib/utils';
@@ -115,7 +107,7 @@ const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] w-full min-w-0 overflow-y-auto lg:max-w-4xl">
+      <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto lg:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Create New Agent</DialogTitle>
           <DialogDescription>Create a new AI agent for {selectedApp?.app_name}</DialogDescription>
@@ -133,7 +125,6 @@ const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
                     <FormControl>
                       <Input placeholder="my-agent" {...field} />
                     </FormControl>
-                    <FormDescription>Unique identifier for your agent (lowercase, hyphens allowed)</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -160,7 +151,6 @@ const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
                         ))}
                       </SelectContent>
                     </Select>
-                    <FormDescription>Organization namespace for your agent</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -188,7 +178,6 @@ const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
                       />
                     </div>
                   </FormControl>
-                  <FormDescription>Define your agent's behavior, model, and variables in YAML format</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

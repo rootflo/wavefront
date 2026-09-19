@@ -3,12 +3,14 @@ import {
   ApiIcon,
   ChatIcon,
   DatasourcesIcon,
+  EmailIcon,
   ModelInferenceIcon,
   ModelRepositoryIcon,
   PermissionIcon,
   PhoneIcon,
   RagIcon,
   ScheduledJobsIcon,
+  TriggerIcon,
   WorkflowIcon,
 } from '@app/assets/icons';
 import { appEnv } from '@app/config/env';
@@ -53,6 +55,27 @@ const navItems = [
     description: 'Manage and configure data sources for this application',
   },
   {
+    id: 'email-connections',
+    name: 'Emails',
+    icon: EmailIcon,
+    link: `/apps/:appId/email-connections`,
+    description: 'Connect mailboxes agents, triggers and jobs send and read through',
+  },
+  {
+    id: 'oauth-apps',
+    name: 'OAuth Apps',
+    icon: PermissionIcon,
+    link: `/apps/:appId/oauth-apps`,
+    description: 'Register OAuth apps mailboxes connect through',
+  },
+  {
+    id: 'triggers',
+    name: 'Triggers',
+    icon: TriggerIcon,
+    link: `/apps/:appId/triggers`,
+    description: 'Watch mailboxes and run agents or workflows on inbound email',
+  },
+  {
     id: 'scheduled-jobs',
     name: 'Scheduled Jobs',
     icon: ScheduledJobsIcon,
@@ -83,7 +106,7 @@ const navItems = [
   },
   {
     id: 'knowledge-bases',
-    name: 'Knowledgebases',
+    name: 'Knowledge Bases',
     icon: RagIcon,
     link: `/apps/:appId/knowledge-bases`,
     description: 'Manage and configure knowledge bases for this application',
@@ -102,25 +125,19 @@ const navItems = [
     link: `/apps/:appId/workflows`,
     description: 'Manage and configure workflows for this application',
   },
-  // {
-  //   name: 'Pipelines',
-  //   icon: WorkflowIcon,
-  //   link: `/apps/:appId/data-pipelines`,
-  //   description: 'Manage and configure DBT pipelines for this application',
-  // },
 ];
 
-let finalNavItems = navItems;
+const finalNavItems = [...navItems];
 if (appEnv.isApiServicesEnabled) {
-  const apiServiceNavItem = {
+  finalNavItems.push({
     id: 'api-services',
     name: 'API Services',
     icon: ApiIcon,
     link: `/apps/:appId/api-services`,
     description: 'Manage API Connectors',
-  };
-  finalNavItems = [navItems[0], apiServiceNavItem, ...navItems.slice(1)];
+  });
 }
+finalNavItems.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 
 const AppLayout: React.FC = () => {
   const { app } = useParams<{ app: string }>();
@@ -128,46 +145,68 @@ const AppLayout: React.FC = () => {
   const location = useLocation();
 
   return (
-    <div className="h-full bg-white">
-      <div className="flex h-full min-h-0 w-full">
-        <div className="flex h-full min-h-0 w-[240px] shrink-0 flex-col gap-3 overflow-y-auto border-r border-gray-200 p-5">
-          {finalNavItems.map((item) => {
-            const isActive = item.id === location.pathname.split('/')[3];
-            return (
-              <div
-                key={item.id}
-                className={clsx(
-                  'cursor-pointer rounded-lg border-[0.5px] border-[#EFF0F1] p-3',
-                  isActive && 'bg-[#FBFBFB]'
-                )}
-                onClick={() => navigate(item.link.replace(':appId', app!))}
-              >
-                <div className="flex items-center gap-2">
-                  <item.icon color={isActive ? '#101010' : '#585858'} />
-                  <p
-                    className={clsx(
-                      isActive ? 'font-medium text-[#101010]' : 'font-normal text-[#585858]',
-                      'flex items-center gap-2 text-sm'
-                    )}
-                  >
-                    <span>{item.name}</span>
-                    {item.alpha && <span className="mb-2 text-[10px] text-green-500">alpha</span>}
-                  </p>
-                </div>
-                <div
+    <div className="relative h-full overflow-hidden">
+      <div aria-hidden className="frost-wash pointer-events-none absolute inset-y-0 left-0 w-[280px]">
+        <div className="frost-blob-a absolute -top-10 -left-8 h-56 w-56 rounded-full blur-3xl" />
+        <div className="frost-blob-b absolute top-1/3 -left-6 h-48 w-48 rounded-full blur-3xl" />
+        <div className="frost-blob-c absolute bottom-8 left-4 h-52 w-52 rounded-full blur-3xl" />
+        <div className="frost-wash-overlay absolute inset-0" />
+      </div>
+
+      <div className="relative flex h-full min-h-0 w-full">
+        <aside className="frost-glass flex h-full min-h-0 w-[200px] shrink-0 flex-col">
+          <div className="px-3 pt-3 pb-2">
+            <p className="frost-text-subtle px-2 text-[10px] font-semibold tracking-[0.14em] uppercase">Workspace</p>
+          </div>
+
+          <nav className="no-scrollbar flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-3">
+            {finalNavItems.map((item) => {
+              const isActive = item.id === location.pathname.split('/')[3];
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  title={item.description}
+                  onClick={() => navigate(item.link.replace(':appId', app!))}
                   className={clsx(
-                    'overflow-hidden transition-all duration-300 ease-in-out',
-                    isActive ? 'max-h-16 opacity-100' : 'max-h-0 opacity-0'
+                    'group relative flex h-8 w-full cursor-pointer items-center gap-2 rounded-md px-2 text-left transition-all duration-200',
+                    isActive
+                      ? 'frost-glass-strong frost-text ring-frost-border shadow-[var(--frost-inset-shadow)] ring-1'
+                      : 'frost-text-muted hover:text-frost-text hover:bg-white/35 dark:hover:bg-white/5'
                   )}
                 >
-                  <p className="mt-2 text-xs text-[#9F9F9F]">{item.description}</p>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <Outlet />
+                  {isActive ? (
+                    <span className="bg-brand absolute top-1/2 left-0 h-4 w-[2px] -translate-y-1/2 rounded-full" />
+                  ) : null}
+                  <item.icon
+                    className="shrink-0"
+                    color={isActive ? 'var(--frost-text)' : 'var(--frost-text-muted)'}
+                    width={14}
+                    height={14}
+                  />
+                  <span
+                    className={clsx(
+                      'min-w-0 flex-1 truncate text-[13px] leading-none',
+                      isActive ? 'font-medium' : 'font-normal'
+                    )}
+                  >
+                    {item.name}
+                  </span>
+                  {item.alpha ? (
+                    <span className="shrink-0 rounded bg-emerald-400/15 px-1 py-0.5 text-[9px] font-medium tracking-wide text-emerald-600 uppercase dark:text-emerald-400">
+                      alpha
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </nav>
+        </aside>
+
+        <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
+          <div className="frost-content ring-frost-border h-full min-h-0 overflow-y-auto rounded-tl-[1.75rem] shadow-[-12px_4px_32px_-16px_rgba(15,23,42,0.18)] ring-1 ring-inset dark:shadow-[-12px_4px_32px_-16px_rgba(0,0,0,0.45)]">
+            <Outlet />
+          </div>
         </div>
       </div>
     </div>

@@ -86,7 +86,7 @@ const VoiceAgentToolsManager: React.FC<VoiceAgentToolsManagerProps> = ({ appId, 
   if (allToolsLoading || agentToolsLoading) {
     return (
       <div className="flex justify-center py-4">
-        <div className="text-sm text-gray-500">Loading tools...</div>
+        <div className="frost-text-muted text-sm">Loading tools...</div>
       </div>
     );
   }
@@ -97,7 +97,7 @@ const VoiceAgentToolsManager: React.FC<VoiceAgentToolsManagerProps> = ({ appId, 
       <div>
         <h4 className="mb-3 text-sm font-semibold">Attached Tools ({agentTools.length})</h4>
         {agentTools.length === 0 ? (
-          <div className="rounded-md border border-dashed p-4 text-center text-sm text-gray-500">
+          <div className="frost-text-muted rounded-md border border-dashed p-4 text-center text-sm">
             No tools attached to this agent yet. Add tools from the available tools below.
           </div>
         ) : (
@@ -105,18 +105,18 @@ const VoiceAgentToolsManager: React.FC<VoiceAgentToolsManagerProps> = ({ appId, 
             {agentTools.map((tool) => (
               <div
                 key={tool.id}
-                className="flex items-center justify-between rounded-md border bg-white p-3 hover:bg-gray-50"
+                className="frost-glass border-frost-border hover:bg-frost-glass-strong flex items-center justify-between rounded-md border p-3"
               >
                 <div className="flex flex-1 items-center gap-3">
                   <Badge className={getToolTypeColor(tool.tool_type)}>{tool.tool_type.toUpperCase()}</Badge>
                   <div className="flex-1">
                     <div className="font-medium">{tool.display_name}</div>
-                    <div className="text-xs text-gray-500">Function: {tool.name}</div>
+                    <div className="frost-text-muted text-xs">Function: {tool.name}</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-600">
+                    <span className="frost-text-muted text-sm">
                       {tool.association.is_enabled ? 'Enabled' : 'Disabled'}
                     </span>
                     <Switch
@@ -145,7 +145,7 @@ const VoiceAgentToolsManager: React.FC<VoiceAgentToolsManagerProps> = ({ appId, 
       <div>
         <h4 className="mb-3 text-sm font-semibold">Available Tools ({availableTools.length})</h4>
         {availableTools.length === 0 ? (
-          <div className="rounded-md border border-dashed p-4 text-center text-sm text-gray-500">
+          <div className="frost-text-muted rounded-md border border-dashed p-4 text-center text-sm">
             {allTools.length === 0
               ? 'No tools available. Create tools first from the Tools page.'
               : 'All available tools are already attached to this agent.'}
@@ -155,14 +155,14 @@ const VoiceAgentToolsManager: React.FC<VoiceAgentToolsManagerProps> = ({ appId, 
             {availableTools.map((tool) => (
               <div
                 key={tool.id}
-                className="flex items-center justify-between rounded-md border bg-gray-50 p-3 hover:bg-gray-100"
+                className="frost-glass border-frost-border hover:bg-frost-glass-strong flex items-center justify-between rounded-md border p-3"
               >
                 <div className="flex flex-1 items-center gap-3">
                   <Badge className={getToolTypeColor(tool.tool_type)}>{tool.tool_type.toUpperCase()}</Badge>
                   <div className="flex-1">
                     <div className="font-medium">{tool.display_name}</div>
-                    <div className="text-xs text-gray-500">Function: {tool.name}</div>
-                    <div className="mt-1 text-xs text-gray-600">{tool.description}</div>
+                    <div className="frost-text-muted text-xs">Function: {tool.name}</div>
+                    <div className="frost-text-muted mt-1 text-xs">{tool.description}</div>
                   </div>
                 </div>
                 <Button

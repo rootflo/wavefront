@@ -9,15 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@app/components/ui/dialog';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@app/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Textarea } from '@app/components/ui/textarea';
@@ -156,7 +148,7 @@ const CreateToolDialog: React.FC<CreateToolDialogProps> = ({ isOpen, onOpenChang
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto lg:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Create Tool</DialogTitle>
           <DialogDescription>Create a new tool that voice agents can use during conversations</DialogDescription>
@@ -177,7 +169,6 @@ const CreateToolDialog: React.FC<CreateToolDialogProps> = ({ isOpen, onOpenChang
                     <FormControl>
                       <Input placeholder="e.g., get_weather, book_appointment" {...field} />
                     </FormControl>
-                    <FormDescription>Python-style naming: lowercase letters, numbers, underscores only</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -192,7 +183,6 @@ const CreateToolDialog: React.FC<CreateToolDialogProps> = ({ isOpen, onOpenChang
                     <FormControl>
                       <Input placeholder="e.g., Weather API, Booking System" {...field} />
                     </FormControl>
-                    <FormDescription>Human-readable name for the tool</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -211,7 +201,6 @@ const CreateToolDialog: React.FC<CreateToolDialogProps> = ({ isOpen, onOpenChang
                         {...field}
                       />
                     </FormControl>
-                    <FormDescription>The LLM uses this description to decide when to call this tool</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -301,7 +290,6 @@ const CreateToolDialog: React.FC<CreateToolDialogProps> = ({ isOpen, onOpenChang
                       <FormControl>
                         <Input placeholder="https://api.example.com/endpoint" {...field} />
                       </FormControl>
-                      <FormDescription>Full URL to the API endpoint</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -428,7 +416,6 @@ const CreateToolDialog: React.FC<CreateToolDialogProps> = ({ isOpen, onOpenChang
                         {...field}
                       />
                     </FormControl>
-                    <FormDescription>JSON Schema defining the parameters this tool accepts</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}

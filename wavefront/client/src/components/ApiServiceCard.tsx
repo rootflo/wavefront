@@ -11,7 +11,7 @@ interface ApiServiceCardProps {
 const ApiServiceCard: React.FC<ApiServiceCardProps> = ({ service, onClick, onDeleteClick }) => {
   const metadata: ResourceCardMetadata[] = [
     {
-      label: 'ID',
+      label: 'Id',
       value: service.service_id,
       isMono: true,
     },
@@ -21,7 +21,7 @@ const ApiServiceCard: React.FC<ApiServiceCardProps> = ({ service, onClick, onDel
     metadata.push({
       label: 'Version',
       value: service.version,
-      className: 'bg-blue-50 text-blue-700',
+      className: 'bg-sky-400/15 text-sky-800 ring-1 ring-sky-400/20',
     });
   }
 

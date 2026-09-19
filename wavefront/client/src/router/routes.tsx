@@ -8,7 +8,10 @@ import AuthenticatorDetailPage from '@app/pages/apps/[appId]/authenticators/[aut
 import ChatbotsPage from '@app/pages/apps/[appId]/chatbots';
 import DatasourcesManagement from '@app/pages/apps/[appId]/datasources';
 import DatasourceDetail from '@app/pages/apps/[appId]/datasources/[datasourceId]';
+import EmailConnectionsPage from '@app/pages/apps/[appId]/email-connections';
+import OAuthAppsPage from '@app/pages/apps/[appId]/oauth-apps';
 import ScheduledJobsPage from '@app/pages/apps/[appId]/scheduled-jobs';
+import TriggersPage from '@app/pages/apps/[appId]/triggers';
 import ConfigurationsManagement from '@app/pages/apps/[appId]/configurations';
 import ConfigurationDetail from '@app/pages/apps/[appId]/configurations/[configKey]';
 import FunctionsManagement from '@app/pages/apps/[appId]/functions';
@@ -102,6 +105,18 @@ const routes = {
         {
           path: 'datasources/:datasourceId',
           element: <DatasourceDetail />,
+        },
+        {
+          path: 'email-connections',
+          element: <EmailConnectionsPage />,
+        },
+        {
+          path: 'oauth-apps',
+          element: <OAuthAppsPage />,
+        },
+        {
+          path: 'triggers',
+          element: <TriggersPage />,
         },
         {
           path: 'scheduled-jobs',
