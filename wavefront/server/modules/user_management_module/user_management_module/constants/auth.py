@@ -12,3 +12,5 @@ class RootfloHeaders:
 SERVICE_AUTH_ROLE_ID = 'floconsole-service'
 
 ADMIN_ROLE_NAME = 'admin'
+
+PASSWORD_RESET_TOKEN_PURPOSE = 'password_reset'

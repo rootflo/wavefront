@@ -6,8 +6,6 @@ from common_module.feature.feature_flag import (
     is_feature_enabled,
 )
 from common_module.response_formatter import ResponseFormatter
-import uuid
-from typing import Union
 from db_repo_module.models.role import Role
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from dependency_injector.wiring import inject
@@ -107,7 +105,3 @@ def create_account_lockout_response(
         status_code=status.HTTP_423_LOCKED,
         content=response_formatter.buildErrorResponse(error_message),
     )
-
-
-def get_session_cache_key(session_id: Union[str, uuid.UUID]) -> str:
-    return f'session_{str(session_id)}'

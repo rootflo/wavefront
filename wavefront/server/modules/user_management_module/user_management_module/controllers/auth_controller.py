@@ -34,7 +34,7 @@ from user_management_module.user_container import UserContainer
 from user_management_module.services.user_service import UserService
 from user_management_module.utils.password_utils import verify_password
 from user_management_module.utils.user_utils import create_account_lockout_response
-from user_management_module.utils.user_utils import get_session_cache_key
+from user_management_module.constants.cache import get_session_cache_key
 
 auth_router = APIRouter(prefix='/v1')
 oauth = OAuth()

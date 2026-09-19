@@ -75,6 +75,9 @@ def mock_config():
             'max_failed_attempts': '3',
             'lockout_duration_hours': '24',
             'inactive_days_threshold': '60',
+            'password_reset_cooldown_seconds': '60',
+            'password_reset_max_per_email': '3',
+            'password_reset_rate_window_seconds': '3600',
         },
     }
 
@@ -100,7 +103,11 @@ def setup_containers(
         if key == 'mock_reset_code'
         else json.dumps({'user_id': test_user_id, 'device_info': 'Mozilla/5.0'})
     )
-    cache_manager_mock.add = Mock()
+    cache_manager_mock.pop_str.side_effect = (
+        lambda key, default=None: test_user_id if key == 'mock_reset_code' else default
+    )
+    cache_manager_mock.add = Mock(return_value=True)
+    cache_manager_mock.incr_with_expiry = Mock(return_value=1)
     common_container.cache_manager.override(cache_manager_mock)
 
     # Mock token service
@@ -112,6 +119,7 @@ def setup_containers(
         'role_id': 'test_role_id',
         'session_id': test_session_id,
         'code': 'mock_reset_code',
+        'purpose': 'password_reset',
     }
     mock_token_service.token_expiry = 3600
     mock_token_service.temporary_token_expiry = 600
