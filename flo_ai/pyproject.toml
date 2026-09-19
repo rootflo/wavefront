@@ -22,8 +22,8 @@ dependencies = [
     "opentelemetry-exporter-otlp>=1.28.2,<2",
     "opentelemetry-instrumentation>=0.54b0",
     "pydantic>=2.9.2,<3",
-    "pyjwt>=2.10.1",
-    "pymupdf>=1.24.0,<2",
+    "pyjwt>=2.13.0",
+    "pymupdf>=1.26.7,<2",
     "pyyaml>=6.0.3,<7",
 ]
 
@@ -59,6 +59,26 @@ markers = [
 
 [tool.uv]
 required-version = ">=0.8.6"
+
+constraint-dependencies = [
+    "anyio>=4.14.2",
+    "click>=8.3.3",
+    "filelock>=3.20.3",
+    "fonttools>=4.60.2",
+    "gitpython>=3.1.60",
+    "idna>=3.15",
+    "pillow>=12.3.0",
+    "protobuf>=5.29.6",
+    "pyarrow>=23.0.1",
+    "pyasn1>=0.6.4",
+    "pygments>=2.20.0",
+    "python-dotenv>=1.2.2",
+    "requests>=2.33.0",
+    "soupsieve>=2.9.0",
+    "streamlit>=1.54.0",
+    "urllib3>=2.7.0",
+    "virtualenv>=20.36.1",
+]
 
 [tool.hatch.build.targets.sdist]
 include = ["flo_ai"]
