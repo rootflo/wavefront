@@ -1,10 +1,7 @@
-import sys
-
-# Add paths to sys.path
-import os
 import asyncio
 import logging
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import AsyncMock
+
 from fastapi import FastAPI
 from common_module.response_formatter import ResponseFormatter
 from api_services_module.core.router import ProxyRouter
@@ -18,34 +15,6 @@ from api_services_module.models.service import (
     HttpMethod,
 )
 
-
-# Mock redis module before imports
-def create_module_mock():
-    """Create a MagicMock configured to support nested module imports."""
-    mock = MagicMock()
-    mock.__path__ = []  # Required for nested package imports
-    return mock
-
-
-sys.modules['redis'] = MagicMock()
-sys.modules['flo_cloud'] = create_module_mock()
-sys.modules['flo_cloud.gcp'] = create_module_mock()
-sys.modules['flo_cloud.gcp.bigquery'] = create_module_mock()
-sys.modules['flo_cloud.cloud_storage'] = create_module_mock()
-
-sys.path.append(
-    os.path.abspath(os.path.join(os.path.dirname(__file__), '../../common_module'))
-)
-sys.path.append(
-    os.path.abspath(
-        os.path.join(os.path.dirname(__file__), '../../api_services_module')
-    )
-)
-sys.path.append(
-    os.path.abspath(os.path.join(os.path.dirname(__file__), '../../db_repo_module'))
-)
-
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -164,11 +133,8 @@ async def test_service_deletion_cleanup():
     else:
         logger.info('PASS: Route removed from app')
 
-    if failures:
-        logger.error('\n'.join(failures))
-        sys.exit(1)
-    else:
-        logger.info('All checks passed!')
+    assert not failures, '\n'.join(failures)
+    logger.info('All checks passed!')
 
 
 if __name__ == '__main__':

@@ -1,12 +1,12 @@
 from datetime import datetime
 import os
 
+# Must be set before odata_parser helpers read CLOUD_PROVIDER.
+os.environ['CLOUD_PROVIDER'] = 'gcp'
+
 from common_module.utils.odata_parser import fill_odata_query
 from common_module.utils.odata_parser import prepare_odata_filter
 import pytest
-
-# Set cloud provider for testing
-os.environ['CLOUD_PROVIDER'] = 'gcp'
 
 
 def test_basic_equality_filter():

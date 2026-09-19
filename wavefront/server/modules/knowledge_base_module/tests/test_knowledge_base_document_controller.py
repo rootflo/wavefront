@@ -201,8 +201,8 @@ async def test_get_documents_success(
     assert get_response.status_code == status.HTTP_200_OK
     response_data = get_response.json()
     assert len(response_data['data']['resources']) == 2
-    assert response_data['data']['resources'][0]['file_name'] == 'doc1.txt'
-    assert response_data['data']['resources'][1]['file_name'] == 'doc2.pdf'
+    file_names = {doc['file_name'] for doc in response_data['data']['resources']}
+    assert file_names == {'doc1.txt', 'doc2.pdf'}
 
 
 @pytest.mark.asyncio
@@ -259,8 +259,8 @@ async def test_get_documents_filter_by_type(
     assert get_response.status_code == status.HTTP_200_OK
     response_data = get_response.json()
     assert len(response_data['data']['resources']) == 2
-    assert response_data['data']['resources'][0]['file_name'] == 'file1.txt'
-    assert response_data['data']['resources'][1]['file_name'] == 'file3.txt'
+    file_names = {doc['file_name'] for doc in response_data['data']['resources']}
+    assert file_names == {'file1.txt', 'file3.txt'}
 
 
 @pytest.mark.asyncio

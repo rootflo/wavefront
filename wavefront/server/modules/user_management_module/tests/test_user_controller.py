@@ -91,8 +91,8 @@ async def test_send_reset_password_email_soft_deleted_user(
     here would turn the endpoint into an account enumeration oracle.
     """
     _, _, user_container = setup_containers
-    email_service = user_container.email_service()
-    email_service.send_forget_password_email.reset_mock()
+    email_service = user_container.email_send_service()
+    email_service.send.reset_mock()
 
     # Create test user and session
     await create_session(test_session, test_user_id, test_session_id)
@@ -115,7 +115,7 @@ async def test_send_reset_password_email_soft_deleted_user(
     )
     assert response.status_code == 200
     assert 'If an account exists' in response.json()['data']['message']
-    email_service.send_forget_password_email.assert_not_called()
+    email_service.send.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -130,8 +130,8 @@ async def test_send_reset_password_email_unknown_email(
 ):
     """An address with no account behind it is answered exactly like one that has."""
     _, _, user_container = setup_containers
-    email_service = user_container.email_service()
-    email_service.send_forget_password_email.reset_mock()
+    email_service = user_container.email_send_service()
+    email_service.send.reset_mock()
 
     await create_session(test_session, test_user_id, test_session_id)
 
@@ -141,7 +141,7 @@ async def test_send_reset_password_email_unknown_email(
     )
     assert response.status_code == 200
     assert 'If an account exists' in response.json()['data']['message']
-    email_service.send_forget_password_email.assert_not_called()
+    email_service.send.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -161,8 +161,8 @@ async def test_send_reset_password_email_locked_user(
     exists to hide. The login endpoint is where a locked user learns about it.
     """
     _, _, user_container = setup_containers
-    email_service = user_container.email_service()
-    email_service.send_forget_password_email.reset_mock()
+    email_service = user_container.email_send_service()
+    email_service.send.reset_mock()
 
     await create_session(test_session, test_user_id, test_session_id)
 
@@ -185,7 +185,7 @@ async def test_send_reset_password_email_locked_user(
     assert response.status_code == 200
     assert 'If an account exists' in response.json()['data']['message']
     assert 'locked' not in response.text.lower()
-    email_service.send_forget_password_email.assert_not_called()
+    email_service.send.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -1022,8 +1022,8 @@ async def test_send_reset_password_email(
     auth_token,
 ):
     _, _, user_container = setup_containers
-    email_service = user_container.email_service()
-    email_service.send_forget_password_email.reset_mock()
+    email_service = user_container.email_send_service()
+    email_service.send.reset_mock()
 
     # Create test user and session
     await create_session(test_session, test_user_id, test_session_id)
@@ -1047,7 +1047,7 @@ async def test_send_reset_password_email(
     # Same message the unknown-email, deleted and locked cases return; the mail
     # itself is what separates a live account from those, not the reply.
     assert 'If an account exists' in response.json()['data']['message']
-    email_service.send_forget_password_email.assert_called_once()
+    email_service.send.assert_called_once()
 
 
 @pytest.mark.asyncio
