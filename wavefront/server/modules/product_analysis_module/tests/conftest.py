@@ -7,6 +7,15 @@ from common_module.common_container import CommonContainer
 from common_module.middleware.request_id_middleware import RequestIdMiddleware
 from db_repo_module.database.base import Base
 from db_repo_module.db_repo_container import DatabaseModuleContainer
+
+# Registers llm_inference_config so create_all can resolve FKs from
+# knowledge_base_inferences / chatbot / voice_agent (imported via db_repo_container).
+from db_repo_module.models.llm_inference_config import LlmInferenceConfig  # noqa: F401
+
+# user_group tables (needed for manager group-scoping tests)
+from db_repo_module.models.user_group import UserGroup  # noqa: F401
+from db_repo_module.models.user_group_member import UserGroupMember  # noqa: F401
+from db_repo_module.models.user_group_role import UserGroupRole  # noqa: F401
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 import pytest
@@ -187,22 +196,56 @@ def mock_admin_functions(monkeypatch):
     async def mock_check_is_admin(role_id, role_repository=None):
         return True
 
+    async def mock_check_is_manager(role_id, role_repository=None):
+        return False
+
     monkeypatch.setattr(
         'product_analysis_module.controllers.product_anaysis_controllers.check_is_admin',
         mock_check_is_admin,
+    )
+    monkeypatch.setattr(
+        'product_analysis_module.controllers.product_anaysis_controllers.check_is_manager',
+        mock_check_is_manager,
+    )
+
+
+@pytest.fixture
+def mock_manager_functions(monkeypatch):
+    """Admit the caller as a manager (not admin)."""
+
+    async def mock_check_is_admin(role_id, role_repository=None):
+        return False
+
+    async def mock_check_is_manager(role_id, role_repository=None):
+        return True
+
+    monkeypatch.setattr(
+        'product_analysis_module.controllers.product_anaysis_controllers.check_is_admin',
+        mock_check_is_admin,
+    )
+    monkeypatch.setattr(
+        'product_analysis_module.controllers.product_anaysis_controllers.check_is_manager',
+        mock_check_is_manager,
     )
 
 
 @pytest.fixture
 def mock_non_admin_functions(monkeypatch):
-    """Mock check_is_admin to return False for non-admin tests"""
+    """Deny both admin and manager for unauthorized tests."""
 
     async def mock_check_is_admin(role_id, role_repository=None):
         return False
 
+    async def mock_check_is_manager(role_id, role_repository=None):
+        return False
+
     monkeypatch.setattr(
-        'user_management_module.utils.user_utils.check_is_admin',
+        'product_analysis_module.controllers.product_anaysis_controllers.check_is_admin',
         mock_check_is_admin,
+    )
+    monkeypatch.setattr(
+        'product_analysis_module.controllers.product_anaysis_controllers.check_is_manager',
+        mock_check_is_manager,
     )
 
 

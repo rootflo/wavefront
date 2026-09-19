@@ -9,7 +9,11 @@ from product_analysis_module.models.product_analysis import (
     CreateProductAnalysisPayload,
     ProductAnalysis,
 )
-from user_management_module.utils.user_utils import get_current_user, check_is_admin
+from user_management_module.utils.user_utils import (
+    check_is_admin,
+    check_is_manager,
+    get_current_user,
+)
 from product_analysis_module.product_analysis_container import ProductAnalysisContainer
 from product_analysis_module.product_analysis_service import ProductAnalysisService
 
@@ -17,6 +21,13 @@ from product_analysis_module.product_analysis_service import ProductAnalysisServ
 product_analysis_router = APIRouter(prefix='/v1')
 
 MAX_LOGIN_STATS_SPAN_DAYS = 366
+
+
+def _access_denied(response_formatter: ResponseFormatter) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        content=response_formatter.buildErrorResponse('Access denied'),
+    )
 
 
 def _validate_login_stats_range(
@@ -41,6 +52,39 @@ def _validate_login_stats_range(
     return None
 
 
+async def _authorize_login_stats(
+    request: Request,
+    group_id: str | None,
+    product_analysis_service: ProductAnalysisService,
+    response_formatter: ResponseFormatter,
+) -> tuple[list[str] | None, JSONResponse | None]:
+    """Admit admins and managers, and say which groups the caller may see.
+
+    Returns the groups to restrict the stats to, where None means every user.
+    Admins are unrestricted and may narrow to any group; managers only ever see
+    the groups they belong to, so a manager in no group sees nobody rather than
+    everybody.
+    """
+    role_id, user_id, _ = get_current_user(request)
+    is_admin = await check_is_admin(role_id)
+
+    if not user_id or not (is_admin or await check_is_manager(role_id)):
+        return None, _access_denied(response_formatter)
+
+    if is_admin:
+        return ([group_id] if group_id else None), None
+
+    accessible_group_ids = await product_analysis_service.get_accessible_group_ids(
+        user_id
+    )
+    if group_id:
+        if group_id not in accessible_group_ids:
+            return None, _access_denied(response_formatter)
+        return [group_id], None
+
+    return accessible_group_ids, None
+
+
 @product_analysis_router.post('/product-analysis')
 @inject
 async def create_product_analysis(
@@ -59,10 +103,7 @@ async def create_product_analysis(
 
     user_role, user_id, session_id = get_current_user(request)
     if not user_id:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content=response_formatter.buildErrorResponse('Access denied'),
-        )
+        return _access_denied(response_formatter)
 
     # Create ProductAnalysis object from the payload with server-added fields
     product_analysis = ProductAnalysis(
@@ -110,10 +151,7 @@ async def get_product_analysis(
     user_role = await check_is_admin(user_role_id)
 
     if not user_id or not user_role:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content=response_formatter.buildErrorResponse('Access denied'),
-        )
+        return _access_denied(response_formatter)
 
     product_analysis = await product_analysis_service.get_product_analysis()
     product_analysis_response = [item.to_dict() for item in product_analysis]
@@ -141,23 +179,24 @@ async def get_product_login_stats_summary(
     ),
 ):
     """
-    Admin-only endpoint to fetch login-stats summary cards for a date range.
-    """
-    user_role_id, user_id, _ = get_current_user(request)
-    user_role = await check_is_admin(user_role_id)
+    Admin or manager endpoint for login-stats summary cards.
 
-    if not user_id or not user_role:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content=response_formatter.buildErrorResponse('Access denied'),
-        )
+    Managers only see users in groups they belong to.
+    """
+    group_ids, access_error = await _authorize_login_stats(
+        request, group_id, product_analysis_service, response_formatter
+    )
+    if access_error:
+        return access_error
 
     range_error = _validate_login_stats_range(start_date, end_date, response_formatter)
     if range_error:
         return range_error
 
     summary = await product_analysis_service.get_login_stats_summary(
-        start_date=start_date, end_date=end_date, group_id=group_id
+        start_date=start_date,
+        end_date=end_date,
+        group_ids=group_ids,
     )
 
     return JSONResponse(
@@ -183,16 +222,15 @@ async def get_product_login_stats(
     ),
 ):
     """
-    Admin-only endpoint to fetch user login stats within a date range.
-    """
-    user_role_id, user_id, _ = get_current_user(request)
-    user_role = await check_is_admin(user_role_id)
+    Admin or manager endpoint for per-user login stats.
 
-    if not user_id or not user_role:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content=response_formatter.buildErrorResponse('Access denied'),
-        )
+    Managers only see users in groups they belong to.
+    """
+    group_ids, access_error = await _authorize_login_stats(
+        request, group_id, product_analysis_service, response_formatter
+    )
+    if access_error:
+        return access_error
 
     range_error = _validate_login_stats_range(start_date, end_date, response_formatter)
     if range_error:
@@ -203,7 +241,7 @@ async def get_product_login_stats(
         end_date=end_date,
         limit=limit,
         offset=offset,
-        group_id=group_id,
+        group_ids=group_ids,
     )
 
     return JSONResponse(
