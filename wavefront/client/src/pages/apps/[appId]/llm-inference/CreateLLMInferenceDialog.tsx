@@ -464,7 +464,6 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
                       <FormControl>
                         <Input type="text" placeholder="2024-12-01-preview" {...field} />
                       </FormControl>
-                      <FormDescription>Azure OpenAI API version (e.g. 2024-12-01-preview)</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
