@@ -29,7 +29,7 @@ dependencies = [
     "fastapi>=0.115.2,<1.0.0",
     "uvicorn>=0.30.1,<1.0.0",
     "dependency-injector>=4.42.0,<5.0.0",
-    "python-multipart==0.0.9",
+    "python-multipart>=0.0.31",
     "python-dotenv>=1.1.0,<2.0.0",
     "pottery>=3.0.1,<4.0.0",
     "psycopg2-binary>=2.9.10,<3.0.0",
