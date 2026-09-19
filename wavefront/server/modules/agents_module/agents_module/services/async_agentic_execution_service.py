@@ -383,10 +383,18 @@ class AsyncAgenticExecutionService:
         # names and stack detail — so it is swapped for a fixed message unless
         # the caller is entitled to it. Still non-null when the run failed, so
         # a client renders the same field either way.
+        #
+        # Keyed off status, not off the column: the consumer only writes `error`
+        # when the worker supplies text and only clears it on `in_progress`, so
+        # the column alone is neither. A failure reported without a message
+        # leaves it null, and a retry that reaches `completed` without passing
+        # through `in_progress` leaves the previous attempt's text behind.
         raw_error = record_dict.get('error')
         error = None
-        if raw_error:
-            error = raw_error if include_error else GENERIC_EXECUTION_ERROR
+        if record_dict['status'] == 'failed':
+            error = (
+                raw_error if include_error and raw_error else GENERIC_EXECUTION_ERROR
+            )
 
         return AgenticExecutionStatusResponse(
             id=uuid.UUID(record_dict['id']),

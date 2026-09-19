@@ -32,10 +32,6 @@ _KEY_CHARSET_DESCRIPTION = (
     'only letters, numbers, hyphens, underscores and slashes are allowed'
 )
 
-# Scalars carry no characters to constrain — a bool or a number cannot smuggle
-# anything into a prompt — so they pass without a pattern check.
-_ALLOWED_SCALAR_TYPES = (bool, int, float)
-
 
 def _describe(location: str) -> str:
     return f' at {location}' if location else ''
@@ -51,7 +47,25 @@ def _check_count(size: int, noun: str, location: str = '') -> None:
 
 def _validate_variable_value(value: Any, location: str) -> None:
     """Check one variable value, recursing through lists and nested objects."""
-    if value is None or isinstance(value, _ALLOWED_SCALAR_TYPES):
+    if value is None or isinstance(value, bool):
+        return
+
+    if isinstance(value, (int, float)):
+        # A JSON number sidesteps the string length cap: the parser accepts
+        # integers up to 4300 digits, so `{"n": 999…}` puts 4300 characters
+        # into the prompt where the same digits in quotes stop at 500. Digits
+        # are inside the value charset, so quoting is the only difference.
+        # Measure the serialized form, which is what reaches the prompt.
+        #
+        # str() on an integer past the parser's own ceiling raises ValueError,
+        # which is what this function raises anyway — a direct caller with an
+        # absurd int still gets a clean rejection rather than a crash.
+        rendered = str(value)
+        if len(rendered) > MAX_VARIABLE_VALUE_LENGTH:
+            raise ValueError(
+                f'Variable value too long{_describe(location)}: '
+                f'{len(rendered)} characters, limit is {MAX_VARIABLE_VALUE_LENGTH}.'
+            )
         return
 
     if isinstance(value, str):
