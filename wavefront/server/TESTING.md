@@ -191,10 +191,3 @@ a cascade, or a transaction boundary.
   That package is what guarantees `Base.metadata` is complete; a model missing
   from it breaks `create_all` on the first unresolved cross-module foreign key,
   and breaks Alembic autogenerate the same way.
-
-## Known state
-
-64 tests currently fail on `develop`. They are pre-existing failures unrelated
-to the harness -- `plugins_module` fails 32 of 34 and
-`common_module/test_odata_parser.py` fails 15 of 21 even when run alone -- and
-they are tracked separately. CI cannot gate on green until they are fixed.

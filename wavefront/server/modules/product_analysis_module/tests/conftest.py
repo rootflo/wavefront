@@ -69,4 +69,4 @@ def mock_admin_functions(patch_auth):
 
 @pytest.fixture
 def mock_non_admin_functions(patch_auth):
-    patch_auth(is_admin=False)
+    patch_auth(CONTROLLERS, is_admin=False)

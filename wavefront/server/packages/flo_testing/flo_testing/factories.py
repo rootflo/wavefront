@@ -1,8 +1,4 @@
-"""Seeding helpers shared across module test suites.
-
-``create_session`` was copy-pasted into nine test files, seven of them
-byte-identical. It lives here now.
-"""
+"""Seeding helpers shared across module test suites."""
 
 from __future__ import annotations
 
@@ -48,6 +44,10 @@ async def seed_user_session(
         session.add(user)
         session.add(db_session)
         await session.commit()
+        await session.refresh(user)
+        await session.refresh(db_session)
+        session.expunge(user)
+        session.expunge(db_session)
 
     return user, db_session
 

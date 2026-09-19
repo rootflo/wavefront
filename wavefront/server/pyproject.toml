@@ -75,10 +75,7 @@ constraint-dependencies = [
     "virtualenv>=20.36.1",
 ]
 
-# No workspace member currently runs torch/torchvision on GPU nodes
-# (inference_use_gpu and equivalents are false in every deployed environment;
-# gold-weight-ratio's GPU service lives in a separate repo/image) — CPU-only
-# wheels avoid pulling ~2GB of unused nvidia-*-cu12 CUDA libraries into images.
+
 [tool.uv.sources]
 torch = [{ index = "pytorch-cpu", marker = "sys_platform != 'darwin'" }]
 torchvision = [{ index = "pytorch-cpu", marker = "sys_platform != 'darwin'" }]
@@ -89,13 +86,7 @@ name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
-# Single source of truth for the whole workspace: `pytest` from server/ runs
-# every suite. Per-module [tool.pytest.ini_options] blocks were removed, since
-# they only ever took effect when pytest was invoked from inside that module and
-# silently diverged from each other.
-#
-# The `db` marker and the APP_ENV/SUPERSET_FLAG defaults live in the flo-testing
-# plugin rather than here, so they travel with the harness.
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
