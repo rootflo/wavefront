@@ -23,7 +23,7 @@ jobs:
 
     steps:
       - name: "Checkout"
-        uses: "actions/checkout@v3"
+        uses: actions/checkout@a37ce9120846195fa4ece8f58b268e6043cb2f26 # v3.7.0
 
       - name: Determine image tag
         id: determine-tag
@@ -37,7 +37,7 @@ jobs:
 
       - name: Cache Docker layers
         id: cache-docker-layers
-        uses: actions/cache@v3
+        uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c # v3.5.0
         with:
           path: /tmp/.buildx-cache
           key: ${{ runner.os }}-docker-${{ github.sha }}
@@ -45,7 +45,7 @@ jobs:
             ${{ runner.os }}-docker-
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - name: Build Docker Image
         id: build-image
@@ -53,12 +53,12 @@ jobs:
           docker build -f wavefront/server/docker/floconsole.Dockerfile -t rootflo:${{ env.IMAGE_TAG }} .
 
       - id: "Auth-to-GCP"
-        uses: "google-github-actions/auth@v1"
+        uses: google-github-actions/auth@3a3c4c57d294ef65efaaee4ff17b22fa88dd3c69 # v1.3.0
         with:
           credentials_json: "${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}"
 
       - name: "Set up Cloud SDK"
-        uses: "google-github-actions/setup-gcloud@v1"
+        uses: google-github-actions/setup-gcloud@e30db14379863a8c79331b04a9969f4c1e225e0b # v1.1.1
 
       - name: "Docker auth for GCP"
         run: |-
@@ -71,7 +71,7 @@ jobs:
 
         # Configure AWS credentials and push to ECR
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -79,7 +79,7 @@ jobs:
 
       - name: Login to Amazon ECR
         id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v1
+        uses: aws-actions/amazon-ecr-login@5a88a04c91d5c6f97aae0d9be790e64d9b1d47b7 # v1.7.1
 
       - name: Tag and push image to Amazon ECR
         run: |
@@ -88,7 +88,7 @@ jobs:
 
         # Configure Azure credentials and push to ACR
       - name: Login to Azure
-        uses: azure/login@v2
+        uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2.3.1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 

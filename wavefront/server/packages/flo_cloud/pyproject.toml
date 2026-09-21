@@ -23,10 +23,6 @@ dependencies = [
     "psycopg2-binary>=2.9.10,<3.0.0",
 ]
 
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
-
 [tool.uv]
 package = true
 

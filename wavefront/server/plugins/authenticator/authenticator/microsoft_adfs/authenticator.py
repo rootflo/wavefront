@@ -306,7 +306,6 @@ class MicrosoftADFSAuthenticator(AuthenticatorABC):
                 bool(token_data.get('refresh_token')),
                 token_data.get('expires_in'),
             )
-            logger.debug('ADFS id_token=%s', id_token)
 
             return (
                 TokenResult(
@@ -492,7 +491,12 @@ class MicrosoftADFSAuthenticator(AuthenticatorABC):
                 decode_kwargs['issuer'] = self.config.expected_issuer
 
             claims = jwt.decode(id_token, signing_key.key, **decode_kwargs)
-            logger.debug('ADFS id_token claims decoded: %s', claims)
+            # Claim names only - the values carry PII (email, upn, names).
+            logger.debug(
+                'ADFS claims decoded: sub=%s keys=%s',
+                claims.get('sub'),
+                sorted(claims),
+            )
 
             if expected_nonce is not None and claims.get('nonce') != expected_nonce:
                 logger.warning('ADFS id_token nonce mismatch')

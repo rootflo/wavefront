@@ -18,12 +18,36 @@ from agents_module.models.agent_schemas import AgentInferenceRequest
 from agents_module.models.workflow_schemas import WorkflowInferenceRequest
 from agents_module.utils.auth_utils import extract_auth_credentials
 from agents_module.utils.input_processing_utils import validate_inference_inputs_media
+from user_management_module.utils.user_utils import check_is_admin
 from llm_inference_config_module.container import LlmInferenceConfigContainer
 from llm_inference_config_module.services.llm_inference_config_service import (
     LlmInferenceConfigService,
 )
 
 async_router = APIRouter()
+
+_SHOW_ERROR_DESCRIPTION = (
+    'Return the stored error text instead of a generic message. Honoured for '
+    'admin callers only; everyone else gets the generic message regardless.'
+)
+
+
+async def _may_see_error(request: Request, show_error: bool) -> bool:
+    """Both halves must hold: the caller asks, and the caller is an admin.
+
+    Asking is a query param, so on its own it gates nothing — anyone can set
+    it. The admin check is what actually restricts the disclosure; the param
+    keeps the error text out of the default payload even for admins, so it
+    can't reach a UI by accident.
+    """
+    if not show_error:
+        return False
+
+    session = getattr(request.state, 'session', None)
+    if session is None:
+        return False
+
+    return await check_is_admin(session.role_id)
 
 
 @async_router.post(
@@ -189,7 +213,9 @@ async def async_workflow_inference(
 @async_router.get('/v1/agentic-executions/{execution_id}')
 @inject
 async def get_execution_status(
+    request: Request,
     execution_id: UUID,
+    show_error: bool = Query(False, description=_SHOW_ERROR_DESCRIPTION),
     async_agentic_execution_service: AsyncAgenticExecutionService = Depends(
         Provide[AgentsContainer.async_agentic_execution_service]
     ),
@@ -197,9 +223,11 @@ async def get_execution_status(
         Provide[CommonContainer.response_formatter]
     ),
 ):
+    include_error = await _may_see_error(request, show_error)
+
     try:
         result = await async_agentic_execution_service.get_execution_status(
-            execution_id
+            execution_id, include_error=include_error
         )
     except ValueError as e:
         return JSONResponse(
@@ -221,6 +249,7 @@ async def get_execution_status(
 @async_router.get('/v1/agentic-executions')
 @inject
 async def list_executions(
+    request: Request,
     entity_id: Optional[UUID] = Query(
         None, description='Filter by agent or workflow UUID'
     ),
@@ -232,6 +261,7 @@ async def list_executions(
     ),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
+    show_error: bool = Query(False, description=_SHOW_ERROR_DESCRIPTION),
     async_agentic_execution_service: AsyncAgenticExecutionService = Depends(
         Provide[AgentsContainer.async_agentic_execution_service]
     ),
@@ -239,12 +269,15 @@ async def list_executions(
         Provide[CommonContainer.response_formatter]
     ),
 ):
+    include_error = await _may_see_error(request, show_error)
+
     results, total = await async_agentic_execution_service.list_executions(
         entity_id=entity_id,
         entity_type=entity_type,
         status=execution_status,
         offset=offset,
         limit=limit,
+        include_error=include_error,
     )
 
     return JSONResponse(

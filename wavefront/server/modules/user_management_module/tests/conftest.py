@@ -1,424 +1,179 @@
-import json
-from unittest.mock import AsyncMock, Mock
-from uuid import uuid4
+"""Test wiring specific to user_management_module.
 
-from auth_module.auth_container import AuthContainer
-from common_module.common_container import CommonContainer
-from common_module.middleware.request_id_middleware import RequestIdMiddleware
-from db_repo_module.database.base import Base
-from db_repo_module.db_repo_container import DatabaseModuleContainer
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
+The database, core containers, identity and seeding come from the flo-testing
+plugin. The fixtures below are the per-controller auth setups: each controller
+imports get_current_user/check_is_admin into its own namespace, so each needs
+its own patch target.
+"""
+
 import pytest
-from sqlalchemy.ext.asyncio import async_sessionmaker
-from sqlalchemy.ext.asyncio import create_async_engine
-import testing.postgresql
-from user_management_module.authorization.require_auth import RequireAuthMiddleware
+from flo_testing import make_test_client
 from user_management_module.router import user_management_router
-from user_management_module.user_container import UserContainer
-from io import BytesIO
-from knowledge_base_module.knowledge_base_container import KnowledgeBaseContainer
-from dependency_injector import providers
 
-
-class MockDbClient:
-    def __init__(self, engine, session_factory):
-        self._engine = engine
-        self.session = session_factory
+ACCESS_CONTROLLER = 'user_management_module.controllers.access_controller'
+GROUP_CONTROLLER = 'user_management_module.controllers.group_controller'
+USER_CONTROLLER = 'user_management_module.controllers.user_controller'
 
 
 @pytest.fixture
-async def test_engine():
-    with testing.postgresql.Postgresql() as postgresql:
-        database_url = postgresql.url()
-
-        async_database_url = database_url.replace(
-            'postgresql://', 'postgresql+psycopg://'
-        )
-
-        engine = create_async_engine(async_database_url)
-
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-
-        yield engine
-
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.drop_all)
-        await engine.dispose()
-
-
-@pytest.fixture
-async def test_session(test_engine):
-    async_session = async_sessionmaker(autocommit=False, bind=test_engine)
-    yield async_session
-
-
-@pytest.fixture
-def test_user_id():
-    """Fixture to provide a consistent test user ID."""
-    return str(uuid4())
-
-
-@pytest.fixture
-def test_session_id():
-    """Fixture to provide a consistent test session ID."""
-    return str(uuid4())
-
-
-@pytest.fixture
-def mock_config():
-    """Fixture to provide mock config for testing."""
-    return {
-        'web': {'url': 'http://test.example.com'},
-        'auth': {
-            'max_failed_attempts': '3',
-            'lockout_duration_hours': '24',
-            'inactive_days_threshold': '60',
-        },
-    }
-
-
-@pytest.fixture
-def setup_containers(
-    test_engine, test_session, test_user_id, test_session_id, mock_config
-):
-    db_repo_container = DatabaseModuleContainer()
-    mock_db_client = MockDbClient(test_engine, test_session)
-    db_repo_container.db_client.override(mock_db_client)
-
-    common_container = CommonContainer()
-
-    cache_manager_mock = Mock()
-    # For session data
-    cache_manager_mock.get_str.return_value = json.dumps(
-        {'user_id': test_user_id, 'device_info': 'Mozilla/5.0'}
-    )
-    # For reset password
-    cache_manager_mock.get_str.side_effect = (
-        lambda key: test_user_id
-        if key == 'mock_reset_code'
-        else json.dumps({'user_id': test_user_id, 'device_info': 'Mozilla/5.0'})
-    )
-    cache_manager_mock.add = Mock()
-    common_container.cache_manager.override(cache_manager_mock)
-
-    # Mock token service
-    mock_token_service = Mock()
-    mock_token_service.create_token.return_value = 'mock_token'
-    mock_token_service.decode_token.return_value = {
-        'sub': 'test@example.com',
-        'user_id': test_user_id,
-        'role_id': 'test_role_id',
-        'session_id': test_session_id,
-        'code': 'mock_reset_code',
-    }
-    mock_token_service.token_expiry = 3600
-    mock_token_service.temporary_token_expiry = 600
-
-    auth_container = AuthContainer(
-        db_client=db_repo_container.db_client,
-        cache_manager=cache_manager_mock,
-    )
-    auth_container.token_service.override(mock_token_service)
-
-    # mocking auth container superset_service
-    mock_superset_service = Mock()
-    mock_superset_service.generate_guest_token.return_value = 'mock_guest_token'
-    auth_container.superset_service.override(mock_superset_service)
-
-    # Password reset mail goes out through plugins_module's EmailSendService,
-    # which the app hands in; the tests stand in a mock for it.
-    mock_email_sender = Mock()
-    mock_email_sender.send = AsyncMock(return_value=True)
-
-    user_container = UserContainer(
-        db_client=db_repo_container.db_client,
-        cache_manager=cache_manager_mock,
-        email_send_service=mock_email_sender,
-    )
-    user_container.config.override(mock_config)
-
-    # Setup KnowledgeBaseContainer for auth_module.controllers (outlook_controller)
-    knowledge_base_container = KnowledgeBaseContainer(
-        db_client=db_repo_container.db_client,
-        cache_manager=cache_manager_mock,
-    )
-
-    # Mock CloudStorageManager
-    mock_cloud_storage = Mock()
-    mock_cloud_storage.save_small_file = Mock()
-    mock_cloud_storage.save_large_file = Mock()
-    mock_cloud_storage.get_file = Mock(return_value=BytesIO(b'file content'))
-    knowledge_base_container.cloud_storage.override(
-        providers.Singleton(lambda: mock_cloud_storage)
-    )
-
-    # Mock MessageQueueManager
-    mock_message_queue = Mock()
-    mock_message_queue.add_message = Mock(return_value='message_id_123')
-    knowledge_base_container.message_queue.override(
-        providers.Singleton(lambda: mock_message_queue)
-    )
-
-    # Mock config
-    test_kb_config_dict = {
-        'cloud_config': {'cloud_provider': 'gcp'},
-        'floware': {'asset_storage_bucket': 'test_bucket'},
-        'gcp': {
-            'rag_topic_id': 'test_topic',
-        },
-        'aws': {
-            'queue_url': 'test_queue_url',
-        },
-    }
-    knowledge_base_container.config.from_dict(test_kb_config_dict)
-
-    # Wire KnowledgeBaseContainer
-    knowledge_base_container.wire(
-        packages=[
-            'auth_module.controllers',
-        ]
-    )
-
-    common_container.wire(
+def setup_containers(core_containers):
+    core_containers.wire(
+        core_containers.common,
         packages=[
             'user_management_module.controllers',
             'auth_module.controllers',
             'user_management_module.authorization',
-        ]
+        ],
     )
-    auth_container.wire(
+    core_containers.wire(
+        core_containers.auth,
         packages=[
             'user_management_module.controllers',
             'user_management_module.authorization',
-        ]
+        ],
     )
-    user_container.wire(
+    core_containers.wire(
+        core_containers.user,
         packages=[
             'user_management_module.authorization',
             'user_management_module.controllers',
             'user_management_module.utils',
             'auth_module.controllers',
-        ]
+        ],
+    )
+    # outlook_controller in auth_module.controllers resolves knowledge-base
+    # providers, so that container has to be wired even though nothing here
+    # exercises it.
+    core_containers.wire(
+        _knowledge_base_container(core_containers),
+        packages=['auth_module.controllers'],
     )
 
-    yield auth_container, common_container, user_container
-    auth_container.unwire()
-    common_container.unwire()
+    return core_containers.auth, core_containers.common, core_containers.user
+
+
+def _knowledge_base_container(core_containers):
+    from io import BytesIO
+    from unittest.mock import Mock
+
+    from dependency_injector import providers
+    from knowledge_base_module.knowledge_base_container import (
+        KnowledgeBaseContainer,
+    )
+
+    container = KnowledgeBaseContainer(
+        db_client=core_containers.db_client,
+        cache_manager=core_containers.cache_manager,
+    )
+
+    cloud_storage = Mock()
+    cloud_storage.get_file = Mock(return_value=BytesIO(b'file content'))
+    container.cloud_storage.override(providers.Singleton(lambda: cloud_storage))
+
+    message_queue = Mock()
+    message_queue.add_message = Mock(return_value='message_id_123')
+    container.message_queue.override(providers.Singleton(lambda: message_queue))
+
+    container.config.from_dict(
+        {
+            'cloud_config': {'cloud_provider': 'gcp'},
+            'floware': {'asset_storage_bucket': 'test_bucket'},
+            'gcp': {'rag_topic_id': 'test_topic'},
+            'aws': {'queue_url': 'test_queue_url'},
+        }
+    )
+    return container
+
+
+@pytest.fixture
+def mock_config(user_config):
+    """The config the UserContainer was built with.
+
+    The account-inactivity tests read `inactive_days_threshold` back out of it
+    so their date arithmetic matches what the service is configured with.
+    """
+    return user_config
 
 
 @pytest.fixture
 def test_client(setup_containers):
-    app = FastAPI()
-    app.add_middleware(RequestIdMiddleware)
-    app.add_middleware(RequireAuthMiddleware)
-    app.include_router(user_management_router, prefix='/floware')
-    return TestClient(app)
+    return make_test_client(user_management_router)
 
 
 @pytest.fixture
-def mock_auth_functions(monkeypatch):
-    async def mock_get_current_user(request):
-        return 'test_user_id', 'test_role_id', 'test_session_id'
-
-    async def mock_check_is_admin(role_id):
-        return True
-
-    monkeypatch.setattr(
-        'auth_module.controllers.superset_controller.check_is_admin',
-        mock_check_is_admin,
-    )
-    monkeypatch.setattr(
-        'user_management_module.utils.user_utils.get_current_user',
-        mock_get_current_user,
+def mock_auth_admin_functions(patch_auth):
+    """Admin caller for the access (role/resource) endpoints."""
+    patch_auth(
+        ACCESS_CONTROLLER,
+        role_id='test_user_id',
+        user_id='test_role_id',
+        session_id='test_session_id',
+        include_user_utils=False,
     )
 
 
 @pytest.fixture
-def mock_auth_admin_functions(monkeypatch):
-    def mock_get_current_user(request):
-        return 'test_user_id', 'test_role_id', 'test_session_id'
-
-    monkeypatch.setattr(
-        'user_management_module.controllers.access_controller.get_current_user',
-        mock_get_current_user,
-    )
-
-    async def mock_check_is_admin(role_id, role_repository=None):
-        return True
-
-    monkeypatch.setattr(
-        'user_management_module.controllers.access_controller.check_is_admin',
-        mock_check_is_admin,
+def mock_group_admin_functions(patch_auth):
+    patch_auth(
+        GROUP_CONTROLLER,
+        user_id='test_user_id',
+        session_id='test_session_id',
+        include_user_utils=False,
     )
 
 
 @pytest.fixture
-def mock_group_admin_functions(monkeypatch):
-    """Admin caller for the group endpoints.
-
-    group_controller imports get_current_user/check_is_admin into its own
-    namespace, so they are patched there rather than on user_utils.
-    """
-
-    def mock_get_current_user(request):
-        return 'test_role_id', 'test_user_id', 'test_session_id'
-
-    monkeypatch.setattr(
-        'user_management_module.controllers.group_controller.get_current_user',
-        mock_get_current_user,
-    )
-
-    async def mock_check_is_admin(role_id, role_repository=None):
-        return True
-
-    monkeypatch.setattr(
-        'user_management_module.controllers.group_controller.check_is_admin',
-        mock_check_is_admin,
-    )
-
-
-@pytest.fixture
-def mock_group_non_admin_functions(monkeypatch):
+def mock_group_non_admin_functions(patch_auth):
     """Non-admin caller, for asserting the group endpoints reject them."""
-
-    def mock_get_current_user(request):
-        return 'test_role_id', 'test_user_id', 'test_session_id'
-
-    monkeypatch.setattr(
-        'user_management_module.controllers.group_controller.get_current_user',
-        mock_get_current_user,
-    )
-
-    async def mock_check_is_not_admin(role_id, role_repository=None):
-        return False
-
-    monkeypatch.setattr(
-        'user_management_module.controllers.group_controller.check_is_admin',
-        mock_check_is_not_admin,
+    patch_auth(
+        GROUP_CONTROLLER,
+        is_admin=False,
+        user_id='test_user_id',
+        session_id='test_session_id',
+        include_user_utils=False,
     )
 
 
 @pytest.fixture
-def auth_token(setup_containers, test_user_id, test_session_id):
-    auth_container, _, _ = setup_containers
-    token_service = auth_container.token_service()
-    token = token_service.create_token(
-        sub='test@example.com',
-        user_id=test_user_id,
-        role_id='test_role_id',
-        session_id=test_session_id,
-    )
-    return token
+def mock_auth_admin_user_functions(patch_auth):
+    """Admin caller for the user endpoints.
 
-
-@pytest.fixture
-def mock_auth_admin_user_functions(monkeypatch, test_user_id):
-    def mock_get_current_user(request):
-        return (
-            'test_role_id',
-            test_user_id,
-            'test_session_id',
-        )  # Use the actual UUID from the fixture
-
-    monkeypatch.setattr(
-        'user_management_module.controllers.user_controller.get_current_user',
-        mock_get_current_user,
-    )
-    # The read endpoints go through can_read_users, which resolves both helpers
-    # from the user_utils namespace rather than the controller's.
-    monkeypatch.setattr(
-        'user_management_module.utils.user_utils.get_current_user',
-        mock_get_current_user,
-    )
-
-    async def mock_check_is_admin(role_id, role_repository=None):
-        return True
-
-    monkeypatch.setattr(
-        'user_management_module.controllers.user_controller.check_is_admin',
-        mock_check_is_admin,
-    )
-    monkeypatch.setattr(
-        'user_management_module.utils.user_utils.check_is_admin',
-        mock_check_is_admin,
-    )
-
-
-@pytest.fixture
-def mock_auth_non_admin_user_functions(monkeypatch, test_user_id):
-    """Non-admin caller for the user endpoints.
-
-    Mirrors mock_auth_admin_user_functions and patches the same two namespaces:
-    the listing endpoint resolves check_is_admin from the controller, while
-    fetch-by-id reaches it through can_read_users in user_utils.
+    Patches user_utils as well: the read endpoints go through can_read_users,
+    which resolves both helpers from that namespace rather than the
+    controller's.
     """
-
-    def mock_get_current_user(request):
-        return ('test_role_id', test_user_id, 'test_session_id')
-
-    monkeypatch.setattr(
-        'user_management_module.controllers.user_controller.get_current_user',
-        mock_get_current_user,
-    )
-    monkeypatch.setattr(
-        'user_management_module.utils.user_utils.get_current_user',
-        mock_get_current_user,
-    )
-
-    async def mock_check_is_not_admin(role_id, role_repository=None):
-        return False
-
-    monkeypatch.setattr(
-        'user_management_module.controllers.user_controller.check_is_admin',
-        mock_check_is_not_admin,
-    )
-    monkeypatch.setattr(
-        'user_management_module.utils.user_utils.check_is_admin',
-        mock_check_is_not_admin,
-    )
+    patch_auth(USER_CONTROLLER, session_id='test_session_id')
 
 
 @pytest.fixture
-def set_non_admin_data_access_flag(monkeypatch):
+def mock_auth_non_admin_user_functions(patch_auth):
+    patch_auth(USER_CONTROLLER, is_admin=False, session_id='test_session_id')
+
+
+@pytest.fixture
+def set_non_admin_data_access_flag(patch_feature_flag):
     """Toggle ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG for the user controller.
 
-    The controller imports is_feature_enabled into its own namespace, so that is
-    where it has to be patched. Returns a setter rather than a value so one
-    fixture serves both the flag-on and flag-off cases.
+    Returns a setter rather than a value so one fixture serves both the flag-on
+    and flag-off cases.
     """
 
     def _set(enabled: bool):
-        monkeypatch.setattr(
-            'user_management_module.controllers.user_controller.is_feature_enabled',
-            lambda flag: enabled,
-        )
+        patch_feature_flag(USER_CONTROLLER, enabled)
 
     return _set
 
 
 @pytest.fixture
-def mocking_user_controller_is_admin(monkeypatch):
-    async def mock_check_is_admin(role_id):
-        return True
-
-    monkeypatch.setattr(
-        'user_management_module.controllers.user_controller.check_is_admin',
-        mock_check_is_admin,
-    )
-    monkeypatch.setattr(
-        'user_management_module.utils.user_utils.check_is_admin',
-        mock_check_is_admin,
-    )
+def mocking_user_controller_is_admin(patch_is_admin):
+    patch_is_admin(USER_CONTROLLER)
 
 
 @pytest.fixture
-def mocking_user_controller_get_current_user(monkeypatch, test_user_id):
-    def mock_get_current_user(request):
-        return 'wrong_role_id', test_user_id, 'test_session_id'
-
-    monkeypatch.setattr(
-        'user_management_module.controllers.user_controller.get_current_user',
-        mock_get_current_user,
+def mocking_user_controller_get_current_user(patch_current_user):
+    patch_current_user(
+        USER_CONTROLLER,
+        role_id='wrong_role_id',
+        session_id='test_session_id',
+        include_user_utils=False,
     )
