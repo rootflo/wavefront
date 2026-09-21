@@ -26,8 +26,8 @@ db-repo-module = { workspace = true }
 [dependency-groups]
 dev = [
     "flo-testing",
-    "pytest>=8.3.4,<9.0.0",
-    "pytest-asyncio>=0.24.0,<1.0.0",
+    "pytest>=9.0.3,<10.0.0",
+    "pytest-asyncio>=1.0.0,<2.0.0",
     "asyncpg>=0.30.0,<1.0.0",
 ]
 
