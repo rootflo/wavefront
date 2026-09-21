@@ -108,8 +108,8 @@ const DatasourcesManagement: React.FC = () => {
 
       <div className="mb-8 flex w-full items-start justify-between">
         <div>
-          <h1 className="animate-fade-in text-3xl font-bold text-gray-900">Datasources</h1>
-          <p className="animate-fade-in mt-2 text-gray-600">Manage data connections for {selectedApp?.app_name}</p>
+          <h1 className="animate-fade-in frost-text text-3xl font-bold">Datasources</h1>
+          <p className="animate-fade-in frost-text-muted mt-2">Manage data connections for {selectedApp?.app_name}</p>
         </div>
         <div className="animate-fade-in flex items-center gap-4">
           <Input
@@ -122,7 +122,7 @@ const DatasourcesManagement: React.FC = () => {
           <Button onClick={handleCreateDatasource}>Create Datasource</Button>
         </div>
       </div>
-      <div className="grid gap-6 overflow-y-auto py-2 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid w-full gap-6 px-1 pt-2 pb-10 sm:grid-cols-2 lg:grid-cols-3">
         {datasourcesLoading ? (
           <>
             {Array.from({ length: 6 }).map((_, index) => (

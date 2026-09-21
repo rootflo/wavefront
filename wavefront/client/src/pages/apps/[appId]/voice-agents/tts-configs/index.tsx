@@ -85,107 +85,105 @@ const TtsConfigsPage: React.FC = () => {
   });
 
   return (
-    <div className="w-full">
-      <div className="w-full">
-        <div className="mb-8 flex items-center justify-end">
-          <div className="flex items-center gap-4">
-            <Input
-              type="text"
-              placeholder="Search"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-[180px]"
-            />
-            <div className="flex items-center gap-3">
-              <Button onClick={handleCreateTtsConfig}>
-                <p className="text-sm">Create TTS Config</p>
-              </Button>
-            </div>
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
+      <div className="mb-6 flex shrink-0 items-center justify-end">
+        <div className="flex items-center gap-4">
+          <Input
+            type="text"
+            placeholder="Search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-[180px]"
+          />
+          <div className="flex items-center gap-3">
+            <Button onClick={handleCreateTtsConfig}>
+              <p className="text-sm">Create TTS Config</p>
+            </Button>
           </div>
         </div>
-
-        {configsLoading ? (
-          <div className="flex justify-center py-10">
-            <div className="text-gray-500">Loading TTS configurations...</div>
-          </div>
-        ) : filteredConfigs.length === 0 ? (
-          <div className="mt-10 flex justify-center">
-            <EmptyStateCard
-              title="No TTS configurations found"
-              description={
-                searchQuery
-                  ? 'No TTS configurations match your search.'
-                  : 'Get started by creating your first TTS configuration'
-              }
-              actionText="Create TTS Config"
-              onActionClick={handleCreateTtsConfig}
-            />
-          </div>
-        ) : (
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Display Name</TableHead>
-                  <TableHead>Provider</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredConfigs.map((config) => (
-                  <TableRow key={config.id}>
-                    <TableCell className="font-medium">{config.display_name}</TableCell>
-                    <TableCell>{config.provider}</TableCell>
-                    <TableCell className="max-w-md truncate">{config.description || '-'}</TableCell>
-                    <TableCell>{new Date(config.created_at).toLocaleDateString()}</TableCell>
-                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-2">
-                        <Button variant="ghost" size="sm" onClick={(e) => handleEditClick(e, config)} title="Edit">
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={(e) => handleDeleteClick(e, config)} title="Delete">
-                          <Trash2 className="h-4 w-4 text-red-600" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-
-        {/* Delete Confirmation Dialog */}
-        <DeleteConfirmationDialog
-          isOpen={!!deleteItem}
-          title="Delete TTS Configuration"
-          message={`Are you sure you want to delete "${deleteItem?.display_name}"? This action cannot be undone.`}
-          onConfirm={handleDelete}
-          onCancel={handleDeleteCancel}
-          loading={deleting}
-        />
-
-        {/* Create TTS Config Dialog */}
-        {app && (
-          <CreateTtsConfigDialog
-            isOpen={createDialogOpen}
-            onOpenChange={setCreateDialogOpen}
-            onSuccess={handleCreateSuccess}
-          />
-        )}
-
-        {/* Edit TTS Config Dialog */}
-        {app && editItem && (
-          <EditTtsConfigDialog
-            isOpen={!!editItem}
-            onOpenChange={(open) => !open && setEditItem(null)}
-            config={editItem}
-            onSuccess={handleEditSuccess}
-          />
-        )}
       </div>
+
+      {configsLoading ? (
+        <div className="flex justify-center py-10">
+          <div className="frost-text-muted">Loading TTS configurations...</div>
+        </div>
+      ) : filteredConfigs.length === 0 ? (
+        <div className="mt-10 flex justify-center">
+          <EmptyStateCard
+            title="No TTS configurations found"
+            description={
+              searchQuery
+                ? 'No TTS configurations match your search.'
+                : 'Get started by creating your first TTS configuration'
+            }
+            actionText="Create TTS Config"
+            onActionClick={handleCreateTtsConfig}
+          />
+        </div>
+      ) : (
+        <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-xl border ring-1">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Display Name</TableHead>
+                <TableHead>Provider</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredConfigs.map((config) => (
+                <TableRow key={config.id}>
+                  <TableCell className="font-medium">{config.display_name}</TableCell>
+                  <TableCell>{config.provider}</TableCell>
+                  <TableCell className="max-w-md truncate">{config.description || '-'}</TableCell>
+                  <TableCell>{new Date(config.created_at).toLocaleDateString()}</TableCell>
+                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-2">
+                      <Button variant="ghost" size="sm" onClick={(e) => handleEditClick(e, config)} title="Edit">
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={(e) => handleDeleteClick(e, config)} title="Delete">
+                        <Trash2 className="h-4 w-4 text-red-600" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteConfirmationDialog
+        isOpen={!!deleteItem}
+        title="Delete TTS Configuration"
+        message={`Are you sure you want to delete "${deleteItem?.display_name}"? This action cannot be undone.`}
+        onConfirm={handleDelete}
+        onCancel={handleDeleteCancel}
+        loading={deleting}
+      />
+
+      {/* Create TTS Config Dialog */}
+      {app && (
+        <CreateTtsConfigDialog
+          isOpen={createDialogOpen}
+          onOpenChange={setCreateDialogOpen}
+          onSuccess={handleCreateSuccess}
+        />
+      )}
+
+      {/* Edit TTS Config Dialog */}
+      {app && editItem && (
+        <EditTtsConfigDialog
+          isOpen={!!editItem}
+          onOpenChange={(open) => !open && setEditItem(null)}
+          config={editItem}
+          onSuccess={handleEditSuccess}
+        />
+      )}
     </div>
   );
 };

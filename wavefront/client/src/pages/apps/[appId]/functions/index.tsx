@@ -214,8 +214,8 @@ const FunctionsManagement: React.FC = () => {
 
       <div className="mb-8 flex w-full shrink-0 items-start justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Functions</h1>
-          <p className="mt-2 text-gray-600">Manage and configure functions for {selectedApp?.app_name}</p>
+          <h1 className="frost-text text-3xl font-bold">Functions</h1>
+          <p className="frost-text-muted mt-2">Manage and configure functions for {selectedApp?.app_name}</p>
         </div>
         <div className="flex items-center gap-3">
           <Input
@@ -238,7 +238,7 @@ const FunctionsManagement: React.FC = () => {
       {bulkError ? <ErrorBanner message={bulkError} onDismiss={() => setBulkError('')} /> : null}
 
       {loading ? (
-        <p className="text-sm text-gray-500">Loading functions...</p>
+        <p className="frost-text-muted text-sm">Loading functions...</p>
       ) : filteredProcessors.length === 0 ? (
         <div className="mt-10 flex justify-center">
           <EmptyStateCard
@@ -249,9 +249,9 @@ const FunctionsManagement: React.FC = () => {
           />
         </div>
       ) : (
-        <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-[#EFF0F1]">
+        <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-xl border ring-1">
           <Table>
-            <TableHeader className="sticky top-0 z-10 bg-white">
+            <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>ID</TableHead>

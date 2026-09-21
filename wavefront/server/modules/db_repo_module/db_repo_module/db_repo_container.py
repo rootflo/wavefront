@@ -3,14 +3,14 @@ from db_repo_module.database.connection import DatabaseClient
 from db_repo_module.database.connection import DatabaseConfig
 from db_repo_module.models.auth_secrets import AuthSecrets
 from db_repo_module.models.datasource import Datasource
-from db_repo_module.models.email import Email
+from db_repo_module.models.email_connection import EmailConnection
+from db_repo_module.models.oauth_app import OAuthApp
 from db_repo_module.models.kb_inferences import KnowledgeBaseInferences
 from db_repo_module.models.knowledge_base_documents import KnowledgeBaseDocuments
 from db_repo_module.models.knowledge_base_embeddings import KnowledgeBaseEmbeddings
 from db_repo_module.models.knowledge_bases import KnowledgeBase
 from db_repo_module.models.notification_users import NotificationUser
 from db_repo_module.models.notifications import Notification
-from db_repo_module.models.oauth_credential import OAuthCredential
 from db_repo_module.models.resource import Resource
 from db_repo_module.models.role_resource import RoleResource
 from db_repo_module.models.task import Task
@@ -40,9 +40,11 @@ from db_repo_module.models.workflow import Workflow
 from db_repo_module.models.workflow_version import WorkflowVersion
 from db_repo_module.models.api_services import ApiServices
 from db_repo_module.models.async_agentic_execution import AsyncAgenticExecution
-from db_repo_module.models.agentic_trigger_credential import AgenticTriggerCredential
 from db_repo_module.models.agentic_trigger import AgenticTrigger
 from db_repo_module.models.agentic_trigger_event import AgenticTriggerEvent
+from db_repo_module.models.chatbot import Chatbot
+from db_repo_module.models.chat_session import ChatSession
+from db_repo_module.models.chat_message import ChatMessage
 from dependency_injector import containers
 from dependency_injector import providers
 
@@ -65,13 +67,15 @@ class DatabaseModuleContainer(containers.DeclarativeContainer):
 
     db_client = providers.Singleton(DatabaseClient, db_config=db_config)
 
-    email_repository = providers.Singleton(
-        SQLAlchemyRepository[Email], model=Email, db_client=db_client
+    oauth_app_repository = providers.Singleton(
+        SQLAlchemyRepository[OAuthApp],
+        model=OAuthApp,
+        db_client=db_client,
     )
 
-    oauth_credential_repository = providers.Singleton(
-        SQLAlchemyRepository[OAuthCredential],
-        model=OAuthCredential,
+    email_connection_repository = providers.Singleton(
+        SQLAlchemyRepository[EmailConnection],
+        model=EmailConnection,
         db_client=db_client,
     )
 
@@ -275,12 +279,6 @@ class DatabaseModuleContainer(containers.DeclarativeContainer):
         db_client=db_client,
     )
 
-    agentic_trigger_credential_repository = providers.Singleton(
-        SQLAlchemyRepository[AgenticTriggerCredential],
-        model=AgenticTriggerCredential,
-        db_client=db_client,
-    )
-
     agentic_trigger_repository = providers.Singleton(
         SQLAlchemyRepository[AgenticTrigger],
         model=AgenticTrigger,
@@ -290,5 +288,23 @@ class DatabaseModuleContainer(containers.DeclarativeContainer):
     agentic_trigger_event_repository = providers.Singleton(
         SQLAlchemyRepository[AgenticTriggerEvent],
         model=AgenticTriggerEvent,
+        db_client=db_client,
+    )
+
+    chatbot_repository = providers.Singleton(
+        SQLAlchemyRepository[Chatbot],
+        model=Chatbot,
+        db_client=db_client,
+    )
+
+    chat_session_repository = providers.Singleton(
+        SQLAlchemyRepository[ChatSession],
+        model=ChatSession,
+        db_client=db_client,
+    )
+
+    chat_message_repository = providers.Singleton(
+        SQLAlchemyRepository[ChatMessage],
+        model=ChatMessage,
         db_client=db_client,
     )

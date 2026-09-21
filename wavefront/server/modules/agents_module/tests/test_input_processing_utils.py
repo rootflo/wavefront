@@ -100,23 +100,22 @@ class TestProcessInferenceInputs:
         assert result[0].content.base64 == simple_png_b64
         assert isinstance(result[0].content.base64, str)
 
-    def test_image_message_invalid_base64(self):
-        """Test that plain base64 (non-data URL) is processed correctly"""
+    def test_image_message_without_resolvable_mime_type(self):
+        """Test that an image with no determinable mime type is rejected
+
+        The provider needs the mime type to build the image data URL, so
+        letting this through only defers the failure into the LLM call.
+        """
         image_input = {
             'role': 'user',
             'content': {'image_base64': 'invalid_base64_data'},
         }
 
-        inputs = [image_input]
+        with pytest.raises(HTTPException) as exc_info:
+            process_inference_inputs([image_input])
 
-        # The pattern won't match, so it falls back to else branch
-        # and uses the provided image_base64 and mime_type (None) directly
-        result = process_inference_inputs(inputs)
-        assert len(result) == 1
-        assert isinstance(result[0], UserMessage)
-        assert isinstance(result[0].content, ImageMessageContent)
-        assert result[0].content.base64 == 'invalid_base64_data'
-        assert result[0].content.mime_type is None
+        assert exc_info.value.status_code == 400
+        assert 'Could not determine the mime type' in str(exc_info.value.detail)
 
     def test_image_message_with_none_base64(self):
         """Test that None image_base64 raises HTTPException"""
@@ -157,9 +156,12 @@ class TestProcessInferenceInputs:
         # base64 field should contain base64-encoded string
         assert result[0].content.base64 == document_base64_str
 
-    def test_document_message_txt(self):
-        """Test processing DocumentMessage with TXT type"""
-        # Encode bytes to base64 string as expected by implementation
+    def test_document_message_txt_rejected(self):
+        """Test that a non-PDF document is rejected at the boundary
+
+        The document formatter only rasterizes PDFs, so a text/plain document
+        would fail inside the provider call rather than here.
+        """
         document_base64_str = base64.b64encode(b'fake_txt_content').decode('utf-8')
         doc_input = {
             'role': 'user',
@@ -169,15 +171,11 @@ class TestProcessInferenceInputs:
             },
         }
 
-        inputs = [doc_input]
-        result = process_inference_inputs(inputs)
+        with pytest.raises(HTTPException) as exc_info:
+            process_inference_inputs([doc_input])
 
-        assert len(result) == 1
-        assert isinstance(result[0], UserMessage)
-        assert isinstance(result[0].content, DocumentMessageContent)
-        assert result[0].content.mime_type == 'text/plain'
-        # base64 field should contain base64-encoded string
-        assert result[0].content.base64 == document_base64_str
+        assert exc_info.value.status_code == 400
+        assert 'Unsupported document type `text/plain`' in str(exc_info.value.detail)
 
     def test_document_message_default_type(self):
         """Test DocumentMessage processing"""
@@ -307,6 +305,72 @@ class TestFileNamePropagation:
         assert len(result) == 1
         assert isinstance(result[0].content, ImageMessageContent)
         assert result[0].content.file_name == 'photo.png'
+
+    def test_document_data_url_prefix_is_stripped(self):
+        """Test that a document sent as a data URL has the prefix removed
+
+        Every provider feeds `.base64` straight to a decoder, so leaving the
+        `data:...;base64,` prefix on produces garbage bytes instead of an error.
+        """
+        document_base64_str = base64.b64encode(b'%PDF-1.4 fake').decode('utf-8')
+
+        inputs = [
+            {
+                'role': 'user',
+                'content': {
+                    'document_base64': (
+                        f'data:application/pdf;base64,{document_base64_str}'
+                    )
+                },
+            }
+        ]
+
+        result = process_inference_inputs(inputs)
+
+        assert len(result) == 1
+        assert isinstance(result[0].content, DocumentMessageContent)
+        assert result[0].content.base64 == document_base64_str
+        assert result[0].content.mime_type == 'application/pdf'
+        # The stripped payload must survive a strict decode
+        assert base64.b64decode(result[0].content.base64, validate=True) == (
+            b'%PDF-1.4 fake'
+        )
+
+    def test_document_data_url_with_unsupported_mime_rejected(self):
+        """Test that the mime in a document data URL is still gated"""
+        document_base64_str = base64.b64encode(b'fake').decode('utf-8')
+
+        inputs = [
+            {
+                'role': 'user',
+                'content': {
+                    'document_base64': f'data:text/csv;base64,{document_base64_str}'
+                },
+            }
+        ]
+
+        with pytest.raises(HTTPException) as exc_info:
+            process_inference_inputs(inputs)
+
+        assert 'Unsupported document type `text/csv`' in str(exc_info.value.detail)
+
+    def test_plain_document_base64_untouched(self):
+        """Test that a document with no data URL prefix is passed through as-is"""
+        document_base64_str = base64.b64encode(b'%PDF-1.4 fake').decode('utf-8')
+
+        inputs = [
+            {
+                'role': 'user',
+                'content': {
+                    'document_base64': document_base64_str,
+                    'mime_type': 'application/pdf',
+                },
+            }
+        ]
+
+        result = process_inference_inputs(inputs)
+
+        assert result[0].content.base64 == document_base64_str
 
     def test_document_carries_file_name(self):
         """Test that file_name is set on DocumentMessageContent"""
@@ -470,22 +534,17 @@ class TestEdgeCases:
         assert isinstance(result[1], UserMessage)
 
     def test_image_message_with_malformed_data_url(self):
-        """Test image message with malformed data URL - should fall back to else branch"""
+        """Test malformed data URL - no mime can be resolved, so it is rejected"""
         image_input = {
             'role': 'user',
             'content': {'image_base64': 'data:invalid_format'},
         }
 
-        inputs = [image_input]
+        with pytest.raises(HTTPException) as exc_info:
+            process_inference_inputs([image_input])
 
-        # The pattern won't match, so it falls back to else branch
-        # and uses the provided image_base64 and mime_type (None) directly
-        result = process_inference_inputs(inputs)
-        assert len(result) == 1
-        assert isinstance(result[0], UserMessage)
-        assert isinstance(result[0].content, ImageMessageContent)
-        assert result[0].content.base64 == 'data:invalid_format'
-        assert result[0].content.mime_type is None
+        assert exc_info.value.status_code == 400
+        assert 'Could not determine the mime type' in str(exc_info.value.detail)
 
     def test_document_message_with_none_values(self):
         """Test document message with None values"""
@@ -511,7 +570,7 @@ class TestEdgeCases:
         image_input = {
             'role': 'user',
             'content': {
-                'image_base64': f'data:image/svg+xml;base64,{simple_png_b64}',
+                'image_base64': f'data:image/png;base64,{simple_png_b64}',
             },
         }
 
@@ -527,7 +586,24 @@ class TestEdgeCases:
         assert isinstance(result[0].content, TextMessageContent)
         assert isinstance(result[1], UserMessage)
         assert isinstance(result[1].content, ImageMessageContent)
-        assert result[1].content.mime_type == 'image/svg+xml'
+        assert result[1].content.mime_type == 'image/png'
         assert result[1].content.base64 == simple_png_b64
         assert isinstance(result[2], UserMessage)
         assert isinstance(result[2].content, TextMessageContent)
+
+    def test_svg_image_rejected(self):
+        """Test that SVG is rejected - Azure vision deployments cannot read it"""
+        simple_png_b64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+
+        image_input = {
+            'role': 'user',
+            'content': {
+                'image_base64': f'data:image/svg+xml;base64,{simple_png_b64}',
+            },
+        }
+
+        with pytest.raises(HTTPException) as exc_info:
+            process_inference_inputs([image_input])
+
+        assert exc_info.value.status_code == 400
+        assert 'Unsupported image type `image/svg+xml`' in str(exc_info.value.detail)

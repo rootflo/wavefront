@@ -179,12 +179,15 @@ const BulkUploadDialog = <T extends object = object>({
 
         {limitError ? <p className="text-sm text-red-500">{limitError}</p> : null}
 
-        <div className="max-h-[360px] space-y-1 overflow-y-auto rounded-lg border border-[#EFF0F1] p-2">
+        <div className="frost-glass border-frost-border max-h-[360px] space-y-1 overflow-y-auto rounded-lg border p-2">
           {parsedFiles.length === 0 ? (
-            <p className="py-6 text-center text-sm text-gray-500">No files selected</p>
+            <p className="frost-text-muted py-6 text-center text-sm">No files selected</p>
           ) : (
             parsedFiles.map((file, index) => (
-              <div key={`${file.filename}-${index}`} className="flex items-start gap-3 rounded-md p-2 hover:bg-gray-50">
+              <div
+                key={`${file.filename}-${index}`}
+                className="hover:bg-frost-glass-strong flex items-start gap-3 rounded-md p-2"
+              >
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium" title={file.filename}>
                     {file.filename}

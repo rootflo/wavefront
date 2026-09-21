@@ -18,9 +18,6 @@ dependencies = [
     "db-repo-module",
 ]
 
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-
 [tool.uv]
 package = true
 

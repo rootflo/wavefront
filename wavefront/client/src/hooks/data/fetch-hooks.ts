@@ -7,7 +7,10 @@ import { AgentApi, AgentListItem } from '@app/types/agent';
 import { ApiServiceItem } from '@app/types/api-service';
 import { App } from '@app/types/app';
 import { Authenticator } from '@app/types/authenticator';
+import { Chatbot } from '@app/types/chatbot';
 import { Datasource, DynamicQuery, ReadDynamicQueryData } from '@app/types/datasource';
+import { EmailConnection } from '@app/types/email';
+import { OAuthApp } from '@app/types/oauth-app';
 import { LLMInferenceConfig } from '@app/types/llm-inference-config';
 import { ConfigurationListItem, ConfigurationValue } from '@app/types/configuration';
 import { MessageProcessor, MessageProcessorListItem } from '@app/types/message-processor';
@@ -18,6 +21,7 @@ import { ToolDetails, VoiceAgentTool, VoiceAgentToolWithAssociation } from '@app
 import { TtsConfig } from '@app/types/tts-config';
 import { VoiceAgent } from '@app/types/voice-agent';
 import { ScheduledJob } from '@app/types/scheduled-job';
+import { Trigger } from '@app/types/trigger';
 import { WorkflowListItem, WorkflowPipelineListItem, WorkflowRunListData } from '@app/types/workflow';
 import { EntityVersion } from '@app/types/version';
 import { UseQueryResult } from '@tanstack/react-query';
@@ -37,9 +41,14 @@ import {
   getAppUsersQueryFn,
   getAuthenticatorQueryFn,
   getAuthenticatorsQueryFn,
+  getChatbotsQueryFn,
   getCurrentUserQueryFn,
   getDatasourceQueryFn,
   getDatasourceResourcesQueryFn,
+  getEmailConnectionQueryFn,
+  getEmailConnectionsQueryFn,
+  getOAuthAppQueryFn,
+  getOAuthAppsQueryFn,
   getKnowledgeBaseDocumentsQueryFn,
   getKnowledgeBaseInferencesQueryFn,
   getKnowledgeBaseQueryFn,
@@ -78,6 +87,7 @@ import {
   getWorkflowsQueryFn,
   readDynamicQueryQueryFn,
   getScheduledJobsQueryFn,
+  getTriggersQueryFn,
 } from './query-functions';
 import {
   getAgentKey,
@@ -93,9 +103,14 @@ import {
   getAppUsersKey,
   getAuthenticatorKey,
   getAuthenticatorsKey,
+  getChatbotsKey,
   getCurrentUserKey,
   getDatasourceKey,
   getDatasourceResourcesKey,
+  getEmailConnectionKey,
+  getEmailConnectionsKey,
+  getOAuthAppKey,
+  getOAuthAppsKey,
   getKnowledgeBaseDocumentsKey,
   getKnowledgeBaseInferencesKey,
   getKnowledgeBaseKey,
@@ -134,6 +149,7 @@ import {
   getWorkflowsKey,
   readDynamicQueryKey,
   getScheduledJobsKey,
+  getTriggersKey,
 } from './query-keys';
 
 export const useGetAllApps = (enabled: boolean): UseQueryResult<App[], Error> => {
@@ -201,6 +217,10 @@ export const useGetNamespaces = (appId: string | undefined): UseQueryResult<Name
   return useQueryInit(getNamespacesKey(appId || ''), getNamespacesQueryFn, !!appId);
 };
 
+export const useGetChatbots = (appId: string | undefined, namespace?: string): UseQueryResult<Chatbot[], Error> => {
+  return useQueryInit(getChatbotsKey(appId || '', namespace), () => getChatbotsQueryFn(namespace), !!appId);
+};
+
 export const useGetApiServices = (appId: string | undefined): UseQueryResult<ApiServiceItem[], Error> => {
   return useQueryInit(getApiServicesKey(appId || ''), getApiServicesQueryFn, !!appId);
 };
@@ -248,6 +268,36 @@ export const useGetGuardrailAdapters = (appId: string | undefined): UseQueryResu
  */
 export const useGetGuardrailPiiEntities = (appId: string | undefined): UseQueryResult<PiiEntityListData, Error> => {
   return useQueryInit(getGuardrailPiiEntitiesKey(appId || ''), getGuardrailPiiEntitiesQueryFn, !!appId);
+};
+
+export const useGetOAuthApps = (appId: string | undefined): UseQueryResult<OAuthApp[], Error> => {
+  return useQueryInit(getOAuthAppsKey(appId || ''), getOAuthAppsQueryFn, !!appId);
+};
+
+export const useGetOAuthApp = (
+  appId: string | undefined,
+  oauthAppId: string | undefined
+): UseQueryResult<OAuthApp | null, Error> => {
+  return useQueryInit(
+    getOAuthAppKey(appId || '', oauthAppId || ''),
+    () => getOAuthAppQueryFn(oauthAppId!),
+    !!appId && !!oauthAppId
+  );
+};
+
+export const useGetEmailConnections = (appId: string | undefined): UseQueryResult<EmailConnection[], Error> => {
+  return useQueryInit(getEmailConnectionsKey(appId || ''), getEmailConnectionsQueryFn, !!appId);
+};
+
+export const useGetEmailConnection = (
+  appId: string | undefined,
+  connectionId: string | undefined
+): UseQueryResult<EmailConnection | null, Error> => {
+  return useQueryInit(
+    getEmailConnectionKey(appId || '', connectionId || ''),
+    () => getEmailConnectionQueryFn(connectionId!),
+    !!appId && !!connectionId
+  );
 };
 
 export const useGetLLMConfigs = (appId: string | undefined): UseQueryResult<LLMInferenceConfig[], Error> => {
@@ -527,6 +577,10 @@ export const useGetConsoleUsers = (): UseQueryResult<IUser[], Error> => {
 
 export const useGetScheduledJobs = (appId: string | undefined): UseQueryResult<ScheduledJob[], Error> => {
   return useQueryInit(getScheduledJobsKey(appId || ''), getScheduledJobsQueryFn, !!appId);
+};
+
+export const useGetTriggers = (appId: string | undefined): UseQueryResult<Trigger[], Error> => {
+  return useQueryInit(getTriggersKey(appId || ''), getTriggersQueryFn, !!appId);
 };
 
 // Voice Agent Tools Hooks

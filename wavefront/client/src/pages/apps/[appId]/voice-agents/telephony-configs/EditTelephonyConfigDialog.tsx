@@ -9,15 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@app/components/ui/dialog';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@app/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Textarea } from '@app/components/ui/textarea';
@@ -265,7 +257,7 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto lg:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Edit Telephony Configuration</DialogTitle>
           <DialogDescription>Update the telephony provider configuration</DialogDescription>
@@ -285,7 +277,6 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
                     <FormControl>
                       <Input placeholder="e.g., Twilio US Production" maxLength={100} {...field} />
                     </FormControl>
-                    <FormDescription>{field.value?.length || 0}/100 characters</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -333,7 +324,6 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
                       {...field}
                     />
                   </FormControl>
-                  <FormDescription>{field.value?.length || 0}/500 characters</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -499,9 +489,6 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
                         <FormControl>
                           <Input placeholder="ccm-api.exotel.com or ccm-api.in.exotel.com" {...field} />
                         </FormControl>
-                        <FormDescription>
-                          Regional API endpoint (Singapore: ccm-api.exotel.com, India: ccm-api.in.exotel.com)
-                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -534,8 +521,8 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
             )}
 
             {showSipConfig && (
-              <div className="rounded-lg border border-gray-200 p-4">
-                <h3 className="mb-4 font-medium text-gray-900">SIP Configuration</h3>
+              <div className="frost-glass border-frost-border ring-frost-border rounded-lg border p-4 ring-1">
+                <h3 className="frost-text mb-4 font-medium">SIP Configuration</h3>
                 <div className="grid grid-cols-2 gap-6">
                   <FormField
                     control={form.control}
@@ -548,7 +535,6 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
                         <FormControl>
                           <Input placeholder="pstn.twilio.com" {...field} />
                         </FormControl>
-                        <FormDescription>The SIP domain for your provider</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -570,7 +556,6 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
                             onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
                           />
                         </FormControl>
-                        <FormDescription>SIP port number (default varies by provider)</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -600,7 +585,6 @@ const EditTelephonyConfigDialog: React.FC<EditTelephonyConfigDialogProps> = ({
                           ))}
                         </SelectContent>
                       </Select>
-                      <FormDescription>The transport protocol for SIP communication</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}

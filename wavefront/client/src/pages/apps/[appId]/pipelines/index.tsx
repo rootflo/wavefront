@@ -121,10 +121,10 @@ const PipelineManagement: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-white p-6">
+      <div className="min-h-screen bg-transparent p-6">
         <div className="mx-auto max-w-7xl">
           <div className="flex justify-center">
-            <div className="text-gray-500">Loading pipelines...</div>
+            <div className="frost-text-muted">Loading pipelines...</div>
           </div>
         </div>
       </div>
@@ -133,7 +133,7 @@ const PipelineManagement: React.FC = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-white p-6">
+      <div className="min-h-screen bg-transparent p-6">
         <div className="mx-auto max-w-7xl">
           <div className="flex justify-center">
             <div className="text-red-500">Error loading pipelines. Please try again.</div>
@@ -144,12 +144,12 @@ const PipelineManagement: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-white p-6">
+    <div className="min-h-screen bg-transparent p-6">
       <div className="mx-auto max-w-7xl">
         <div className="mb-8 flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Pipeline Management</h1>
-            <p className="mt-2 text-gray-600">Manage and configure DBT pipelines</p>
+            <h1 className="frost-text text-3xl font-bold">Pipeline Management</h1>
+            <p className="frost-text-muted mt-2">Manage and configure DBT pipelines</p>
           </div>
           <Button onClick={handleCreatePipeline}>Create Pipeline</Button>
         </div>
@@ -171,7 +171,7 @@ const PipelineManagement: React.FC = () => {
 
         {pipelines.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12">
-            <p className="text-gray-500">No pipelines found</p>
+            <p className="frost-text-muted">No pipelines found</p>
             <button onClick={handleCreatePipeline} className="mt-4 text-sm text-blue-600 hover:text-blue-800">
               Create your first pipeline
             </button>
@@ -186,8 +186,8 @@ const PipelineManagement: React.FC = () => {
               >
                 <div className="mb-4 flex items-start justify-between">
                   <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900">{pipeline.project_name}</h3>
-                    {pipeline.description && <p className="mt-1 text-sm text-gray-600">{pipeline.description}</p>}
+                    <h3 className="frost-text text-lg font-semibold">{pipeline.project_name}</h3>
+                    {pipeline.description && <p className="frost-text-muted mt-1 text-sm">{pipeline.description}</p>}
                   </div>
                   <div
                     className="relative"
@@ -238,7 +238,7 @@ const PipelineManagement: React.FC = () => {
 
                 <div className="mb-4 flex items-center gap-2">{getStatusBadge(pipeline.status)}</div>
 
-                <div className="space-y-2 text-sm text-gray-600">
+                <div className="frost-text-muted space-y-2 text-sm">
                   {pipeline.schedule_interval && (
                     <div>
                       <span className="font-medium">Schedule:</span> {pipeline.schedule_interval}

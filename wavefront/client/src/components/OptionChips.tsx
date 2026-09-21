@@ -8,7 +8,7 @@ interface OptionChipsProps {
 }
 
 const OptionChips: React.FC<OptionChipsProps> = ({ options, selected, onToggle }) => (
-  <div className="flex max-h-40 flex-wrap gap-2 overflow-y-auto rounded-md border border-[#EFF0F1] bg-[#FBFBFB] p-3">
+  <div className="frost-glass border-frost-border flex max-h-40 flex-wrap gap-2 overflow-y-auto rounded-md border p-3">
     {options.map((option) => {
       const isSelected = selected.includes(option);
       return (
@@ -20,8 +20,8 @@ const OptionChips: React.FC<OptionChipsProps> = ({ options, selected, onToggle }
           className={cn(
             'rounded-full border px-3 py-1 text-xs transition-colors',
             isSelected
-              ? 'border-[#282828] bg-[#282828] text-white'
-              : 'border-[#EFF0F1] bg-white text-[#282828] hover:border-[#282828]'
+              ? 'border-frost-text bg-frost-text text-white dark:bg-white dark:text-slate-900'
+              : 'frost-glass-strong frost-text border-frost-border hover:border-frost-text'
           )}
         >
           {option}

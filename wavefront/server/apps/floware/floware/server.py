@@ -6,7 +6,6 @@ from typing import Any, Callable, cast
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
 import uvicorn
@@ -15,16 +14,15 @@ import uvicorn
 load_dotenv()  # Loading env values before importing modules to fix late read problem
 
 from auth_module.auth_container import AuthContainer
-from auth_module.controllers.outlook_controller import subscription_controller
-from auth_module.controllers.superset_controller import superset_controller
-from auth_module.controllers.hmac_controller import hmac_router
 from common_module.common_container import CommonContainer
-from common_module.middleware.request_id_middleware import (
-    RequestIdMiddleware,
-    get_current_request_id,
-)
+from common_module.middleware.request_id_middleware import get_current_request_id
 from common_module.log.logger import logger
-from common_module.prometheus.prometheus_middleware import PrometheusMiddleware
+from common_module.telemetry import (
+    configure_telemetry_providers,
+    instrument_sqlalchemy,
+    record_exception_on_span,
+    shutdown_telemetry,
+)
 from common_module.response_formatter import ResponseFormatter
 
 from db_repo_module.database.connection import DatabaseClient
@@ -32,88 +30,36 @@ from db_repo_module.db_repo_container import DatabaseModuleContainer
 from fastapi import HTTPException
 from fastapi import Request
 from fastapi.responses import JSONResponse
-from gold_module.controllers.router import gold_router
 from gold_module.gold_container import GoldContainer
 
-from knowledge_base_module.controllers.knowledge_base_controller import (
-    knowledge_base_router,
-)
-from knowledge_base_module.controllers.knowledge_base_document_controller import (
-    kb_document_router,
-)
-from knowledge_base_module.controllers.rag_retreival_controller import (
-    rag_retrieval_router,
-)
 from knowledge_base_module.knowledge_base_container import KnowledgeBaseContainer
-from user_management_module.authorization.require_auth import RequireAuthMiddleware
-from user_management_module.router import user_management_router
 from user_management_module.user_container import UserContainer
 
-from floware.controllers.notification_controller import notification_router
 from floware.di.application_container import ApplicationContainer
-from floware.middleware.security_headers import SecurityHeadersMiddleware
+from floware.middleware.setup import add_middlewares
+from floware.routes import include_routers
 from floware.services.scheduler_manager import SchedulerManager
 from plugins_module.plugins_container import PluginsContainer
-from plugins_module.controllers.configuration_controller import configuration_router
-from plugins_module.controllers.datasource_controller import datasource_router
-from plugins_module.controllers.datasource_audit_controller import (
-    datasource_audit_router,
-)
-from plugins_module.controllers.authenticator_controller import authenticator_router
-from floware.controllers.config_controller import config_router
-from floware.controllers.scheduled_job_controller import scheduled_job_router
-from product_analysis_module.controllers.product_anaysis_controllers import (
-    product_analysis_router,
-)
 from product_analysis_module.product_analysis_container import ProductAnalysisContainer
 
-from agents_module.controllers.agent_controller import agents_router
-from agents_module.controllers.namespace_controller import namespace_router
-from agents_module.controllers.workflow_controller import workflows_router
-from agents_module.controllers.workflow_runs import workflow_runs_router
-from agents_module.controllers.workflow_pipeline_controller import (
-    workflow_pipeline_router,
-)
-from agents_module.controllers.async_inference_controller import async_router
 from agents_module.services.async_agentic_execution_result_consumer import (
     AsyncAgenticExecutionResultConsumer,
 )
 from agents_module.agents_container import AgentsContainer
-from triggers_module.controllers.trigger_controller import trigger_router
 from triggers_module.triggers_container import TriggersContainer
 from inference_module.inference_container import InferenceContainer
-from inference_module.controllers.inference_controller import inference_router
 
 from flo_ai.llm.guarded_llm import GuardrailBlocked
 from guardrails_module.container import GuardrailsContainer
-from guardrails_module.controllers.guardrails_controller import guardrails_router
 from llm_inference_config_module.container import LlmInferenceConfigContainer
-from llm_inference_config_module.controllers.llm_inference_config_controller import (
-    llm_inference_config_router,
-)
-from llm_inference_config_module.controllers.inference_proxy_controller import (
-    inference_proxy_router,
-)
-from tools_module.controllers.tools_controller import tools_router
 from tools_module.tools_container import ToolsContainer
+from chatbots_module.chatbots_container import ChatbotsContainer
 from voice_agents_module.voice_agents_container import VoiceAgentsContainer
-from voice_agents_module.controllers.telephony_config_controller import (
-    telephony_config_router,
-)
-from voice_agents_module.controllers.tts_config_controller import tts_config_router
-from voice_agents_module.controllers.stt_config_controller import stt_config_router
-from voice_agents_module.controllers.voice_agent_controller import voice_agent_router
-from voice_agents_module.controllers.tool_controller import tool_router
-from plugins_module.controllers.message_processor_controller import (
-    message_processor_router,
-)
-from plugins_module.controllers.cloud_storage_controller import cloud_storage_router
 
 # API Services Module
 from api_services_module.api_services_container import create_api_services_container
 from api_services_module.api_services_container import ApiServicesContainer
 from floware.channels import start_redis_listener
-from starlette.middleware import _MiddlewareFactory
 
 
 # Initialize dependency containers
@@ -124,15 +70,30 @@ auth_container = AuthContainer(
 )
 common_container = CommonContainer(cache_manager=db_repo_container.cache_manager)
 config = common_container.config()
+# Built before the containers that send email: both the platform mailer and
+# scheduled jobs send through this container's email_send_service.
+plugins_container = PluginsContainer(
+    db_client=db_repo_container.db_client,
+    cloud_storage_manager=common_container.cloud_storage_manager,
+    dynamic_query_repository=db_repo_container.dynamic_query_repository,
+    cache_manager=db_repo_container.cache_manager,
+    namespace_repository=db_repo_container.namespace_repository,
+    agentic_configuration_repository=db_repo_container.agentic_configuration_repository,
+    datasource_audit_log_repository=db_repo_container.datasource_audit_log_repository,
+    notification_repository=db_repo_container.notification_repository,
+    oauth_app_repository=db_repo_container.oauth_app_repository,
+    email_connection_repository=db_repo_container.email_connection_repository,
+)
+
 user_module_container = UserContainer(
-    db_client=db_repo_container.db_client, cache_manager=db_repo_container.cache_manager
+    db_client=db_repo_container.db_client,
+    cache_manager=db_repo_container.cache_manager,
+    email_send_service=plugins_container.email_send_service,
 )
 application_container = ApplicationContainer(
     db_client=db_repo_container.db_client,
     cache_manager=db_repo_container.cache_manager,
     cloud_storage_manager=common_container.cloud_storage_manager,
-    email_repository=db_repo_container.email_repository,
-    oauth_credential_repository=db_repo_container.oauth_credential_repository,
     user_repository=db_repo_container.user_repository,
     task_repository=db_repo_container.task_repository,
     notification_repository=db_repo_container.notification_repository,
@@ -142,7 +103,8 @@ application_container = ApplicationContainer(
     scheduled_job_execution_repository=db_repo_container.scheduled_job_execution_repository,
     datasource_repository=db_repo_container.datasource_repository,
     dynamic_query_repository=db_repo_container.dynamic_query_repository,
-    email_service=user_module_container.email_service,
+    email_send_service=plugins_container.email_send_service,
+    email_connection_service=plugins_container.email_connection_service,
     user_service=user_module_container.user_service,
     role_repository=user_module_container.role_repository,
     user_role_repository=user_module_container.user_role_repository,
@@ -154,17 +116,6 @@ knowledge_base_container = KnowledgeBaseContainer(
 )
 
 gold_container = GoldContainer()
-
-plugins_container = PluginsContainer(
-    db_client=db_repo_container.db_client,
-    cloud_storage_manager=common_container.cloud_storage_manager,
-    dynamic_query_repository=db_repo_container.dynamic_query_repository,
-    cache_manager=db_repo_container.cache_manager,
-    namespace_repository=db_repo_container.namespace_repository,
-    agentic_configuration_repository=db_repo_container.agentic_configuration_repository,
-    datasource_audit_log_repository=db_repo_container.datasource_audit_log_repository,
-    notification_repository=db_repo_container.notification_repository,
-)
 
 product_analysis_container = ProductAnalysisContainer()
 
@@ -181,6 +132,7 @@ bucket_name = config['floware']['asset_storage_bucket']
 
 tools_container = ToolsContainer(
     datasource_repository=db_repo_container.datasource_repository,
+    email_connection_repository=db_repo_container.email_connection_repository,
     knowledge_base_repository=db_repo_container.knowledge_base_repository,
     knowledge_base_inference_repository=db_repo_container.knowledge_base_inference_repository,
     message_processor_repository=plugins_container.message_processor_repository,
@@ -231,9 +183,15 @@ voice_agents_container = VoiceAgentsContainer(
     cloud_storage_manager=common_container.cloud_storage_manager,
 )
 
+chatbots_container = ChatbotsContainer(
+    db_client=db_repo_container.db_client,
+    cache_manager=db_repo_container.cache_manager,
+    llm_inference_config_service=llm_inference_config_container.llm_inference_config_service,
+)
+
 triggers_container = TriggersContainer(
     trigger_repository=db_repo_container.agentic_trigger_repository,
-    credential_repository=db_repo_container.agentic_trigger_credential_repository,
+    email_connection_service=plugins_container.email_connection_service,
     event_repository=db_repo_container.agentic_trigger_event_repository,
     agent_repository=db_repo_container.agent_repository,
     workflow_repository=db_repo_container.workflow_repository,
@@ -256,6 +214,9 @@ async def lifespan(app: FastAPI):
             logger.info('========== Establishing db connection ...')
             await db_client.connect()
             logger.info('========== DB connection established.')
+            # Emits db.* spans for every query; needs the engine, so it can
+            # only happen once the DI container has built the client.
+            instrument_sqlalchemy(db_client.engine)
         else:
             raise TypeError('db_client is not an instance of DatabaseClient')
 
@@ -356,16 +317,31 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f'Error during application lifecycle: {str(e)}')
         raise
+    finally:
+        # In a `finally` so buffered spans and metrics are still flushed when
+        # shutdown takes an error path or startup fails before `yield`.
+        shutdown_telemetry()
 
+
+environment = os.getenv('APP_ENV', 'production')
+
+# The interactive docs and the OpenAPI schema are off everywhere except dev,
+# so a new/unknown APP_ENV value stays closed rather than exposing the surface.
+is_dev = environment == 'dev'
 
 # Define FastAPI app with the lifespan context manager
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    lifespan=lifespan,
+    openapi_url='/openapi.json' if is_dev else None,
+    docs_url='/docs' if is_dev else None,
+    redoc_url='/redoc' if is_dev else None,
+)
+
+# Providers must exist before any instrumentation is attached. The FastAPI app
+# itself is instrumented further down, after all other middleware is registered.
+configure_telemetry_providers(default_service_name=config['env_config']['app_name'])
 
 floware_base_url = os.getenv('FLOWARE_BASE_URL', 'http://localhost:8001')
-
-
-def _middleware(cls: type[Any]) -> _MiddlewareFactory[Any]:
-    return cast(_MiddlewareFactory[Any], cls)
 
 
 OpenApiCallable = Callable[[], dict[str, Any]]
@@ -406,80 +382,9 @@ def custom_openapi() -> dict[str, Any]:
 app.openapi = cast(OpenApiCallable, custom_openapi)  # type: ignore[assignment]
 
 
-@app.get('/v1/_metrics')
-async def metrics(request: Request):
-    logger.debug('Metrics endpoint called')
-    metrics_data = await PrometheusMiddleware.metrics_endpoint(request)
-    return metrics_data
-
-
-# Add middleware setup
-
-app.add_middleware(_middleware(RequestIdMiddleware))
-app.add_middleware(_middleware(RequireAuthMiddleware))
-app.add_middleware(_middleware(PrometheusMiddleware))
-app.add_middleware(_middleware(SecurityHeadersMiddleware))  # disable to see swaggerUI
-
-origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:5173')
-allowed_origins = origins.split(',')
-
-# Configure CORS with proper security settings
-app.add_middleware(
-    _middleware(CORSMiddleware),
-    allow_origins=allowed_origins,
-    allow_credentials=True,
-    allow_methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allow_headers=['*'],
-    expose_headers=[
-        'X-Content-Type-Options',
-        'X-XSS-Protection',
-        'X-Frame-Options',
-        'Referrer-Policy',
-        'Content-Security-Policy',
-        'Pragma',
-        'Expires',
-        'Strict-Transport-Security',
-        'Cache-Control',
-    ],
-)
-
-# Include routers
-app.include_router(notification_router, prefix='/floware')
-app.include_router(user_management_router, prefix='/floware')
-app.include_router(superset_controller, prefix='/floware')
-app.include_router(knowledge_base_router, prefix='/floware')
-app.include_router(kb_document_router, prefix='/floware')
-app.include_router(rag_retrieval_router, prefix='/floware')
-app.include_router(gold_router, prefix='/floware')
-app.include_router(subscription_controller, prefix='/floware')
-app.include_router(datasource_router, prefix='/floware')
-app.include_router(datasource_audit_router, prefix='/floware')
-app.include_router(hmac_router, prefix='/floware')
-app.include_router(authenticator_router, prefix='/floware')
-app.include_router(config_router, prefix='/floware')
-app.include_router(scheduled_job_router, prefix='/floware')
-app.include_router(product_analysis_router, prefix='/floware')
-app.include_router(agents_router, prefix='/floware')
-app.include_router(namespace_router, prefix='/floware')
-app.include_router(workflows_router, prefix='/floware')
-app.include_router(async_router, prefix='/floware')
-app.include_router(workflow_pipeline_router, prefix='/floware')
-app.include_router(workflow_runs_router, prefix='/floware')
-app.include_router(inference_router, prefix='/floware')
-
-app.include_router(llm_inference_config_router, prefix='/floware')
-app.include_router(guardrails_router, prefix='/floware')
-app.include_router(inference_proxy_router, prefix='/floware')
-app.include_router(tools_router, prefix='/floware')
-app.include_router(telephony_config_router, prefix='/floware')
-app.include_router(tts_config_router, prefix='/floware')
-app.include_router(stt_config_router, prefix='/floware')
-app.include_router(voice_agent_router, prefix='/floware')
-app.include_router(tool_router, prefix='/floware')
-app.include_router(message_processor_router, prefix='/floware')
-app.include_router(configuration_router, prefix='/floware')
-app.include_router(cloud_storage_router, prefix='/floware')
-app.include_router(trigger_router, prefix='/floware')
+# Middlewares & Routers
+add_middlewares(app)
+include_routers(app)
 
 
 @app.exception_handler(GuardrailBlocked)
@@ -527,13 +432,14 @@ async def global_exception_handler(request: Request, exc: Exception):
     if isinstance(exc, HTTPException):
         raise exc
 
-    prometheus_middleware = PrometheusMiddleware.get_instance()
-    if prometheus_middleware:
-        labels = prometheus_middleware.get_labels(request)
-        prometheus_middleware.http_errors_total.labels(**labels, status_code=500).inc()
+    # This handler swallows the exception and returns a 500 without re-raising,
+    # so it never reaches the OTel ASGI middleware's own exception recording -
+    # the SERVER span would otherwise be marked as a success. Record it here.
+    record_exception_on_span(exc)
 
     error_message = 'An unexpected error has occurred while performing this action, please try again'
-    error_message += f' - {str(exc)}'
+    if is_dev:
+        error_message += f' - {str(exc)}'
 
     request_id = getattr(request.state, 'request_id', get_current_request_id())
     logger.error(f'Error in API call [Request ID: {request_id}]: {exc}', exc_info=True)
@@ -599,6 +505,7 @@ common_container.wire(
         'auth_module.controllers',
         'user_management_module.controllers',
         'user_management_module.authorization',
+        'chatbots_module.controllers',
         'floware.controllers',
         'knowledge_base_module.controllers',
         'gold_module.controllers',
@@ -634,6 +541,7 @@ plugins_container.wire(
         'user_management_module.controllers',
         'user_management_module.authorization',
         'tools_module.datasources',
+        'triggers_module.services',
     ],
 )
 
@@ -696,8 +604,12 @@ voice_agents_container.wire(
     ],
 )
 
-environment = os.getenv('APP_ENV', 'dev')
-
+chatbots_container.wire(
+    modules=[__name__],
+    packages=[
+        'chatbots_module.controllers',
+    ],
+)
 # Running with Uvicorn (for local development)
 if __name__ == '__main__':
     worker_count = os.getenv('FLOWARE_WORKER_COUNT', 4)

@@ -5,11 +5,14 @@ import { ApiServiceService } from './api-service-service';
 import { AppService } from './app-service';
 import { AppUserService } from './app-user-service';
 import { AuthenticatorService } from './authenticator-service';
+import { ChatbotService } from './chatbot-service';
 import { ConfigurationService } from './configuration-service';
 import { ConsoleAuthService } from './console-auth-service';
 import { DataPipelineService } from './data-pipeline-service';
 import { DatasourcesService } from './datasources-service';
 import { GuardrailsService } from './guardrails-service';
+import { EmailConnectionService } from './email-service';
+import { OAuthAppService } from './oauth-app-service';
 import { KnowledgeBaseService } from './knowledge-base-service';
 import { LLMInferenceService } from './llm-inference-service';
 import { MessageProcessorService } from './message-processor-service';
@@ -19,6 +22,7 @@ import { ScheduledJobService } from './scheduled-job-service';
 import { SttConfigService } from './stt-config-service';
 import { TelephonyConfigService } from './telephony-config-service';
 import { ToolService } from './tool-service';
+import { TriggerService } from './trigger-service';
 import { TtsConfigService } from './tts-config-service';
 import { UserService } from './user-service';
 import { VoiceAgentService } from './voice-agent-service';
@@ -51,6 +55,10 @@ class FloConsoleService {
     return new AuthenticatorService(this.http);
   }
 
+  get chatbotService() {
+    return new ChatbotService(this.http);
+  }
+
   get configurationService() {
     return new ConfigurationService(this.http);
   }
@@ -69,6 +77,14 @@ class FloConsoleService {
 
   get guardrailsService() {
     return new GuardrailsService(this.http);
+  }
+
+  get emailConnectionService() {
+    return new EmailConnectionService(this.http);
+  }
+
+  get oauthAppService() {
+    return new OAuthAppService(this.http);
   }
 
   get knowledgeBaseService() {
@@ -93,6 +109,10 @@ class FloConsoleService {
 
   get scheduledJobService() {
     return new ScheduledJobService(this.http);
+  }
+
+  get triggerService() {
+    return new TriggerService(this.http);
   }
 
   get sttConfigService() {

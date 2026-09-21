@@ -10,15 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@app/components/ui/dialog';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@app/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Slider } from '@app/components/ui/slider';
@@ -74,14 +66,25 @@ const BASE_URL_PLACEHOLDERS: Record<InferenceEngineType, string> = {
   groq: 'https://api.groq.com/openai/v1',
 };
 
-const createLLMInferenceSchema = z.object({
-  displayName: z.string().min(1, 'Display name is required'),
-  llmModel: z.string().min(1, 'LLM model name is required'),
-  type: z.enum(['openai', 'anthropic', 'gemini', 'azure_openai', 'ollama', 'vllm', 'groq']),
-  modelType: z.enum(['llm', 'embedding']),
-  apiKey: z.string().optional(),
-  baseUrl: z.string().optional(),
-});
+const createLLMInferenceSchema = z
+  .object({
+    displayName: z.string().min(1, 'Display name is required'),
+    llmModel: z.string().min(1, 'LLM model name is required'),
+    type: z.enum(['openai', 'anthropic', 'gemini', 'azure_openai', 'ollama', 'vllm', 'groq']),
+    modelType: z.enum(['llm', 'embedding']),
+    apiKey: z.string().optional(),
+    baseUrl: z.string().optional(),
+    apiVersion: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.type === 'azure_openai' && !data.apiVersion?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['apiVersion'],
+        message: 'API version is required for Azure OpenAI',
+      });
+    }
+  });
 
 type CreateLLMInferenceInput = z.infer<typeof createLLMInferenceSchema>;
 
@@ -114,6 +117,7 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
       modelType: 'llm',
       apiKey: '',
       baseUrl: getDefaultBaseUrl('openai'),
+      apiVersion: '',
     },
   });
 
@@ -143,6 +147,7 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
         modelType: 'llm',
         apiKey: '',
         baseUrl: getDefaultBaseUrl(defaultType),
+        apiVersion: '',
       });
       setType(defaultType);
       setParameters(initializeParameters(defaultType));
@@ -174,7 +179,12 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
 
     setCreating(true);
     try {
-      const cleanedParams = cleanParameters(parameters);
+      const cleanedParams = cleanParameters(parameters, data.type);
+      if (data.type === 'azure_openai' && data.apiVersion) {
+        cleanedParams.api_version = data.apiVersion.trim();
+      }
+
+      const finalParams = Object.keys(cleanedParams).length > 0 ? cleanedParams : undefined;
 
       const response = await floConsoleService.llmInferenceService.createLLMConfig({
         display_name: data.displayName.trim(),
@@ -183,7 +193,7 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
         type: data.type,
         model_type: data.modelType,
         base_url: data.baseUrl?.trim() || undefined,
-        parameters: Object.keys(cleanedParams).length > 0 ? cleanedParams : undefined,
+        parameters: finalParams,
       });
 
       const responseData = response.data?.data;
@@ -196,7 +206,7 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
 
         onOpenChange(false);
 
-        navigate(`/apps/${appId}/model-repository/${responseData.id}`);
+        navigate(`/apps/${appId}/llm-repository/${responseData.id}`);
       } else {
         notifySuccess('Model added to repository successfully');
 
@@ -255,7 +265,7 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
             checked={getBooleanParameterWithDefault(parameters, paramKey, paramConfig.default)}
             onCheckedChange={(checked) => setParameter(paramKey, checked)}
           />
-          <label className="text-sm text-gray-700">Enable</label>
+          <label className="frost-text text-sm">Enable</label>
         </div>
       );
     }
@@ -302,7 +312,7 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto lg:max-w-5xl">
+      <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto lg:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Add LLM to Repository</DialogTitle>
           <DialogDescription>Add a new LLM to your repository for {selectedApp?.app_name}</DialogDescription>
@@ -322,7 +332,6 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
                     <FormControl>
                       <Input placeholder="My GPT-4 Configuration" {...field} />
                     </FormControl>
-                    <FormDescription>A friendly name for this AI model</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -362,7 +371,6 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
                         ))}
                       </SelectContent>
                     </Select>
-                    <FormDescription>Choose the type of LLM inference engine</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -387,7 +395,6 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
                         <SelectItem value="embedding">Embedding</SelectItem>
                       </SelectContent>
                     </Select>
-                    <FormDescription>Choose whether this is an LLM or embedding model</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -406,9 +413,6 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
                     <FormControl>
                       <Input placeholder={MODEL_NAME_PLACEHOLDERS[type]} {...field} />
                     </FormControl>
-                    <FormDescription>
-                      Specify the exact model name (e.g., gpt-4, claude-3-5-sonnet-20241022, gemini-pro)
-                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -424,10 +428,6 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
                       <FormControl>
                         <Input type="password" placeholder="Your API key" {...field} />
                       </FormControl>
-                      <FormDescription>
-                        API key for authenticating with the{' '}
-                        {INFERENCE_ENGINE_TYPES.find((t) => t.value === type)?.label} service
-                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -446,11 +446,24 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
                       <FormControl>
                         <Input type="url" placeholder={BASE_URL_PLACEHOLDERS[type]} {...field} />
                       </FormControl>
-                      <FormDescription>
-                        {type === 'ollama' || type === 'vllm'
-                          ? 'Required base URL for your local inference server'
-                          : 'Optional custom base URL for the API endpoint'}
-                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+
+              {type === 'azure_openai' && (
+                <FormField
+                  control={form.control}
+                  name="apiVersion"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        API Version<span className="text-red-500">*</span>
+                      </FormLabel>
+                      <FormControl>
+                        <Input type="text" placeholder="2024-12-01-preview" {...field} />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -460,22 +473,19 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
 
             {/* Provider-specific Parameters Section */}
             {providerConfig && Object.keys(providerConfig.parameters).length > 0 && (
-              <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-6">
+              <div className="frost-glass border-frost-border ring-frost-border space-y-4 rounded-lg border p-6 ring-1">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Model Parameters</h3>
-                  <p className="text-sm text-gray-500">Configure provider-specific parameters for this model</p>
+                  <h3 className="frost-text text-lg font-semibold">Model Parameters</h3>
+                  <p className="frost-text-muted text-sm">Configure provider-specific parameters for this model</p>
                 </div>
                 <div className="grid grid-cols-4 gap-6">
                   {Object.entries(providerConfig.parameters).map(
                     ([paramKey, paramConfig]: [string, ParameterConfig]) => (
                       <div key={paramKey}>
-                        <label className="block pb-2 text-sm font-medium text-gray-700">
+                        <label className="frost-text block pb-2 text-sm font-medium">
                           {paramKey.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
                         </label>
                         {renderParameterField(paramKey, paramConfig)}
-                        {paramConfig.description && (
-                          <p className="mt-1 text-xs text-gray-500">{paramConfig.description}</p>
-                        )}
                       </div>
                     )
                   )}

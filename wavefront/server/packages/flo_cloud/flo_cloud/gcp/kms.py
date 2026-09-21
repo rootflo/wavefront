@@ -66,11 +66,9 @@ class GcpKMS(FloKMS):
         response = self.kms_client.encrypt(request=request)
         return response.ciphertext
 
-    def decrypt(self, ciphertext: bytes | str) -> bytes:
+    def decrypt(self, ciphertext: bytes) -> bytes:
         if not self.enc_key_name:
             raise ValueError('GCP_KMS_ENC_CRYPTO_KEY must be set to use decryption')
-        if isinstance(ciphertext, str):
-            ciphertext = ciphertext.encode('utf-8')
         request = kms_v1.DecryptRequest(
             name=self.enc_key_name,
             ciphertext=ciphertext,

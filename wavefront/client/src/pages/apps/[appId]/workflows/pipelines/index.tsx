@@ -127,7 +127,7 @@ const WorkflowPipelinesPage: React.FC = () => {
       </div>
 
       {workflowPipelinesLoading ? (
-        <p className="text-sm text-gray-500">Loading pipelines...</p>
+        <p className="frost-text-muted text-sm">Loading pipelines...</p>
       ) : filteredWorkflowPipelines.length === 0 ? (
         <div className="mt-10 flex justify-center">
           <EmptyStateCard
@@ -138,9 +138,9 @@ const WorkflowPipelinesPage: React.FC = () => {
           />
         </div>
       ) : (
-        <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-[#EFF0F1]">
+        <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-xl border ring-1">
           <Table>
-            <TableHeader className="sticky top-0 z-10 bg-white">
+            <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>ID</TableHead>

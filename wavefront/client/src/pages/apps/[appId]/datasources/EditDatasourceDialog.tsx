@@ -1,15 +1,7 @@
 import floConsoleService from '@app/api';
 import { Button } from '@app/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@app/components/ui/dialog';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@app/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { extractErrorMessage } from '@app/lib/utils';
@@ -112,7 +104,7 @@ const EditDatasourceDialog: React.FC<EditDatasourceDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto lg:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Edit Datasource</DialogTitle>
           {/* <DialogDescription>Update datasource configuration for {currentApp.app_name}</DialogDescription> */}
@@ -167,7 +159,7 @@ const EditDatasourceDialog: React.FC<EditDatasourceDialogProps> = ({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    Description <span className="text-gray-400">(Optional)</span>
+                    Description <span className="frost-text-subtle">(Optional)</span>
                   </FormLabel>
                   <FormControl>
                     <Input placeholder="Brief description of this datasource" {...field} />
@@ -198,9 +190,6 @@ const EditDatasourceDialog: React.FC<EditDatasourceDialogProps> = ({
                       />
                     </div>
                   </FormControl>
-                  <FormDescription>
-                    Define your connection parameters in JSON format. Configuration varies by datasource type.
-                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

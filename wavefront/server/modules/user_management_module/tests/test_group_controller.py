@@ -11,7 +11,6 @@ from db_repo_module.models.resource import Resource
 from db_repo_module.models.resource import ResourceScope
 from db_repo_module.models.role import Role
 from db_repo_module.models.role_resource import RoleResource
-from db_repo_module.models.session import Session
 from db_repo_module.models.user import User
 from db_repo_module.models.user_group import UserGroup
 from db_repo_module.models.user_group_member import UserGroupMember
@@ -21,27 +20,10 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.ext.asyncio import AsyncSession
+from flo_testing import seed_user_session as create_session
 
 # The test_session fixture hands out a session factory, not a live session.
 SessionFactory = async_sessionmaker[AsyncSession]
-
-
-async def create_session(test_session: SessionFactory, test_user_id, test_session_id):
-    user = User(
-        id=test_user_id,
-        email='test@example.com',
-        password='hashed_password',
-        first_name='Test',
-        last_name='User',
-    )
-    db_session = Session(
-        id=test_session_id, user_id=test_user_id, device_info='test_device'
-    )
-
-    async with test_session() as session:
-        session.add(user)
-        session.add(db_session)
-        await session.commit()
 
 
 async def create_role_with_resource(

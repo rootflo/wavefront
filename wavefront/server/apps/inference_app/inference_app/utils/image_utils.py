@@ -3,6 +3,7 @@ import numpy as np
 import io
 from PIL import Image
 from common_module.log.logger import logger
+from common_module.utils.image_formats import SUPPORTED_PILLOW_FORMATS
 
 
 def decode_image_from_bytes(image_bytes: bytes):
@@ -24,7 +25,9 @@ def decode_image_from_bytes(image_bytes: bytes):
     if image is None:
         try:
             # Fallback to Pillow
-            img_pil = Image.open(io.BytesIO(image_bytes))
+            img_pil = Image.open(
+                io.BytesIO(image_bytes), formats=SUPPORTED_PILLOW_FORMATS
+            )
             # Convert PIL Image to an OpenCV compatible format
             image = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
             logger.info(f'Pillow fallback successful. {image is not None}.')

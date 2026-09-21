@@ -9,15 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@app/components/ui/dialog';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@app/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
@@ -90,7 +82,7 @@ const EditKnowledgeBaseDialog: React.FC<EditKnowledgeBaseDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto lg:max-w-4xl">
+      <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto lg:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Edit Knowledge Base</DialogTitle>
           <DialogDescription>Update the details for this knowledge base</DialogDescription>
@@ -110,7 +102,6 @@ const EditKnowledgeBaseDialog: React.FC<EditKnowledgeBaseDialogProps> = ({
                     <FormControl>
                       <Input placeholder="e.g., Customer Support FAQ" {...field} />
                     </FormControl>
-                    <FormDescription>A unique name for your knowledge base</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -127,7 +118,6 @@ const EditKnowledgeBaseDialog: React.FC<EditKnowledgeBaseDialogProps> = ({
                     <FormControl>
                       <Input placeholder="e.g., General" {...field} />
                     </FormControl>
-                    <FormDescription>The type of your knowledge base</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -148,7 +138,6 @@ const EditKnowledgeBaseDialog: React.FC<EditKnowledgeBaseDialogProps> = ({
                       {...field}
                     />
                   </FormControl>
-                  <FormDescription>Provide a description for your knowledge base</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

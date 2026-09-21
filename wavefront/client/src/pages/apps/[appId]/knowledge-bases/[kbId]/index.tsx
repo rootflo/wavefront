@@ -38,6 +38,7 @@ import dayjs from 'dayjs';
 import { PlayIcon, Send, TrashIcon } from 'lucide-react';
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
+import { formatAppName } from '@app/lib/utils';
 
 const KnowledgeBaseDetailPage: React.FC = () => {
   const { kbId, app: appId } = useParams<{ kbId: string; app: string }>();
@@ -234,8 +235,8 @@ const KnowledgeBaseDetailPage: React.FC = () => {
   };
 
   return (
-    <div className="h-full bg-white px-8 pt-8 pb-[200px]">
-      <Breadcrumb className="mb-6">
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-transparent px-8 pt-8 pb-8">
+      <Breadcrumb className="mb-6 shrink-0">
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
@@ -263,47 +264,51 @@ const KnowledgeBaseDetailPage: React.FC = () => {
         </BreadcrumbList>
       </Breadcrumb>
 
-      <div className="flex w-full flex-col gap-6 pb-4">
-        <div className="flex items-center justify-between">
-          <p className="text-2xl leading-normal font-semibold text-black">{knowledgeBase?.name || 'N/A'}</p>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-6">
+        <div className="flex shrink-0 items-center justify-between">
+          <p className="frost-text text-2xl leading-normal font-semibold">
+            {formatAppName(knowledgeBase?.name) || 'N/A'}
+          </p>
         </div>
-        <div className="grid w-full grid-cols-1 gap-6 lg:grid-cols-2">
-          <div className="flex w-full flex-col gap-6">
-            <div className="flex w-full items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-900">Documents</h3>
+        <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 gap-6 lg:grid-cols-2">
+          <div className="flex min-h-0 min-w-0 flex-col gap-3">
+            <div className="flex shrink-0 items-center justify-between gap-3">
+              <h3 className="frost-text text-lg font-semibold">Documents</h3>
               <Button variant="outline" onClick={() => setShowUploadModal(true)}>
                 Upload Document
               </Button>
             </div>
 
             {loadingDocs ? (
-              <div className="flex flex-col items-start gap-4 rounded-lg border border-gray-200 bg-gray-50 p-6">
-                <p className="text-sm font-medium text-gray-600">Loading</p>
-                <div className="text-sm text-black">Loading documents...</div>
+              <div className="frost-control ring-frost-border flex min-h-0 flex-1 flex-col items-start gap-4 rounded-lg border p-6 ring-1">
+                <p className="frost-text-muted text-sm font-medium">Loading</p>
+                <div className="frost-text text-sm">Loading documents...</div>
               </div>
             ) : documents.length === 0 ? (
-              <div className="flex flex-col items-start gap-4 rounded-lg border border-gray-200 bg-gray-50 p-6">
-                <p className="text-sm font-medium text-gray-600">No Documents</p>
-                <div className="text-sm text-black">No documents uploaded yet.</div>
+              <div className="frost-control ring-frost-border flex min-h-0 flex-1 flex-col items-start gap-4 rounded-lg border p-6 ring-1">
+                <p className="frost-text-muted text-sm font-medium">No Documents</p>
+                <div className="frost-text text-sm">No documents uploaded yet.</div>
               </div>
             ) : (
-              <div className="rounded-lg border border-gray-200">
-                <Table>
+              <div className="frost-table-panel border-frost-border ring-frost-border min-h-0 min-w-0 flex-1 overflow-auto rounded-lg border ring-1">
+                <Table className="table-fixed">
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Document Name</TableHead>
-                      <TableHead>Uploaded Date</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableHead className="w-[50%]">Document Name</TableHead>
+                      <TableHead className="w-[30%]">Uploaded Date</TableHead>
+                      <TableHead className="w-[20%] text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {documents.map((doc) => (
                       <TableRow key={doc.id}>
-                        <TableCell className="font-medium">
+                        <TableCell className="max-w-0 truncate font-medium" title={doc.file_name}>
                           {doc.file_name}
-                          <span className="ml-2 text-xs text-gray-500">({doc.file_type})</span>
+                          <span className="frost-text-muted ml-2 text-xs">({doc.file_type})</span>
                         </TableCell>
-                        <TableCell>{dayjs(doc.updated_at).format('DD MMM YYYY')}</TableCell>
+                        <TableCell className="whitespace-nowrap">
+                          {dayjs(doc.updated_at).format('DD MMM YYYY')}
+                        </TableCell>
                         <TableCell className="text-right">
                           <Button
                             variant="outline"
@@ -324,9 +329,9 @@ const KnowledgeBaseDetailPage: React.FC = () => {
             )}
           </div>
 
-          <div className="flex w-full flex-col gap-6">
-            <div className="flex w-full items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-900">System Prompts</h3>
+          <div className="flex min-h-0 min-w-0 flex-col gap-3">
+            <div className="flex shrink-0 items-center justify-between gap-3">
+              <h3 className="frost-text text-lg font-semibold">System Prompts</h3>
               <div className="flex gap-2">
                 <Button variant="outline" onClick={() => setShowCreatePromptModal(true)}>
                   Add System Prompt
@@ -335,41 +340,41 @@ const KnowledgeBaseDetailPage: React.FC = () => {
             </div>
 
             {loadingInferences ? (
-              <div className="flex flex-col items-start gap-4 rounded-lg border border-gray-200 bg-gray-50 p-6">
-                <p className="text-sm font-medium text-gray-600">Loading</p>
-                <div className="text-sm text-black">Loading inferences...</div>
+              <div className="frost-control ring-frost-border flex min-h-0 flex-1 flex-col items-start gap-4 rounded-lg border p-6 ring-1">
+                <p className="frost-text-muted text-sm font-medium">Loading</p>
+                <div className="frost-text text-sm">Loading inferences...</div>
               </div>
             ) : inferences.length === 0 ? (
-              <div className="flex flex-col items-start gap-4 rounded-lg border border-gray-200 bg-gray-50 p-6">
-                <p className="text-sm font-medium text-gray-600">No Inferences</p>
-                <div className="text-sm text-black">No inferences created yet.</div>
+              <div className="frost-control ring-frost-border flex min-h-0 flex-1 flex-col items-start gap-4 rounded-lg border p-6 ring-1">
+                <p className="frost-text-muted text-sm font-medium">No Inferences</p>
+                <div className="frost-text text-sm">No inferences created yet.</div>
               </div>
             ) : (
-              <div className="rounded-lg border border-gray-200">
-                <Table>
+              <div className="frost-table-panel border-frost-border ring-frost-border min-h-0 min-w-0 flex-1 overflow-auto rounded-lg border ring-1">
+                <Table className="table-fixed">
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Prompt</TableHead>
-                      <TableHead>Created Date</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableHead className="w-[50%]">Prompt</TableHead>
+                      <TableHead className="w-[30%]">Created Date</TableHead>
+                      <TableHead className="w-[20%] text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {inferences.map((inference) => (
                       <TableRow key={inference.inference_id}>
-                        <TableCell className="max-w-[200px] truncate font-medium">
+                        <TableCell className="max-w-0 truncate font-medium">
                           <TooltipProvider>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <span className="cursor-help">{inference.inference_content}</span>
+                                <span className="block cursor-help truncate">{inference.inference_content}</span>
                               </TooltipTrigger>
-                              <TooltipContent className="bg-black/80" side="left">
+                              <TooltipContent className="max-w-xs" side="left">
                                 <p className="max-w-xs">{inference.inference_content}</p>
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="whitespace-nowrap">
                           {inference.created_at ? dayjs(inference.created_at).format('DD MMM YYYY') : 'N/A'}
                         </TableCell>
                         <TableCell className="text-right">
@@ -423,7 +428,7 @@ const KnowledgeBaseDetailPage: React.FC = () => {
                 accept=".pdf,.txt,application/pdf,text/plain"
                 onChange={(e) => setFile(e.target.files ? e.target.files[0] : null)}
                 disabled={uploading}
-                className="w-full cursor-pointer border border-gray-300 bg-white px-3 py-2 text-sm text-black outline-none file:cursor-pointer file:text-blue-500"
+                className="frost-control ring-frost-border frost-text file:text-brand w-full cursor-pointer border px-3 py-2 text-sm ring-1 outline-none file:cursor-pointer"
               />
             </div>
           </div>
@@ -510,7 +515,7 @@ const KnowledgeBaseDetailPage: React.FC = () => {
                   )}
                 </SelectContent>
               </Select>
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="frost-text-muted mt-1 text-xs">
                 {llmConfigs.length > 0
                   ? 'Choose which LLM configuration to use for this system prompt.'
                   : 'Add an LLM configuration to create system prompts.'}
@@ -529,7 +534,7 @@ const KnowledgeBaseDetailPage: React.FC = () => {
                 placeholder="e.g., You are a helpful assistant that answers questions based on the provided context..."
                 className="font-mono"
               />
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="frost-text-muted mt-1 text-xs">
                 Define the behavior and instructions for the LLM when processing RAG queries.
               </p>
             </div>
@@ -569,10 +574,10 @@ const KnowledgeBaseDetailPage: React.FC = () => {
           {/* Chat Messages Container */}
           <div
             ref={setMessagesContainerRef}
-            className="flex-1 space-y-4 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-4"
+            className="frost-control ring-frost-border flex-1 space-y-4 overflow-y-auto rounded-lg border p-4 ring-1"
           >
             {chatMessages.length === 0 ? (
-              <div className="flex h-full items-center justify-center text-sm text-gray-500">
+              <div className="frost-text-muted flex h-full items-center justify-center text-sm">
                 Start a conversation by asking a question...
               </div>
             ) : (
@@ -581,15 +586,15 @@ const KnowledgeBaseDetailPage: React.FC = () => {
                   <div
                     className={`flex max-w-[80%] flex-col rounded-lg p-3 ${
                       message.role === 'user'
-                        ? 'bg-blue-600 text-white'
-                        : 'border border-gray-200 bg-white text-gray-900'
+                        ? 'bg-brand text-white'
+                        : 'frost-control frost-text ring-frost-border border ring-1'
                     }`}
                   >
                     <div className="text-sm whitespace-pre-wrap">{message.content}</div>
                     {message.sources && message.sources.length > 0 && message.role === 'assistant' && (
-                      <div className="mt-2 border-t border-gray-200 pt-2">
-                        <p className="text-xs font-medium text-gray-600">Sources:</p>
-                        <ul className="mt-1 list-disc pl-4 text-xs text-gray-500">
+                      <div className="border-frost-border mt-2 border-t pt-2">
+                        <p className="frost-text-muted text-xs font-medium">Sources:</p>
+                        <ul className="frost-text-muted mt-1 list-disc pl-4 text-xs">
                           {message.sources.map((source, idx) => (
                             <li key={idx} className="truncate">
                               {typeof source === 'string' ? source : JSON.stringify(source)}
@@ -606,9 +611,9 @@ const KnowledgeBaseDetailPage: React.FC = () => {
             {/* Loading Indicator */}
             {loadingRag && (
               <div className="flex w-full justify-start">
-                <div className="flex max-w-[80%] flex-col rounded-lg border border-gray-200 bg-white p-3">
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600"></div>
+                <div className="frost-panel ring-frost-border flex max-w-[80%] flex-col rounded-lg border p-3 ring-1">
+                  <div className="frost-text-muted flex items-center gap-2 text-sm">
+                    <div className="border-frost-border border-t-brand h-4 w-4 animate-spin rounded-full border-2"></div>
                     <span>Getting response...</span>
                   </div>
                 </div>
@@ -617,7 +622,7 @@ const KnowledgeBaseDetailPage: React.FC = () => {
           </div>
 
           {/* Input Area */}
-          <div className="mt-4 flex items-end gap-2 border-t border-gray-200 pt-4">
+          <div className="border-frost-border mt-4 flex items-end gap-2 border-t pt-4">
             <Textarea
               id="testQuery"
               value={testQuery}

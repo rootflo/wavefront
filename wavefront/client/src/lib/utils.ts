@@ -6,6 +6,17 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/** Display helper: `my-cool_app` → `My Cool App` */
+export function formatAppName(name: string | null | undefined): string {
+  if (!name) return '';
+  const spaced = name.replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!spaced) return '';
+  return spaced
+    .split(' ')
+    .map((word) => (word ? word.charAt(0).toUpperCase() + word.slice(1).toLowerCase() : word))
+    .join(' ');
+}
+
 /**
  * Extracts error message from various error object structures.
  * Prioritizes the backend response format:
@@ -53,6 +64,30 @@ export function extractErrorMessage(error: unknown): string | undefined {
       // Fallback: Try data.message
       if (typeof data.message === 'string' && data.message) {
         return data.message;
+      }
+
+      // Fallback: FastAPI validation errors (422) bypass the meta/data
+      // envelope entirely and arrive as { detail: [{ loc, msg }] }. Without
+      // this branch they surface as "Request failed with status code 422".
+      if (Array.isArray(data.detail)) {
+        const messages = data.detail
+          .map((item) => {
+            if (!item || typeof item !== 'object') return undefined;
+            const entry = item as Record<string, unknown>;
+            if (typeof entry.msg !== 'string') return undefined;
+            // loc is ['body', '<field>', ...]; the field name is the useful part.
+            const field = Array.isArray(entry.loc) ? entry.loc.slice(1).join('.') : '';
+            return field ? `${field}: ${entry.msg}` : entry.msg;
+          })
+          .filter((message): message is string => !!message);
+
+        if (messages.length) {
+          return messages.join('; ');
+        }
+      }
+
+      if (typeof data.detail === 'string' && data.detail) {
+        return data.detail;
       }
     }
   }

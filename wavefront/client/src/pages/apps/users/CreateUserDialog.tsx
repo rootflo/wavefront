@@ -8,15 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@app/components/ui/dialog';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@app/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { extractErrorMessage } from '@app/lib/utils';
@@ -67,7 +59,7 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({ isOpen, onOpenChang
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto lg:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Create New User</DialogTitle>
           <DialogDescription>Add a new user to the system</DialogDescription>
@@ -156,7 +148,6 @@ const CreateUserDialog: React.FC<CreateUserDialogProps> = ({ isOpen, onOpenChang
                       <SelectItem value="owner">Owner</SelectItem>
                     </SelectContent>
                   </Select>
-                  <FormDescription>Default role is App Admin</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

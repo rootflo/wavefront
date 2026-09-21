@@ -302,4 +302,4 @@ async def test_superset_authenticator_not_admin_and_data_filter_empty(
     response = test_client.get(
         '/v1/superset/authenticate', headers={'Authorization': f'Bearer {auth_token}'}
     )
-    assert response.status_code == 400
+    assert response.status_code == 403

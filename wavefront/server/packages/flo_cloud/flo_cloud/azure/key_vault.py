@@ -99,7 +99,7 @@ class AzureKMS(FloKMS):
             else None
         )
 
-    def encrypt(self, plaintext: str) -> bytes:
+    def encrypt(self, plaintext: str | bytes) -> bytes:
         if not self.enc_crypto_client:
             raise ValueError(
                 'AZURE_KEY_VAULT_ENC_KEY_NAME must be set to use encryption'
@@ -111,13 +111,11 @@ class AzureKMS(FloKMS):
         )
         return result.ciphertext
 
-    def decrypt(self, ciphertext: str) -> bytes:
+    def decrypt(self, ciphertext: bytes) -> bytes:
         if not self.enc_crypto_client:
             raise ValueError(
                 'AZURE_KEY_VAULT_ENC_KEY_NAME must be set to use decryption'
             )
-        if isinstance(ciphertext, str):
-            ciphertext = ciphertext.encode('utf-8')
         result = self.enc_crypto_client.decrypt(
             EncryptionAlgorithm.rsa_oaep_256, ciphertext
         )

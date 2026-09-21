@@ -4,6 +4,12 @@ const getAgentsKey = (appId: string, namespace?: string) => {
   }
   return ['agents', appId];
 };
+const getChatbotsKey = (appId: string, namespace?: string) => {
+  if (namespace) {
+    return ['chatbots', appId, namespace];
+  }
+  return ['chatbots', appId];
+};
 const getNamespacesKey = (appId: string) => ['namespaces', appId];
 const getAllAppsKey = () => ['apps'];
 const getAllDatasourcesKey = (appId: string) => ['datasources', appId];
@@ -24,6 +30,10 @@ const getCurrentUserKey = () => ['whoami'];
 const getApiServicesKey = (appId: string) => ['api-services', appId];
 const getAuthenticatorsKey = (appId: string) => ['authenticators', appId];
 const getAuthenticatorKey = (appId: string, authId: string) => ['authenticator', appId, authId];
+const getOAuthAppsKey = (appId: string) => ['oauth-apps', appId];
+const getOAuthAppKey = (appId: string, oauthAppId: string) => ['oauth-app', appId, oauthAppId];
+const getEmailConnectionsKey = (appId: string) => ['email-connections', appId];
+const getEmailConnectionKey = (appId: string, connectionId: string) => ['email-connection', appId, connectionId];
 const getLLMConfigsKey = (appId: string) => ['llm-configs', appId];
 const getGuardrailPoliciesKey = (appId: string) => ['guardrail-policies', appId];
 const getGuardrailPolicyKey = (appId: string, namespace: string) => ['guardrail-policy', appId, namespace];
@@ -84,6 +94,7 @@ const getVoiceAgentToolsKey = (appId: string) => ['voice-agent-tools', appId];
 const getVoiceAgentToolKey = (appId: string, toolId: string) => ['voice-agent-tool', appId, toolId];
 const getAgentToolsKey = (appId: string, agentId: string) => ['agent-tools', appId, agentId];
 const getScheduledJobsKey = (appId: string) => ['scheduled-jobs', appId];
+const getTriggersKey = (appId: string) => ['triggers', appId];
 
 export {
   getAgentKey,
@@ -97,10 +108,15 @@ export {
   getApiServicesKey,
   getAuthenticatorKey,
   getAuthenticatorsKey,
+  getChatbotsKey,
   getCurrentUserKey,
   getDatasourceKey,
   getDatasourceResourcesKey,
   getAllDynamicQueriesKey,
+  getEmailConnectionKey,
+  getEmailConnectionsKey,
+  getOAuthAppKey,
+  getOAuthAppsKey,
   readDynamicQueryKey,
   getKnowledgeBaseDocumentsKey,
   getKnowledgeBaseInferencesKey,
@@ -141,4 +157,5 @@ export {
   getAppByIdKey,
   getAppUsersKey,
   getScheduledJobsKey,
+  getTriggersKey,
 };

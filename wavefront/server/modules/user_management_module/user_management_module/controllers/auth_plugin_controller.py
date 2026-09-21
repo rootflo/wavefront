@@ -6,7 +6,7 @@ from db_repo_module.models.resource import ResourceScope
 from dependency_injector.wiring import inject, Provide
 from fastapi import Depends, Request, status, APIRouter, Query
 from fastapi.responses import JSONResponse, RedirectResponse
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
 from uuid import UUID
@@ -27,6 +27,7 @@ from plugins_module.services.authenticator_services import (
     get_authenticator_config,
     get_authenticator_with_config,
 )
+from plugins_module.utils.email_helper import is_allowed_client_redirect
 from user_management_module.user_container import UserContainer
 from user_management_module.services.user_service import UserService
 from user_management_module.utils.password_utils import verify_password
@@ -336,6 +337,7 @@ async def google_oauth_callback(
     ),
     cache_manager: CacheManager = Depends(Provide[UserContainer.cache_manager]),
     token_service: TokenService = Depends(Provide[AuthContainer.token_service]),
+    config: dict = Depends(Provide[PluginsContainer.config]),
 ):
     """Handle Google OAuth callback."""
     logger.debug(
@@ -361,6 +363,7 @@ async def google_oauth_callback(
         session_repository,
         cache_manager,
         token_service,
+        config=config,
         expected_nonce=flow.get('nonce'),
     )
 
@@ -389,6 +392,7 @@ async def microsoft_oauth_callback(
     ),
     cache_manager: CacheManager = Depends(Provide[UserContainer.cache_manager]),
     token_service: TokenService = Depends(Provide[AuthContainer.token_service]),
+    config: dict = Depends(Provide[PluginsContainer.config]),
 ):
     """Handle Microsoft OAuth callback."""
     logger.debug(
@@ -414,6 +418,7 @@ async def microsoft_oauth_callback(
         session_repository,
         cache_manager,
         token_service,
+        config=config,
         expected_nonce=flow.get('nonce'),
     )
 
@@ -440,6 +445,7 @@ async def microsoft_adfs_oauth_callback(
     ),
     cache_manager: CacheManager = Depends(Provide[UserContainer.cache_manager]),
     token_service: TokenService = Depends(Provide[AuthContainer.token_service]),
+    config: dict = Depends(Provide[PluginsContainer.config]),
 ):
     """Handle Microsoft ADFS OAuth callback."""
     logger.debug(
@@ -465,8 +471,40 @@ async def microsoft_adfs_oauth_callback(
         session_repository,
         cache_manager,
         token_service,
+        config=config,
         expected_nonce=flow.get('nonce'),
     )
+
+
+def _client_redirect(
+    url: Optional[str], web_url: str, params: Dict[str, Any]
+) -> RedirectResponse:
+    """Redirect to `url` with `params`, or to about:blank if `url` is not ours.
+
+    These targets come from stored authenticator config rather than the request,
+    but they are still unvalidated destinations carrying an access token or an
+    error message, so they are held to the same origin allowlist as every other
+    client redirect.
+    """
+    if not url:
+        return RedirectResponse(url='about:blank')
+    if not web_url:
+        # Fail closed, but loudly: an unset WEB_URL sends every OAuth login to
+        # about:blank, which is otherwise indistinguishable from a rejected host.
+        logger.warning(
+            'Client redirect blocked: [web].url is not configured (WEB_URL unset)'
+        )
+        return RedirectResponse(url='about:blank')
+    if not is_allowed_client_redirect(url, web_url):
+        # Host only - the query string carries the access token.
+        logger.warning(
+            'Client redirect blocked: host %s does not match the configured '
+            'web origin',
+            urlparse(url).netloc,
+        )
+        return RedirectResponse(url='about:blank')
+    separator = '&' if urlparse(url).query else '?'
+    return RedirectResponse(url=f'{url}{separator}{urlencode(params)}')
 
 
 async def _handle_oauth_callback(
@@ -480,9 +518,12 @@ async def _handle_oauth_callback(
     session_repository: SQLAlchemyRepository[Session],
     cache_manager: CacheManager,
     token_service: TokenService,
+    config: Dict[str, Any],
     expected_nonce: Optional[str] = None,
 ) -> RedirectResponse:
     """Common OAuth callback handler."""
+
+    web_url = ((config.get('web') or {}).get('url') or '').strip()
 
     try:
         logger.debug(
@@ -505,10 +546,10 @@ async def _handle_oauth_callback(
                 failure_url = config_data.get('config', {}).get(
                     'client_redirect_failure_url'
                 )
-                if failure_url:
-                    provider = config_data.get('auth_type')
-                    params = urlencode({'provider': provider, 'error': error_msg})
-                    return RedirectResponse(url=f'{failure_url}?{params}')
+                provider = config_data.get('auth_type')
+                return _client_redirect(
+                    failure_url, web_url, {'provider': provider, 'error': error_msg}
+                )
             return RedirectResponse(url='about:blank')
 
         # Handle not found case
@@ -532,15 +573,14 @@ async def _handle_oauth_callback(
 
         # Handle OAuth error from provider
         if callback_data.get('error'):
-            if failure_url:
-                params = urlencode(
-                    {
-                        'provider': provider,
-                        'error': f'OAuth error: {callback_data["error"]}',
-                    }
-                )
-                return RedirectResponse(url=f'{failure_url}?{params}')
-            return RedirectResponse(url='about:blank')
+            return _client_redirect(
+                failure_url,
+                web_url,
+                {
+                    'provider': provider,
+                    'error': f'OAuth error: {callback_data["error"]}',
+                },
+            )
 
         # Handle OAuth callback
         auth_result = authenticator.handle_callback(
@@ -558,15 +598,14 @@ async def _handle_oauth_callback(
         )
 
         if not auth_result.success:
-            if failure_url:
-                params = urlencode(
-                    {
-                        'provider': provider,
-                        'error': auth_result.error or 'OAuth authentication failed',
-                    }
-                )
-                return RedirectResponse(url=f'{failure_url}?{params}')
-            return RedirectResponse(url='about:blank')
+            return _client_redirect(
+                failure_url,
+                web_url,
+                {
+                    'provider': provider,
+                    'error': auth_result.error or 'OAuth authentication failed',
+                },
+            )
 
         if ui is None:
             return get_failure_redirect('OAuth authentication returned no user info')
@@ -603,20 +642,18 @@ async def _handle_oauth_callback(
             user.deleted if user else None,
         )
         if user is None:
-            if failure_url:
-                params = urlencode(
-                    {'provider': provider, 'error': "User with email doesn't exist"}
-                )
-                return RedirectResponse(url=f'{failure_url}?{params}')
-            return RedirectResponse(url='about:blank')
+            return _client_redirect(
+                failure_url,
+                web_url,
+                {'provider': provider, 'error': "User with email doesn't exist"},
+            )
 
         if user.deleted:
-            if failure_url:
-                params = urlencode(
-                    {'provider': provider, 'error': 'User account is disabled'}
-                )
-                return RedirectResponse(url=f'{failure_url}?{params}')
-            return RedirectResponse(url='about:blank')
+            return _client_redirect(
+                failure_url,
+                web_url,
+                {'provider': provider, 'error': 'User account is disabled'},
+            )
 
         # Get device info from headers
         device_info = request.headers.get('User-Agent')
@@ -649,12 +686,11 @@ async def _handle_oauth_callback(
         )
 
         if not role_id:
-            if failure_url:
-                params = urlencode(
-                    {'provider': provider, 'error': 'User has no access to the console'}
-                )
-                return RedirectResponse(url=f'{failure_url}?{params}')
-            return RedirectResponse(url='about:blank')
+            return _client_redirect(
+                failure_url,
+                web_url,
+                {'provider': provider, 'error': 'User has no access to the console'},
+            )
 
         # Include session_id in token payload
         token = token_service.create_token(
@@ -675,8 +711,9 @@ async def _handle_oauth_callback(
                 str(session.id),
                 success_url,
             )
-            params = urlencode({'provider': provider, 'access_token': token})
-            return RedirectResponse(url=f'{success_url}?{params}')
+            return _client_redirect(
+                success_url, web_url, {'provider': provider, 'access_token': token}
+            )
 
         logger.debug(
             '_handle_oauth_callback: no success_url configured, redirecting to about:blank'
@@ -695,15 +732,15 @@ async def _handle_oauth_callback(
                 failure_url = config_data.get('config', {}).get(
                     'client_redirect_failure_url'
                 )
-                if failure_url:
-                    provider = config_data.get('auth_type')
-                    params = urlencode(
-                        {
-                            'provider': provider,
-                            'error': f'OAuth callback failed: {str(e)}',
-                        }
-                    )
-                    return RedirectResponse(url=f'{failure_url}?{params}')
+                provider = config_data.get('auth_type')
+                return _client_redirect(
+                    failure_url,
+                    web_url,
+                    {
+                        'provider': provider,
+                        'error': f'OAuth callback failed: {str(e)}',
+                    },
+                )
         except Exception as e:
             pass
 

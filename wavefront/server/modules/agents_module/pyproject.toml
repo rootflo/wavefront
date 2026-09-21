@@ -26,8 +26,11 @@ tools-module = {workspace = true}
 api-services-module = {workspace = true}
 llm-inference-config-module = {workspace = true}
 
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
+[dependency-groups]
+dev = [
+    "pytest>=8.3.3,<9.0.0",
+    "pytest-asyncio>=0.24.0,<1.0.0",
+]
 
 [tool.uv]
 package = true

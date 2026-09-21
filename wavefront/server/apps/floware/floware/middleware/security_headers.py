@@ -77,7 +77,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
 
         # Get environment-specific configuration
-        self.environment = os.getenv('APP_ENV', 'dev')
+        self.environment = os.getenv('APP_ENV', 'production')
 
         # Configure static security headers based on environment
         self.static_security_headers = {

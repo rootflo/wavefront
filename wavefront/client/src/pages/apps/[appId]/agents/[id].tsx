@@ -24,6 +24,7 @@ import yaml from 'js-yaml';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import EditAgentDialog from './EditAgentDialog';
+import { formatAppName } from '@app/lib/utils';
 
 const AgentDetail: React.FC = () => {
   const { app: appId, id } = useParams<{ app: string; id: string }>();
@@ -532,7 +533,7 @@ const AgentDetail: React.FC = () => {
   };
 
   return (
-    <div className="flex h-full flex-col bg-white p-8">
+    <div className="flex h-full flex-col bg-transparent p-8">
       <Breadcrumb className="mb-6">
         <BreadcrumbList>
           <BreadcrumbItem>
@@ -562,14 +563,14 @@ const AgentDetail: React.FC = () => {
       </Breadcrumb>
 
       {agentLoading ? (
-        <div className="flex items-center justify-center p-8">Loading agent...</div>
+        <div className="frost-text-muted flex items-center justify-center p-8">Loading agent...</div>
       ) : !agent ? (
-        <div className="flex items-center justify-center p-8 text-red-600">Agent not found</div>
+        <div className="flex items-center justify-center p-8 text-red-600 dark:text-red-400">Agent not found</div>
       ) : (
         <>
           <div className="flex w-full flex-1 flex-col gap-10">
             <div className="flex items-start justify-between">
-              <p className="text-2xl leading-normal font-semibold text-black">{agent.name}</p>
+              <p className="frost-text text-2xl leading-normal font-semibold">{formatAppName(agent.name)}</p>
               <div className="flex items-center gap-4">
                 {agentVersions.length > 0 && (
                   <Select

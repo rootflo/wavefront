@@ -1,6 +1,12 @@
 from typing import Dict, Any, List, AsyncIterator, Optional
 from openai import AsyncOpenAI
-from .base_llm import BaseLLM, file_name_text_block
+from .base_llm import (
+    BaseLLM,
+    file_name_text_block,
+    flatten_extra_body,
+    split_client_kwargs,
+    split_request_kwargs,
+)
 from flo_ai.models.chat_message import DocumentMessageContent, ImageMessageContent
 from flo_ai.tool.base_tool import Tool
 from flo_ai.telemetry.instrumentation import (
@@ -14,6 +20,8 @@ from opentelemetry import trace
 
 
 class OpenAI(BaseLLM):
+    provider_name = 'openai'
+
     def __init__(
         self,
         model='gpt-4o-mini',
@@ -23,21 +31,50 @@ class OpenAI(BaseLLM):
         custom_headers: Optional[Dict[str, str]] = None,
         **kwargs,
     ):
+        client_kwargs, request_kwargs = split_client_kwargs(
+            AsyncOpenAI, kwargs, reserved=('default_headers',)
+        )
+
         super().__init__(
             model=model,
             api_key=api_key,
             temperature=temperature,
-            **kwargs,
+            **request_kwargs,
         )
 
         self.client = AsyncOpenAI(
             api_key=self.api_key,
             base_url=base_url,
             default_headers=custom_headers,
-            **kwargs,
+            **client_kwargs,
         )
         self.model = model
-        self.kwargs = kwargs
+        self.kwargs = request_kwargs
+
+    def _create_kwargs(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Request params for chat.completions.create, unknowns in extra_body.
+
+        Anything the SDK's create() does not declare - `top_k` against vLLM,
+        a server's own sampling knobs - would be a local TypeError. Sending it
+        in extra_body puts it in the request body where the server reads it, and
+        lets the server be the one to reject a param it does not support.
+
+        Args:
+            params: The merged request params, each layer already flattened by
+                the caller. Taken as a mapping rather than **kwargs because
+                callers merge the instance's params with the per-call ones, and
+                a key in both is a duplicate-argument TypeError at the call
+                rather than an override.
+
+        Returns:
+            Params to splat into create()
+        """
+        declared, extra = split_request_kwargs(
+            self.client.chat.completions.create, flatten_extra_body(params)
+        )
+        if extra:
+            declared['extra_body'] = extra
+        return declared
 
     @trace_llm_call(provider='openai')
     async def generate(
@@ -79,13 +116,15 @@ class OpenAI(BaseLLM):
             kwargs['functions'] = functions
 
         # Prepare OpenAI API parameters
-        openai_kwargs = {
-            'model': self.model,
-            'messages': messages,
-            'temperature': self.temperature,
-            **self.kwargs,
-            **kwargs,
-        }
+        openai_kwargs = self._create_kwargs(
+            {
+                'model': self.model,
+                'messages': messages,
+                'temperature': self.temperature,
+                **flatten_extra_body(self.kwargs),
+                **flatten_extra_body(kwargs),
+            }
+        )
 
         # Make the API call
         response = await self.client.chat.completions.create(**openai_kwargs)
@@ -127,14 +166,16 @@ class OpenAI(BaseLLM):
     ) -> AsyncIterator[Dict[str, Any]]:
         """Stream partial responses from OpenAI Chat Completions API."""
         # Prepare OpenAI API parameters
-        openai_kwargs = {
-            'model': self.model,
-            'messages': messages,
-            'temperature': self.temperature,
-            'stream': True,
-            **self.kwargs,
-            **kwargs,
-        }
+        openai_kwargs = self._create_kwargs(
+            {
+                'model': self.model,
+                'messages': messages,
+                'temperature': self.temperature,
+                'stream': True,
+                **flatten_extra_body(self.kwargs),
+                **flatten_extra_body(kwargs),
+            }
+        )
 
         if functions:
             openai_kwargs['functions'] = functions

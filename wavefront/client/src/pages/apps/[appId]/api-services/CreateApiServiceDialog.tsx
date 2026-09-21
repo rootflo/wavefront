@@ -8,15 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@app/components/ui/dialog';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@app/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { extractErrorMessage } from '@app/lib/utils';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -107,7 +99,7 @@ const CreateApiServiceDialog: React.FC<CreateApiServiceDialogProps> = ({ isOpen,
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] w-full min-w-0 overflow-y-auto lg:max-w-4xl">
+      <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto lg:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Create New API Service</DialogTitle>
           <DialogDescription>Create a new API service for {selectedApp?.app_name}</DialogDescription>
@@ -136,7 +128,6 @@ const CreateApiServiceDialog: React.FC<CreateApiServiceDialogProps> = ({ isOpen,
                       />
                     </div>
                   </FormControl>
-                  <FormDescription>Define your API service configuration in YAML format</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

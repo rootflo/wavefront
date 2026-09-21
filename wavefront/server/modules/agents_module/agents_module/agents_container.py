@@ -93,6 +93,7 @@ class AgentsContainer(containers.DeclarativeContainer):
         bucket_name=config.agents.agent_yaml_bucket,
         agent_crud_service=agent_crud_service,
         tool_loader=tool_loader,
+        agent_inference_service=agent_inference_service,
     )
 
     workflow_inference_service = providers.Singleton(
@@ -105,6 +106,7 @@ class AgentsContainer(containers.DeclarativeContainer):
         workflow_version_repository=workflow_version_repository,
         agent_crud_service=agent_crud_service,
         tool_loader=tool_loader,
+        agent_inference_service=agent_inference_service,
     )
 
     async_agentic_execution_service = providers.Singleton(

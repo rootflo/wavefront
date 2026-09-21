@@ -12,9 +12,10 @@ interface KnowledgeBaseCardProps {
 const KnowledgeBaseCard: React.FC<KnowledgeBaseCardProps> = ({ kb, onClick, onDeleteClick, onEditClick }) => {
   const metadata: ResourceCardMetadata[] = [
     {
-      label: 'Knowledge Base ID',
+      label: 'Knowledge base id',
       value: kb.id,
       isMono: true,
+      isCopyable: true,
     },
   ];
 

@@ -1,22 +1,27 @@
-from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from uuid import UUID
 
 from common_module.log.logger import logger
 from db_repo_module.models.agent import Agent
 from db_repo_module.models.agentic_trigger import AgenticTrigger
-from db_repo_module.models.agentic_trigger_credential import AgenticTriggerCredential
+from db_repo_module.models.email_connection import EmailConnection
 from db_repo_module.models.workflow import Workflow
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
+from mailer import EmailCapability, EmailProviderABC, GmailWatchConfig
+from plugins_module.services.email_connection_service import (
+    ConnectionNotFound,
+    EmailConnectionError,
+    EmailConnectionService,
+)
 
 from triggers_module.models.trigger_schemas import (
     CreateTriggerRequest,
     CreateTriggerResponse,
     TriggerResponse,
 )
-from triggers_module.providers.base import TokenBundle, TriggerProvider
-from triggers_module.providers.registry import TriggerProviderRegistry
-from triggers_module.utils.token_crypto import TokenCrypto
+
+# Watching an inbox is a read: a trigger never needs to send.
+WATCH_CAPABILITIES = [EmailCapability.READ]
 
 
 class TriggerNotFound(Exception):
@@ -32,27 +37,44 @@ class EntityNotFound(Exception):
 
 
 class TriggerCrudService:
+    """Trigger lifecycle on top of an already-connected mailbox.
+
+    Credentials are not this service's concern: a trigger names an
+    `email_connection`, and `EmailConnectionService` owns consent and tokens. A
+    trigger therefore goes straight to `active` once its watch is registered.
+    """
+
     def __init__(
         self,
         trigger_repository: SQLAlchemyRepository[AgenticTrigger],
-        credential_repository: SQLAlchemyRepository[AgenticTriggerCredential],
         agent_repository: SQLAlchemyRepository[Agent],
         workflow_repository: SQLAlchemyRepository[Workflow],
-        provider_registry: TriggerProviderRegistry,
-        token_crypto: TokenCrypto,
+        email_connection_service: EmailConnectionService,
+        gmail_watch_config: GmailWatchConfig,
     ):
         self._triggers = trigger_repository
-        self._credentials = credential_repository
         self._agents = agent_repository
         self._workflows = workflow_repository
-        self._registry = provider_registry
-        self._crypto = token_crypto
+        self._connections = email_connection_service
+        self._gmail_watch_config = gmail_watch_config
 
     async def create_trigger(
         self, request: CreateTriggerRequest
     ) -> CreateTriggerResponse:
         await self._validate_entity(request.entity_type, request.entity_id)
-        provider = self._registry.get(request.provider)
+
+        try:
+            connection = await self._connections.require_active(request.connection_id)
+        except ConnectionNotFound as exc:
+            raise EntityNotFound(str(exc)) from exc
+        except EmailConnectionError as exc:
+            raise InvalidTriggerState(str(exc)) from exc
+
+        if connection.provider != request.provider:
+            raise InvalidTriggerState(
+                f'Connection {connection.mailbox_email} is a {connection.provider} '
+                f'mailbox, not {request.provider}'
+            )
 
         trigger = await self._triggers.create(
             name=request.name,
@@ -60,104 +82,36 @@ class TriggerCrudService:
             entity_type=request.entity_type,
             entity_id=request.entity_id,
             namespace=request.namespace,
-            status='pending_auth' if provider.requires_oauth else 'active',
+            status='pending_auth',
             filter_config=request.filter_config.model_dump(exclude_none=True),
             provider_config=request.provider_config,
-        )
-
-        consent_url: Optional[str] = None
-        if provider.requires_oauth:
-            consent_url = provider.build_consent_url(trigger_id=str(trigger.id))
-
-        return CreateTriggerResponse(
-            trigger_id=trigger.id,
-            status=trigger.status,
-            consent_url=consent_url,
-        )
-
-    async def complete_oauth(self, state: str, code: str) -> TriggerResponse:
-        try:
-            trigger_id = UUID(state)
-        except ValueError as exc:
-            raise InvalidTriggerState(f'Invalid OAuth state: {state}') from exc
-
-        trigger = await self._triggers.find_one(id=trigger_id)
-        if not trigger:
-            raise TriggerNotFound(f'Trigger {trigger_id} not found')
-        if trigger.status != 'pending_auth':
-            raise InvalidTriggerState(
-                f'Trigger {trigger_id} is in status {trigger.status!r}, '
-                'cannot complete OAuth'
-            )
-
-        provider = self._registry.get(trigger.provider)
-        token_bundle = await provider.exchange_oauth_code(
-            code=code, trigger_id=str(trigger_id)
-        )
-
-        credential = await self._upsert_credential(trigger.provider, token_bundle)
-
-        # Link the credential to the trigger immediately so a later
-        # `start_subscription` failure leaves a retry-able state instead of an
-        # orphaned credential.
-        await self._triggers.find_one_and_update(
-            {'id': trigger_id}, credential_id=credential.id
+            connection_id=connection.id,
         )
 
         try:
-            provider_config = await provider.start_subscription(
-                trigger_id=str(trigger_id),
-                access_token=token_bundle.access_token or '',
-                external_account_id=token_bundle.external_account_id,
-                agentic_id=str(trigger.entity_id),
-            )
+            provider_config = await self._start_watch(trigger, connection)
         except Exception as exc:
+            # Kept as an `error` row rather than deleted so `retry_trigger` can
+            # pick it up once the underlying problem is fixed.
             await self._triggers.find_one_and_update(
-                {'id': trigger_id},
+                {'id': trigger.id},
                 status='error',
-                last_error=f'start_subscription failed: {exc}',
+                last_error=f'start_watch failed: {exc}',
             )
-            logger.exception(f'start_subscription failed for trigger {trigger_id}')
-            raise
+            logger.exception(f'start_watch failed for trigger {trigger.id}')
+            raise InvalidTriggerState(f'Failed to start inbox watch: {exc}') from exc
 
         updated = await self._triggers.find_one_and_update(
-            {'id': trigger_id},
+            {'id': trigger.id},
             status='active',
             provider_config=provider_config,
             last_error=None,
             refresh=True,
         )
-        return self._to_response(updated)
-
-    async def _upsert_credential(
-        self, provider: str, token_bundle: TokenBundle
-    ) -> AgenticTriggerCredential:
-        existing = await self._credentials.find_one(
-            provider=provider,
-            external_account_id=token_bundle.external_account_id,
-        )
-
-        encrypted_refresh = self._crypto.encrypt(token_bundle.refresh_token)
-        encrypted_access = self._crypto.encrypt(token_bundle.access_token)
-        expires_at = token_bundle.expires_at
-
-        if existing:
-            return await self._credentials.find_one_and_update(
-                {'id': existing.id},
-                encrypted_refresh_token=encrypted_refresh,
-                encrypted_access_token=encrypted_access,
-                token_expires_at=expires_at,
-                scopes=token_bundle.scopes,
-                refresh=True,
-            )
-
-        return await self._credentials.create(
-            provider=provider,
-            external_account_id=token_bundle.external_account_id,
-            encrypted_refresh_token=encrypted_refresh,
-            encrypted_access_token=encrypted_access,
-            token_expires_at=expires_at,
-            scopes=token_bundle.scopes,
+        return CreateTriggerResponse(
+            trigger_id=updated.id,
+            status=updated.status,
+            mailbox_email=connection.mailbox_email,
         )
 
     async def list_triggers(
@@ -200,9 +154,11 @@ class TriggerCrudService:
         return self._to_response(updated)
 
     async def retry_trigger(self, trigger_id: UUID) -> TriggerResponse:
-        """Re-runs `start_subscription` for an `error` trigger using its already-
-        stored credential. Use when the original OAuth completed but the upstream
-        subscription setup failed (e.g. transient Pub/Sub IAM issue)."""
+        """Re-register the inbox watch for a trigger in `error`.
+
+        Use when the connection is fine but watch registration failed, such as a
+        transient Pub/Sub IAM problem.
+        """
         trigger = await self._triggers.find_one(id=trigger_id)
         if not trigger:
             raise TriggerNotFound(f'Trigger {trigger_id} not found')
@@ -211,31 +167,18 @@ class TriggerCrudService:
                 f'Trigger {trigger_id} is in status {trigger.status!r}; '
                 'retry only applies to triggers in error.'
             )
-        if not trigger.credential_id:
-            raise InvalidTriggerState(
-                f'Trigger {trigger_id} has no credential; cannot retry without OAuth.'
-            )
-
-        provider = self._registry.get(trigger.provider)
-        access_token, external_account_id = await self._fresh_access_token(
-            trigger.credential_id, provider
-        )
 
         try:
-            provider_config = await provider.start_subscription(
-                trigger_id=str(trigger_id),
-                access_token=access_token,
-                external_account_id=external_account_id,
-                agentic_id=str(trigger.entity_id),
-            )
+            connection = await self._connections.require_active(trigger.connection_id)
+            provider_config = await self._start_watch(trigger, connection)
+        except EmailConnectionError as exc:
+            raise InvalidTriggerState(str(exc)) from exc
         except Exception as exc:
             await self._triggers.find_one_and_update(
                 {'id': trigger_id},
-                last_error=f'start_subscription failed: {exc}',
+                last_error=f'start_watch failed: {exc}',
             )
-            logger.exception(
-                f'retry_trigger: start_subscription failed for {trigger_id}'
-            )
+            logger.exception(f'retry_trigger: start_watch failed for {trigger_id}')
             raise
 
         updated = await self._triggers.find_one_and_update(
@@ -252,56 +195,61 @@ class TriggerCrudService:
         if not trigger:
             raise TriggerNotFound(f'Trigger {trigger_id} not found')
 
-        provider = self._registry.get(trigger.provider)
-        if trigger.credential_id and trigger.provider_config:
+        if trigger.provider_config:
             try:
-                access_token, external_account_id = await self._fresh_access_token(
-                    trigger.credential_id, provider
+                provider, access_token, mailbox = await self._watch_context(
+                    trigger.connection_id
                 )
-                await provider.stop_subscription(
-                    provider_config=trigger.provider_config,
+                # Planned for later: Gmail allows only one users.watch per
+                # mailbox. Watches should be keyed by connection_id (shared
+                # topic/history, fan-out to all active triggers on that
+                # connection) and stop_watch should run only when deleting the
+                # last trigger for the connection — not once per trigger.id.
+                await provider.stop_watch(
                     access_token=access_token,
-                    external_account_id=external_account_id,
+                    mailbox=mailbox,
+                    provider_config=trigger.provider_config,
                 )
             except Exception as exc:
                 logger.warning(
-                    f'stop_subscription failed for trigger {trigger_id}; '
+                    f'stop_watch failed for trigger {trigger_id}; '
                     f'soft-deleting anyway: {exc}'
                 )
 
         await self._triggers.find_one_and_update({'id': trigger_id}, status='deleted')
+        # The connection outlives the trigger: other triggers, jobs and agents
+        # may still be using that mailbox.
 
-        if trigger.credential_id:
-            other_refs = await self._triggers.count(credential_id=trigger.credential_id)
-            if other_refs <= 1:
-                await self._credentials.delete_all(id=trigger.credential_id)
-
-    async def _fresh_access_token(
-        self, credential_id: UUID, provider: TriggerProvider
-    ) -> tuple[str, str]:
-        credential = await self._credentials.find_one(id=credential_id)
-        if not credential:
-            raise InvalidTriggerState(f'Credential {credential_id} not found')
-
-        now = datetime.now(timezone.utc)
-        if (
-            credential.encrypted_access_token
-            and credential.token_expires_at
-            and credential.token_expires_at > now
-        ):
-            return (
-                self._crypto.decrypt(credential.encrypted_access_token),
-                credential.external_account_id,
-            )
-
-        refresh_token = self._crypto.decrypt(credential.encrypted_refresh_token)
-        bundle = await provider.refresh_access_token(refresh_token)
-        await self._credentials.find_one_and_update(
-            {'id': credential_id},
-            encrypted_access_token=self._crypto.encrypt(bundle.access_token),
-            token_expires_at=bundle.expires_at,
+    async def _start_watch(
+        self, trigger: AgenticTrigger, connection: EmailConnection
+    ) -> dict:
+        provider, access_token, mailbox = await self._watch_context(connection.id)
+        watch_config = (
+            self._gmail_watch_config if connection.provider == 'gmail' else None
         )
-        return bundle.access_token or '', credential.external_account_id
+        # Planned for later: key watch_key by connection.id and route pushes to
+        # every active trigger on that connection. Per-trigger watches can
+        # replace each other on the same Gmail mailbox (one watch at a time).
+        return await provider.start_watch(
+            access_token=access_token,
+            mailbox=mailbox,
+            watch_key=str(trigger.id),
+            watch_config=watch_config,
+            push_endpoint_params={
+                'trigger_id': str(trigger.id),
+                'agentic_id': str(trigger.entity_id),
+            },
+        )
+
+    async def _watch_context(
+        self, connection_id: UUID
+    ) -> Tuple[EmailProviderABC, str, str]:
+        connection = await self._connections.require_active(connection_id)
+        access_token, mailbox = await self._connections.get_access_token(
+            connection_id, capabilities=WATCH_CAPABILITIES
+        )
+        provider = await self._connections.get_provider(connection)
+        return provider, access_token, mailbox
 
     async def _validate_entity(self, entity_type: str, entity_id: UUID) -> None:
         if entity_type == 'agent':
@@ -324,7 +272,7 @@ class TriggerCrudService:
             status=trigger.status,
             filter_config=trigger.filter_config,
             provider_config=trigger.provider_config,
-            credential_id=trigger.credential_id,
+            connection_id=trigger.connection_id,
             last_error=trigger.last_error,
             created_at=trigger.created_at,
             updated_at=trigger.updated_at,

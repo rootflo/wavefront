@@ -11,6 +11,7 @@ dependencies = [
     "flo-cloud",
     "flo-utils",
     "common-module",
+    "llm-inference-config-module",
     "python-dotenv>=1.1.0,<2.0.0",
 ]
 
@@ -19,6 +20,7 @@ agents-module = { workspace = true}
 flo-cloud = { workspace = true }
 flo-utils = { workspace = true }
 common-module = { workspace = true }
+llm-inference-config-module = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

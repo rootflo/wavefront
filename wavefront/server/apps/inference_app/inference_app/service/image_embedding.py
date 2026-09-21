@@ -5,6 +5,7 @@ from PIL import Image
 import io
 from typing import List, Dict, Any, Union
 from common_module.log.logger import logger
+from common_module.utils.image_formats import SUPPORTED_PILLOW_FORMATS
 
 
 class ImageEmbedding:
@@ -62,7 +63,9 @@ class ImageEmbedding:
     @torch.inference_mode()
     def query_embed(self, image_content: bytes) -> List[Dict[str, List[float]]]:
         try:
-            image = Image.open(io.BytesIO(image_content)).convert('RGB')
+            image = Image.open(
+                io.BytesIO(image_content), formats=SUPPORTED_PILLOW_FORMATS
+            ).convert('RGB')
         except Exception as e:
             print(f'Error opening image: {e}')
             return []
@@ -104,15 +107,17 @@ class ImageEmbedding:
         images: List[Image.Image] = []
         for idx, image_content in enumerate(image_batch):
             try:
-                images.append(Image.open(io.BytesIO(image_content)).convert('RGB'))
+                images.append(
+                    Image.open(
+                        io.BytesIO(image_content), formats=SUPPORTED_PILLOW_FORMATS
+                    ).convert('RGB')
+                )
             except Exception as e:
                 logger.error(
                     f'Error opening image at index={idx}: {e}',
                     exc_info=True,
                 )
-                raise ValueError(
-                    f'Failed to decode image at index {idx}: {e}'
-                ) from e
+                raise ValueError(f'Failed to decode image at index {idx}: {e}') from e
 
         results: List[Dict[str, List[List[float]]]] = []
 

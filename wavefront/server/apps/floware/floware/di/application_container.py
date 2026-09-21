@@ -15,8 +15,6 @@ class ApplicationContainer(containers.DeclarativeContainer):
     db_client = providers.Dependency()
     cache_manager = providers.Dependency()
 
-    email_repository = providers.Dependency()
-    oauth_credential_repository = providers.Dependency()
     user_repository = providers.Dependency()
     task_repository = providers.Dependency()
 
@@ -28,7 +26,8 @@ class ApplicationContainer(containers.DeclarativeContainer):
     scheduled_job_execution_repository = providers.Dependency()
     datasource_repository = providers.Dependency()
     dynamic_query_repository = providers.Dependency()
-    email_service = providers.Dependency()
+    email_send_service = providers.Dependency()
+    email_connection_service = providers.Dependency()
     user_service = providers.Dependency()
     role_repository = providers.Dependency()
     user_role_repository = providers.Dependency()
@@ -73,7 +72,8 @@ class ApplicationContainer(containers.DeclarativeContainer):
         dynamic_query_repository=dynamic_query_repository,
         cloud_storage_manager=cloud_storage_manager,
         bucket_name=config.floware.asset_storage_bucket,
-        email_service=email_service,
+        email_send_service=email_send_service,
+        email_connection_service=email_connection_service,
         user_repository=user_repository,
         user_service=user_service,
         role_repository=role_repository,

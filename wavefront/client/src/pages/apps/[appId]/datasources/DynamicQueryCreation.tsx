@@ -68,7 +68,7 @@ const DynamicQueryCreation: React.FC<DynamicQueryCreationProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-h-[90vh] w-full max-w-[800px] min-w-0 overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto lg:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Add Dynamic Query</DialogTitle>
           <DialogDescription>Define your dynamic query configuration for this datasource.</DialogDescription>
@@ -76,7 +76,7 @@ const DynamicQueryCreation: React.FC<DynamicQueryCreationProps> = ({
 
         <div className="flex min-w-0 flex-col gap-3">
           <CodeMirror
-            className="w-full min-w-0 rounded-xl border border-[#EFF0F1] bg-white p-4 font-mono text-sm font-normal text-[#282828] outline-none"
+            className="frost-glass border-frost-border frost-text w-full min-w-0 rounded-xl border p-4 font-mono text-sm font-normal outline-none"
             value={queryContent}
             height="500px"
             width="100%"

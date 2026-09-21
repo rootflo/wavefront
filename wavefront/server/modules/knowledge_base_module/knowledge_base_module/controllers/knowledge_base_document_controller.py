@@ -164,7 +164,7 @@ async def upload_document(
                 'parse_type': 'kb_insertion',
             }
             topic_id = (
-                config['gcp']['email_topic_id']
+                config['gcp']['rag_topic_id']
                 if config['cloud_config']['cloud_provider'] == 'gcp'
                 else config['aws']['rag_queue_url']
             )

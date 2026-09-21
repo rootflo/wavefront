@@ -99,15 +99,15 @@ const BulkDownloadDialog = <T,>({
           </div>
         </div>
 
-        <div className="max-h-[360px] space-y-1 overflow-y-auto rounded-lg border border-[#EFF0F1] p-2">
+        <div className="frost-glass border-frost-border max-h-[360px] space-y-1 overflow-y-auto rounded-lg border p-2">
           {sortedItems.length === 0 ? (
-            <p className="py-6 text-center text-sm text-gray-500">{emptyLabel}</p>
+            <p className="frost-text-muted py-6 text-center text-sm">{emptyLabel}</p>
           ) : (
             sortedItems.map((item) => {
               const id = getItemId(item);
               const label = getItemLabel(item);
               return (
-                <div key={id} className="flex items-center gap-3 rounded-md p-2 hover:bg-gray-50">
+                <div key={id} className="hover:bg-frost-glass-strong flex items-center gap-3 rounded-md p-2">
                   <Checkbox
                     id={`download-${id}`}
                     checked={selectedIds.includes(id)}

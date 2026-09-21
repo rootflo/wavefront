@@ -16,6 +16,7 @@ from api_services_module.api_services_container import ApiServicesContainer
 from agents_module.agents_container import AgentsContainer
 from tools_module.tools_container import ToolsContainer
 from plugins_module.plugins_container import PluginsContainer
+from llm_inference_config_module.container import LlmInferenceConfigContainer
 
 
 db_repo_container = DatabaseModuleContainer()
@@ -36,6 +37,8 @@ plugins_container = PluginsContainer(
     cloud_storage_manager=common_container.cloud_storage_manager,
     dynamic_query_repository=db_repo_container.dynamic_query_repository,
     cache_manager=db_repo_container.cache_manager,
+    oauth_app_repository=db_repo_container.oauth_app_repository,
+    email_connection_repository=db_repo_container.email_connection_repository,
 )
 
 cloud_provider = config['cloud_config']['cloud_provider']
@@ -47,12 +50,18 @@ bucket_name = (
 
 tools_container = ToolsContainer(
     datasource_repository=db_repo_container.datasource_repository,
+    email_connection_repository=db_repo_container.email_connection_repository,
     knowledge_base_repository=db_repo_container.knowledge_base_repository,
     knowledge_base_inference_repository=db_repo_container.knowledge_base_inference_repository,
     message_processor_repository=plugins_container.message_processor_repository,
     api_services_manager=api_services_container.api_service_manager,
     cloud_storage_manager=common_container.cloud_storage_manager,
     message_processor_bucket_name=bucket_name,
+)
+
+llm_inference_config_container = LlmInferenceConfigContainer(
+    db_client=db_repo_container.db_client,
+    cache_manager=db_repo_container.cache_manager,
 )
 
 agents_container = AgentsContainer(
@@ -70,6 +79,9 @@ agents_container = AgentsContainer(
     message_processor_repository=plugins_container.message_processor_repository,
     message_processor_bucket_name=bucket_name,
     api_services_manager=api_services_container.api_service_manager,
+    # Required so workflow agents can resolve `provider: rootflo` model_id
+    # references to their LlmInferenceConfig rows
+    llm_inference_config_service=llm_inference_config_container.llm_inference_config_service,
 )
 
 common_container.wire(

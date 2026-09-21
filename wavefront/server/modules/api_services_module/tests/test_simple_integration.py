@@ -317,6 +317,7 @@ class TestSimpleIntegration:
                 path='/data',
                 headers={'User-Agent': 'trace-test'},
                 body={'test': 'trace'},
+                trace=True,
             )
 
             # Verify trace contains expected pipeline stages

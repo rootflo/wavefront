@@ -123,8 +123,12 @@
   },
   "send_email": {
     "name": "send_email",
-    "description": "Send an email to the specified recipient. Returns a descriptive string indicating success or failure of the email delivery process.",
+    "description": "Send an email to the specified recipient from the connected mailbox. Returns a descriptive string indicating success or failure of the email delivery process.",
     "parameters": {
+      "connection_id": {
+        "type": "string",
+        "description": "UUID of the email connection to send from"
+      },
       "email_id": {
         "type": "string",
         "description": "Email address of the recipient to whom the message will be sent"
@@ -135,13 +139,14 @@
       },
       "email_body": {
         "type": "string",
-        "description": "Body of the email"
+        "description": "Body of the email, as HTML"
       }
     },
     "prefill_values": [
-      "email_id"
+      "connection_id"
     ],
     "required": [
+      "email_id",
       "email_subject",
       "email_body"
     ],

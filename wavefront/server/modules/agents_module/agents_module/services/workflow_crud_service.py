@@ -1,7 +1,7 @@
 import asyncio
 import json
 import yaml
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
@@ -27,11 +27,14 @@ from agents_module.utils.version_reference_utils import (
     resolve_entity_current_version,
 )
 from agents_module.utils.workflow_reference_utils import (
+    ARIUM_ONLY_AGENT_KEYS,
     extract_agent_references,
+    extract_inline_agent_definitions,
     inline_subworkflow_references,
 )
-from flo_ai import AriumBuilder, AgentBuilder, Agent
+from flo_ai import AriumBuilder, Agent
 from agents_module.services.agent_crud_service import AgentCrudService
+from agents_module.services.agent_inference_service import AgentInferenceService
 from tools_module.registry.tool_loader import ToolLoader
 from tools_module.registry.function_node_registry import FUNCTION_NODE_REGISTRY
 
@@ -49,6 +52,7 @@ class WorkflowCrudService:
         bucket_name: str,
         agent_crud_service: AgentCrudService,
         tool_loader: ToolLoader,
+        agent_inference_service: Optional[AgentInferenceService] = None,
     ):
         """
         Initialize the workflow CRUD service
@@ -61,7 +65,10 @@ class WorkflowCrudService:
             cache_manager: Cache manager instance
             bucket_name: Name of the bucket containing workflow YAML files
             agent_crud_service: Agent CRUD service for fetching agent YAMLs
-            tool_loader: Tool loader for loading agent tools
+            tool_loader: Unused; agent tools are loaded by agent_inference_service
+            agent_inference_service: Agent inference service, used to build
+                referenced agents during validation so a workflow validates the
+                same way it will later run
         """
         self.workflow_repository = workflow_repository
         self.workflow_version_repository = workflow_version_repository
@@ -71,6 +78,7 @@ class WorkflowCrudService:
         self.bucket_name = bucket_name
         self.agent_crud_service = agent_crud_service
         self.tool_loader = tool_loader
+        self.agent_inference_service = agent_inference_service
         self.cache_ttl = 3600  # 1 hour for workflows
         self.current_version_cache_ttl = (
             60  # short TTL for name-based version resolution
@@ -117,26 +125,14 @@ class WorkflowCrudService:
                     )
                 )
 
-                # Parse YAML to get tools
-                yaml_data = yaml.safe_load(agent_yaml_content)
-                tool_names = yaml_data.get('agent', {}).get('tools', [])
-                tool_registry = {}
-
-                if tool_names:
-                    logger.info(f'Loading tools for agent {agent_ref}: {tool_names}')
-                    for tool in tool_names:
-                        tool_name = tool.get('name')
-                        if tool_name:
-                            tools = self.tool_loader.load_tool_with_name(tool_name)
-                            tool_registry[tool_name] = tools
-
-                # Build agent
-                agent = AgentBuilder.from_yaml(
-                    yaml_str=agent_yaml_content,
-                    tool_registry=tool_registry,
+                # Build through the agent service so validation exercises the same
+                # LLM config resolution and tool loading the workflow will use at run time
+                agent = await self.agent_inference_service.create_agent_from_yaml(
+                    agent_yaml_content,
+                    agent_ref,
                     access_token=access_token,
                     app_key=app_key,
-                ).build()
+                )
 
                 agents_dict[agent_ref] = agent
                 logger.info(f'Successfully built agent for validation: {agent_ref}')
@@ -146,6 +142,63 @@ class WorkflowCrudService:
                 raise ValueError(
                     f'Failed to build referenced agent {agent_ref}: {str(e)}'
                 )
+
+        return agents_dict
+
+    async def _build_inline_agents(
+        self,
+        inline_definitions: List[Tuple[str, Dict[str, Any]]],
+        access_token: Optional[str] = None,
+        app_key: Optional[str] = None,
+    ) -> Dict[str, Agent]:
+        """
+        Build agents defined inline in the workflow YAML, so validation exercises the
+        same LLM config resolution the workflow will use at run time.
+
+        Args:
+            inline_definitions: (name, agent_def) pairs from extract_inline_agent_definitions
+
+        Returns:
+            Dictionary mapping agent name to built Agent instance
+        """
+        agents_dict = {}
+
+        for agent_name, agent_def in inline_definitions:
+            try:
+                logger.info(f'Building inline agent for validation: {agent_name}')
+
+                yaml_config = agent_def.get('yaml_config')
+                if yaml_config:
+                    # Already an agent YAML document, so hand it over untouched
+                    agent_yaml_content = yaml_config
+                else:
+                    agent_yaml_content = yaml.safe_dump(
+                        {
+                            'agent': {
+                                key: value
+                                for key, value in agent_def.items()
+                                if key not in ARIUM_ONLY_AGENT_KEYS
+                            }
+                        },
+                        sort_keys=False,
+                    )
+
+                agent = await self.agent_inference_service.create_agent_from_yaml(
+                    agent_yaml_content,
+                    agent_name,
+                    access_token=access_token,
+                    app_key=app_key,
+                )
+
+                input_filter = agent_def.get('input_filter')
+                if input_filter is not None:
+                    agent.input_filter = input_filter
+
+                agents_dict[agent_name] = agent
+
+            except Exception as e:
+                logger.error(f'Error building inline agent {agent_name}: {str(e)}')
+                raise ValueError(f'Failed to build inline agent {agent_name}: {str(e)}')
 
         return agents_dict
 
@@ -285,6 +338,19 @@ class WorkflowCrudService:
                 )
                 agents_dict = await self._build_referenced_agents(
                     agent_references, access_token, app_key
+                )
+
+            # Agents written inline in the workflow YAML need building here too, so
+            # validation resolves their LLM config the same way a run does
+            inline_definitions = extract_inline_agent_definitions(inlined_arium)
+            if inline_definitions:
+                logger.info(
+                    f'Building {len(inline_definitions)} inline agents for validation'
+                )
+                agents_dict.update(
+                    await self._build_inline_agents(
+                        inline_definitions, access_token, app_key
+                    )
                 )
 
             # Validate workflow with pre-built agents and inlined subworkflows

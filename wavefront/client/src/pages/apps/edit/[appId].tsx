@@ -67,20 +67,25 @@ const EditApp: React.FC = () => {
   };
 
   return (
-    <div className="flex h-full items-center justify-center bg-gray-50 bg-[url('/background.webp')] bg-cover bg-center p-6 px-[210px] pt-[139px] pb-[138px]">
+    <div className="frost-canvas relative flex h-full items-center justify-center p-6 px-[210px] pt-[139px] pb-[138px]">
+      <div aria-hidden className="frost-card-glow pointer-events-none absolute inset-0" />
       <Form {...form}>
         <form
           onSubmit={form.handleSubmit(handleEditAppSubmit)}
-          className="flex w-full max-w-[940px] flex-col gap-16 rounded-2xl bg-white p-8 shadow-[0_4px_40px_0_rgba(0,0,0,0.04)]"
+          className="frost-card ring-frost-border relative flex w-full max-w-[940px] flex-col gap-16 rounded-2xl border p-8 ring-1"
         >
           <div className="flex justify-between">
             <div className="flex flex-col gap-2">
-              <p className="text-2xl font-semibold text-black">Edit app</p>
-              <p className="text-lg font-normal text-[#585858]">Update application configuration</p>
+              <p className="frost-text text-2xl font-semibold">Edit app</p>
+              <p className="frost-text-muted text-lg font-normal">Update application configuration</p>
             </div>
-            <div className="cursor-pointer" onClick={handleCancel}>
+            <button
+              type="button"
+              className="frost-text-muted hover:text-frost-text cursor-pointer"
+              onClick={handleCancel}
+            >
               <X className="h-4 w-4" />
-            </div>
+            </button>
           </div>
           <div className="flex flex-col gap-10">
             <div className="flex justify-between gap-10">
@@ -89,7 +94,7 @@ const EditApp: React.FC = () => {
                 name="app_name"
                 render={({ field }) => (
                   <FormItem className="flex w-full flex-col">
-                    <FormLabel>App Name</FormLabel>
+                    <FormLabel className="frost-text">App Name</FormLabel>
                     <FormControl>
                       <Input placeholder="My Application" disabled {...field} />
                     </FormControl>
@@ -102,7 +107,7 @@ const EditApp: React.FC = () => {
                 name="deployment_type"
                 render={({ field }) => (
                   <FormItem className="flex w-full cursor-pointer flex-col">
-                    <FormLabel>Deployment Type</FormLabel>
+                    <FormLabel className="frost-text">Deployment Type</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value} disabled>
                       <FormControl>
                         <SelectTrigger className="cursor-pointer">
@@ -130,7 +135,7 @@ const EditApp: React.FC = () => {
                 name="public_url"
                 render={({ field }) => (
                   <FormItem className="flex w-full flex-col">
-                    <FormLabel>Public URL</FormLabel>
+                    <FormLabel className="frost-text">Public URL</FormLabel>
                     <FormControl>
                       <Input placeholder="https://myapp.example.com" {...field} autoFocus />
                     </FormControl>
@@ -143,7 +148,7 @@ const EditApp: React.FC = () => {
                 name="private_url"
                 render={({ field }) => (
                   <FormItem className="flex w-full flex-col">
-                    <FormLabel>Private URL</FormLabel>
+                    <FormLabel className="frost-text">Private URL</FormLabel>
                     <FormControl>
                       <Input placeholder="https://myapp.example.com" {...field} />
                     </FormControl>

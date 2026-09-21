@@ -1,6 +1,6 @@
 import asyncio
 import time
-from typing import Any, Dict, List, Optional, Callable
+from typing import Any, Dict, List, Optional, Callable, Tuple
 import yaml
 
 from db_repo_module.cache.cache_manager import CacheManager
@@ -12,7 +12,7 @@ from agents_module.utils.agent_guardrails import (
     guardrail_llm_decorator,
     guardrail_run_scope,
 )
-from flo_ai import AriumBuilder, BaseMessage, FloUtils, Arium, AgentBuilder, Agent
+from flo_ai import AriumBuilder, BaseMessage, FloUtils, Arium, Agent
 from flo_cloud.cloud_storage import CloudStorageManager
 from common_module.log.logger import logger
 from agents_module.utils.workflow_utils import get_workflow_yaml_key
@@ -25,11 +25,14 @@ from agents_module.utils.version_reference_utils import (
     resolve_entity_current_version,
 )
 from agents_module.utils.workflow_reference_utils import (
+    ARIUM_ONLY_AGENT_KEYS,
     extract_agent_references,
+    extract_inline_agent_definitions,
     inline_subworkflow_references,
 )
 from flo_ai.arium import AriumEventType, AriumEvent, MessageMemoryItem
 from agents_module.services.agent_crud_service import AgentCrudService
+from agents_module.services.agent_inference_service import AgentInferenceService
 from agents_module.utils.trace_utils import serialize_memory_trace
 from tools_module.registry.tool_loader import ToolLoader
 from tools_module.registry.function_node_registry import FUNCTION_NODE_REGISTRY
@@ -49,6 +52,7 @@ class WorkflowInferenceService:
         ] = None,
         agent_crud_service: Optional[AgentCrudService] = None,
         tool_loader: Optional[ToolLoader] = None,
+        agent_inference_service: Optional[AgentInferenceService] = None,
         guardrails_engine: Optional[Any] = None,
     ):
         """
@@ -63,7 +67,10 @@ class WorkflowInferenceService:
             workflow_version_repository: WorkflowVersion repository, used to reject
                 explicitly requested versions that don't exist or are soft-deleted
             agent_crud_service: Agent CRUD service for fetching agent YAMLs
-            tool_loader: Tool loader for loading agent tools
+            tool_loader: Unused; agent tools are loaded by agent_inference_service
+            agent_inference_service: Agent inference service, used to build the
+                agents a workflow references so they get the same LLM config
+                resolution and tool support as standalone agents
             guardrails_engine: Guardrails engine. Agents run unguarded when absent,
                 so entry points that do not build the guardrails stack still work.
         """
@@ -75,6 +82,7 @@ class WorkflowInferenceService:
         self.workflow_version_repository = workflow_version_repository
         self.agent_crud_service = agent_crud_service
         self.tool_loader = tool_loader
+        self.agent_inference_service = agent_inference_service
         self.current_version_cache_ttl = (
             60  # short TTL for name-based version resolution
         )
@@ -207,28 +215,14 @@ class WorkflowInferenceService:
                     )
                 )
 
-                # Parse YAML to get tools
-                yaml_data = yaml.safe_load(agent_yaml_content)
-                tool_names = yaml_data.get('agent', {}).get('tools', [])
-                tool_registry = {}
-
-                if tool_names:
-                    logger.info(f'Loading tools for agent {agent_ref}: {tool_names}')
-                    for tool in tool_names:
-                        tool_name = tool.get('name')
-                        if tool_name:
-                            tools = self.tool_loader.load_tool_with_name(tool_name)
-                            tool_registry[tool_name] = tools
-                else:
-                    logger.info(f'No tools configured for agent {agent_ref}')
-
-                # Build agent
-                agent = AgentBuilder.from_yaml(
-                    yaml_str=agent_yaml_content,
-                    tool_registry=tool_registry,
+                # Build through the agent service so workflow agents get the same
+                # LLM config resolution and tool support as standalone agents
+                agent = await self.agent_inference_service.create_agent_from_yaml(
+                    agent_yaml_content,
+                    agent_ref,
                     access_token=access_token,
                     app_key=app_key,
-                ).build()
+                )
 
                 # Workflow agents were previously left unguarded: this service
                 # builds its own agents rather than going through
@@ -246,6 +240,79 @@ class WorkflowInferenceService:
                 raise ValueError(
                     f'Failed to build referenced agent {agent_ref}: {str(e)}'
                 )
+
+        return agents_dict
+
+    async def _build_inline_agents(
+        self,
+        inline_definitions: List[Tuple[str, Dict[str, Any]]],
+        namespace: Optional[str] = None,
+        access_token: Optional[str] = None,
+        app_key: Optional[str] = None,
+    ) -> Dict[str, Agent]:
+        """
+        Build agents defined inline in the workflow YAML.
+
+        AriumBuilder would otherwise build these itself, and it has no database access,
+        so a `provider: rootflo` model_id never resolves to its LlmInferenceConfig and
+        every configured parameter is dropped. Building them here routes them through
+        the same path standalone agents use.
+
+        Args:
+            inline_definitions: (name, agent_def) pairs from extract_inline_agent_definitions
+            namespace: The workflow's namespace, used as the guardrail principal
+
+        Returns:
+            Dictionary mapping agent name to built Agent instance
+        """
+        agents_dict = {}
+
+        for agent_name, agent_def in inline_definitions:
+            try:
+                logger.info(f'Building inline agent: {agent_name}')
+
+                yaml_config = agent_def.get('yaml_config')
+                if yaml_config:
+                    # Already an agent YAML document, so hand it over untouched
+                    agent_yaml_content = yaml_config
+                else:
+                    agent_yaml_content = yaml.safe_dump(
+                        {
+                            'agent': {
+                                key: value
+                                for key, value in agent_def.items()
+                                if key not in ARIUM_ONLY_AGENT_KEYS
+                            }
+                        },
+                        sort_keys=False,
+                    )
+
+                agent = await self.agent_inference_service.create_agent_from_yaml(
+                    agent_yaml_content,
+                    agent_name,
+                    access_token=access_token,
+                    app_key=app_key,
+                )
+
+                # Building these here bypasses the builder, and with it the
+                # llm_decorator that used to be their only coverage, so the
+                # wrapping has to happen on this path now.
+                agent = apply_guardrails(
+                    agent, self.guardrails_engine, namespace, agent_name
+                )
+
+                # AriumBuilder applies this only on the path we are bypassing, so
+                # without it the agent would read every prior node's output.
+                input_filter = agent_def.get('input_filter')
+                if input_filter is not None:
+                    agent.input_filter = input_filter
+
+                agents_dict[agent_name] = agent
+                logger.info(f'Successfully built inline agent: {agent_name}')
+
+            except Exception as e:
+                logger.error(f'Error building inline agent {agent_name}: {str(e)}')
+                raise ValueError(f'Failed to build inline agent {agent_name}: {str(e)}')
 
         return agents_dict
 
@@ -299,14 +366,25 @@ class WorkflowInferenceService:
                 agent_references, access_token, app_key
             )
 
+        # Agents written inline in the workflow YAML need building here too, so their
+        # LLM config resolves the same way a referenced agent's does
+        inline_definitions = extract_inline_agent_definitions(inlined_arium)
+        if inline_definitions:
+            logger.info(
+                f'Building {len(inline_definitions)} inline agents for workflow {workflow_name}'
+            )
+            agents_dict.update(
+                await self._build_inline_agents(
+                    inline_definitions, namespace, access_token, app_key
+                )
+            )
+
         # Build workflow with pre-built agents and inlined subworkflows.
         #
-        # The referenced agents above are already guarded individually. The
-        # decorator covers what this service cannot reach: agents declared
-        # inline in the YAML and every router's model, which the builder
-        # creates itself. Without it a workflow was only as guarded as its
-        # agents happened to be declared, and the console's default template
-        # declares all of them inline.
+        # Every agent above is guarded as it is built. The decorator covers
+        # what this service does not construct itself: each router's model,
+        # which the builder creates. Without it a workflow was only as
+        # guarded as its nodes happened to be declared.
         workflow_builder = AriumBuilder.from_yaml(
             agents=agents_dict,
             yaml_str=yaml_content,
