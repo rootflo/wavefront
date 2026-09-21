@@ -119,24 +119,22 @@ service:
 
 
 @pytest.fixture
-async def validation_service_registry(payload_validation_yaml):
+async def validation_service_registry(
+    payload_validation_yaml, api_services_manager_cls
+):
     """Service registry with validation-enabled service."""
-    from tests.conftest import MockApiServicesManager
-
     yaml_map = {'test-validation-service': payload_validation_yaml}
-    manager = MockApiServicesManager(service_yaml_map=yaml_map)
+    manager = api_services_manager_cls(service_yaml_map=yaml_map)
     registry = ServiceRegistry(manager)
     await registry.load_from_db()
     return registry
 
 
 @pytest.fixture
-async def complex_types_registry(complex_types_yaml):
+async def complex_types_registry(complex_types_yaml, api_services_manager_cls):
     """Service registry with complex types validation."""
-    from tests.conftest import MockApiServicesManager
-
     yaml_map = {'complex-types-service': complex_types_yaml}
-    manager = MockApiServicesManager(service_yaml_map=yaml_map)
+    manager = api_services_manager_cls(service_yaml_map=yaml_map)
     registry = ServiceRegistry(manager)
     await registry.load_from_db()
     return registry

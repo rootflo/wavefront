@@ -583,6 +583,7 @@ class TestFullIntegrationWithMockBackend:
                 path='/test',
                 headers={'User-Agent': 'trace-test'},
                 body={'test': 'trace'},
+                trace=True,
             )
 
             # Verify trace contains expected stages

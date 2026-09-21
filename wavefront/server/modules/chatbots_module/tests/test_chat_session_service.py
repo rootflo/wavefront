@@ -12,7 +12,7 @@ from chatbots_module.services.chat_session_service import (
 )
 from chatbots_module.utils.constants import ROLE_ASSISTANT
 
-from .fakes import FakeDbSession, repository_with_session
+from fakes import FakeDbSession, repository_with_session
 
 
 def _service(session_repo=None, message_repo=None):

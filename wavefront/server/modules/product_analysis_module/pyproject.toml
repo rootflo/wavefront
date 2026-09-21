@@ -12,13 +12,16 @@ dependencies = [
     "db-repo-module",
 ]
 
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-
 [tool.uv]
 package = true
 
+[dependency-groups]
+dev = [
+    "flo-testing",
+]
+
 [tool.uv.sources]
+flo-testing = { workspace = true }
 common-module = { workspace = true }
 db-repo-module = { workspace = true }
 
