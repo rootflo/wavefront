@@ -32,7 +32,20 @@ members = [
 ]
 
 [tool.uv]
-required-version = ">=0.7.3"
+required-version = ">=0.9.17"
+
+# Dependency cooldown: ignore releases younger than this when resolving, so a
+# compromised or broken upload has a window to be spotted before it can enter
+# the lock. Applies at resolve time only -- `uv sync --frozen` in the service
+# images installs exactly what the lock already pins, so this never delays a
+# deploy. Needs uv >= 0.9.17 for the duration form, hence required-version.
+exclude-newer = "7 days"
+
+# flo-ai is our own package, published from this repo -- a cooldown meant to
+# catch a compromised third-party upload buys nothing there, and an exact pin
+# on a fresh release would otherwise make the workspace unresolvable.
+exclude-newer-package = { flo-ai = "0 days" }
+
 override-dependencies = [
     "torch>=2.6.0 ; sys_platform != 'darwin'",
     # redshift-connector >=2.1.14 (fixes an eval() RCE in its vector_in result
