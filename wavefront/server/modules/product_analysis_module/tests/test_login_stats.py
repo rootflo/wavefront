@@ -153,8 +153,8 @@ async def test_login_stats_denied_for_non_admin_non_manager(
         headers=headers,
     )
 
-    assert summary.status_code == 401
-    assert listing.status_code == 401
+    assert summary.status_code == 403
+    assert listing.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -346,8 +346,8 @@ async def test_login_stats_manager_denied_for_other_group(
         headers=headers,
     )
 
-    assert summary.status_code == 401
-    assert listing.status_code == 401
+    assert summary.status_code == 403
+    assert listing.status_code == 403
 
 
 @pytest.mark.asyncio

@@ -36,7 +36,13 @@ dependencies = [
     "openpyxl>=3.1.5,<4.0.0",
 ]
 
+[dependency-groups]
+dev = [
+    "flo-testing",
+]
+
 [tool.uv.sources]
+flo-testing = { workspace = true }
 auth-module = { workspace = true }
 common-module = { workspace = true }
 db-repo-module = { workspace = true }

@@ -11,6 +11,11 @@ dependencies = [
 dev = [
     "pre-commit>=4.2.0",
     "ty>=0.0.1a28",
+    "pytest>=8.3.4,<9.0.0",
+    "pytest-asyncio>=0.24.0,<1.0.0",
+    "pytest-xdist>=3.6.0,<4.0.0",
+    "pytest-cov>=5.0.0,<8.0.0",
+    "flo-testing",
 ]
 
 [tool.ty.environment]
@@ -70,20 +75,20 @@ constraint-dependencies = [
     "virtualenv>=20.36.1",
 ]
 
-# No workspace member currently runs torch/torchvision on GPU nodes
-# (inference_use_gpu and equivalents are false in every deployed environment;
-# gold-weight-ratio's GPU service lives in a separate repo/image) — CPU-only
-# wheels avoid pulling ~2GB of unused nvidia-*-cu12 CUDA libraries into images.
+
 [tool.uv.sources]
 torch = [{ index = "pytorch-cpu", marker = "sys_platform != 'darwin'" }]
 torchvision = [{ index = "pytorch-cpu", marker = "sys_platform != 'darwin'" }]
+flo-testing = { workspace = true }
 
 [[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
-addopts = "--ignore=background_jobs/cadenceflo/test --ignore=background_jobs/auraflo/tests"
+addopts = "--strict-markers --strict-config"
+testpaths = ["apps", "modules", "packages", "plugins"]

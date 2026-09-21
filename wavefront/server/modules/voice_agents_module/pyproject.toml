@@ -20,9 +20,6 @@ common-module = { workspace = true }
 db-repo-module = { workspace = true }
 flo-cloud = { workspace = true }
 
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-
 [tool.uv]
 package = true
 

@@ -5,7 +5,11 @@ from typing import Any, Tuple
 
 from common_module.log.logger import logger
 
-cloud_provider = os.environ.get('CLOUD_PROVIDER')
+
+def _dynamic_var_char(parameter: str | None = None) -> str:
+    if parameter:
+        return parameter
+    return '@' if os.environ.get('CLOUD_PROVIDER') == 'gcp' else ':'
 
 
 def parse_value(value: str) -> Any:
@@ -52,6 +56,7 @@ def prepare_odata_filter(
 
     params = {}
     param_count = {}
+    dynamic_var_char = _dynamic_var_char(parameter)
 
     to_replace: list[Tuple[str, str]] = []
     for field, operator, value in matches:
@@ -65,10 +70,6 @@ def prepare_odata_filter(
         else:
             param_count[field] = 0
             param_key = f'{prefix}{field}'
-
-        dynamic_var_char = (
-            parameter if parameter else ('@' if cloud_provider == 'gcp' else ':')
-        )
 
         if operator == 'contains':
             parsed_value = parse_value(value)
@@ -102,14 +103,14 @@ def prepare_odata_filter(
 
 def fill_odata_query(sql_expr: str, parameters: dict = {}) -> str:
     output_sql = sql_expr
-    dynamic_var_char = '@' if cloud_provider == 'gcp' else ':'
+    dynamic_var_char = _dynamic_var_char()
     param_names = sorted(parameters.keys(), key=len, reverse=True)
     for parameter in param_names:
         if isinstance(parameters[parameter], str):
             output_sql = output_sql.replace(
                 f'{dynamic_var_char}{parameter}', f"'{parameters[parameter]}'"
             )
-        if isinstance(parameters[parameter], int):
+        elif isinstance(parameters[parameter], int):
             output_sql = output_sql.replace(
                 f'{dynamic_var_char}{parameter}', str(parameters[parameter])
             )

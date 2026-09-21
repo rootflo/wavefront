@@ -30,6 +30,13 @@ def _access_denied(response_formatter: ResponseFormatter) -> JSONResponse:
     )
 
 
+def _forbidden(response_formatter: ResponseFormatter) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_403_FORBIDDEN,
+        content=response_formatter.buildErrorResponse('Access denied'),
+    )
+
+
 def _validate_login_stats_range(
     start_date: date,
     end_date: date,
@@ -66,10 +73,12 @@ async def _authorize_login_stats(
     everybody.
     """
     role_id, user_id, _ = get_current_user(request)
-    is_admin = await check_is_admin(role_id)
-
-    if not user_id or not (is_admin or await check_is_manager(role_id)):
+    if not user_id:
         return None, _access_denied(response_formatter)
+
+    is_admin = await check_is_admin(role_id)
+    if not (is_admin or await check_is_manager(role_id)):
+        return None, _forbidden(response_formatter)
 
     if is_admin:
         return ([group_id] if group_id else None), None
@@ -79,7 +88,7 @@ async def _authorize_login_stats(
     )
     if group_id:
         if group_id not in accessible_group_ids:
-            return None, _access_denied(response_formatter)
+            return None, _forbidden(response_formatter)
         return [group_id], None
 
     return accessible_group_ids, None

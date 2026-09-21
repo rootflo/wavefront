@@ -722,3 +722,14 @@ def mock_http_error():
     mock_response = Mock()
     mock_response.status_code = 500
     return httpx.HTTPStatusError('Server error', request=Mock(), response=mock_response)
+
+
+@pytest.fixture
+def api_services_manager_cls():
+    """MockApiServicesManager, for tests that build their own registry.
+
+    Handed over as a fixture rather than imported: `from conftest import ...`
+    resolves to whichever conftest reached sys.modules first, which is not this
+    one when the whole workspace runs in a single pytest session.
+    """
+    return MockApiServicesManager

@@ -31,7 +31,7 @@ def mock_app():
 
     @app.get('/metrics')
     async def metrics_endpoint():
-        """Mock metrics endpoint similar to /v1/_metrics."""
+        """Mock metrics endpoint used to exercise middleware on a plain route."""
         return {'metrics': 'mock_data'}
 
     @app.get('/error')

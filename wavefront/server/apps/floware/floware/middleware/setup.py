@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware import _MiddlewareFactory
 
 from common_module.middleware.request_id_middleware import RequestIdMiddleware
-from common_module.prometheus.prometheus_middleware import PrometheusMiddleware
+from common_module.telemetry import BaggageMiddleware, instrument_fastapi
 from user_management_module.authorization.require_auth import RequireAuthMiddleware
 
 from .security_headers import SecurityHeadersMiddleware
@@ -17,10 +17,15 @@ def _middleware(cls: type[Any]) -> _MiddlewareFactory[Any]:
 
 
 def add_middlewares(app: FastAPI) -> None:
-    # Order matters: last added runs first on incoming requests.
+    # Order matters: last added runs first on incoming requests, so execution
+    # order (outer -> inner) here is:
+    #   OTel -> CORS -> SecurityHeaders -> RequireAuth -> RequestId -> Baggage
+    # BaggageMiddleware is added first (innermost) so it runs after
+    # RequireAuthMiddleware has set request.state.session and RequestIdMiddleware
+    # has set the request-id context var.
+    app.add_middleware(_middleware(BaggageMiddleware))
     app.add_middleware(_middleware(RequestIdMiddleware))
     app.add_middleware(_middleware(RequireAuthMiddleware))
-    app.add_middleware(_middleware(PrometheusMiddleware))
     app.add_middleware(
         _middleware(SecurityHeadersMiddleware)
     )  # disable to see swaggerUI
@@ -46,3 +51,8 @@ def add_middlewares(app: FastAPI) -> None:
             'Cache-Control',
         ],
     )
+
+    # Instrumenting last makes the OTel ASGI middleware the outermost layer, so
+    # the SERVER span wraps CORS, security headers and auth rather than starting
+    # after them. This is the sole source of HTTP spans and metrics for this app.
+    instrument_fastapi(app)
