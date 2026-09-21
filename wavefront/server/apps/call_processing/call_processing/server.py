@@ -2,6 +2,7 @@ import glob
 import os
 
 from call_processing.log.logger import logger
+from common_module.middleware.security_headers import SecurityHeadersMiddleware
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -43,6 +44,10 @@ app = FastAPI(
 
 origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:8001')
 allowed_origins = origins.split(',')
+
+# Strict default-src 'none' CSP plus the rest of the security headers; /docs and
+# /redoc get their own relaxed policy when APP_ENV=dev.
+app.add_middleware(SecurityHeadersMiddleware)
 
 # Configure CORS with proper security settings
 app.add_middleware(
