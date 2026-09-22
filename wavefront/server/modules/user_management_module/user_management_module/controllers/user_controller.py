@@ -22,6 +22,7 @@ from fastapi.responses import JSONResponse
 from fastapi.routing import APIRouter
 from fastapi.security import OAuth2PasswordBearer
 import jwt
+from pydantic import EmailStr
 from sqlalchemy import and_
 from sqlalchemy import cast
 from sqlalchemy import delete
@@ -51,9 +52,13 @@ from user_management_module.constants.cache import (
     user_by_id_cache_key,
     user_list_cache_key,
 )
-from user_management_module.models.user_schema import NewUser
-from user_management_module.models.user_schema import ResetUser
-from user_management_module.models.user_schema import UpdateUser
+from user_management_module.models.user_schema import (
+    EMAIL_MAX_LENGTH,
+    NewUser,
+    ResetUser,
+    TOKEN_MAX_LENGTH,
+    UpdateUser,
+)
 from user_management_module.utils.email_templates import (
     PASSWORD_RESET_SUBJECT,
     build_password_reset_email,
@@ -476,11 +481,13 @@ async def get_all_user(
     response_formatter: ResponseFormatterDep,
     user_repository: UserRepositoryDep,
     cache_manager: CacheManagerDep,
-    search: Optional[str] = Query(None, description='Search by name or email'),
+    search: Optional[str] = Query(
+        None, max_length=200, description='Search by name or email'
+    ),
     roles: Optional[List[str]] = Query(None, description='Filter by role name'),
-    limit: int = Query(100),
-    offset: int = Query(0),
-    force_fetch: int = Query(0),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    force_fetch: int = Query(0, ge=0, le=1),
 ):
     """List users.
 
@@ -654,7 +661,7 @@ async def get_user(
     user_repository: UserRepositoryDep,
     cache_manager: CacheManagerDep,
     user_id: str = Path(..., description='User id to fetch'),
-    force_fetch: int = Query(0),
+    force_fetch: int = Query(0, ge=0, le=1),
 ):
     """Fetch one user by id — name and email, without roles.
 
@@ -782,7 +789,7 @@ async def delete_user(
     user_repository: UserRepositoryDep,
     user_service: UserServiceDep,
     cache_manager: CacheManagerDep,
-    delete_id: str = Query(alias='id'),
+    delete_id: str = Query(alias='id', min_length=1, max_length=100),
 ):
     role_id, user_id, _ = get_current_user(request)
     is_admin = await check_is_admin(role_id)
@@ -791,6 +798,14 @@ async def delete_user(
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content=response_formatter.buildErrorResponse('Access denied'),
+        )
+
+    if not is_valid_uuid(delete_id):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                f'Invalid user id: {delete_id}'
+            ),
         )
 
     # Counted across direct assignments and group membership alike, so the last
@@ -835,7 +850,6 @@ async def delete_user(
 @user_router.post('/user/send-reset-password-email')
 @inject
 async def send_reset_url(
-    email: str,
     user_repository: UserRepositoryDep,
     user_reset_cache: CommonCacheDep,
     response_formatter: ResponseFormatterDep,
@@ -844,7 +858,8 @@ async def send_reset_url(
     email_sender: EmailSenderDep,
     account_lockout_service: AccountLockoutServiceDep,
     recaptcha_service: RecaptchaServiceDep,
-    recaptcha_token: Optional[str] = Query(None),
+    email: EmailStr = Query(..., max_length=EMAIL_MAX_LENGTH),
+    recaptcha_token: Optional[str] = Query(None, max_length=TOKEN_MAX_LENGTH),
 ):
     is_recaptcha_valid, recaptcha_error = recaptcha_service.verify(
         recaptcha_token, action=RECAPTCHA_ACTION_SEND_RESET_PASSWORD
@@ -854,7 +869,7 @@ async def send_reset_url(
 
     try:
         # checking if the user exists in the db
-        user_with_email = await user_repository.find_one(email=email)
+        user_with_email = await user_repository.find_one(email=str(email))
         if not user_with_email or user_with_email.deleted:
             logger.info('Password reset requested for an unknown or deleted account')
             return _password_reset_generic_response(response_formatter)
@@ -1015,7 +1030,7 @@ async def unblock_user(
     request: Request,
     response_formatter: ResponseFormatterDep,
     account_lockout_service: AccountLockoutServiceDep,
-    user_id: str = Path(..., description='User id to unblock'),
+    user_id: str = Path(..., description='User id to unblock', max_length=100),
 ):
     role_id, _, _ = get_current_user(request)
     is_admin = await check_is_admin(role_id)
@@ -1024,6 +1039,14 @@ async def unblock_user(
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content=response_formatter.buildErrorResponse('Access denied'),
+        )
+
+    if not is_valid_uuid(user_id):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                f'Invalid user id: {user_id}'
+            ),
         )
 
     try:

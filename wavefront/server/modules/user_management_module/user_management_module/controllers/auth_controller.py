@@ -24,7 +24,14 @@ from fastapi import Request
 from fastapi import status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from pydantic import EmailStr
+from pydantic import Field
 from user_management_module.models.oauth_provider import OAuthProviderConfig
+from user_management_module.models.user_schema import (
+    EMAIL_MAX_LENGTH,
+    PASSWORD_MAX_LENGTH,
+    TOKEN_MAX_LENGTH,
+)
 from user_management_module.services.account_lockout_service import (
     AccountLockoutService,
 )
@@ -46,9 +53,9 @@ oauth = OAuth()
 
 
 class AuthRequest(BaseModel):
-    email: str
-    password: str
-    recaptcha_token: Optional[str] = None
+    email: EmailStr = Field(..., max_length=EMAIL_MAX_LENGTH)
+    password: str = Field(..., min_length=1, max_length=PASSWORD_MAX_LENGTH)
+    recaptcha_token: Optional[str] = Field(None, max_length=TOKEN_MAX_LENGTH)
 
 
 @auth_router.get('/health')
@@ -94,7 +101,7 @@ async def authenticate(
             ),
         )
 
-    user = await user_repository.find_one(email=auth_data.email)
+    user = await user_repository.find_one(email=str(auth_data.email))
 
     if user:
         is_locked, locked_until = await account_lockout_service.check_account_lockout(
