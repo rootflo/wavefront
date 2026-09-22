@@ -10,7 +10,7 @@ requires-python = ">=3.11"
 dependencies = [
     "common-module",
     "db-repo-module",
-    "flo-ai[guardrails]==1.1.11",
+    "flo-ai[guardrails]==1.1.12",
     "fastapi>=0.100.0",
     "pydantic>=2.0.0",
     "dependency-injector>=4.40.0",
