@@ -32,6 +32,7 @@ from user_management_module.user_container import UserContainer
 from user_management_module.services.user_service import UserService
 from user_management_module.utils.password_utils import verify_password
 from user_management_module.utils.user_utils import get_session_cache_key
+from user_management_module.utils.user_utils import normalize_email
 
 from authenticator import AuthenticatorType
 from authenticator.helper import validate_email
@@ -170,7 +171,9 @@ async def unified_authenticate(
             )
 
         # Create session from auth result
-        user = await user_repository.find_one(email=auth_result.user_info.email)
+        user = await user_repository.find_one(
+            email=normalize_email(auth_result.user_info.email)
+        )
         if user is None:
             return JSONResponse(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -610,9 +613,13 @@ async def _handle_oauth_callback(
         if ui is None:
             return get_failure_redirect('OAuth authentication returned no user info')
 
-        user = await user_repository.find_one(email=ui.email)
+        user = (
+            await user_repository.find_one(email=normalize_email(ui.email))
+            if ui.email
+            else None
+        )
         if user is None and ui.email:
-            user = await user_repository.find_one(username=ui.email.lower())
+            user = await user_repository.find_one(username=normalize_email(ui.email))
 
         # ADFS fallback: when the email lookup fails (even though an email was
         # present in the id_token), retry using the upn and unique_name claims.
@@ -775,6 +782,8 @@ async def _handle_email_password_auth(
             status_code=status.HTTP_400_BAD_REQUEST,
             content=response_formatter.buildErrorResponse('Invalid email format'),
         )
+
+    email = normalize_email(email)
 
     try:
         # Find user in database

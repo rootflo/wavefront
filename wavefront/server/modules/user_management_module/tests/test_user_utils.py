@@ -1,9 +1,17 @@
-"""Unit tests for user_utils admin/manager helpers."""
+"""Unit tests for user_utils admin/manager helpers and email normalization."""
 
 import pytest
 
 from user_management_module.constants.auth import SERVICE_AUTH_ROLE_ID
-from user_management_module.utils.user_utils import check_is_admin, check_is_manager
+from user_management_module.utils.user_utils import (
+    check_is_admin,
+    check_is_manager,
+    normalize_email,
+)
+
+
+def test_normalize_email_strips_and_lowercases():
+    assert normalize_email('  User@Example.COM ') == 'user@example.com'
 
 
 @pytest.mark.asyncio

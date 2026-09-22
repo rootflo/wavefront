@@ -67,6 +67,7 @@ from user_management_module.utils.password_utils import hash_password
 from user_management_module.utils.user_utils import (
     can_read_users,
     check_is_admin,
+    normalize_email,
 )
 from user_management_module.utils.user_utils import get_current_user
 from user_management_module.services.recaptcha_service import (
@@ -869,7 +870,8 @@ async def send_reset_url(
 
     try:
         # checking if the user exists in the db
-        user_with_email = await user_repository.find_one(email=str(email))
+        normalized_email = normalize_email(email)
+        user_with_email = await user_repository.find_one(email=normalized_email)
         if not user_with_email or user_with_email.deleted:
             logger.info('Password reset requested for an unknown or deleted account')
             return _password_reset_generic_response(response_formatter)
@@ -905,7 +907,7 @@ async def send_reset_url(
             email_response = await email_sender.send(
                 subject=PASSWORD_RESET_SUBJECT,
                 body_html=build_password_reset_email(forget_url_link),
-                recipients=email,
+                recipients=normalized_email,
             )
             if not email_response:
                 logger.error('Error while sending password reset email')

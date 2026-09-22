@@ -125,6 +125,11 @@ def test_new_user_normalizes_email_to_lowercase():
     assert user.email == 'user@example.com'
 
 
+def test_auth_request_normalizes_email_to_lowercase():
+    auth = AuthRequest(email='User@Example.COM', password='simple')
+    assert auth.email == 'user@example.com'
+
+
 @pytest.mark.parametrize('name', ['John123', 'Jane!', 'A_B', ''])
 def test_new_user_rejects_invalid_names(name):
     with pytest.raises(ValidationError):

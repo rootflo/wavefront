@@ -25,6 +25,15 @@ from user_management_module.services.account_lockout_service import (
 from user_management_module.user_container import UserContainer
 
 
+def normalize_email(email: str) -> str:
+    """Canonical email form for Floware: trimmed lowercase.
+
+    All auth and user lookups must use this so mixed-case credentials still
+    resolve after the DB stores only lowercase addresses.
+    """
+    return str(email).strip().lower()
+
+
 def get_current_user(req: Request):
     return (
         req.state.session.role_id,
