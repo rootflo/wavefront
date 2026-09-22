@@ -97,7 +97,7 @@ async def authenticate(
         Provide[UserContainer.recaptcha_service]
     ),
 ):
-    is_recaptcha_valid, recaptcha_error = recaptcha_service.verify(
+    is_recaptcha_valid, recaptcha_error = await recaptcha_service.verify(
         auth_data.recaptcha_token, action=RECAPTCHA_ACTION_LOGIN
     )
     if not is_recaptcha_valid:

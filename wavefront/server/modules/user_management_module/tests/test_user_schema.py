@@ -102,6 +102,24 @@ def test_new_user_requires_confirm_password():
         )
 
 
+def test_password_strength_rejects_over_72_utf8_bytes():
+    # 39 characters but 74 UTF-8 bytes — under Field char max, over bcrypt byte max.
+    oversized = 'Aa1@' + ('ü' * 35)
+    assert len(oversized) < 72
+    assert len(oversized.encode('utf-8')) > 72
+    with pytest.raises(ValidationError) as exc:
+        _new_user(password=oversized, confirm_password=oversized)
+    assert '72 bytes' in str(exc.value).lower() or 'utf-8' in str(exc.value).lower()
+
+
+def test_reset_and_update_share_utf8_byte_password_limit():
+    oversized = 'Aa1@' + ('ü' * 35)
+    with pytest.raises(ValidationError):
+        _reset_user(new_password=oversized, confirm_password=oversized)
+    with pytest.raises(ValidationError):
+        _update_user(password=oversized, confirm_password=oversized)
+
+
 # --- NewUser: email / names / ids ----------------------------------------------
 
 
@@ -130,7 +148,7 @@ def test_auth_request_normalizes_email_to_lowercase():
     assert auth.email == 'user@example.com'
 
 
-@pytest.mark.parametrize('name', ['John123', 'Jane!', 'A_B', ''])
+@pytest.mark.parametrize('name', ['John123', 'Jane!', 'A_B', '', '---', "'''"])
 def test_new_user_rejects_invalid_names(name):
     with pytest.raises(ValidationError):
         _new_user(first_name=name)
@@ -140,6 +158,12 @@ def test_new_user_accepts_names_with_spaces():
     user = _new_user(first_name='Mary Jane', last_name='Van Gogh')
     assert user.first_name == 'Mary Jane'
     assert user.last_name == 'Van Gogh'
+
+
+def test_new_user_accepts_names_with_apostrophes_and_hyphens():
+    user = _new_user(first_name="O'Brien", last_name='Mary-Jane')
+    assert user.first_name == "O'Brien"
+    assert user.last_name == 'Mary-Jane'
 
 
 def test_new_user_rejects_duplicate_role_ids():

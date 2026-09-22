@@ -4,13 +4,16 @@ Revision ID: f8c2a91e4b07
 Revises: e5b71c0a9d34
 Create Date: 2026-09-22 21:45:00.000000
 
-Floware now stores and looks up emails in lowercase only. Existing rows may
-still have mixed-case addresses; without this data migration, a login that
-lowercases the credential would miss those rows and lock users out.
+Floware now stores and looks up emails as strip().lower(). Existing rows may
+still have mixed-case or padded addresses; without this data migration, a login
+that normalizes the credential would miss those rows and lock users out.
 
-Conflicts: if two distinct rows already differ only by case (e.g. A@x.com and
-a@x.com), lowercasing would violate the unique constraint. The upgrade fails
-loudly in that case so ops can resolve the duplicates before re-running.
+Normalization here mirrors runtime: lower(btrim(email)).
+
+Conflicts: if two distinct rows already normalize to the same value (e.g.
+A@x.com and a@x.com, or ' a@x.com' and 'a@x.com'), the update would violate the
+unique constraint. The upgrade fails loudly in that case so ops can resolve the
+duplicates before re-running.
 """
 
 from typing import Sequence, Union
@@ -31,9 +34,9 @@ def upgrade() -> None:
     conflicts = conn.execute(
         sa.text(
             """
-            SELECT lower(email) AS normalized, count(*) AS cnt
+            SELECT lower(btrim(email)) AS normalized, count(*) AS cnt
             FROM "user"
-            GROUP BY lower(email)
+            GROUP BY lower(btrim(email))
             HAVING count(*) > 1
             """
         )
@@ -41,21 +44,22 @@ def upgrade() -> None:
     if conflicts:
         samples = ', '.join(f'{row.normalized} ({row.cnt})' for row in conflicts[:10])
         raise RuntimeError(
-            'Cannot lowercase user.email: case-only duplicate(s) exist. '
-            f'Resolve these addresses first: {samples}'
+            'Cannot normalize user.email: duplicate(s) exist after '
+            'lower(btrim(email)). Resolve these addresses first: '
+            f'{samples}'
         )
 
     op.execute(
         sa.text(
             """
             UPDATE "user"
-            SET email = lower(email)
-            WHERE email <> lower(email)
+            SET email = lower(btrim(email))
+            WHERE email IS DISTINCT FROM lower(btrim(email))
             """
         )
     )
 
 
 def downgrade() -> None:
-    # Irreversible: original casing is not retained.
+    # Irreversible: original casing and padding are not retained.
     pass

@@ -1,4 +1,5 @@
 from typing import Optional, Tuple
+import math
 
 from common_module.log.logger import logger
 from google.cloud import recaptchaenterprise_v1
@@ -39,12 +40,28 @@ class RecaptchaService:
 
     @staticmethod
     def _as_float(value, default: float) -> float:
+        """Parse a reCAPTCHA score threshold in the inclusive 0.0–1.0 range.
+
+        Absent or non-numeric values fall back to ``default`` (same as before).
+        Finite numbers outside 0.0–1.0, and non-finite values (NaN/Inf), raise
+        so a misconfigured threshold fails closed at service construction.
+        """
+        if value is None or value == '':
+            return default
         try:
-            return float(value) if value is not None and value != '' else default
+            parsed = float(value)
         except (TypeError, ValueError):
             return default
+        if not math.isfinite(parsed) or not 0.0 <= parsed <= 1.0:
+            raise ValueError(
+                'reCAPTCHA score_threshold must be a finite number between '
+                f'0.0 and 1.0 inclusive, got {value!r}'
+            )
+        return parsed
 
-    def verify(self, token: Optional[str], action: str) -> Tuple[bool, Optional[str]]:
+    async def verify(
+        self, token: Optional[str], action: str
+    ) -> Tuple[bool, Optional[str]]:
         """
         Verify a reCAPTCHA token for the given action.
 
@@ -68,7 +85,7 @@ class RecaptchaService:
             return False, 'reCAPTCHA verification failed'
 
         try:
-            assessment = self.create_assessment(
+            assessment = await self.create_assessment(
                 project_id=self.project_id,
                 recaptcha_key=self.site_key,
                 token=str(token).strip(),
@@ -93,7 +110,7 @@ class RecaptchaService:
 
         return True, None
 
-    def create_assessment(
+    async def create_assessment(
         self,
         project_id: str,
         recaptcha_key: str,
@@ -101,7 +118,7 @@ class RecaptchaService:
         recaptcha_action: str,
     ) -> Optional[Assessment]:
         """Create an assessment to analyze the risk of a UI action."""
-        client = recaptchaenterprise_v1.RecaptchaEnterpriseServiceClient()
+        client = recaptchaenterprise_v1.RecaptchaEnterpriseServiceAsyncClient()
 
         event = recaptchaenterprise_v1.Event()
         event.site_key = recaptcha_key
@@ -114,7 +131,7 @@ class RecaptchaService:
         request.assessment = assessment
         request.parent = f'projects/{project_id}'
 
-        response = client.create_assessment(request)
+        response = await client.create_assessment(request)
 
         if not response.token_properties.valid:
             logger.warning(

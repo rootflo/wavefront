@@ -42,6 +42,13 @@ def _validate_email_value(v: str) -> str:
 
 
 def _validate_password_strength(v: str) -> str:
+    # bcrypt operates on UTF-8 bytes and truncates/errors past 72 bytes.
+    # Field max_length only counts characters, so enforce the byte bound here
+    # before the character-class regex (shared by NewUser, UpdateUser, ResetUser).
+    if len(v.encode('utf-8')) > PASSWORD_MAX_LENGTH:
+        raise ValueError(
+            f'Password must be at most {PASSWORD_MAX_LENGTH} bytes when UTF-8 encoded'
+        )
     if not re.match(PASSWORD_REGEX, v):
         raise ValueError(
             'Password must contain at least one uppercase letter, one lowercase letter, '
@@ -52,8 +59,13 @@ def _validate_password_strength(v: str) -> str:
 
 def _validate_name_value(v: Optional[str]) -> Optional[str]:
     if v is not None:
-        if not v.replace(' ', '').isalpha():
-            raise ValueError('Name should only contain letters and spaces')
+        # Letters required; spaces, apostrophes, and hyphens are also allowed
+        # (e.g. Mary Jane, O'Brien, Mary-Jane). Length/blank rules stay on Field.
+        cleaned = v.replace(' ', '').replace("'", '').replace('-', '')
+        if not cleaned or not cleaned.isalpha():
+            raise ValueError(
+                'Name should only contain letters, spaces, apostrophes, and hyphens'
+            )
     return v
 
 

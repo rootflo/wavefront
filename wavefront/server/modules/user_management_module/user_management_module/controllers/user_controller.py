@@ -862,7 +862,7 @@ async def send_reset_url(
     email: EmailStr = Query(..., max_length=EMAIL_MAX_LENGTH),
     recaptcha_token: Optional[str] = Query(None, max_length=TOKEN_MAX_LENGTH),
 ):
-    is_recaptcha_valid, recaptcha_error = recaptcha_service.verify(
+    is_recaptcha_valid, recaptcha_error = await recaptcha_service.verify(
         recaptcha_token, action=RECAPTCHA_ACTION_SEND_RESET_PASSWORD
     )
     if not is_recaptcha_valid:
@@ -930,7 +930,7 @@ async def reset_password(
     user_repository: UserRepositoryDep,
     recaptcha_service: RecaptchaServiceDep,
 ):
-    is_recaptcha_valid, recaptcha_error = recaptcha_service.verify(
+    is_recaptcha_valid, recaptcha_error = await recaptcha_service.verify(
         reset_user.recaptcha_token, action=RECAPTCHA_ACTION_RESET_PASSWORD
     )
     if not is_recaptcha_valid:
