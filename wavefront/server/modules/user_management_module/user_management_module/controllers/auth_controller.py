@@ -1,4 +1,5 @@
 import json
+from typing import Optional
 from uuid import uuid4
 
 from auth_module.auth_container import AuthContainer
@@ -30,6 +31,10 @@ from user_management_module.services.account_lockout_service import (
 from user_management_module.services.account_inactivity_service import (
     AccountInactivityService,
 )
+from user_management_module.services.recaptcha_service import (
+    RECAPTCHA_ACTION_LOGIN,
+    RecaptchaService,
+)
 from user_management_module.user_container import UserContainer
 from user_management_module.services.user_service import UserService
 from user_management_module.utils.password_utils import verify_password
@@ -43,6 +48,7 @@ oauth = OAuth()
 class AuthRequest(BaseModel):
     email: str
     password: str
+    recaptcha_token: Optional[str] = None
 
 
 @auth_router.get('/health')
@@ -73,7 +79,21 @@ async def authenticate(
     account_inactivity_service: AccountInactivityService = Depends(
         Provide[UserContainer.account_inactivity_service]
     ),
+    recaptcha_service: RecaptchaService = Depends(
+        Provide[UserContainer.recaptcha_service]
+    ),
 ):
+    is_recaptcha_valid, recaptcha_error = recaptcha_service.verify(
+        auth_data.recaptcha_token, action=RECAPTCHA_ACTION_LOGIN
+    )
+    if not is_recaptcha_valid:
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=response_formatter.buildErrorResponse(
+                recaptcha_error or 'reCAPTCHA verification failed'
+            ),
+        )
+
     user = await user_repository.find_one(email=auth_data.email)
 
     if user:

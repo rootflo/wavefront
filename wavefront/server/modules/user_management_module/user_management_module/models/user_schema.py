@@ -173,6 +173,7 @@ class UpdateUser(BaseModel):
 class ResetUser(BaseModel):
     secret_token: str = Field(..., min_length=1)
     new_password: str = Field(..., min_length=8)
+    recaptcha_token: Optional[str] = None
 
     @field_validator('new_password')
     @classmethod

@@ -25,6 +25,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
         'lockout_duration_hours': '24',
         'inactive_days_threshold': '60',
     },
+    'recaptcha': {
+        'enabled': 'false',
+        'project_id': '',
+        'site_key': '',
+        'score_threshold': '0.5',
+    },
 }
 
 RESET_CODE = 'mock_reset_code'

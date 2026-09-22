@@ -38,6 +38,7 @@ from user_management_module.dependencies.injection import (
     CacheManagerDep,
     CommonCacheDep,
     EmailSenderDep,
+    RecaptchaServiceDep,
     ResponseFormatterDep,
     TokenServiceDep,
     UserConfigDep,
@@ -63,6 +64,10 @@ from user_management_module.utils.user_utils import (
     check_is_admin,
 )
 from user_management_module.utils.user_utils import get_current_user
+from user_management_module.services.recaptcha_service import (
+    RECAPTCHA_ACTION_RESET_PASSWORD,
+    RECAPTCHA_ACTION_SEND_RESET_PASSWORD,
+)
 import json
 from common_module.utils.serializer import serialize_values
 from common_module.utils.validators import is_valid_uuid
@@ -88,6 +93,17 @@ def _password_reset_generic_response(response_formatter) -> JSONResponse:
         status_code=status.HTTP_200_OK,
         content=response_formatter.buildSuccessResponse(
             {'message': PASSWORD_RESET_GENERIC_MESSAGE}
+        ),
+    )
+
+
+def _recaptcha_failure_response(
+    response_formatter, error_message: Optional[str]
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_403_FORBIDDEN,
+        content=response_formatter.buildErrorResponse(
+            error_message or 'reCAPTCHA verification failed'
         ),
     )
 
@@ -827,7 +843,15 @@ async def send_reset_url(
     config: UserConfigDep,
     email_sender: EmailSenderDep,
     account_lockout_service: AccountLockoutServiceDep,
+    recaptcha_service: RecaptchaServiceDep,
+    recaptcha_token: Optional[str] = Query(None),
 ):
+    is_recaptcha_valid, recaptcha_error = recaptcha_service.verify(
+        recaptcha_token, action=RECAPTCHA_ACTION_SEND_RESET_PASSWORD
+    )
+    if not is_recaptcha_valid:
+        return _recaptcha_failure_response(response_formatter, recaptcha_error)
+
     try:
         # checking if the user exists in the db
         user_with_email = await user_repository.find_one(email=email)
@@ -887,7 +911,14 @@ async def reset_password(
     token_service: TokenServiceDep,
     user_reset_cache: CommonCacheDep,
     user_repository: UserRepositoryDep,
+    recaptcha_service: RecaptchaServiceDep,
 ):
+    is_recaptcha_valid, recaptcha_error = recaptcha_service.verify(
+        reset_user.recaptcha_token, action=RECAPTCHA_ACTION_RESET_PASSWORD
+    )
+    if not is_recaptcha_valid:
+        return _recaptcha_failure_response(response_formatter, recaptcha_error)
+
     try:
         decoded_url = token_service.decode_token(reset_user.secret_token)
         existing_user_id = user_reset_cache.get_str(decoded_url['code'])
