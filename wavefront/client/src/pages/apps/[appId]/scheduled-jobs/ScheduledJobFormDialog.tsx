@@ -538,7 +538,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="flex h-[760px] max-h-[760px] max-w-4xl min-w-0 flex-col overflow-hidden lg:max-w-4xl">
+      <DialogContent className="flex h-[760px] max-h-[calc(100vh-2rem)] max-w-4xl min-w-0 flex-col overflow-hidden lg:max-w-4xl">
         <DialogHeader className="shrink-0">
           <DialogTitle>{isEditing ? 'Edit Scheduled Job' : 'Create Scheduled Job'}</DialogTitle>
           <DialogDescription>
@@ -719,7 +719,12 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
                 variant="outline"
                 size="sm"
                 onClick={addQueryConfig}
-                disabled={!datasourceId || dynamicQueriesLoading || availableQueryIds.length === 0}
+                disabled={
+                  !datasourceId ||
+                  dynamicQueriesLoading ||
+                  availableQueryIds.length === 0 ||
+                  queryConfigs.length >= availableQueryIds.length
+                }
               >
                 <Plus className="mr-1 h-4 w-4" />
                 Add query
@@ -889,7 +894,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
                 <button
                   type="button"
                   onClick={addQueryConfig}
-                  disabled={availableQueryIds.length > 0 && selectedQueryIds.length >= availableQueryIds.length}
+                  disabled={queryConfigs.length >= availableQueryIds.length}
                   className="border-frost-border frost-text-muted hover:frost-text hover:bg-frost-glass-strong flex w-full items-center justify-center gap-2 rounded-md border border-dashed px-3 py-3 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Plus className="h-4 w-4" />

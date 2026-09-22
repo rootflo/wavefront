@@ -43,9 +43,13 @@ from user_management_module.services.user_service import UserService
 
 STALE_LOCK_TIMEOUT_MINUTES = 30
 SIGNED_URL_EXPIRY_SECONDS = 7 * 24 * 60 * 60
-# Providers enforce a total message size (body + all attachments, MIME-encoded).
-# Cap total raw attachment bytes conservatively below typical provider limits.
-MAX_EMAIL_ATTACHMENT_BYTES = 10 * 1024 * 1024
+# Microsoft Graph write requests (including sendMail JSON with base64 attachments)
+# are capped at 4 MB for the entire request body.
+MAX_GRAPH_SEND_MAIL_BYTES = 4 * 1024 * 1024
+# Leave headroom under Gmail's ~25 MB encoded-message cap.
+MAX_GMAIL_MESSAGE_BYTES = 20 * 1024 * 1024
+# Rough JSON wrapping for subject/recipients/saveToSentItems around the message.
+GRAPH_SEND_MAIL_JSON_OVERHEAD = 1024
 # Keep inline HTML tables small even when the query/attachment returns more rows.
 MAX_EMAIL_BODY_TABLE_ROWS = 100
 
@@ -1044,23 +1048,51 @@ class ScheduledJobService:
             expiresIn=SIGNED_URL_EXPIRY_SECONDS,
         )
 
-    def _assign_report_delivery(self, prepared_reports: list[dict]) -> None:
-        """Attach reports while total size stays within the email budget.
+    @staticmethod
+    def _base64_encoded_size(raw_size: int) -> int:
+        """Byte length of standard base64 for `raw_size` input bytes."""
+        return 4 * ((raw_size + 2) // 3)
 
-        Providers check total message size, not each file independently. Attach
-        reports in order until the next file would exceed the budget; upload the
-        rest for download links.
+    @classmethod
+    def _attachment_wire_cost(cls, report: dict, *, for_graph: bool) -> int:
+        """Estimated on-the-wire size contribution of one attachment."""
+        raw_size = int(report['report_size'])
+        encoded = cls._base64_encoded_size(raw_size)
+        filename_len = len(str(report.get('filename') or '').encode('utf-8'))
+        if for_graph:
+            # Graph fileAttachment JSON fields around contentBytes.
+            return encoded + filename_len + 200
+        # Gmail MIME part headers + base64 body.
+        return encoded + filename_len + 256
+
+    def _assign_report_delivery(
+        self,
+        prepared_reports: list[dict],
+        *,
+        body_html: str,
+        provider: str,
+    ) -> None:
+        """Attach reports while the serialized provider request stays in budget.
+
+        Outlook/Graph sendMail embeds base64 attachments in a JSON request with a
+        hard 4 MB limit (body + attachments). Gmail uses a higher encoded-message
+        budget. Reports that do not fit are uploaded for download links.
         """
-        attached_bytes = 0
+        for_graph = str(provider).strip().lower() == 'outlook'
+        if for_graph:
+            budget = MAX_GRAPH_SEND_MAIL_BYTES
+            used = GRAPH_SEND_MAIL_JSON_OVERHEAD + len(body_html.encode('utf-8'))
+        else:
+            budget = MAX_GMAIL_MESSAGE_BYTES
+            used = len(body_html.encode('utf-8'))
+
         for report in prepared_reports:
             report_size = int(report['report_size'])
-            if (
-                report_size > 0
-                and attached_bytes + report_size <= MAX_EMAIL_ATTACHMENT_BYTES
-            ):
+            cost = self._attachment_wire_cost(report, for_graph=for_graph)
+            if report_size > 0 and used + cost <= budget:
                 report['use_attachment'] = True
                 report['report_url'] = None
-                attached_bytes += report_size
+                used += cost
             else:
                 report['use_attachment'] = False
                 report['report_url'] = self._upload_report_download(report)
@@ -1072,6 +1104,7 @@ class ScheduledJobService:
         email_content: str | None,
         query_tables: dict[str, str],
         download_reports: list[dict],
+        provider: str | None = None,
     ) -> str:
         if email_content and email_content.strip():
             body = self._render_email_template(email_content.strip(), query_tables)
@@ -1082,10 +1115,17 @@ class ScheduledJobService:
             body = f'<p>Scheduled reports: {names_html}</p>'
 
         if download_reports:
+            if str(provider or '').strip().lower() == 'outlook':
+                limit_label = (
+                    f'{MAX_GRAPH_SEND_MAIL_BYTES // (1024 * 1024)} MB Outlook/Graph '
+                    'request'
+                )
+            else:
+                limit_label = 'email provider size'
             body += (
                 f'<p><b>Delivery:</b> The following report(s) could not fit within the '
-                f'{MAX_EMAIL_ATTACHMENT_BYTES // (1024 * 1024)} MB total email attachment '
-                'budget. Use the download links below instead of attachments.</p>'
+                f'{limit_label} limit. Use the download links below instead of '
+                'attachments.</p>'
                 '<p>Links are secure and expire in 7 days.</p>'
             )
             for report in download_reports:
@@ -1122,6 +1162,13 @@ class ScheduledJobService:
         email_connection_id = self._email_connection_id(payload)
         if email_connection_id is None:
             raise ValueError('payload.email_connection_id is required')
+        try:
+            email_connection = await self.email_connection_service.require_active(
+                email_connection_id
+            )
+        except EmailConnectionError as exc:
+            raise ValueError(f'payload.email_connection_id is unusable: {exc}') from exc
+        email_provider = str(email_connection.provider or '')
         email_content = payload.get('email_content')
         if email_content is not None and not isinstance(email_content, str):
             email_content = None
@@ -1279,7 +1326,27 @@ class ScheduledJobService:
                 )
                 continue
 
-            self._assign_report_delivery(prepared_reports)
+            # Provisional body with inline tables (largest body case) so attachment
+            # budgeting accounts for body_html + base64 payload under provider caps.
+            for report in prepared_reports:
+                report['use_attachment'] = True
+                report['report_url'] = None
+            referenced_query_ids = self._referenced_query_ids(email_content)
+            provisional_tables = self._build_query_tables_for_email(
+                prepared_reports, referenced_query_ids
+            )
+            provisional_body = self._build_report_email_body(
+                report_names=report_names,
+                email_content=email_content,
+                query_tables=provisional_tables,
+                download_reports=[],
+                provider=email_provider,
+            )
+            self._assign_report_delivery(
+                prepared_reports,
+                body_html=provisional_body,
+                provider=email_provider,
+            )
 
             download_reports = [
                 {
@@ -1291,7 +1358,6 @@ class ScheduledJobService:
                 for r in prepared_reports
                 if not r['use_attachment']
             ]
-            referenced_query_ids = self._referenced_query_ids(email_content)
             query_tables = self._build_query_tables_for_email(
                 prepared_reports, referenced_query_ids
             )
@@ -1306,6 +1372,7 @@ class ScheduledJobService:
                 email_content=email_content,
                 query_tables=query_tables,
                 download_reports=download_reports,
+                provider=email_provider,
             )
             attachments = [
                 {
