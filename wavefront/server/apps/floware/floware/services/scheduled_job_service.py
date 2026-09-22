@@ -43,8 +43,11 @@ from user_management_module.services.user_service import UserService
 
 STALE_LOCK_TIMEOUT_MINUTES = 30
 SIGNED_URL_EXPIRY_SECONDS = 7 * 24 * 60 * 60
-# Gmail and many providers cap attachments; keep below typical limits.
+# Providers enforce a total message size (body + all attachments, MIME-encoded).
+# Cap total raw attachment bytes conservatively below typical provider limits.
 MAX_EMAIL_ATTACHMENT_BYTES = 10 * 1024 * 1024
+# Keep inline HTML tables small even when the query/attachment returns more rows.
+MAX_EMAIL_BODY_TABLE_ROWS = 100
 
 COLUMN_FILL_COLORS = {
     'light_red': 'FFC7CE',
@@ -912,8 +915,8 @@ class ScheduledJobService:
         report_size = int(report['report_size'])
         report_url = report.get('report_url')
         placeholder = (
-            f'<p><b>{report_name}</b> ({report_size:,} bytes) exceeds the email '
-            f'attachment limit.'
+            f'<p><b>{report_name}</b> ({report_size:,} bytes) could not fit within '
+            f'the email attachment budget.'
         )
         if report_url:
             placeholder += (
@@ -947,7 +950,8 @@ class ScheduledJobService:
                 continue
             if report['use_attachment']:
                 query_tables[query_id] = cls._rows_to_html_table(
-                    report['rows'], column_styles=report.get('column_styles')
+                    report['rows'][:MAX_EMAIL_BODY_TABLE_ROWS],
+                    column_styles=report.get('column_styles'),
                 )
             else:
                 query_tables[query_id] = cls._download_report_placeholder_html(report)
@@ -1021,6 +1025,46 @@ class ScheduledJobService:
         workbook.save(buf)
         return buf.getvalue(), fieldnames
 
+    def _upload_report_download(self, report: dict) -> str:
+        report_key = (
+            f'scheduled_query_reports/{report["query_id"]}/{report["filename"]}'
+        )
+        self.cloud_storage_manager.save_small_file(
+            file_content=report['content_bytes'],
+            bucket_name=self.bucket_name,
+            key=report_key,
+            content_type=(
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            ),
+        )
+        return self.cloud_storage_manager.generate_presigned_url(
+            bucket_name=self.bucket_name,
+            key=report_key,
+            type='GET',
+            expiresIn=SIGNED_URL_EXPIRY_SECONDS,
+        )
+
+    def _assign_report_delivery(self, prepared_reports: list[dict]) -> None:
+        """Attach reports while total size stays within the email budget.
+
+        Providers check total message size, not each file independently. Attach
+        reports in order until the next file would exceed the budget; upload the
+        rest for download links.
+        """
+        attached_bytes = 0
+        for report in prepared_reports:
+            report_size = int(report['report_size'])
+            if (
+                report_size > 0
+                and attached_bytes + report_size <= MAX_EMAIL_ATTACHMENT_BYTES
+            ):
+                report['use_attachment'] = True
+                report['report_url'] = None
+                attached_bytes += report_size
+            else:
+                report['use_attachment'] = False
+                report['report_url'] = self._upload_report_download(report)
+
     def _build_report_email_body(
         self,
         *,
@@ -1039,9 +1083,9 @@ class ScheduledJobService:
 
         if download_reports:
             body += (
-                f'<p><b>Delivery:</b> The following report(s) exceed the '
-                f'{MAX_EMAIL_ATTACHMENT_BYTES // (1024 * 1024)} MB email attachment limit. '
-                'Use the download links below instead of attachments.</p>'
+                f'<p><b>Delivery:</b> The following report(s) could not fit within the '
+                f'{MAX_EMAIL_ATTACHMENT_BYTES // (1024 * 1024)} MB total email attachment '
+                'budget. Use the download links below instead of attachments.</p>'
                 '<p>Links are secure and expire in 7 days.</p>'
             )
             for report in download_reports:
@@ -1211,30 +1255,13 @@ class ScheduledJobService:
                 )
                 report_name = yaml_name or query_id
                 report_names.append(report_name)
-                use_attachment = report_size <= MAX_EMAIL_ATTACHMENT_BYTES
-                report_url: str | None = None
-                if not use_attachment:
-                    report_key = f'scheduled_query_reports/{query_id}/{report_filename}'
-                    self.cloud_storage_manager.save_small_file(
-                        file_content=report_bytes,
-                        bucket_name=self.bucket_name,
-                        key=report_key,
-                        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                    )
-                    report_url = self.cloud_storage_manager.generate_presigned_url(
-                        bucket_name=self.bucket_name,
-                        key=report_key,
-                        type='GET',
-                        expiresIn=SIGNED_URL_EXPIRY_SECONDS,
-                    )
-
                 prepared_reports.append(
                     {
                         'query_id': query_id,
                         'report_name': report_name,
                         'report_size': report_size,
-                        'report_url': report_url,
-                        'use_attachment': use_attachment,
+                        'report_url': None,
+                        'use_attachment': False,
                         'filename': report_filename,
                         'content_bytes': report_bytes,
                         'rows': rows,
@@ -1251,6 +1278,8 @@ class ScheduledJobService:
                     f'No reports with data for user_id={user_id}; skipping email.'
                 )
                 continue
+
+            self._assign_report_delivery(prepared_reports)
 
             download_reports = [
                 {
