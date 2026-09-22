@@ -915,8 +915,8 @@ async def send_reset_url(
             logger.error(f'Error while sending password reset email: {exc}')
 
         return _password_reset_generic_response(response_formatter)
-    except ValueError:
-        logger.error('Error in email sending credentials')
+    except Exception as exc:
+        logger.error(f'Password reset request failed: {exc}', exc_info=True)
         return _password_reset_generic_response(response_formatter)
 
 

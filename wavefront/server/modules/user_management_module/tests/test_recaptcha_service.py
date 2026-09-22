@@ -59,10 +59,16 @@ async def test_verify_fails_when_assessment_raises():
         'create_assessment',
         new_callable=AsyncMock,
         side_effect=RuntimeError('boom'),
-    ):
+    ) as create_assessment:
         ok, err = await service.verify('token', action='login')
     assert ok is False
     assert 'failed' in err
+    create_assessment.assert_awaited_once_with(
+        project_id='proj',
+        recaptcha_key='site',
+        token='token',
+        recaptcha_action='login',
+    )
 
 
 @pytest.mark.asyncio
@@ -70,9 +76,15 @@ async def test_verify_fails_when_assessment_is_none():
     service = _enabled_service()
     with patch.object(
         service, 'create_assessment', new_callable=AsyncMock, return_value=None
-    ):
+    ) as create_assessment:
         ok, err = await service.verify('token', action='login')
     assert ok is False
+    create_assessment.assert_awaited_once_with(
+        project_id='proj',
+        recaptcha_key='site',
+        token='token',
+        recaptcha_action='login',
+    )
 
 
 @pytest.mark.asyncio
@@ -84,9 +96,15 @@ async def test_verify_fails_when_score_below_threshold():
     )
     with patch.object(
         service, 'create_assessment', new_callable=AsyncMock, return_value=assessment
-    ):
+    ) as create_assessment:
         ok, err = await service.verify('token', action='login')
     assert ok is False
+    create_assessment.assert_awaited_once_with(
+        project_id='proj',
+        recaptcha_key='site',
+        token='token',
+        recaptcha_action='login',
+    )
 
 
 @pytest.mark.asyncio
@@ -98,10 +116,16 @@ async def test_verify_succeeds_when_score_meets_threshold():
     )
     with patch.object(
         service, 'create_assessment', new_callable=AsyncMock, return_value=assessment
-    ):
+    ) as create_assessment:
         ok, err = await service.verify('token', action='login')
     assert ok is True
     assert err is None
+    create_assessment.assert_awaited_once_with(
+        project_id='proj',
+        recaptcha_key='site',
+        token='token',
+        recaptcha_action='login',
+    )
 
 
 @pytest.mark.parametrize(
