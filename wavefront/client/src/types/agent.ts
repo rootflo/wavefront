@@ -28,6 +28,23 @@ export interface InferenceData {
   };
 }
 
+/** One frame of `POST /v2/agents/{id}/inference?stream=true`. */
+export interface AgentStreamEvent {
+  event_type: 'agent_started' | 'content_delta' | 'tool_called' | 'tool_result' | 'tool_failed' | 'output' | 'error';
+  timestamp: number;
+  agent_id?: string;
+  agent_name?: string;
+  namespace?: string;
+  /** Text delta, on `content_delta`. */
+  content?: string;
+  tool_name?: string;
+  arguments?: string;
+  result?: string | object;
+  execution_time?: number;
+  error?: string;
+  variables?: Record<string, unknown>;
+}
+
 export interface AgentData {
   message: string;
   data: {

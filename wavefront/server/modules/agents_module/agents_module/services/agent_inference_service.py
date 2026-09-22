@@ -1,9 +1,16 @@
+import asyncio
 import os
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, List, Optional
 from uuid import UUID
 
 from agents_module.services.agent_crud_service import AgentCrudService
+from agents_module.services.agent_stream_events import (
+    AgentEventType,
+    StreamingTapLLM,
+    instrument_tools,
+    make_event,
+)
 from agents_module.utils.agent_guardrails import (
     apply_guardrails,
     guardrail_run_scope,
@@ -12,7 +19,7 @@ from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.models.llm_inference_config import LlmInferenceConfig
 from db_repo_module.models.message_processors import MessageProcessors
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
-from flo_ai import AgentBuilder, Agent, BaseMessage
+from flo_ai import AgentBuilder, Agent, BaseMessage, FloUtils
 from flo_ai.helpers.generation_params import normalize_generation_params
 from flo_ai.llm import OpenAI, Anthropic, Gemini, OllamaLLM, OpenAIVLLM, AzureOpenAI
 from flo_ai.tool.base_tool import Tool
@@ -471,6 +478,55 @@ class AgentInferenceService:
 
         return LlmInferenceConfig(**llm_config_dict)
 
+    async def prepare_agent_v2(
+        self,
+        agent_id: UUID,
+        llm_config: Optional[LlmInferenceConfig] = None,
+        access_token: Optional[str] = None,
+        app_key: Optional[str] = None,
+        version: Optional[int] = None,
+    ) -> tuple[Agent, str, str]:
+        """
+        Fetch an agent (v2) from DB + cloud storage and build it, without running it.
+
+        Split out of perform_inference_v2 so the streaming endpoint can build
+        the agent while it is still able to choose a status code: everything
+        that can fail deterministically - agent missing, rootflo model_id
+        unresolvable - fails here, before a StreamingResponse has sent its
+        headers.
+
+        Returns:
+            tuple: (agent, namespace, name)
+
+        Raises:
+            ValueError: If agent_crud_service is not initialized, agent not found,
+                or the YAML's rootflo model_id cannot be resolved.
+        """
+        if not self.agent_crud_service:
+            raise ValueError(
+                'agent_crud_service not initialized. Required for v2 inference.'
+            )
+
+        # Fetch agent from DB + cloud storage (includes YAML content)
+        agent_data = await self.agent_crud_service.get_agent(agent_id, version=version)
+
+        # Extract details
+        namespace = agent_data['namespace']
+        name = agent_data['name']
+        yaml_content = agent_data['yaml_content']
+
+        logger.info(
+            f'Retrieved agent - namespace: {namespace}, name: {name}, agent_id: {agent_id}'
+        )
+
+        # Create agent from YAML with optional LLM override and tools.
+        # A None llm_config is resolved from the YAML by create_agent_from_yaml.
+        agent = await self.create_agent_from_yaml(
+            yaml_content, name, llm_config, access_token, app_key, namespace=namespace
+        )
+
+        return agent, namespace, name
+
     async def perform_inference_v2(
         self,
         agent_id: UUID,
@@ -505,31 +561,16 @@ class AgentInferenceService:
             ValueError: If agent_crud_service is not initialized, agent not found,
                 or the YAML's rootflo model_id cannot be resolved.
         """
-        if not self.agent_crud_service:
-            raise ValueError(
-                'agent_crud_service not initialized. Required for v2 inference.'
-            )
-
         logger.info(
             f'Starting v2 inference for agent_id: {agent_id}, version: {version}'
         )
 
-        # Fetch agent from DB + cloud storage (includes YAML content)
-        agent_data = await self.agent_crud_service.get_agent(agent_id, version=version)
-
-        # Extract details
-        namespace = agent_data['namespace']
-        name = agent_data['name']
-        yaml_content = agent_data['yaml_content']
-
-        logger.info(
-            f'Retrieved agent - namespace: {namespace}, name: {name}, agent_id: {agent_id}'
-        )
-
-        # Create agent from YAML with optional LLM override and tools.
-        # A None llm_config is resolved from the YAML by create_agent_from_yaml.
-        agent = await self.create_agent_from_yaml(
-            yaml_content, name, llm_config, access_token, app_key, namespace=namespace
+        agent, namespace, name = await self.prepare_agent_v2(
+            agent_id,
+            llm_config=llm_config,
+            access_token=access_token,
+            app_key=app_key,
+            version=version,
         )
 
         # Run inference
@@ -538,3 +579,121 @@ class AgentInferenceService:
         )
 
         return result, execution_time, namespace
+
+    async def stream_agent_inference(
+        self,
+        agent: Agent,
+        inputs: List[BaseMessage] | str,
+        variables: Dict[str, Any],
+        agent_name: str,
+        namespace: str,
+        agent_id: str,
+        output_json_enabled: bool = True,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """
+        Run an already-built agent, yielding event dicts as the run progresses.
+
+        Frames are dicts, not SSE text: framing belongs to the controller, the
+        same split the chat endpoint uses, so this stays callable from anything
+        that is not an HTTP response.
+
+        What arrives depends on the agent:
+
+        - No tools and no output schema: `content_delta` frames carrying the
+          reply as the provider produces it, then `output`.
+        - Tools or an output schema: no deltas - see StreamingTapLLM for why -
+          but a `tool_called`/`tool_result` pair per tool call, then the whole
+          reply in `output`.
+
+        A namespace with AFTER_MODEL guardrail checks is a third case in
+        practice: GuardedLLM.stream holds the response back until it has vetted
+        all of it, so the deltas arrive together at the end. That is the
+        guarantee working as intended - a chunk already delivered cannot be
+        recalled - and it looks like non-streaming from the console.
+
+        The run itself is a task rather than an inline await, because a
+        generator cannot yield while it is awaiting: the events have to reach
+        the queue from somewhere other than this coroutine.
+        """
+        queue: asyncio.Queue = asyncio.Queue()
+        done = object()
+
+        agent.llm = StreamingTapLLM(agent.llm, queue.put_nowait)
+        instrument_tools(agent, queue.put_nowait)
+
+        logger.info(
+            f'Streaming inference for agent {agent_name} '
+            f'[ns={namespace}, tools={len(getattr(agent, "tools", None) or [])}]'
+        )
+
+        start_time = time.time()
+
+        async def run() -> List[BaseMessage]:
+            try:
+                with guardrail_run_scope():
+                    return await agent.run(inputs, variables=variables)
+            finally:
+                queue.put_nowait(done)
+
+        task = asyncio.create_task(run())
+
+        try:
+            # Inside the try, so that a client who hangs up on this first frame
+            # still reaches the cancellation branch below and takes the run
+            # down with it.
+            yield make_event(
+                AgentEventType.AGENT_STARTED,
+                agent_id=agent_id,
+                namespace=namespace,
+                agent_name=agent_name,
+            )
+
+            while True:
+                event = await queue.get()
+                if event is done:
+                    break
+                yield event
+
+            result = await task
+
+            execution_time = time.time() - start_time
+            # Coerced because the frame is about to be json.dumps'd: an
+            # assistant turn's content is a str, but a run that ends on some
+            # other message type would otherwise break the stream after the
+            # caller has already received a 200 and most of the reply.
+            content = result[-1].content if result else ''
+            if not isinstance(content, str):
+                content = str(content)
+            yield make_event(
+                AgentEventType.OUTPUT,
+                result=FloUtils.extract_jsons_from_string(content)
+                if output_json_enabled
+                else content,
+                agent_id=agent_id,
+                namespace=namespace,
+                execution_time=execution_time,
+                variables=variables,
+            )
+            logger.info(
+                f'Streaming inference completed for agent {agent_name} '
+                f'in {execution_time:.2f} seconds'
+            )
+
+        except (GeneratorExit, asyncio.CancelledError):
+            # The client hung up. Cancel the run rather than leaving it to
+            # finish into a queue nobody is draining - it is still calling a
+            # provider and, for a tool-using agent, still executing tools.
+            #
+            # Nothing is yielded here: cleanup runs with GeneratorExit or
+            # CancelledError in flight, and yielding under either raises
+            # "async generator ignored GeneratorExit".
+            task.cancel()
+            logger.info(f'Streaming inference cancelled for agent {agent_name}')
+            raise
+
+        except Exception as exc:
+            # Includes GuardrailBlocked, whose message is written for the
+            # caller. There is no status code left to set - the 200 went out
+            # with the headers - so the failure travels in-band.
+            logger.exception(f'Streaming inference failed for agent {agent_name}')
+            yield make_event(AgentEventType.ERROR, error=str(exc))

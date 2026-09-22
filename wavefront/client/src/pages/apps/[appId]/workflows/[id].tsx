@@ -1,5 +1,6 @@
 import floConsoleService from '@app/api';
 import ChatBot from '@app/components/ChatBot';
+import StreamToggle from '@app/components/StreamToggle';
 import VersionsDialog from '@app/components/VersionsDialog';
 import { Badge } from '@app/components/ui/badge';
 import { Button } from '@app/components/ui/button';
@@ -732,6 +733,12 @@ const WorkflowDetail: React.FC = () => {
         <div className="flex items-center justify-between">
           <p className="frost-text text-2xl leading-normal font-semibold">{formatAppName(workflow?.name)}</p>
           <div className="flex items-center gap-4">
+            <StreamToggle
+              enabled={listenEventsEnabled}
+              onChange={setListenEventsEnabled}
+              subject="result"
+              liveHint="Shows each step as it runs"
+            />
             {workflowVersions.length > 0 && (
               <Select
                 value={displayVersion !== undefined ? String(displayVersion) : ''}
@@ -811,8 +818,6 @@ const WorkflowDetail: React.FC = () => {
               handleDocumentUpload={handleDocumentUpload}
               uploadingImage={uploadingImage}
               uploadingDocument={uploadingDocument}
-              listenEventsEnabled={listenEventsEnabled}
-              setListenEventsEnabled={setListenEventsEnabled}
               isModelSwitchEnabled={false}
               streamingEvents={streamingEvents}
               isStreaming={isStreaming}

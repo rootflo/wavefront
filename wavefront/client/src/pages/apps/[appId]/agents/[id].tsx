@@ -1,5 +1,6 @@
 import floConsoleService from '@app/api';
 import ChatBot from '@app/components/ChatBot';
+import StreamToggle from '@app/components/StreamToggle';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import VersionsDialog from '@app/components/VersionsDialog';
 import {
@@ -17,6 +18,7 @@ import { useDeleteAgent, usePromoteAgentVersion, useDeleteAgentVersion } from '@
 import { useGetAgent, useGetAgentVersions, useGetLLMConfigs, useGetTools } from '@app/hooks/data/fetch-hooks';
 import { getAgentKey, getAgentVersionsKey } from '@app/hooks/data/query-keys';
 import { useNotifyStore } from '@app/store';
+import { AgentStreamEvent } from '@app/types/agent';
 import { ChatMessage, ChatMessageContent } from '@app/types/chat-message';
 import { scrollToBottom } from '@app/utils/scroll';
 import { useQueryClient } from '@tanstack/react-query';
@@ -76,6 +78,13 @@ const AgentDetail: React.FC = () => {
   >([]);
   const [uploadingDocument, setUploadingDocument] = useState(false);
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+
+  // Streaming state
+  const [listenEventsEnabled, setListenEventsEnabled] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamingEvents, setStreamingEvents] = useState<AgentStreamEvent[]>([]);
+  const eventsContainerRef = useRef<HTMLDivElement | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Datasource and tool selection state
   const [selectedTools, setSelectedTools] = useState<{ id: string; value: string }[]>([]);
@@ -506,18 +515,24 @@ const AgentDetail: React.FC = () => {
           },
         ];
       }
-      const result = await floConsoleService.agentService.runInference(
-        id,
-        inputs,
-        variables,
-        selectedLLMConfigId || undefined,
-        selectedTools.length > 0 ? selectedTools.map((tool) => tool.value) : undefined,
-        selectedVersion
-      );
-      const responseData = (result as { data?: { data?: { data?: { result?: string | object } } } }).data?.data?.data;
-      const agentResponse =
-        typeof responseData?.result === 'string' ? responseData.result : JSON.stringify(responseData?.result, null, 2);
-      setChatHistory((prev) => [...prev, { role: 'assistant', content: agentResponse }]);
+      if (listenEventsEnabled) {
+        await handleStreamingInference(inputs, variables);
+      } else {
+        const result = await floConsoleService.agentService.runInference(
+          id,
+          inputs,
+          variables,
+          selectedLLMConfigId || undefined,
+          selectedTools.length > 0 ? selectedTools.map((tool) => tool.value) : undefined,
+          selectedVersion
+        );
+        const responseData = (result as { data?: { data?: { data?: { result?: string | object } } } }).data?.data?.data;
+        const agentResponse =
+          typeof responseData?.result === 'string'
+            ? responseData.result
+            : JSON.stringify(responseData?.result, null, 2);
+        setChatHistory((prev) => [...prev, { role: 'assistant', content: agentResponse }]);
+      }
       // Wait for DOM to update before scrolling
       requestAnimationFrame(() => {
         setTimeout(() => scrollToBottom('message-container', 'smooth'), 150);
@@ -531,6 +546,93 @@ const AgentDetail: React.FC = () => {
       setRunningInference(false);
     }
   };
+
+  /**
+   * Run the agent as an SSE stream.
+   *
+   * Deltas land in a placeholder assistant bubble as they arrive; the lifecycle
+   * and tool events go to the events panel. `output` overwrites the bubble
+   * rather than appending: an agent with tools produces no deltas at all - see
+   * the server's StreamingTapLLM - so for those the final event is the whole
+   * reply.
+   */
+  const handleStreamingInference = async (inputs: string | unknown[], variables: Record<string, unknown>) => {
+    if (!id) return;
+
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    setStreamingEvents([]);
+    setIsStreaming(true);
+
+    // The bubble the deltas accumulate into. Added up front so there is
+    // somewhere to put the first token without a re-render race.
+    setChatHistory((prev) => [...prev, { role: 'assistant', content: '' }]);
+
+    const replaceLastAssistantMessage = (update: (current: string) => string) => {
+      setChatHistory((prev) => {
+        const next = [...prev];
+        const last = next[next.length - 1];
+        if (!last || last.role !== 'assistant') return prev;
+        next[next.length - 1] = {
+          ...last,
+          content: update(typeof last.content === 'string' ? last.content : ''),
+        };
+        return next;
+      });
+    };
+
+    try {
+      await floConsoleService.agentService.streamInference(id, inputs, variables, {
+        version: selectedVersion,
+        signal: controller.signal,
+        onEvent: (event) => {
+          switch (event.event_type) {
+            case 'content_delta':
+              replaceLastAssistantMessage((current) => current + (event.content ?? ''));
+              break;
+
+            case 'output': {
+              const result =
+                typeof event.result === 'string' ? event.result : JSON.stringify(event.result ?? '', null, 2);
+              replaceLastAssistantMessage(() => result);
+              setStreamingEvents((prev) => [...prev, event]);
+              break;
+            }
+
+            case 'error':
+              notifyError(event.error || 'Agent inference failed');
+              setStreamingEvents((prev) => [...prev, event]);
+              break;
+
+            default:
+              setStreamingEvents((prev) => [...prev, event]);
+          }
+
+          const container = eventsContainerRef.current;
+          if (container) {
+            container.scrollTop = container.scrollHeight;
+          }
+        },
+      });
+    } catch (error) {
+      // An abort is the user starting another run or leaving the page, not a
+      // failure worth reporting.
+      if ((error as Error)?.name !== 'AbortError') {
+        notifyError(error instanceof Error ? error.message : 'Agent streaming failed');
+      }
+    } finally {
+      setIsStreaming(false);
+      abortControllerRef.current = null;
+    }
+  };
+
+  // Leaving the page mid-run should stop the run, not leave a stream reading
+  // into an unmounted component.
+  useEffect(() => {
+    return () => abortControllerRef.current?.abort();
+  }, []);
 
   return (
     <div className="flex h-full flex-col bg-transparent p-8">
@@ -572,6 +674,7 @@ const AgentDetail: React.FC = () => {
             <div className="flex items-start justify-between">
               <p className="frost-text text-2xl leading-normal font-semibold">{formatAppName(agent.name)}</p>
               <div className="flex items-center gap-4">
+                <StreamToggle enabled={listenEventsEnabled} onChange={setListenEventsEnabled} subject="reply" />
                 {agentVersions.length > 0 && (
                   <Select
                     value={displayVersion !== undefined ? String(displayVersion) : ''}
@@ -632,6 +735,9 @@ const AgentDetail: React.FC = () => {
             handleDocumentUpload={handleDocumentUpload}
             uploadingImage={uploadingImage}
             uploadingDocument={uploadingDocument}
+            streamingEvents={streamingEvents}
+            isStreaming={isStreaming}
+            eventsContainerRef={eventsContainerRef}
           />
 
           {/* Edit Agent Dialog */}
