@@ -30,6 +30,7 @@ COPY wavefront/server/packages/flo_utils /app/packages/flo_utils
 
 COPY wavefront/server/plugins/datasource /app/plugins/datasource
 COPY wavefront/server/plugins/authenticator /app/plugins/authenticator
+COPY wavefront/server/plugins/mailer /app/plugins/mailer
 
 COPY wavefront/server/background_jobs/celery_worker /app/background_jobs/celery_worker
 
