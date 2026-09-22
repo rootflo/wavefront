@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from pydantic import EmailStr
 from pydantic import Field
 from pydantic import field_validator
+from pydantic import model_validator
 
 PASSWORD_REGEX = r'^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$'
 
@@ -13,6 +14,7 @@ class NewUser(BaseModel):
     email: EmailStr = Field(..., max_length=254)  # RFC 5321 standard max length
     username: Optional[str] = Field(None, min_length=3, max_length=50)
     password: str = Field(..., min_length=8)
+    confirm_password: str = Field(..., min_length=8)
     first_name: Optional[str] = Field(None, min_length=1, max_length=50)
     last_name: Optional[str] = Field(None, max_length=50)
     team_id: Optional[str] = None
@@ -93,6 +95,12 @@ class NewUser(BaseModel):
                 raise ValueError('Name should only contain letters and spaces')
         return v
 
+    @model_validator(mode='after')
+    def validate_passwords_match(self):
+        if self.password != self.confirm_password:
+            raise ValueError('Password and confirm password do not match')
+        return self
+
 
 class UpdateUser(BaseModel):
     user_id: str = Field(..., min_length=1)
@@ -103,6 +111,7 @@ class UpdateUser(BaseModel):
     email: Optional[EmailStr] = Field(None, max_length=254)
     username: Optional[str] = Field(None, min_length=3, max_length=50)
     password: Optional[str] = Field(None, min_length=8)
+    confirm_password: Optional[str] = Field(None, min_length=8)
     first_name: Optional[str] = Field(None, min_length=1, max_length=50)
     last_name: Optional[str] = Field(None, max_length=50)
 
@@ -169,10 +178,18 @@ class UpdateUser(BaseModel):
                 raise ValueError('Name should only contain letters and spaces')
         return v
 
+    @model_validator(mode='after')
+    def validate_passwords_match(self):
+        if self.password is not None or self.confirm_password is not None:
+            if self.password != self.confirm_password:
+                raise ValueError('Password and confirm password do not match')
+        return self
+
 
 class ResetUser(BaseModel):
     secret_token: str = Field(..., min_length=1)
     new_password: str = Field(..., min_length=8)
+    confirm_password: str = Field(..., min_length=8)
     recaptcha_token: Optional[str] = None
 
     @field_validator('new_password')
@@ -183,3 +200,9 @@ class ResetUser(BaseModel):
                 'Password must contain at least one letter, one number, and one special character'
             )
         return v
+
+    @model_validator(mode='after')
+    def validate_passwords_match(self):
+        if self.new_password != self.confirm_password:
+            raise ValueError('Password and confirm password do not match')
+        return self

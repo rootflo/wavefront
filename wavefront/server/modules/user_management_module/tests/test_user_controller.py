@@ -54,6 +54,7 @@ async def test_create_user_success(
     new_user_data = {
         'email': 'test2@example.com',
         'password': 'Test@123',  # Updated password with special character
+        'confirm_password': 'Test@123',
         'first_name': 'Test',
         'last_name': 'User',
         'role_id': ['test_role_id'],
@@ -72,6 +73,36 @@ async def test_create_user_success(
             select(User).where(User.email == new_user_data['email'])
         )
         assert user is not None
+
+
+@pytest.mark.asyncio
+async def test_create_user_mismatched_confirmation(
+    test_client,
+    mock_auth_admin_user_functions,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    await create_session(test_session, test_user_id, test_session_id)
+    await setup_role_with_console_resource(test_session, 'test_role_id')
+
+    new_user_data = {
+        'email': 'mismatch@example.com',
+        'password': 'Test@123',
+        'confirm_password': 'Different@123',
+        'first_name': 'Test',
+        'last_name': 'User',
+        'role_id': ['test_role_id'],
+    }
+
+    response = test_client.post(
+        '/floware/v1/users',
+        json=new_user_data,
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 422
+    assert 'do not match' in str(response.json()).lower()
 
 
 @pytest.mark.asyncio
@@ -212,6 +243,7 @@ async def test_create_user_duplicate_email(
     new_user_data = {
         'email': 'existing@example.com',
         'password': 'Test@123',
+        'confirm_password': 'Test@123',
         'first_name': 'Test',
         'last_name': 'User',
         'role_id': ['test_role_id'],
@@ -272,6 +304,75 @@ async def test_update_user_success(
         user_roles = user_roles.scalars().all()
         assert len(user_roles) == 1
         assert user_roles[0].role_id == 'new_role_id'
+
+
+@pytest.mark.asyncio
+async def test_update_user_password_requires_matching_confirmation(
+    test_client,
+    mock_auth_admin_user_functions,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    await create_session(test_session, test_user_id, test_session_id)
+    async with test_session() as session:
+        user = User(
+            email='update_pw@example.com',
+            password='hashedpassword',
+            first_name='Test',
+            last_name='User',
+        )
+        session.add(user)
+        await session.flush()
+        user_id = str(user.id)
+        await session.commit()
+
+    response = test_client.patch(
+        '/floware/v1/users',
+        json={
+            'user_id': user_id,
+            'password': 'Test@123',
+            'confirm_password': 'Test@123',
+        },
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_update_user_password_mismatched_confirmation(
+    test_client,
+    mock_auth_admin_user_functions,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    await create_session(test_session, test_user_id, test_session_id)
+    async with test_session() as session:
+        user = User(
+            email='update_pw_mismatch@example.com',
+            password='hashedpassword',
+            first_name='Test',
+            last_name='User',
+        )
+        session.add(user)
+        await session.flush()
+        user_id = str(user.id)
+        await session.commit()
+
+    response = test_client.patch(
+        '/floware/v1/users',
+        json={
+            'user_id': user_id,
+            'password': 'Test@123',
+            'confirm_password': 'Different@123',
+        },
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 422
+    assert 'do not match' in str(response.json()).lower()
 
 
 @pytest.mark.asyncio
@@ -569,6 +670,7 @@ async def test_create_user_reactivates_soft_deleted_user(
     new_user_data = {
         'email': 'softdeleted@example.com',  # Same email as soft-deleted user
         'password': 'NewPassword@123',
+        'confirm_password': 'NewPassword@123',
         'first_name': 'New',
         'last_name': 'Name',
         'role_id': ['test_role_id'],  # New role
@@ -642,6 +744,7 @@ async def test_create_user_reactivation_validates_roles(
     new_user_data = {
         'email': 'rolevalidation@example.com',
         'password': 'NewPassword@123',
+        'confirm_password': 'NewPassword@123',
         'first_name': 'New',
         'last_name': 'User',
         'role_id': ['nonexistent_role_id'],  # Invalid role
@@ -715,6 +818,7 @@ async def test_create_user_reactivation_requires_console_resource(
     new_user_data = {
         'email': 'noconsole@example.com',
         'password': 'NewPassword@123',
+        'confirm_password': 'NewPassword@123',
         'first_name': 'New',
         'last_name': 'User',
         'role_id': ['no_console_role'],
@@ -760,6 +864,7 @@ async def test_create_user_active_user_blocks_creation(
     new_user_data = {
         'email': 'active@example.com',
         'password': 'NewPassword@123',
+        'confirm_password': 'NewPassword@123',
         'first_name': 'New',
         'last_name': 'User',
         'role_id': ['test_role_id'],
@@ -1075,6 +1180,7 @@ async def test_reset_password(
     reset_data = {
         'secret_token': 'mock_token',  # Use the mock token that matches our mock setup
         'new_password': 'Test@123',  # Updated password with special character
+        'confirm_password': 'Test@123',
     }
 
     response = test_client.post(
@@ -1086,6 +1192,32 @@ async def test_reset_password(
     assert (
         'password has been updated successfully' in response.json()['data']['message']
     )
+
+
+@pytest.mark.asyncio
+async def test_reset_password_mismatched_confirmation(
+    test_client,
+    mock_auth_admin_user_functions,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    await create_session(test_session, test_user_id, test_session_id)
+
+    reset_data = {
+        'secret_token': 'mock_token',
+        'new_password': 'Test@123',
+        'confirm_password': 'Different@123',
+    }
+
+    response = test_client.post(
+        '/floware/v1/user/reset-password',
+        json=reset_data,
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 422
+    assert 'do not match' in str(response.json()).lower()
 
 
 @pytest.mark.asyncio
@@ -1143,6 +1275,7 @@ async def test_non_admin_user_create_user(
     new_user_data = {
         'email': 'test2@example.com',
         'password': 'Test@123',  # Updated password with special character
+        'confirm_password': 'Test@123',
         'first_name': 'Test',
         'last_name': 'User',
         'role_id': ['test_role_id'],
@@ -1169,6 +1302,7 @@ async def test_admin_user_create_user(
     new_user_data = {
         'email': 'test2@example.com',
         'password': 'Test@123',  # Updated password with special character
+        'confirm_password': 'Test@123',
         'first_name': 'Test',
         'last_name': 'User',
         'role_id': ['test_role_id', 'test_role_id2'],
@@ -1240,6 +1374,7 @@ async def test_admin_user_creat_non_admin_user(
     new_user_data = {
         'email': 'test2@example.com',
         'password': 'Test@123',  # Updated password with special character
+        'confirm_password': 'Test@123',
         'first_name': 'Test',
         'last_name': 'User',
         'role_id': ['test_role_id'],
@@ -1310,6 +1445,7 @@ async def test_admin_user_creat_non_admin_user_with_invalid_role(
     new_user_data = {
         'email': 'test2@example.com',
         'password': 'Test@123',  # Updated password with special character
+        'confirm_password': 'Test@123',
         'first_name': 'Test',
         'last_name': 'User',
         'role_id': ['123213123'],
@@ -1379,6 +1515,7 @@ async def test_admin_user_creat_non_admin_user_with_empty_role(
     new_user_data = {
         'email': 'test2@example.com',
         'password': 'Test@123',  # Updated password with special character
+        'confirm_password': 'Test@123',
         'first_name': 'Test',
         'last_name': 'User',
         'role_id': [],
