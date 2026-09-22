@@ -6,10 +6,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware import _MiddlewareFactory
 
 from common_module.middleware.request_id_middleware import RequestIdMiddleware
+from common_module.middleware.security_headers import SecurityHeadersMiddleware
 from common_module.telemetry import BaggageMiddleware, instrument_fastapi
 from user_management_module.authorization.require_auth import RequireAuthMiddleware
-
-from .security_headers import SecurityHeadersMiddleware
 
 
 def _middleware(cls: type[Any]) -> _MiddlewareFactory[Any]:
@@ -26,9 +25,10 @@ def add_middlewares(app: FastAPI) -> None:
     app.add_middleware(_middleware(BaggageMiddleware))
     app.add_middleware(_middleware(RequestIdMiddleware))
     app.add_middleware(_middleware(RequireAuthMiddleware))
-    app.add_middleware(
-        _middleware(SecurityHeadersMiddleware)
-    )  # disable to see swaggerUI
+    # Serves a strict default-src 'none' CSP on API responses and a docs-only
+    # relaxed policy on /docs and /redoc when APP_ENV=dev, so Swagger UI works
+    # without loosening anything in production.
+    app.add_middleware(_middleware(SecurityHeadersMiddleware))
 
     origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:5173')
     allowed_origins = origins.split(',')

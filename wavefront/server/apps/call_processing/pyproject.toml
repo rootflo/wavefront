@@ -8,6 +8,8 @@ authors = [
 requires-python = ">=3.11"
 
 dependencies = [
+    # Shared middleware (security headers)
+    "common-module",
     # FastAPI stack
     "fastapi>=0.115.2,<1.0.0",
     "uvicorn>=0.30.5,<1.0.0",
@@ -28,6 +30,9 @@ dependencies = [
     # Twilio
     "twilio>=8.0.0",
 ]
+
+[tool.uv.sources]
+common-module = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

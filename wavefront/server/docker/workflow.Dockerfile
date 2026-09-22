@@ -27,6 +27,7 @@ COPY wavefront/server/modules/user_management_module /app/modules/user_managemen
 
 COPY wavefront/server/plugins/datasource /app/plugins/datasource
 COPY wavefront/server/plugins/authenticator /app/plugins/authenticator
+COPY wavefront/server/plugins/mailer /app/plugins/mailer
 
 # Install dependencies (without dependecy resolution and no dev dependencies)
 RUN uv sync --package workflow_job --frozen --no-dev
