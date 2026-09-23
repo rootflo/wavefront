@@ -43,8 +43,15 @@ from user_management_module.services.user_service import UserService
 
 STALE_LOCK_TIMEOUT_MINUTES = 30
 SIGNED_URL_EXPIRY_SECONDS = 7 * 24 * 60 * 60
-# Gmail and many providers cap attachments; keep below typical limits.
-MAX_EMAIL_ATTACHMENT_BYTES = 10 * 1024 * 1024
+# Microsoft Graph write requests (including sendMail JSON with base64 attachments)
+# are capped at 4 MB for the entire request body.
+MAX_GRAPH_SEND_MAIL_BYTES = 4 * 1024 * 1024
+# Leave headroom under Gmail's ~25 MB encoded-message cap.
+MAX_GMAIL_MESSAGE_BYTES = 20 * 1024 * 1024
+# Rough JSON wrapping for subject/recipients/saveToSentItems around the message.
+GRAPH_SEND_MAIL_JSON_OVERHEAD = 1024
+# Keep inline HTML tables small even when the query/attachment returns more rows.
+MAX_EMAIL_BODY_TABLE_ROWS = 100
 
 COLUMN_FILL_COLORS = {
     'light_red': 'FFC7CE',
@@ -912,8 +919,8 @@ class ScheduledJobService:
         report_size = int(report['report_size'])
         report_url = report.get('report_url')
         placeholder = (
-            f'<p><b>{report_name}</b> ({report_size:,} bytes) exceeds the email '
-            f'attachment limit.'
+            f'<p><b>{report_name}</b> ({report_size:,} bytes) could not fit within '
+            f'the email attachment budget.'
         )
         if report_url:
             placeholder += (
@@ -947,7 +954,8 @@ class ScheduledJobService:
                 continue
             if report['use_attachment']:
                 query_tables[query_id] = cls._rows_to_html_table(
-                    report['rows'], column_styles=report.get('column_styles')
+                    report['rows'][:MAX_EMAIL_BODY_TABLE_ROWS],
+                    column_styles=report.get('column_styles'),
                 )
             else:
                 query_tables[query_id] = cls._download_report_placeholder_html(report)
@@ -1021,6 +1029,74 @@ class ScheduledJobService:
         workbook.save(buf)
         return buf.getvalue(), fieldnames
 
+    def _upload_report_download(self, report: dict) -> str:
+        report_key = (
+            f'scheduled_query_reports/{report["query_id"]}/{report["filename"]}'
+        )
+        self.cloud_storage_manager.save_small_file(
+            file_content=report['content_bytes'],
+            bucket_name=self.bucket_name,
+            key=report_key,
+            content_type=(
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            ),
+        )
+        return self.cloud_storage_manager.generate_presigned_url(
+            bucket_name=self.bucket_name,
+            key=report_key,
+            type='GET',
+            expiresIn=SIGNED_URL_EXPIRY_SECONDS,
+        )
+
+    @staticmethod
+    def _base64_encoded_size(raw_size: int) -> int:
+        """Byte length of standard base64 for `raw_size` input bytes."""
+        return 4 * ((raw_size + 2) // 3)
+
+    @classmethod
+    def _attachment_wire_cost(cls, report: dict, *, for_graph: bool) -> int:
+        """Estimated on-the-wire size contribution of one attachment."""
+        raw_size = int(report['report_size'])
+        encoded = cls._base64_encoded_size(raw_size)
+        filename_len = len(str(report.get('filename') or '').encode('utf-8'))
+        if for_graph:
+            # Graph fileAttachment JSON fields around contentBytes.
+            return encoded + filename_len + 200
+        # Gmail MIME part headers + base64 body.
+        return encoded + filename_len + 256
+
+    def _assign_report_delivery(
+        self,
+        prepared_reports: list[dict],
+        *,
+        body_html: str,
+        provider: str,
+    ) -> None:
+        """Attach reports while the serialized provider request stays in budget.
+
+        Outlook/Graph sendMail embeds base64 attachments in a JSON request with a
+        hard 4 MB limit (body + attachments). Gmail uses a higher encoded-message
+        budget. Reports that do not fit are uploaded for download links.
+        """
+        for_graph = str(provider).strip().lower() == 'outlook'
+        if for_graph:
+            budget = MAX_GRAPH_SEND_MAIL_BYTES
+            used = GRAPH_SEND_MAIL_JSON_OVERHEAD + len(body_html.encode('utf-8'))
+        else:
+            budget = MAX_GMAIL_MESSAGE_BYTES
+            used = len(body_html.encode('utf-8'))
+
+        for report in prepared_reports:
+            report_size = int(report['report_size'])
+            cost = self._attachment_wire_cost(report, for_graph=for_graph)
+            if report_size > 0 and used + cost <= budget:
+                report['use_attachment'] = True
+                report['report_url'] = None
+                used += cost
+            else:
+                report['use_attachment'] = False
+                report['report_url'] = self._upload_report_download(report)
+
     def _build_report_email_body(
         self,
         *,
@@ -1028,6 +1104,7 @@ class ScheduledJobService:
         email_content: str | None,
         query_tables: dict[str, str],
         download_reports: list[dict],
+        provider: str | None = None,
     ) -> str:
         if email_content and email_content.strip():
             body = self._render_email_template(email_content.strip(), query_tables)
@@ -1038,10 +1115,17 @@ class ScheduledJobService:
             body = f'<p>Scheduled reports: {names_html}</p>'
 
         if download_reports:
+            if str(provider or '').strip().lower() == 'outlook':
+                limit_label = (
+                    f'{MAX_GRAPH_SEND_MAIL_BYTES // (1024 * 1024)} MB Outlook/Graph '
+                    'request'
+                )
+            else:
+                limit_label = 'email provider size'
             body += (
-                f'<p><b>Delivery:</b> The following report(s) exceed the '
-                f'{MAX_EMAIL_ATTACHMENT_BYTES // (1024 * 1024)} MB email attachment limit. '
-                'Use the download links below instead of attachments.</p>'
+                f'<p><b>Delivery:</b> The following report(s) could not fit within the '
+                f'{limit_label} limit. Use the download links below instead of '
+                'attachments.</p>'
                 '<p>Links are secure and expire in 7 days.</p>'
             )
             for report in download_reports:
@@ -1078,6 +1162,13 @@ class ScheduledJobService:
         email_connection_id = self._email_connection_id(payload)
         if email_connection_id is None:
             raise ValueError('payload.email_connection_id is required')
+        try:
+            email_connection = await self.email_connection_service.require_active(
+                email_connection_id
+            )
+        except EmailConnectionError as exc:
+            raise ValueError(f'payload.email_connection_id is unusable: {exc}') from exc
+        email_provider = str(email_connection.provider or '')
         email_content = payload.get('email_content')
         if email_content is not None and not isinstance(email_content, str):
             email_content = None
@@ -1211,30 +1302,13 @@ class ScheduledJobService:
                 )
                 report_name = yaml_name or query_id
                 report_names.append(report_name)
-                use_attachment = report_size <= MAX_EMAIL_ATTACHMENT_BYTES
-                report_url: str | None = None
-                if not use_attachment:
-                    report_key = f'scheduled_query_reports/{query_id}/{report_filename}'
-                    self.cloud_storage_manager.save_small_file(
-                        file_content=report_bytes,
-                        bucket_name=self.bucket_name,
-                        key=report_key,
-                        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                    )
-                    report_url = self.cloud_storage_manager.generate_presigned_url(
-                        bucket_name=self.bucket_name,
-                        key=report_key,
-                        type='GET',
-                        expiresIn=SIGNED_URL_EXPIRY_SECONDS,
-                    )
-
                 prepared_reports.append(
                     {
                         'query_id': query_id,
                         'report_name': report_name,
                         'report_size': report_size,
-                        'report_url': report_url,
-                        'use_attachment': use_attachment,
+                        'report_url': None,
+                        'use_attachment': False,
                         'filename': report_filename,
                         'content_bytes': report_bytes,
                         'rows': rows,
@@ -1252,6 +1326,28 @@ class ScheduledJobService:
                 )
                 continue
 
+            # Provisional body with inline tables (largest body case) so attachment
+            # budgeting accounts for body_html + base64 payload under provider caps.
+            for report in prepared_reports:
+                report['use_attachment'] = True
+                report['report_url'] = None
+            referenced_query_ids = self._referenced_query_ids(email_content)
+            provisional_tables = self._build_query_tables_for_email(
+                prepared_reports, referenced_query_ids
+            )
+            provisional_body = self._build_report_email_body(
+                report_names=report_names,
+                email_content=email_content,
+                query_tables=provisional_tables,
+                download_reports=[],
+                provider=email_provider,
+            )
+            self._assign_report_delivery(
+                prepared_reports,
+                body_html=provisional_body,
+                provider=email_provider,
+            )
+
             download_reports = [
                 {
                     'query_id': r['query_id'],
@@ -1262,7 +1358,6 @@ class ScheduledJobService:
                 for r in prepared_reports
                 if not r['use_attachment']
             ]
-            referenced_query_ids = self._referenced_query_ids(email_content)
             query_tables = self._build_query_tables_for_email(
                 prepared_reports, referenced_query_ids
             )
@@ -1277,6 +1372,7 @@ class ScheduledJobService:
                 email_content=email_content,
                 query_tables=query_tables,
                 download_reports=download_reports,
+                provider=email_provider,
             )
             attachments = [
                 {

@@ -17,11 +17,21 @@ from fastapi import status
 from fastapi.params import Depends
 from fastapi.responses import JSONResponse
 from user_management_module.constants.auth import ADMIN_ROLE_NAME
+from user_management_module.constants.auth import MANAGER_ROLE_NAME
 from user_management_module.constants.auth import SERVICE_AUTH_ROLE_ID
 from user_management_module.services.account_lockout_service import (
     AccountLockoutService,
 )
 from user_management_module.user_container import UserContainer
+
+
+def normalize_email(email: str) -> str:
+    """Canonical email form for Floware: trimmed lowercase.
+
+    All auth and user lookups must use this so mixed-case credentials still
+    resolve after the DB stores only lowercase addresses.
+    """
+    return str(email).strip().lower()
 
 
 def get_current_user(req: Request):
@@ -32,6 +42,13 @@ def get_current_user(req: Request):
         if hasattr(req.state, 'session') and req.state.session
         else None,
     )
+
+
+async def _role_name(
+    role_id: str, role_repository: SQLAlchemyRepository[Role]
+) -> Optional[str]:
+    role = await role_repository.find_one(id=role_id)
+    return role.name if role else None
 
 
 @inject
@@ -48,12 +65,26 @@ async def check_is_admin(
     """
     if role_id == SERVICE_AUTH_ROLE_ID:
         return True
-    role = await role_repository.find_one(id=role_id)
 
-    if not role:
+    return await _role_name(role_id, role_repository) == ADMIN_ROLE_NAME
+
+
+@inject
+async def check_is_manager(
+    role_id: str,
+    role_repository: SQLAlchemyRepository[Role] = Depends(
+        Provide[UserContainer.role_repository]
+    ),
+) -> bool:
+    """True when the session role is the built-in manager role.
+
+    Service identities are admins, not managers, so they take the admin path
+    and are never group-scoped by it.
+    """
+    if role_id == SERVICE_AUTH_ROLE_ID:
         return False
 
-    return role.name == ADMIN_ROLE_NAME
+    return await _role_name(role_id, role_repository) == MANAGER_ROLE_NAME
 
 
 async def can_read_users(req: Request) -> bool:

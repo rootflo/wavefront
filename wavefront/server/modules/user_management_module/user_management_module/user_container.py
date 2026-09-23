@@ -18,6 +18,7 @@ from user_management_module.services.account_lockout_service import (
 from user_management_module.services.account_inactivity_service import (
     AccountInactivityService,
 )
+from user_management_module.services.recaptcha_service import RecaptchaService
 
 
 class UserContainer(containers.DeclarativeContainer):
@@ -100,4 +101,12 @@ class UserContainer(containers.DeclarativeContainer):
         user_repository=user_repository,
         cache_manager=cache_manager,
         inactive_days_threshold=config.auth.inactive_days_threshold,
+    )
+
+    recaptcha_service = providers.Singleton(
+        RecaptchaService,
+        enabled=config.recaptcha.enabled,
+        project_id=config.recaptcha.project_id,
+        site_key=config.recaptcha.site_key,
+        score_threshold=config.recaptcha.score_threshold,
     )

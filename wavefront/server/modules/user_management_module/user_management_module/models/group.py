@@ -16,9 +16,9 @@ class CreateGroupPayload(BaseModel):
     both default to empty rather than being required."""
 
     name: str = Field(..., min_length=1, max_length=100)
-    description: Optional[str] = None
-    role_ids: List[str] = Field(default_factory=list)
-    user_ids: List[str] = Field(default_factory=list)
+    description: Optional[str] = Field(None, max_length=500)
+    role_ids: List[str] = Field(default_factory=list, max_length=100)
+    user_ids: List[str] = Field(default_factory=list, max_length=100)
 
     @field_validator('name')
     @classmethod
@@ -27,6 +27,13 @@ class CreateGroupPayload(BaseModel):
         if not stripped:
             raise ValueError('Group name cannot be blank')
         return stripped
+
+    @field_validator('description')
+    @classmethod
+    def validate_description(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        return v.strip() or None
 
     @field_validator('role_ids')
     @classmethod
@@ -48,8 +55,8 @@ class UpdateGroupPayload(BaseModel):
     """
 
     name: Optional[str] = Field(None, min_length=1, max_length=100)
-    description: Optional[str] = None
-    role_ids: Optional[List[str]] = None
+    description: Optional[str] = Field(None, max_length=500)
+    role_ids: Optional[List[str]] = Field(None, max_length=100)
 
     @field_validator('name')
     @classmethod
@@ -61,6 +68,13 @@ class UpdateGroupPayload(BaseModel):
             raise ValueError('Group name cannot be blank')
         return stripped
 
+    @field_validator('description')
+    @classmethod
+    def validate_description(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        return v.strip() or None
+
     @field_validator('role_ids')
     @classmethod
     def validate_role_ids(cls, v):
@@ -68,7 +82,7 @@ class UpdateGroupPayload(BaseModel):
 
 
 class GroupMembersPayload(BaseModel):
-    user_ids: List[str] = Field(..., min_length=1)
+    user_ids: List[str] = Field(..., min_length=1, max_length=100)
 
     @field_validator('user_ids')
     @classmethod

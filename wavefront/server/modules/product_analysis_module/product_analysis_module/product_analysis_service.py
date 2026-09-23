@@ -9,7 +9,7 @@ from fastapi import Depends
 from datetime import date, datetime, time
 import os
 from product_analysis_module.models.product_analysis import ProductAnalysis
-from sqlalchemy import Date, String, cast, func, select
+from sqlalchemy import Date, String, cast, false, func, select
 
 
 class ProductAnalysisService:
@@ -43,7 +43,14 @@ class ProductAnalysisService:
     async def get_product_analysis(self):
         return await self.product_analysis_repository.find()
 
-    def _user_filters(self, group_id: str | None = None) -> list:
+    def _user_filters(self, group_ids: list[str] | None = None) -> list:
+        """Which users the stats cover.
+
+        ``group_ids`` of None means every user; a list restricts to members of
+        those groups. An empty list is therefore "no groups", not "no filter" --
+        the distinction is what keeps a caller scoped to zero groups from seeing
+        the whole directory.
+        """
         excluded_emails_raw = os.getenv(
             'PRODUCT_ANALYTICS_EXCLUDED_EMAILS',
             '',
@@ -54,15 +61,25 @@ class ProductAnalysisService:
         user_filters = [User.deleted.is_(False)]
         if excluded_emails:
             user_filters.append(User.email.notin_(excluded_emails))
-        if group_id:
+        if group_ids is not None:
             user_filters.append(
                 User.id.in_(
                     select(UserGroupMember.user_id).where(
-                        UserGroupMember.group_id == group_id
+                        UserGroupMember.group_id.in_(group_ids)
                     )
                 )
+                if group_ids
+                else false()
             )
         return user_filters
+
+    async def get_accessible_group_ids(self, user_id: str) -> list[str]:
+        """Group ids the user belongs to."""
+        query = select(UserGroupMember.group_id).where(
+            UserGroupMember.user_id == user_id
+        )
+        rows = await self.product_analysis_repository.execute_query(query=query)
+        return [str(row['group_id']) for row in rows]
 
     def _login_events_cte(self, start_date: date, end_date: date, user_filters: list):
         range_start = datetime.combine(start_date, time.min)
@@ -89,9 +106,9 @@ class ProductAnalysisService:
         end_date: date,
         limit: int,
         offset: int,
-        group_id: str | None = None,
+        group_ids: list[str] | None = None,
     ) -> tuple[list[dict], int]:
-        user_filters = self._user_filters(group_id)
+        user_filters = self._user_filters(group_ids)
         login_events = self._login_events_cte(start_date, end_date, user_filters)
 
         query = (
@@ -128,9 +145,9 @@ class ProductAnalysisService:
         self,
         start_date: date,
         end_date: date,
-        group_id: str | None = None,
+        group_ids: list[str] | None = None,
     ) -> dict:
-        user_filters = self._user_filters(group_id)
+        user_filters = self._user_filters(group_ids)
         login_events = self._login_events_cte(start_date, end_date, user_filters)
         unique_login_days = func.coalesce(
             func.count(func.distinct(cast(login_events.c.created_at, Date))),

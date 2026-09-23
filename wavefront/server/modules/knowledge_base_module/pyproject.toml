@@ -37,8 +37,8 @@ datasource = { workspace = true }
 [dependency-groups]
 dev = [
     "flo-testing",
-    "pytest>=8.3.4,<9.0.0",
-    "pytest-asyncio>=0.24.0,<1.0.0",
+    "pytest>=9.0.3,<10.0.0",
+    "pytest-asyncio>=1.0.0,<2.0.0",
     "asyncpg>=0.30.0,<1.0.0",
     "auth-module",
     "common-module",
@@ -48,6 +48,10 @@ dev = [
 
 [tool.uv]
 package = true
+# Inert here: uv reads resolver settings only from the workspace root
+# (wavefront/server/pyproject.toml), which is where the real cooldown lives.
+# Kept so the setting survives if this package is ever split out.
+exclude-newer = "7 days"
 
 [build-system]
 requires = ["hatchling"]

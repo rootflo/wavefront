@@ -946,6 +946,7 @@ async def test_create_user_with_no_roles_but_group_granting_console(
         json={
             'email': 'grouponly@example.com',
             'password': 'Password123!',
+            'confirm_password': 'Password123!',
             'first_name': 'Group',
             'last_name': 'Only',
             'group_ids': [group_id],
@@ -991,6 +992,7 @@ async def test_create_user_rejects_duplicate_group_ids(
         json={
             'email': 'dupe@example.com',
             'password': 'Password123!',
+            'confirm_password': 'Password123!',
             'first_name': 'Dupe',
             'last_name': 'Groups',
             'group_ids': [group_id, group_id],
@@ -1019,6 +1021,7 @@ async def test_create_user_rejects_duplicate_role_ids(
         json={
             'email': 'dupe-role@example.com',
             'password': 'Password123!',
+            'confirm_password': 'Password123!',
             'first_name': 'Dupe',
             'last_name': 'Roles',
             'role_id': ['console_role', 'console_role'],
@@ -1048,6 +1051,7 @@ async def test_create_user_rejected_when_only_group_is_role_less(
         json={
             'email': 'nologin@example.com',
             'password': 'Password123!',
+            'confirm_password': 'Password123!',
             'first_name': 'No',
             'last_name': 'Login',
             'group_ids': [group_id],

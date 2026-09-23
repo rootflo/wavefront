@@ -22,6 +22,7 @@ from user_management_module.services.account_lockout_service import (
     AccountLockoutService,
 )
 from user_management_module.services.email_sender import EmailSender
+from user_management_module.services.recaptcha_service import RecaptchaService
 from user_management_module.services.user_service import UserService
 from user_management_module.user_container import UserContainer
 
@@ -68,5 +69,9 @@ EmailSenderDep = Annotated[
 AccountLockoutServiceDep = Annotated[
     AccountLockoutService,
     Depends(Provide[UserContainer.account_lockout_service]),
+]
+RecaptchaServiceDep = Annotated[
+    RecaptchaService,
+    Depends(Provide[UserContainer.recaptcha_service]),
 ]
 UserConfigDep = Annotated[dict[str, Any], Depends(Provide[UserContainer.config])]
