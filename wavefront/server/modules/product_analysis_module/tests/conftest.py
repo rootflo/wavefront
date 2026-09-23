@@ -63,10 +63,42 @@ def mock_auth_functions(patch_auth):
 
 
 @pytest.fixture
-def mock_admin_functions(patch_auth):
-    patch_auth(CONTROLLERS, is_admin=True)
+def mock_admin_functions(monkeypatch):
+    """Admit the caller as an admin (not manager)."""
+
+    async def mock_check_is_admin(role_id, role_repository=None):
+        return True
+
+    async def mock_check_is_manager(role_id, role_repository=None):
+        return False
+
+    monkeypatch.setattr(f'{CONTROLLERS}.check_is_admin', mock_check_is_admin)
+    monkeypatch.setattr(f'{CONTROLLERS}.check_is_manager', mock_check_is_manager)
 
 
 @pytest.fixture
-def mock_non_admin_functions(patch_auth):
-    patch_auth(CONTROLLERS, is_admin=False)
+def mock_manager_functions(monkeypatch):
+    """Admit the caller as a manager (not admin)."""
+
+    async def mock_check_is_admin(role_id, role_repository=None):
+        return False
+
+    async def mock_check_is_manager(role_id, role_repository=None):
+        return True
+
+    monkeypatch.setattr(f'{CONTROLLERS}.check_is_admin', mock_check_is_admin)
+    monkeypatch.setattr(f'{CONTROLLERS}.check_is_manager', mock_check_is_manager)
+
+
+@pytest.fixture
+def mock_non_admin_functions(monkeypatch):
+    """Deny both admin and manager for unauthorized tests."""
+
+    async def mock_check_is_admin(role_id, role_repository=None):
+        return False
+
+    async def mock_check_is_manager(role_id, role_repository=None):
+        return False
+
+    monkeypatch.setattr(f'{CONTROLLERS}.check_is_admin', mock_check_is_admin)
+    monkeypatch.setattr(f'{CONTROLLERS}.check_is_manager', mock_check_is_manager)

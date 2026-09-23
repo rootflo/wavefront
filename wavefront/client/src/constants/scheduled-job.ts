@@ -5,11 +5,14 @@ export const DEFAULT_TIMEZONE = 'Asia/Kolkata';
 export const DEFAULT_MAX_RETRIES = '3';
 export const DEFAULT_START_DATE_PARAM = 'start_date';
 export const DEFAULT_END_DATE_PARAM = 'end_date';
+export const DEFAULT_QUERY_LIMIT = '100';
+export const DEFAULT_QUERY_OFFSET = '0';
 export const MAX_RETRIES_LIMIT = 10;
 export const JOB_TYPE_EMAIL_DYNAMIC_QUERY = 'email_dynamic_query' as const;
 
 export const FORM_TAB = {
   SCHEDULE: 'schedule',
+  QUERY: 'query',
   EMAIL: 'email',
 } as const satisfies Record<string, FormTab>;
 
@@ -43,8 +46,10 @@ export const COLUMN_STYLES_PLACEHOLDER = `[
 
 export const QUERY_PARAMS_PLACEHOLDER = `{"${DEFAULT_START_DATE_PARAM}":"2026-03-01","${DEFAULT_END_DATE_PARAM}":"2026-03-31"}`;
 export const EMAIL_CONTENT_PLACEHOLDER = `Here is your result\n{my_query_id}\n\nSee more\n{another_query_id}`;
+export const FILTER_PLACEHOLDER = 'status = "active"';
 
-export const isFormTab = (value: string): value is FormTab => value === FORM_TAB.SCHEDULE || value === FORM_TAB.EMAIL;
+export const isFormTab = (value: string): value is FormTab =>
+  value === FORM_TAB.SCHEDULE || value === FORM_TAB.QUERY || value === FORM_TAB.EMAIL;
 
 export const isPayloadDateRange = (value: unknown): value is PayloadDateRange =>
   PAYLOAD_DATE_RANGES.some((range) => range === value);
