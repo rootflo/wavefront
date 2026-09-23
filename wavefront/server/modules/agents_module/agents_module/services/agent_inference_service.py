@@ -8,6 +8,7 @@ from agents_module.services.agent_crud_service import AgentCrudService
 from agents_module.services.agent_stream_events import (
     AgentEventType,
     StreamingTapLLM,
+    can_stream,
     instrument_tools,
     make_event,
 )
@@ -597,13 +598,12 @@ class AgentInferenceService:
         same split the chat endpoint uses, so this stays callable from anything
         that is not an HTTP response.
 
-        What arrives depends on the agent:
+        What arrives depends on the agent (see `can_stream`):
 
         - No tools and no output schema: `content_delta` frames carrying the
           reply as the provider produces it, then `output`.
-        - Tools or an output schema: no deltas - see StreamingTapLLM for why -
-          but a `tool_called`/`tool_result` pair per tool call, then the whole
-          reply in `output`.
+        - Tools or an output schema: no deltas, but a `tool_called`/
+          `tool_result` pair per tool call, then the whole reply in `output`.
 
         A namespace with AFTER_MODEL guardrail checks is a third case in
         practice: GuardedLLM.stream holds the response back until it has vetted
@@ -618,12 +618,19 @@ class AgentInferenceService:
         queue: asyncio.Queue = asyncio.Queue()
         done = object()
 
-        agent.llm = StreamingTapLLM(agent.llm, queue.put_nowait)
+        # The tap is only attached to an agent whose reply can actually be
+        # streamed; on the others it would emit flo_ai's internal
+        # classification calls as reply text. Tool events are emitted either
+        # way - they are how a tool-using run stays legible without deltas.
+        streams_deltas = can_stream(agent)
+        if streams_deltas:
+            agent.llm = StreamingTapLLM(agent.llm, queue.put_nowait)
         instrument_tools(agent, queue.put_nowait)
 
         logger.info(
             f'Streaming inference for agent {agent_name} '
-            f'[ns={namespace}, tools={len(getattr(agent, "tools", None) or [])}]'
+            f'[ns={namespace}, tools={len(getattr(agent, "tools", None) or [])}, '
+            f'deltas={streams_deltas}]'
         )
 
         start_time = time.time()

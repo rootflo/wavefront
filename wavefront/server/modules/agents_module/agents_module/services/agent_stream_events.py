@@ -73,19 +73,45 @@ class _StreamedResponse:
         self.content = content
 
 
+def can_stream(agent: Any) -> bool:
+    """Whether this agent's reply can be streamed as it is written.
+
+    An agent with tools cannot: ``Agent._run_with_tools`` passes ``functions=``
+    on every iteration, and no provider's ``stream()`` surfaces tool-call
+    deltas - it yields text only - so streaming those calls would silently drop
+    the tool calls. Nor can an agent with an output schema, whose structured
+    output comes from the provider's non-streaming path.
+
+    Checked here, before the tap is attached, rather than left to the tap's own
+    per-call guard. Both would keep the *reply* correct, but a tool-using run
+    also makes calls that carry no tools and would therefore stream: flo_ai's
+    ``_is_final_answer`` asks the model to classify a response as ``FINAL`` or
+    ``INTERMEDIATE``, and that verdict would be emitted as reply text.
+    """
+    return not getattr(agent, 'tools', None) and not getattr(
+        agent, 'output_schema', None
+    )
+
+
 class StreamingTapLLM(BaseLLM):
     """Serves completions from the provider's stream, emitting deltas.
 
     Modelled on ``flo_ai.llm.guarded_llm.GuardedLLM``: a ``BaseLLM`` decorator
     that stays substitutable for the LLM it wraps.
 
-    Only calls that carry neither tools nor an output schema are streamed.
-    ``Agent._run_with_tools`` passes ``functions=`` on every iteration of its
-    loop, and no provider's ``stream()`` surfaces tool-call deltas - it yields
-    text only - so streaming a tool-using call would silently drop the tool
-    calls. Those calls are delegated untouched and the run behaves exactly as
-    it does without the tap; the same goes for an agent with an output schema,
-    whose structured output comes from the provider's non-streaming path.
+    The interception is on ``generate``, not ``stream``, because ``generate``
+    is the only method ``Agent`` ever calls - so this is a completion that is
+    internally a stream, rather than a stream the agent knows about.
+
+    Two kinds of call are delegated to the wrapped LLM untouched, and behave
+    exactly as they do without the tap:
+
+    - anything carrying tools or an output schema (see ``can_stream``);
+    - everything after the first streamed call. A run makes exactly one call
+      whose text is the answer; the ones that can follow it are flo_ai's error
+      analysis in ``BaseAgent.handle_error`` - which runs even at
+      ``max_retries=0`` - and the retry attempts after it. Streaming those
+      would splice an explanation of the failure into the reply.
     """
 
     def __init__(self, inner_llm: BaseLLM, emit: Emit) -> None:
@@ -100,6 +126,7 @@ class StreamingTapLLM(BaseLLM):
         )
         object.__setattr__(self, '_inner_llm', inner_llm)
         self._emit = emit
+        self._streamed_a_call = False
 
     # -- transparent delegation ------------------------------------------
 
@@ -125,10 +152,12 @@ class StreamingTapLLM(BaseLLM):
         functions: Optional[List[Dict[str, Any]]] = None,
         output_schema: Optional[Dict[str, Any]] = None,
     ) -> Any:
-        if functions or output_schema:
+        if functions or output_schema or self._streamed_a_call:
             return await self._inner_llm.generate(
                 messages, functions=functions, output_schema=output_schema
             )
+
+        self._streamed_a_call = True
 
         parts: List[str] = []
         async for chunk in self._inner_llm.stream(messages):
