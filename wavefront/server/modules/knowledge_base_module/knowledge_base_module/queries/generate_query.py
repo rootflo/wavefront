@@ -420,7 +420,7 @@ class QueryGenerator:
         filter1: str,
         document_date_start,
         document_date_end,
-        threshold: float,
+        max_candidates: int,
         filter2: Optional[str] = None,
         filter3: Optional[str] = None,
         filter4: Optional[str] = None,
@@ -437,20 +437,21 @@ class QueryGenerator:
         generic, caller-defined columns -- see `KnowledgeBaseDocuments` --
         this query has no notion of what they mean semantically.
 
-        Deliberately has no `ORDER BY`/`LIMIT` tied to the `<=>` distance
-        expression anywhere -- that is what would let Postgres route the
-        query through the HNSW index (`ix_kbe_embedding_vector_1_hnsw_cosine`)
-        for an *approximate* top-K search. Here we instead pre-filter to a
-        small candidate set via the real, indexed `filterN`/`document_date`
-        columns, then compute an exact cosine distance for every one of those
-        rows and only keep the ones above `threshold` -- so results are exact,
-        not approximate, and the count of matches is precise.
+        Candidates are capped via `ORDER BY d.id LIMIT :fetch_limit`, where
+        `fetch_limit` is computed here as `max_candidates + 1`. Ordering by
+        `d.id` -- a plain, non-vector column -- rather than the `<=>`
+        distance expression keeps this from ever engaging the HNSW index
+        (`ix_kbe_embedding_vector_1_hnsw_cosine`), which only gets used when
+        `ORDER BY`/`LIMIT` is tied directly to a `<=>` expression. That means
+        results here stay exact, not approximate, for whatever candidate set
+        the `LIMIT` lets through. The "+1" lets the caller detect when the
+        true candidate count exceeded `max_candidates` (i.e.
+        `len(rows) == max_candidates + 1`) without a separate `COUNT` query.
 
-        The threshold check is a plain scalar comparison on the computed
-        `dino_score`, so it has to live in an outer query over a subquery
-        (Postgres doesn't allow referencing a `SELECT`-list alias in a
-        same-level `WHERE`) -- it still runs after every distance in the
-        candidate set has already been computed exactly.
+        Deliberately has no `dino_score` threshold filter in this query --
+        that comparison is left to the caller so it can distinguish "no
+        candidates matched" from "the candidate set was truncated" using the
+        raw (pre-threshold) row count returned here.
         """
         filter_columns_clause, filter_columns_params = self.build_filter_columns_clause(
             filter1,
@@ -469,27 +470,26 @@ class QueryGenerator:
         params: Dict[str, Any] = {
             'query_embedding': query_embeddings,
             'kb_id': str(kb_id),
-            'threshold': threshold,
+            'fetch_limit': max_candidates + 1,
             **filter_columns_params,
         }
 
         sql_query = f"""
-        SELECT * FROM (
-            SELECT
-                e.id AS embedding_id,
-                d.id AS document_id,
-                d.file_path,
-                d.file_name,
-                d.knowledge_base_id,
-                d.metadata_value,
-                d.document_date::text AS document_date,
-                1 - ((e.embedding_vector_1::vector(1024)) <=> :query_embedding ::vector(1024)) AS dino_score
-            FROM {KnowledgeBaseEmbeddings.__tablename__} e
-            JOIN {KnowledgeBaseDocuments.__tablename__} d ON e.document_id = d.id
-            WHERE d.knowledge_base_id = :kb_id
-                {filter_columns_clause}
-        ) scored
-        WHERE dino_score > :threshold
+        SELECT
+            e.id AS embedding_id,
+            d.id AS document_id,
+            d.file_path,
+            d.file_name,
+            d.knowledge_base_id,
+            d.metadata_value,
+            d.document_date::text AS document_date,
+            1 - ((e.embedding_vector_1::vector(1024)) <=> :query_embedding ::vector(1024)) AS dino_score
+        FROM {KnowledgeBaseEmbeddings.__tablename__} e
+        JOIN {KnowledgeBaseDocuments.__tablename__} d ON e.document_id = d.id
+        WHERE d.knowledge_base_id = :kb_id
+            {filter_columns_clause}
+        ORDER BY d.id
+        LIMIT :fetch_limit
         """
 
         return sql_query, params
