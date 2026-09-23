@@ -31,6 +31,13 @@ def _email_digest(email: str) -> str:
     return hashlib.sha256(email.lower().strip().encode('utf-8')).hexdigest()[:32]
 
 
+def password_reset_cooldown_seconds(config: Any) -> int:
+    """Configured cooldown, normalized the same way rate limiting applies it."""
+    return _auth_setting(
+        config, 'password_reset_cooldown_seconds', DEFAULT_COOLDOWN_SECONDS
+    )
+
+
 def password_reset_rate_limited(cache: CommonCache, config: Any, email: str) -> bool:
     """True when this address is still in cooldown or has hit the hourly cap.
 
@@ -38,9 +45,7 @@ def password_reset_rate_limited(cache: CommonCache, config: Any, email: str) -> 
     balancer. The address is hashed so it never lands in a Redis key.
     """
     digest = _email_digest(email)
-    cooldown = _auth_setting(
-        config, 'password_reset_cooldown_seconds', DEFAULT_COOLDOWN_SECONDS
-    )
+    cooldown = password_reset_cooldown_seconds(config)
     max_per_email = _auth_setting(
         config, 'password_reset_max_per_email', DEFAULT_MAX_PER_EMAIL
     )

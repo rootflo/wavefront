@@ -306,8 +306,20 @@ class UserService:
             return result.scalar()
 
     async def invalidate_user_sessions(self, user_id: str) -> None:
-        """Drop every live session for a user, cache and DB alike."""
-        sessions = await self.session_repository.find(user_id=user_id, limit=1000)
+        """Drop every live session for a user, cache and DB alike.
+
+        require_auth accepts a session cache hit without checking the DB, and
+        cache keys are per session id rather than per user, so deleting the DB
+        rows alone would leave cached sessions valid until their TTL. The ids are
+        therefore read back from the DB and each cache key removed first.
+
+        The loop stays small because every login path calls this before creating
+        its session, so a user normally has a single session row. If a cache
+        remove still fails after CacheManager's retries, the exception propagates
+        before the DB rows are deleted, so the caller fails rather than reporting
+        success with a live session.
+        """
+        sessions = await self.session_repository.find(user_id=user_id, limit=100)
         for s in sessions:
             self.cache_manager.remove(get_session_cache_key(s.id))
         self.cache_manager.remove(str(user_id))

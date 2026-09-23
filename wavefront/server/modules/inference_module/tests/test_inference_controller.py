@@ -82,7 +82,7 @@ async def test_load_model_no_file(
         data={'model_type': 'pytorch'},
         headers={'Authorization': f'Bearer {auth_token}'},
     )
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     assert 'Field required' in response.json()['detail'][0]['msg']
 
 

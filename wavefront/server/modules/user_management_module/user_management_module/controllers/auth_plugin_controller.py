@@ -192,6 +192,8 @@ async def unified_authenticate(
         # Get device info from headers
         device_info = request.headers.get('User-Agent')
 
+        await user_service.invalidate_user_sessions(str(user.id))
+
         # Create new session
         session = await session_repository.create(
             user_id=user.id, device_info=device_info, id=uuid4()
@@ -665,6 +667,8 @@ async def _handle_oauth_callback(
         # Get device info from headers
         device_info = request.headers.get('User-Agent')
 
+        await user_service.invalidate_user_sessions(str(user.id))
+
         # Create new session
         session = await session_repository.create(
             user_id=user.id, device_info=device_info, id=uuid4()
@@ -818,6 +822,8 @@ async def _handle_email_password_auth(
 
         # Get device info
         device_info = request.headers.get('User-Agent')
+
+        await user_service.invalidate_user_sessions(str(user.id))
 
         # Create new session
         session = await session_repository.create(

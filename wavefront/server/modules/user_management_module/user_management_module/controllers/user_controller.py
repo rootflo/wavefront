@@ -66,7 +66,7 @@ from user_management_module.utils.email_templates import (
 )
 from user_management_module.utils.password_utils import hash_password
 from user_management_module.utils.rate_limit import (
-    DEFAULT_COOLDOWN_SECONDS,
+    password_reset_cooldown_seconds,
     password_reset_rate_limited,
 )
 from user_management_module.utils.user_utils import (
@@ -911,7 +911,7 @@ async def send_reset_url(
                 content=response_formatter.buildErrorResponse(
                     PASSWORD_RESET_GENERIC_MESSAGE
                 ),
-                headers={'Retry-After': str(DEFAULT_COOLDOWN_SECONDS)},
+                headers={'Retry-After': str(password_reset_cooldown_seconds(config))},
             )
 
         # checking if the user exists in the db
@@ -990,13 +990,6 @@ async def reset_password(
 
     try:
         decoded = token_service.decode_token(reset_user.secret_token)
-    except jwt.ExpiredSignatureError:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content=response_formatter.buildErrorResponse(
-                'The password reset link has expired. Please request a new one.'
-            ),
-        )
     except jwt.PyJWTError as exc:
         logger.warning(f'Rejected password reset token: {exc}')
         return _password_reset_invalid_response(response_formatter)
@@ -1021,11 +1014,22 @@ async def reset_password(
         return _password_reset_invalid_response(response_formatter)
 
     hashed_password = hash_password(reset_user.new_password)
-    await user_repository.find_one_and_update(
+    updated_user = await user_repository.find_one_and_update(
         {'id': existing_user_id}, password=hashed_password
     )
-    user_reset_cache.remove(password_reset_latest_key(str(existing_user_id)))
+    if updated_user is None:
+        return _password_reset_invalid_response(response_formatter)
+
+    # Invalidate sessions before clearing the reset pointer. Auth trusts a
+    # session cache hit without a DB check, so a pointer-remove failure must
+    # not skip invalidation and leave existing sessions authorized.
     await user_service.invalidate_user_sessions(str(existing_user_id))
+    try:
+        user_reset_cache.remove(password_reset_latest_key(str(existing_user_id)))
+    except Exception as exc:
+        logger.error(
+            f'Failed to clear password-reset pointer for user {existing_user_id}: {exc}'
+        )
     return JSONResponse(
         status_code=status.HTTP_200_OK,
         content=response_formatter.buildSuccessResponse(
