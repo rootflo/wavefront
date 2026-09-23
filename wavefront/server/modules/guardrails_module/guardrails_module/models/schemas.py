@@ -22,6 +22,13 @@ class FailureMode(str, Enum):
     FAIL_CLOSED = 'FAIL_CLOSED'
 
 
+class StreamPreference(str, Enum):
+    """Whether a streamed response may be released before it is complete."""
+
+    BUFFERED = 'BUFFERED'
+    INCREMENTAL = 'INCREMENTAL'
+
+
 #: Adapters this deployment knows how to construct. Validated here rather than
 #: at request time so a typo is a 400 on the settings page instead of a policy
 #: that silently checks nothing - an unregistered adapter is indistinguishable
@@ -198,6 +205,16 @@ class UpdateGuardrailPolicyPayload(BaseModel):
         ),
     )
     adapters: List[AdapterConfigPayload] = Field(default_factory=list)
+    stream: StreamPreference = Field(
+        default=StreamPreference.BUFFERED,
+        description=(
+            'BUFFERED withholds a streamed response until the whole of it has '
+            'been checked. INCREMENTAL releases it as it arrives, keeping back '
+            'enough of the tail that a finding cannot straddle the boundary. '
+            'Only takes effect where every configured adapter supports it; '
+            'the response reports the mode actually in force.'
+        ),
+    )
 
     @field_validator('adapters')
     @classmethod
@@ -239,6 +256,7 @@ class GuardrailPolicyResponse(BaseModel):
     is_enabled: bool
     mode: EnforcementMode
     adapters: List[AdapterConfigPayload]
+    stream: StreamPreference = StreamPreference.BUFFERED
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 

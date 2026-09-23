@@ -15,6 +15,7 @@ from ..contracts import (
     CheckResult,
     FailureClass,
     PolicyAction,
+    StreamCapability,
     WorkflowStage,
 )
 from .base_adapter import BaseAdapter
@@ -53,6 +54,18 @@ class AzureContentSafetyAdapter(BaseAdapter):
     over REST; writing it by hand is preferable to depending on a preview
     package for the one check that detects injection attacks.
     """
+
+    #: Inherited from BaseAdapter, but stated rather than left implicit,
+    #: because it is a decision and not an omission: a guarded stream never
+    #: releases text early while this adapter is configured.
+    #:
+    #: The verdict is a property of the whole passage. ``_moderate`` takes the
+    #: worst severity across its chunks precisely because severity is not
+    #: additive over a prefix -- half a sentence can read as benign and the
+    #: sentence as hateful, and the score for the first is not a partial
+    #: answer to the second. Scanning prefixes would also bill a network call
+    #: per scan rather than one per response.
+    stream_capability = StreamCapability.BUFFERED
 
     def __init__(
         self,

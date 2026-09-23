@@ -20,10 +20,19 @@ from .contracts import (
     PolicyResolver,
     Principal,
     ResolvedPolicy,
+    StreamCapability,
+    StreamMode,
     WorkflowStage,
 )
 from .engine import AuditSink, GuardrailsEngine, StaticPolicyResolver
 from .run_context import get_run_id, run_scope
+from .stream_guard import (
+    GUARDRAIL_CONTROL_KEY,
+    StreamAction,
+    StreamGuard,
+    control_chunk,
+    is_control_chunk,
+)
 from .verdict_cache import (
     SCHEMA_VERSION,
     VERDICT_CACHE_CHAR_BUDGET,
@@ -39,6 +48,7 @@ from .verdict_cache import (
 
 __all__ = [
     'DISABLED_POLICY',
+    'GUARDRAIL_CONTROL_KEY',
     'SCHEMA_VERSION',
     'VERDICT_CACHE_CHAR_BUDGET',
     'AdapterSpec',
@@ -59,13 +69,19 @@ __all__ = [
     'Principal',
     'ResolvedPolicy',
     'StaticPolicyResolver',
+    'StreamAction',
+    'StreamCapability',
+    'StreamGuard',
+    'StreamMode',
     'TieredVerdictCache',
     'VerdictCache',
     'WorkflowStage',
     'build_local_cache',
     'carries_content',
+    'control_chunk',
     'decode_decision',
     'encode_decision',
     'get_run_id',
+    'is_control_chunk',
     'run_scope',
 ]

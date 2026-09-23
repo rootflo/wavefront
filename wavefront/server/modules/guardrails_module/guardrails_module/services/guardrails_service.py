@@ -72,18 +72,22 @@ class GuardrailsService:
         is_enabled: bool,
         mode: str,
         adapters: List[Dict[str, Any]],
+        stream: str = 'BUFFERED',
     ) -> Dict[str, Any]:
         """Create or replace a namespace's policy."""
         logger.info(
             f'Updating guardrail policy for namespace {namespace} - '
-            f'enabled={is_enabled}, mode={mode}, adapters={len(adapters)}'
+            f'enabled={is_enabled}, mode={mode}, adapters={len(adapters)}, '
+            f'stream={stream}'
         )
 
+        # policy_config is replaced wholesale, so every key it should carry
+        # has to be written here. A caller that omits one silently reverts it.
         await self.guardrail_policy_repository.upsert(
             {'namespace': namespace},
             is_enabled=is_enabled,
             mode=mode,
-            policy_config={'adapters': adapters},
+            policy_config={'adapters': adapters, 'stream': stream},
         )
 
         # Invalidate before re-reading so a concurrent reader cannot repopulate
@@ -107,6 +111,9 @@ class GuardrailsService:
             'is_enabled': policy['is_enabled'],
             'mode': policy['mode'],
             'adapters': config.get('adapters', []),
+            # Absent on every row written before the field existed, which is
+            # the same answer those rows were enforcing anyway.
+            'stream': config.get('stream', 'BUFFERED'),
             'created_at': policy.get('created_at'),
             'updated_at': policy.get('updated_at'),
         }
@@ -126,6 +133,7 @@ def build_resolved_policy(
     adapter_entries: Any,
     version: Any = None,
     describe: str = 'policy',
+    stream: Any = None,
 ):
     """Turn stored (or draft) adapter config into flo_ai's ResolvedPolicy.
 
@@ -141,6 +149,7 @@ def build_resolved_policy(
         ResolvedPolicy,
         WorkflowStage,
     )
+    from flo_ai.guardrails.contracts import StreamCapability
 
     specs = []
     for entry in adapter_entries or []:
@@ -166,11 +175,28 @@ def build_resolved_policy(
             )
             raise
 
+    # Unlike a malformed adapter entry above, an unrecognised stream value is
+    # logged and defaulted rather than raised on. The two failures are not
+    # comparable: a bad adapter entry means a check the operator believes is
+    # running is not, so the whole policy is refused; a bad stream value means
+    # the response is delivered more slowly than asked for, which costs
+    # latency and nothing else.
+    resolved_stream = StreamCapability.BUFFERED
+    if stream is not None:
+        try:
+            resolved_stream = StreamCapability(stream)
+        except ValueError:
+            logger.warning(
+                f'Unknown guardrail stream mode {stream!r} in {describe}; '
+                f'buffering the response instead'
+            )
+
     return ResolvedPolicy(
         is_enabled=True,
         mode=EnforcementMode(mode),
         adapters=tuple(specs),
         version=version,
+        stream=resolved_stream,
     )
 
 
@@ -197,9 +223,11 @@ class DatabasePolicyResolver:
         if not policy.get('is_enabled'):
             return DISABLED_POLICY
 
+        config = policy.get('policy_config') or {}
         return build_resolved_policy(
             mode=policy.get('mode', 'MONITOR'),
-            adapter_entries=(policy.get('policy_config') or {}).get('adapters', []),
+            adapter_entries=config.get('adapters', []),
             version=policy.get('updated_at'),
             describe=f'namespace {namespace}',
+            stream=config.get('stream'),
         )
