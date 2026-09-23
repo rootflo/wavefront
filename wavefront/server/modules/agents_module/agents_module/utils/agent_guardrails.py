@@ -122,7 +122,7 @@ def guardrail_llm_decorator(
 
 
 @contextmanager
-def guardrail_run_scope() -> Iterator[None]:
+def guardrails() -> Iterator[None]:
     """Bind the current request id as the guardrail run id for this block.
 
     Reuses the platform's request id rather than minting a separate one, so a
@@ -144,3 +144,44 @@ def guardrail_run_scope() -> Iterator[None]:
 
     with run_scope(get_current_request_id()):
         yield
+
+
+def declare_retract_support(llm: Any) -> bool:
+    """Tell a ``GuardedLLM`` that its consumer can withdraw text already shown.
+
+    ``GuardedLLM`` refuses to release a response incrementally unless the call
+    site asserts this, and it is right to: incremental release can end in a
+    retract, and a consumer that ignores one leaves withdrawn text on screen.
+    The wrapper cannot see what is downstream of it, so the assertion has to
+    come from something that can.
+
+    Deliberately not a parameter on ``apply_guardrails``. Guardrails are
+    attached when the agent is built, which is before anyone knows whether
+    this request streams, and the same builder serves the workflow nodes and
+    the non-streaming path. Setting it there would grant incremental release
+    to every consumer of a guarded LLM, including ones that read chunks as
+    ``chunk.get('content')`` and would therefore append a replacement to the
+    very text it replaces -- ``chat_inference_service.stream`` does exactly
+    that, and is only safe today because the chat path is not yet guarded.
+
+    So this is called by the one consumer that does handle a retract, next to
+    where it attaches itself, and the claim it is making is checkable from
+    those two lines alone.
+
+    Returns whether anything was declared, which is False for an unguarded
+    agent - the ordinary case when no policy applies to the namespace.
+    """
+    try:
+        from flo_ai.llm.guarded_llm import GuardedLLM
+    except ImportError:
+        return False
+
+    if not isinstance(llm, GuardedLLM):
+        return False
+
+    # Reaching past the constructor because the flag has to be set after the
+    # agent is built, for the reason above. The tidier home for this is a
+    # public setter in flo_ai; until then this is the single place that knows
+    # the attribute's name.
+    llm._supports_retract = True
+    return True

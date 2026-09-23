@@ -14,7 +14,8 @@ from agents_module.services.agent_stream_events import (
 )
 from agents_module.utils.agent_guardrails import (
     apply_guardrails,
-    guardrail_run_scope,
+    declare_retract_support,
+    guardrails,
 )
 from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.models.llm_inference_config import LlmInferenceConfig
@@ -24,6 +25,18 @@ from flo_ai import AgentBuilder, Agent, BaseMessage, FloUtils
 from flo_ai.helpers.generation_params import normalize_generation_params
 from flo_ai.llm import OpenAI, Anthropic, Gemini, OllamaLLM, OpenAIVLLM, AzureOpenAI
 from flo_ai.tool.base_tool import Tool
+
+try:
+    from flo_ai.llm.guarded_llm import GuardrailBlocked
+except ImportError:
+    # Guardrails is an optional extra (see apply_guardrails). Defining a
+    # stand-in keeps the except arm below valid without making every entry
+    # point that never asked for enforcement depend on the extra; nothing
+    # raises it, so the arm is simply never taken.
+    class GuardrailBlocked(Exception):
+        retract = False
+
+
 from flo_cloud.cloud_storage import CloudStorageManager
 from common_module.log.logger import logger
 from llm_inference_config_module.services.llm_inference_config_service import (
@@ -370,7 +383,7 @@ class AgentInferenceService:
         start_time = time.time()
 
         # Use a generic prompt that allows the agent to use the variables
-        with guardrail_run_scope():
+        with guardrails():
             result: List[BaseMessage] = await agent.run(inputs, variables=variables)
 
         execution_time = time.time() - start_time
@@ -605,11 +618,23 @@ class AgentInferenceService:
         - Tools or an output schema: no deltas, but a `tool_called`/
           `tool_result` pair per tool call, then the whole reply in `output`.
 
-        A namespace with AFTER_MODEL guardrail checks is a third case in
-        practice: GuardedLLM.stream holds the response back until it has vetted
-        all of it, so the deltas arrive together at the end. That is the
-        guarantee working as intended - a chunk already delivered cannot be
-        recalled - and it looks like non-streaming from the console.
+        A namespace with AFTER_MODEL guardrail checks changes what the deltas
+        look like, and how much depends on the policy:
+
+        - Buffered (the default, and forced whenever any configured check
+          cannot rule on a prefix): nothing is released until the whole
+          response has been vetted, so the reply arrives as one delta at the
+          end and looks like non-streaming from the console.
+        - Incremental: text is released behind a margin wide enough that a
+          finding cannot straddle the boundary. In flo_ai's sizing that is 384
+          characters held back and a scan only from 640 characters on, so a
+          short reply still arrives in one piece and a long one arrives in
+          sentence-sized batches rather than token by token.
+
+        Either way a `retract` can follow, withdrawing text already sent - see
+        `AgentEventType.RETRACT`. A consumer that ignores it would leave
+        withheld text on screen, which is why `declare_retract_support` is
+        called only where the tap is attached.
 
         The run itself is a task rather than an inline await, because a
         generator cannot yield while it is awaiting: the events have to reach
@@ -624,6 +649,11 @@ class AgentInferenceService:
         # way - they are how a tool-using run stays legible without deltas.
         streams_deltas = can_stream(agent)
         if streams_deltas:
+            # These two lines are one statement: the tap handles a retract
+            # control chunk, which is exactly what lets the guard underneath
+            # it release before the response is complete. Neither belongs
+            # without the other.
+            declare_retract_support(agent.llm)
             agent.llm = StreamingTapLLM(agent.llm, queue.put_nowait)
         instrument_tools(agent, queue.put_nowait)
 
@@ -637,7 +667,7 @@ class AgentInferenceService:
 
         async def run() -> List[BaseMessage]:
             try:
-                with guardrail_run_scope():
+                with guardrails():
                     return await agent.run(inputs, variables=variables)
             finally:
                 queue.put_nowait(done)
@@ -698,9 +728,27 @@ class AgentInferenceService:
             logger.info(f'Streaming inference cancelled for agent {agent_name}')
             raise
 
+        except GuardrailBlocked as exc:
+            # Split from the generic arm below because a block is the one
+            # failure that can arrive *after* part of the reply is already on
+            # screen. An error frame alone does not take that text back - the
+            # console renders the error beside it - so the refused text would
+            # sit there permanently. The retract goes first, and empty,
+            # because nothing of a blocked response may be shown.
+            #
+            # Not logged with exception(): the decision was already logged
+            # with its operator detail by GuardedLLM, and a policy refusal is
+            # not a crash worth a stack trace.
+            if getattr(exc, 'retract', False):
+                yield make_event(AgentEventType.RETRACT, content='', reason=str(exc))
+            logger.warning(
+                f'Streaming inference blocked by policy for agent {agent_name} '
+                f'(retract={getattr(exc, "retract", False)})'
+            )
+            yield make_event(AgentEventType.ERROR, error=str(exc))
+
         except Exception as exc:
-            # Includes GuardrailBlocked, whose message is written for the
-            # caller. There is no status code left to set - the 200 went out
-            # with the headers - so the failure travels in-band.
+            # There is no status code left to set - the 200 went out with the
+            # headers - so the failure travels in-band.
             logger.exception(f'Streaming inference failed for agent {agent_name}')
             yield make_event(AgentEventType.ERROR, error=str(exc))

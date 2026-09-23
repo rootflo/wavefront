@@ -593,6 +593,16 @@ const AgentDetail: React.FC = () => {
               replaceLastAssistantMessage((current) => current + (event.content ?? ''));
               break;
 
+            // A guardrail withdrew text already on screen. `content` is the
+            // whole of what may now be shown, not a delta, so it overwrites
+            // rather than appends. Recorded in the event list too: a silent
+            // rewrite of the bubble is indistinguishable from the model
+            // having said the corrected thing all along.
+            case 'retract':
+              replaceLastAssistantMessage(() => event.content ?? '');
+              setStreamingEvents((prev) => [...prev, event]);
+              break;
+
             case 'output': {
               const result =
                 typeof event.result === 'string' ? event.result : JSON.stringify(event.result ?? '', null, 2);

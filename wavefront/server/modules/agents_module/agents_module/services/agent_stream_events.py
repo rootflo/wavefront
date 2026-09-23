@@ -21,6 +21,14 @@ from typing import Any, AsyncIterator, Callable, Dict, List, Optional
 from common_module.log.logger import logger
 from flo_ai.llm.base_llm import BaseLLM
 
+try:
+    from flo_ai.guardrails.stream_guard import GUARDRAIL_CONTROL_KEY
+except ImportError:
+    # Same posture as apply_guardrails: guardrails is an optional extra. The
+    # literal is safe to restate because it is a wire-format key, and without
+    # the extra installed no control chunk can ever arrive to match it.
+    GUARDRAIL_CONTROL_KEY = 'guardrail'
+
 
 class AgentEventType:
     """Event names carried in the ``event_type`` field of every frame.
@@ -34,6 +42,12 @@ class AgentEventType:
     TOOL_CALLED = 'tool_called'
     TOOL_RESULT = 'tool_result'
     TOOL_FAILED = 'tool_failed'
+    #: Everything sent as ``content_delta`` so far is withdrawn; ``content``
+    #: carries what to render in its place. Emitted when a guardrail revises
+    #: text it had already released, and when a block arrives after release
+    #: has begun - in which case the replacement is empty and an ``error``
+    #: follows it.
+    RETRACT = 'retract'
     OUTPUT = 'output'
     ERROR = 'error'
 
@@ -161,6 +175,10 @@ class StreamingTapLLM(BaseLLM):
 
         parts: List[str] = []
         async for chunk in self._inner_llm.stream(messages):
+            control = chunk.get(GUARDRAIL_CONTROL_KEY) if chunk else None
+            if control is not None:
+                parts = self._apply_control(control, parts)
+                continue
             content = chunk.get('content') if chunk else None
             if not content:
                 continue
@@ -168,6 +186,36 @@ class StreamingTapLLM(BaseLLM):
             self._emit(make_event(AgentEventType.CONTENT_DELTA, content=content))
 
         return _StreamedResponse(''.join(parts))
+
+    def _apply_control(self, control: Dict[str, Any], parts: List[str]) -> List[str]:
+        """Act on a guardrail control chunk; return the reply text to keep.
+
+        Only ``retract`` is actioned. An unrecognised action is passed over
+        rather than treated as a retract: a future control chunk that this
+        version does not understand is not grounds for throwing away a reply
+        that policy has not actually objected to.
+        """
+        if control.get('action') != 'retract':
+            logger.warning(
+                f'Ignoring unrecognised guardrail control action '
+                f'{control.get("action")!r} on the agent stream'
+            )
+            return parts
+
+        # ``replacement`` is the whole of what may now be shown, not a delta,
+        # so the tracked reply is replaced rather than appended to - that is
+        # what keeps get_message_content's answer consistent with what the
+        # console was told to render. ``or ''`` rather than a get() default:
+        # the key is always present and may be None.
+        replacement = control.get('replacement') or ''
+        self._emit(
+            make_event(
+                AgentEventType.RETRACT,
+                content=replacement,
+                reason=control.get('message'),
+            )
+        )
+        return [replacement]
 
     async def stream(
         self,
