@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Spinner } from '@app/components/ui/spinner';
 import { Textarea } from '@app/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from '@app/components/ui/popover';
+import { DOCUMENT_ACCEPT_ATTRIBUTE, IMAGE_ACCEPT_ATTRIBUTE } from '@app/constants/upload';
 import { LLMInferenceConfig } from '@app/types/llm-inference-config';
 import { ChatMessageContent, ImageContent, DocumentContent } from '@app/types/chat-message';
 import clsx from 'clsx';
@@ -39,7 +40,7 @@ interface ChatBotProps {
     base64: string;
     base64Content: string;
     mimeType: string;
-    documentType: 'pdf' | 'txt';
+    documentType: string;
   }>;
   handleRemoveImage: (index: number) => void;
   handleRemoveDocument: (index: number) => void;
@@ -312,7 +313,7 @@ const ChatBot = ({
           <input
             type="file"
             id="imageInput"
-            accept="image/*"
+            accept={IMAGE_ACCEPT_ATTRIBUTE}
             onChange={handleImageUpload}
             className="hidden"
             disabled={uploadingImage}
@@ -321,7 +322,7 @@ const ChatBot = ({
           <input
             type="file"
             id="documentInput"
-            accept=".pdf,.txt,application/pdf,text/plain"
+            accept={DOCUMENT_ACCEPT_ATTRIBUTE}
             onChange={handleDocumentUpload}
             className="hidden"
             disabled={uploadingDocument}

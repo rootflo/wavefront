@@ -2,6 +2,8 @@
 Utility functions for processing inference inputs
 """
 
+import base64
+import binascii
 from typing import Any, List, Union
 from fastapi import HTTPException, status
 from flo_ai import (
@@ -12,6 +14,11 @@ from flo_ai import (
     UserMessage,
 )
 from common_module.log.logger import logger
+from agents_module.utils.document_text_extraction import (
+    EXTRACTABLE_DOCUMENT_MIME_TYPES,
+    DocumentExtractionError,
+    extract_document_text,
+)
 from agents_module.utils.mime_type_utils import (
     ensure_supported_document_mime_type,
     ensure_supported_image_mime_type,
@@ -116,16 +123,30 @@ def process_inference_inputs(
                         else raw_document
                     )
 
-                    resolved_inputs.append(
-                        UserMessage(
-                            content=DocumentMessageContent(
-                                base64=document_base64,
+                    # Office and CSV files are converted to text here rather
+                    # than forwarded as a document block: no provider this
+                    # deployment targets can parse them. `document_mime_type` is
+                    # None for an unresolvable mime, which means "assume PDF" --
+                    # the `in` test keeps that case on the native path.
+                    if document_mime_type in EXTRACTABLE_DOCUMENT_MIME_TYPES:
+                        document_content = TextMessageContent(
+                            text=_extract_document_to_text(
+                                base64_value=document_base64,
                                 mime_type=document_mime_type,
-                                url=input_content.get('document_url'),
                                 file_name=input_content.get('file_name'),
+                                url=input_content.get('document_url'),
+                                index=index,
                             )
                         )
-                    )
+                    else:
+                        document_content = DocumentMessageContent(
+                            base64=document_base64,
+                            mime_type=document_mime_type,
+                            url=input_content.get('document_url'),
+                            file_name=input_content.get('file_name'),
+                        )
+
+                    resolved_inputs.append(UserMessage(content=document_content))
                 elif is_text_message(input_content):
                     resolved_inputs.append(
                         UserMessage(
@@ -154,6 +175,52 @@ def process_inference_inputs(
                 )
 
     return resolved_inputs
+
+
+def _extract_document_to_text(
+    base64_value: Any,
+    mime_type: str,
+    file_name: Any,
+    url: Any,
+    index: int,
+) -> str:
+    """Decode and extract an Office/CSV document, as a 400 on any failure.
+
+    Separated from the loop only to keep the three failure modes — no bytes, bad
+    base64, unreadable document — from burying the branch they belong to.
+    """
+    if not isinstance(base64_value, str) or not base64_value:
+        # A URL is the realistic way to get here: the schema accepts
+        # `document_url`, but nothing server-side fetches remote documents, and
+        # flo_ai's default formatter refuses them too. Failing here beats
+        # handing the model an empty text block.
+        detail = (
+            f'Document at index {index} has no inline content. '
+            f'Send `document_base64`; `document_url` is not supported for '
+            f'`{mime_type}` files.'
+            if url
+            else f'Document at index {index} has no `document_base64` content.'
+        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
+
+    try:
+        data = base64.b64decode(base64_value, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f'Invalid base64 document data at index {index}: {exc}',
+        ) from exc
+
+    try:
+        return extract_document_text(
+            data, mime_type, file_name if isinstance(file_name, str) else None
+        )
+    except DocumentExtractionError as exc:
+        logger.error(f'Document extraction failed at input index {index}: {exc}')
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f'Could not read the document at index {index}. {exc}',
+        ) from exc
 
 
 def validate_inference_inputs_media(

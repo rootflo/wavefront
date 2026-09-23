@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
     unixodbc \
     unixodbc-dev \
+    antiword \
     curl \
     gnupg2 \
     apt-transport-https \

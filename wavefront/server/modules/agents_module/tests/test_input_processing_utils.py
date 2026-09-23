@@ -156,18 +156,75 @@ class TestProcessInferenceInputs:
         # base64 field should contain base64-encoded string
         assert result[0].content.base64 == document_base64_str
 
-    def test_document_message_txt_rejected(self):
-        """Test that a non-PDF document is rejected at the boundary
+    def test_document_message_txt_becomes_text_content(self):
+        """A text/plain document is extracted rather than rejected.
 
-        The document formatter only rasterizes PDFs, so a text/plain document
-        would fail inside the provider call rather than here.
+        This used to assert a 400: the formatter only rasterizes PDFs, so
+        anything else failed. Extractable types now never reach the formatter —
+        they are converted to a TextMessageContent at the boundary.
         """
-        document_base64_str = base64.b64encode(b'fake_txt_content').decode('utf-8')
+        document_base64_str = base64.b64encode(b'quarterly notes').decode('utf-8')
         doc_input = {
             'role': 'user',
             'content': {
                 'document_base64': document_base64_str,
                 'mime_type': 'text/plain',
+                'file_name': 'notes.txt',
+            },
+        }
+
+        result = process_inference_inputs([doc_input])
+
+        assert len(result) == 1
+        assert isinstance(result[0].content, TextMessageContent)
+        assert 'quarterly notes' in result[0].content.text
+        assert 'notes.txt' in result[0].content.text
+
+    def test_document_message_csv_becomes_text_content(self):
+        document_base64_str = base64.b64encode(b'region,revenue\nEast,1200\n').decode(
+            'utf-8'
+        )
+        doc_input = {
+            'role': 'user',
+            'content': {
+                'document_base64': document_base64_str,
+                'mime_type': 'text/csv',
+                'file_name': 'q3.csv',
+            },
+        }
+
+        result = process_inference_inputs([doc_input])
+
+        assert isinstance(result[0].content, TextMessageContent)
+        assert 'East,1200' in result[0].content.text
+
+    def test_pdf_still_becomes_document_content(self):
+        """The native path must be untouched by the extraction branch."""
+        document_base64_str = base64.b64encode(b'%PDF-1.4 fake').decode('utf-8')
+        doc_input = {
+            'role': 'user',
+            'content': {
+                'document_base64': document_base64_str,
+                'mime_type': 'application/pdf',
+            },
+        }
+
+        result = process_inference_inputs([doc_input])
+
+        assert isinstance(result[0].content, DocumentMessageContent)
+
+    def test_unreadable_extractable_document_is_a_400(self):
+        """A .docx that is not a zip fails at the boundary, not mid-run."""
+        document_base64_str = base64.b64encode(b'definitely not a zip').decode('utf-8')
+        doc_input = {
+            'role': 'user',
+            'content': {
+                'document_base64': document_base64_str,
+                'mime_type': (
+                    'application/vnd.openxmlformats-officedocument'
+                    '.wordprocessingml.document'
+                ),
+                'file_name': 'broken.docx',
             },
         }
 
@@ -175,7 +232,26 @@ class TestProcessInferenceInputs:
             process_inference_inputs([doc_input])
 
         assert exc_info.value.status_code == 400
-        assert 'Unsupported document type `text/plain`' in str(exc_info.value.detail)
+        assert 'index 0' in str(exc_info.value.detail)
+
+    def test_extractable_document_url_without_bytes_is_rejected(self):
+        """Nothing server-side fetches remote documents."""
+        doc_input = {
+            'role': 'user',
+            'content': {
+                'document_url': 'https://example.com/report.docx',
+                'mime_type': (
+                    'application/vnd.openxmlformats-officedocument'
+                    '.wordprocessingml.document'
+                ),
+            },
+        }
+
+        with pytest.raises(HTTPException) as exc_info:
+            process_inference_inputs([doc_input])
+
+        assert exc_info.value.status_code == 400
+        assert 'document_url' in str(exc_info.value.detail)
 
     def test_document_message_default_type(self):
         """Test DocumentMessage processing"""
@@ -337,14 +413,24 @@ class TestFileNamePropagation:
         )
 
     def test_document_data_url_with_unsupported_mime_rejected(self):
-        """Test that the mime in a document data URL is still gated"""
+        """Test that the mime in a document data URL is still gated
+
+        Uses .pptx: this asserted on text/csv until CSV became an extractable
+        type, and the point of the test is the data-URL mime being read at all.
+        """
         document_base64_str = base64.b64encode(b'fake').decode('utf-8')
+        pptx_mime = (
+            'application/vnd.openxmlformats-officedocument'
+            '.presentationml.presentation'
+        )
 
         inputs = [
             {
                 'role': 'user',
                 'content': {
-                    'document_base64': f'data:text/csv;base64,{document_base64_str}'
+                    'document_base64': (
+                        f'data:{pptx_mime};base64,{document_base64_str}'
+                    )
                 },
             }
         ]
@@ -352,7 +438,7 @@ class TestFileNamePropagation:
         with pytest.raises(HTTPException) as exc_info:
             process_inference_inputs(inputs)
 
-        assert 'Unsupported document type `text/csv`' in str(exc_info.value.detail)
+        assert f'Unsupported document type `{pptx_mime}`' in str(exc_info.value.detail)
 
     def test_plain_document_base64_untouched(self):
         """Test that a document with no data URL prefix is passed through as-is"""

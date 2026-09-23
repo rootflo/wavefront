@@ -148,11 +148,16 @@ class TestEnsureSupportedDocumentMimeType:
         assert ensure_supported_document_mime_type(mime_type=mime_type) == mime_type
 
     def test_unsupported_type_rejected(self):
+        """PowerPoint has no extractor, so the gate still turns it away.
+
+        This asserted on .docx until Office formats became supported; the gate
+        now covers PDF plus everything document_text_extraction can read.
+        """
         with pytest.raises(HTTPException) as exc_info:
             ensure_supported_document_mime_type(
                 mime_type=(
                     'application/vnd.openxmlformats-officedocument'
-                    '.wordprocessingml.document'
+                    '.presentationml.presentation'
                 )
             )
 
@@ -163,10 +168,10 @@ class TestEnsureSupportedDocumentMimeType:
         """No mime_type, but the file name gives it away"""
         with pytest.raises(HTTPException) as exc_info:
             ensure_supported_document_mime_type(
-                base64_value=PDF_B64, file_name='quarterly.xlsx'
+                base64_value=PDF_B64, file_name='quarterly.pptx'
             )
 
-        assert 'spreadsheetml.sheet' in str(exc_info.value.detail)
+        assert 'presentationml.presentation' in str(exc_info.value.detail)
 
     def test_unresolvable_type_allowed(self):
         """Missing mime is allowed - the formatter defaults it to PDF"""
@@ -217,6 +222,11 @@ class TestValidateInferenceInputsMedia:
         assert 'at index 1' in str(exc_info.value.detail)
 
     def test_unsupported_document_rejected(self):
+        """PowerPoint has no extractor, so the gate still turns it away.
+
+        This used to assert on text/plain, which is now supported: the gate
+        covers PDF plus everything `document_text_extraction` can read.
+        """
         with pytest.raises(HTTPException) as exc_info:
             validate_inference_inputs_media(
                 [
@@ -224,16 +234,59 @@ class TestValidateInferenceInputsMedia:
                         'role': 'user',
                         'content': {
                             'document_base64': PDF_B64,
-                            'mime_type': 'text/plain',
+                            'mime_type': (
+                                'application/vnd.openxmlformats-officedocument'
+                                '.presentationml.presentation'
+                            ),
                         },
                     }
                 ]
             )
 
-        assert 'Unsupported document type `text/plain`' in str(exc_info.value.detail)
+        assert 'Unsupported document type' in str(exc_info.value.detail)
+
+    def test_extractable_document_types_accepted(self):
+        """The Office and CSV formats are converted to text, so they pass."""
+        for mime_type in (
+            'text/plain',
+            'text/csv',
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument'
+            '.wordprocessingml.document',
+            'application/vnd.ms-excel',
+            'application/vnd.openxmlformats-officedocument' '.spreadsheetml.sheet',
+        ):
+            validate_inference_inputs_media(
+                [
+                    {
+                        'role': 'user',
+                        'content': {
+                            'document_base64': PDF_B64,
+                            'mime_type': mime_type,
+                        },
+                    }
+                ]
+            )
 
     def test_document_mime_inferred_from_file_name(self):
-        """A docx sent with no mime_type is still caught via its file name"""
+        """A docx sent with no mime_type is resolved via its file name.
+
+        Previously this asserted rejection; the resolution is what matters and
+        is unchanged, only the verdict flipped.
+        """
+        validate_inference_inputs_media(
+            [
+                {
+                    'role': 'user',
+                    'content': {
+                        'document_base64': PDF_B64,
+                        'file_name': 'contract.docx',
+                    },
+                }
+            ]
+        )
+
+    def test_unsupported_mime_still_inferred_from_file_name(self):
         with pytest.raises(HTTPException):
             validate_inference_inputs_media(
                 [
@@ -241,7 +294,7 @@ class TestValidateInferenceInputsMedia:
                         'role': 'user',
                         'content': {
                             'document_base64': PDF_B64,
-                            'file_name': 'contract.docx',
+                            'file_name': 'deck.pptx',
                         },
                     }
                 ]

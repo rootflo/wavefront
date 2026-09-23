@@ -16,12 +16,26 @@ So the supported set below is the Azure OpenAI capability set, which is what
 this deployment targets. Providers with native document support (Anthropic,
 Gemini, Vertex) accept more, but gating on the narrower set keeps a workflow
 from succeeding on one agent's provider and failing on the next one's.
+
+Documents come in two kinds, and the distinction matters to the caller of this
+module rather than to the gate itself:
+
+- *Native* types reach the provider as a document block and are bounded by what
+  the provider can parse -- today that is PDF alone.
+- *Extractable* types are converted to text before they ever reach flo_ai (see
+  ``document_text_extraction``), so they are bounded by what we can parse here,
+  not by the provider. That is why Word, Excel and CSV are supported even though
+  no provider this deployment targets accepts them.
 """
 
 import re
 from typing import Optional, Tuple
 
 from fastapi import HTTPException, status
+
+from agents_module.utils.document_text_extraction import (
+    EXTRACTABLE_DOCUMENT_MIME_TYPES,
+)
 
 SUPPORTED_IMAGE_MIME_TYPES = frozenset(
     {
@@ -32,20 +46,32 @@ SUPPORTED_IMAGE_MIME_TYPES = frozenset(
     }
 )
 
-SUPPORTED_DOCUMENT_MIME_TYPES = frozenset({'application/pdf'})
+# Sent to the provider as a document block, as-is.
+NATIVE_DOCUMENT_MIME_TYPES = frozenset({'application/pdf'})
+
+SUPPORTED_DOCUMENT_MIME_TYPES = (
+    NATIVE_DOCUMENT_MIME_TYPES | EXTRACTABLE_DOCUMENT_MIME_TYPES
+)
 
 # Spellings clients send that mean one of the supported types above.
 _MIME_ALIASES = {
     'image/jpg': 'image/jpeg',
     'image/pjpeg': 'image/jpeg',
     'application/x-pdf': 'application/pdf',
+    # Browsers and mail clients disagree on how to spell CSV. Note that Windows
+    # reports `.csv` as `application/vnd.ms-excel`, which is indistinguishable
+    # from a real legacy spreadsheet by mime alone -- that one is resolved from
+    # the file's magic bytes in `document_text_extraction`, not here.
+    'application/csv': 'text/csv',
+    'text/comma-separated-values': 'text/csv',
+    'application/vnd.msexcel': 'application/vnd.ms-excel',
 }
 
 # Fallback when the caller sends raw base64 with no mime_type but does send a
 # file name — common enough that rejecting it outright would be unhelpful.
-# Deliberately includes unsupported formats too: resolving `report.docx` to its
-# real mime is what lets the gate reject it with a useful message instead of
-# waving it through as an unknown type.
+# Deliberately includes unsupported formats too (PowerPoint, SVG, HEIC):
+# resolving `deck.pptx` to its real mime is what lets the gate reject it with a
+# useful message instead of waving it through as an unknown type.
 _EXTENSION_TO_MIME = {
     'png': 'image/png',
     'jpg': 'image/jpeg',
@@ -192,6 +218,10 @@ def ensure_supported_document_mime_type(
     Unlike images, an unresolvable mime type is allowed through: the document
     formatter treats a missing mime as ``application/pdf``, and callers have
     long sent raw PDF base64 with no mime type.
+
+    That fail-open is why callers must branch on the *returned* value rather
+    than on "not a PDF" — ``None`` here means "assume PDF", and must never be
+    routed to a text extractor.
     """
     resolved = resolve_mime_type(mime_type, base64_value, file_name, url)
     supported = ', '.join(sorted(SUPPORTED_DOCUMENT_MIME_TYPES))
@@ -200,7 +230,7 @@ def ensure_supported_document_mime_type(
         _reject(
             f'Unsupported document type `{resolved}`{_position(index)}. '
             f'Supported document types: {supported}. '
-            f'Convert the file to PDF, or send it as an image input.'
+            f'Convert the file to one of those, or send it as an image input.'
         )
 
     return resolved
