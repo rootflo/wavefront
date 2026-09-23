@@ -24,6 +24,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
         'max_failed_attempts': '3',
         'lockout_duration_hours': '24',
         'inactive_days_threshold': '60',
+        'password_reset_cooldown_seconds': '60',
+        'password_reset_max_per_email': '3',
+        'password_reset_rate_window_seconds': '3600',
     },
     'recaptcha': {
         'enabled': 'false',
@@ -34,6 +37,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
 }
 
 RESET_CODE = 'mock_reset_code'
+PASSWORD_RESET_PURPOSE = 'password_reset'
 
 
 def build_cache_manager(user_id: str) -> Mock:
@@ -43,7 +47,12 @@ def build_cache_manager(user_id: str) -> Mock:
     cache_manager.get_str.side_effect = (
         lambda key: user_id if key == RESET_CODE else session_payload
     )
-    cache_manager.add = Mock()
+    # pop_str is GETDEL for single-use reset codes (and related pointers).
+    cache_manager.pop_str.side_effect = (
+        lambda key, default=None: user_id if key == RESET_CODE else default
+    )
+    cache_manager.add = Mock(return_value=True)
+    cache_manager.incr_with_expiry = Mock(return_value=1)
     return cache_manager
 
 
@@ -56,6 +65,7 @@ def build_token_service(user_id: str, session_id: str) -> Mock:
         'role_id': 'test_role_id',
         'session_id': session_id,
         'code': RESET_CODE,
+        'purpose': PASSWORD_RESET_PURPOSE,
     }
     token_service.token_expiry = 3600
     token_service.temporary_token_expiry = 600
