@@ -3,6 +3,7 @@ import yaml
 from common_module.log.logger import logger
 from flo_cloud.cloud_storage import CloudStorageManager
 from db_repo_module.models.dynamic_query_yaml import DynamicQueryYaml
+from sqlalchemy import func, select
 from typing import Optional
 
 
@@ -64,47 +65,73 @@ class DynamicQueryService:
             )
             raise ValueError(f'Failed to upload YAML file: {str(e)}')
 
-    async def retrive_dynamic_query_yaml(self, page_number, page_size):
-        """Retrieve dynamic query YAML files from cloud storage with pagination
+    async def retrive_dynamic_query_yaml(
+        self, datasource_id: str, limit: int = 50, offset: int = 0
+    ):
+        """Retrieve dynamic query YAML metadata for a datasource from the database
 
         Args:
-            page_number: The page number for pagination
-            page_size: Number of items per page
+            datasource_id: The ID of the datasource to filter queries by
+            limit: Maximum number of records to return
+            offset: Number of records to skip
 
         Returns:
             dict: Contains yamls list, pagination info, and total count
         """
-        files_keys, has_more = self.cloud_storage_manager.list_files(
-            self.bucket_name, self.prefix, page_size, page_number
-        )
-        yamls = []
+        async with self.dynamic_query_repo.session() as session:
+            total_count = await session.scalar(
+                select(func.count())
+                .select_from(DynamicQueryYaml)
+                .where(DynamicQueryYaml.datasource_id == datasource_id)
+            )
+            query = (
+                select(DynamicQueryYaml)
+                .where(DynamicQueryYaml.datasource_id == datasource_id)
+                .order_by(DynamicQueryYaml.created_at.desc())
+                .offset(offset)
+                .limit(limit)
+            )
+            records = (await session.scalars(query)).all()
 
-        for file_key in files_keys:
-            splitter = file_key.split('/')
+        yamls = []
+        for record in records:
+            splitter = record.file_path.split('/')
             if len(splitter) >= 3:
                 yamls.append(
-                    {'version': splitter[1], 'file': splitter[2], 'full_path': file_key}
+                    {
+                        'version': splitter[1],
+                        'file': splitter[2],
+                        'full_path': record.file_path,
+                    }
                 )
 
         return {
             'yamls': yamls,
-            'has_more': has_more,
-            'page_number': page_number,
-            'page_size': page_size,
-            'total_count': len(yamls),
+            'has_more': offset + len(yamls) < total_count,
+            'limit': limit,
+            'offset': offset,
+            'total_count': total_count,
         }
 
-    async def get_dynamic_yaml_query(self, query_id: str):
+    async def get_dynamic_yaml_query(self, datasource_id: str, query_id: str):
         """Get dynamic yaml query from cloud storage
 
         Args:
+            datasource_id: The ID of the datasource the query must belong to
             query_id: The ID of the query
 
         Returns:
             dict: Contains yaml query and their parameters
         """
-        file_key = f'{self.prefix}/{query_id}.yaml'
-        file_content = self.cloud_storage_manager.read_file(self.bucket_name, file_key)
+        query_record = await self.dynamic_query_repo.find_one(
+            name=query_id, datasource_id=datasource_id
+        )
+        if not query_record:
+            return None, None
+
+        file_content = self.cloud_storage_manager.read_file(
+            self.bucket_name, query_record.file_path
+        )
         yaml_query = yaml.safe_load(file_content.decode('utf-8'))
         if not yaml_query:
             raise ValueError('YAML file is invalid')
