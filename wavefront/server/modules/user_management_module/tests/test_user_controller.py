@@ -12,26 +12,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from user_management_module.utils.user_utils import get_session_cache_key
-
-
-async def create_session(test_session: AsyncSession, test_user_id, test_session_id):
-    user = User(
-        id=test_user_id,
-        email='test@example.com',
-        password='hashed_password',
-        first_name='Test',
-        last_name='User',
-    )
-
-    # Create a session in the database
-    db_session = Session(
-        id=test_session_id, user_id=test_user_id, device_info='test_device'
-    )
-
-    async with test_session() as session:
-        session.add(user)
-        session.add(db_session)
-        await session.commit()
+from flo_testing import seed_user_session as create_session
 
 
 async def setup_role_with_console_resource(test_session: AsyncSession, role_id: str):
@@ -96,13 +77,23 @@ async def test_create_user_success(
 @pytest.mark.asyncio
 async def test_send_reset_password_email_soft_deleted_user(
     test_client,
+    setup_containers,
     mock_auth_admin_user_functions,
     test_session,
     test_user_id,
     test_session_id,
     auth_token,
 ):
-    """Test that soft deleted users cannot send reset password emails"""
+    """Soft deleted users get no reset mail, and no hint that they did not.
+
+    The reply is byte-for-byte the one a live account gets, so the only thing
+    worth asserting on is that no mail went out -- a distinguishable response
+    here would turn the endpoint into an account enumeration oracle.
+    """
+    _, _, user_container = setup_containers
+    email_service = user_container.email_send_service()
+    email_service.send.reset_mock()
+
     # Create test user and session
     await create_session(test_session, test_user_id, test_session_id)
 
@@ -122,8 +113,79 @@ async def test_send_reset_password_email_soft_deleted_user(
         '/floware/v1/user/send-reset-password-email?email=deleted_reset@example.com',
         headers={'Authorization': f'Bearer {auth_token}'},
     )
-    assert response.status_code == 400
-    assert 'No user found with this email ID' in response.json()['meta']['error']
+    assert response.status_code == 200
+    assert 'If an account exists' in response.json()['data']['message']
+    email_service.send.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_send_reset_password_email_unknown_email(
+    test_client,
+    setup_containers,
+    mock_auth_admin_user_functions,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    """An address with no account behind it is answered exactly like one that has."""
+    _, _, user_container = setup_containers
+    email_service = user_container.email_send_service()
+    email_service.send.reset_mock()
+
+    await create_session(test_session, test_user_id, test_session_id)
+
+    response = test_client.post(
+        '/floware/v1/user/send-reset-password-email?email=nobody@example.com',
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 200
+    assert 'If an account exists' in response.json()['data']['message']
+    email_service.send.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_send_reset_password_email_locked_user(
+    test_client,
+    setup_containers,
+    mock_auth_admin_user_functions,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    """A locked account is not told it is locked.
+
+    Lockout details can only ever be produced for an address that does resolve
+    to a user, so returning them would leak the very fact the generic message
+    exists to hide. The login endpoint is where a locked user learns about it.
+    """
+    _, _, user_container = setup_containers
+    email_service = user_container.email_send_service()
+    email_service.send.reset_mock()
+
+    await create_session(test_session, test_user_id, test_session_id)
+
+    async with test_session() as session:
+        user = User(
+            email='locked_reset@example.com',
+            password='hashedpassword',
+            first_name='Locked',
+            last_name='User',
+            failed_attempts=3,
+            locked_until=datetime.now(timezone.utc) + timedelta(hours=1),
+        )
+        session.add(user)
+        await session.commit()
+
+    response = test_client.post(
+        '/floware/v1/user/send-reset-password-email?email=locked_reset@example.com',
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 200
+    assert 'If an account exists' in response.json()['data']['message']
+    assert 'locked' not in response.text.lower()
+    email_service.send.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -171,7 +233,6 @@ async def test_update_user_success(
     test_user_id,
     test_session_id,
     auth_token,
-    mock_admin_false_functions,
 ):
     await create_session(test_session, test_user_id, test_session_id)
     # Create test user and role
@@ -245,6 +306,171 @@ async def test_get_all_users(
     )
     assert response.status_code == 200
     assert len(response.json()['data']['users']) >= 2
+
+
+async def _seed_listing_users(test_session):
+    """Two extra users so a listing has something to return beyond the caller."""
+    async with test_session() as session:
+        session.add_all(
+            [
+                User(
+                    email='user1@example.com',
+                    password='hashedpassword',
+                    first_name='User',
+                    last_name='One',
+                ),
+                User(
+                    email='user2@example.com',
+                    password='hashedpassword',
+                    first_name='User',
+                    last_name='Two',
+                ),
+            ]
+        )
+        await session.commit()
+
+
+# force_fetch=1 on every listing call below is load-bearing, not incidental. The
+# shared cache_manager mock returns a truthy session blob for *any* key, so a
+# cached read would short-circuit the endpoint and the assertions would be made
+# against the mock rather than against the query under test.
+
+
+@pytest.mark.asyncio
+async def test_get_all_users_non_admin_with_flag_omits_roles(
+    test_client,
+    mock_auth_non_admin_user_functions,
+    set_non_admin_data_access_flag,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    """A non-admin gets id/name/email only — no roles, groups or username."""
+    set_non_admin_data_access_flag(True)
+    await create_session(test_session, test_user_id, test_session_id)
+    await _seed_listing_users(test_session)
+
+    response = test_client.get(
+        '/floware/v1/users?force_fetch=1',
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+
+    assert response.status_code == 200
+    users = response.json()['data']['users']
+    assert len(users) >= 2
+    for user in users:
+        assert set(user.keys()) == {'id', 'first_name', 'last_name', 'email'}
+        assert 'roles' not in user
+        assert 'groups' not in user
+        assert 'username' not in user
+
+
+@pytest.mark.asyncio
+async def test_get_all_users_non_admin_cannot_filter_by_role(
+    test_client,
+    mock_auth_non_admin_user_functions,
+    set_non_admin_data_access_flag,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    """The role filter is refused: the filtered set would itself disclose roles.
+
+    Withholding the roles field is pointless if `?roles=admin` still returns
+    exactly the admins, so the parameter is rejected rather than ignored.
+    """
+    set_non_admin_data_access_flag(True)
+    await create_session(test_session, test_user_id, test_session_id)
+
+    response = test_client.get(
+        '/floware/v1/users?roles=admin&force_fetch=1',
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+
+    assert response.status_code == 403
+    assert 'admin access' in response.json()['meta']['error']
+
+
+@pytest.mark.asyncio
+async def test_get_all_users_non_admin_without_flag_denied(
+    test_client,
+    mock_auth_non_admin_user_functions,
+    set_non_admin_data_access_flag,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    """With the flag off the listing stays admin-only."""
+    set_non_admin_data_access_flag(False)
+    await create_session(test_session, test_user_id, test_session_id)
+    await _seed_listing_users(test_session)
+
+    response = test_client.get(
+        '/floware/v1/users?force_fetch=1',
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+
+    assert response.status_code == 401
+    # `data` is present but null on an error response, so no listing leaks
+    # through the denial.
+    assert response.json()['data'] is None
+    assert 'Access denied' in response.json()['meta']['error']
+
+
+@pytest.mark.asyncio
+async def test_get_all_users_admin_still_gets_roles_and_groups(
+    test_client,
+    mock_auth_admin_user_functions,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    """Regression guard: trimming the non-admin payload must not trim the admin one."""
+    await create_session(test_session, test_user_id, test_session_id)
+    await _seed_listing_users(test_session)
+
+    response = test_client.get(
+        '/floware/v1/users?force_fetch=1',
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+
+    assert response.status_code == 200
+    users = response.json()['data']['users']
+    assert len(users) >= 2
+    for user in users:
+        assert set(user.keys()) == {
+            'id',
+            'first_name',
+            'last_name',
+            'email',
+            'username',
+            'roles',
+            'groups',
+        }
+
+
+@pytest.mark.asyncio
+async def test_get_all_users_admin_can_filter_by_role(
+    test_client,
+    mock_auth_admin_user_functions,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    """The 403 above is scoped to non-admins — admins keep the filter."""
+    await create_session(test_session, test_user_id, test_session_id)
+
+    response = test_client.get(
+        '/floware/v1/users?roles=admin&force_fetch=1',
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+
+    assert response.status_code == 200
 
 
 @pytest.mark.asyncio
@@ -788,12 +1014,17 @@ async def test_authenticate_enabled_user_without_roles_fails(
 @pytest.mark.asyncio
 async def test_send_reset_password_email(
     test_client,
+    setup_containers,
     mock_auth_admin_user_functions,
     test_session,
     test_user_id,
     test_session_id,
     auth_token,
 ):
+    _, _, user_container = setup_containers
+    email_service = user_container.email_send_service()
+    email_service.send.reset_mock()
+
     # Create test user and session
     await create_session(test_session, test_user_id, test_session_id)
 
@@ -813,7 +1044,10 @@ async def test_send_reset_password_email(
         headers={'Authorization': f'Bearer {auth_token}'},
     )
     assert response.status_code == 200
-    assert 'password reset link has been sent' in response.json()['data']['message']
+    # Same message the unknown-email, deleted and locked cases return; the mail
+    # itself is what separates a live account from those, not the reply.
+    assert 'If an account exists' in response.json()['data']['message']
+    email_service.send.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -900,7 +1134,6 @@ async def test_update_user_invalid_role(
 @pytest.mark.asyncio
 async def test_non_admin_user_create_user(
     test_client,
-    mock_admin_false_functions,
     test_session,
     test_user_id,
     test_session_id,
@@ -1135,6 +1368,13 @@ async def test_admin_user_creat_non_admin_user_with_empty_role(
     mocking_user_controller_is_admin,
     mocking_user_controller_get_current_user,
 ):
+    """An empty role list is still rejected, but by the console-resource guard.
+
+    Roles became optional on the schema when groups landed, since a user may
+    draw their access from a group instead. Supplying neither roles nor a group
+    that grants console access is now a 400 from that check rather than a 422
+    from the request model.
+    """
     await create_session(test_session, test_user_id, test_session_id)
     new_user_data = {
         'email': 'test2@example.com',
@@ -1149,7 +1389,8 @@ async def test_admin_user_creat_non_admin_user_with_empty_role(
         json=new_user_data,
         headers={'Authorization': f'Bearer {auth_token}'},
     )
-    assert response.status_code == 422
+    assert response.status_code == 400
+    assert 'console resource' in str(response.json())
 
 
 @pytest.mark.asyncio
@@ -1233,7 +1474,6 @@ async def test_unblock_nonexistent_user(
 @pytest.mark.asyncio
 async def test_unblock_user_non_admin_access_denied(
     test_client,
-    mock_admin_false_functions,  # This makes the user non-admin
     test_session,
     test_user_id,
     test_session_id,
@@ -1319,3 +1559,54 @@ async def test_unblock_already_unlocked_user(
     # Should still return success (idempotent operation)
     assert response.status_code == 200
     assert 'successfully unblocked' in response.json()['data']['message']
+
+
+@pytest.mark.asyncio
+async def test_get_user_by_id_includes_lockout_fields(
+    test_client,
+    mock_auth_admin_user_functions,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+    setup_containers,
+):
+    """GET /users/{id} returns lockout/login fields from user.to_dict()."""
+    await create_session(test_session, test_user_id, test_session_id)
+
+    # Bypass the hour-long user cache so this assertion hits the database.
+    _, _, user_container = setup_containers
+    user_container.cache_manager().get_str.return_value = None
+
+    locked_until = datetime.now(timezone.utc) + timedelta(hours=2)
+    last_failed = datetime.now(timezone.utc) - timedelta(minutes=1)
+    last_login = datetime.now(timezone.utc) - timedelta(days=1)
+    target_user_id = None
+
+    async with test_session() as session:
+        target = User(
+            email='lockout_fields@example.com',
+            password='hashedpassword',
+            first_name='Lockout',
+            last_name='Fields',
+            failed_attempts=3,
+            locked_until=locked_until,
+            last_failed_attempt=last_failed,
+            last_login_at=last_login,
+        )
+        session.add(target)
+        await session.flush()
+        target_user_id = str(target.id)
+        await session.commit()
+
+    response = test_client.get(
+        f'/floware/v1/users/{target_user_id}?force_fetch=1',
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 200
+    user_data = response.json()['data']['user']
+    assert user_data['failed_attempts'] == 3
+    assert user_data['locked_until'] is not None
+    assert user_data['last_failed_attempt'] is not None
+    assert user_data['last_login_at'] is not None
+    assert user_data['email'] == 'lockout_fields@example.com'

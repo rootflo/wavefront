@@ -1,23 +1,32 @@
 import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
-import { ResourceCardSkeleton } from '@app/components/ResourceCard';
 import { Button } from '@app/components/ui/button';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
-import WorkflowPipelineCard from '@app/components/WorkflowPipelineCard';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
 import { useGetWorkflowPipelines, useGetWorkflows } from '@app/hooks';
 import { getWorkflowPipelinesKey } from '@app/hooks/data/query-keys';
+import { copyToClipboard } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { WorkflowPipelineListItem } from '@app/types/workflow';
 import { useQueryClient } from '@tanstack/react-query';
-import React, { useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { Copy, Trash2 } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Link, useParams } from 'react-router';
 import CreateWorkflowPipelineDialog from './CreateWorkflowPipelineDialog';
+
+const formatCreatedAt = (value?: string) => {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleString();
+};
+
+const ALL_WORKFLOWS = '__all__';
 
 const WorkflowPipelinesPage: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { notifySuccess, notifyError } = useNotifyStore();
   const [searchTerm, setSearchTerm] = useState('');
@@ -26,28 +35,41 @@ const WorkflowPipelinesPage: React.FC = () => {
   const [deleting, setDeleting] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
-  // Fetch workflow pipelines and workflows
   const { data: workflowPipelines = [], isLoading: workflowPipelinesLoading } = useGetWorkflowPipelines(appId);
   const { data: workflows = [] } = useGetWorkflows(appId);
 
-  const filteredWorkflowPipelines = workflowPipelines.filter((pipeline) => {
-    const matchesSearch =
-      pipeline.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      pipeline.id.toLowerCase().includes(searchTerm.toLowerCase());
+  const workflowNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const item of workflows) {
+      map.set(item.id, item.name);
+    }
+    return map;
+  }, [workflows]);
 
-    // Filter by workflow_id if workflow is selected
-    const matchesWorkflow = !workflow || pipeline.workflow_id === workflow;
+  const filteredWorkflowPipelines = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    const filtered = workflowPipelines.filter((pipeline) => {
+      const matchesWorkflow = !workflow || pipeline.workflow_id === workflow;
+      if (!matchesWorkflow) return false;
+      if (!term) return true;
+      const workflowName = (workflowNameById.get(pipeline.workflow_id || '') || '').toLowerCase();
+      return (
+        pipeline.name.toLowerCase().includes(term) ||
+        pipeline.id.toLowerCase().includes(term) ||
+        workflowName.includes(term)
+      );
+    });
 
-    return matchesSearch && matchesWorkflow;
-  });
+    return [...filtered].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+  }, [workflowPipelines, searchTerm, workflow, workflowNameById]);
 
-  const handleWorkflowChange = (value: string) => {
-    setWorkflow(value);
-  };
-
-  const handleDeleteClick = (e: React.MouseEvent, pipeline: WorkflowPipelineListItem) => {
-    e.stopPropagation();
-    setDeleteItem(pipeline);
+  const handleCopyId = async (id: string) => {
+    const copied = await copyToClipboard(id);
+    if (copied) {
+      notifySuccess('Copied ID to clipboard');
+    } else {
+      notifyError('Failed to copy ID');
+    }
   };
 
   const handleDelete = async () => {
@@ -61,20 +83,11 @@ const WorkflowPipelinesPage: React.FC = () => {
         queryKey: getWorkflowPipelinesKey(appId || ''),
       });
       setDeleteItem(null);
-    } catch (error) {
-      console.error('Error deleting workflow pipeline:', error);
+    } catch {
       notifyError('Failed to delete workflow pipeline');
     } finally {
       setDeleting(false);
     }
-  };
-
-  const handleDeleteCancel = () => {
-    setDeleteItem(null);
-  };
-
-  const handleCreatePipeline = () => {
-    setCreateDialogOpen(true);
   };
 
   const handleCreateSuccess = () => {
@@ -85,75 +98,109 @@ const WorkflowPipelinesPage: React.FC = () => {
   };
 
   return (
-    <div className="w-full pb-8">
-      <div className="mb-8 flex items-center justify-end">
-        <div className="flex items-center gap-4">
-          <Select value={workflow || undefined} onValueChange={(value) => handleWorkflowChange(value || '')}>
-            <SelectTrigger className="w-48 cursor-pointer">
-              <SelectValue placeholder="All Workflows" />
-            </SelectTrigger>
-            <SelectContent>
-              {workflows.map((wf) => (
-                <SelectItem key={wf.id} value={wf.id}>
-                  {wf.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
+      <div className="mb-8 flex shrink-0 items-center justify-end gap-3">
+        <Select
+          value={workflow || ALL_WORKFLOWS}
+          onValueChange={(value) => setWorkflow(value === ALL_WORKFLOWS ? '' : value)}
+        >
+          <SelectTrigger className="w-48 cursor-pointer">
+            <SelectValue placeholder="All Workflows" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_WORKFLOWS}>All Workflows</SelectItem>
+            {workflows.map((wf) => (
+              <SelectItem key={wf.id} value={wf.id}>
+                {wf.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Input
+          type="text"
+          placeholder="Search"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-[180px]"
+        />
+        <Button onClick={() => setCreateDialogOpen(true)}>Create Pipeline</Button>
+      </div>
 
-          <Input
-            type="text"
-            placeholder="Search"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-[180px]"
+      {workflowPipelinesLoading ? (
+        <p className="frost-text-muted text-sm">Loading pipelines...</p>
+      ) : filteredWorkflowPipelines.length === 0 ? (
+        <div className="mt-10 flex justify-center">
+          <EmptyStateCard
+            title="No pipelines found"
+            description="Get started by creating your first pipeline"
+            actionText="Create Pipeline"
+            onActionClick={() => setCreateDialogOpen(true)}
           />
-
-          <Button onClick={handleCreatePipeline}>Create Pipeline</Button>
         </div>
-      </div>
+      ) : (
+        <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-xl border ring-1">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>ID</TableHead>
+                <TableHead>Workflow</TableHead>
+                <TableHead>Version</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredWorkflowPipelines.map((pipeline) => (
+                <TableRow key={pipeline.id}>
+                  <TableCell className="max-w-[220px] truncate font-medium" title={pipeline.name}>
+                    <Link
+                      to={`/apps/${appId}/workflows/pipelines/${pipeline.id}`}
+                      className="hover:underline focus-visible:underline"
+                    >
+                      {pipeline.name}
+                    </Link>
+                  </TableCell>
+                  <TableCell className="max-w-[240px]">
+                    <div className="flex items-center gap-1">
+                      <span className="truncate font-mono text-xs" title={pipeline.id}>
+                        {pipeline.id}
+                      </span>
+                      <Button variant="ghost" size="sm" title="Copy ID" onClick={() => void handleCopyId(pipeline.id)}>
+                        <Copy className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                  <TableCell className="max-w-[220px] truncate text-sm" title={pipeline.workflow_id || ''}>
+                    {workflowNameById.get(pipeline.workflow_id || '') || pipeline.workflow_id || '—'}
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {pipeline.workflow_version !== undefined ? `v${pipeline.workflow_version}` : '—'}
+                  </TableCell>
+                  <TableCell className="text-sm whitespace-nowrap">{formatCreatedAt(pipeline.created_at)}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <Button variant="ghost" size="sm" title="Delete" onClick={() => setDeleteItem(pipeline)}>
+                        <Trash2 className="h-4 w-4 text-red-600" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
 
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {workflowPipelinesLoading ? (
-          <>
-            {Array.from({ length: 6 }).map((_, index) => (
-              <ResourceCardSkeleton key={index} metadataCount={2} />
-            ))}
-          </>
-        ) : filteredWorkflowPipelines.length === 0 ? (
-          <div className="col-span-full mt-10 flex justify-center">
-            <EmptyStateCard
-              title="No pipelines found"
-              description="Get started by creating your first pipeline"
-              actionText="Create Pipeline"
-              onActionClick={handleCreatePipeline}
-            />
-          </div>
-        ) : (
-          <>
-            {filteredWorkflowPipelines.map((workflowPipeline) => (
-              <WorkflowPipelineCard
-                key={workflowPipeline.id}
-                pipeline={workflowPipeline}
-                onClick={(id) => navigate(`/apps/${appId}/workflows/pipelines/${id}`)}
-                onDeleteClick={handleDeleteClick}
-              />
-            ))}
-          </>
-        )}
-      </div>
-
-      {/* Delete Confirmation Dialog */}
       <DeleteConfirmationDialog
         isOpen={!!deleteItem}
         title="Delete Workflow Pipeline"
         message={`Are you sure you want to delete "${deleteItem?.name}"? This action cannot be undone.`}
         onConfirm={handleDelete}
-        onCancel={handleDeleteCancel}
+        onCancel={() => setDeleteItem(null)}
         loading={deleting}
       />
 
-      {/* Create Pipeline Dialog */}
       {appId && (
         <CreateWorkflowPipelineDialog
           isOpen={createDialogOpen}

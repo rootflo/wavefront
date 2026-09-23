@@ -8,7 +8,7 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "boto3<=1.38.40",
+    "boto3>=1.42.22,<2.0.0",
     "google-cloud-kms>=3.5.1",
     "tenacity>=8.4.1",
     "common-module",
@@ -16,12 +16,12 @@ dependencies = [
     "pyyaml>=6.0.3,<7"
 ]
 
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
-
 [tool.uv]
 package = true
+# Inert here: uv reads resolver settings only from the workspace root
+# (wavefront/server/pyproject.toml), which is where the real cooldown lives.
+# Kept so the setting survives if this package is ever split out.
+exclude-newer = "7 days"
 
 [tool.uv.sources]
 common-module = { workspace = true }

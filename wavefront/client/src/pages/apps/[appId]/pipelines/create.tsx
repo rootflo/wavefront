@@ -64,16 +64,16 @@ const CreatePipeline: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-white p-6">
+    <div className="min-h-screen bg-transparent p-6">
       <div className="mx-auto max-w-3xl">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Create Pipeline</h1>
-          <p className="mt-2 text-gray-600">Configure a new DBT pipeline</p>
+          <h1 className="frost-text text-3xl font-bold">Create Pipeline</h1>
+          <p className="frost-text-muted mt-2">Configure a new DBT pipeline</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label htmlFor="project_name" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="project_name" className="frost-text block text-sm font-medium">
               Project Name <span className="text-red-500">*</span>
             </label>
             <input
@@ -88,7 +88,7 @@ const CreatePipeline: React.FC = () => {
           </div>
 
           <div>
-            <label htmlFor="description" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="description" className="frost-text block text-sm font-medium">
               Description
             </label>
             <textarea
@@ -102,7 +102,7 @@ const CreatePipeline: React.FC = () => {
           </div>
 
           <div>
-            <label htmlFor="schedule_interval" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="schedule_interval" className="frost-text block text-sm font-medium">
               Schedule Interval (Cron Expression)
             </label>
             <input
@@ -113,13 +113,13 @@ const CreatePipeline: React.FC = () => {
               className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-black focus:ring-black focus:outline-none"
               placeholder="0 6 * * *"
             />
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="frost-text-muted mt-1 text-sm">
               Example: "0 6 * * *" runs daily at 6 AM UTC, "0 */12 * * *" runs Every 12 hours
             </p>
           </div>
 
           <div>
-            <label htmlFor="start_at" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="start_at" className="frost-text block text-sm font-medium">
               Start Date <span className="text-red-500">*</span>
             </label>
             <input
@@ -130,11 +130,11 @@ const CreatePipeline: React.FC = () => {
               className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-black focus:ring-black focus:outline-none"
             />
             {errors.start_at && <p className="mt-1 text-sm text-red-600">{errors.start_at}</p>}
-            <p className="mt-1 text-sm text-gray-500">Pipeline start time (immutable after creation)</p>
+            <p className="frost-text-muted mt-1 text-sm">Pipeline start time (immutable after creation)</p>
           </div>
 
           <div>
-            <label htmlFor="type" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="type" className="frost-text block text-sm font-medium">
               Pipeline Type
             </label>
             <select
@@ -159,7 +159,7 @@ const CreatePipeline: React.FC = () => {
               type="button"
               onClick={handleCancel}
               disabled={loading}
-              className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-50 disabled:bg-gray-100"
+              className="frost-text flex-1 rounded-lg border border-gray-300 bg-white px-4 py-2 hover:bg-gray-50 disabled:bg-gray-100"
             >
               Cancel
             </button>

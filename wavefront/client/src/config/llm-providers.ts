@@ -491,26 +491,36 @@ export function mergeParameters(
 
   if (!savedParams) return defaultParams;
 
+  const schema = getProviderConfig(provider)?.parameters ?? {};
+
   // Override defaults with saved values, removing undefined/null values
   const merged = { ...defaultParams };
   Object.entries(savedParams).forEach(([key, value]) => {
-    if (value !== undefined && value !== null) {
-      merged[key] = value;
-    }
+    // A key this provider has no field for is an orphan left by an earlier
+    // provider. Carrying it through is how a config ends up holding both
+    // max_tokens and max_completion_tokens, which providers reject outright.
+    if (value === undefined || value === null || !(key in schema)) return;
+    merged[key] = value;
   });
 
   return merged;
 }
 
 /**
- * Clean parameters by removing undefined, null, and empty string values
+ * Clean parameters by removing undefined, null, and empty string values.
+ * With a provider, also drops keys that provider has no field for, so a
+ * provider switch cannot leave a stale parameter behind in the saved config.
  */
-export function cleanParameters(params: Record<string, unknown>): Record<string, unknown> {
+export function cleanParameters(
+  params: Record<string, unknown>,
+  provider?: InferenceEngineType
+): Record<string, unknown> {
+  const schema = provider ? (getProviderConfig(provider)?.parameters ?? {}) : null;
   const cleaned: Record<string, unknown> = {};
   Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== '') {
-      cleaned[key] = value;
-    }
+    if (value === undefined || value === null || value === '') return;
+    if (schema && !(key in schema)) return;
+    cleaned[key] = value;
   });
   return cleaned;
 }

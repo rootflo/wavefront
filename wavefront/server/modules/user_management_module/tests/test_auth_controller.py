@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import json
 import os
 from unittest.mock import Mock
 from uuid import uuid4
@@ -13,6 +14,7 @@ from db_repo_module.models.user_role import UserRole
 from dependency_injector import providers
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
+from user_management_module.constants.cache import user_by_id_cache_key
 from user_management_module.utils.password_utils import hash_password
 
 
@@ -829,3 +831,162 @@ async def test_authenticate_inactive_account_with_lockout(
     assert 'Account locked' in response.json()['meta']['error']
     # Should NOT show inactivity error when user is also locked
     assert 'disabled due to inactivity' not in response.json()['meta']['error']
+
+
+@pytest.mark.asyncio
+async def test_locked_account_wrong_password_increments_attempts(
+    test_client, test_session: AsyncSession, test_user_id
+):
+    """Wrong passwords while locked keep updating attempt count and timestamp."""
+    hashed_password = hash_password('test_password')
+    current_time = datetime.now(timezone.utc)
+    locked_until = current_time + timedelta(hours=1)
+    initial_failed_attempt = current_time - timedelta(minutes=5)
+
+    async with test_session() as session:
+        session.add(
+            User(
+                id=test_user_id,
+                email='locked_increment@example.com',
+                password=hashed_password,
+                first_name='Locked',
+                last_name='User',
+                failed_attempts=3,
+                locked_until=locked_until,
+                last_failed_attempt=initial_failed_attempt,
+            )
+        )
+        await session.commit()
+        # Persist round-trips TIMESTAMP WITHOUT TIME ZONE; compare against the
+        # stored value so TZ/microsecond normalization does not false-fail.
+        stored_user = await session.get(User, test_user_id)
+        original_locked_until = stored_user.locked_until
+
+    response = test_client.post(
+        '/floware/v1/authenticate',
+        json={'email': 'locked_increment@example.com', 'password': 'wrong_password'},
+    )
+    assert response.status_code == 423
+
+    async with test_session() as session:
+        updated_user = await session.get(User, test_user_id)
+        assert updated_user.failed_attempts == 4
+
+        # Lock window must stay unchanged; wrong passwords while locked
+        # must not extend locked_until.
+        assert updated_user.locked_until == original_locked_until
+
+        last_failed = updated_user.last_failed_attempt
+        if last_failed.tzinfo is None:
+            last_failed = last_failed.replace(tzinfo=timezone.utc)
+        assert last_failed > initial_failed_attempt
+
+
+@pytest.mark.asyncio
+async def test_locked_account_correct_password_does_not_increment_attempts(
+    test_client, test_session: AsyncSession, test_user_id
+):
+    """A correct password during lockout is blocked but not counted as a failure."""
+    hashed_password = hash_password('test_password')
+    current_time = datetime.now(timezone.utc)
+    locked_until = current_time + timedelta(hours=1)
+
+    async with test_session() as session:
+        session.add(
+            User(
+                id=test_user_id,
+                email='locked_correct@example.com',
+                password=hashed_password,
+                first_name='Locked',
+                last_name='User',
+                failed_attempts=3,
+                locked_until=locked_until,
+                last_failed_attempt=current_time,
+            )
+        )
+        await session.commit()
+
+    response = test_client.post(
+        '/floware/v1/authenticate',
+        json={'email': 'locked_correct@example.com', 'password': 'test_password'},
+    )
+    assert response.status_code == 423
+
+    async with test_session() as session:
+        updated_user = await session.get(User, test_user_id)
+        assert updated_user.failed_attempts == 3
+
+
+@pytest.mark.asyncio
+async def test_successful_login_refreshes_user_cache_with_last_login(
+    test_client, test_session: AsyncSession, test_user_id, setup_containers
+):
+    """Successful login updates last_login_at in DB and the shared user cache."""
+    role_id = str(uuid4())
+    resource_id = str(uuid4())
+    hashed_password = hash_password('test_password')
+    old_login_date = datetime.now(timezone.utc) - timedelta(days=10)
+
+    async with test_session() as session:
+        session.add(
+            User(
+                id=test_user_id,
+                email='cache_login@example.com',
+                password=hashed_password,
+                first_name='Cache',
+                last_name='User',
+                last_login_at=old_login_date,
+                failed_attempts=1,
+                last_failed_attempt=old_login_date,
+            )
+        )
+        role = Role(id=role_id, name='Cache Login Role')
+        resource = Resource(
+            id=resource_id,
+            key='console_resource',
+            value='test_resource',
+            scope=ResourceScope.CONSOLE,
+        )
+        session.add_all([role, resource])
+        await session.commit()
+        session.add_all(
+            [
+                RoleResource(role_id=role_id, resource_id=resource_id),
+                UserRole(user_id=test_user_id, role_id=role_id),
+            ]
+        )
+        await session.commit()
+
+    response = test_client.post(
+        '/floware/v1/authenticate',
+        json={'email': 'cache_login@example.com', 'password': 'test_password'},
+    )
+    assert response.status_code == 200
+
+    async with test_session() as session:
+        updated_user = await session.get(User, test_user_id)
+        assert updated_user.failed_attempts == 0
+        assert updated_user.last_failed_attempt is None
+        assert updated_user.last_login_at is not None
+        updated_login = updated_user.last_login_at
+        if updated_login.tzinfo is None:
+            updated_login = updated_login.replace(tzinfo=timezone.utc)
+        assert updated_login > old_login_date
+
+    _, _, user_container = setup_containers
+    cache_manager = user_container.cache_manager()
+    cache_key = user_by_id_cache_key(str(test_user_id))
+    cached_payloads = [
+        json.loads(call.args[1])
+        for call in cache_manager.add.call_args_list
+        if call.args and call.args[0] == cache_key
+    ]
+    assert cached_payloads
+    latest = cached_payloads[-1]
+    cached_login = datetime.fromisoformat(latest['last_login_at'])
+    if cached_login.tzinfo is None:
+        cached_login = cached_login.replace(tzinfo=timezone.utc)
+    assert cached_login > old_login_date
+    assert cached_login == updated_login
+    assert latest['failed_attempts'] == 0
+    assert latest['last_failed_attempt'] is None

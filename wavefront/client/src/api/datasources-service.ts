@@ -1,17 +1,17 @@
 import { IApiResponse } from '@app/lib/axios';
 import {
-  AllYamlsResponse,
+  AllDynamicQueriesResponse,
   Datasource,
   DatasourceData,
   DatasourceResourcesData,
   DatasourceResourcesResponse,
   DatasourceResponse,
-  DeleteYamlResponse,
-  ExecuteYamlResponse,
-  ReadYamlResponse,
+  DeleteDynamicQueryResponse,
+  ExecuteDynamicQueryResponse,
+  ReadDynamicQueryResponse,
   TestDatasourceData,
   TestDatasourceResponse,
-  YamlResponse,
+  DynamicQueryResponse,
 } from '@app/types/datasource';
 import { AxiosInstance } from 'axios';
 
@@ -84,34 +84,34 @@ export class DatasourcesService {
     return response;
   }
 
-  async createYaml(dataSourceId: string, yamlQuery: string): Promise<YamlResponse> {
+  async createDynamicQuery(dataSourceId: string, dynamicQuery: string): Promise<DynamicQueryResponse> {
     const response = await this.http.put(`/v1/:appId/floware/v1/${dataSourceId}/dynamic-queries`, {
-      dynamic_query: yamlQuery,
+      dynamic_query: dynamicQuery,
     });
     return response;
   }
 
-  async getAllYamls(dataSourceId: string): Promise<AllYamlsResponse> {
+  async getAllDynamicQueries(dataSourceId: string): Promise<AllDynamicQueriesResponse> {
     const response = await this.http.get(`/v1/:appId/floware/v1/${dataSourceId}/dynamic-queries`);
     return response;
   }
 
-  async readYaml(dataSourceId: string, yamlId: string): Promise<ReadYamlResponse> {
-    const response = await this.http.get(`/v1/:appId/floware/v1/${dataSourceId}/dynamic-queries/${yamlId}`);
+  async readDynamicQuery(dataSourceId: string, queryId: string): Promise<ReadDynamicQueryResponse> {
+    const response = await this.http.get(`/v1/:appId/floware/v1/${dataSourceId}/dynamic-queries/${queryId}`);
     return response;
   }
 
-  async deleteYaml(dataSourceId: string, yamlId: string): Promise<DeleteYamlResponse> {
-    const response = await this.http.delete(`/v1/:appId/floware/v1/${dataSourceId}/dynamic-queries/${yamlId}`);
+  async deleteDynamicQuery(dataSourceId: string, queryId: string): Promise<DeleteDynamicQueryResponse> {
+    const response = await this.http.delete(`/v1/:appId/floware/v1/${dataSourceId}/dynamic-queries/${queryId}`);
     return response;
   }
 
-  async executeYaml(
+  async executeDynamicQuery(
     dataSourceId: string,
-    yamlId: string,
+    queryId: string,
     params: Record<string, string>
-  ): Promise<ExecuteYamlResponse> {
-    const response = await this.http.post(`/v1/:appId/floware/v1/${dataSourceId}/dynamic-queries/${yamlId}/execute`, {
+  ): Promise<ExecuteDynamicQueryResponse> {
+    const response = await this.http.post(`/v1/:appId/floware/v1/${dataSourceId}/dynamic-queries/${queryId}/execute`, {
       params: params,
     });
     return response;

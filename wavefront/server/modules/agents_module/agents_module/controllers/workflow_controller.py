@@ -164,6 +164,7 @@ async def workflow_inference(
                     'workflow_id': workflow_id,
                     'namespace': namespace,
                     'execution_time': execution_time,
+                    'variables': request_body.variables,
                     'timestamp': time.time(),
                 }
                 yield f'data: {json.dumps(output_event)}\n\n'
@@ -219,6 +220,9 @@ async def workflow_inference(
             workflow_id=workflow_id,
             namespace=namespace,
             execution_time=execution_time,
+            # The request's variables, not the with_execution_variables() dict:
+            # the internal _wf_execution_id must not leak into the response.
+            variables=request_body.variables,
         )
 
         logger.info(
@@ -375,6 +379,7 @@ async def workflow_inference_v2(
                     'workflow_id': workflow_name,
                     'namespace': namespace,
                     'execution_time': execution_time,
+                    'variables': request_body.variables,
                     'timestamp': time.time(),
                 }
                 yield f'data: {json.dumps(output_event)}\n\n'
@@ -432,6 +437,7 @@ async def workflow_inference_v2(
             workflow_id=workflow_name,
             namespace=namespace,
             execution_time=execution_time,
+            variables=request_body.variables,
         )
 
         logger.info(

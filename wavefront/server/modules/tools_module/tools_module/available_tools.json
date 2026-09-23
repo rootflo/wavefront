@@ -50,6 +50,51 @@
     ],
     "category": "datasource"
   },
+  "datasource_execute_query": {
+    "name": "datasource_execute_query",
+    "description": "Read data from the configured datasource by running a pre-registered dynamic query (works for Postgres, BigQuery, Redshift, or MSSQL). The SQL lives server-side, so a single query can join and aggregate across several tables. Use this to look up existing records before deciding what to write. Returns JSON mapping each query id defined in the query file to its list of result rows, e.g. {\"quotes\": [{...}]}; an empty list means no rows matched, which is a valid result and not an error. On failure it returns a descriptive error string instead.",
+    "parameters": {
+      "datasource_id": {
+        "type": "string",
+        "description": "UUID of the configured datasource"
+      },
+      "query_id": {
+        "type": "string",
+        "description": "Id of the pre-registered dynamic query to run"
+      },
+      "params": {
+        "type": "object",
+        "description": "An object of values for the named parameters the query declares, e.g. {\"p_wavefront_run_id\": \"abc-123\"}. Every declared parameter must be supplied or the call fails. Values are sent as strings. Pass an empty object for queries that declare no parameters.",
+        "required": false
+      },
+      "filter": {
+        "type": "string",
+        "description": "Optional OData filter expression applied on top of the query, e.g. \"status eq 'active' $and amount gt 1000\". Supported operators are eq, gt, lt, lte, gte, contains and in, combined with $and / $or. Only works on queries that include a {{filters}} placeholder.",
+        "required": false
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Maximum number of rows to return. Defaults to 10. Raise it only when more than a lookup is needed.",
+        "required": false
+      },
+      "offset": {
+        "type": "integer",
+        "description": "Number of rows to skip, for paging through a large result set. Defaults to 0.",
+        "required": false
+      },
+      "use_cache": {
+        "type": "boolean",
+        "description": "Set to true to allow a cached result from the last 2 minutes to be returned. Defaults to false so that a read following a write in the same workflow sees the write.",
+        "required": false
+      }
+    },
+    "prefill_values": [
+      "datasource_id",
+      "query_id"
+    ],
+    "required": [],
+    "category": "datasource"
+  },
   "querying_knowlegebase": {
     "name": "querying_knowlegebase",
     "description": "Query the knowlegebase using the configured datasource. Returns a descriptive string indicating success or failure with connection details.",
@@ -78,8 +123,12 @@
   },
   "send_email": {
     "name": "send_email",
-    "description": "Send an email to the specified recipient. Returns a descriptive string indicating success or failure of the email delivery process.",
+    "description": "Send an email to the specified recipient from the connected mailbox. Returns a descriptive string indicating success or failure of the email delivery process.",
     "parameters": {
+      "connection_id": {
+        "type": "string",
+        "description": "UUID of the email connection to send from"
+      },
       "email_id": {
         "type": "string",
         "description": "Email address of the recipient to whom the message will be sent"
@@ -90,13 +139,14 @@
       },
       "email_body": {
         "type": "string",
-        "description": "Body of the email"
+        "description": "Body of the email, as HTML"
       }
     },
     "prefill_values": [
-      "email_id"
+      "connection_id"
     ],
     "required": [
+      "email_id",
       "email_subject",
       "email_body"
     ],

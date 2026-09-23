@@ -10,6 +10,9 @@ from db_repo_module.models.resource import Resource
 from db_repo_module.models.role import Role
 from db_repo_module.models.role_resource import RoleResource
 from db_repo_module.models.user import User
+from db_repo_module.models.user_group import UserGroup
+from db_repo_module.models.user_group_member import UserGroupMember
+from db_repo_module.models.user_group_role import UserGroupRole
 from db_repo_module.models.user_role import UserRole
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from dependency_injector.wiring import Provide
@@ -18,7 +21,7 @@ from fastapi import Depends
 from user_management_module.services.account_lockout_service import (
     AccountLockoutService,
 )
-from user_management_module.services.email_service import EmailService
+from user_management_module.services.email_sender import EmailSender
 from user_management_module.services.user_service import UserService
 from user_management_module.user_container import UserContainer
 
@@ -43,11 +46,25 @@ RoleResourceRepositoryDep = Annotated[
     SQLAlchemyRepository[RoleResource],
     Depends(Provide[UserContainer.role_resource_repository]),
 ]
+UserGroupRepositoryDep = Annotated[
+    SQLAlchemyRepository[UserGroup],
+    Depends(Provide[UserContainer.user_group_repository]),
+]
+UserGroupMemberRepositoryDep = Annotated[
+    SQLAlchemyRepository[UserGroupMember],
+    Depends(Provide[UserContainer.user_group_member_repository]),
+]
+UserGroupRoleRepositoryDep = Annotated[
+    SQLAlchemyRepository[UserGroupRole],
+    Depends(Provide[UserContainer.user_group_role_repository]),
+]
 UserServiceDep = Annotated[UserService, Depends(Provide[UserContainer.user_service])]
 CacheManagerDep = Annotated[CacheManager, Depends(Provide[UserContainer.cache_manager])]
 CommonCacheDep = Annotated[CommonCache, Depends(Provide[CommonContainer.cache_manager])]
 TokenServiceDep = Annotated[TokenService, Depends(Provide[AuthContainer.token_service])]
-EmailServiceDep = Annotated[EmailService, Depends(Provide[UserContainer.email_service])]
+EmailSenderDep = Annotated[
+    EmailSender, Depends(Provide[UserContainer.email_send_service])
+]
 AccountLockoutServiceDep = Annotated[
     AccountLockoutService,
     Depends(Provide[UserContainer.account_lockout_service]),

@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from '@app/components/ui/dialog';
 import { Checkbox } from '@app/components/ui/checkbox';
-import { extractErrorMessage } from '@app/lib/utils';
+import { extractErrorMessage, formatAppName } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { IUser } from '@app/types/user';
 import { App } from '@app/types/app';
@@ -105,12 +105,12 @@ const ManageAppAccessDialog: React.FC<ManageAppAccessDialogProps> = ({ isOpen, o
 
         <div className="max-h-[400px] space-y-3 overflow-y-auto py-4">
           {loading ? (
-            <div className="text-center text-gray-500">Loading apps...</div>
+            <div className="frost-text-muted text-center">Loading apps...</div>
           ) : allApps.length === 0 ? (
-            <div className="text-center text-gray-500">No apps available</div>
+            <div className="frost-text-muted text-center">No apps available</div>
           ) : (
             allApps.map((app: App) => (
-              <div key={app.id} className="flex items-center space-x-3 rounded p-2 hover:bg-gray-50">
+              <div key={app.id} className="hover:bg-frost-glass-strong flex items-center space-x-3 rounded p-2">
                 <Checkbox
                   id={`app-${app.id}`}
                   checked={userAppIds.includes(app.id)}
@@ -120,7 +120,7 @@ const ManageAppAccessDialog: React.FC<ManageAppAccessDialogProps> = ({ isOpen, o
                   htmlFor={`app-${app.id}`}
                   className="flex-1 cursor-pointer text-sm leading-none font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                 >
-                  {app.app_name}
+                  {formatAppName(app.app_name)}
                 </label>
               </div>
             ))

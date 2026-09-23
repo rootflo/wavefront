@@ -8,43 +8,34 @@ from agents_module.services.async_agentic_execution_service import (
 )
 from common_module.log.logger import logger
 from db_repo_module.models.agentic_trigger import AgenticTrigger
-from db_repo_module.models.agentic_trigger_credential import AgenticTriggerCredential
 from db_repo_module.models.agentic_trigger_event import AgenticTriggerEvent
 from db_repo_module.models.workflow import Workflow
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
+from mailer import EmailCapability, EmailProviderABC, NormalizedEmail
+from plugins_module.services.email_connection_service import EmailConnectionService
 
-from triggers_module.providers.base import (
-    NormalizedEmailEvent,
-    TriggerProvider,
-)
-from triggers_module.providers.registry import TriggerProviderRegistry
 from triggers_module.utils.input_builder import (
     EmailTooLargeError,
     build_inference_inputs,
 )
-from triggers_module.utils.token_crypto import TokenCrypto
 
 
 class TriggerEventProcessor:
-    """Worker-side processor: fetches Gmail messages, filters them, and feeds
-    matching ones into the existing v3 async-execution pipeline."""
+    """Worker-side processor: fetches the pushed messages, filters them, and
+    feeds matching ones into the existing v3 async-execution pipeline."""
 
     def __init__(
         self,
         trigger_repository: SQLAlchemyRepository[AgenticTrigger],
-        credential_repository: SQLAlchemyRepository[AgenticTriggerCredential],
         event_repository: SQLAlchemyRepository[AgenticTriggerEvent],
         workflow_repository: SQLAlchemyRepository[Workflow],
-        provider_registry: TriggerProviderRegistry,
-        token_crypto: TokenCrypto,
+        email_connection_service: EmailConnectionService,
         async_execution_service: AsyncAgenticExecutionService,
     ):
         self._triggers = trigger_repository
-        self._credentials = credential_repository
         self._events = event_repository
         self._workflows = workflow_repository
-        self._registry = provider_registry
-        self._crypto = token_crypto
+        self._connections = email_connection_service
         self._async_exec = async_execution_service
 
     async def process(
@@ -55,13 +46,12 @@ class TriggerEventProcessor:
             return {'status': 'ignored', 'reason': 'trigger_not_found'}
         if trigger.status != 'active':
             return {'status': 'ignored', 'reason': f'trigger_status_{trigger.status}'}
-        if not trigger.credential_id:
-            return {'status': 'ignored', 'reason': 'no_credential'}
 
-        provider = self._registry.get(trigger.provider)
-        access_token, _ = await self._fresh_access_token(
-            trigger.credential_id, provider
+        connection = await self._connections.require_active(trigger.connection_id)
+        access_token, _ = await self._connections.get_access_token(
+            trigger.connection_id, capabilities=[EmailCapability.READ]
         )
+        provider = await self._connections.get_provider(connection)
 
         events = await provider.fetch_events(
             access_token=access_token,
@@ -82,7 +72,7 @@ class TriggerEventProcessor:
     async def _advance_cursor(
         self,
         trigger: AgenticTrigger,
-        provider: TriggerProvider,
+        provider: EmailProviderABC,
         raw_payload: Dict[str, Any],
     ) -> None:
         incoming_cursor = provider.extract_push_cursor(raw_payload)
@@ -101,7 +91,7 @@ class TriggerEventProcessor:
         )
 
     async def _handle_single_event(
-        self, trigger: AgenticTrigger, event: NormalizedEmailEvent
+        self, trigger: AgenticTrigger, event: NormalizedEmail
     ) -> Dict[str, Any]:
         existing = await self._events.find_one(
             trigger_id=trigger.id, provider_event_id=event.provider_event_id
@@ -181,7 +171,7 @@ class TriggerEventProcessor:
     async def _dispatch_inference(
         self,
         trigger: AgenticTrigger,
-        event: NormalizedEmailEvent,
+        event: NormalizedEmail,
         inputs: List[Dict[str, Any]],
     ):
         variables = {
@@ -214,43 +204,3 @@ class TriggerEventProcessor:
             access_token=None,
             app_key=None,
         )
-
-    async def _fresh_access_token(
-        self, credential_id: UUID, provider: TriggerProvider
-    ) -> tuple[str, str]:
-        credential = await self._credentials.find_one(id=credential_id)
-        if not credential:
-            raise RuntimeError(f'Credential {credential_id} not found')
-
-        now = datetime.now(timezone.utc)
-        if (
-            credential.encrypted_access_token
-            and credential.token_expires_at
-            and credential.token_expires_at > now
-        ):
-            access_token = self._crypto.decrypt(credential.encrypted_access_token)
-            if not access_token:
-                raise RuntimeError(
-                    f'Credential {credential_id} (account={credential.external_account_id}) '
-                    f'has invalid/undecryptable access_token'
-                )
-            return (access_token, credential.external_account_id)
-
-        refresh_token = self._crypto.decrypt(credential.encrypted_refresh_token)
-        if not refresh_token:
-            raise RuntimeError(
-                f'Credential {credential_id} (account={credential.external_account_id}) '
-                f'has invalid/undecryptable refresh_token'
-            )
-        bundle = await provider.refresh_access_token(refresh_token)
-        if not bundle.access_token:
-            raise RuntimeError(
-                f'Credential {credential_id} (account={credential.external_account_id}) '
-                f'refresh returned empty access_token'
-            )
-        await self._credentials.find_one_and_update(
-            {'id': credential_id},
-            encrypted_access_token=self._crypto.encrypt(bundle.access_token),
-            token_expires_at=bundle.expires_at,
-        )
-        return bundle.access_token, credential.external_account_id

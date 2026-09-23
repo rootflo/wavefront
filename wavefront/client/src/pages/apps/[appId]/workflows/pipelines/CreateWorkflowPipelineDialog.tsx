@@ -103,7 +103,7 @@ const CreateWorkflowPipelineDialog: React.FC<CreateWorkflowPipelineDialogProps> 
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto lg:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Create Pipeline</DialogTitle>
           <DialogDescription>Create a new workflow pipeline</DialogDescription>

@@ -8,6 +8,7 @@ and validated before being used to create agents.
 from typing import List, Optional, Dict, Any, Union, Literal
 from pydantic import BaseModel, Field, field_validator
 
+from flo_ai.helpers.generation_params import CANONICAL_GENERATION_PARAMS
 from flo_ai.models import MessageType
 
 
@@ -198,6 +199,40 @@ class SettingsModel(BaseModel):
     reasoning_pattern: Optional[Literal['DIRECT', 'REACT', 'COT']] = Field(
         None, description='Reasoning pattern'
     )
+    # Generation params, named canonically: each is translated to whatever the
+    # agent's provider calls it (a token limit is max_completion_tokens to
+    # OpenAI, max_output_tokens to Gemini, num_predict to Ollama). Declared
+    # explicitly rather than accepted as a free-form dict, so that an
+    # out-of-range value fails validation and the accepted set is discoverable.
+    max_tokens: Optional[int] = Field(
+        None, gt=0, description='Maximum number of tokens to generate'
+    )
+    top_p: Optional[float] = Field(
+        None, ge=0.0, le=1.0, description='Nucleus sampling probability'
+    )
+    top_k: Optional[int] = Field(None, gt=0, description='Top-k sampling cutoff')
+    frequency_penalty: Optional[float] = Field(
+        None, ge=-2.0, le=2.0, description='Penalty for token frequency'
+    )
+    presence_penalty: Optional[float] = Field(
+        None, ge=-2.0, le=2.0, description='Penalty for token presence'
+    )
+    seed: Optional[int] = Field(
+        None, description='Sampling seed, for reproducible generations'
+    )
+
+    def generation_params(self) -> Dict[str, Any]:
+        """The generation params that were set, by canonical name.
+
+        `temperature` is excluded: it is applied separately, since a provider
+        SDK takes it as a constructor argument rather than a request param.
+
+        Returns:
+            The set generation params; empty when none were configured
+        """
+        return self.model_dump(
+            include=set(CANONICAL_GENERATION_PARAMS), exclude_none=True
+        )
 
 
 class ToolConfigModel(BaseModel):

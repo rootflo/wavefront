@@ -16,7 +16,27 @@ class NewUser(BaseModel):
     first_name: Optional[str] = Field(None, min_length=1, max_length=50)
     last_name: Optional[str] = Field(None, max_length=50)
     team_id: Optional[str] = None
-    role_id: List[str] = Field(..., min_length=1)
+    # Roles may be empty when the user draws their access from groups instead.
+    # Console access is still mandatory and is validated in the controller over
+    # direct roles and group roles together.
+    role_id: List[str] = Field(default_factory=list)
+    group_ids: List[str] = Field(default_factory=list)
+
+    # Both join tables are keyed on their two ids, so a repeated entry would
+    # fail on insert as a primary key violation rather than as bad input.
+    @field_validator('role_id')
+    @classmethod
+    def validate_role_ids(cls, v):
+        if v is not None and len(set(v)) != len(v):
+            raise ValueError('Role IDs must be unique')
+        return v
+
+    @field_validator('group_ids')
+    @classmethod
+    def validate_group_ids(cls, v):
+        if v is not None and len(set(v)) != len(v):
+            raise ValueError('Group IDs must be unique')
+        return v
 
     @field_validator('email')
     @classmethod
@@ -78,6 +98,8 @@ class UpdateUser(BaseModel):
     user_id: str = Field(..., min_length=1)
     add_role_ids: Optional[List[str]] = Field(None)
     delete_role_ids: Optional[List[str]] = Field(None)
+    add_group_ids: Optional[List[str]] = Field(None)
+    delete_group_ids: Optional[List[str]] = Field(None)
     email: Optional[EmailStr] = Field(None, max_length=254)
     username: Optional[str] = Field(None, min_length=3, max_length=50)
     password: Optional[str] = Field(None, min_length=8)
@@ -89,6 +111,13 @@ class UpdateUser(BaseModel):
     def validate_role_ids(cls, v):
         if v is not None and len(set(v)) != len(v):
             raise ValueError('Role IDs must be unique')
+        return v
+
+    @field_validator('add_group_ids', 'delete_group_ids')
+    @classmethod
+    def validate_group_ids(cls, v):
+        if v is not None and len(set(v)) != len(v):
+            raise ValueError('Group IDs must be unique')
         return v
 
     @field_validator('email')

@@ -1,14 +1,6 @@
 import floConsoleService from '@app/api';
-import { Badge } from '@app/components/ui/badge';
+import MultiSelect from '@app/components/MultiSelect';
 import { Button } from '@app/components/ui/button';
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@app/components/ui/command';
 import {
   Dialog,
   DialogContent,
@@ -18,37 +10,129 @@ import {
   DialogTitle,
 } from '@app/components/ui/dialog';
 import { Input } from '@app/components/ui/input';
-import { Popover, PopoverContent, PopoverTrigger } from '@app/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@app/components/ui/tabs';
 import { Textarea } from '@app/components/ui/textarea';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@app/components/ui/tooltip';
-import { useGetAllDatasources, useGetAllYamls, useGetAppUsers } from '@app/hooks';
-import { cn } from '@app/lib/utils';
+import {
+  COLUMN_STYLES_PLACEHOLDER,
+  DATE_RANGE,
+  DEFAULT_CRON_EXPR,
+  DEFAULT_END_DATE_PARAM,
+  DEFAULT_MAX_RETRIES,
+  DEFAULT_QUERY_LIMIT,
+  DEFAULT_QUERY_OFFSET,
+  DEFAULT_START_DATE_PARAM,
+  DEFAULT_TIMEZONE,
+  EMAIL_CONTENT_PLACEHOLDER,
+  FILTER_PLACEHOLDER,
+  FORM_TAB,
+  JOB_TYPE_EMAIL_DYNAMIC_QUERY,
+  MAX_RETRIES_LIMIT,
+  QUERY_PARAMS_PLACEHOLDER,
+  isFormTab,
+} from '@app/constants/scheduled-job';
+import { useGetAllDatasources, useGetAllDynamicQueries, useGetAppUsers, useGetEmailConnections } from '@app/hooks';
 import { useNotifyStore } from '@app/store';
-import { ColumnStyleConfig, ScheduledJob } from '@app/types/scheduled-job';
-import { Check, ChevronDown, Info, X } from 'lucide-react';
+import {
+  ColumnStyleConfig,
+  DateRangeOption,
+  FormTab,
+  QuerySpecFormOverrides,
+  ScheduledJob,
+} from '@app/types/scheduled-job';
+import { IUser } from '@app/types/user';
+import { ChevronDown, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import {
   buildEmailPayload,
+  extractQueryOverridesFromPayload,
   extractRecipientUserIdsFromPayload,
   formatUserLabel,
   getDatasourceIdFromPayload,
-  getQueryIdsFromPayload,
+  getEmailConnectionIdFromPayload,
   normalizeUserId,
-  resolveUsersFromRecipientIds,
+  toDateRangeOption,
 } from './scheduled-job-utils';
+import { getDynamicQueryIdFromFileName } from '../datasources/dynamic-query-utils';
 
-const COLUMN_STYLES_PLACEHOLDER = `[
-  {
-    "column": "Total calls attempted",
-    "rules": [
-      { "op": "eq", "value": 0, "fill": "light_red" },
-      { "op": "lt", "value": 160, "fill": "light_yellow" },
-      { "op": "gte", "value": 225, "fill": "dark_green" }
-    ]
+const getUserId = (user: IUser) => user.id;
+const getUserSearchValue = (user: IUser) => `${user.first_name} ${user.last_name} ${user.email}`;
+const selectedUsersCountLabel = (count: number) => `${count} users selected`;
+
+type QueryConfigEntry = {
+  key: string;
+  queryId: string;
+  overrides: QuerySpecFormOverrides;
+};
+
+const createQueryConfigKey = () =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `query-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+const createEmptyOverrides = (): QuerySpecFormOverrides => ({ date_range: DATE_RANGE.NONE });
+
+const createEmptyQueryConfig = (): QueryConfigEntry => ({
+  key: createQueryConfigKey(),
+  queryId: '',
+  overrides: createEmptyOverrides(),
+});
+
+const DATE_RANGE_OPTIONS: { value: DateRangeOption; label: string }[] = [
+  { value: DATE_RANGE.NONE, label: 'None' },
+  { value: DATE_RANGE.LAST_HOUR, label: 'Last hour' },
+  { value: DATE_RANGE.LAST_DAY, label: 'Last day' },
+  { value: DATE_RANGE.T_2, label: 'T-2 (2 days ago)' },
+  { value: DATE_RANGE.LAST_7_DAYS, label: 'Last 7 days' },
+  { value: DATE_RANGE.LAST_30_DAYS, label: 'Last 30 days' },
+];
+
+const isDateRangeOption = (value: string): value is DateRangeOption =>
+  DATE_RANGE_OPTIONS.some((option) => option.value === value);
+
+const parseOptionalNonNegativeInt = (
+  value: string,
+  fieldLabel: string
+): { ok: true; value?: number } | { ok: false; error: string } => {
+  if (!value.trim()) return { ok: true, value: undefined };
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    return { ok: false, error: `${fieldLabel} must be a non-negative integer` };
   }
-]`;
+  return { ok: true, value: parsed };
+};
+
+const parseJsonObject = (
+  value: string,
+  fieldLabel: string
+): { ok: true; value?: Record<string, unknown> } | { ok: false; error: string } => {
+  if (!value.trim()) return { ok: true, value: undefined };
+  try {
+    const parsed = JSON.parse(value);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return { ok: false, error: `${fieldLabel} must be a JSON object` };
+    }
+    return { ok: true, value: parsed as Record<string, unknown> };
+  } catch {
+    return { ok: false, error: `${fieldLabel} must be valid JSON (object)` };
+  }
+};
+
+const parseJsonArray = (
+  value: string,
+  fieldLabel: string
+): { ok: true; value?: ColumnStyleConfig[] } | { ok: false; error: string } => {
+  if (!value.trim()) return { ok: true, value: undefined };
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) {
+      return { ok: false, error: `${fieldLabel} must be a JSON array` };
+    }
+    return { ok: true, value: parsed as ColumnStyleConfig[] };
+  } catch {
+    return { ok: false, error: `${fieldLabel} must be valid JSON (array)` };
+  }
+};
 
 interface ScheduledJobFormDialogProps {
   isOpen: boolean;
@@ -69,106 +153,156 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
   const isEditing = Boolean(job?.id);
   const { data: datasources = [] } = useGetAllDatasources(appId);
   const { data: appUsers = [], isLoading: appUsersLoading } = useGetAppUsers(appId);
+  const { data: emailConnections = [] } = useGetEmailConnections(appId);
 
   const [datasourceId, setDatasourceId] = useState('');
-  const [selectedQueryIds, setSelectedQueryIds] = useState<string[]>([]);
-  const { data: yamls = [], isLoading: yamlsLoading } = useGetAllYamls(appId, datasourceId || undefined);
+  const [queryConfigs, setQueryConfigs] = useState<QueryConfigEntry[]>([]);
+  const [expandedQueryKeys, setExpandedQueryKeys] = useState<Set<string>>(new Set());
+  const [jobDefaultsExpanded, setJobDefaultsExpanded] = useState(false);
+  const { data: dynamicQueries = [], isLoading: dynamicQueriesLoading } = useGetAllDynamicQueries(
+    appId,
+    datasourceId || undefined
+  );
 
-  const [cronExpr, setCronExpr] = useState('0 9 * * *');
-  const [timezone, setTimezone] = useState('Asia/Kolkata');
+  const [cronExpr, setCronExpr] = useState(DEFAULT_CRON_EXPR);
+  const [timezone, setTimezone] = useState(DEFAULT_TIMEZONE);
   const [selectedRecipientUserIds, setSelectedRecipientUserIds] = useState<string[]>([]);
-  const [recipientsSelectOpen, setRecipientsSelectOpen] = useState(false);
+  const [emailConnectionId, setEmailConnectionId] = useState('');
   const [subject, setSubject] = useState('');
   const [emailContent, setEmailContent] = useState('');
   const [queryParamsJson, setQueryParamsJson] = useState('');
   const [columnStylesJson, setColumnStylesJson] = useState('');
-  const [dateRange, setDateRange] = useState<
-    'none' | 'last_day' | 't_2' | 'last_hour' | 'last_7_days' | 'last_30_days'
-  >('none');
-  const [startDateParamKey, setStartDateParamKey] = useState('start_date');
-  const [endDateParamKey, setEndDateParamKey] = useState('end_date');
-  const [maxRetries, setMaxRetries] = useState('3');
-  const [activeTab, setActiveTab] = useState<'schedule' | 'email'>('schedule');
+  const [filterExpr, setFilterExpr] = useState('');
+  const [queryLimit, setQueryLimit] = useState(DEFAULT_QUERY_LIMIT);
+  const [queryOffset, setQueryOffset] = useState(DEFAULT_QUERY_OFFSET);
+  const [dateRange, setDateRange] = useState<DateRangeOption>(DATE_RANGE.NONE);
+  const [startDateParamKey, setStartDateParamKey] = useState(DEFAULT_START_DATE_PARAM);
+  const [endDateParamKey, setEndDateParamKey] = useState(DEFAULT_END_DATE_PARAM);
+  const [maxRetries, setMaxRetries] = useState(DEFAULT_MAX_RETRIES);
+  const [activeTab, setActiveTab] = useState<FormTab>(FORM_TAB.SCHEDULE);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   const availableQueryIds = useMemo(
-    () => yamls.map((yaml) => yaml.file.split('.')[0]).filter((id) => id.length > 0),
-    [yamls]
+    () => dynamicQueries.map((query) => getDynamicQueryIdFromFileName(query.file)).filter((id) => id.length > 0),
+    [dynamicQueries]
   );
 
-  const selectedRecipientUsers = useMemo(
-    () => resolveUsersFromRecipientIds(selectedRecipientUserIds, appUsers),
-    [selectedRecipientUserIds, appUsers]
+  const selectedQueryIds = useMemo(
+    () => queryConfigs.map((config) => config.queryId).filter((id) => id.length > 0),
+    [queryConfigs]
   );
 
-  const isRecipientSelected = (userId: string) =>
-    selectedRecipientUserIds.some((id) => normalizeUserId(id) === normalizeUserId(userId));
+  const sendableConnections = useMemo(
+    () => emailConnections.filter((connection) => connection.status === 'active'),
+    [emailConnections]
+  );
 
-  const toggleRecipientUser = (userId: string) => {
-    setSelectedRecipientUserIds((prev) =>
-      isRecipientSelected(userId)
-        ? prev.filter((id) => normalizeUserId(id) !== normalizeUserId(userId))
-        : [...prev, userId]
+  const handleSenderChange = (value: string) => {
+    setEmailConnectionId(value);
+  };
+
+  const updateQueryConfig = (key: string, patch: Partial<QueryConfigEntry>) => {
+    setQueryConfigs((prev) => prev.map((config) => (config.key === key ? { ...config, ...patch } : config)));
+  };
+
+  const updateQueryConfigOverrides = (key: string, patch: Partial<QuerySpecFormOverrides>) => {
+    setQueryConfigs((prev) =>
+      prev.map((config) => (config.key === key ? { ...config, overrides: { ...config.overrides, ...patch } } : config))
     );
   };
 
-  const removeRecipientUser = (userId: string) => {
-    setSelectedRecipientUserIds((prev) => prev.filter((id) => normalizeUserId(id) !== normalizeUserId(userId)));
+  const toggleQueryExpanded = (key: string) => {
+    setExpandedQueryKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   };
 
-  const toggleQueryId = (queryId: string) => {
-    setSelectedQueryIds((prev) => (prev.includes(queryId) ? prev.filter((id) => id !== queryId) : [...prev, queryId]));
+  const addQueryConfig = () => {
+    const entry = createEmptyQueryConfig();
+    setQueryConfigs((prev) => [...prev, entry]);
+    setExpandedQueryKeys((prev) => new Set(prev).add(entry.key));
+  };
+
+  const removeQueryConfig = (key: string) => {
+    setQueryConfigs((prev) => prev.filter((config) => config.key !== key));
+    setExpandedQueryKeys((prev) => {
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+  };
+
+  const queryOptionsForConfig = (configKey: string, currentQueryId: string) => {
+    const usedIds = new Set(
+      queryConfigs.filter((config) => config.key !== configKey && config.queryId).map((config) => config.queryId)
+    );
+    return availableQueryIds.filter((id) => id === currentQueryId || !usedIds.has(id));
   };
 
   const resetForm = () => {
     setDatasourceId('');
-    setSelectedQueryIds([]);
-    setCronExpr('0 9 * * *');
-    setTimezone('Asia/Kolkata');
+    setQueryConfigs([]);
+    setExpandedQueryKeys(new Set());
+    setJobDefaultsExpanded(false);
+    setCronExpr(DEFAULT_CRON_EXPR);
+    setTimezone(DEFAULT_TIMEZONE);
     setSelectedRecipientUserIds([]);
+    setEmailConnectionId('');
     setSubject('');
     setEmailContent('');
     setQueryParamsJson('');
     setColumnStylesJson('');
-    setDateRange('none');
-    setStartDateParamKey('start_date');
-    setEndDateParamKey('end_date');
-    setMaxRetries('3');
-    setActiveTab('schedule');
+    setFilterExpr('');
+    setQueryLimit(DEFAULT_QUERY_LIMIT);
+    setQueryOffset(DEFAULT_QUERY_OFFSET);
+    setDateRange(DATE_RANGE.NONE);
+    setStartDateParamKey(DEFAULT_START_DATE_PARAM);
+    setEndDateParamKey(DEFAULT_END_DATE_PARAM);
+    setMaxRetries(DEFAULT_MAX_RETRIES);
+    setActiveTab(FORM_TAB.SCHEDULE);
     setError('');
   };
 
   const applyJobToForm = (existingJob: ScheduledJob) => {
     const payload = (existingJob.payload || {}) as Record<string, unknown>;
+    const { queryIds, overrides } = extractQueryOverridesFromPayload(payload);
     setDatasourceId(getDatasourceIdFromPayload(payload));
-    setSelectedQueryIds(getQueryIdsFromPayload(payload));
-    setCronExpr(existingJob.cron_expr || '0 9 * * *');
-    setTimezone(existingJob.timezone || 'Asia/Kolkata');
-    setMaxRetries(String(existingJob.max_retries ?? 3));
+    setQueryConfigs(
+      queryIds.map((queryId) => ({
+        key: createQueryConfigKey(),
+        queryId,
+        overrides: overrides[queryId] ?? createEmptyOverrides(),
+      }))
+    );
+    setExpandedQueryKeys(new Set());
+    setJobDefaultsExpanded(false);
+    setCronExpr(existingJob.cron_expr || DEFAULT_CRON_EXPR);
+    setTimezone(existingJob.timezone || DEFAULT_TIMEZONE);
+    setMaxRetries(String(existingJob.max_retries ?? Number(DEFAULT_MAX_RETRIES)));
     setSelectedRecipientUserIds(extractRecipientUserIdsFromPayload(payload));
+    setEmailConnectionId(getEmailConnectionIdFromPayload(payload));
     setSubject(typeof payload.subject === 'string' ? payload.subject : '');
     setEmailContent(typeof payload.email_content === 'string' ? payload.email_content : '');
+    setFilterExpr(typeof payload.filter === 'string' ? payload.filter : '');
+    setQueryLimit(typeof payload.limit === 'number' ? String(payload.limit) : DEFAULT_QUERY_LIMIT);
+    setQueryOffset(typeof payload.offset === 'number' ? String(payload.offset) : DEFAULT_QUERY_OFFSET);
+    setDateRange(toDateRangeOption(payload.date_range));
+    setStartDateParamKey(
+      typeof payload.start_date_param === 'string' ? payload.start_date_param : DEFAULT_START_DATE_PARAM
+    );
+    setEndDateParamKey(typeof payload.end_date_param === 'string' ? payload.end_date_param : DEFAULT_END_DATE_PARAM);
+
     const paramsValue = payload.params;
-    const dateRangeValue = payload.date_range;
-    if (
-      dateRangeValue === 'last_day' ||
-      dateRangeValue === 't_2' ||
-      dateRangeValue === 'last_hour' ||
-      dateRangeValue === 'last_7_days' ||
-      dateRangeValue === 'last_30_days'
-    ) {
-      setDateRange(dateRangeValue);
-    } else {
-      setDateRange('none');
-    }
-    setStartDateParamKey(typeof payload.start_date_param === 'string' ? payload.start_date_param : 'start_date');
-    setEndDateParamKey(typeof payload.end_date_param === 'string' ? payload.end_date_param : 'end_date');
     if (paramsValue && typeof paramsValue === 'object' && !Array.isArray(paramsValue)) {
       setQueryParamsJson(JSON.stringify(paramsValue, null, 2));
     } else {
       setQueryParamsJson('');
     }
+
     const columnStylesValue = payload.column_styles;
     if (Array.isArray(columnStylesValue) && columnStylesValue.length > 0) {
       setColumnStylesJson(JSON.stringify(columnStylesValue, null, 2));
@@ -199,82 +333,137 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
 
   const handleSave = async () => {
     const retries = Number(maxRetries);
-    if (!datasourceId.trim()) {
-      setError('Datasource is required');
-      setActiveTab('schedule');
-      return;
-    }
-    if (selectedQueryIds.length === 0) {
-      setError('Select at least one dynamic query');
-      setActiveTab('schedule');
-      return;
-    }
     if (!cronExpr.trim()) {
       setError('Cron expression is required');
-      setActiveTab('schedule');
+      setActiveTab(FORM_TAB.SCHEDULE);
       return;
     }
     if (!timezone.trim()) {
       setError('Timezone is required');
-      setActiveTab('schedule');
+      setActiveTab(FORM_TAB.SCHEDULE);
       return;
     }
+    if (!Number.isInteger(retries) || retries < 0 || retries > MAX_RETRIES_LIMIT) {
+      setError(`Max retries must be an integer between 0 and ${MAX_RETRIES_LIMIT}`);
+      setActiveTab(FORM_TAB.SCHEDULE);
+      return;
+    }
+    if (!datasourceId.trim()) {
+      setError('Datasource is required');
+      setActiveTab(FORM_TAB.SCHEDULE);
+      return;
+    }
+    if (queryConfigs.length === 0) {
+      setError('Add at least one query configuration');
+      setActiveTab(FORM_TAB.QUERY);
+      return;
+    }
+    if (queryConfigs.some((config) => !config.queryId.trim())) {
+      setError('Select a query for every query configuration');
+      setActiveTab(FORM_TAB.QUERY);
+      return;
+    }
+    if (selectedQueryIds.length === 0) {
+      setError('Select at least one dynamic query');
+      setActiveTab(FORM_TAB.QUERY);
+      return;
+    }
+
+    const limitResult = parseOptionalNonNegativeInt(queryLimit, 'Row limit');
+    if (!limitResult.ok) {
+      setError(limitResult.error);
+      setActiveTab(FORM_TAB.SCHEDULE);
+      return;
+    }
+    const offsetResult = parseOptionalNonNegativeInt(queryOffset, 'Offset');
+    if (!offsetResult.ok) {
+      setError(offsetResult.error);
+      setActiveTab(FORM_TAB.SCHEDULE);
+      return;
+    }
+
+    const paramsResult = parseJsonObject(queryParamsJson, 'Query params');
+    if (!paramsResult.ok) {
+      setError(paramsResult.error);
+      setActiveTab(FORM_TAB.SCHEDULE);
+      return;
+    }
+
+    const columnStylesResult = parseJsonArray(columnStylesJson, 'Column styles');
+    if (!columnStylesResult.ok) {
+      setError(columnStylesResult.error);
+      setActiveTab(FORM_TAB.SCHEDULE);
+      return;
+    }
+
+    const queryOverrides: Record<string, QuerySpecFormOverrides> = {};
+    const queryOverrideParams: Record<string, Record<string, unknown> | undefined> = {};
+    const queryOverrideColumnStyles: Record<string, ColumnStyleConfig[] | undefined> = {};
+
+    for (const config of queryConfigs) {
+      const queryId = config.queryId.trim();
+      const overrides = config.overrides;
+      queryOverrides[queryId] = overrides;
+
+      const queryLimitResult = parseOptionalNonNegativeInt(overrides.limit ?? '', `Limit for ${queryId}`);
+      if (!queryLimitResult.ok) {
+        setError(queryLimitResult.error);
+        setActiveTab(FORM_TAB.QUERY);
+        return;
+      }
+      const queryOffsetResult = parseOptionalNonNegativeInt(overrides.offset ?? '', `Offset for ${queryId}`);
+      if (!queryOffsetResult.ok) {
+        setError(queryOffsetResult.error);
+        setActiveTab(FORM_TAB.QUERY);
+        return;
+      }
+
+      const queryParamsResult = parseJsonObject(overrides.paramsJson ?? '', `Params for ${queryId}`);
+      if (!queryParamsResult.ok) {
+        setError(queryParamsResult.error);
+        setActiveTab(FORM_TAB.QUERY);
+        return;
+      }
+      queryOverrideParams[queryId] = queryParamsResult.value;
+
+      const queryStylesResult = parseJsonArray(overrides.columnStylesJson ?? '', `Column styles for ${queryId}`);
+      if (!queryStylesResult.ok) {
+        setError(queryStylesResult.error);
+        setActiveTab(FORM_TAB.QUERY);
+        return;
+      }
+      queryOverrideColumnStyles[queryId] = queryStylesResult.value;
+    }
+
     if (selectedRecipientUserIds.length === 0) {
       setError('At least one recipient user is required');
-      setActiveTab('email');
+      setActiveTab(FORM_TAB.EMAIL);
       return;
     }
-    if (!Number.isInteger(retries) || retries < 0 || retries > 10) {
-      setError('Max retries must be an integer between 0 and 10');
-      setActiveTab('schedule');
+    if (!emailConnectionId) {
+      setError('Select an email connection to send from');
+      setActiveTab(FORM_TAB.EMAIL);
       return;
-    }
-
-    let parsedParams: Record<string, unknown> | undefined;
-    if (queryParamsJson.trim()) {
-      try {
-        const value = JSON.parse(queryParamsJson);
-        if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-          setError('Query params must be a JSON object');
-          setActiveTab('schedule');
-          return;
-        }
-        parsedParams = value as Record<string, unknown>;
-      } catch {
-        setError('Query params must be valid JSON (object)');
-        setActiveTab('schedule');
-        return;
-      }
-    }
-
-    let parsedColumnStyles: ColumnStyleConfig[] | undefined;
-    if (columnStylesJson.trim()) {
-      try {
-        const value = JSON.parse(columnStylesJson);
-        if (!Array.isArray(value)) {
-          setError('Column styles must be a JSON array');
-          setActiveTab('email');
-          return;
-        }
-        parsedColumnStyles = value as ColumnStyleConfig[];
-      } catch {
-        setError('Column styles must be valid JSON (array)');
-        setActiveTab('email');
-        return;
-      }
     }
 
     const emailPayload = buildEmailPayload({
       datasourceId: datasourceId.trim(),
       queryIds: selectedQueryIds,
+      queryOverrides,
+      queryOverrideParams,
+      queryOverrideColumnStyles,
       recipientUserIds: selectedRecipientUserIds,
+      emailConnectionId,
       subject: subject.trim() || undefined,
       emailContent: emailContent.trim() || undefined,
-      columnStyles: parsedColumnStyles,
-      dateRange: dateRange === 'none' ? undefined : dateRange,
-      startDateParam: dateRange === 'none' ? undefined : startDateParamKey.trim() || 'start_date',
-      endDateParam: dateRange === 'none' ? undefined : endDateParamKey.trim() || 'end_date',
-      params: parsedParams,
+      columnStyles: columnStylesResult.value,
+      dateRange: dateRange === DATE_RANGE.NONE ? undefined : dateRange,
+      startDateParam: dateRange === DATE_RANGE.NONE ? undefined : startDateParamKey.trim() || DEFAULT_START_DATE_PARAM,
+      endDateParam: dateRange === DATE_RANGE.NONE ? undefined : endDateParamKey.trim() || DEFAULT_END_DATE_PARAM,
+      params: paramsResult.value,
+      filter: filterExpr.trim() || undefined,
+      offset: offsetResult.value,
+      limit: limitResult.value,
     });
 
     setSaving(true);
@@ -290,7 +479,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
         notifySuccess('Scheduled job updated successfully');
       } else {
         await floConsoleService.scheduledJobService.createScheduledJob({
-          job_type: 'email_dynamic_query',
+          job_type: JOB_TYPE_EMAIL_DYNAMIC_QUERY,
           cron_expr: cronExpr.trim(),
           timezone: timezone.trim(),
           max_retries: retries,
@@ -307,23 +496,81 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
     }
   };
 
+  const renderDateRangeFields = (
+    value: DateRangeOption,
+    onDateRangeChange: (next: DateRangeOption) => void,
+    startKey: string,
+    onStartKeyChange: (next: string) => void,
+    endKey: string,
+    onEndKeyChange: (next: string) => void
+  ) => (
+    <div className="grid grid-cols-3 gap-3">
+      <div>
+        <p className="mb-1 text-xs text-[#878787]">Dynamic date range (optional)</p>
+        <Select
+          value={value}
+          onValueChange={(next) => {
+            if (isDateRangeOption(next)) onDateRangeChange(next);
+          }}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select range" />
+          </SelectTrigger>
+          <SelectContent>
+            {DATE_RANGE_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div>
+        <p className="mb-1 text-xs text-[#878787]">Start date param key</p>
+        <Input value={startKey} onChange={(e) => onStartKeyChange(e.target.value)} />
+      </div>
+      <div>
+        <p className="mb-1 text-xs text-[#878787]">End date param key</p>
+        <Input value={endKey} onChange={(e) => onEndKeyChange(e.target.value)} />
+      </div>
+    </div>
+  );
+
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto lg:max-w-[800px] xl:max-w-[1000px]">
-        <DialogHeader>
+      <DialogContent className="flex h-[760px] max-h-[calc(100vh-2rem)] max-w-4xl min-w-0 flex-col overflow-hidden lg:max-w-4xl">
+        <DialogHeader className="shrink-0">
           <DialogTitle>{isEditing ? 'Edit Scheduled Job' : 'Create Scheduled Job'}</DialogTitle>
           <DialogDescription>
             Schedule one or more dynamic query reports to be emailed on a cron schedule.
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'schedule' | 'email')}>
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="schedule">Schedule</TabsTrigger>
-            <TabsTrigger value="email">Email</TabsTrigger>
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => {
+            if (isFormTab(value)) setActiveTab(value);
+          }}
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
+        >
+          <TabsList className="grid w-full shrink-0 grid-cols-3">
+            <TabsTrigger value={FORM_TAB.SCHEDULE}>Job setup</TabsTrigger>
+            <TabsTrigger value={FORM_TAB.QUERY}>Queries</TabsTrigger>
+            <TabsTrigger value={FORM_TAB.EMAIL}>Email</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="schedule" className="mt-4 space-y-5">
+          <TabsContent value={FORM_TAB.SCHEDULE} className="mt-4 min-h-0 flex-1 space-y-5 overflow-y-auto">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <p className="mb-1 text-xs text-[#878787]">Cron expression</p>
+                <Input value={cronExpr} onChange={(e) => setCronExpr(e.target.value)} placeholder={DEFAULT_CRON_EXPR} />
+              </div>
+              <div>
+                <p className="mb-1 text-xs text-[#878787]">Timezone</p>
+                <Input value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder={DEFAULT_TIMEZONE} />
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <p className="mb-1 text-xs text-[#878787]">Datasource</p>
@@ -332,7 +579,8 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
                   onValueChange={(value) => {
                     setDatasourceId(value);
                     if (!job || getDatasourceIdFromPayload(job.payload || {}) !== value) {
-                      setSelectedQueryIds([]);
+                      setQueryConfigs([]);
+                      setExpandedQueryKeys(new Set());
                     }
                   }}
                 >
@@ -350,258 +598,371 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
               </div>
               <div>
                 <p className="mb-1 text-xs text-[#878787]">Max retries</p>
-                <Input value={maxRetries} onChange={(e) => setMaxRetries(e.target.value)} placeholder="3" />
+                <Input
+                  value={maxRetries}
+                  onChange={(e) => setMaxRetries(e.target.value)}
+                  placeholder={DEFAULT_MAX_RETRIES}
+                />
               </div>
             </div>
 
             <div>
-              <p className="mb-2 text-xs text-[#878787]">
-                Dynamic queries (select one or more — each becomes an attachment in the email)
-              </p>
-              {!datasourceId ? (
-                <p className="text-sm text-[#878787]">Select a datasource to load queries.</p>
-              ) : yamlsLoading ? (
-                <p className="text-sm text-[#878787]">Loading queries...</p>
-              ) : availableQueryIds.length === 0 ? (
-                <p className="text-sm text-[#878787]">No dynamic queries found for this datasource.</p>
+              <p className="mb-2 text-xs text-[#878787]">Selected queries</p>
+              {selectedQueryIds.length === 0 ? (
+                <p className="text-sm text-[#878787]">No queries selected yet. Choose them on the Query tab.</p>
               ) : (
-                <div className="flex max-h-40 flex-wrap gap-2 overflow-y-auto rounded-md border border-[#EFF0F1] bg-[#FBFBFB] p-3">
-                  {availableQueryIds.map((queryId) => {
-                    const selected = selectedQueryIds.includes(queryId);
-                    return (
-                      <button
-                        key={queryId}
-                        type="button"
-                        onClick={() => toggleQueryId(queryId)}
-                        className={cn(
-                          'rounded-full border px-3 py-1 text-xs transition-colors',
-                          selected
-                            ? 'border-[#282828] bg-[#282828] text-white'
-                            : 'border-[#EFF0F1] bg-white text-[#282828] hover:border-[#282828]'
-                        )}
-                      >
-                        {queryId}
-                      </button>
-                    );
-                  })}
+                <div className="frost-glass border-frost-border flex max-h-28 flex-wrap gap-2 overflow-y-auto rounded-md border p-3">
+                  {selectedQueryIds.map((queryId) => (
+                    <span
+                      key={queryId}
+                      className="frost-glass-strong frost-text border-frost-border rounded-full border px-3 py-1 text-xs"
+                    >
+                      {queryId}
+                    </span>
+                  ))}
                 </div>
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="border-frost-border overflow-hidden rounded-md border">
+              <button
+                type="button"
+                className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left"
+                onClick={() => setJobDefaultsExpanded((prev) => !prev)}
+                aria-expanded={jobDefaultsExpanded}
+              >
+                <ChevronDown
+                  className={`frost-text-muted h-4 w-4 shrink-0 transition-transform ${jobDefaultsExpanded ? 'rotate-0' : '-rotate-90'}`}
+                />
+                <div className="min-w-0">
+                  <p className="frost-text truncate text-sm font-medium">Job-level query defaults</p>
+                  <p className="truncate text-xs text-[#878787]">
+                    Applied to every selected query unless overridden on the Query tab.
+                  </p>
+                </div>
+              </button>
+
+              {jobDefaultsExpanded ? (
+                <div className="border-frost-border space-y-4 border-t px-4 py-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <p className="mb-1 text-xs text-[#878787]">Row limit</p>
+                      <Input
+                        value={queryLimit}
+                        onChange={(e) => setQueryLimit(e.target.value)}
+                        placeholder={DEFAULT_QUERY_LIMIT}
+                      />
+                    </div>
+                    <div>
+                      <p className="mb-1 text-xs text-[#878787]">Offset</p>
+                      <Input
+                        value={queryOffset}
+                        onChange={(e) => setQueryOffset(e.target.value)}
+                        placeholder={DEFAULT_QUERY_OFFSET}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="mb-1 text-xs text-[#878787]">Filter expression (optional)</p>
+                    <Input
+                      value={filterExpr}
+                      onChange={(e) => setFilterExpr(e.target.value)}
+                      placeholder={FILTER_PLACEHOLDER}
+                    />
+                  </div>
+
+                  {renderDateRangeFields(
+                    dateRange,
+                    setDateRange,
+                    startDateParamKey,
+                    setStartDateParamKey,
+                    endDateParamKey,
+                    setEndDateParamKey
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <p className="mb-1 text-xs text-[#878787]">Query params (optional JSON)</p>
+                      <Textarea
+                        value={queryParamsJson}
+                        onChange={(e) => setQueryParamsJson(e.target.value)}
+                        placeholder={QUERY_PARAMS_PLACEHOLDER}
+                        className="min-h-[90px] font-mono"
+                      />
+                    </div>
+                    <div>
+                      <p className="mb-1 text-xs text-[#878787]">Column styles (optional JSON)</p>
+                      <Textarea
+                        value={columnStylesJson}
+                        onChange={(e) => setColumnStylesJson(e.target.value)}
+                        placeholder={COLUMN_STYLES_PLACEHOLDER}
+                        className="min-h-[90px] font-mono text-xs"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </TabsContent>
+
+          <TabsContent value={FORM_TAB.QUERY} className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto">
+            <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="mb-1 text-xs text-[#878787]">Cron expression</p>
-                <Input value={cronExpr} onChange={(e) => setCronExpr(e.target.value)} placeholder="0 9 * * *" />
+                <p className="frost-text text-sm font-medium">Query configurations</p>
+                <p className="text-xs text-[#878787]">
+                  Add a query, then optionally override job-level defaults. Leave fields empty to inherit.
+                </p>
               </div>
-              <div>
-                <p className="mb-1 text-xs text-[#878787]">Timezone</p>
-                <Input value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="Asia/Kolkata" />
-              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addQueryConfig}
+                disabled={
+                  !datasourceId ||
+                  dynamicQueriesLoading ||
+                  availableQueryIds.length === 0 ||
+                  queryConfigs.length >= availableQueryIds.length
+                }
+              >
+                <Plus className="mr-1 h-4 w-4" />
+                Add query
+              </Button>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <p className="mb-1 text-xs text-[#878787]">Dynamic date range (optional)</p>
-                <Select value={dateRange} onValueChange={(v) => setDateRange(v as typeof dateRange)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select range" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">None</SelectItem>
-                    <SelectItem value="last_hour">Last hour</SelectItem>
-                    <SelectItem value="last_day">Last day</SelectItem>
-                    <SelectItem value="t_2">T-2 (2 days ago)</SelectItem>
-                    <SelectItem value="last_7_days">Last 7 days</SelectItem>
-                    <SelectItem value="last_30_days">Last 30 days</SelectItem>
-                  </SelectContent>
-                </Select>
+            {!datasourceId ? (
+              <p className="text-sm text-[#878787]">Select a datasource on the Job setup tab to load queries.</p>
+            ) : dynamicQueriesLoading ? (
+              <p className="text-sm text-[#878787]">Loading queries...</p>
+            ) : availableQueryIds.length === 0 ? (
+              <p className="text-sm text-[#878787]">No dynamic queries found for this datasource.</p>
+            ) : queryConfigs.length === 0 ? (
+              <button
+                type="button"
+                onClick={addQueryConfig}
+                className="border-frost-border frost-text-muted hover:frost-text hover:bg-frost-glass-strong flex w-full items-center justify-center gap-2 rounded-md border border-dashed px-4 py-8 text-sm transition-colors"
+              >
+                <Plus className="h-4 w-4" />
+                Add your first query configuration
+              </button>
+            ) : (
+              <div className="space-y-3">
+                {queryConfigs.map((config, index) => {
+                  const isExpanded = expandedQueryKeys.has(config.key);
+                  const overrides = config.overrides;
+                  const title = config.queryId || `Query ${index + 1}`;
+                  const queryOptions = queryOptionsForConfig(config.key, config.queryId);
+
+                  return (
+                    <div key={config.key} className="border-frost-border overflow-hidden rounded-md border">
+                      <div className="flex items-center gap-2 px-3 py-2">
+                        <button
+                          type="button"
+                          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left"
+                          onClick={() => toggleQueryExpanded(config.key)}
+                          aria-expanded={isExpanded}
+                        >
+                          <ChevronDown
+                            className={`frost-text-muted h-4 w-4 shrink-0 transition-transform ${isExpanded ? 'rotate-0' : '-rotate-90'}`}
+                          />
+                          <span className="frost-text truncate text-sm font-medium">{title}</span>
+                          {!config.queryId ? (
+                            <span className="frost-text-muted shrink-0 text-xs">Select a query</span>
+                          ) : null}
+                        </button>
+                        <button
+                          type="button"
+                          className="frost-text-muted rounded-md p-1.5 transition-colors hover:text-red-500"
+                          aria-label={`Remove ${title}`}
+                          onClick={() => removeQueryConfig(config.key)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+
+                      {isExpanded ? (
+                        <div className="border-frost-border space-y-3 border-t px-4 py-4">
+                          <div>
+                            <p className="mb-1 text-xs text-[#878787]">Query</p>
+                            <Select
+                              value={config.queryId || undefined}
+                              onValueChange={(value) => updateQueryConfig(config.key, { queryId: value })}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select a query" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {queryOptions.map((queryId) => (
+                                  <SelectItem key={queryId} value={queryId}>
+                                    {queryId}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          <div>
+                            <p className="mb-1 text-xs text-[#878787]">Datasource override (optional)</p>
+                            <Select
+                              value={overrides.datasource_id || '__inherit__'}
+                              onValueChange={(value) =>
+                                updateQueryConfigOverrides(config.key, {
+                                  datasource_id: value === '__inherit__' ? '' : value,
+                                })
+                              }
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Inherit job datasource" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__inherit__">Inherit job datasource</SelectItem>
+                                {datasources.map((ds) => (
+                                  <SelectItem key={ds.id} value={ds.id}>
+                                    {ds.name || ds.id}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <p className="mb-1 text-xs text-[#878787]">Row limit override</p>
+                              <Input
+                                value={overrides.limit ?? ''}
+                                onChange={(e) => updateQueryConfigOverrides(config.key, { limit: e.target.value })}
+                                placeholder="Inherit"
+                              />
+                            </div>
+                            <div>
+                              <p className="mb-1 text-xs text-[#878787]">Offset override</p>
+                              <Input
+                                value={overrides.offset ?? ''}
+                                onChange={(e) => updateQueryConfigOverrides(config.key, { offset: e.target.value })}
+                                placeholder="Inherit"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <p className="mb-1 text-xs text-[#878787]">Filter override (optional)</p>
+                            <Input
+                              value={overrides.filter ?? ''}
+                              onChange={(e) => updateQueryConfigOverrides(config.key, { filter: e.target.value })}
+                              placeholder="Inherit"
+                            />
+                          </div>
+
+                          {renderDateRangeFields(
+                            overrides.date_range ?? DATE_RANGE.NONE,
+                            (next) => updateQueryConfigOverrides(config.key, { date_range: next }),
+                            overrides.start_date_param ?? DEFAULT_START_DATE_PARAM,
+                            (next) => updateQueryConfigOverrides(config.key, { start_date_param: next }),
+                            overrides.end_date_param ?? DEFAULT_END_DATE_PARAM,
+                            (next) => updateQueryConfigOverrides(config.key, { end_date_param: next })
+                          )}
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <p className="mb-1 text-xs text-[#878787]">Params override (optional JSON)</p>
+                              <Textarea
+                                value={overrides.paramsJson ?? ''}
+                                onChange={(e) => updateQueryConfigOverrides(config.key, { paramsJson: e.target.value })}
+                                placeholder={QUERY_PARAMS_PLACEHOLDER}
+                                className="min-h-20 font-mono text-xs"
+                              />
+                            </div>
+                            <div>
+                              <p className="mb-1 text-xs text-[#878787]">Column styles override (optional JSON)</p>
+                              <Textarea
+                                value={overrides.columnStylesJson ?? ''}
+                                onChange={(e) =>
+                                  updateQueryConfigOverrides(config.key, { columnStylesJson: e.target.value })
+                                }
+                                placeholder={COLUMN_STYLES_PLACEHOLDER}
+                                className="min-h-20 font-mono text-xs"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+
+                <button
+                  type="button"
+                  onClick={addQueryConfig}
+                  disabled={queryConfigs.length >= availableQueryIds.length}
+                  className="border-frost-border frost-text-muted hover:frost-text hover:bg-frost-glass-strong flex w-full items-center justify-center gap-2 rounded-md border border-dashed px-3 py-3 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add another query
+                </button>
               </div>
-              <div>
-                <p className="mb-1 text-xs text-[#878787]">Start date param key</p>
-                <Input value={startDateParamKey} onChange={(e) => setStartDateParamKey(e.target.value)} />
-              </div>
-              <div>
-                <p className="mb-1 text-xs text-[#878787]">End date param key</p>
-                <Input value={endDateParamKey} onChange={(e) => setEndDateParamKey(e.target.value)} />
-              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value={FORM_TAB.EMAIL} className="mt-4 min-h-0 flex-1 space-y-5 overflow-y-auto">
+            <div>
+              <p className="mb-1 text-xs text-[#878787]">Subject (optional)</p>
+              <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Daily report" />
             </div>
 
             <div>
-              <p className="mb-1 text-xs text-[#878787]">Query params (optional JSON)</p>
+              <p className="mb-1 text-xs text-[#878787]">Send from</p>
+              <Select value={emailConnectionId || undefined} onValueChange={handleSenderChange}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select a mailbox" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sendableConnections.map((connection) => (
+                    <SelectItem key={connection.id} value={connection.id}>
+                      {connection.name} ({connection.mailbox_email})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <p className="mb-1 text-xs text-[#878787]">Email content (optional)</p>
               <Textarea
-                value={queryParamsJson}
-                onChange={(e) => setQueryParamsJson(e.target.value)}
-                placeholder={'{"start_date":"2026-03-01","end_date":"2026-03-31"}'}
-                className="min-h-[90px] font-mono"
+                value={emailContent}
+                onChange={(e) => setEmailContent(e.target.value)}
+                placeholder={EMAIL_CONTENT_PLACEHOLDER}
+                className="min-h-[120px]"
+              />
+            </div>
+
+            <div>
+              <p className="mb-1 text-xs text-[#878787]">Recipient users</p>
+              <MultiSelect
+                items={appUsers}
+                selectedIds={selectedRecipientUserIds}
+                onChange={setSelectedRecipientUserIds}
+                getId={getUserId}
+                getLabel={formatUserLabel}
+                getSearchValue={getUserSearchValue}
+                normalizeId={normalizeUserId}
+                placeholder="Select recipient users"
+                searchPlaceholder="Search users..."
+                loading={appUsersLoading}
+                loadingLabel="Loading users..."
+                emptyLabel="No users found."
+                showSelectAll
+                selectedGroupHeading="Selected"
+                allItemsGroupHeading="All users"
+                selectedCountLabel={selectedUsersCountLabel}
               />
             </div>
           </TabsContent>
-
-          <TabsContent value="email" className="mt-4 space-y-5">
-            <TooltipProvider delayDuration={200}>
-              <div>
-                <p className="mb-1 text-xs text-[#878787]">Subject (optional)</p>
-                <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Daily report" />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <div className="mb-1 flex items-center gap-1.5">
-                    <p className="text-xs text-[#878787]">Email content (optional)</p>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          className="inline-flex cursor-pointer text-[#878787] hover:text-[#555555]"
-                          aria-label="Email content help"
-                        >
-                          <Info className="h-3.5 w-3.5" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-md">
-                        {`Use {query_id} placeholders to embed result tables inline (e.g. {sales_summary}). Plain text or HTML. Excel files are still attached when under the size limit. Leave empty for the default summary.`}
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-                  <Textarea
-                    value={emailContent}
-                    onChange={(e) => setEmailContent(e.target.value)}
-                    placeholder={`Here is your result\n{my_query_id}\n\nSee more\n{another_query_id}`}
-                    className="min-h-[120px]"
-                  />
-                </div>
-
-                <div>
-                  <div className="mb-1 flex items-center gap-1.5">
-                    <p className="text-xs text-[#878787]">Column styles (optional JSON)</p>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          className="inline-flex cursor-pointer text-[#878787] hover:text-[#555555]"
-                          aria-label="Column styles help"
-                        >
-                          <Info className="h-3.5 w-3.5" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-xs">
-                        Rules are evaluated top-to-bottom; first match wins.
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-                  <Textarea
-                    value={columnStylesJson}
-                    onChange={(e) => setColumnStylesJson(e.target.value)}
-                    placeholder={COLUMN_STYLES_PLACEHOLDER}
-                    className="min-h-[120px] font-mono text-xs"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <div className="mb-1 flex items-center gap-1.5">
-                  <p className="text-xs text-[#878787]">Recipient users</p>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        className="inline-flex cursor-pointer text-[#878787] hover:text-[#555555]"
-                        aria-label="Recipient users help"
-                      >
-                        <Info className="h-3.5 w-3.5" />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="max-w-xs">
-                      Each user receives reports filtered by their data access (RLS).
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-                <Popover modal open={recipientsSelectOpen} onOpenChange={setRecipientsSelectOpen}>
-                  <PopoverTrigger asChild>
-                    <button
-                      type="button"
-                      role="combobox"
-                      aria-expanded={recipientsSelectOpen}
-                      disabled={appUsersLoading}
-                      className={cn(
-                        'border-input ring-offset-background focus:ring-ring flex min-h-9 w-full items-center justify-between rounded-md border bg-white px-3 py-2 text-sm shadow-sm focus:ring-1 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50',
-                        selectedRecipientUserIds.length === 0 && 'text-[#878787]'
-                      )}
-                    >
-                      <span className="truncate text-left">
-                        {appUsersLoading
-                          ? 'Loading users...'
-                          : selectedRecipientUserIds.length === 0
-                            ? 'Select recipient users'
-                            : selectedRecipientUsers.length <= 2
-                              ? selectedRecipientUsers.map((u) => formatUserLabel(u)).join(', ')
-                              : `${selectedRecipientUsers.length} users selected`}
-                      </span>
-                      <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-(--radix-popover-trigger-width) p-0" align="start">
-                    <Command>
-                      <CommandInput placeholder="Search users..." />
-                      <CommandList>
-                        <CommandEmpty>No users found.</CommandEmpty>
-                        {selectedRecipientUsers.length > 0 ? (
-                          <CommandGroup heading="Selected">
-                            {selectedRecipientUsers.map((user) => (
-                              <CommandItem
-                                key={`selected-${user.id}`}
-                                value={`selected-${user.id}-${user.email}`}
-                                onSelect={() => toggleRecipientUser(user.id)}
-                              >
-                                <Check className="mr-2 h-4 w-4 shrink-0 opacity-100" />
-                                {formatUserLabel(user)}
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        ) : null}
-                        <CommandGroup heading="All users">
-                          {appUsers
-                            .filter((user) => !isRecipientSelected(user.id))
-                            .map((user) => (
-                              <CommandItem
-                                key={user.id}
-                                value={`${user.first_name} ${user.last_name} ${user.email}`}
-                                onSelect={() => toggleRecipientUser(user.id)}
-                              >
-                                <Check className="mr-2 h-4 w-4 shrink-0 opacity-0" />
-                                {formatUserLabel(user)}
-                              </CommandItem>
-                            ))}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
-                {selectedRecipientUsers.length > 0 ? (
-                  <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
-                    {selectedRecipientUsers.map((user) => (
-                      <Badge key={user.id} variant="secondary" className="shrink-0 gap-1 pr-1 font-normal">
-                        <span className="max-w-[240px] truncate">{formatUserLabel(user)}</span>
-                        <button
-                          type="button"
-                          className="rounded-full p-0.5 hover:bg-black/10"
-                          aria-label={`Remove ${formatUserLabel(user)}`}
-                          onClick={() => removeRecipientUser(user.id)}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </Badge>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            </TooltipProvider>
-          </TabsContent>
         </Tabs>
 
-        {error ? <p className="text-sm text-red-500">{error}</p> : null}
+        {error ? <p className="shrink-0 text-sm text-red-500">{error}</p> : null}
 
-        <DialogFooter>
+        <DialogFooter className="shrink-0">
           <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={saving}>
             Cancel
           </Button>

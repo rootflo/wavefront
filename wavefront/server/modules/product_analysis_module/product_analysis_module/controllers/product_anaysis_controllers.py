@@ -9,12 +9,89 @@ from product_analysis_module.models.product_analysis import (
     CreateProductAnalysisPayload,
     ProductAnalysis,
 )
-from user_management_module.utils.user_utils import get_current_user, check_is_admin
+from user_management_module.utils.user_utils import (
+    check_is_admin,
+    check_is_manager,
+    get_current_user,
+)
 from product_analysis_module.product_analysis_container import ProductAnalysisContainer
 from product_analysis_module.product_analysis_service import ProductAnalysisService
 
 
 product_analysis_router = APIRouter(prefix='/v1')
+
+MAX_LOGIN_STATS_SPAN_DAYS = 366
+
+
+def _access_denied(response_formatter: ResponseFormatter) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        content=response_formatter.buildErrorResponse('Access denied'),
+    )
+
+
+def _forbidden(response_formatter: ResponseFormatter) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_403_FORBIDDEN,
+        content=response_formatter.buildErrorResponse('Access denied'),
+    )
+
+
+def _validate_login_stats_range(
+    start_date: date,
+    end_date: date,
+    response_formatter: ResponseFormatter,
+) -> JSONResponse | None:
+    if start_date > end_date:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                'start_date must be less than or equal to end_date'
+            ),
+        )
+    if (end_date - start_date) > timedelta(days=MAX_LOGIN_STATS_SPAN_DAYS):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                f'date range too large (max {MAX_LOGIN_STATS_SPAN_DAYS} days)'
+            ),
+        )
+    return None
+
+
+async def _authorize_login_stats(
+    request: Request,
+    group_id: str | None,
+    product_analysis_service: ProductAnalysisService,
+    response_formatter: ResponseFormatter,
+) -> tuple[list[str] | None, JSONResponse | None]:
+    """Admit admins and managers, and say which groups the caller may see.
+
+    Returns the groups to restrict the stats to, where None means every user.
+    Admins are unrestricted and may narrow to any group; managers only ever see
+    the groups they belong to, so a manager in no group sees nobody rather than
+    everybody.
+    """
+    role_id, user_id, _ = get_current_user(request)
+    if not user_id:
+        return None, _access_denied(response_formatter)
+
+    is_admin = await check_is_admin(role_id)
+    if not (is_admin or await check_is_manager(role_id)):
+        return None, _forbidden(response_formatter)
+
+    if is_admin:
+        return ([group_id] if group_id else None), None
+
+    accessible_group_ids = await product_analysis_service.get_accessible_group_ids(
+        user_id
+    )
+    if group_id:
+        if group_id not in accessible_group_ids:
+            return None, _forbidden(response_formatter)
+        return [group_id], None
+
+    return accessible_group_ids, None
 
 
 @product_analysis_router.post('/product-analysis')
@@ -35,10 +112,7 @@ async def create_product_analysis(
 
     user_role, user_id, session_id = get_current_user(request)
     if not user_id:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content=response_formatter.buildErrorResponse('Access denied'),
-        )
+        return _access_denied(response_formatter)
 
     # Create ProductAnalysis object from the payload with server-added fields
     product_analysis = ProductAnalysis(
@@ -86,10 +160,7 @@ async def get_product_analysis(
     user_role = await check_is_admin(user_role_id)
 
     if not user_id or not user_role:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content=response_formatter.buildErrorResponse('Access denied'),
-        )
+        return _access_denied(response_formatter)
 
     product_analysis = await product_analysis_service.get_product_analysis()
     product_analysis_response = [item.to_dict() for item in product_analysis]
@@ -102,12 +173,13 @@ async def get_product_analysis(
     )
 
 
-@product_analysis_router.get('/product-analysis/stats/login')
+@product_analysis_router.get('/product-analysis/stats/login/summary')
 @inject
-async def get_product_login_stats(
+async def get_product_login_stats_summary(
     request: Request,
     start_date: date = Query(...),
     end_date: date = Query(...),
+    group_id: str | None = Query(None),
     product_analysis_service: ProductAnalysisService = Depends(
         Provide[ProductAnalysisContainer.product_analysis_service]
     ),
@@ -116,39 +188,79 @@ async def get_product_login_stats(
     ),
 ):
     """
-    Admin-only endpoint to fetch user login stats within a date range.
+    Admin or manager endpoint for login-stats summary cards.
+
+    Managers only see users in groups they belong to.
     """
-    user_role_id, user_id, _ = get_current_user(request)
-    user_role = await check_is_admin(user_role_id)
+    group_ids, access_error = await _authorize_login_stats(
+        request, group_id, product_analysis_service, response_formatter
+    )
+    if access_error:
+        return access_error
 
-    if not user_id or not user_role:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content=response_formatter.buildErrorResponse('Access denied'),
-        )
+    range_error = _validate_login_stats_range(start_date, end_date, response_formatter)
+    if range_error:
+        return range_error
 
-    if start_date > end_date:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(
-                'start_date must be less than or equal to end_date'
-            ),
-        )
-
-    max_span_days = 366
-    if (end_date - start_date) > timedelta(days=max_span_days):
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(
-                f'date range too large (max {max_span_days} days)'
-            ),
-        )
-
-    login_stats = await product_analysis_service.get_login_stats(
-        start_date=start_date, end_date=end_date
+    summary = await product_analysis_service.get_login_stats_summary(
+        start_date=start_date,
+        end_date=end_date,
+        group_ids=group_ids,
     )
 
     return JSONResponse(
         status_code=status.HTTP_200_OK,
-        content=response_formatter.buildSuccessResponse({'login_stats': login_stats}),
+        content=response_formatter.buildSuccessResponse(summary),
+    )
+
+
+@product_analysis_router.get('/product-analysis/stats/login')
+@inject
+async def get_product_login_stats(
+    request: Request,
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    group_id: str | None = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    product_analysis_service: ProductAnalysisService = Depends(
+        Provide[ProductAnalysisContainer.product_analysis_service]
+    ),
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+):
+    """
+    Admin or manager endpoint for per-user login stats.
+
+    Managers only see users in groups they belong to.
+    """
+    group_ids, access_error = await _authorize_login_stats(
+        request, group_id, product_analysis_service, response_formatter
+    )
+    if access_error:
+        return access_error
+
+    range_error = _validate_login_stats_range(start_date, end_date, response_formatter)
+    if range_error:
+        return range_error
+
+    login_stats, total = await product_analysis_service.get_login_stats(
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit,
+        offset=offset,
+        group_ids=group_ids,
+    )
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            {
+                'login_stats': login_stats,
+                'total': total,
+                'offset': offset,
+                'limit': limit,
+            }
+        ),
     )

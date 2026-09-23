@@ -3,7 +3,7 @@ name = "tools_module"
 version = "0.1.0"
 description = "Tools module for Flo AI agent system"
 dependencies = [
-    "flo-ai==1.1.10",
+    "flo-ai==1.1.11",
     "httpx>=0.27.0,<1.0.0",
     "flo_cloud",
 
@@ -22,15 +22,16 @@ knowledge-base-module = { workspace = true }
 
 [dependency-groups]
 dev = [
-    "pytest>=8.3.3,<9.0.0",
-    "pytest-asyncio>=0.24.0,<1.0.0",
+    "pytest>=9.0.3,<10.0.0",
+    "pytest-asyncio>=1.0.0,<2.0.0",
 ]
-
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
 
 [tool.uv]
 package = true
+# Inert here: uv reads resolver settings only from the workspace root
+# (wavefront/server/pyproject.toml), which is where the real cooldown lives.
+# Kept so the setting survives if this package is ever split out.
+exclude-newer = "7 days"
 
 
 [build-system]

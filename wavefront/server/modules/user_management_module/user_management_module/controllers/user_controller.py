@@ -1,12 +1,18 @@
 import secrets
 from typing import List, Optional
 
+from common_module.feature.feature_flag import (
+    ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG,
+    is_feature_enabled,
+)
 from common_module.log.logger import logger
 from db_repo_module.models.resource import Resource
 from db_repo_module.models.resource import ResourceScope
 from db_repo_module.models.role import Role
 from db_repo_module.models.role_resource import RoleResource
 from db_repo_module.models.user import User
+from db_repo_module.models.user_group import UserGroup
+from db_repo_module.models.user_group_member import UserGroupMember
 from db_repo_module.models.user_role import UserRole
 from dependency_injector.wiring import inject
 from fastapi import Path, Query
@@ -17,16 +23,21 @@ from fastapi.routing import APIRouter
 from fastapi.security import OAuth2PasswordBearer
 import jwt
 from sqlalchemy import and_
+from sqlalchemy import cast
 from sqlalchemy import delete
+from sqlalchemy import exists
+from sqlalchemy import literal
 from sqlalchemy import select
 from sqlalchemy import or_
 from sqlalchemy import func
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.types import ARRAY, JSON
 
 from user_management_module.dependencies.injection import (
     AccountLockoutServiceDep,
     CacheManagerDep,
     CommonCacheDep,
-    EmailServiceDep,
+    EmailSenderDep,
     ResponseFormatterDep,
     TokenServiceDep,
     UserConfigDep,
@@ -42,11 +53,14 @@ from user_management_module.constants.cache import (
 from user_management_module.models.user_schema import NewUser
 from user_management_module.models.user_schema import ResetUser
 from user_management_module.models.user_schema import UpdateUser
+from user_management_module.utils.email_templates import (
+    PASSWORD_RESET_SUBJECT,
+    build_password_reset_email,
+)
 from user_management_module.utils.password_utils import hash_password
 from user_management_module.utils.user_utils import (
     can_read_users,
     check_is_admin,
-    create_account_lockout_response,
 )
 from user_management_module.utils.user_utils import get_current_user
 import json
@@ -56,6 +70,26 @@ from common_module.utils.validators import is_valid_uuid
 user_router = APIRouter(prefix='/v1')
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl='token')
+
+# The reset-password-email endpoint is unauthenticated, so every outcome it can
+# reach has to look identical from the outside. Anything that varies with the
+# submitted address -- a distinct error, a different status code -- lets an
+# attacker enumerate registered accounts by feeding it a wordlist. Real reasons
+# for not sending (unknown address, deleted user, locked account, mail failure)
+# are logged instead of returned.
+PASSWORD_RESET_GENERIC_MESSAGE = (
+    'If an account exists for this email address, '
+    'a password reset link has been sent to it.'
+)
+
+
+def _password_reset_generic_response(response_formatter) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            {'message': PASSWORD_RESET_GENERIC_MESSAGE}
+        ),
+    )
 
 
 @user_router.post('/users')
@@ -77,7 +111,12 @@ async def create_user(
             content=response_formatter.buildErrorResponse('Access denied'),
         )
 
-    is_creating_admin = role_id in new_user.role_id
+    # Groups can carry the admin role too, so admin status is decided over the
+    # direct roles and the group roles together.
+    assignment_role_ids = await user_service.resolve_assignment_role_ids(
+        role_ids=new_user.role_id, group_ids=new_user.group_ids
+    )
+    is_creating_admin = role_id in assignment_role_ids
 
     existing_user = await user_repository.find_one(email=new_user.email)
     if existing_user:
@@ -107,13 +146,16 @@ async def create_user(
 
     async with user_repository.session() as session:
         try:
+            # Console access may come from a group, but an empty group grants
+            # nothing -- so a user with no direct roles whose only groups are
+            # role-less still fails here, as they could not log in otherwise.
             if not is_creating_admin:
                 get_console_resources_query = (
                     select(Resource)
                     .join(RoleResource, Resource.id == RoleResource.resource_id)
                     .where(
                         and_(
-                            RoleResource.role_id.in_(new_user.role_id),
+                            RoleResource.role_id.in_(assignment_role_ids),
                             Resource.scope == ResourceScope.CONSOLE,
                         )
                     )
@@ -152,6 +194,22 @@ async def create_user(
                     ),
                 )
 
+            if new_user.group_ids:
+                group_query = select(UserGroup.id).where(
+                    UserGroup.id.in_(new_user.group_ids)
+                )
+                group_result = await session.execute(group_query)
+                existing_group_ids = {str(g_id) for g_id in group_result.scalars()}
+
+                invalid_groups = set(new_user.group_ids) - existing_group_ids
+                if invalid_groups:
+                    return JSONResponse(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        content=response_formatter.buildErrorResponse(
+                            f'Invalid group IDs: {", ".join(sorted(invalid_groups))}'
+                        ),
+                    )
+
             # Create user
             session.add(user)
             await session.flush()
@@ -161,6 +219,13 @@ async def create_user(
                 UserRole(user_id=user_id, role_id=r_id) for r_id in new_user.role_id
             ]
             session.add_all(user_roles)
+
+            session.add_all(
+                [
+                    UserGroupMember(user_id=user_id, group_id=g_id)
+                    for g_id in new_user.group_ids
+                ]
+            )
 
             await session.commit()
 
@@ -194,6 +259,7 @@ async def update_user(
     user_repository: UserRepositoryDep,
     user_role_repository: UserRoleRepositoryDep,
     cache_manager: CacheManagerDep,
+    user_service: UserServiceDep,
 ):
     role_id, _, _ = get_current_user(request)
     is_admin = await check_is_admin(role_id)
@@ -213,6 +279,8 @@ async def update_user(
 
     add_role_ids = update_user.add_role_ids or []
     delete_role_ids = update_user.delete_role_ids or []
+    add_group_ids = update_user.add_group_ids or []
+    delete_group_ids = update_user.delete_group_ids or []
 
     # Build the set of profile fields to edit, enforcing uniqueness for the
     # columns that carry a DB unique constraint (email, username).
@@ -276,16 +344,34 @@ async def update_user(
                     ),
                 )
 
-        # Guard against demoting the only remaining admin when roles are changed.
-        if add_role_ids or delete_role_ids:
-            admins = await user_role_repository.find(role_id=role_id)
-            if len(admins) == 1 and str(update_user.user_id) == str(admins[0].user_id):
+        if add_group_ids:
+            group_query = select(UserGroup.id).where(UserGroup.id.in_(add_group_ids))
+            group_result = await session.execute(group_query)
+            existing_group_ids = {str(g_id) for g_id in group_result.scalars()}
+
+            invalid_groups = set(add_group_ids) - existing_group_ids
+            if invalid_groups:
                 return JSONResponse(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     content=response_formatter.buildErrorResponse(
-                        error='Atleast one admin is mandatory, please assign another user as admin before updating this user.'
+                        f'Invalid group IDs: {", ".join(sorted(invalid_groups))}'
                     ),
                 )
+
+        # Guard against demoting the only remaining admin. Apply the mutation
+        # first, then re-count: that lets a sole admin still pick up additional
+        # non-admin roles or groups, while still rejecting a change that would
+        # leave the instance with none. The lock keeps a concurrent request
+        # from slipping between the two counts.
+        mutating_roles_or_groups = bool(
+            add_role_ids or delete_role_ids or add_group_ids or delete_group_ids
+        )
+        admins_before: set[str] = set()
+        if mutating_roles_or_groups:
+            await user_service.lock_role(session, role_id)
+            admins_before = await user_service.user_ids_with_role(
+                role_id, session=session
+            )
 
         if add_role_ids:
             existing_links = await user_role_repository.find(
@@ -307,6 +393,47 @@ async def update_user(
                 )
             )
             await session.execute(query)
+
+        if add_group_ids:
+            existing_memberships = await session.scalars(
+                select(UserGroupMember.group_id).where(
+                    and_(
+                        UserGroupMember.user_id == update_user.user_id,
+                        UserGroupMember.group_id.in_(add_group_ids),
+                    )
+                )
+            )
+            already_member = {str(g_id) for g_id in existing_memberships}
+            session.add_all(
+                [
+                    UserGroupMember(user_id=update_user.user_id, group_id=g_id)
+                    for g_id in add_group_ids
+                    if g_id not in already_member
+                ]
+            )
+
+        if delete_group_ids:
+            query = delete(UserGroupMember.__table__).where(
+                and_(
+                    UserGroupMember.user_id == update_user.user_id,
+                    UserGroupMember.group_id.in_(delete_group_ids),
+                )
+            )
+            await session.execute(query)
+
+        if mutating_roles_or_groups and admins_before:
+            await session.flush()
+            admins_after = await user_service.user_ids_with_role(
+                role_id, session=session
+            )
+            if not admins_after:
+                await session.rollback()
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content=response_formatter.buildErrorResponse(
+                        error='Atleast one admin is mandatory, please assign another user as admin before updating this user.'
+                    ),
+                )
 
         if profile_updates:
             user_in_session = await session.get(User, update_user.user_id)
@@ -339,13 +466,40 @@ async def get_all_user(
     offset: int = Query(0),
     force_fetch: int = Query(0),
 ):
-    if not await can_read_users(request):
+    """List users.
+
+    Admins get the full directory entry: roles, groups and username alongside
+    the name and email. With ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG set, everyone
+    else gets a name-and-email lookup — id, email, first_name, last_name and
+    nothing more — which is what the console needs to put a name to an id it
+    already holds. Without the flag, non-admins are refused outright.
+    """
+    # This is can_read_users' gate, inlined: the admin bit decides the payload
+    # shape here, not just access, and calling both would re-resolve the role.
+    role_id, _, _ = get_current_user(request)
+    is_admin = await check_is_admin(role_id)
+
+    if not is_admin and not is_feature_enabled(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG):
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content=response_formatter.buildErrorResponse('Access denied'),
         )
+
+    # Refused rather than ignored: `?roles=admin` would partition the directory
+    # by role and hand back exactly the membership the trimmed payload withholds,
+    # and silently dropping the filter would answer a question that was not asked.
+    if not is_admin and roles:
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=response_formatter.buildErrorResponse(
+                'Filtering users by role requires admin access'
+            ),
+        )
+
     # checking the cache for the keys
-    cache_key = user_list_cache_key(offset, limit, search, roles)
+    cache_key = user_list_cache_key(
+        offset, limit, search, roles, include_roles=is_admin
+    )
     if not force_fetch:
         cached_result = cache_manager.get_str(cache_key)
         if cached_result:
@@ -356,29 +510,18 @@ async def get_all_user(
                 ),
             )
     async with user_repository.session() as session:
-        # Build query to combine all three tables
-        # Aggregated query with roles
-        query = (
-            select(
+        if not is_admin:
+            # The trimmed directory: no roles, no groups, and no username. The
+            # columns are left out of the query rather than stripped from the
+            # result, so there is no shape for a later edit to forget to filter.
+            query = select(
                 User.id,
                 User.first_name,
                 User.last_name,
                 User.email,
-                User.username,
-                func.array_agg(
-                    func.json_build_object(
-                        'id',
-                        Role.id,
-                        'name',
-                        Role.name,
-                    )
-                ).label('roles'),
-            )
-            .join(UserRole, User.id == UserRole.user_id)
-            .join(Role, UserRole.role_id == Role.id)
-            .where(User.deleted.is_(False))
-            .group_by(User.id)
-        )
+            ).where(User.deleted.is_(False))
+        else:
+            query = _admin_user_listing_query(roles)
 
         # Add search conditions
         if search and search.strip():
@@ -390,14 +533,28 @@ async def get_all_user(
             if len(name) > 1 and name[1]:
                 filters.append(User.last_name.ilike(f'%{name[1]}%'))
             filters.append(User.email.ilike(f'%{search}%'))
-            filters.append(User.username.ilike(f'%{search}%'))
+            # Username is not in the non-admin payload, so matching on it there
+            # would return rows with no visible reason for having matched.
+            if is_admin:
+                filters.append(User.username.ilike(f'%{search}%'))
             query = query.where(or_(*filters))
 
-        # Add role filter
+        # Add role filter. An EXISTS keeps this a row filter, so users are
+        # selected on their direct roles just as before. Admin-only: the guard
+        # above rejects the parameter for everyone else.
         if roles:
-            query = query.where(Role.name.in_(roles))
+            query = query.where(
+                exists(
+                    select(literal(1))
+                    .select_from(UserRole)
+                    .join(Role, Role.id == UserRole.role_id)
+                    .where(UserRole.user_id == User.id, Role.name.in_(roles))
+                )
+            )
 
-        query = query.offset(offset).limit(limit)
+        # Without GROUP BY there is no incidental ordering left to lean on, and
+        # offset/limit paging needs a stable one.
+        query = query.order_by(User.id).offset(offset).limit(limit)
 
         # Execute query
         result = await session.execute(query)
@@ -410,6 +567,67 @@ async def get_all_user(
         status_code=status.HTTP_200_OK,
         content=response_formatter.buildSuccessResponse({'users': serialize_result}),
     )
+
+
+def _admin_user_listing_query(roles: Optional[List[str]]):
+    """The full directory row: name, email, username, roles and groups."""
+    empty_json_array = cast(postgresql.array([], type_=postgresql.JSON), ARRAY(JSON))
+
+    # Roles and groups are aggregated in correlated subqueries rather than by
+    # joining and grouping. Two reasons: joining both would multiply each
+    # user's roles by their groups, and de-duplicating that fan-out would need
+    # array_agg(DISTINCT ...), which Postgres rejects on json values for want
+    # of an equality operator.
+    #
+    # Aggregating over no rows yields NULL, so each coalesces to an empty
+    # array. That is what lets a user with no direct roles (drawing access
+    # from a group instead) or no groups still appear in the directory.
+    #
+    # `roles` stays direct-only. Roles inherited from a group are deliberately
+    # not merged in, so the field keeps the meaning it has always had.
+    roles_aggregate = (
+        select(
+            func.coalesce(
+                func.array_agg(
+                    func.json_build_object('id', Role.id, 'name', Role.name)
+                ),
+                empty_json_array,
+            )
+        )
+        .select_from(UserRole)
+        .join(Role, Role.id == UserRole.role_id)
+        .where(UserRole.user_id == User.id)
+    )
+
+    # When filtering by role name the aggregate is filtered to match, so a
+    # filtered listing keeps reporting only the roles that matched, exactly
+    # as the previous join-and-group query did.
+    if roles:
+        roles_aggregate = roles_aggregate.where(Role.name.in_(roles))
+
+    groups_aggregate = (
+        select(
+            func.coalesce(
+                func.array_agg(
+                    func.json_build_object('id', UserGroup.id, 'name', UserGroup.name)
+                ),
+                empty_json_array,
+            )
+        )
+        .select_from(UserGroupMember)
+        .join(UserGroup, UserGroup.id == UserGroupMember.group_id)
+        .where(UserGroupMember.user_id == User.id)
+    )
+
+    return select(
+        User.id,
+        User.first_name,
+        User.last_name,
+        User.email,
+        User.username,
+        roles_aggregate.scalar_subquery().label('roles'),
+        groups_aggregate.scalar_subquery().label('groups'),
+    ).where(User.deleted.is_(False))
 
 
 @user_router.get('/users/{user_id}')
@@ -469,12 +687,7 @@ async def get_user(
             content=response_formatter.buildErrorResponse('User not found'),
         )
 
-    serialize_result = {
-        'id': str(user.id),
-        'first_name': user.first_name,
-        'last_name': user.last_name,
-        'email': user.email,
-    }
+    serialize_result = user.to_dict()
 
     cache_manager.add(cache_key, json.dumps(serialize_result), expiry=60 * 60)  # 1 hour
     return JSONResponse(
@@ -483,12 +696,74 @@ async def get_user(
     )
 
 
+@user_router.get('/users/{user_id}/groups')
+@inject
+async def get_user_groups(
+    request: Request,
+    response_formatter: ResponseFormatterDep,
+    user_repository: UserRepositoryDep,
+    user_id: str = Path(..., description='User id whose groups to fetch'),
+):
+    """Groups one user belongs to.
+
+    Returns an empty list for a user in no groups, which is a perfectly normal
+    state -- group membership is optional.
+    """
+    role_id, _, _ = get_current_user(request)
+    is_admin = await check_is_admin(role_id)
+
+    if not is_admin:
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content=response_formatter.buildErrorResponse('Access denied'),
+        )
+
+    if not is_valid_uuid(user_id):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                f'Invalid user id: {user_id}'
+            ),
+        )
+
+    user = await user_repository.find_one(id=user_id)
+    if not user or user.deleted:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse('User not found'),
+        )
+
+    async with user_repository.session() as session:
+        groups = (
+            (
+                await session.execute(
+                    select(UserGroup)
+                    .join(
+                        UserGroupMember,
+                        UserGroupMember.group_id == UserGroup.id,
+                    )
+                    .where(UserGroupMember.user_id == user_id)
+                    .order_by(UserGroup.name)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            {'groups': [group.to_dict() for group in groups]}
+        ),
+    )
+
+
 @user_router.delete('/users')
 @inject
 async def delete_user(
     request: Request,
     response_formatter: ResponseFormatterDep,
-    user_role_repository: UserRoleRepositoryDep,
+    user_repository: UserRepositoryDep,
     user_service: UserServiceDep,
     cache_manager: CacheManagerDep,
     delete_id: str = Query(alias='id'),
@@ -502,16 +777,29 @@ async def delete_user(
             content=response_formatter.buildErrorResponse('Access denied'),
         )
 
-    admins = await user_role_repository.find(role_id=role_id)
-    if len(admins) == 1 and user_id == delete_id:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(
-                'Atleast one admin is mandatory, please assign another user as admin before deleting this user.'
-            ),
+    # Counted across direct assignments and group membership alike, so the last
+    # admin cannot be deleted even when their admin role comes from a group.
+    #
+    # The lock is held across both the count and the delete. delete_user commits
+    # through its own transactions, but those commits land before this one
+    # releases the lock, so the next request through here blocks until then and
+    # always counts post-delete state.
+    async with user_repository.session() as guard_session:
+        await user_service.lock_role(guard_session, role_id)
+        admin_user_ids = await user_service.user_ids_with_role(
+            role_id, session=guard_session
         )
+        if len(admin_user_ids) == 1 and user_id == delete_id:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content=response_formatter.buildErrorResponse(
+                    'Atleast one admin is mandatory, please assign another user as admin before deleting this user.'
+                ),
+            )
 
-    response = await user_service.delete_user(delete_id)
+        response = await user_service.delete_user(delete_id)
+        await guard_session.commit()
+
     # Invalidate all user_data cache entries
     cache_manager.invalidate_query(USER_DATA_PATTERN)
 
@@ -537,34 +825,26 @@ async def send_reset_url(
     response_formatter: ResponseFormatterDep,
     token_service: TokenServiceDep,
     config: UserConfigDep,
-    email_service: EmailServiceDep,
+    email_sender: EmailSenderDep,
     account_lockout_service: AccountLockoutServiceDep,
 ):
     try:
         # checking if the user exists in the db
         user_with_email = await user_repository.find_one(email=email)
-        if not user_with_email:
-            return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content=response_formatter.buildErrorResponse(
-                    error='No user found with this email ID.'
-                ),
-            )
-        if user_with_email.deleted:
-            return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content=response_formatter.buildErrorResponse(
-                    error='No user found with this email ID.'
-                ),
-            )
+        if not user_with_email or user_with_email.deleted:
+            logger.info('Password reset requested for an unknown or deleted account')
+            return _password_reset_generic_response(response_formatter)
 
-        is_locked, locked_until = await account_lockout_service.check_account_lockout(
-            email
+        is_locked, _ = await account_lockout_service.check_account_lockout(
+            user_with_email
         )
         if is_locked:
-            return create_account_lockout_response(
-                locked_until, account_lockout_service, response_formatter
+            # A locked account gets no reset link, but saying so would confirm the
+            # address is registered, so the caller sees the same message as always.
+            logger.info(
+                f'Password reset skipped for locked account {user_with_email.id}'
             )
+            return _password_reset_generic_response(response_formatter)
 
         # creating an jwt token for reseting the password
         random_digit = secrets.token_hex(16)
@@ -580,35 +860,23 @@ async def send_reset_url(
         # generating the url
         forget_url_link = f'{config["web"]["url"]}/reset-password?token={decoded_url}'
 
-        # setting up the emial part
-        email_response = email_service.send_forget_password_email(
-            forget_url_link, email
-        )
-        if email_response:
-            return JSONResponse(
-                status_code=status.HTTP_200_OK,
-                content=response_formatter.buildSuccessResponse(
-                    {
-                        'message': 'A password reset link has been sent to your registered email address.',
-                    }
-                ),
+        # Sent from the primary email connection, so changing the platform
+        # sender is an admin action rather than a redeploy.
+        try:
+            email_response = await email_sender.send(
+                subject=PASSWORD_RESET_SUBJECT,
+                body_html=build_password_reset_email(forget_url_link),
+                recipients=email,
             )
-        else:
-            logger.error('Erro while sending email')
-            return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content=response_formatter.buildErrorResponse(
-                    'An error occurred while sending the email. Please verify your email address and try again later.'
-                ),
-            )
+            if not email_response:
+                logger.error('Error while sending password reset email')
+        except Exception as exc:
+            logger.error(f'Error while sending password reset email: {exc}')
+
+        return _password_reset_generic_response(response_formatter)
     except ValueError:
         logger.error('Error in email sending credentials')
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(
-                'Password reset failed. Please reach out to your administrator for assistance.'
-            ),
-        )
+        return _password_reset_generic_response(response_formatter)
 
 
 @user_router.post('/user/reset-password')

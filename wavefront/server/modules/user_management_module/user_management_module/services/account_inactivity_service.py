@@ -1,16 +1,25 @@
+import json
 from datetime import datetime, timezone
 from typing import Optional, Tuple
 
 from common_module.log.logger import logger
+from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.models.user import User
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
+from user_management_module.constants.cache import user_by_id_cache_key
+
+USER_CACHE_TTL_SECONDS = 60 * 60
 
 
 class AccountInactivityService:
     def __init__(
-        self, user_repository: SQLAlchemyRepository[User], inactive_days_threshold=60
+        self,
+        user_repository: SQLAlchemyRepository[User],
+        cache_manager: CacheManager,
+        inactive_days_threshold=60,
     ):
         self.user_repository = user_repository
+        self.cache_manager = cache_manager
         self.inactive_days_threshold = (
             int(inactive_days_threshold) if inactive_days_threshold else 60
         )
@@ -53,8 +62,17 @@ class AccountInactivityService:
         """Update user's last login timestamp on successful authentication"""
         current_time = datetime.now(timezone.utc)
 
-        await self.user_repository.find_one_and_update(
-            {'id': user.id}, last_login_at=current_time
+        updated = await self.user_repository.find_one_and_update(
+            {'id': user.id},
+            refresh=True,
+            last_login_at=current_time,
         )
+        if updated:
+            # Keep GET /users/{id} on the same cache entry as lockout writes.
+            self.cache_manager.add(
+                user_by_id_cache_key(str(updated.id)),
+                json.dumps(updated.to_dict()),
+                expiry=USER_CACHE_TTL_SECONDS,
+            )
 
         logger.info(f'Updated last login timestamp for user {user.email}')

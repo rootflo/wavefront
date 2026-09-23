@@ -10,5 +10,11 @@ class NewKnowledge(BaseModel):
     vector_size_1: Optional[int] = None
 
 
+class UpdateKnowledge(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    type: Optional[str] = None
+
+
 class NewInference(BaseModel):
     prompt: str

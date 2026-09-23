@@ -419,6 +419,7 @@ class AriumBuilder:
                     yaml_str=agent_config.yaml_config,
                     base_llm=base_llm,
                     tool_registry=tool_registry,
+                    **kwargs,
                 )
                 agent = agent_builder.build()
 
@@ -428,6 +429,7 @@ class AriumBuilder:
                     yaml_file=agent_config.yaml_file,
                     base_llm=base_llm,
                     tool_registry=tool_registry,
+                    **kwargs,
                 )
                 agent = agent_builder.build()
 
@@ -884,9 +886,12 @@ class AriumBuilder:
                 model_config = model_config.model_copy(
                     update={'base_url': agent_config.base_url}
                 )
+            # Built for this agent alone, unlike a base_llm every agent shares
             llm = AriumBuilder._create_llm_from_config(model_config, **kwargs)
+            llm_owned = True
         elif base_llm:
             llm = base_llm
+            llm_owned = False
         else:
             raise ValueError(
                 f'Model must be specified for agent {name} or base_llm must be provided'
@@ -909,10 +914,6 @@ class AriumBuilder:
             reasoning_pattern = ReasoningPattern[reasoning_pattern_str.upper()]
         except KeyError:
             raise ValueError(f'Invalid reasoning pattern: {reasoning_pattern_str}')
-
-        # Set LLM temperature if specified
-        if temperature is not None:
-            llm.temperature = temperature
 
         # Extract and resolve tools
         agent_tools = []
@@ -970,13 +971,27 @@ class AriumBuilder:
             AgentBuilder()
             .with_name(name)
             .with_prompt(job)
-            .with_llm(llm)
+            .with_llm(llm, owned=llm_owned)
             .with_tools(agent_tools)
             .with_retries(max_retries)
             .with_reasoning(reasoning_pattern)
             .with_output_schema(output_schema if output_schema is not None else {})
             .with_role(role)
         )
+
+        # Deferred so the value survives with_llm() and reaches whichever LLM the
+        # agent ends up with, and so a shared base_llm is not mutated for every
+        # other agent using it. Mirrors AgentBuilder.from_yaml.
+        if (
+            agent_config.model is not None
+            and agent_config.model.temperature is not None
+        ):
+            builder.with_temperature(agent_config.model.temperature)
+        if temperature is not None:
+            # An explicit settings.temperature wins over the model block
+            builder.with_temperature(temperature)
+        if settings is not None:
+            builder.with_generation_params(**settings.generation_params())
 
         if act_as is not None:
             builder.with_actas(act_as)

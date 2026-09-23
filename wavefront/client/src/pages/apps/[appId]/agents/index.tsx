@@ -100,8 +100,8 @@ const AgentManagement: React.FC = () => {
 
       <div className="mb-8 flex w-full items-start justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Agents</h1>
-          <p className="mt-2 text-gray-600">Manage AI agents for {selectedApp?.app_name}</p>
+          <h1 className="frost-text text-3xl font-bold">Agents</h1>
+          <p className="frost-text-muted mt-2">Manage AI agents for {selectedApp?.app_name}</p>
         </div>
         <div className="flex items-center gap-4">
           <Input
@@ -130,7 +130,7 @@ const AgentManagement: React.FC = () => {
           <Button onClick={handleCreateAgent}>Create Agent</Button>
         </div>
       </div>
-      <div className="grid gap-6 overflow-y-auto py-2 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid w-full gap-6 px-1 pt-2 pb-10 sm:grid-cols-2 lg:grid-cols-3">
         {agentsLoading ? (
           <>
             {Array.from({ length: 6 }).map((_, index) => (

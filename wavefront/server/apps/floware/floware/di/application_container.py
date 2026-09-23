@@ -1,6 +1,9 @@
 from dependency_injector import containers
 from dependency_injector import providers
 
+from floware.repositories.config_repository import AppConfigRepository
+from floware.repositories.datasource_repository import AppDatasourceRepository
+from floware.repositories.knowledge_base_repository import AppKnowledgeBaseRepository
 from floware.services.notification_service import NotificationService
 from floware.services.config_service import ConfigService
 from floware.services.scheduled_job_service import ScheduledJobService
@@ -10,9 +13,8 @@ class ApplicationContainer(containers.DeclarativeContainer):
     config = providers.Configuration(ini_files=['./config.ini'])
     # db
     db_client = providers.Dependency()
+    cache_manager = providers.Dependency()
 
-    email_repository = providers.Dependency()
-    oauth_credential_repository = providers.Dependency()
     user_repository = providers.Dependency()
     task_repository = providers.Dependency()
 
@@ -24,10 +26,28 @@ class ApplicationContainer(containers.DeclarativeContainer):
     scheduled_job_execution_repository = providers.Dependency()
     datasource_repository = providers.Dependency()
     dynamic_query_repository = providers.Dependency()
-    email_service = providers.Dependency()
+    email_send_service = providers.Dependency()
+    email_connection_service = providers.Dependency()
     user_service = providers.Dependency()
     role_repository = providers.Dependency()
     user_role_repository = providers.Dependency()
+    knowledge_base_repository = providers.Dependency()
+
+    app_config_repository = providers.Singleton(
+        AppConfigRepository,
+        repository=config_repository,
+        cache_manager=cache_manager,
+    )
+    app_datasource_repository = providers.Singleton(
+        AppDatasourceRepository,
+        repository=datasource_repository,
+        cache_manager=cache_manager,
+    )
+    app_knowledge_base_repository = providers.Singleton(
+        AppKnowledgeBaseRepository,
+        repository=knowledge_base_repository,
+        cache_manager=cache_manager,
+    )
 
     # services
     notification_service = providers.Singleton(
@@ -36,7 +56,9 @@ class ApplicationContainer(containers.DeclarativeContainer):
 
     config_service = providers.Singleton(
         ConfigService,
-        config_repository=config_repository,
+        app_config_repository=app_config_repository,
+        datasource_repository=app_datasource_repository,
+        knowledge_base_repository=app_knowledge_base_repository,
         cloud_storage_manager=cloud_storage_manager,
         config=config,
     )
@@ -50,7 +72,8 @@ class ApplicationContainer(containers.DeclarativeContainer):
         dynamic_query_repository=dynamic_query_repository,
         cloud_storage_manager=cloud_storage_manager,
         bucket_name=config.floware.asset_storage_bucket,
-        email_service=email_service,
+        email_send_service=email_send_service,
+        email_connection_service=email_connection_service,
         user_repository=user_repository,
         user_service=user_service,
         role_repository=role_repository,

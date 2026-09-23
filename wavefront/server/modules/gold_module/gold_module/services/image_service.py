@@ -5,6 +5,7 @@ from datetime import datetime
 import json
 
 from common_module.log.logger import logger
+from common_module.utils.image_formats import SUPPORTED_PILLOW_FORMATS
 from gold_module.services.cloud_image_service import CloudImageService
 from PIL import Image
 
@@ -59,7 +60,9 @@ class ImageService:
 
     async def _validate_image(self, image_data: bytes) -> bytes:
         try:
-            with Image.open(io.BytesIO(image_data)) as img:
+            with Image.open(
+                io.BytesIO(image_data), formats=SUPPORTED_PILLOW_FORMATS
+            ) as img:
                 # Ensure the image is in RGB format
                 if img.mode != 'RGB':
                     img = img.convert('RGB')

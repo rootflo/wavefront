@@ -1,21 +1,14 @@
 import floConsoleService from '@app/api';
 import { Button } from '@app/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@app/components/ui/dialog';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@app/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { Datasource } from '@app/types/datasource';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
 import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeMirror from '@uiw/react-codemirror';
 import React, { useEffect } from 'react';
@@ -111,7 +104,7 @@ const EditDatasourceDialog: React.FC<EditDatasourceDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto lg:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Edit Datasource</DialogTitle>
           {/* <DialogDescription>Update datasource configuration for {currentApp.app_name}</DialogDescription> */}
@@ -166,7 +159,7 @@ const EditDatasourceDialog: React.FC<EditDatasourceDialogProps> = ({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    Description <span className="text-gray-400">(Optional)</span>
+                    Description <span className="frost-text-subtle">(Optional)</span>
                   </FormLabel>
                   <FormControl>
                     <Input placeholder="Brief description of this datasource" {...field} />
@@ -183,21 +176,20 @@ const EditDatasourceDialog: React.FC<EditDatasourceDialogProps> = ({
                 <FormItem>
                   <FormLabel>Connection Configuration (JSON)</FormLabel>
                   <FormControl>
-                    <div className="w-full">
+                    <div className="w-full min-w-0">
                       <CodeMirror
                         value={field.value}
                         onChange={field.onChange}
                         theme="dark"
                         height="300px"
-                        className="w-full"
-                        extensions={[langs.json()]}
+                        width="100%"
+                        maxWidth="100%"
+                        className="w-full min-w-0"
+                        extensions={[langs.json(), ...popupCodeMirrorExtensions]}
                         placeholder="Enter your connection configuration in JSON format..."
                       />
                     </div>
                   </FormControl>
-                  <FormDescription>
-                    Define your connection parameters in JSON format. Configuration varies by datasource type.
-                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

@@ -5,8 +5,11 @@ import { NamespaceItem } from '@app/api/namespace-service';
 import { AgentApi, AgentListItem } from '@app/types/agent';
 import { ApiServiceItem } from '@app/types/api-service';
 import { Authenticator } from '@app/types/authenticator';
+import { EmailConnection } from '@app/types/email';
+import { OAuthApp } from '@app/types/oauth-app';
+import { Chatbot } from '@app/types/chatbot';
 import { ConfigurationListItem, ConfigurationValue } from '@app/types/configuration';
-import { Datasource, ReadYamlData, Yaml } from '@app/types/datasource';
+import { Datasource, DynamicQuery, ReadDynamicQueryData } from '@app/types/datasource';
 import { LLMInferenceConfig } from '@app/types/llm-inference-config';
 import { MessageProcessor, MessageProcessorListItem } from '@app/types/message-processor';
 import { Pipeline, PipelineFile, PipelineStatus } from '@app/types/pipeline';
@@ -17,6 +20,7 @@ import { TtsConfig } from '@app/types/tts-config';
 import { IUser } from '@app/types/user';
 import { VoiceAgent } from '@app/types/voice-agent';
 import { ScheduledJob } from '@app/types/scheduled-job';
+import { Trigger } from '@app/types/trigger';
 import { WorkflowListItem, WorkflowPipelineListItem, WorkflowRunListData } from '@app/types/workflow';
 import { EntityVersion } from '@app/types/version';
 
@@ -68,16 +72,16 @@ const getDatasourceQueryFn = async (datasourceId: string): Promise<Datasource | 
   return null;
 };
 
-const getAllYamlsQueryFn = async (datasourceId: string): Promise<Yaml[]> => {
-  const response = await floConsoleService.datasourcesService.getAllYamls(datasourceId);
+const getAllDynamicQueriesQueryFn = async (datasourceId: string): Promise<DynamicQuery[]> => {
+  const response = await floConsoleService.datasourcesService.getAllDynamicQueries(datasourceId);
   if (response.data?.data?.yamls) {
     return response.data.data.yamls;
   }
   return [];
 };
 
-const readYamlQueryFn = async (datasourceId: string, yamlId: string): Promise<ReadYamlData | null> => {
-  const response = await floConsoleService.datasourcesService.readYaml(datasourceId, yamlId);
+const readDynamicQueryQueryFn = async (datasourceId: string, queryId: string): Promise<ReadDynamicQueryData | null> => {
+  const response = await floConsoleService.datasourcesService.readDynamicQuery(datasourceId, queryId);
   if (response.data?.data) {
     return response.data.data;
   }
@@ -130,6 +134,32 @@ const getAuthenticatorQueryFn = async (authId: string): Promise<Authenticator | 
     return response.data.data;
   }
   return null;
+};
+
+const getOAuthAppsQueryFn = async (): Promise<OAuthApp[]> => {
+  const response = await floConsoleService.oauthAppService.getAllOAuthApps();
+  if (response.data?.meta?.status === 'success' && response.data.data?.apps) {
+    return response.data.data.apps;
+  }
+  return [];
+};
+
+const getOAuthAppQueryFn = async (oauthAppId: string): Promise<OAuthApp | null> => {
+  const response = await floConsoleService.oauthAppService.getOAuthApp(oauthAppId);
+  return response.data?.data?.app ?? null;
+};
+
+const getEmailConnectionsQueryFn = async (): Promise<EmailConnection[]> => {
+  const response = await floConsoleService.emailConnectionService.getAllEmailConnections();
+  if (response.data?.meta?.status === 'success' && response.data.data?.connections) {
+    return response.data.data.connections;
+  }
+  return [];
+};
+
+const getEmailConnectionQueryFn = async (connectionId: string): Promise<EmailConnection | null> => {
+  const response = await floConsoleService.emailConnectionService.getEmailConnection(connectionId);
+  return response.data?.data?.connection ?? null;
 };
 
 const getLLMConfigsQueryFn = async (): Promise<LLMInferenceConfig[]> => {
@@ -220,6 +250,14 @@ const getWorkflowRunsQueryFn = async (
     page_number: Math.floor(offset / limit),
     total_pages: 0,
   };
+};
+
+const getChatbotsQueryFn = async (namespace?: string): Promise<Chatbot[]> => {
+  const response = await floConsoleService.chatbotService.listAllChatbots(namespace);
+  if (response.data?.meta?.status === 'success' && response.data.data?.chatbots) {
+    return response.data.data.chatbots;
+  }
+  return [];
 };
 
 const getVoiceAgentsQueryFn = async (): Promise<VoiceAgent[]> => {
@@ -473,6 +511,14 @@ const getScheduledJobsQueryFn = async (): Promise<ScheduledJob[]> => {
   return jobs.slice(0, MAX_SCHEDULED_JOBS);
 };
 
+const getTriggersQueryFn = async (): Promise<Trigger[]> => {
+  const response = await floConsoleService.triggerService.listTriggers({ limit: 500 });
+  if (response.data?.meta?.status === 'success' && Array.isArray(response.data.data?.data)) {
+    return response.data.data.data.filter((trigger) => trigger.status !== 'deleted');
+  }
+  return [];
+};
+
 export {
   getAgentQueryFn,
   getAgentVersionsQueryFn,
@@ -481,13 +527,18 @@ export {
   getAgentToolsQueryFn,
   getAllAppsQueryFn,
   getAllDatasourcesQueryFn,
-  getAllYamlsQueryFn,
+  getAllDynamicQueriesQueryFn,
   getApiServiceQueryFn,
   getApiServicesQueryFn,
   getAppByIdFn,
   getAppUsersQueryFn,
   getAuthenticatorQueryFn,
   getAuthenticatorsQueryFn,
+  getEmailConnectionQueryFn,
+  getEmailConnectionsQueryFn,
+  getOAuthAppQueryFn,
+  getOAuthAppsQueryFn,
+  getChatbotsQueryFn,
   getCurrentUserQueryFn,
   getDatasourceQueryFn,
   getDatasourceResourcesQueryFn,
@@ -522,6 +573,7 @@ export {
   getWorkflowPipelinesQueryFn,
   getWorkflowRunsQueryFn,
   getWorkflowsQueryFn,
-  readYamlQueryFn,
+  readDynamicQueryQueryFn,
   getScheduledJobsQueryFn,
+  getTriggersQueryFn,
 };

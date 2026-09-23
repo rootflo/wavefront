@@ -4,6 +4,10 @@
 # """
 
 from datasource.odata_parser import ODataQueryParser
+from datasource.dialect import BigQuerySqlDialect
+from datasource.dialect import MSSQLSqlDialect
+from datasource.dialect import PostgresSqlDialect
+from datasource.dialect import RedshiftSqlDialect
 
 from datetime import datetime
 import os
@@ -28,6 +32,18 @@ def fill_odata_query(sql_expr: str, parameters: dict = {}) -> str:
 
 
 parser = ODataQueryParser(type='sql')
+redshift_parser = ODataQueryParser(
+    type='sql', dynamic_var_char=':', dialect=RedshiftSqlDialect()
+)
+postgres_parser = ODataQueryParser(
+    type='sql', dynamic_var_char=':', dialect=PostgresSqlDialect()
+)
+bigquery_parser = ODataQueryParser(
+    type='sql', dynamic_var_char='@', dialect=BigQuerySqlDialect()
+)
+mssql_parser = ODataQueryParser(
+    type='sql', dynamic_var_char=':', dialect=MSSQLSqlDialect()
+)
 
 
 # Set cloud provider for testing
@@ -75,6 +91,42 @@ def test_contains_operator():
     expected_sql = 'LOWER(description) LIKE LOWER(@description)'
     expected_params = {'description': '%test%'}
     sql_expr, params = parser.prepare_odata_filter(filter_expr)
+    assert sql_expr == expected_sql
+    assert params == expected_params
+
+
+def test_redshift_contains_casts_super_paths():
+    filter_expr = "metadata1.value_1 contains 'foo'"
+    expected_sql = 'CAST(metadata1.value_1 AS VARCHAR) ILIKE :metadata1_value_1'
+    expected_params = {'metadata1_value_1': '%foo%'}
+    sql_expr, params = redshift_parser.prepare_odata_filter(filter_expr)
+    assert sql_expr == expected_sql
+    assert params == expected_params
+
+
+def test_postgres_contains_uses_ilike():
+    filter_expr = "description contains 'test'"
+    expected_sql = 'description ILIKE :description'
+    expected_params = {'description': '%test%'}
+    sql_expr, params = postgres_parser.prepare_odata_filter(filter_expr)
+    assert sql_expr == expected_sql
+    assert params == expected_params
+
+
+def test_bigquery_contains_casts_to_string():
+    filter_expr = "description contains 'test'"
+    expected_sql = 'LOWER(CAST(description AS STRING)) LIKE LOWER(@description)'
+    expected_params = {'description': '%test%'}
+    sql_expr, params = bigquery_parser.prepare_odata_filter(filter_expr)
+    assert sql_expr == expected_sql
+    assert params == expected_params
+
+
+def test_mssql_contains_casts_to_nvarchar():
+    filter_expr = "description contains 'test'"
+    expected_sql = 'LOWER(CAST(description AS NVARCHAR(MAX))) LIKE LOWER(:description)'
+    expected_params = {'description': '%test%'}
+    sql_expr, params = mssql_parser.prepare_odata_filter(filter_expr)
     assert sql_expr == expected_sql
     assert params == expected_params
 

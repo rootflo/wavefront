@@ -142,40 +142,41 @@ class KBRagResponse:
             List of retrieved documents
         """
         try:
+            # Update text search tokens. Scoped to its own short-lived session so
+            # this connection is released before the (potentially slow) search
+            # query below opens its own — holding both open for the search's
+            # full duration doubled connection usage on this hot path.
             async with self.knowledge_base_embeddings_repository.session() as session:
-                # Update text search tokens
                 update_stmt = text(self.query_generator.get_update_tokens_query())
                 await session.execute(update_stmt)
                 await session.commit()
 
-                # Get and execute the combined search query
-                sql_query, query_params = (
-                    self.query_generator.get_combined_search_query(
-                        query,
-                        query_embeddings,
-                        params,
-                        filter,
-                        offset,
-                        limit,
-                        filter1,
-                        filter2,
-                        filter3,
-                        filter4,
-                        filter5,
-                        filter6,
-                        document_date_start,
-                        document_date_end,
-                        created_at_start,
-                        created_at_end,
-                    )
+            # Get and execute the combined search query
+            sql_query, query_params = self.query_generator.get_combined_search_query(
+                query,
+                query_embeddings,
+                params,
+                filter,
+                offset,
+                limit,
+                filter1,
+                filter2,
+                filter3,
+                filter4,
+                filter5,
+                filter6,
+                document_date_start,
+                document_date_end,
+                created_at_start,
+                created_at_end,
+            )
+            retrieved_docs = (
+                await self.knowledge_base_embeddings_repository.execute_query(
+                    sql_query,
+                    query_params,
                 )
-                retrieved_docs = (
-                    await self.knowledge_base_embeddings_repository.execute_query(
-                        sql_query,
-                        query_params,
-                    )
-                )
-                return retrieved_docs
+            )
+            return retrieved_docs
 
         except SQLAlchemyError as e:
             self.logger.error(f'Database error: {e}')

@@ -74,16 +74,18 @@ async def authenticate(
         Provide[UserContainer.account_inactivity_service]
     ),
 ):
-    # Check if account is locked before attempting authentication
-    is_locked, locked_until = await account_lockout_service.check_account_lockout(
-        auth_data.email
-    )
-    if is_locked:
-        return create_account_lockout_response(
-            locked_until, account_lockout_service, response_formatter
-        )
-
     user = await user_repository.find_one(email=auth_data.email)
+
+    if user:
+        is_locked, locked_until = await account_lockout_service.check_account_lockout(
+            user
+        )
+        if is_locked:
+            if not verify_password(auth_data.password, user.password):
+                await account_lockout_service.record_locked_attempt(user)
+            return create_account_lockout_response(
+                locked_until, account_lockout_service, response_formatter
+            )
 
     # Check for account inactivity if feature is enabled and user exists
     if user and is_feature_enabled(INACTIVE_ACCOUNT_DISABLE_FLAG):

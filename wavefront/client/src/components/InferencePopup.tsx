@@ -1,14 +1,6 @@
 import floConsoleService from '@app/api';
 import { Button } from '@app/components/ui/button';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@app/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Textarea } from '@app/components/ui/textarea';
 import { useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -336,12 +328,12 @@ const InferencePopup: React.FC<InferencePopupProps> = ({ onClose, renderModal = 
               </label>
             </div>
           ) : (
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+            <div className="frost-glass border-frost-border rounded-lg border p-3">
               <div className="flex items-start space-x-3">
                 <img src={uploadedImage.base64} alt="Uploaded" className="h-16 w-16 rounded-lg object-cover" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-gray-900">{uploadedImage.file.name}</p>
-                  <p className="text-xs text-gray-500">
+                  <p className="frost-text truncate text-sm font-medium">{uploadedImage.file.name}</p>
+                  <p className="frost-text-muted text-xs">
                     {uploadedImage.mimeType} • {formatFileSize(uploadedImage.file.size)}
                   </p>
                 </div>
@@ -400,9 +392,9 @@ const InferencePopup: React.FC<InferencePopupProps> = ({ onClose, renderModal = 
           {uploadedDocuments.length > 0 && (
             <div className="mt-3 flex flex-col gap-2">
               {uploadedDocuments.map((doc, index) => (
-                <div key={index} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <div key={index} className="frost-glass border-frost-border rounded-lg border p-3">
                   <div className="flex items-start space-x-3">
-                    <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-blue-50">
+                    <div className="frost-glass-strong flex h-16 w-16 items-center justify-center rounded-lg">
                       {doc.documentType === 'pdf' ? (
                         <svg className="h-8 w-8 text-red-500" fill="currentColor" viewBox="0 0 24 24">
                           <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
@@ -414,8 +406,8 @@ const InferencePopup: React.FC<InferencePopupProps> = ({ onClose, renderModal = 
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-gray-900">{doc.file.name}</p>
-                      <p className="text-xs text-gray-500">
+                      <p className="frost-text truncate text-sm font-medium">{doc.file.name}</p>
+                      <p className="frost-text-muted text-xs">
                         {doc.mimeType} • {formatFileSize(doc.file.size)}
                       </p>
                       <p className="text-xs text-gray-500">Document Type: {doc.documentType.toUpperCase()}</p>
@@ -450,7 +442,6 @@ const InferencePopup: React.FC<InferencePopupProps> = ({ onClose, renderModal = 
               <FormControl>
                 <Textarea {...field} rows={3} className="font-mono" placeholder='{"key": "value"}' />
               </FormControl>
-              <FormDescription>Optional JSON object with variables for the workflow</FormDescription>
               <FormMessage />
             </FormItem>
           )}
@@ -466,11 +457,6 @@ const InferencePopup: React.FC<InferencePopupProps> = ({ onClose, renderModal = 
               <FormControl>
                 <Textarea {...field} rows={3} placeholder="Enter your input text..." />
               </FormControl>
-              <FormDescription>
-                {uploadedImage || uploadedDocuments.length > 0
-                  ? 'Optional text input to accompany your uploaded files'
-                  : 'Enter the text input for your workflow'}
-              </FormDescription>
               <FormMessage />
             </FormItem>
           )}
@@ -495,11 +481,11 @@ const InferencePopup: React.FC<InferencePopupProps> = ({ onClose, renderModal = 
 
   return (
     <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black">
-      <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-lg bg-white p-6 shadow-xl">
+      <div className="frost-dialog border-frost-border ring-frost-border max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-lg border p-6 ring-1">
         <div className="mb-6 flex items-center justify-between">
           <button
             onClick={() => onClose()}
-            className="rounded-full p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            className="frost-text-muted hover:bg-frost-glass-strong hover:text-frost-text rounded-full p-2"
           >
             <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

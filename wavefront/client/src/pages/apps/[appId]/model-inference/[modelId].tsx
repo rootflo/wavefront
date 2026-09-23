@@ -23,7 +23,7 @@ import { Label } from '@app/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { useGetModel } from '@app/hooks';
 import { getModelsKey } from '@app/hooks/data/query-keys';
-import { extractErrorMessage } from '@app/lib/utils';
+import { extractErrorMessage, formatAppName } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { Plus, Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -131,7 +131,7 @@ const ModelDetail: React.FC = () => {
   };
 
   return (
-    <div className="h-full bg-white px-8 pt-8 pb-[200px]">
+    <div className="h-full bg-transparent px-8 pt-8 pb-[200px]">
       <Breadcrumb className="mb-6">
         <BreadcrumbList>
           <BreadcrumbItem>
@@ -162,7 +162,7 @@ const ModelDetail: React.FC = () => {
 
       <div className="flex w-full flex-col gap-10 pb-5">
         <div className="flex items-center justify-between">
-          <p className="text-2xl leading-normal font-semibold text-black">{model?.model_name}</p>
+          <p className="frost-text text-2xl leading-normal font-semibold">{formatAppName(model?.model_name)}</p>
           <div className="flex gap-4">
             <Button variant="outline" onClick={() => setShowTestInferenceDialog(true)}>
               Model Inference
@@ -174,24 +174,24 @@ const ModelDetail: React.FC = () => {
         </div>
 
         <div className="flex w-full max-w-4xl flex-col gap-6">
-          <div className="flex w-full flex-col gap-6 rounded-lg border border-gray-200 bg-white p-6">
-            <h3 className="text-lg font-semibold text-gray-900">Model Information</h3>
-            <div className="flex flex-col gap-4 rounded-md border border-gray-200 bg-gray-50 p-4">
+          <div className="frost-panel ring-frost-border flex w-full flex-col gap-6 rounded-lg border p-6 ring-1">
+            <h3 className="frost-text text-lg font-semibold">Model Information</h3>
+            <div className="frost-control ring-frost-border flex flex-col gap-4 rounded-md border p-4 ring-1">
               <div className="flex justify-between gap-3">
-                <span className="text-sm font-medium text-gray-600">Model Name:</span>
-                <span className="text-sm font-semibold text-black">{model?.model_name}</span>
+                <span className="frost-text-muted text-sm font-medium">Model Name:</span>
+                <span className="frost-text text-sm font-semibold">{model?.model_name}</span>
               </div>
               <div className="flex justify-between gap-3">
-                <span className="text-sm font-medium text-gray-600">Model ID:</span>
-                <span className="text-sm font-semibold text-black">{model?.model_id}</span>
+                <span className="frost-text-muted text-sm font-medium">Model ID:</span>
+                <span className="frost-text text-sm font-semibold">{model?.model_id}</span>
               </div>
               <div className="flex justify-between gap-3">
-                <span className="text-sm font-medium text-gray-600">Model Type:</span>
-                <span className="text-sm font-semibold text-black">{model?.model_type}</span>
+                <span className="frost-text-muted text-sm font-medium">Model Type:</span>
+                <span className="frost-text text-sm font-semibold">{model?.model_type}</span>
               </div>
               <div className="flex justify-between gap-3">
-                <span className="text-sm font-medium text-gray-600">Model Path:</span>
-                <span className="text-sm font-semibold text-black">{model?.model_path}</span>
+                <span className="frost-text-muted text-sm font-medium">Model Path:</span>
+                <span className="frost-text text-sm font-semibold">{model?.model_path}</span>
               </div>
             </div>
           </div>
@@ -217,7 +217,7 @@ const ModelDetail: React.FC = () => {
                     id="inferenceImageFile"
                     accept="image/*"
                     onChange={(e) => setInferenceImageFile(e.target.files ? e.target.files[0] : null)}
-                    className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-black outline-none file:cursor-pointer file:text-blue-500"
+                    className="frost-control ring-frost-border frost-text file:text-brand w-full cursor-pointer rounded-lg border px-3 py-2 text-sm ring-1 outline-none file:cursor-pointer"
                   />
                   {inferenceImageFile && (
                     <Button
@@ -265,7 +265,7 @@ const ModelDetail: React.FC = () => {
               <div className="space-y-2">
                 {preprocessingSteps.map((step, index) => (
                   <div key={index} className="flex items-center space-x-2 rounded-lg">
-                    <span className="font-mono text-xs text-gray-600">{index + 1}.</span>
+                    <span className="frost-text-muted font-mono text-xs">{index + 1}.</span>
                     <Select
                       value={step.preprocess_filter || undefined}
                       onValueChange={(value) => {
@@ -299,9 +299,9 @@ const ModelDetail: React.FC = () => {
                 ))}
 
                 {inferenceResult && (
-                  <div className="flex flex-col items-start gap-4 rounded-md border border-gray-200 bg-gray-50 p-4">
+                  <div className="frost-control ring-frost-border flex flex-col items-start gap-4 rounded-md border p-4 ring-1">
                     <Label>Inference Result</Label>
-                    <div className="w-full text-sm text-black">
+                    <div className="frost-text w-full text-sm">
                       <pre className="whitespace-pre-wrap">{formatInferenceResult(inferenceResult)}</pre>
                     </div>
                   </div>

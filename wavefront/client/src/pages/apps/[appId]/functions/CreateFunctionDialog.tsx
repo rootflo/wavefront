@@ -8,18 +8,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@app/components/ui/dialog';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@app/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
 import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeMirror from '@uiw/react-codemirror';
 import React, { useEffect } from 'react';
@@ -41,8 +34,7 @@ function:
     export default function(input) {
 
       return {
-        result: Number(input.number) * 2,
-      };
+        result: Number(input.number) * 2 };
     }
 
 input_schema:
@@ -119,7 +111,7 @@ const CreateMessageProcessorDialog: React.FC<CreateMessageProcessorDialogProps> 
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto lg:max-w-4xl">
+      <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto lg:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Create New Message Processor</DialogTitle>
           <DialogDescription>Create a new message processor for {selectedApp?.app_name}</DialogDescription>
@@ -168,21 +160,20 @@ const CreateMessageProcessorDialog: React.FC<CreateMessageProcessorDialogProps> 
                     YAML Configuration<span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
-                    <div className="w-full">
+                    <div className="w-full min-w-0">
                       <CodeMirror
                         value={field.value}
                         onChange={field.onChange}
                         theme="dark"
                         height="400px"
-                        className="w-full"
-                        extensions={[langs.yaml()]}
+                        width="100%"
+                        maxWidth="100%"
+                        className="w-full min-w-0"
+                        extensions={[langs.yaml(), ...popupCodeMirrorExtensions]}
                         placeholder="Enter your message processor YAML configuration..."
                       />
                     </div>
                   </FormControl>
-                  <FormDescription>
-                    Define your processor function, input schema, and execution type in YAML format
-                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

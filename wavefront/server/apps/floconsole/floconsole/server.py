@@ -7,6 +7,7 @@ from common_module.common_container import CommonContainer
 from common_module.log.logger import logger
 from common_module.response_formatter import ResponseFormatter
 from common_module.middleware.request_id_middleware import RequestIdMiddleware
+from common_module.middleware.security_headers import SecurityHeadersMiddleware
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,6 +25,12 @@ from floconsole.controllers.user_controller import user_router
 from floconsole.db import DatabaseClient
 
 load_dotenv()
+
+environment = os.getenv('APP_ENV', 'production')
+
+# The interactive docs and the OpenAPI schema are off everywhere except dev,
+# so a new/unknown APP_ENV value stays closed rather than exposing the surface.
+is_dev = environment == 'dev'
 
 # Initialize containers
 common_container = CommonContainer(cache_manager=None)
@@ -88,6 +95,9 @@ app = FastAPI(
     description='Console application for RootFlo platform',
     version='1.0.0',
     lifespan=lifespan,
+    openapi_url='/openapi.json' if is_dev else None,
+    docs_url='/docs' if is_dev else None,
+    redoc_url='/redoc' if is_dev else None,
 )
 
 origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:5173')
@@ -95,6 +105,9 @@ allowed_origins = origins.split(',')
 
 app.add_middleware(_middleware(RequestIdMiddleware))
 app.add_middleware(_middleware(RequireAuthMiddleware))
+# Strict default-src 'none' CSP plus the rest of the security headers; /docs and
+# /redoc get their own relaxed policy when APP_ENV=dev.
+app.add_middleware(_middleware(SecurityHeadersMiddleware))
 
 # Configure CORS with proper security settings
 app.add_middleware(
@@ -142,8 +155,6 @@ async def global_exception_handler(request: Request, exc: Exception):
         content=exception_response_formatter.buildErrorResponse(error=error_message),
     )
 
-
-environment = os.getenv('APP_ENV', 'dev')
 
 # Running with Uvicorn (for local development)
 if __name__ == '__main__':

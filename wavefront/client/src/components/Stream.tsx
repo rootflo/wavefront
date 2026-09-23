@@ -22,15 +22,15 @@ const Stream: React.FC<StreamProps> = ({ listenEventsEnabled, streamingEvents, i
       {listenEventsEnabled && streamingEvents && streamingEvents.length > 0 && (
         <>
           <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-sm font-medium text-gray-700">Real-time Events:</h3>
-            <span className="text-xs text-gray-500">
+            <h3 className="frost-text text-sm font-medium">Real-time Events:</h3>
+            <span className="frost-text-muted text-xs">
               {streamingEvents.length} event{streamingEvents.length !== 1 ? 's' : ''}
-              {isStreaming && <span className="ml-1 text-blue-600">• Live</span>}
+              {isStreaming && <span className="text-brand ml-1">• Live</span>}
             </span>
           </div>
           <div
             ref={eventsContainerRef}
-            className="max-h-64 overflow-y-auto scroll-smooth rounded-lg border border-gray-200 bg-gray-50 p-3"
+            className="frost-panel ring-frost-border max-h-64 overflow-y-auto scroll-smooth rounded-lg border p-3 ring-1"
           >
             <div className="space-y-2">
               {streamingEvents.map((event, index) => (
@@ -44,41 +44,43 @@ const Stream: React.FC<StreamProps> = ({ listenEventsEnabled, streamingEvents, i
                     <span
                       className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${
                         event.event_type === 'workflow_started' || event.event_type === 'workflow_completed'
-                          ? 'bg-blue-100 text-blue-800'
+                          ? 'bg-brand/15 text-brand ring-brand/25 ring-1'
                           : event.event_type === 'workflow_failed' ||
                               event.event_type === 'node_failed' ||
                               event.event_type === 'error'
-                            ? 'bg-red-100 text-red-800'
+                            ? 'bg-red-500/15 text-red-600 ring-1 ring-red-500/20 dark:text-red-400'
                             : event.event_type === 'output'
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-gray-100 text-gray-800'
+                              ? 'bg-emerald-400/15 text-emerald-700 ring-1 ring-emerald-400/20 dark:text-emerald-400'
+                              : 'frost-control frost-text ring-frost-border ring-1'
                       }`}
                     >
                       {event.event_type}
                     </span>
-                    <span className="text-gray-500">{new Date(event.timestamp * 1000).toLocaleTimeString()}</span>
+                    <span className="frost-text-subtle">{new Date(event.timestamp * 1000).toLocaleTimeString()}</span>
                   </div>
                   {'node_name' in event && event.node_name && (
-                    <div className="mt-1 text-gray-600">
-                      Node: <span className="font-medium">{event.node_name}</span>
+                    <div className="frost-text-muted mt-1">
+                      Node: <span className="frost-text font-medium">{event.node_name}</span>
                       {'node_type' in event && event.node_type && (
-                        <span className="text-gray-500"> ({event.node_type})</span>
+                        <span className="frost-text-subtle"> ({event.node_type})</span>
                       )}
                     </div>
                   )}
                   {'execution_time' in event && event.execution_time && (
-                    <div className="text-gray-500">Execution time: {event.execution_time}s</div>
+                    <div className="frost-text-subtle">Execution time: {event.execution_time}s</div>
                   )}
                   {'error' in event && event.error && (
-                    <div className="mt-1 rounded bg-red-50 p-2 text-red-600">Error: {event.error}</div>
+                    <div className="mt-1 rounded bg-red-500/10 p-2 text-red-600 dark:text-red-400">
+                      Error: {event.error}
+                    </div>
                   )}
                   {'router_choice' in event && event.router_choice && (
-                    <div className="mt-1 text-blue-600">Router choice: {event.router_choice}</div>
+                    <div className="text-brand mt-1">Router choice: {event.router_choice}</div>
                   )}
                   {'node_output' in event && event.node_output && (
-                    <div className="mt-1 rounded border border-gray-200 bg-white p-2">
-                      <span className="font-medium text-gray-500">Output: </span>
-                      <span className="break-words whitespace-pre-wrap text-gray-700">{event.node_output}</span>
+                    <div className="frost-control ring-frost-border mt-1 rounded border p-2 ring-1">
+                      <span className="frost-text-muted font-medium">Output: </span>
+                      <span className="frost-text break-words whitespace-pre-wrap">{event.node_output}</span>
                     </div>
                   )}
                 </div>
@@ -86,11 +88,11 @@ const Stream: React.FC<StreamProps> = ({ listenEventsEnabled, streamingEvents, i
             </div>
           </div>
           {isStreaming && (
-            <div className="mt-2 flex items-center gap-2 text-sm text-blue-600">
+            <div className="text-brand mt-2 flex items-center gap-2 text-sm">
               <div className="flex gap-1">
-                <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-600 [animation-delay:0ms]"></div>
-                <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-600 [animation-delay:150ms]"></div>
-                <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-600 [animation-delay:300ms]"></div>
+                <div className="bg-brand h-1.5 w-1.5 animate-pulse rounded-full [animation-delay:0ms]"></div>
+                <div className="bg-brand h-1.5 w-1.5 animate-pulse rounded-full [animation-delay:150ms]"></div>
+                <div className="bg-brand h-1.5 w-1.5 animate-pulse rounded-full [animation-delay:300ms]"></div>
               </div>
               <p className="text-xs">Streaming live events...</p>
             </div>

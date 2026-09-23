@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
+from db_repo_module.models.user_group_member import UserGroupMember
 from db_repo_module.models.user_role import UserRole
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
@@ -38,6 +39,14 @@ class User(Base):
         cascade='all, delete',
     )
 
+    # Groups the user belongs to. No cascade: removing a user must not take the
+    # shared group down with it, only their membership row (handled by the FK).
+    groups = relationship(
+        'UserGroup',
+        secondary=UserGroupMember.__table__,
+        back_populates='users',
+    )
+
     # Add relationship for sessions
     sessions = relationship(
         Session, back_populates='user', cascade='all, delete-orphan'
@@ -50,4 +59,14 @@ class User(Base):
             'username': self.username,
             'first_name': self.first_name,
             'last_name': self.last_name,
+            'failed_attempts': self.failed_attempts,
+            'locked_until': self.locked_until.isoformat()
+            if self.locked_until
+            else None,
+            'last_failed_attempt': self.last_failed_attempt.isoformat()
+            if self.last_failed_attempt
+            else None,
+            'last_login_at': self.last_login_at.isoformat()
+            if self.last_login_at
+            else None,
         }

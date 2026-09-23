@@ -664,6 +664,69 @@ class TestAriumYamlBuilder:
             )
             assert mock_llm.temperature == 0.5
 
+    def test_from_yaml_direct_config_applies_model_temperature(self):
+        """A temperature on the model block reaches the LLM.
+
+        Several provider factories build their client without it, so the builder
+        has to apply it afterwards - the same gap that was fixed for standalone
+        agents in AgentBuilder.from_yaml.
+        """
+        yaml_config = """
+        arium:
+          agents:
+            - name: test_agent
+              job: "You are a test agent"
+              model:
+                provider: openai
+                name: gpt-4o-mini
+                temperature: 0.1
+
+          workflow:
+            start: test_agent
+            edges:
+              - from: test_agent
+                to: [end]
+            end: [test_agent]
+        """
+
+        with patch('flo_ai.llm.OpenAI') as mock_openai:
+            mock_llm = Mock()
+            mock_openai.return_value = mock_llm
+
+            AriumBuilder.from_yaml(yaml_str=yaml_config)
+
+            assert mock_llm.temperature == 0.1
+
+    def test_from_yaml_direct_config_settings_temperature_wins(self):
+        """settings is the explicit override, so it beats the model block."""
+        yaml_config = """
+        arium:
+          agents:
+            - name: test_agent
+              job: "You are a test agent"
+              model:
+                provider: openai
+                name: gpt-4o-mini
+                temperature: 0.1
+              settings:
+                temperature: 0.9
+
+          workflow:
+            start: test_agent
+            edges:
+              - from: test_agent
+                to: [end]
+            end: [test_agent]
+        """
+
+        with patch('flo_ai.llm.OpenAI') as mock_openai:
+            mock_llm = Mock()
+            mock_openai.return_value = mock_llm
+
+            AriumBuilder.from_yaml(yaml_str=yaml_config)
+
+            assert mock_llm.temperature == 0.9
+
     def test_from_yaml_direct_config_with_function_nodes(self):
         """Test direct agent configuration with function nodes."""
         yaml_config = """
@@ -897,11 +960,13 @@ class TestAriumYamlBuilder:
 
         builder = AriumBuilder.from_yaml(yaml_str=yaml_config, base_llm=mock_base_llm)
 
-        # Verify agent was created with base LLM
+        # Verify agent was created from the base LLM. The agent declares a
+        # temperature, so it gets a copy: the base LLM is shared with every
+        # other agent in the workflow and must not take on this one's settings.
         assert len(builder._agents) == 1
         agent = builder._agents[0]
-        assert agent.llm == mock_base_llm
-        assert mock_base_llm.temperature == 0.7
+        assert agent.llm.temperature == 0.7
+        assert agent.llm is not mock_base_llm
 
     def test_from_yaml_prebuilt_agents(self):
         """Test using pre-built agents with YAML workflow."""

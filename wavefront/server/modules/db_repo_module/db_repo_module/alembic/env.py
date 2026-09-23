@@ -2,51 +2,7 @@ import os
 
 from alembic import context
 from db_repo_module.database.base import Base
-from db_repo_module.models.documents import Document
-from db_repo_module.models.email import Email
-from db_repo_module.models.kb_inferences import KnowledgeBaseInferences
-from db_repo_module.models.knowledge_base_documents import KnowledgeBaseDocuments
-from db_repo_module.models.knowledge_base_embeddings import KnowledgeBaseEmbeddings
-from db_repo_module.models.knowledge_bases import KnowledgeBase
-from db_repo_module.models.notification_users import NotificationUser
-from db_repo_module.models.notifications import Notification
-from db_repo_module.models.oauth_credential import OAuthCredential
-from db_repo_module.models.resource import Resource
-from db_repo_module.models.role import Role
-from db_repo_module.models.role_resource import RoleResource
-from db_repo_module.models.saml_config import SAMLConfig
-from db_repo_module.models.session import Session
-from db_repo_module.models.task import Task
-from db_repo_module.models.team import Team
-from db_repo_module.models.user import User
-from db_repo_module.models.user_role import UserRole
-from db_repo_module.models.datasource import Datasource
-from db_repo_module.models.model_schema import ModelSchema
-from db_repo_module.models.llm_inference_config import LlmInferenceConfig
-from db_repo_module.models.image_search_models import (
-    ReferenceImageFeatures,
-    SIFTFeatures,
-)
-from db_repo_module.models.ikb_models import ImageKnowledgeBase
-from db_repo_module.models.telephony_config import TelephonyConfig
-from db_repo_module.models.tts_config import TtsConfig
-from db_repo_module.models.stt_config import SttConfig
-from db_repo_module.models.voice_agent import VoiceAgent
-from db_repo_module.models.message_processors import MessageProcessors
-from db_repo_module.models.scheduled_job import ScheduledJob
-from db_repo_module.models.scheduled_job_execution import ScheduledJobExecution
-from db_repo_module.models.async_agentic_execution import AsyncAgenticExecution
-from db_repo_module.models.agentic_trigger_credential import AgenticTriggerCredential
-from db_repo_module.models.agentic_configuration import AgenticConfiguration
-from db_repo_module.models.agentic_trigger import AgenticTrigger
-from db_repo_module.models.agentic_trigger_event import AgenticTriggerEvent
-from db_repo_module.models.agent import Agent
-from db_repo_module.models.agent_version import AgentVersion
-from db_repo_module.models.workflow import Workflow
-from db_repo_module.models.workflow_version import WorkflowVersion
-from db_repo_module.models.workflow_pipeline import WorkflowPipeline
-from db_repo_module.models.workflow_runs import WorkflowRuns
-from db_repo_module.models.datasource_audit_log import DatasourceAuditLog
+import db_repo_module.models  # noqa: F401  (registers every table)
 from dotenv import load_dotenv
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
@@ -60,51 +16,6 @@ config = context.config
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
-models = [
-    Document,
-    Email,
-    OAuthCredential,
-    Role,
-    SAMLConfig,
-    Task,
-    Team,
-    Session,
-    User,
-    Notification,
-    NotificationUser,
-    Resource,
-    RoleResource,
-    UserRole,
-    KnowledgeBase,
-    KnowledgeBaseDocuments,
-    KnowledgeBaseEmbeddings,
-    KnowledgeBaseInferences,
-    Datasource,
-    ModelSchema,
-    LlmInferenceConfig,
-    ReferenceImageFeatures,
-    SIFTFeatures,
-    ImageKnowledgeBase,
-    TelephonyConfig,
-    TtsConfig,
-    SttConfig,
-    VoiceAgent,
-    MessageProcessors,
-    ScheduledJob,
-    ScheduledJobExecution,
-    AsyncAgenticExecution,
-    AgenticConfiguration,
-    AgenticTriggerCredential,
-    AgenticTrigger,
-    AgenticTriggerEvent,
-    Agent,
-    AgentVersion,
-    Workflow,
-    WorkflowVersion,
-    WorkflowPipeline,
-    WorkflowRuns,
-    DatasourceAuditLog,
-]
 target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,

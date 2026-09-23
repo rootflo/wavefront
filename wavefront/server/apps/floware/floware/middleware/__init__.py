@@ -2,6 +2,8 @@
 Middleware package for Floware application.
 """
 
-from .security_headers import SecurityHeadersMiddleware
+from common_module.middleware.security_headers import SecurityHeadersMiddleware
 
-__all__ = ['SecurityHeadersMiddleware']
+from .setup import add_middlewares
+
+__all__ = ['SecurityHeadersMiddleware', 'add_middlewares']

@@ -105,7 +105,7 @@ const OutboundCallDialog: React.FC<OutboundCallDialogProps> = ({ isOpen, onOpenC
               onChange={(e) => setToNumber(e.target.value)}
               placeholder="+14155559999"
             />
-            <p className="text-xs text-gray-500">Destination phone number in E.164 format</p>
+            <p className="frost-text-muted text-xs">Destination phone number in E.164 format</p>
           </div>
 
           {/* From Number */}
@@ -133,7 +133,7 @@ const OutboundCallDialog: React.FC<OutboundCallDialogProps> = ({ isOpen, onOpenC
                 placeholder="+14155551234"
               />
             )}
-            <p className="text-xs text-gray-500">
+            <p className="frost-text-muted text-xs">
               {availablePhoneNumbers.length > 0
                 ? 'Select from configured phone numbers or leave empty for auto-select'
                 : 'Source phone number in E.164 format (leave empty to use first configured number)'}

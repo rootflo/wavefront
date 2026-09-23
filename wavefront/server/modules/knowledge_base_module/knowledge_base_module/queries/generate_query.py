@@ -4,13 +4,18 @@ from typing import Any, Dict, Tuple, Optional
 from db_repo_module.models.knowledge_base_documents import KnowledgeBaseDocuments
 from db_repo_module.models.knowledge_base_embeddings import KnowledgeBaseEmbeddings
 from datasource.odata_parser import ODataQueryParser
+from datasource.dialect import PostgresSqlDialect
 
 
 class QueryGenerator:
     """Class to generate SQL queries for knowledge base operations."""
 
     def __init__(self):
-        self.odata_parser = ODataQueryParser(type='sql', dynamic_var_char=':')
+        self.odata_parser = ODataQueryParser(
+            type='sql',
+            dynamic_var_char=':',
+            dialect=PostgresSqlDialect(),
+        )
 
     def build_metadata_clause(
         self,
@@ -477,6 +482,7 @@ class QueryGenerator:
             d.file_name,
             d.knowledge_base_id,
             d.metadata_value,
+            d.document_date::text AS document_date,
             1 - ((e.embedding_vector_1::vector(1024)) <=> :query_embedding ::vector(1024)) AS dino_score
         FROM {KnowledgeBaseEmbeddings.__tablename__} e
         JOIN {KnowledgeBaseDocuments.__tablename__} d ON e.document_id = d.id

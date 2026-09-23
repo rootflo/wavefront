@@ -1,0 +1,203 @@
+name: Server Tests
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: server-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      server: ${{ steps.filter.outputs.server }}
+    steps:
+      - name: Check whether the PR touches the server
+        id: filter
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          # A manual run has no PR to diff against, so test everything.
+          if [ -z "$PR" ]; then
+            echo "server=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          files=$(gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[].filename')
+          echo "$files"
+
+          # Changes to this workflow count, so CI edits still get exercised.
+          if grep -qE '^(wavefront/server/|\.github/workflows/server-tests\.yml$)' <<<"$files"; then
+            echo "server=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "server=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  test:
+    name: pytest
+    needs: changes
+    if: needs.changes.outputs.server == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        working-directory: wavefront/server
+
+    env:
+      APP_ENV: test
+      SUPERSET_FLAG: "true"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Python
+        uses: actions/setup-python@7f4fc3e22c37d6ff65e88745f38bd3157c663f7c # v4.9.1
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: "0.12.10"
+          enable-cache: true
+          cache-dependency-glob: "wavefront/server/uv.lock"
+
+      # The db fixtures clone from a throwaway cluster that testing.postgresql
+      # starts by shelling out to initdb. It would find these binaries on its
+      # own, but doing it here pins the newest version if the image ever ships
+      # several, and turns a missing server package into an obvious failure
+      # instead of a "command not found: initdb" from inside a fixture.
+      - name: Add PostgreSQL server binaries to PATH
+        run: ls -d /usr/lib/postgresql/*/bin | sort -V | tail -1 >> "$GITHUB_PATH"
+
+      # --all-packages installs every workspace member, which the cross-module
+      # imports in the suite need; --locked fails the build on a stale uv.lock
+      # rather than silently resolving something the PR never tested against.
+      - name: Install dependencies
+        run: uv sync --all-packages --locked
+
+      - name: Run tests
+        run: uv run --no-sync pytest -n auto --dist loadfile
+
+  migrations:
+    name: migrations
+    needs: changes
+    if: needs.changes.outputs.server == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    permissions:
+      contents: read
+      pull-requests: read
+
+    defaults:
+      run:
+        working-directory: wavefront/server
+
+    # pgvector rather than plain postgres:16 because knowledge_base_embeddings
+    # declares a VECTOR column and no migration creates the extension.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: postgres
+
+    steps:
+      # Do not pin this to the PR head. On a pull_request event the default
+      # checkout is the merge commit, and the single-head check below is only
+      # meaningful against the post-merge state.
+      - name: Checkout merge commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Python
+        uses: actions/setup-python@7f4fc3e22c37d6ff65e88745f38bd3157c663f7c # v4.9.1
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: "0.12.10"
+          enable-cache: true
+          cache-dependency-glob: "wavefront/server/uv.lock"
+
+      - name: Install dependencies
+        run: uv sync --all-packages --locked
+
+      - name: One head per tree after merge
+        run: uv run --no-sync python scripts/check_migrations.py graph
+
+      - name: One new migration per tree, none rewritten
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          gh api --paginate "repos/$REPO/pulls/$PR/files" \
+            --jq '.[] | [.status, .filename] | @tsv' \
+            | uv run --no-sync python scripts/check_migrations.py policy
+
+      - name: Migrations apply to an empty database
+        run: uv run --no-sync python scripts/check_migrations.py upgrade
+
+      # Advisory: 59 discrepancies predate this check. Add --strict to block.
+      - name: Models match migrations
+        run: uv run --no-sync python scripts/check_migrations.py drift
+
+  # Always runs, so there is always a status to require.
+  required:
+    name: required
+    needs: [changes, test, migrations]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Report server test status
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+          MIGRATIONS_RESULT: ${{ needs.migrations.result }}
+        run: |
+          if [ "$CHANGES_RESULT" != "success" ]; then
+            echo "Could not determine whether the server changed."
+            exit 1
+          fi
+
+          status=0
+          for job in TEST MIGRATIONS; do
+            eval "result=\$${job}_RESULT"
+            case "$result" in
+              success) echo "$job: passed" ;;
+              skipped) echo "$job: no server changes, nothing to run" ;;
+              *)       echo "$job: reported '$result'"; status=1 ;;
+            esac
+          done
+          exit "$status"

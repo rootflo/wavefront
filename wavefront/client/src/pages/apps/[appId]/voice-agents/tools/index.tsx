@@ -105,120 +105,118 @@ const ToolsPage: React.FC = () => {
   };
 
   return (
-    <div className="h-full w-full overflow-hidden">
-      <div className="w-full">
-        <div className="mb-8 flex items-center justify-end">
-          <div className="flex items-center gap-4">
-            <Input
-              type="text"
-              placeholder="Search"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-[180px]"
-            />
-            <div className="flex items-center gap-3">
-              <Button onClick={handleCreateTool}>
-                <p className="text-sm">Create Tool</p>
-              </Button>
-            </div>
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
+      <div className="mb-6 flex shrink-0 items-center justify-end">
+        <div className="flex items-center gap-4">
+          <Input
+            type="text"
+            placeholder="Search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-[180px]"
+          />
+          <div className="flex items-center gap-3">
+            <Button onClick={handleCreateTool}>
+              <p className="text-sm">Create Tool</p>
+            </Button>
           </div>
         </div>
-
-        {isError ? (
-          <div className="mt-10 flex justify-center">
-            <EmptyStateCard
-              title="Error loading tools"
-              description={extractErrorMessage(error) || 'Failed to fetch voice agent tools. Please try again.'}
-              actionText="Retry"
-              onActionClick={() => queryClient.invalidateQueries({ queryKey: getVoiceAgentToolsKey(app || '') })}
-            />
-          </div>
-        ) : toolsLoading ? (
-          <div className="flex justify-center py-10">
-            <div className="text-gray-500">Loading tools...</div>
-          </div>
-        ) : filteredTools.length === 0 ? (
-          <div className="mt-10 flex justify-center">
-            <EmptyStateCard
-              title="No tools found"
-              description={
-                searchQuery ? 'No tools match your search.' : 'Get started by creating your first tool for voice agents'
-              }
-              actionText="Create Tool"
-              onActionClick={handleCreateTool}
-            />
-          </div>
-        ) : (
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Display Name</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Method</TableHead>
-                  <TableHead>URL</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredTools.map((tool) => (
-                  <TableRow key={tool.id}>
-                    <TableCell className="font-mono text-sm">{tool.name}</TableCell>
-                    <TableCell className="font-medium">{tool.display_name}</TableCell>
-                    <TableCell>
-                      <Badge className={getToolTypeColor(tool.tool_type)}>{tool.tool_type.toUpperCase()}</Badge>
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">{getApiMethod(tool)}</TableCell>
-                    <TableCell className="max-w-xs truncate text-xs">{getApiUrl(tool)}</TableCell>
-                    <TableCell className="max-w-md truncate">{tool.description || '-'}</TableCell>
-                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-2">
-                        <Button variant="ghost" size="sm" onClick={(e) => handleEditClick(e, tool)} title="Edit">
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={(e) => handleDeleteClick(e, tool)} title="Delete">
-                          <Trash2 className="h-4 w-4 text-red-600" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-
-        {/* Delete Confirmation Dialog */}
-        <DeleteConfirmationDialog
-          isOpen={!!deleteItem}
-          title="Delete Tool"
-          message={`Are you sure you want to delete "${deleteItem?.display_name}"? This will also detach it from all voice agents.`}
-          onConfirm={handleDelete}
-          onCancel={handleDeleteCancel}
-          loading={deleting}
-        />
-
-        {/* Create Tool Dialog */}
-        {app && (
-          <CreateToolDialog
-            isOpen={createDialogOpen}
-            onOpenChange={setCreateDialogOpen}
-            onSuccess={handleCreateSuccess}
-          />
-        )}
-
-        {/* Edit Tool Dialog */}
-        {app && editItem && (
-          <EditToolDialog
-            isOpen={!!editItem}
-            onOpenChange={(open) => !open && setEditItem(null)}
-            tool={editItem}
-            onSuccess={handleEditSuccess}
-          />
-        )}
       </div>
+
+      {isError ? (
+        <div className="mt-10 flex justify-center">
+          <EmptyStateCard
+            title="Error loading tools"
+            description={extractErrorMessage(error) || 'Failed to fetch voice agent tools. Please try again.'}
+            actionText="Retry"
+            onActionClick={() => queryClient.invalidateQueries({ queryKey: getVoiceAgentToolsKey(app || '') })}
+          />
+        </div>
+      ) : toolsLoading ? (
+        <div className="flex justify-center py-10">
+          <div className="frost-text-muted">Loading tools...</div>
+        </div>
+      ) : filteredTools.length === 0 ? (
+        <div className="mt-10 flex justify-center">
+          <EmptyStateCard
+            title="No tools found"
+            description={
+              searchQuery ? 'No tools match your search.' : 'Get started by creating your first tool for voice agents'
+            }
+            actionText="Create Tool"
+            onActionClick={handleCreateTool}
+          />
+        </div>
+      ) : (
+        <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-xl border ring-1">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Display Name</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Method</TableHead>
+                <TableHead>URL</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredTools.map((tool) => (
+                <TableRow key={tool.id}>
+                  <TableCell className="font-mono text-sm">{tool.name}</TableCell>
+                  <TableCell className="font-medium">{tool.display_name}</TableCell>
+                  <TableCell>
+                    <Badge className={getToolTypeColor(tool.tool_type)}>{tool.tool_type.toUpperCase()}</Badge>
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">{getApiMethod(tool)}</TableCell>
+                  <TableCell className="max-w-xs truncate text-xs">{getApiUrl(tool)}</TableCell>
+                  <TableCell className="max-w-md truncate">{tool.description || '-'}</TableCell>
+                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-2">
+                      <Button variant="ghost" size="sm" onClick={(e) => handleEditClick(e, tool)} title="Edit">
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={(e) => handleDeleteClick(e, tool)} title="Delete">
+                        <Trash2 className="h-4 w-4 text-red-600" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteConfirmationDialog
+        isOpen={!!deleteItem}
+        title="Delete Tool"
+        message={`Are you sure you want to delete "${deleteItem?.display_name}"? This will also detach it from all voice agents.`}
+        onConfirm={handleDelete}
+        onCancel={handleDeleteCancel}
+        loading={deleting}
+      />
+
+      {/* Create Tool Dialog */}
+      {app && (
+        <CreateToolDialog
+          isOpen={createDialogOpen}
+          onOpenChange={setCreateDialogOpen}
+          onSuccess={handleCreateSuccess}
+        />
+      )}
+
+      {/* Edit Tool Dialog */}
+      {app && editItem && (
+        <EditToolDialog
+          isOpen={!!editItem}
+          onOpenChange={(open) => !open && setEditItem(null)}
+          tool={editItem}
+          onSuccess={handleEditSuccess}
+        />
+      )}
     </div>
   );
 };

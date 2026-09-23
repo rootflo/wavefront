@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY --from=ghcr.io/astral-sh/uv:0.8.6 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.12.10 /uv /uvx /bin/
 
 RUN apt-get update && apt-get install -y \
     libpq-dev \
@@ -40,12 +40,14 @@ COPY wavefront/server/modules/tools_module /app/modules/tools_module
 COPY wavefront/server/modules/voice_agents_module /app/modules/voice_agents_module
 COPY wavefront/server/modules/api_services_module /app/modules/api_services_module
 COPY wavefront/server/modules/triggers_module /app/modules/triggers_module
+COPY wavefront/server/modules/chatbots_module /app/modules/chatbots_module
 
 COPY wavefront/server/packages/flo_cloud /app/packages/flo_cloud
 COPY wavefront/server/packages/flo_utils /app/packages/flo_utils
 
 COPY wavefront/server/plugins/datasource /app/plugins/datasource
 COPY wavefront/server/plugins/authenticator /app/plugins/authenticator
+COPY wavefront/server/plugins/mailer /app/plugins/mailer
 
 COPY wavefront/server/apps/floware /app/apps/floware
 

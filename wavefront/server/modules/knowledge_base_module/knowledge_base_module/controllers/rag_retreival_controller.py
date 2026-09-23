@@ -30,6 +30,7 @@ from knowledge_base_module.services.image_rag_retrieve import (
 from flo_cloud.cloud_storage import CloudStorageManager
 from pydantic import BaseModel, Field
 from datetime import datetime
+from sqlalchemy import func
 from sqlalchemy import Result
 from sqlalchemy import select
 
@@ -781,6 +782,11 @@ async def store_embeddings(
                 else None,
                 chunk_text=embedding.chunk_text[index],
                 chunk_index=int(embedding.chunk_index[index].split('_')[1]),
+                # Set at write time so retrieval never has to backfill it — the
+                # read path used to run this as an UPDATE ... WHERE token IS NULL
+                # over the whole table on every search, contending with ingestion
+                # inserts for locks on the same rows.
+                token=func.to_tsvector('english', embedding.chunk_text[index]),
             )
             for index in range(len(embedding.embedding_vector))
         ]

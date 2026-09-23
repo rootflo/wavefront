@@ -21,6 +21,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import CreateKnowledgeBaseDialog from './CreateKnowledgeBaseDialog';
+import EditKnowledgeBaseDialog from './EditKnowledgeBaseDialog';
 
 const KnowledgeBasesListPage: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();
@@ -32,6 +33,7 @@ const KnowledgeBasesListPage: React.FC = () => {
   const [deleteItem, setDeleteItem] = useState<KbData | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [editItem, setEditItem] = useState<KbData | null>(null);
 
   // Fetch knowledge bases
   const { data: knowledgeBases = [], isLoading: loading } = useGetKnowledgeBases(appId);
@@ -39,6 +41,16 @@ const KnowledgeBasesListPage: React.FC = () => {
   const handleDeleteClick = (e: React.MouseEvent, kb: KbData) => {
     e.stopPropagation();
     setDeleteItem(kb);
+  };
+
+  const handleEditClick = (e: React.MouseEvent, kb: KbData) => {
+    e.stopPropagation();
+    setEditItem(kb);
+  };
+
+  const handleEditSuccess = () => {
+    queryClient.invalidateQueries({ queryKey: getKnowledgeBasesKey(appId as string) });
+    setEditItem(null);
   };
 
   const handleDeleteConfirm = async () => {
@@ -72,8 +84,7 @@ const KnowledgeBasesListPage: React.FC = () => {
   };
 
   const handleCreateSuccess = () => {
-    if (!appId) return;
-    queryClient.invalidateQueries({ queryKey: getKnowledgeBasesKey(appId) });
+    queryClient.invalidateQueries({ queryKey: getKnowledgeBasesKey(appId as string) });
     setCreateDialogOpen(false);
   };
 
@@ -110,8 +121,8 @@ const KnowledgeBasesListPage: React.FC = () => {
 
       <div className="mb-8 flex w-full items-start justify-between">
         <div>
-          <h1 className="animate-fade-in text-3xl font-bold text-gray-900">Knowledge Bases</h1>
-          <p className="animate-fade-in mt-2 text-gray-600">Manage knowledge bases for {selectedApp?.app_name}</p>
+          <h1 className="animate-fade-in frost-text text-3xl font-bold">Knowledge Bases</h1>
+          <p className="animate-fade-in frost-text-muted mt-2">Manage knowledge bases for {selectedApp?.app_name}</p>
         </div>
         <div className="animate-fade-in flex items-center gap-4">
           <Input
@@ -124,7 +135,7 @@ const KnowledgeBasesListPage: React.FC = () => {
           <Button onClick={handleCreateKnowledgeBase}>Create Knowledge Base</Button>
         </div>
       </div>
-      <div className="grid gap-6 overflow-y-auto py-2 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid w-full gap-6 px-1 pt-2 pb-10 sm:grid-cols-2 lg:grid-cols-3">
         {loading ? (
           <>
             {Array.from({ length: 6 }).map((_, index) => (
@@ -143,7 +154,13 @@ const KnowledgeBasesListPage: React.FC = () => {
         ) : (
           <>
             {filteredKnowledgeBases.map((kb) => (
-              <KnowledgeBaseCard key={kb.id} kb={kb} onClick={handleCardClick} onDeleteClick={handleDeleteClick} />
+              <KnowledgeBaseCard
+                key={kb.id}
+                kb={kb}
+                onClick={handleCardClick}
+                onDeleteClick={handleDeleteClick}
+                onEditClick={handleEditClick}
+              />
             ))}
           </>
         )}
@@ -166,6 +183,18 @@ const KnowledgeBasesListPage: React.FC = () => {
           onOpenChange={setCreateDialogOpen}
           appId={appId}
           onSuccess={handleCreateSuccess}
+        />
+      )}
+
+      {/* Edit Knowledge Base Dialog */}
+      {editItem && (
+        <EditKnowledgeBaseDialog
+          isOpen={!!editItem}
+          onOpenChange={(open) => {
+            if (!open) setEditItem(null);
+          }}
+          knowledgeBase={editItem}
+          onSuccess={handleEditSuccess}
         />
       )}
     </div>

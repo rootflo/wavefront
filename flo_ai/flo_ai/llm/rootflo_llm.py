@@ -10,6 +10,7 @@ from .openai_llm import OpenAI
 from .gemini_llm import Gemini
 from .anthropic_llm import Anthropic
 from .openai_vllm import OpenAIVLLM
+from flo_ai.helpers.generation_params import merge_generation_params
 from flo_ai.tool.base_tool import Tool
 
 
@@ -21,6 +22,25 @@ class LLMProvider(Enum):
     ANTHROPIC = 'anthropic'
     VLLM = 'vllm'
     AZURE_OPENAI = 'azure_openai'
+
+
+DEFAULT_TEMPERATURE = 0.7
+
+# Passed explicitly when the wrapper is built, so a fetched configuration
+# carrying one of these would be a duplicate keyword argument. `api_version` is
+# here for a different reason: an Azure configuration is routed through the
+# proxy as a plain OpenAI client, whose create() has no such parameter.
+RESERVED_CONFIG_PARAMETERS = frozenset(
+    {
+        'model',
+        'api_key',
+        'api_version',
+        'base_url',
+        'azure_endpoint',
+        'temperature',
+        'custom_headers',
+    }
+)
 
 
 class RootFloLLM(BaseLLM):
@@ -38,7 +58,7 @@ class RootFloLLM(BaseLLM):
         issuer: Optional[str] = None,
         audience: Optional[str] = None,
         access_token: Optional[str] = None,
-        temperature: float = 0.7,
+        temperature: Optional[float] = None,
         **kwargs,
     ):
         """
@@ -52,7 +72,8 @@ class RootFloLLM(BaseLLM):
             issuer: JWT issuer claim
             audience: JWT audience claim
             access_token: Optional pre-generated access token (if provided, skips JWT generation)
-            temperature: Temperature parameter for generation
+            temperature: Temperature parameter for generation. Left unset, the
+                fetched configuration's temperature applies instead.
             **kwargs: Additional parameters to pass to the underlying SDK
 
         Note:
@@ -74,7 +95,6 @@ class RootFloLLM(BaseLLM):
         self._issuer = issuer
         self._audience = audience
         self._access_token = access_token
-        self._temperature = temperature
         self._kwargs = kwargs
 
         # Lazy initialization state
@@ -92,9 +112,90 @@ class RootFloLLM(BaseLLM):
         super().__init__(
             model='',
             api_key='',
-            temperature=temperature,
+            temperature=DEFAULT_TEMPERATURE if temperature is None else temperature,
             **kwargs,
         )
+
+        # Set after super().__init__, whose `self.temperature = ...` runs the
+        # setter below and would otherwise mark the default as explicit. A
+        # caller-supplied temperature outranks the fetched configuration's.
+        self._temperature_explicit = temperature is not None
+
+    @property
+    def temperature(self) -> float:
+        """Sampling temperature used for generation."""
+        return self._temperature
+
+    @temperature.setter
+    def temperature(self, temperature: float) -> None:
+        """Set the sampling temperature.
+
+        The wrapper is built lazily, so a value set before then is picked up by
+        _ensure_initialized(); an existing one is updated to match.
+
+        Assigning here counts as an explicit choice - it is how a YAML
+        `settings.temperature` reaches this class - so it outranks whatever the
+        fetched configuration specifies.
+        """
+        self._temperature = temperature
+        self._temperature_explicit = True
+        if getattr(self, '_llm', None) is not None:
+            self._llm.temperature = temperature
+
+    def __copy__(self) -> 'RootFloLLM':
+        """A copy that resolves its own wrapper rather than sharing this one.
+
+        The wrapped SDK client is built from the temperature and params held
+        here, so sharing it would defeat the point of copying. The copy re-runs
+        the configuration fetch on first use, under its own lock.
+        """
+        clone = super().__copy__()
+        clone._kwargs = dict(self._kwargs)
+        clone._llm = None
+        clone._initialized = False
+        clone._init_lock = asyncio.Lock()
+        return clone
+
+    def apply_generation_params(self, params: Dict[str, Any]) -> None:
+        """Merge caller-set generation params into every request.
+
+        Overridden to defer the canonical-name translation: which provider the
+        proxy routes to, and so what its token limit is called, is only known
+        after the configuration fetch in _ensure_initialized.
+
+        Args:
+            params: Canonical generation params (`max_tokens`, `top_p`, ...)
+        """
+        supplied = {key: value for key, value in params.items() if value is not None}
+        self._kwargs.update(supplied)
+        self.kwargs.update(supplied)
+
+        if getattr(self, '_llm', None) is not None:
+            # Built already, so _ensure_initialized will not run again and these
+            # would reach nothing. The wrapper knows its own provider, so it can
+            # do the translation this method deferred. Mirrors the temperature
+            # setter, which propagates for the same reason.
+            self._llm.apply_generation_params(supplied)
+
+    @staticmethod
+    def _unreserved(params: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """`params` without the keys the wrapper is given explicitly."""
+        return {
+            key: value
+            for key, value in (params or {}).items()
+            if key not in RESERVED_CONFIG_PARAMETERS
+        }
+
+    @staticmethod
+    def _wire_provider(llm_provider: 'LLMProvider') -> str:
+        """The provider whose parameter names the wrapped client expects.
+
+        Azure is routed through the proxy as a plain OpenAI client, so it takes
+        OpenAI's names rather than its own.
+        """
+        if llm_provider is LLMProvider.AZURE_OPENAI:
+            return LLMProvider.OPENAI.value
+        return llm_provider.value
 
     async def _fetch_llm_config_async(
         self,
@@ -113,7 +214,7 @@ class RootFloLLM(BaseLLM):
             app_key: Optional application key for X-Rootflo-Key header
 
         Returns:
-            Dict containing llm_model and type
+            Dict containing llm_model, type and the configured generation parameters
 
         Raises:
             Exception: If API call fails or response is invalid
@@ -147,7 +248,11 @@ class RootFloLLM(BaseLLM):
                         f'API response missing required fields: llm_model={llm_model}, type={llm_type}'
                     )
 
-                return {'llm_model': llm_model, 'type': llm_type}
+                return {
+                    'llm_model': llm_model,
+                    'type': llm_type,
+                    'parameters': config_data.get('parameters') or {},
+                }
 
         except httpx.HTTPStatusError as e:
             raise Exception(
@@ -197,6 +302,7 @@ class RootFloLLM(BaseLLM):
             )
             llm_model = config['llm_model']
             llm_type = config['type']
+            config_parameters = config.get('parameters') or {}
 
             # Map type string to LLMProvider enum
             try:
@@ -206,6 +312,26 @@ class RootFloLLM(BaseLLM):
                     f'Unsupported LLM provider type from API: {llm_type}. '
                     f'Supported types: {[p.value for p in LLMProvider]}'
                 )
+
+            # The configuration's own generation parameters ride through as
+            # kwargs, with self._kwargs winning because it came from the caller.
+            # Only now is the provider known, which is what the token limit has
+            # to be named for - and merging through one place is what stops a
+            # stale `max_tokens` travelling alongside `max_completion_tokens`,
+            # a pair the OpenAI-compatible providers reject outright.
+            sdk_kwargs = merge_generation_params(
+                self._unreserved(config_parameters),
+                self._unreserved(self._kwargs),
+                self._wire_provider(llm_provider),
+            )
+
+            # temperature is passed explicitly below rather than as a kwarg, so
+            # apply the configured one unless the caller asked for a specific
+            # value (a YAML `settings.temperature`, say).
+            if not self._temperature_explicit:
+                configured_temperature = config_parameters.get('temperature')
+                if configured_temperature is not None:
+                    self._temperature = configured_temperature
 
             # Update instance attributes
             self.llm_provider = llm_provider
@@ -224,28 +350,28 @@ class RootFloLLM(BaseLLM):
                     model=llm_model,
                     base_url=full_url,
                     api_key=api_token or 'no_token',
-                    temperature=self._temperature,
+                    temperature=self.temperature,
                     custom_headers=custom_headers,
-                    **self._kwargs,
+                    **sdk_kwargs,
                 )
             elif llm_provider == LLMProvider.ANTHROPIC:
                 self._llm = Anthropic(
                     model=llm_model,
                     base_url=full_url,
                     api_key=api_token or 'no_token',
-                    temperature=self._temperature,
+                    temperature=self.temperature,
                     custom_headers=custom_headers,
-                    **self._kwargs,
+                    **sdk_kwargs,
                 )
             elif llm_provider == LLMProvider.GEMINI:
                 # Gemini SDK - pass base_url which will be handled via http_options
                 self._llm = Gemini(
                     model=llm_model,
                     api_key=api_token or 'no_token',
-                    temperature=self._temperature,
+                    temperature=self.temperature,
                     base_url=full_url,
                     custom_headers=custom_headers,
-                    **self._kwargs,
+                    **sdk_kwargs,
                 )
             elif llm_provider == LLMProvider.VLLM:
                 # vLLM via OpenAI-compatible API
@@ -253,9 +379,9 @@ class RootFloLLM(BaseLLM):
                     model=llm_model,
                     base_url=full_url,
                     api_key=api_token or 'no_token',
-                    temperature=self._temperature,
+                    temperature=self.temperature,
                     custom_headers=custom_headers,
-                    **self._kwargs,
+                    **sdk_kwargs,
                 )
             else:
                 raise ValueError(f'Unsupported LLM provider: {llm_provider}')

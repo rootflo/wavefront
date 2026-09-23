@@ -15,11 +15,13 @@ import { ChatMessage, ChatMessageContent } from '@app/types/chat-message';
 import { Workflow, WorkflowEvent } from '@app/types/workflow';
 import { scrollToBottom } from '@app/utils/scroll';
 import { useQueryClient } from '@tanstack/react-query';
+import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
 import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeMirror from '@uiw/react-codemirror';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useParams } from 'react-router';
+import { formatAppName } from '@app/lib/utils';
 
 type MessageInput = { role: 'user' | 'assistant'; content: ChatMessageContent };
 
@@ -725,10 +727,10 @@ const WorkflowDetail: React.FC = () => {
   };
 
   return (
-    <div className="h-full bg-white py-5">
+    <div className="h-full bg-transparent py-5">
       <div className="flex h-full w-full flex-col gap-10">
         <div className="flex items-center justify-between">
-          <p className="text-2xl leading-normal font-semibold text-black">{workflow?.name}</p>
+          <p className="frost-text text-2xl leading-normal font-semibold">{formatAppName(workflow?.name)}</p>
           <div className="flex items-center gap-4">
             {workflowVersions.length > 0 && (
               <Select
@@ -765,7 +767,7 @@ const WorkflowDetail: React.FC = () => {
         <div className="flex w-full flex-1 gap-10 pb-5">
           <div className="flex h-full w-full flex-col gap-10">
             <div className="flex h-full flex-col gap-3">
-              <p className="text-lg leading-4 font-medium text-black">Configuration</p>
+              <p className="frost-text text-lg leading-4 font-medium">Configuration</p>
               <CodeMirror
                 value={yamlContent}
                 editable={false}
@@ -780,7 +782,7 @@ const WorkflowDetail: React.FC = () => {
 
           <div className="flex w-full flex-col gap-2">
             <div className="flex items-center justify-between pb-2">
-              <Label htmlFor="output-json-toggle" className="text-sm text-gray-700">
+              <Label htmlFor="output-json-toggle" className="frost-text text-sm">
                 JSON output
               </Label>
               <Switch id="output-json-toggle" checked={outputJsonEnabled} onCheckedChange={setOutputJsonEnabled} />
@@ -821,19 +823,21 @@ const WorkflowDetail: React.FC = () => {
       </div>
 
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto lg:max-w-4xl">
+        <DialogContent className="max-h-[90vh] min-w-0 overflow-y-auto lg:max-w-4xl">
           <DialogHeader>
             <DialogTitle>Edit Workflow Configuration</DialogTitle>
           </DialogHeader>
-          <div className="flex flex-col gap-3 overflow-auto py-4">
+          <div className="flex min-w-0 flex-col gap-3 overflow-y-auto py-4">
             <CodeMirror
               value={yamlContent}
               editable={true}
               onChange={(value: string) => setYamlContent(value)}
               theme="dark"
               height="500px"
-              className="w-full"
-              extensions={[langs.yaml()]}
+              width="100%"
+              maxWidth="100%"
+              className="w-full min-w-0"
+              extensions={[langs.yaml(), ...popupCodeMirrorExtensions]}
             />
             <p className="text-sm leading-normal font-normal text-[#878787]">
               Define your workflow configuration in YAML format.

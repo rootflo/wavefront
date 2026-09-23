@@ -11,14 +11,14 @@ interface ModelCardProps {
 const ModelCard: React.FC<ModelCardProps> = ({ model, onClick, onDeleteClick }) => {
   const metadata: ResourceCardMetadata[] = [
     {
-      label: 'Model ID',
+      label: 'Model id',
       value: model.model_id,
       isMono: true,
     },
     {
       label: 'Type',
       value: model.model_type,
-      className: 'bg-blue-50 text-blue-700',
+      className: 'bg-sky-400/15 text-sky-800 ring-1 ring-sky-400/20',
     },
   ];
 

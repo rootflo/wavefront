@@ -44,9 +44,6 @@ from celery_worker.env import (
     GMAIL_PUBSUB_OIDC_SA_EMAIL,
     GMAIL_PUBSUB_TOPIC_PREFIX,
     GMAIL_PUSH_ENDPOINT_TEMPLATE,
-    GOOGLE_OAUTH_CLIENT_ID,
-    GOOGLE_OAUTH_CLIENT_SECRET,
-    GOOGLE_OAUTH_REDIRECT_URI,
     WORKFLOW_WORKER_TOPIC,
 )
 
@@ -161,6 +158,11 @@ def close_event_loop() -> None:
         except Exception as exc:
             logger.warning(f'Error draining worker event loop on shutdown: {exc}')
         finally:
+            # Telemetry shutdown is handled by the `worker_shutdown` /
+            # `worker_process_shutdown` signals in celery_app.py, not here —
+            # this function's contract is event-loop teardown, and coupling
+            # span/metric flush to it meant a repeated or skipped call here
+            # could lose the tail of the traces.
             _loop.close()
             _loop = None
 
@@ -213,12 +215,20 @@ def get_services() -> WorkerServices:
             cloud_storage_manager=common_container.cloud_storage_manager,
             dynamic_query_repository=db_repo_container.dynamic_query_repository,
             cache_manager=db_repo_container.cache_manager,
+            oauth_app_repository=db_repo_container.oauth_app_repository,
+            email_connection_repository=db_repo_container.email_connection_repository,
+        )
+        # The email services decrypt tokens through KMS, so the worker needs the
+        # same cloud provider the app uses.
+        plugins_container.config.from_dict(
+            {'cloud_config': {'cloud_provider': CLOUD_PROVIDER}}
         )
 
         bucket_name = AGENT_YAML_BUCKET
 
         tools_container = ToolsContainer(
             datasource_repository=db_repo_container.datasource_repository,
+            email_connection_repository=db_repo_container.email_connection_repository,
             knowledge_base_repository=db_repo_container.knowledge_base_repository,
             knowledge_base_inference_repository=db_repo_container.knowledge_base_inference_repository,
             message_processor_repository=plugins_container.message_processor_repository,
@@ -266,27 +276,23 @@ def get_services() -> WorkerServices:
         # floware's CacheManager uses config.env_config.app_name as its namespace
         cache = CacheManager(namespace=APP_NAME)
 
+        # OAuth apps live in the DB. Pub/Sub watch settings come from env /
+        # [triggers_gmail] — not from oauth_apps.
         triggers_container = TriggersContainer(
             trigger_repository=db_repo_container.agentic_trigger_repository,
-            credential_repository=db_repo_container.agentic_trigger_credential_repository,
+            email_connection_service=plugins_container.email_connection_service,
             event_repository=db_repo_container.agentic_trigger_event_repository,
             agent_repository=db_repo_container.agent_repository,
             workflow_repository=db_repo_container.workflow_repository,
             async_agentic_execution_service=agents_container.async_agentic_execution_service,
             cache_manager=db_repo_container.cache_manager,
         )
-        triggers_container.config.from_dict(
+        triggers_container.config.triggers_gmail.from_dict(
             {
-                'cloud_config': {'cloud_provider': CLOUD_PROVIDER},
-                'triggers_gmail': {
-                    'client_id': GOOGLE_OAUTH_CLIENT_ID,
-                    'client_secret': GOOGLE_OAUTH_CLIENT_SECRET,
-                    'redirect_uri': GOOGLE_OAUTH_REDIRECT_URI,
-                    'pubsub_project_id': GCP_PROJECT_ID,
-                    'pubsub_topic_prefix': GMAIL_PUBSUB_TOPIC_PREFIX,
-                    'push_endpoint_template': GMAIL_PUSH_ENDPOINT_TEMPLATE,
-                    'oidc_service_account_email': GMAIL_PUBSUB_OIDC_SA_EMAIL or None,
-                },
+                'pubsub_project_id': GCP_PROJECT_ID,
+                'pubsub_topic_prefix': GMAIL_PUBSUB_TOPIC_PREFIX,
+                'push_endpoint_template': GMAIL_PUSH_ENDPOINT_TEMPLATE,
+                'oidc_service_account_email': GMAIL_PUBSUB_OIDC_SA_EMAIL,
             }
         )
 

@@ -1,4 +1,21 @@
 import floConsoleService from '@app/api';
+import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
+import { Badge } from '@app/components/ui/badge';
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from '@app/components/ui/breadcrumb';
+import { Button } from '@app/components/ui/button';
+import { Checkbox } from '@app/components/ui/checkbox';
+import { Input } from '@app/components/ui/input';
+import { Label } from '@app/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
+import { Switch } from '@app/components/ui/switch';
+import { Textarea } from '@app/components/ui/textarea';
 import {
   cleanParameters,
   getProviderBadge,
@@ -7,7 +24,8 @@ import {
   ParameterConfig,
 } from '@app/config/authenticators';
 import { useGetAuthenticator } from '@app/hooks/data/fetch-hooks';
-import { extractErrorMessage } from '@app/lib/utils';
+import { getAuthenticatorKey, getAuthenticatorsKey } from '@app/hooks/data/query-keys';
+import { copyToClipboard, extractErrorMessage, formatAppName } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import {
   getBooleanNestedParameter,
@@ -18,9 +36,13 @@ import {
   getStringParameter,
 } from '@app/utils/parameter-helpers';
 import { useQueryClient } from '@tanstack/react-query';
-import clsx from 'clsx';
+import { Copy } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
+
+const formatFieldName = (key: string) => key.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+const fieldId = (...parts: string[]) => ['authenticator', ...parts].join('-');
 
 const AuthenticatorDetailPage: React.FC = () => {
   const { app, authId } = useParams<{ app: string; authId: string }>();
@@ -31,16 +53,14 @@ const AuthenticatorDetailPage: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [togglingEnabled, setTogglingEnabled] = useState(false);
 
-  // Form state
   const [authDesc, setAuthDesc] = useState('');
   const [parameters, setParameters] = useState<Record<string, unknown>>({});
 
-  // Fetch authenticator
   const { data: authenticator, isLoading: authenticatorLoading } = useGetAuthenticator(app, authId);
 
-  // Initialize form with authenticator data
   useEffect(() => {
     if (authenticator) {
       setAuthDesc(authenticator.auth_desc || '');
@@ -86,9 +106,9 @@ const AuthenticatorDetailPage: React.FC = () => {
       notifySuccess('Authenticator updated successfully');
       setIsEditing(false);
       queryClient.invalidateQueries({
-        queryKey: ['authenticator', app, authId],
+        queryKey: getAuthenticatorKey(app || '', authId),
       });
-      queryClient.invalidateQueries({ queryKey: ['authenticators', app] });
+      queryClient.invalidateQueries({ queryKey: getAuthenticatorsKey(app || '') });
     } catch (error) {
       const errorMessage = extractErrorMessage(error);
       notifyError(errorMessage || 'Failed to update authenticator');
@@ -100,6 +120,7 @@ const AuthenticatorDetailPage: React.FC = () => {
   const handleDelete = async () => {
     if (!authId) return;
 
+    setDeleting(true);
     try {
       await floConsoleService.authenticatorService.deleteAuthenticator(authId);
       notifySuccess('Authenticator deleted successfully');
@@ -107,30 +128,41 @@ const AuthenticatorDetailPage: React.FC = () => {
     } catch (error) {
       const errorMessage = extractErrorMessage(error);
       notifyError(errorMessage || 'Failed to delete authenticator');
+    } finally {
+      setDeleting(false);
     }
   };
 
-  const handleToggleEnabled = async () => {
+  const handleToggleEnabled = async (enabled: boolean) => {
     if (!authId || !authenticator) return;
 
     setTogglingEnabled(true);
     try {
-      if (authenticator.is_enabled) {
-        await floConsoleService.authenticatorService.disableAuthenticator(authId);
-        notifySuccess('Authenticator disabled successfully');
-      } else {
+      if (enabled) {
         await floConsoleService.authenticatorService.enableAuthenticator(authId);
         notifySuccess('Authenticator enabled successfully');
+      } else {
+        await floConsoleService.authenticatorService.disableAuthenticator(authId);
+        notifySuccess('Authenticator disabled successfully');
       }
       queryClient.invalidateQueries({
-        queryKey: ['authenticator', app, authId],
+        queryKey: getAuthenticatorKey(app || '', authId),
       });
-      queryClient.invalidateQueries({ queryKey: ['authenticators', app] });
+      queryClient.invalidateQueries({ queryKey: getAuthenticatorsKey(app || '') });
     } catch (error) {
       const errorMessage = extractErrorMessage(error);
       notifyError(errorMessage || 'Failed to toggle authenticator');
     } finally {
       setTogglingEnabled(false);
+    }
+  };
+
+  const handleCopyId = async (id: string) => {
+    const copied = await copyToClipboard(id);
+    if (copied) {
+      notifySuccess('Copied ID to clipboard');
+    } else {
+      notifyError('Failed to copy ID');
     }
   };
 
@@ -143,21 +175,16 @@ const AuthenticatorDetailPage: React.FC = () => {
     const paramConfig = config.parameters[key];
     if (!paramConfig) return null;
 
-    // Handle nested object parameters (like password_policy)
     if (paramConfig.type === 'object' && paramConfig.fields) {
       return (
-        <div className="space-y-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
-          <label className="block text-sm font-medium text-gray-700">
-            {key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
-          </label>
-          {paramConfig.description && <p className="text-xs text-gray-500">{paramConfig.description}</p>}
-          <div className="space-y-3">
+        <div className="frost-panel ring-frost-border col-span-full space-y-4 rounded-xl border p-4 ring-1">
+          <Label>{formatFieldName(key)}</Label>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {Object.entries(paramConfig.fields).map(([nestedKey, nestedConfig]) => (
-              <div key={nestedKey}>
-                <label className="mb-1 block text-xs font-medium text-gray-700">
-                  {nestedKey.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
-                </label>
-                {nestedConfig.description && <p className="mb-1 text-xs text-gray-500">{nestedConfig.description}</p>}
+              <div key={nestedKey} className="flex flex-col gap-2">
+                <Label htmlFor={fieldId('param', key, nestedKey)} className="text-xs">
+                  {formatFieldName(nestedKey)}
+                </Label>
                 {renderNestedField(key, nestedKey, nestedConfig, disabled)}
               </div>
             ))}
@@ -166,70 +193,50 @@ const AuthenticatorDetailPage: React.FC = () => {
       );
     }
 
-    // Handle array parameters (like scopes)
     if (paramConfig.type === 'array') {
       const arrayValue = Array.isArray(parameters[key]) ? parameters[key].join(', ') : '';
       return (
-        <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">
-            {key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
-          </label>
-          {paramConfig.description && <p className="mb-1 text-xs text-gray-500">{paramConfig.description}</p>}
-          <input
-            type="text"
+        <div className="flex flex-col gap-2">
+          <Label htmlFor={fieldId('param', key)}>{formatFieldName(key)}</Label>
+          <Input
+            id={fieldId('param', key)}
             value={arrayValue}
             onChange={(e) => {
               const values = e.target.value
                 .split(',')
-                .map((v) => v.trim())
+                .map((value) => value.trim())
                 .filter(Boolean);
               setParameter(key, values);
             }}
             disabled={disabled}
             placeholder={paramConfig.placeholder}
-            className={clsx(
-              'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-black focus:ring-1 focus:ring-black focus:outline-none',
-              disabled && 'cursor-not-allowed bg-gray-50 text-gray-500'
-            )}
           />
-          <p className="mt-1 text-xs text-gray-500">Separate multiple values with commas</p>
         </div>
       );
     }
 
-    // Handle boolean parameters
     if (paramConfig.type === 'boolean') {
       return (
-        <div className="flex items-center gap-3">
-          <input
-            type="checkbox"
+        <div className="flex items-start gap-3">
+          <Checkbox
+            id={fieldId('param', key)}
             checked={getBooleanParameter(parameters, key)}
-            onChange={(e) => setParameter(key, e.target.checked)}
+            onCheckedChange={(checked) => setParameter(key, checked === true)}
             disabled={disabled}
-            className={clsx(
-              'h-4 w-4 rounded border-gray-300 text-black focus:ring-black',
-              disabled && 'cursor-not-allowed opacity-50'
-            )}
           />
           <div>
-            <label className="text-sm font-medium text-gray-700">
-              {key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
-            </label>
-            {paramConfig.description && <p className="text-xs text-gray-500">{paramConfig.description}</p>}
+            <Label htmlFor={fieldId('param', key)}>{formatFieldName(key)}</Label>
           </div>
         </div>
       );
     }
 
-    // Handle number parameters
     if (paramConfig.type === 'number') {
       return (
-        <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">
-            {key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
-          </label>
-          {paramConfig.description && <p className="mb-1 text-xs text-gray-500">{paramConfig.description}</p>}
-          <input
+        <div className="flex flex-col gap-2">
+          <Label htmlFor={fieldId('param', key)}>{formatFieldName(key)}</Label>
+          <Input
+            id={fieldId('param', key)}
             type="number"
             value={getNumberOrStringParameter(parameters, key)}
             onChange={(e) => setParameter(key, e.target.value ? Number(e.target.value) : '')}
@@ -238,83 +245,68 @@ const AuthenticatorDetailPage: React.FC = () => {
             max={paramConfig.max}
             step={paramConfig.step}
             placeholder={paramConfig.placeholder}
-            className={clsx(
-              'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-black focus:ring-1 focus:ring-black focus:outline-none',
-              disabled && 'cursor-not-allowed bg-gray-50 text-gray-500'
-            )}
           />
         </div>
       );
     }
 
-    // Handle select parameters
     if (paramConfig.type === 'select' && paramConfig.options) {
       return (
-        <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">
-            {key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
-          </label>
-          {paramConfig.description && <p className="mb-1 text-xs text-gray-500">{paramConfig.description}</p>}
-          <select
+        <div className="flex flex-col gap-2">
+          <Label htmlFor={fieldId('param', key)}>{formatFieldName(key)}</Label>
+          <Select
             value={getStringParameter(parameters, key)}
-            onChange={(e) => setParameter(key, e.target.value)}
+            onValueChange={(value) => setParameter(key, value)}
             disabled={disabled}
-            className={clsx(
-              'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-black focus:ring-1 focus:ring-black focus:outline-none',
-              disabled && 'cursor-not-allowed bg-gray-50 text-gray-500'
-            )}
           >
-            {paramConfig.options.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger id={fieldId('param', key)}>
+              <SelectValue placeholder="Select an option" />
+            </SelectTrigger>
+            <SelectContent>
+              {paramConfig.options.map((option) => (
+                <SelectItem key={String(option.value)} value={String(option.value)}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       );
     }
 
-    // Default: string input
     return (
-      <div>
-        <label className="mb-1 block text-sm font-medium text-gray-700">
-          {key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
-        </label>
-        {paramConfig.description && <p className="mb-1 text-xs text-gray-500">{paramConfig.description}</p>}
-        <input
+      <div className="flex flex-col gap-2">
+        <Label htmlFor={fieldId('param', key)}>{formatFieldName(key)}</Label>
+        <Input
+          id={fieldId('param', key)}
           type="text"
           value={getStringParameter(parameters, key)}
           onChange={(e) => setParameter(key, e.target.value)}
           disabled={disabled}
           placeholder={paramConfig.placeholder}
-          className={clsx(
-            'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-black focus:ring-1 focus:ring-black focus:outline-none',
-            disabled && 'cursor-not-allowed bg-gray-50 text-gray-500'
-          )}
         />
       </div>
     );
   };
 
   const renderNestedField = (parentKey: string, childKey: string, config: ParameterConfig, disabled: boolean) => {
+    const id = fieldId('param', parentKey, childKey);
+
     if (config.type === 'boolean') {
       return (
-        <input
-          type="checkbox"
+        <Checkbox
+          id={id}
           checked={getBooleanNestedParameter(parameters, parentKey, childKey)}
-          onChange={(e) => setNestedParameter(parentKey, childKey, e.target.checked)}
+          onCheckedChange={(checked) => setNestedParameter(parentKey, childKey, checked === true)}
           disabled={disabled}
-          className={clsx(
-            'h-4 w-4 rounded border-gray-300 text-black focus:ring-black',
-            disabled && 'cursor-not-allowed opacity-50'
-          )}
         />
       );
     }
 
     if (config.type === 'number') {
       return (
-        <input
+        <Input
+          id={id}
           type="number"
           value={getNumberOrStringNestedParameter(parameters, parentKey, childKey)}
           onChange={(e) => setNestedParameter(parentKey, childKey, e.target.value ? Number(e.target.value) : '')}
@@ -322,217 +314,174 @@ const AuthenticatorDetailPage: React.FC = () => {
           min={config.min}
           max={config.max}
           step={config.step}
-          className={clsx(
-            'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-black focus:ring-1 focus:ring-black focus:outline-none',
-            disabled && 'cursor-not-allowed bg-gray-50 text-gray-500'
-          )}
         />
       );
     }
 
     return (
-      <input
+      <Input
+        id={id}
         type="text"
         value={getStringNestedParameter(parameters, parentKey, childKey)}
         onChange={(e) => setNestedParameter(parentKey, childKey, e.target.value)}
         disabled={disabled}
         placeholder={config.placeholder}
-        className={clsx(
-          'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-black focus:ring-1 focus:ring-black focus:outline-none',
-          disabled && 'cursor-not-allowed bg-gray-50 text-gray-500'
-        )}
       />
     );
   };
 
-  if (authenticatorLoading) {
-    return (
-      <div className="min-h-screen bg-white p-6">
-        <div className="mx-auto max-w-3xl">
-          <div className="text-center">Loading authenticator...</div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!authenticator) {
-    return (
-      <div className="min-h-screen bg-white p-6">
-        <div className="mx-auto max-w-3xl">
-          <div className="text-center text-red-600">Authenticator not found</div>
-        </div>
-      </div>
-    );
-  }
-
-  const config = getProviderConfig(authenticator.auth_type);
-  const badge = getProviderBadge(authenticator.auth_type);
+  const config = authenticator ? getProviderConfig(authenticator.auth_type) : null;
+  const badge = authenticator ? getProviderBadge(authenticator.auth_type) : null;
 
   return (
-    <div className="min-h-screen bg-white p-6">
-      <div className="mx-auto max-w-3xl">
-        {/* Go Back Button */}
-        <div
-          className="mb-6 flex cursor-pointer items-center gap-2"
-          onClick={() => navigate(`/apps/${app}/authenticators`)}
-        >
-          <p className="text-normal text-base text-[#101010]">Go back</p>
-        </div>
-
-        {/* Header */}
-        <div className="mb-6 flex items-start justify-between">
-          <div className="flex-1">
-            <div className="mb-2 flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-gray-900">{authenticator.auth_name}</h1>
-              <span className={clsx('rounded-full px-3 py-1 text-xs font-medium', badge.bg, badge.text)}>
-                {config?.name || authenticator.auth_type}
-              </span>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-500">Status:</span>
-                <span
-                  className={clsx('text-sm font-medium', authenticator.is_enabled ? 'text-green-600' : 'text-gray-400')}
-                >
-                  {authenticator.is_enabled ? 'Enabled' : 'Disabled'}
-                </span>
-              </div>
+    <div className="flex h-full w-full flex-col p-8">
+      <Breadcrumb className="mb-4">
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild>
+              <button type="button" onClick={() => navigate('/apps')} className="hover:text-foreground cursor-pointer">
+                Apps
+              </button>
+            </BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild>
               <button
-                onClick={handleToggleEnabled}
-                disabled={togglingEnabled}
-                className={clsx(
-                  'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-                  authenticator.is_enabled ? 'bg-black' : 'bg-gray-200',
-                  togglingEnabled && 'cursor-not-allowed opacity-50'
+                type="button"
+                onClick={() => navigate(`/apps/${app}/authenticators`)}
+                className="hover:text-foreground cursor-pointer"
+              >
+                Authenticators
+              </button>
+            </BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbPage>{authenticator?.auth_name || authId}</BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
+
+      {authenticatorLoading ? (
+        <p className="frost-text-muted text-sm">Loading authenticator...</p>
+      ) : !authenticator ? (
+        <p className="text-sm text-red-500">Authenticator not found</p>
+      ) : (
+        <>
+          <div className="mb-8 flex w-full items-start justify-between">
+            <div>
+              <div className="flex items-center gap-3">
+                <h1 className="frost-text text-3xl font-bold">{formatAppName(authenticator.auth_name)}</h1>
+                {badge && (
+                  <Badge variant="secondary" className={`${badge.bg} ${badge.text} border-0 font-normal`}>
+                    {config?.name || authenticator.auth_type}
+                  </Badge>
                 )}
-              >
-                <span
-                  className={clsx(
-                    'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
-                    authenticator.is_enabled ? 'translate-x-6' : 'translate-x-1'
-                  )}
+                <Switch
+                  checked={authenticator.is_enabled}
+                  onCheckedChange={(checked) => void handleToggleEnabled(checked)}
+                  disabled={togglingEnabled}
+                  title={authenticator.is_enabled ? 'Enabled' : 'Disabled'}
                 />
-              </button>
+              </div>
             </div>
-          </div>
-          <div className="flex gap-2">
-            {!isEditing ? (
-              <>
-                <button
-                  onClick={() => setIsEditing(true)}
-                  className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() => setShowDeleteModal(true)}
-                  className="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
-                >
-                  Delete
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={handleCancel}
-                  disabled={saveLoading}
-                  className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSave}
-                  disabled={saveLoading}
-                  className={clsx(
-                    'rounded-md bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800',
-                    saveLoading && 'cursor-not-allowed opacity-50'
-                  )}
-                >
-                  {saveLoading ? 'Saving...' : 'Save Changes'}
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Form */}
-        <div className="space-y-6">
-          {/* Description */}
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Description</label>
-            <textarea
-              value={authDesc}
-              onChange={(e) => setAuthDesc(e.target.value)}
-              disabled={!isEditing}
-              rows={3}
-              maxLength={500}
-              placeholder="Optional description for this authenticator"
-              className={clsx(
-                'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-black focus:ring-1 focus:ring-black focus:outline-none',
-                !isEditing && 'cursor-not-allowed bg-gray-50 text-gray-500'
+            <div className="flex items-center gap-3">
+              {!isEditing ? (
+                <>
+                  <Button variant="outline" onClick={() => setIsEditing(true)}>
+                    Edit
+                  </Button>
+                  <Button variant="destructive" onClick={() => setShowDeleteModal(true)}>
+                    Delete
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button variant="outline" onClick={handleCancel} disabled={saveLoading}>
+                    Cancel
+                  </Button>
+                  <Button onClick={() => void handleSave()} loading={saveLoading}>
+                    Save
+                  </Button>
+                </>
               )}
-            />
-            {isEditing && <p className="mt-1 text-xs text-gray-500">{authDesc.length}/500 characters</p>}
-          </div>
-
-          {/* Configuration Parameters */}
-          {config && (
-            <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-6">
-              <h3 className="text-lg font-semibold text-gray-900">Configuration</h3>
-              <div className="space-y-4">
-                {Object.keys(config.parameters).map((key) => (
-                  <div key={key}>{renderParameterField(key, !isEditing)}</div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Metadata */}
-          <div className="rounded-lg border border-gray-200 bg-gray-50 p-6">
-            <h3 className="mb-4 text-lg font-semibold text-gray-900">Metadata</h3>
-            <dl className="space-y-3">
-              <div>
-                <dt className="text-xs font-medium text-gray-500">Authenticator ID</dt>
-                <dd className="mt-1 font-mono text-sm text-gray-900">{authenticator.auth_id}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-medium text-gray-500">Created At</dt>
-                <dd className="mt-1 text-sm text-gray-900">{new Date(authenticator.created_at).toLocaleString()}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-medium text-gray-500">Updated At</dt>
-                <dd className="mt-1 text-sm text-gray-900">{new Date(authenticator.updated_at).toLocaleString()}</dd>
-              </div>
-            </dl>
-          </div>
-        </div>
-      </div>
-
-      {/* Delete Confirmation Modal */}
-      {showDeleteModal && (
-        <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black">
-          <div className="mx-4 w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-            <h3 className="mb-4 text-lg font-semibold text-gray-900">Delete Authenticator</h3>
-            <p className="mb-6 text-sm text-gray-600">
-              Are you sure you want to delete "{authenticator.auth_name}"? This action cannot be undone.
-            </p>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setShowDeleteModal(false)}
-                className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDelete}
-                className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
-              >
-                Delete
-              </button>
             </div>
           </div>
-        </div>
+
+          <div className="grid w-full gap-6 lg:grid-cols-3">
+            <div className="flex flex-col gap-6 lg:col-span-2">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor={fieldId('description')}>Description</Label>
+                <Textarea
+                  id={fieldId('description')}
+                  value={authDesc}
+                  onChange={(e) => setAuthDesc(e.target.value)}
+                  disabled={!isEditing}
+                  rows={3}
+                  maxLength={500}
+                  placeholder="Optional description for this authenticator"
+                />
+                {isEditing && <p className="frost-text-muted text-xs">{authDesc.length}/500 characters</p>}
+              </div>
+
+              {config && (
+                <div className="frost-panel ring-frost-border rounded-xl border ring-1">
+                  <div className="border-b border-[#EFF0F1] px-6 py-4">
+                    <h2 className="frost-text text-lg font-semibold">Configuration</h2>
+                  </div>
+                  <div className="grid grid-cols-1 gap-6 p-6 md:grid-cols-2">
+                    {Object.keys(config.parameters).map((key) => (
+                      <React.Fragment key={key}>{renderParameterField(key, !isEditing)}</React.Fragment>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="frost-panel ring-frost-border rounded-xl border ring-1">
+              <div className="border-b border-[#EFF0F1] px-6 py-4">
+                <h2 className="frost-text text-lg font-semibold">Metadata</h2>
+              </div>
+              <dl className="space-y-4 p-6">
+                <div>
+                  <dt className="frost-text-muted text-xs font-medium">Authenticator ID</dt>
+                  <dd className="mt-1 flex items-center gap-1">
+                    <span className="frost-text truncate font-mono text-sm" title={authenticator.auth_id}>
+                      {authenticator.auth_id}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      title="Copy ID"
+                      onClick={() => void handleCopyId(authenticator.auth_id)}
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </Button>
+                  </dd>
+                </div>
+                <div>
+                  <dt className="frost-text-muted text-xs font-medium">Created At</dt>
+                  <dd className="frost-text mt-1 text-sm">{new Date(authenticator.created_at).toLocaleString()}</dd>
+                </div>
+                <div>
+                  <dt className="frost-text-muted text-xs font-medium">Updated At</dt>
+                  <dd className="frost-text mt-1 text-sm">{new Date(authenticator.updated_at).toLocaleString()}</dd>
+                </div>
+              </dl>
+            </div>
+          </div>
+        </>
       )}
+
+      <DeleteConfirmationDialog
+        isOpen={showDeleteModal}
+        title="Delete Authenticator"
+        message={`Are you sure you want to delete "${authenticator?.auth_name || ''}"? This action cannot be undone.`}
+        onConfirm={handleDelete}
+        onCancel={() => setShowDeleteModal(false)}
+        loading={deleting}
+      />
     </div>
   );
 };

@@ -19,6 +19,7 @@ from agents_module.models.async_agentic_execution_schemas import (
 )
 from agents_module.utils.celery_client import get_celery_client
 from agents_module.utils.execution_variable_utils import with_execution_variables
+from agents_module.utils.mime_type_utils import split_data_url
 
 _MIME_TO_EXT = {
     'application/pdf': '.pdf',
@@ -39,6 +40,13 @@ _WORKFLOW_TASK_NAME = 'celery_worker.tasks.workflow_task.execute_workflow_task'
 
 _STATUS_CACHE_TTL_TERMINAL = 3600  # 1 hour for completed/failed
 _STATUS_CACHE_TTL_ACTIVE = 10  # 10 seconds for pending/in_progress
+
+# Stands in for the stored exception text on the execution-read endpoints. The
+# execution id is already in the same payload, so a user reporting a failure
+# still has the one identifier support needs to look up the real error.
+GENERIC_EXECUTION_ERROR = (
+    'Execution failed. Contact your administrator with the execution id for details.'
+)
 
 
 def _cache_key(execution_id: UUID) -> str:
@@ -112,18 +120,18 @@ class AsyncAgenticExecutionService:
                 elif img_b64 is not None:
                     input_type = 'image'
                     raw_b64 = img_b64
-                    # Strip data URL prefix if present
-                    if isinstance(raw_b64, str) and raw_b64.startswith('data:'):
-                        parts = raw_b64.split(',', 1)
-                        if len(parts) == 2:
-                            header = parts[0]  # e.g. "data:image/png;base64"
-                            raw_b64 = parts[1]
-                            if not mime_type and ';' in header:
-                                mime_type = header.split(':')[1].split(';')[0]
                 else:
                     # Unknown content structure — pass through as-is
                     clean_inputs.append(item)
                     continue
+
+                # Both kinds may arrive as a `data:<mime>;base64,...` URL. Strip
+                # the prefix before decoding, and take the mime from it when the
+                # caller did not send one separately.
+                data_url_mime, stripped_b64 = split_data_url(raw_b64)
+                if stripped_b64 is not None:
+                    raw_b64 = stripped_b64
+                    mime_type = mime_type or data_url_mime
 
                 safe_name = _safe_filename(idx, file_name, mime_type)
                 key = f'{prefix}inputs/{safe_name}'
@@ -191,6 +199,7 @@ class AsyncAgenticExecutionService:
             status='pending',
             input_bucket=self.bucket,
             inputs=json.dumps(clean_inputs),
+            variables=variables,
             input_files=json.dumps(stored_files) if stored_files else None,
         )
 
@@ -232,6 +241,7 @@ class AsyncAgenticExecutionService:
             entity_type='agent',
             entity_id=agent_id,
             status_url=f'/v1/agentic-executions/{execution_id}',
+            variables=variables,
         )
 
     async def create_and_enqueue_workflow(
@@ -260,6 +270,7 @@ class AsyncAgenticExecutionService:
             status='pending',
             input_bucket=self.bucket,
             inputs=json.dumps(clean_inputs),
+            variables=variables,
             input_files=json.dumps(stored_files) if stored_files else None,
         )
 
@@ -305,10 +316,14 @@ class AsyncAgenticExecutionService:
             entity_type='workflow',
             entity_id=workflow_id,
             status_url=f'/v1/agentic-executions/{execution_id}',
+            variables=variables,
         )
 
     def _build_status_response(
-        self, record_dict: Dict, generate_urls: bool = True
+        self,
+        record_dict: Dict,
+        generate_urls: bool = True,
+        include_error: bool = False,
     ) -> AgenticExecutionStatusResponse:
         output_url = None
         history_url = None
@@ -364,13 +379,31 @@ class AsyncAgenticExecutionService:
                 except Exception as e:
                     logger.warning(f'Failed to generate input presigned URL: {e}')
 
+        # The stored error is a raw exception string — it has carried host
+        # names and stack detail — so it is swapped for a fixed message unless
+        # the caller is entitled to it. Still non-null when the run failed, so
+        # a client renders the same field either way.
+        #
+        # Keyed off status, not off the column: the consumer only writes `error`
+        # when the worker supplies text and only clears it on `in_progress`, so
+        # the column alone is neither. A failure reported without a message
+        # leaves it null, and a retry that reaches `completed` without passing
+        # through `in_progress` leaves the previous attempt's text behind.
+        raw_error = record_dict.get('error')
+        error = None
+        if record_dict['status'] == 'failed':
+            error = (
+                raw_error if include_error and raw_error else GENERIC_EXECUTION_ERROR
+            )
+
         return AgenticExecutionStatusResponse(
             id=uuid.UUID(record_dict['id']),
             entity_type=record_dict['entity_type'],
             entity_id=uuid.UUID(record_dict['entity_id']),
             celery_task_id=record_dict.get('celery_task_id'),
             status=record_dict['status'],
-            error=record_dict.get('error'),
+            error=error,
+            variables=record_dict.get('variables'),
             input_files=input_files,
             output_url=output_url,
             history_url=history_url,
@@ -384,14 +417,18 @@ class AsyncAgenticExecutionService:
         )
 
     async def get_execution_status(
-        self, execution_id: UUID
+        self, execution_id: UUID, include_error: bool = False
     ) -> AgenticExecutionStatusResponse:
         cache_key = _cache_key(execution_id)
         cached = await asyncio.to_thread(self.cache.get_str, cache_key)
 
         if cached:
             logger.debug(f'Cache hit for execution status {execution_id}')
-            return self._build_status_response(json.loads(cached))
+            # The cache holds the raw record, not the response, so it is shared
+            # across both values of include_error without leaking either way.
+            return self._build_status_response(
+                json.loads(cached), include_error=include_error
+            )
 
         record = await self.repo.find_one(id=execution_id)
         if not record:
@@ -406,7 +443,7 @@ class AsyncAgenticExecutionService:
         )
         await asyncio.to_thread(self.cache.add, cache_key, json.dumps(record_dict), ttl)
 
-        return self._build_status_response(record_dict)
+        return self._build_status_response(record_dict, include_error=include_error)
 
     async def list_executions(
         self,
@@ -415,6 +452,7 @@ class AsyncAgenticExecutionService:
         status: Optional[str] = None,
         offset: int = 0,
         limit: int = 50,
+        include_error: bool = False,
     ) -> Tuple[List[AgenticExecutionStatusResponse], int]:
         filters: Dict[str, Any] = {}
         if entity_id:
@@ -434,7 +472,9 @@ class AsyncAgenticExecutionService:
         records = records[offset:]
 
         results = [
-            self._build_status_response(r.to_dict(), generate_urls=False)
+            self._build_status_response(
+                r.to_dict(), generate_urls=False, include_error=include_error
+            )
             for r in records
         ]
         return results, total

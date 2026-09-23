@@ -8,15 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@app/components/ui/dialog';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@app/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -98,7 +90,7 @@ const CreateModelInferenceDialog: React.FC<CreateModelInferenceDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto lg:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Upload New Model</DialogTitle>
           <DialogDescription>Upload a new model for {selectedApp?.app_name}</DialogDescription>
@@ -117,9 +109,6 @@ const CreateModelInferenceDialog: React.FC<CreateModelInferenceDialogProps> = ({
                   <FormControl>
                     <Input placeholder="e.g., image-classification" {...field} />
                   </FormControl>
-                  <FormDescription>
-                    Categorization of the model (e.g., 'image-classification', 'object-detection')
-                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -128,7 +117,7 @@ const CreateModelInferenceDialog: React.FC<CreateModelInferenceDialogProps> = ({
             <FormField
               control={form.control}
               name="modelFile"
-              render={({ field: { value, onChange, ...field } }) => (
+              render={({ field: { onChange, onBlur, name, ref } }) => (
                 <FormItem>
                   <FormLabel>
                     Model File<span className="text-red-500">*</span>
@@ -136,22 +125,18 @@ const CreateModelInferenceDialog: React.FC<CreateModelInferenceDialogProps> = ({
                   <FormControl>
                     <Input
                       type="file"
-                      {...field}
+                      name={name}
+                      ref={ref}
+                      onBlur={onBlur}
                       onChange={(e) => {
                         const file = e.target.files?.[0];
                         if (file) {
                           onChange(file);
                         }
                       }}
-                      className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-black outline-none file:cursor-pointer file:text-blue-500"
+                      className="frost-glass-strong frost-text border-frost-border w-full cursor-pointer rounded-lg border px-3 py-2 text-sm outline-none file:cursor-pointer file:text-blue-500"
                     />
                   </FormControl>
-                  {value && (
-                    <FormDescription className="text-sm text-gray-600">
-                      Selected file: {(value as File).name}
-                    </FormDescription>
-                  )}
-                  <FormDescription>The model file to be uploaded</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

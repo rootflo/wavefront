@@ -6,7 +6,10 @@ import { AgentApi, AgentListItem } from '@app/types/agent';
 import { ApiServiceItem } from '@app/types/api-service';
 import { App } from '@app/types/app';
 import { Authenticator } from '@app/types/authenticator';
-import { Datasource, ReadYamlData, Yaml } from '@app/types/datasource';
+import { Chatbot } from '@app/types/chatbot';
+import { Datasource, DynamicQuery, ReadDynamicQueryData } from '@app/types/datasource';
+import { EmailConnection } from '@app/types/email';
+import { OAuthApp } from '@app/types/oauth-app';
 import { LLMInferenceConfig } from '@app/types/llm-inference-config';
 import { ConfigurationListItem, ConfigurationValue } from '@app/types/configuration';
 import { MessageProcessor, MessageProcessorListItem } from '@app/types/message-processor';
@@ -17,6 +20,7 @@ import { ToolDetails, VoiceAgentTool, VoiceAgentToolWithAssociation } from '@app
 import { TtsConfig } from '@app/types/tts-config';
 import { VoiceAgent } from '@app/types/voice-agent';
 import { ScheduledJob } from '@app/types/scheduled-job';
+import { Trigger } from '@app/types/trigger';
 import { WorkflowListItem, WorkflowPipelineListItem, WorkflowRunListData } from '@app/types/workflow';
 import { EntityVersion } from '@app/types/version';
 import { UseQueryResult } from '@tanstack/react-query';
@@ -29,16 +33,21 @@ import {
   getAgentsQueryFn,
   getAllAppsQueryFn,
   getAllDatasourcesQueryFn,
-  getAllYamlsQueryFn,
+  getAllDynamicQueriesQueryFn,
   getApiServiceQueryFn,
   getApiServicesQueryFn,
   getAppByIdFn,
   getAppUsersQueryFn,
   getAuthenticatorQueryFn,
   getAuthenticatorsQueryFn,
+  getChatbotsQueryFn,
   getCurrentUserQueryFn,
   getDatasourceQueryFn,
   getDatasourceResourcesQueryFn,
+  getEmailConnectionQueryFn,
+  getEmailConnectionsQueryFn,
+  getOAuthAppQueryFn,
+  getOAuthAppsQueryFn,
   getKnowledgeBaseDocumentsQueryFn,
   getKnowledgeBaseInferencesQueryFn,
   getKnowledgeBaseQueryFn,
@@ -71,8 +80,9 @@ import {
   getWorkflowPipelinesQueryFn,
   getWorkflowRunsQueryFn,
   getWorkflowsQueryFn,
-  readYamlQueryFn,
+  readDynamicQueryQueryFn,
   getScheduledJobsQueryFn,
+  getTriggersQueryFn,
 } from './query-functions';
 import {
   getAgentKey,
@@ -81,16 +91,21 @@ import {
   getAgentsKey,
   getAllAppsKey,
   getAllDatasourcesKey,
-  getAllYamlsKey,
+  getAllDynamicQueriesKey,
   getApiServiceKey,
   getApiServicesKey,
   getAppByIdKey,
   getAppUsersKey,
   getAuthenticatorKey,
   getAuthenticatorsKey,
+  getChatbotsKey,
   getCurrentUserKey,
   getDatasourceKey,
   getDatasourceResourcesKey,
+  getEmailConnectionKey,
+  getEmailConnectionsKey,
+  getOAuthAppKey,
+  getOAuthAppsKey,
   getKnowledgeBaseDocumentsKey,
   getKnowledgeBaseInferencesKey,
   getKnowledgeBaseKey,
@@ -123,8 +138,9 @@ import {
   getWorkflowPipelinesKey,
   getWorkflowRunsKey,
   getWorkflowsKey,
-  readYamlKey,
+  readDynamicQueryKey,
   getScheduledJobsKey,
+  getTriggersKey,
 } from './query-keys';
 
 export const useGetAllApps = (enabled: boolean): UseQueryResult<App[], Error> => {
@@ -150,26 +166,26 @@ export const useGetDatasource = (
   );
 };
 
-export const useGetAllYamls = (
+export const useGetAllDynamicQueries = (
   appId: string | undefined,
   datasourceId: string | undefined
-): UseQueryResult<Yaml[], Error> => {
+): UseQueryResult<DynamicQuery[], Error> => {
   return useQueryInit(
-    getAllYamlsKey(appId || '', datasourceId || ''),
-    () => getAllYamlsQueryFn(datasourceId!),
+    getAllDynamicQueriesKey(appId || '', datasourceId || ''),
+    () => getAllDynamicQueriesQueryFn(datasourceId!),
     !!appId && !!datasourceId
   );
 };
 
-export const useReadYaml = (
+export const useReadDynamicQuery = (
   appId: string | undefined,
   datasourceId: string | undefined,
-  yamlId: string | undefined
-): UseQueryResult<ReadYamlData | null, Error> => {
+  queryId: string | undefined
+): UseQueryResult<ReadDynamicQueryData | null, Error> => {
   return useQueryInit(
-    readYamlKey(appId || '', datasourceId || '', yamlId || ''),
-    () => readYamlQueryFn(datasourceId!, yamlId!),
-    !!appId && !!datasourceId && !!yamlId
+    readDynamicQueryKey(appId || '', datasourceId || '', queryId || ''),
+    () => readDynamicQueryQueryFn(datasourceId!, queryId!),
+    !!appId && !!datasourceId && !!queryId
   );
 };
 
@@ -192,6 +208,10 @@ export const useGetNamespaces = (appId: string | undefined): UseQueryResult<Name
   return useQueryInit(getNamespacesKey(appId || ''), getNamespacesQueryFn, !!appId);
 };
 
+export const useGetChatbots = (appId: string | undefined, namespace?: string): UseQueryResult<Chatbot[], Error> => {
+  return useQueryInit(getChatbotsKey(appId || '', namespace), () => getChatbotsQueryFn(namespace), !!appId);
+};
+
 export const useGetApiServices = (appId: string | undefined): UseQueryResult<ApiServiceItem[], Error> => {
   return useQueryInit(getApiServicesKey(appId || ''), getApiServicesQueryFn, !!appId);
 };
@@ -208,6 +228,36 @@ export const useGetAuthenticator = (
     getAuthenticatorKey(appId || '', authId || ''),
     () => getAuthenticatorQueryFn(authId!),
     !!appId && !!authId
+  );
+};
+
+export const useGetOAuthApps = (appId: string | undefined): UseQueryResult<OAuthApp[], Error> => {
+  return useQueryInit(getOAuthAppsKey(appId || ''), getOAuthAppsQueryFn, !!appId);
+};
+
+export const useGetOAuthApp = (
+  appId: string | undefined,
+  oauthAppId: string | undefined
+): UseQueryResult<OAuthApp | null, Error> => {
+  return useQueryInit(
+    getOAuthAppKey(appId || '', oauthAppId || ''),
+    () => getOAuthAppQueryFn(oauthAppId!),
+    !!appId && !!oauthAppId
+  );
+};
+
+export const useGetEmailConnections = (appId: string | undefined): UseQueryResult<EmailConnection[], Error> => {
+  return useQueryInit(getEmailConnectionsKey(appId || ''), getEmailConnectionsQueryFn, !!appId);
+};
+
+export const useGetEmailConnection = (
+  appId: string | undefined,
+  connectionId: string | undefined
+): UseQueryResult<EmailConnection | null, Error> => {
+  return useQueryInit(
+    getEmailConnectionKey(appId || '', connectionId || ''),
+    () => getEmailConnectionQueryFn(connectionId!),
+    !!appId && !!connectionId
   );
 };
 
@@ -488,6 +538,10 @@ export const useGetConsoleUsers = (): UseQueryResult<IUser[], Error> => {
 
 export const useGetScheduledJobs = (appId: string | undefined): UseQueryResult<ScheduledJob[], Error> => {
   return useQueryInit(getScheduledJobsKey(appId || ''), getScheduledJobsQueryFn, !!appId);
+};
+
+export const useGetTriggers = (appId: string | undefined): UseQueryResult<Trigger[], Error> => {
+  return useQueryInit(getTriggersKey(appId || ''), getTriggersQueryFn, !!appId);
 };
 
 // Voice Agent Tools Hooks

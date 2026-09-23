@@ -4,12 +4,23 @@ const getAgentsKey = (appId: string, namespace?: string) => {
   }
   return ['agents', appId];
 };
+const getChatbotsKey = (appId: string, namespace?: string) => {
+  if (namespace) {
+    return ['chatbots', appId, namespace];
+  }
+  return ['chatbots', appId];
+};
 const getNamespacesKey = (appId: string) => ['namespaces', appId];
 const getAllAppsKey = () => ['apps'];
 const getAllDatasourcesKey = (appId: string) => ['datasources', appId];
 const getDatasourceKey = (appId: string, datasourceId: string) => ['datasource', appId, datasourceId];
-const getAllYamlsKey = (appId: string, datasourceId: string) => ['yamls', appId, datasourceId];
-const readYamlKey = (appId: string, datasourceId: string, yamlId: string) => ['yaml', appId, datasourceId, yamlId];
+const getAllDynamicQueriesKey = (appId: string, datasourceId: string) => ['dynamic-queries', appId, datasourceId];
+const readDynamicQueryKey = (appId: string, datasourceId: string, queryId: string) => [
+  'dynamic-query',
+  appId,
+  datasourceId,
+  queryId,
+];
 const getDatasourceResourcesKey = (appId: string, datasourceId: string) => [
   'datasource-resources',
   appId,
@@ -19,6 +30,10 @@ const getCurrentUserKey = () => ['whoami'];
 const getApiServicesKey = (appId: string) => ['api-services', appId];
 const getAuthenticatorsKey = (appId: string) => ['authenticators', appId];
 const getAuthenticatorKey = (appId: string, authId: string) => ['authenticator', appId, authId];
+const getOAuthAppsKey = (appId: string) => ['oauth-apps', appId];
+const getOAuthAppKey = (appId: string, oauthAppId: string) => ['oauth-app', appId, oauthAppId];
+const getEmailConnectionsKey = (appId: string) => ['email-connections', appId];
+const getEmailConnectionKey = (appId: string, connectionId: string) => ['email-connection', appId, connectionId];
 const getLLMConfigsKey = (appId: string) => ['llm-configs', appId];
 const getLLMConfigKey = (appId: string, configId: string) => ['llm-config', appId, configId];
 const getModelsKey = (appId: string) => ['models', appId];
@@ -75,6 +90,7 @@ const getVoiceAgentToolsKey = (appId: string) => ['voice-agent-tools', appId];
 const getVoiceAgentToolKey = (appId: string, toolId: string) => ['voice-agent-tool', appId, toolId];
 const getAgentToolsKey = (appId: string, agentId: string) => ['agent-tools', appId, agentId];
 const getScheduledJobsKey = (appId: string) => ['scheduled-jobs', appId];
+const getTriggersKey = (appId: string) => ['triggers', appId];
 
 export {
   getAgentKey,
@@ -88,11 +104,16 @@ export {
   getApiServicesKey,
   getAuthenticatorKey,
   getAuthenticatorsKey,
+  getChatbotsKey,
   getCurrentUserKey,
   getDatasourceKey,
   getDatasourceResourcesKey,
-  getAllYamlsKey,
-  readYamlKey,
+  getAllDynamicQueriesKey,
+  getEmailConnectionKey,
+  getEmailConnectionsKey,
+  getOAuthAppKey,
+  getOAuthAppsKey,
+  readDynamicQueryKey,
   getKnowledgeBaseDocumentsKey,
   getKnowledgeBaseInferencesKey,
   getKnowledgeBaseKey,
@@ -128,4 +149,5 @@ export {
   getAppByIdKey,
   getAppUsersKey,
   getScheduledJobsKey,
+  getTriggersKey,
 };

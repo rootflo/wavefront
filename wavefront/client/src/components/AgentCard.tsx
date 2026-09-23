@@ -18,7 +18,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onClick, onDeleteClick }) 
     {
       label: 'Namespace',
       value: agent.namespace,
-      className: 'bg-blue-50 text-blue-700',
+      className: 'bg-sky-400/15 text-sky-800 ring-1 ring-sky-400/20',
     },
   ];
 
@@ -26,7 +26,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onClick, onDeleteClick }) 
     metadata.push({
       label: 'Version',
       value: `v${agent.current_version}`,
-      className: 'bg-purple-50 text-purple-700',
+      className: 'bg-indigo-400/15 text-indigo-800 ring-1 ring-indigo-400/20',
     });
   }
 

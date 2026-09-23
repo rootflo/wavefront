@@ -1,4 +1,3 @@
-from auth_module.services.outlook_service import OutlookService
 from auth_module.services.superset_service import SupersetService
 from auth_module.services.token_service import TokenService
 from common_module.feature.feature_flag import is_feature_enabled
@@ -66,15 +65,3 @@ class AuthContainer(containers.DeclarativeContainer):
         )
 
     active_subscriptions = providers.Singleton(dict)
-
-    outlook_service = providers.Singleton(
-        OutlookService,
-        client_id=config.outlook.client_id,
-        client_secret=config.outlook.client_secret,
-        tenant_id=config.outlook.tenant_id,
-        email_id=config.outlook.email_id,
-        authority=config.outlook.authority,
-        webhook_url=config.outlook.webhook_url,
-        active_subscriptions=active_subscriptions,
-        cache_manager=cache_manager,
-    )

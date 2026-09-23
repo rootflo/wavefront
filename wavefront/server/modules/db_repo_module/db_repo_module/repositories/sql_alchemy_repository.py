@@ -25,20 +25,27 @@ class SQLAlchemyRepository(Generic[T]):
         self.model: Type[T] = model
         self.session: async_sessionmaker[AsyncSession] = db_client.session
 
-    async def create(self, **kwargs) -> T:
+    async def create(self, *, session: AsyncSession | None = None, **kwargs) -> T:
         """
-        Create a new record in the Cassandra database.
+        Create a new record.
 
-        :param kwargs: The fields and their values to create the record.
-        :return: The created instance of the model.
+        When ``session`` is provided, the row is added and flushed but not
+        committed — the caller owns the transaction. Otherwise this opens a
+        session and commits immediately.
         """
-        async with self.session() as session:
-            session: AsyncSession
+        if session is not None:
             instance = self.model(**kwargs)
             session.add(instance)
-            await session.commit()
+            await session.flush()
             await session.refresh(instance)
+            return instance
 
+        async with self.session() as own_session:
+            own_session: AsyncSession
+            instance = self.model(**kwargs)
+            own_session.add(instance)
+            await own_session.commit()
+            await own_session.refresh(instance)
             return instance
 
     async def create_all(
@@ -214,7 +221,11 @@ class SQLAlchemyRepository(Generic[T]):
             return await session.scalar(query)
 
     async def execute_query(
-        self, query: str, params={}, model_class=None, ef_search: int | None = None
+        self,
+        query: str | Any,
+        params={},
+        model_class=None,
+        ef_search: int | None = None,
     ) -> list:
         """
         Execute a raw SQL query or an SQLAlchemy query asynchronously and return the results.
@@ -243,7 +254,8 @@ class SQLAlchemyRepository(Generic[T]):
                 await session.execute(
                     text("SET LOCAL hnsw.iterative_scan = 'relaxed_order'")
                 )
-            result = await session.execute(text(query), params)
+            statement = text(query) if isinstance(query, str) else query
+            result = await session.execute(statement, params)
             columns = result.keys()
             rows = [dict(zip(columns, row)) for row in result.all()]
             if model_class:

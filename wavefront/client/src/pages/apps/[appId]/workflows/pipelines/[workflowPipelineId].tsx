@@ -252,7 +252,14 @@ const WorkflowPipelineDetail = () => {
     {
       accessorKey: 'id',
       header: 'ID',
-      cell: ({ row }) => <div className="font-mono text-sm">{row.getValue('id')}</div>,
+      cell: ({ row }) => {
+        const id = row.getValue('id') as string;
+        return (
+          <span className="truncate font-mono text-xs" title={id}>
+            {id}
+          </span>
+        );
+      },
     },
     {
       accessorKey: 'status',
@@ -271,7 +278,7 @@ const WorkflowPipelineDetail = () => {
       header: 'Start Time',
       cell: ({ row }) => {
         const startTime = row.getValue('start_time') as string;
-        return <div className="text-sm">{formatDateTime(startTime)}</div>;
+        return <span className="text-sm whitespace-nowrap">{formatDateTime(startTime)}</span>;
       },
     },
     {
@@ -279,7 +286,7 @@ const WorkflowPipelineDetail = () => {
       header: 'End Time',
       cell: ({ row }) => {
         const endTime = row.original.end_time;
-        return <div className="text-sm">{formatDateTime(endTime || null)}</div>;
+        return <span className="text-sm whitespace-nowrap">{formatDateTime(endTime || null)}</span>;
       },
     },
     {
@@ -288,9 +295,9 @@ const WorkflowPipelineDetail = () => {
       cell: ({ row }) => {
         const error = row.original.error;
         return (
-          <div className="max-w-xs truncate text-sm" title={error || ''}>
-            {error || '-'}
-          </div>
+          <span className="frost-text-muted max-w-xs truncate" title={error || ''}>
+            {error || '—'}
+          </span>
         );
       },
     },
@@ -301,9 +308,9 @@ const WorkflowPipelineDetail = () => {
         const output = row.original.output;
         const formatted = formatOutput(output);
         return (
-          <div className="max-w-xs truncate text-sm" title={formatted}>
-            {formatted}
-          </div>
+          <span className="max-w-xs truncate" title={formatted}>
+            {formatted === '-' ? '—' : formatted}
+          </span>
         );
       },
     },
@@ -337,8 +344,8 @@ const WorkflowPipelineDetail = () => {
   };
 
   return (
-    <div className="p-8">
-      <Breadcrumb className="mb-6">
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden p-8">
+      <Breadcrumb className="mb-6 shrink-0">
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
@@ -366,9 +373,9 @@ const WorkflowPipelineDetail = () => {
         </BreadcrumbList>
       </Breadcrumb>
 
-      <div className="mb-6 flex justify-between gap-4">
+      <div className="mb-6 flex shrink-0 justify-between gap-4">
         <div className="flex items-center gap-3">
-          <h2 className="text-2xl font-semibold text-gray-900">Workflow Pipeline Runs</h2>
+          <h2 className="frost-text text-2xl font-semibold">Workflow Pipeline Runs</h2>
           {pipeline?.workflow_version !== undefined && (
             <Badge variant="secondary">workflow v{pipeline.workflow_version}</Badge>
           )}
@@ -384,91 +391,77 @@ const WorkflowPipelineDetail = () => {
         </div>
       </div>
 
-      <div className="rounded-lg bg-white shadow">
-        <div className="border-b border-gray-200 px-6 py-4">
-          <h2 className="text-lg font-semibold text-gray-900">Workflow Runs</h2>
+      {isLoading && workflowRuns.length === 0 ? (
+        <p className="frost-text-muted text-sm">Loading workflow runs...</p>
+      ) : runsError ? (
+        <div className="text-center">
+          <p className="text-sm text-red-500">Error loading workflow runs</p>
+          <Button onClick={handleRefresh} className="mt-2">
+            Retry
+          </Button>
         </div>
-
-        {isLoading && workflowRuns.length === 0 ? (
-          <div className="p-6 text-center">
-            <div className="text-gray-500">Loading workflow runs...</div>
-          </div>
-        ) : runsError ? (
-          <div className="p-6 text-center">
-            <div className="text-red-500">Error loading workflow runs</div>
-            <Button onClick={handleRefresh} className="mt-2">
-              Retry
-            </Button>
-          </div>
-        ) : workflowRuns.length === 0 ? (
-          <div className="p-6 text-center">
-            <div className="text-gray-500">No workflow runs found</div>
-          </div>
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  {table.getHeaderGroups().map((headerGroup) => (
-                    <TableRow key={headerGroup.id}>
-                      {headerGroup.headers.map((header) => (
-                        <TableHead key={header.id}>
-                          {header.isPlaceholder
-                            ? null
-                            : flexRender(header.column.columnDef.header, header.getContext())}
-                        </TableHead>
+      ) : workflowRuns.length === 0 ? (
+        <p className="frost-text-muted text-sm">No workflow runs found</p>
+      ) : (
+        <div className="frost-table-panel ring-frost-border flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border ring-1">
+          <div className="min-h-0 flex-1 overflow-auto">
+            <Table>
+              <TableHeader>
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <TableRow key={headerGroup.id}>
+                    {headerGroup.headers.map((header) => (
+                      <TableHead key={header.id}>
+                        {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableHeader>
+              <TableBody>
+                {table.getRowModel().rows?.length ? (
+                  table.getRowModel().rows.map((row) => (
+                    <TableRow
+                      key={row.id}
+                      data-state={row.getIsSelected() && 'selected'}
+                      className="cursor-pointer"
+                      onClick={() => handleRowClick(row.original)}
+                    >
+                      {row.getVisibleCells().map((cell) => (
+                        <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
                       ))}
                     </TableRow>
-                  ))}
-                </TableHeader>
-                <TableBody>
-                  {table.getRowModel().rows?.length ? (
-                    table.getRowModel().rows.map((row) => (
-                      <TableRow
-                        key={row.id}
-                        data-state={row.getIsSelected() && 'selected'}
-                        className="cursor-pointer"
-                        onClick={() => handleRowClick(row.original)}
-                      >
-                        {row.getVisibleCells().map((cell) => (
-                          <TableCell key={cell.id}>
-                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={columns.length} className="h-24 text-center">
-                        No results.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={columns.length} className="h-24 text-center">
+                      No results.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="border-frost-border flex shrink-0 items-center justify-between border-t px-4 py-3">
+            <div className="frost-text-muted text-sm">
+              Showing {pageIndex * PAGE_SIZE + 1} to {Math.min((pageIndex + 1) * PAGE_SIZE, totalCount)} of {totalCount}{' '}
+              results
             </div>
-            <div className="flex items-center justify-between border-t border-gray-200 px-6 py-4">
-              <div className="text-sm text-gray-500">
-                Showing {pageIndex * PAGE_SIZE + 1} to {Math.min((pageIndex + 1) * PAGE_SIZE, totalCount)} of{' '}
-                {totalCount} results
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => table.previousPage()}
-                  disabled={!table.getCanPreviousPage()}
-                >
-                  Previous
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
-                  Next
-                </Button>
-              </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => table.previousPage()}
+                disabled={!table.getCanPreviousPage()}
+              >
+                Previous
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
+                Next
+              </Button>
             </div>
-          </>
-        )}
-      </div>
+          </div>
+        </div>
+      )}
 
       <Dialog open={isInferencePopupOpen} onOpenChange={setIsInferencePopupOpen}>
         <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
@@ -513,11 +506,11 @@ const WorkflowPipelineDetail = () => {
           </DialogHeader>
           <div className="max-h-[60vh] overflow-auto">
             {selectedRunOutput ? (
-              <pre className="text-sm wrap-break-word whitespace-pre-wrap text-gray-900">
+              <pre className="frost-text text-sm wrap-break-word whitespace-pre-wrap">
                 {formatOutput(selectedRunOutput)}
               </pre>
             ) : (
-              <div className="text-center text-gray-500">No output available</div>
+              <div className="frost-text-muted text-center">No output available</div>
             )}
           </div>
           <DialogFooter>

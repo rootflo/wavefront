@@ -1,7 +1,9 @@
 import uuid
 from datetime import datetime
+from typing import Any, Optional
 
 from sqlalchemy import Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
 
@@ -22,6 +24,10 @@ class AsyncAgenticExecution(Base):
     )  # 'pending' | 'in_progress' | 'completed' | 'failed'
     input_bucket: Mapped[str] = mapped_column(nullable=True)
     inputs: Mapped[str] = mapped_column(Text, nullable=True)
+    # The raw variables the caller supplied for this run. Deliberately excludes
+    # the internal `_wf_execution_id` that with_execution_variables() adds to
+    # the worker payload -- the execution id is already this row's `id`.
+    variables: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     input_files: Mapped[str] = mapped_column(nullable=True)
     output_file: Mapped[str] = mapped_column(nullable=True)
     history_file: Mapped[str] = mapped_column(nullable=True)
@@ -42,6 +48,7 @@ class AsyncAgenticExecution(Base):
             'status': self.status,
             'input_bucket': self.input_bucket,
             'inputs': self.inputs,
+            'variables': self.variables,
             'input_files': self.input_files,
             'output_file': self.output_file,
             'history_file': self.history_file,

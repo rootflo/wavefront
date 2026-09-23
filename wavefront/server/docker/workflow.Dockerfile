@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY --from=ghcr.io/astral-sh/uv:0.8.6 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.12.10 /uv /uvx /bin/
 
 RUN apt-get update && apt-get install -y \
     git \
@@ -20,12 +20,14 @@ COPY wavefront/server/modules/agents_module /app/modules/agents_module
 COPY wavefront/server/modules/common_module /app/modules/common_module
 COPY wavefront/server/modules/db_repo_module /app/modules/db_repo_module
 COPY wavefront/server/modules/knowledge_base_module /app/modules/knowledge_base_module
+COPY wavefront/server/modules/llm_inference_config_module /app/modules/llm_inference_config_module
 COPY wavefront/server/modules/plugins_module /app/modules/plugins_module
 COPY wavefront/server/modules/tools_module /app/modules/tools_module
 COPY wavefront/server/modules/user_management_module /app/modules/user_management_module
 
 COPY wavefront/server/plugins/datasource /app/plugins/datasource
 COPY wavefront/server/plugins/authenticator /app/plugins/authenticator
+COPY wavefront/server/plugins/mailer /app/plugins/mailer
 
 # Install dependencies (without dependecy resolution and no dev dependencies)
 RUN uv sync --package workflow_job --frozen --no-dev

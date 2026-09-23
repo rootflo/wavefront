@@ -1,16 +1,12 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from uuid import UUID
 
 from common_module.common_cache import CommonCache
 from common_module.log.logger import logger
 from db_repo_module.models.agentic_trigger import AgenticTrigger
-from db_repo_module.models.agentic_trigger_credential import AgenticTriggerCredential
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
-
-from triggers_module.providers.base import TriggerProvider
-from triggers_module.providers.registry import TriggerProviderRegistry
-from triggers_module.utils.token_crypto import TokenCrypto
+from mailer import EmailCapability
+from plugins_module.services.email_connection_service import EmailConnectionService
 
 
 class TriggerSubscriptionRenewer:
@@ -20,16 +16,12 @@ class TriggerSubscriptionRenewer:
     def __init__(
         self,
         trigger_repository: SQLAlchemyRepository[AgenticTrigger],
-        credential_repository: SQLAlchemyRepository[AgenticTriggerCredential],
-        provider_registry: TriggerProviderRegistry,
-        token_crypto: TokenCrypto,
+        email_connection_service: EmailConnectionService,
         cache_manager: CommonCache,
         renew_window_hours: int = 24,
     ):
         self._triggers = trigger_repository
-        self._credentials = credential_repository
-        self._registry = provider_registry
-        self._crypto = token_crypto
+        self._connections = email_connection_service
         self._cache = cache_manager
         self._renew_window = timedelta(hours=renew_window_hours)
 
@@ -74,16 +66,19 @@ class TriggerSubscriptionRenewer:
         return renewed
 
     async def _renew_one(self, trigger: AgenticTrigger) -> None:
-        if not trigger.credential_id or not trigger.provider_config:
+        if not trigger.provider_config:
             return
-        provider = self._registry.get(trigger.provider)
-        access_token, external_account_id = await self._fresh_access_token(
-            trigger.credential_id, provider
+
+        connection = await self._connections.require_active(trigger.connection_id)
+        access_token, mailbox = await self._connections.get_access_token(
+            trigger.connection_id, capabilities=[EmailCapability.READ]
         )
-        updated_config = await provider.renew_subscription(
-            provider_config=trigger.provider_config,
+        provider = await self._connections.get_provider(connection)
+
+        updated_config = await provider.renew_watch(
             access_token=access_token,
-            external_account_id=external_account_id,
+            mailbox=mailbox,
+            provider_config=trigger.provider_config,
         )
         await self._triggers.find_one_and_update(
             {'id': trigger.id},
@@ -105,30 +100,3 @@ class TriggerSubscriptionRenewer:
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt.astimezone(timezone.utc)
-
-    async def _fresh_access_token(
-        self, credential_id: UUID, provider: TriggerProvider
-    ) -> tuple[str, str]:
-        credential = await self._credentials.find_one(id=credential_id)
-        if not credential:
-            raise RuntimeError(f'Credential {credential_id} not found')
-
-        now = datetime.now(timezone.utc)
-        if (
-            credential.encrypted_access_token
-            and credential.token_expires_at
-            and credential.token_expires_at > now
-        ):
-            return (
-                self._crypto.decrypt(credential.encrypted_access_token) or '',
-                credential.external_account_id,
-            )
-
-        refresh_token = self._crypto.decrypt(credential.encrypted_refresh_token)
-        bundle = await provider.refresh_access_token(refresh_token or '')
-        await self._credentials.find_one_and_update(
-            {'id': credential_id},
-            encrypted_access_token=self._crypto.encrypt(bundle.access_token),
-            token_expires_at=bundle.expires_at,
-        )
-        return bundle.access_token or '', credential.external_account_id

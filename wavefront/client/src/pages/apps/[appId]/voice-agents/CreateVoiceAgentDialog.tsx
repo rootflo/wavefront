@@ -8,15 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@app/components/ui/dialog';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@app/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Checkbox } from '@app/components/ui/checkbox';
@@ -40,6 +32,7 @@ import {
   getStringParameter,
 } from '@app/utils/parameter-helpers';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
 import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeMirror from '@uiw/react-codemirror';
 import React, { useEffect, useState } from 'react';
@@ -519,7 +512,7 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto lg:max-w-5xl">
+      <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto lg:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Create New Voice Agent</DialogTitle>
           <DialogDescription>Create a new voice agent for {selectedApp?.app_name}</DialogDescription>
@@ -543,7 +536,6 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                         <FormControl>
                           <Input placeholder="e.g., Customer Support Agent" maxLength={100} {...field} />
                         </FormControl>
-                        <FormDescription>{field.value?.length || 0}/100 characters</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -566,7 +558,6 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                             <SelectItem value="active">Active (Ready for Production)</SelectItem>
                           </SelectContent>
                         </Select>
-                        <FormDescription>Active agents can be used to initiate calls</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -588,7 +579,6 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                           {...field}
                         />
                       </FormControl>
-                      <FormDescription>{field.value?.length || 0}/500 characters</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -621,11 +611,6 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                             ))}
                           </SelectContent>
                         </Select>
-                        {llmConfigs.length === 0 && (
-                          <FormDescription className="text-amber-600">
-                            No LLM configurations found. Create one first.
-                          </FormDescription>
-                        )}
                         <FormMessage />
                       </FormItem>
                     )}
@@ -653,11 +638,6 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                             ))}
                           </SelectContent>
                         </Select>
-                        {ttsConfigs.length === 0 && (
-                          <FormDescription className="text-amber-600">
-                            No TTS configurations found. Create one first.
-                          </FormDescription>
-                        )}
                         <FormMessage />
                       </FormItem>
                     )}
@@ -685,11 +665,6 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                             ))}
                           </SelectContent>
                         </Select>
-                        {sttConfigs.length === 0 && (
-                          <FormDescription className="text-amber-600">
-                            No STT configurations found. Create one first.
-                          </FormDescription>
-                        )}
                         <FormMessage />
                       </FormItem>
                     )}
@@ -717,11 +692,6 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                             ))}
                           </SelectContent>
                         </Select>
-                        {telephonyConfigs.length === 0 && (
-                          <FormDescription className="text-amber-600">
-                            No telephony configurations found. Create one first.
-                          </FormDescription>
-                        )}
                         <FormMessage />
                       </FormItem>
                     )}
@@ -755,9 +725,6 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                             </div>
                           ))}
                         </div>
-                        <FormDescription>
-                          Provider-specific voice identifiers per language (e.g., "aura-2-helena-en" for Deepgram)
-                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -802,9 +769,6 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                         <FormControl>
                           <Input placeholder="e.g., +1234567890, +9876543210" {...field} />
                         </FormControl>
-                        <FormDescription>
-                          Phone numbers for receiving inbound calls (E.164 format, comma-separated, globally unique)
-                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -819,9 +783,6 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                         <FormControl>
                           <Input placeholder="e.g., +1234567890, +9876543210" {...field} />
                         </FormControl>
-                        <FormDescription>
-                          Phone numbers for making outbound calls (E.164 format, comma-separated)
-                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -862,10 +823,6 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                           ))}
                         </div>
                       </div>
-                      <FormDescription>
-                        Select languages this agent can converse in. If multiple languages are selected, the agent will
-                        detect the caller's language.
-                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -895,10 +852,6 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                           ))}
                         </SelectContent>
                       </Select>
-                      <FormDescription>
-                        Language used if detection fails or for single-language agents. Must be one of the supported
-                        languages.
-                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -924,7 +877,6 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                           {...field}
                         />
                       </FormControl>
-                      <FormDescription>Defines the agent's personality, behavior, and capabilities</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -946,9 +898,6 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                           {...field}
                         />
                       </FormControl>
-                      <FormDescription>
-                        Message played at the start of the call (converted to audio via TTS)
-                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -965,21 +914,20 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                     <FormItem>
                       <FormLabel>Conversation Configuration</FormLabel>
                       <FormControl>
-                        <div className="w-full">
+                        <div className="w-full min-w-0">
                           <CodeMirror
                             value={field.value || '{}'}
                             onChange={field.onChange}
                             theme="dark"
                             height="200px"
-                            className="w-full"
-                            extensions={[langs.json()]}
+                            width="100%"
+                            maxWidth="100%"
+                            className="w-full min-w-0"
+                            extensions={[langs.json(), ...popupCodeMirrorExtensions]}
                             placeholder='{\n  "max_duration_seconds": 600,\n  "silence_timeout_seconds": 10,\n  "enable_interruptions": true\n}'
                           />
                         </div>
                       </FormControl>
-                      <FormDescription>
-                        JSON object with conversation settings (e.g., timeouts, interruption handling)
-                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}

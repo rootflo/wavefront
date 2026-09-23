@@ -12,13 +12,20 @@ dependencies = [
     "db-repo-module",
 ]
 
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-
 [tool.uv]
 package = true
+# Inert here: uv reads resolver settings only from the workspace root
+# (wavefront/server/pyproject.toml), which is where the real cooldown lives.
+# Kept so the setting survives if this package is ever split out.
+exclude-newer = "7 days"
+
+[dependency-groups]
+dev = [
+    "flo-testing",
+]
 
 [tool.uv.sources]
+flo-testing = { workspace = true }
 common-module = { workspace = true }
 db-repo-module = { workspace = true }
 

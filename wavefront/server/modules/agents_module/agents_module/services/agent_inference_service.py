@@ -1,3 +1,4 @@
+import os
 import time
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -8,7 +9,8 @@ from db_repo_module.models.llm_inference_config import LlmInferenceConfig
 from db_repo_module.models.message_processors import MessageProcessors
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from flo_ai import AgentBuilder, Agent, BaseMessage
-from flo_ai.llm import OpenAI, Anthropic, Gemini, OllamaLLM, OpenAIVLLM
+from flo_ai.helpers.generation_params import normalize_generation_params
+from flo_ai.llm import OpenAI, Anthropic, Gemini, OllamaLLM, OpenAIVLLM, AzureOpenAI
 from flo_ai.tool.base_tool import Tool
 from flo_cloud.cloud_storage import CloudStorageManager
 from common_module.log.logger import logger
@@ -24,6 +26,13 @@ import yaml
 
 class AgentInferenceService:
     """Service for handling agent inference operations"""
+
+    # Passed explicitly below; a config carrying one would be a duplicate kwarg.
+    RESERVED_PARAMETERS = frozenset({'model', 'api_key', 'base_url', 'azure_endpoint'})
+
+    # Groq speaks the OpenAI protocol, so the OpenAI client covers it; it just
+    # needs pointing at Groq unless the config names its own endpoint.
+    GROQ_BASE_URL = 'https://api.groq.com/openai/v1'
 
     def __init__(
         self,
@@ -73,12 +82,19 @@ class AgentInferenceService:
         Args:
             yaml_content: YAML configuration content
             agent_name: The name of the agent for logging purposes
-            llm_config: Optional LLM configuration to override agent's default LLM
+            llm_config: Optional LLM configuration to override agent's default LLM.
+                When omitted, it is resolved from the YAML's `agent.model` block
+                (see _resolve_rootflo_llm_config), so every caller gets the same
+                treatment of `provider: rootflo` references.
 
         Returns:
             Agent instance created from YAML
         """
         logger.info(f'Creating agent from YAML for agent: {agent_name}')
+
+        # A caller-supplied config always wins; otherwise fall back to the YAML
+        if llm_config is None:
+            llm_config = await self._resolve_rootflo_llm_config(yaml_content)
 
         # Add tools if provided in the yaml file
         yaml_data = yaml.safe_load(yaml_content)
@@ -120,8 +136,10 @@ class AgentInferenceService:
             logger.info(
                 f'Overriding LLM with config: {llm_config.display_name} (type: {llm_config.type})'
             )
+            # Built here for this agent alone, so the builder can apply its
+            # settings in place instead of working on a copy.
             llm_instance = self._create_llm_instance(llm_config)
-            agent_builder = agent_builder.with_llm(llm_instance)
+            agent_builder = agent_builder.with_llm(llm_instance, owned=True)
 
         agent = agent_builder.build()
         logger.info(f'Successfully created agent for agent: {agent_name}')
@@ -220,20 +238,84 @@ class AgentInferenceService:
         Returns:
             LLM instance
         """
+        # Declared names (temperature, api_version) bind to the constructor
+        # arguments; the rest ride through as **kwargs into the request body.
+        # Nulls are dropped so the provider's own defaults still apply, and the
+        # token limit is renamed to whatever this provider calls it - a config
+        # that was created for one provider and later pointed at another keeps
+        # the first one's key, and OpenAI rejects a request carrying both
+        # `max_tokens` and `max_completion_tokens`.
+        llm_kwargs: Dict[str, Any] = normalize_generation_params(
+            {
+                key: value
+                for key, value in (config.parameters or {}).items()
+                if key not in self.RESERVED_PARAMETERS
+            },
+            config.type,
+        )
+
+        # Empty rather than '' so the SDK falls back to its own default. Passed
+        # to every provider that accepts one: a config pointing at LiteLLM, a
+        # gateway or a self-hosted OpenAI-compatible endpoint would otherwise
+        # reach the vendor's public API instead, with no error to show it.
+        base_url = config.base_url or None
+
         if config.type == 'openai':
-            return OpenAI(model=config.llm_model, api_key=config.api_key)
-        elif config.type == 'azure_openai':
             return OpenAI(
-                model=config.llm_model, api_key=config.api_key, base_url=config.base_url
+                model=config.llm_model,
+                api_key=config.api_key,
+                base_url=base_url,
+                **llm_kwargs,
+            )
+        elif config.type == 'groq':
+            return OpenAI(
+                model=config.llm_model,
+                api_key=config.api_key,
+                base_url=base_url or self.GROQ_BASE_URL,
+                **llm_kwargs,
+            )
+        elif config.type == 'azure_openai':
+            # The client will not build without one, so fall back to the env
+            api_version = llm_kwargs.get('api_version') or os.getenv(
+                'AZURE_OPENAI_API_VERSION'
+            )
+            if api_version:
+                llm_kwargs['api_version'] = api_version
+
+            return AzureOpenAI(
+                model=config.llm_model,
+                api_key=config.api_key,
+                azure_endpoint=config.base_url,
+                **llm_kwargs,
             )
         elif config.type == 'anthropic':
-            return Anthropic(model=config.llm_model, api_key=config.api_key)
+            return Anthropic(
+                model=config.llm_model,
+                api_key=config.api_key,
+                base_url=base_url,
+                **llm_kwargs,
+            )
         elif config.type == 'gemini':
-            return Gemini(model=config.llm_model, api_key=config.api_key)
+            return Gemini(
+                model=config.llm_model,
+                api_key=config.api_key,
+                base_url=base_url,
+                **llm_kwargs,
+            )
         elif config.type == 'ollama':
-            return OllamaLLM(model=config.llm_model, base_url=config.base_url)
+            # Only when set: OllamaLLM defaults it to localhost and calls
+            # .rstrip() on it, so an explicit None is an AttributeError.
+            ollama_kwargs = dict(llm_kwargs)
+            if base_url:
+                ollama_kwargs['base_url'] = base_url
+            return OllamaLLM(model=config.llm_model, **ollama_kwargs)
         elif config.type == 'vllm':
-            return OpenAIVLLM(model=config.llm_model, base_url=config.base_url)
+            return OpenAIVLLM(
+                model=config.llm_model,
+                api_key=config.api_key,
+                base_url=config.base_url,
+                **llm_kwargs,
+            )
         else:
             raise ValueError(f'Unsupported LLM type: {config.type}')
 
@@ -422,11 +504,8 @@ class AgentInferenceService:
             f'Retrieved agent - namespace: {namespace}, name: {name}, agent_id: {agent_id}'
         )
 
-        # Use caller-supplied config or fall back to resolving from the YAML
-        if llm_config is None:
-            llm_config = await self._resolve_rootflo_llm_config(yaml_content)
-
-        # Create agent from YAML with optional LLM override and tools
+        # Create agent from YAML with optional LLM override and tools.
+        # A None llm_config is resolved from the YAML by create_agent_from_yaml.
         agent = await self.create_agent_from_yaml(
             yaml_content, name, llm_config, access_token, app_key
         )

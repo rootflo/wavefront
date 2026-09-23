@@ -6,6 +6,7 @@ from sqlalchemy.orm import relationship
 
 from ..database.base import Base
 from .role_resource import RoleResource
+from .user_group_role import UserGroupRole
 from .user_role import UserRole
 
 
@@ -20,6 +21,9 @@ class Role(Base):
     users = relationship('User', secondary=UserRole.__table__, back_populates='roles')
     resources = relationship(
         'Resource', secondary=RoleResource.__table__, back_populates='roles'
+    )
+    groups = relationship(
+        'UserGroup', secondary=UserGroupRole.__table__, back_populates='roles'
     )
 
     def to_dict(self):
