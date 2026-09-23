@@ -19,7 +19,7 @@ from chatbots_module.services.chat_session_service import (
     UnknownChatUserError,
 )
 
-from .fakes import FakeDbSession, repository_with_session
+from fakes import FakeDbSession, repository_with_session
 
 
 def _chatbot(welcome_message=None):

@@ -262,12 +262,15 @@ async def get_resource(
         description='Scopes of the resources to fetch (all scopes when omitted)',
     ),
     search: Optional[str] = Query(
-        None, description='Search by key, value or description'
+        None, max_length=200, description='Search by key, value or description'
     ),
     limit: Optional[int] = Query(
-        None, description='Maximum number of resources to return (all when omitted)'
+        None,
+        ge=0,
+        le=500,
+        description='Maximum number of resources to return (all when omitted)',
     ),
-    offset: int = Query(0, description='Number of resources to skip'),
+    offset: int = Query(0, ge=0, description='Number of resources to skip'),
 ):
     role_id, _, _ = get_current_user(request)
     is_admin = await check_is_admin(role_id)
@@ -286,7 +289,15 @@ async def get_resource(
             ResourceScope.DATA,
         ]
     else:
-        parsed_scopes = [ResourceScope(scope) for scope in scopes]
+        try:
+            parsed_scopes = [ResourceScope(scope) for scope in scopes]
+        except ValueError:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content=response_formatter.buildErrorResponse(
+                    'Invalid resource scope value'
+                ),
+            )
 
     resources = await user_service.get_all_resources(
         scopes=parsed_scopes, search=search, offset=offset, limit=limit
@@ -324,11 +335,16 @@ async def get_role(
         ),
     ),
     select_item: Optional[str] = None,
-    search: Optional[str] = Query(None, description='Search by name or description'),
-    limit: Optional[int] = Query(
-        None, description='Maximum number of roles to return (all when omitted)'
+    search: Optional[str] = Query(
+        None, max_length=200, description='Search by name or description'
     ),
-    offset: int = Query(0, description='Number of roles to skip'),
+    limit: Optional[int] = Query(
+        None,
+        ge=0,
+        le=500,
+        description='Maximum number of roles to return (all when omitted)',
+    ),
+    offset: int = Query(0, ge=0, description='Number of roles to skip'),
 ):
     role_id, _, _ = get_current_user(request)
     is_admin = await check_is_admin(role_id)

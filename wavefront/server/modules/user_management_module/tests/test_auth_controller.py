@@ -127,6 +127,44 @@ async def test_authenticate_invalid_password(
     assert response.status_code == 403
 
 
+@pytest.mark.asyncio
+async def test_authenticate_rejects_invalid_email_format(test_client):
+    response = test_client.post(
+        '/floware/v1/authenticate',
+        json={'email': 'not-an-email', 'password': 'anything'},
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_authenticate_rejects_oversized_password(test_client):
+    response = test_client.post(
+        '/floware/v1/authenticate',
+        json={'email': 'test@example.com', 'password': 'x' * 73},
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_authenticate_rejects_empty_password(test_client):
+    response = test_client.post(
+        '/floware/v1/authenticate',
+        json={'email': 'test@example.com', 'password': ''},
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_authenticate_does_not_enforce_password_complexity(test_client):
+    """Login must not apply create/reset strength rules — only length/email format."""
+    response = test_client.post(
+        '/floware/v1/authenticate',
+        json={'email': 'nobody@example.com', 'password': 'simple'},
+    )
+    # Passed request validation (not 422). Auth failure is expected for unknown user.
+    assert response.status_code == 403
+
+
 # testing auth logout
 @pytest.mark.asyncio
 async def test_logout(
@@ -990,3 +1028,72 @@ async def test_successful_login_refreshes_user_cache_with_last_login(
     assert cached_login == updated_login
     assert latest['failed_attempts'] == 0
     assert latest['last_failed_attempt'] is None
+
+
+@pytest.mark.asyncio
+async def test_health_endpoint(test_client):
+    response = test_client.get('/floware/v1/health')
+    assert response.status_code == 200
+    assert response.json()['status'] == 'ok'
+
+
+@pytest.mark.asyncio
+async def test_authenticate_after_lockout_expiry_resets_attempts(
+    test_client, test_session: AsyncSession, test_user_id, mock_config
+):
+    """Expired lock clears the slate so the next failure starts at attempt 1."""
+    hashed_password = hash_password('correct_password')
+    # Far past so DB timezone stripping cannot make the lock look current.
+    expired = datetime(2020, 1, 1, tzinfo=timezone.utc)
+
+    async with test_session() as session:
+        user = User(
+            id=test_user_id,
+            email='expired_lock@example.com',
+            password=hashed_password,
+            first_name='Test',
+            last_name='User',
+            failed_attempts=5,
+            locked_until=expired,
+            last_failed_attempt=expired,
+        )
+        session.add(user)
+        await session.commit()
+
+    response = test_client.post(
+        '/floware/v1/authenticate',
+        json={'email': 'expired_lock@example.com', 'password': 'wrong_password'},
+    )
+    assert response.status_code == 403
+
+    async with test_session() as session:
+        from sqlalchemy import select
+
+        refreshed = (
+            await session.execute(
+                select(User).where(User.email == 'expired_lock@example.com')
+            )
+        ).scalar_one()
+        assert refreshed.failed_attempts == 1
+        assert refreshed.locked_until is None
+
+
+@pytest.mark.asyncio
+async def test_authenticate_recaptcha_blocks_when_enabled(
+    test_client, core_containers, monkeypatch
+):
+    from user_management_module.services.recaptcha_service import RecaptchaService
+
+    enabled = RecaptchaService(
+        enabled=True, project_id='p', site_key='s', score_threshold=0.5
+    )
+    core_containers.user.recaptcha_service.override(providers.Object(enabled))
+    try:
+        response = test_client.post(
+            '/floware/v1/authenticate',
+            json={'email': 'a@example.com', 'password': 'x'},
+        )
+        assert response.status_code == 403
+        assert 'recaptcha' in str(response.json()).lower()
+    finally:
+        core_containers.user.recaptcha_service.reset_override()

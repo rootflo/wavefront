@@ -240,10 +240,13 @@ async def list_groups(
     request: Request,
     response_formatter: ResponseFormatterDep,
     group_repository: UserGroupRepositoryDep,
-    search: Optional[str] = Query(None, description='Search by name or description'),
+    search: Optional[str] = Query(
+        None, max_length=200, description='Search by name or description'
+    ),
     limit: Optional[int] = Query(
         None,
         ge=0,
+        le=500,
         description='Maximum number of groups to return (all when omitted)',
     ),
     offset: int = Query(0, ge=0, description='Number of groups to skip'),

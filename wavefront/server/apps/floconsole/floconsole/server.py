@@ -7,6 +7,7 @@ from common_module.common_container import CommonContainer
 from common_module.log.logger import logger
 from common_module.response_formatter import ResponseFormatter
 from common_module.middleware.request_id_middleware import RequestIdMiddleware
+from common_module.middleware.security_headers import SecurityHeadersMiddleware
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -104,6 +105,9 @@ allowed_origins = origins.split(',')
 
 app.add_middleware(_middleware(RequestIdMiddleware))
 app.add_middleware(_middleware(RequireAuthMiddleware))
+# Strict default-src 'none' CSP plus the rest of the security headers; /docs and
+# /redoc get their own relaxed policy when APP_ENV=dev.
+app.add_middleware(_middleware(SecurityHeadersMiddleware))
 
 # Configure CORS with proper security settings
 app.add_middleware(

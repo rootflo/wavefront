@@ -7,6 +7,7 @@ from db_repo_module.models.user_role import UserRole
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
 from sqlalchemy.orm import relationship
+from sqlalchemy.orm import validates
 
 from ..database.base import Base
 from ..models.session import Session
@@ -51,6 +52,13 @@ class User(Base):
     sessions = relationship(
         Session, back_populates='user', cascade='all, delete-orphan'
     )
+
+    @validates('email')
+    def _normalize_email(self, key, address: str) -> str:
+        """Persist emails in lowercase only so lookups are case-insensitive-safe."""
+        if address is None:
+            return address
+        return str(address).strip().lower()
 
     def to_dict(self):
         return {

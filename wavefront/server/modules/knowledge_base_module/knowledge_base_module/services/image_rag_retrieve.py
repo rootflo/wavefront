@@ -9,6 +9,14 @@ from db_repo_module.models.knowledge_base_embeddings import KnowledgeBaseEmbeddi
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from sqlalchemy.exc import SQLAlchemyError
 
+# Hard ceiling on exact_match_dino's candidate count -- no config/env var can
+# exceed this, so a misconfiguration can't fully disable the safety guard.
+EXACT_MATCH_HARD_CEILING = 5_000
+
+# Fallback candidate cap used when the caller doesn't supply one Deliberately conservative; 
+# tune based on real p95 latency measurements against the target KB size.
+DEFAULT_EXACT_MATCH_MAX_CANDIDATES = 1_000
+
 
 @dataclass
 class ImageMatch:
@@ -116,6 +124,7 @@ class ImageRagRetrieve:
         filter6: Optional[str] = None,
         created_at_start=None,
         created_at_end=None,
+        max_candidates: Optional[int] = None,
     ) -> list[dict]:
         """
         Exact (non-ANN) DINO similarity match, restricted to documents in
@@ -133,7 +142,20 @@ class ImageRagRetrieve:
         (`QueryGenerator.get_image_embedding_dino_exact_match`) never engages the
         HNSW index -- see that method's docstring -- so scores returned here
         are always exact, not approximate.
+
+        The candidate set is capped directly in SQL via `ORDER BY d.id LIMIT
+        max_candidates + 1` (clamped to `EXACT_MATCH_HARD_CEILING`), 
+        so an oversized candidate set never gets fully brute-forced. 
+        The extra "+1" row lets us detect an overflow  (raise a 422) 
+        using just the row count of the one query already run. 
+        The `threshold` filter is applied in Python (after the overflow check) 
+        rather than in SQL.
         """
+        effective_cap = min(
+            max_candidates or DEFAULT_EXACT_MATCH_MAX_CANDIDATES,
+            EXACT_MATCH_HARD_CEILING,
+        )
+
         data = {'image_data': image_data}
         internal_api_url = f'{inference_url}/inference/v1/query/embeddings'
         try:
@@ -176,7 +198,7 @@ class ImageRagRetrieve:
                     filter1,
                     document_date_start,
                     document_date_end,
-                    threshold,
+                    effective_cap,
                     filter2,
                     filter3,
                     filter4,
@@ -186,7 +208,7 @@ class ImageRagRetrieve:
                     created_at_end,
                 )
             )
-            return await self.knowledge_base_embeddings_repository.execute_query(
+            raw_rows = await self.knowledge_base_embeddings_repository.execute_query(
                 sql_query,
                 query_params,
             )
@@ -194,6 +216,18 @@ class ImageRagRetrieve:
             raise RuntimeError(
                 f'Failed to execute the query for exact match retrieval: {e}'
             )
+
+        if len(raw_rows) > effective_cap:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f'More than {effective_cap} documents match the given filters, '
+                    'which exceeds the exact-match safety limit. Narrow your date '
+                    'range or filters and try again.'
+                ),
+            )
+
+        return [row for row in raw_rows if row['dino_score'] > threshold]
 
     async def image_retrieve_clip(
         self,

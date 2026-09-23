@@ -1,4 +1,5 @@
 import json
+from typing import Optional
 from uuid import uuid4
 
 from auth_module.auth_container import AuthContainer
@@ -23,26 +24,45 @@ from fastapi import Request
 from fastapi import status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from pydantic import EmailStr
+from pydantic import Field
+from pydantic import field_validator
 from user_management_module.models.oauth_provider import OAuthProviderConfig
+from user_management_module.models.user_schema import (
+    EMAIL_MAX_LENGTH,
+    PASSWORD_MAX_LENGTH,
+    TOKEN_MAX_LENGTH,
+)
 from user_management_module.services.account_lockout_service import (
     AccountLockoutService,
 )
 from user_management_module.services.account_inactivity_service import (
     AccountInactivityService,
 )
+from user_management_module.services.recaptcha_service import (
+    RECAPTCHA_ACTION_LOGIN,
+    RecaptchaService,
+)
 from user_management_module.user_container import UserContainer
 from user_management_module.services.user_service import UserService
 from user_management_module.utils.password_utils import verify_password
 from user_management_module.utils.user_utils import create_account_lockout_response
 from user_management_module.constants.cache import get_session_cache_key
+from user_management_module.utils.user_utils import normalize_email
 
 auth_router = APIRouter(prefix='/v1')
 oauth = OAuth()
 
 
 class AuthRequest(BaseModel):
-    email: str
-    password: str
+    email: EmailStr = Field(..., max_length=EMAIL_MAX_LENGTH)
+    password: str = Field(..., min_length=1, max_length=PASSWORD_MAX_LENGTH)
+    recaptcha_token: Optional[str] = Field(None, max_length=TOKEN_MAX_LENGTH)
+
+    @field_validator('email')
+    @classmethod
+    def lowercase_email(cls, v):
+        return normalize_email(v)
 
 
 @auth_router.get('/health')
@@ -73,8 +93,22 @@ async def authenticate(
     account_inactivity_service: AccountInactivityService = Depends(
         Provide[UserContainer.account_inactivity_service]
     ),
+    recaptcha_service: RecaptchaService = Depends(
+        Provide[UserContainer.recaptcha_service]
+    ),
 ):
-    user = await user_repository.find_one(email=auth_data.email)
+    is_recaptcha_valid, recaptcha_error = await recaptcha_service.verify(
+        auth_data.recaptcha_token, action=RECAPTCHA_ACTION_LOGIN
+    )
+    if not is_recaptcha_valid:
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=response_formatter.buildErrorResponse(
+                recaptcha_error or 'reCAPTCHA verification failed'
+            ),
+        )
+
+    user = await user_repository.find_one(email=normalize_email(auth_data.email))
 
     if user:
         is_locked, locked_until = await account_lockout_service.check_account_lockout(

@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY --from=ghcr.io/astral-sh/uv:0.8.6 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.12.10 /uv /uvx /bin/
 
 RUN apt-get update && apt-get install -y \
     libpq-dev \
@@ -13,6 +13,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 COPY wavefront/server/pyproject.toml wavefront/server/uv.lock ./
+
+COPY wavefront/server/modules/common_module /app/modules/common_module
 
 COPY wavefront/server/apps/call_processing /app/apps/call_processing
 

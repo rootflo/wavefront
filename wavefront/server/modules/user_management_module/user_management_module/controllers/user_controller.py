@@ -39,6 +39,7 @@ from user_management_module.dependencies.injection import (
     CacheManagerDep,
     CommonCacheDep,
     EmailSenderDep,
+    RecaptchaServiceDep,
     ResponseFormatterDep,
     TokenServiceDep,
     UserConfigDep,
@@ -53,10 +54,12 @@ from user_management_module.constants.cache import (
     user_by_id_cache_key,
     user_list_cache_key,
 )
-from user_management_module.models.user_schema import NewUser
-from user_management_module.models.user_schema import ResetUser
-from user_management_module.models.user_schema import SendResetPasswordEmail
-from user_management_module.models.user_schema import UpdateUser
+from user_management_module.models.user_schema import (
+    NewUser,
+    ResetUser,
+    SendResetPasswordEmailRequest,
+    UpdateUser,
+)
 from user_management_module.utils.email_templates import (
     PASSWORD_RESET_SUBJECT,
     build_password_reset_email,
@@ -69,8 +72,13 @@ from user_management_module.utils.rate_limit import (
 from user_management_module.utils.user_utils import (
     can_read_users,
     check_is_admin,
+    normalize_email,
 )
 from user_management_module.utils.user_utils import get_current_user
+from user_management_module.services.recaptcha_service import (
+    RECAPTCHA_ACTION_RESET_PASSWORD,
+    RECAPTCHA_ACTION_SEND_RESET_PASSWORD,
+)
 import json
 from common_module.utils.serializer import serialize_values
 from common_module.utils.validators import is_valid_uuid
@@ -126,6 +134,17 @@ async def _deliver_password_reset_email(
             logger.error('Error while sending password reset email')
     except Exception as exc:
         logger.error(f'Error while sending password reset email: {exc}')
+
+
+def _recaptcha_failure_response(
+    response_formatter, error_message: Optional[str]
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_403_FORBIDDEN,
+        content=response_formatter.buildErrorResponse(
+            error_message or 'reCAPTCHA verification failed'
+        ),
+    )
 
 
 @user_router.post('/users')
@@ -496,11 +515,13 @@ async def get_all_user(
     response_formatter: ResponseFormatterDep,
     user_repository: UserRepositoryDep,
     cache_manager: CacheManagerDep,
-    search: Optional[str] = Query(None, description='Search by name or email'),
+    search: Optional[str] = Query(
+        None, max_length=200, description='Search by name or email'
+    ),
     roles: Optional[List[str]] = Query(None, description='Filter by role name'),
-    limit: int = Query(100),
-    offset: int = Query(0),
-    force_fetch: int = Query(0),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    force_fetch: int = Query(0, ge=0, le=1),
 ):
     """List users.
 
@@ -674,7 +695,7 @@ async def get_user(
     user_repository: UserRepositoryDep,
     cache_manager: CacheManagerDep,
     user_id: str = Path(..., description='User id to fetch'),
-    force_fetch: int = Query(0),
+    force_fetch: int = Query(0, ge=0, le=1),
 ):
     """Fetch one user by id — name and email, without roles.
 
@@ -802,7 +823,7 @@ async def delete_user(
     user_repository: UserRepositoryDep,
     user_service: UserServiceDep,
     cache_manager: CacheManagerDep,
-    delete_id: str = Query(alias='id'),
+    delete_id: str = Query(alias='id', min_length=1, max_length=100),
 ):
     role_id, user_id, _ = get_current_user(request)
     is_admin = await check_is_admin(role_id)
@@ -811,6 +832,14 @@ async def delete_user(
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content=response_formatter.buildErrorResponse('Access denied'),
+        )
+
+    if not is_valid_uuid(delete_id):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                f'Invalid user id: {delete_id}'
+            ),
         )
 
     # Counted across direct assignments and group membership alike, so the last
@@ -855,7 +884,7 @@ async def delete_user(
 @user_router.post('/user/send-reset-password-email')
 @inject
 async def send_reset_url(
-    payload: SendResetPasswordEmail,
+    payload: SendResetPasswordEmailRequest,
     background_tasks: BackgroundTasks,
     user_repository: UserRepositoryDep,
     user_reset_cache: CommonCacheDep,
@@ -864,8 +893,15 @@ async def send_reset_url(
     config: UserConfigDep,
     email_sender: EmailSenderDep,
     account_lockout_service: AccountLockoutServiceDep,
+    recaptcha_service: RecaptchaServiceDep,
 ):
-    email = payload.email
+    is_recaptcha_valid, recaptcha_error = await recaptcha_service.verify(
+        payload.recaptcha_token, action=RECAPTCHA_ACTION_SEND_RESET_PASSWORD
+    )
+    if not is_recaptcha_valid:
+        return _recaptcha_failure_response(response_formatter, recaptcha_error)
+
+    email = normalize_email(payload.email)
     try:
         # Rate-limit before the lookup so a 429 never depends on whether the
         # account exists. Per-address only; the load balancer covers IP/volume.
@@ -930,8 +966,8 @@ async def send_reset_url(
         )
 
         return _password_reset_generic_response(response_formatter)
-    except ValueError:
-        logger.error('Error in email sending credentials')
+    except Exception as exc:
+        logger.error(f'Password reset request failed: {exc}', exc_info=True)
         return _password_reset_generic_response(response_formatter)
 
 
@@ -944,7 +980,14 @@ async def reset_password(
     user_reset_cache: CommonCacheDep,
     user_repository: UserRepositoryDep,
     user_service: UserServiceDep,
+    recaptcha_service: RecaptchaServiceDep,
 ):
+    is_recaptcha_valid, recaptcha_error = await recaptcha_service.verify(
+        reset_user.recaptcha_token, action=RECAPTCHA_ACTION_RESET_PASSWORD
+    )
+    if not is_recaptcha_valid:
+        return _recaptcha_failure_response(response_formatter, recaptcha_error)
+
     try:
         decoded = token_service.decode_token(reset_user.secret_token)
     except jwt.ExpiredSignatureError:
@@ -1056,7 +1099,7 @@ async def unblock_user(
     request: Request,
     response_formatter: ResponseFormatterDep,
     account_lockout_service: AccountLockoutServiceDep,
-    user_id: str = Path(..., description='User id to unblock'),
+    user_id: str = Path(..., description='User id to unblock', max_length=100),
 ):
     role_id, _, _ = get_current_user(request)
     is_admin = await check_is_admin(role_id)
@@ -1065,6 +1108,14 @@ async def unblock_user(
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content=response_formatter.buildErrorResponse('Access denied'),
+        )
+
+    if not is_valid_uuid(user_id):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                f'Invalid user id: {user_id}'
+            ),
         )
 
     try:

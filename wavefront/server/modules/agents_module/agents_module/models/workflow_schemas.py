@@ -1,6 +1,8 @@
 import uuid
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from agents_module.utils.validation_utils import validate_inference_variables
 
 
 class WorkflowInferenceRequest(BaseModel):
@@ -8,13 +10,26 @@ class WorkflowInferenceRequest(BaseModel):
 
     variables: Dict[str, Any] | None = Field(
         default=None,
-        description='Variables to pass to the workflow during inference',
+        description=(
+            'Variables to pass to the workflow during inference. Names and '
+            'values are restricted to letters, numbers, hyphens, underscores '
+            'and slashes; values may also contain spaces. At most 10 '
+            'variables, names up to 64 characters and values up to 500.'
+        ),
         example={
             'target_language': 'Spanish',
             'tone': 'formal',
             'text_to_process': 'Welcome to our application',
         },
     )
+
+    # Validated on the model so every caller of this schema is covered — v1, v2
+    # and the async v3 endpoint alike — rather than per controller.
+    @field_validator('variables')
+    @classmethod
+    def check_variables(cls, v):
+        return validate_inference_variables(v)
+
     inputs: List[dict | str] | str = Field(
         ...,
         description='Inputs to use for inference',

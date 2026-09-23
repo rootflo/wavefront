@@ -23,12 +23,12 @@ dependencies = [
     "psycopg2-binary>=2.9.10,<3.0.0",
 ]
 
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
-
 [tool.uv]
 package = true
+# Inert here: uv reads resolver settings only from the workspace root
+# (wavefront/server/pyproject.toml), which is where the real cooldown lives.
+# Kept so the setting survives if this package is ever split out.
+exclude-newer = "7 days"
 
 [build-system]
 requires = ["hatchling"]

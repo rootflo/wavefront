@@ -4,32 +4,11 @@ from db_repo_module.models.resource import Resource
 from db_repo_module.models.resource import ResourceScope
 from db_repo_module.models.role import Role
 from db_repo_module.models.role_resource import RoleResource
-from db_repo_module.models.session import Session
-from db_repo_module.models.user import User
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from user_management_module.models.resource import AddableResourceScope
-
-
-async def create_session(test_session: AsyncSession, test_user_id, test_session_id):
-    user = User(
-        id=test_user_id,
-        email='test@example.com',
-        password='hashed_password',
-        first_name='Test',
-        last_name='User',
-    )
-
-    # Create a session in the database
-    db_session = Session(
-        id=test_session_id, user_id=test_user_id, device_info='test_device'
-    )
-
-    async with test_session() as session:
-        session.add(user)
-        session.add(db_session)
-        await session.commit()
+from flo_testing import seed_user_session as create_session
 
 
 @pytest.mark.asyncio
@@ -770,3 +749,189 @@ async def test_create_role_invalid_resources(
     assert response.status_code == 400
     data = response.json()
     assert 'found 1 unknown resource(s) in the payload' in data['meta']['error'].lower()
+
+
+@pytest.mark.asyncio
+async def test_create_resource_rejects_duplicate_pairs_in_payload(
+    test_client,
+    test_session: AsyncSession,
+    test_user_id,
+    test_session_id,
+    auth_token,
+    mock_auth_admin_functions,
+):
+    await create_session(test_session, test_user_id, test_session_id)
+    payload = {
+        'resources': [
+            {
+                'key': 'dup',
+                'value': 'Same',
+                'description': 'a',
+                'scope': AddableResourceScope.DATA,
+            },
+            {
+                'key': 'dup',
+                'value': 'Same',
+                'description': 'b',
+                'scope': AddableResourceScope.DATA,
+            },
+        ]
+    }
+    response = test_client.post(
+        '/floware/v1/access/resources',
+        json=payload,
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 400
+    assert 'duplicate' in response.json()['meta']['error'].lower()
+
+
+@pytest.mark.asyncio
+async def test_create_resource_rejects_existing_resource(
+    test_client,
+    test_session: AsyncSession,
+    test_user_id,
+    test_session_id,
+    auth_token,
+    mock_auth_admin_functions,
+):
+    await create_session(test_session, test_user_id, test_session_id)
+    async with test_session() as session:
+        session.add(
+            Resource(
+                id=str(uuid.uuid4()),
+                key='existing',
+                value='Value',
+                description='d',
+                scope=ResourceScope.DATA,
+            )
+        )
+        await session.commit()
+
+    response = test_client.post(
+        '/floware/v1/access/resources',
+        json={
+            'resources': [
+                {
+                    'key': 'existing',
+                    'value': 'Value',
+                    'description': 'd',
+                    'scope': AddableResourceScope.DATA,
+                }
+            ]
+        },
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 400
+    assert 'already exist' in response.json()['meta']['error'].lower()
+
+
+@pytest.mark.asyncio
+async def test_get_resources_list_and_invalid_scope(
+    test_client,
+    test_session: AsyncSession,
+    test_user_id,
+    test_session_id,
+    auth_token,
+    mock_auth_admin_functions,
+):
+    await create_session(test_session, test_user_id, test_session_id)
+    async with test_session() as session:
+        session.add(
+            Resource(
+                id=str(uuid.uuid4()),
+                key='listed',
+                value='V',
+                description='d',
+                scope=ResourceScope.DATA,
+            )
+        )
+        await session.commit()
+
+    ok = test_client.get(
+        '/floware/v1/access/resources?scopes=data&limit=10&offset=0',
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert ok.status_code == 200
+    assert 'resources' in ok.json()['data']
+    assert 'total' in ok.json()['data']
+
+    bad = test_client.get(
+        '/floware/v1/access/resources?scopes=not-a-scope',
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert bad.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_patch_and_delete_resource(
+    test_client,
+    test_session: AsyncSession,
+    test_user_id,
+    test_session_id,
+    auth_token,
+    mock_auth_admin_functions,
+):
+    await create_session(test_session, test_user_id, test_session_id)
+    resource_id = str(uuid.uuid4())
+    async with test_session() as session:
+        session.add(
+            Resource(
+                id=resource_id,
+                key='patchme',
+                value='Old',
+                description='d',
+                scope=ResourceScope.DATA,
+            )
+        )
+        await session.commit()
+
+    empty = test_client.patch(
+        f'/floware/v1/access/resources/{resource_id}',
+        json={},
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert empty.status_code == 400
+    assert 'no fields' in empty.json()['meta']['error'].lower()
+
+    patched = test_client.patch(
+        f'/floware/v1/access/resources/{resource_id}',
+        json={'description': 'updated'},
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert patched.status_code == 200
+
+    deleted = test_client.delete(
+        f'/floware/v1/access/resources/{resource_id}',
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert deleted.status_code == 200
+
+    missing = test_client.delete(
+        f'/floware/v1/access/resources/{uuid.uuid4()}',
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert missing.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_access_endpoints_reject_non_admin(
+    test_client,
+    test_session: AsyncSession,
+    test_user_id,
+    test_session_id,
+    auth_token,
+    patch_auth,
+):
+    patch_auth(
+        'user_management_module.controllers.access_controller',
+        is_admin=False,
+        include_user_utils=False,
+    )
+    await create_session(test_session, test_user_id, test_session_id)
+
+    response = test_client.get(
+        '/floware/v1/access/resources',
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 401
