@@ -2333,6 +2333,23 @@ wheels = [
 ]
 
 [[package]]
+name = "google-cloud-recaptcha-enterprise"
+version = "1.32.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "google-api-core", extra = ["grpc"] },
+    { name = "google-auth", version = "2.48.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14' or sys_platform != 'darwin'" },
+    { name = "google-auth", version = "2.58.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14' and sys_platform == 'darwin'" },
+    { name = "grpcio" },
+    { name = "proto-plus" },
+    { name = "protobuf" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c6/75/3ac97f34faa0db63f23780f261e4fec5d4846f4cb405d57aaa09a27cc47a/google_cloud_recaptcha_enterprise-1.32.0.tar.gz", hash = "sha256:19bb2c97661c15611bb032b73f4894eb9440601261400794ff070b6a4f683d0f", size = 105599, upload-time = "2026-06-22T23:22:21.275Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a5/a9/085de9d77939c0836eedde60e29f916b32513ed69c977926b6773a4e4949/google_cloud_recaptcha_enterprise-1.32.0-py3-none-any.whl", hash = "sha256:8792d5d97a4e6a674ab676fb7f97032d00252c251ec7c80a629536be6ab79453", size = 90305, upload-time = "2026-06-22T23:20:17.447Z" },
+]
+
+[[package]]
 name = "google-cloud-resource-manager"
 version = "1.14.2"
 source = { registry = "https://pypi.org/simple" }
@@ -6481,6 +6498,7 @@ dependencies = [
     { name = "db-repo-module" },
     { name = "dependency-injector" },
     { name = "fastapi" },
+    { name = "google-cloud-recaptcha-enterprise" },
     { name = "pydantic", extra = ["email"] },
 ]
 
@@ -6500,6 +6518,7 @@ requires-dist = [
     { name = "db-repo-module", editable = "modules/db_repo_module" },
     { name = "dependency-injector", specifier = ">=4.42.0,<5.0.0" },
     { name = "fastapi", specifier = ">=0.115.2,<1.0.0" },
+    { name = "google-cloud-recaptcha-enterprise", specifier = ">=1.22.0,<2.0.0" },
     { name = "pydantic", extras = ["email"], specifier = ">=2.9.2,<3.0.0" },
 ]
 
