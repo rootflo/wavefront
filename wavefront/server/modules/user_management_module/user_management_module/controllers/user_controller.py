@@ -22,7 +22,6 @@ from fastapi.responses import JSONResponse
 from fastapi.routing import APIRouter
 from fastapi.security import OAuth2PasswordBearer
 import jwt
-from pydantic import EmailStr
 from sqlalchemy import and_
 from sqlalchemy import cast
 from sqlalchemy import delete
@@ -53,10 +52,9 @@ from user_management_module.constants.cache import (
     user_list_cache_key,
 )
 from user_management_module.models.user_schema import (
-    EMAIL_MAX_LENGTH,
     NewUser,
     ResetUser,
-    TOKEN_MAX_LENGTH,
+    SendResetPasswordEmailRequest,
     UpdateUser,
 )
 from user_management_module.utils.email_templates import (
@@ -851,6 +849,7 @@ async def delete_user(
 @user_router.post('/user/send-reset-password-email')
 @inject
 async def send_reset_url(
+    payload: SendResetPasswordEmailRequest,
     user_repository: UserRepositoryDep,
     user_reset_cache: CommonCacheDep,
     response_formatter: ResponseFormatterDep,
@@ -859,18 +858,16 @@ async def send_reset_url(
     email_sender: EmailSenderDep,
     account_lockout_service: AccountLockoutServiceDep,
     recaptcha_service: RecaptchaServiceDep,
-    email: EmailStr = Query(..., max_length=EMAIL_MAX_LENGTH),
-    recaptcha_token: Optional[str] = Query(None, max_length=TOKEN_MAX_LENGTH),
 ):
     is_recaptcha_valid, recaptcha_error = await recaptcha_service.verify(
-        recaptcha_token, action=RECAPTCHA_ACTION_SEND_RESET_PASSWORD
+        payload.recaptcha_token, action=RECAPTCHA_ACTION_SEND_RESET_PASSWORD
     )
     if not is_recaptcha_valid:
         return _recaptcha_failure_response(response_formatter, recaptcha_error)
 
     try:
         # checking if the user exists in the db
-        normalized_email = normalize_email(email)
+        normalized_email = normalize_email(payload.email)
         user_with_email = await user_repository.find_one(email=normalized_email)
         if not user_with_email or user_with_email.deleted:
             logger.info('Password reset requested for an unknown or deleted account')

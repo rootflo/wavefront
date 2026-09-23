@@ -141,7 +141,8 @@ async def test_send_reset_password_email_soft_deleted_user(
         await session.commit()
 
     response = test_client.post(
-        '/floware/v1/user/send-reset-password-email?email=deleted_reset@example.com',
+        '/floware/v1/user/send-reset-password-email',
+        json={'email': 'deleted_reset@example.com'},
         headers={'Authorization': f'Bearer {auth_token}'},
     )
     assert response.status_code == 200
@@ -167,7 +168,8 @@ async def test_send_reset_password_email_unknown_email(
     await create_session(test_session, test_user_id, test_session_id)
 
     response = test_client.post(
-        '/floware/v1/user/send-reset-password-email?email=nobody@example.com',
+        '/floware/v1/user/send-reset-password-email',
+        json={'email': 'nobody@example.com'},
         headers={'Authorization': f'Bearer {auth_token}'},
     )
     assert response.status_code == 200
@@ -210,7 +212,8 @@ async def test_send_reset_password_email_locked_user(
         await session.commit()
 
     response = test_client.post(
-        '/floware/v1/user/send-reset-password-email?email=locked_reset@example.com',
+        '/floware/v1/user/send-reset-password-email',
+        json={'email': 'locked_reset@example.com'},
         headers={'Authorization': f'Bearer {auth_token}'},
     )
     assert response.status_code == 200
@@ -1145,7 +1148,8 @@ async def test_send_reset_password_email(
         await session.commit()
 
     response = test_client.post(
-        '/floware/v1/user/send-reset-password-email?email=reset@example.com',
+        '/floware/v1/user/send-reset-password-email',
+        json={'email': 'reset@example.com'},
         headers={'Authorization': f'Bearer {auth_token}'},
     )
     assert response.status_code == 200
@@ -1422,7 +1426,8 @@ async def test_send_reset_password_email_rejects_invalid_email(
     mock_auth_admin_user_functions,
 ):
     response = test_client.post(
-        '/floware/v1/user/send-reset-password-email?email=not-an-email',
+        '/floware/v1/user/send-reset-password-email',
+        json={'email': 'not-an-email'},
     )
     assert response.status_code == 422
 
@@ -2286,7 +2291,8 @@ async def test_send_reset_password_email_generic_when_mail_fails(
     core_containers.email_send_service.send.side_effect = ValueError('smtp down')
     try:
         response = test_client.post(
-            '/floware/v1/user/send-reset-password-email?email=mailfail@example.com',
+            '/floware/v1/user/send-reset-password-email',
+            json={'email': 'mailfail@example.com'},
         )
         assert response.status_code == 200
         assert 'if an account exists' in response.json()['data']['message'].lower()

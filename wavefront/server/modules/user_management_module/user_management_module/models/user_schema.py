@@ -263,3 +263,8 @@ class ResetUser(BaseModel):
         if self.new_password != self.confirm_password:
             raise ValueError('Password and confirm password do not match')
         return self
+
+
+class SendResetPasswordEmailRequest(BaseModel):
+    email: EmailStr = Field(..., max_length=EMAIL_MAX_LENGTH)
+    recaptcha_token: Optional[str] = Field(None, max_length=TOKEN_MAX_LENGTH)
