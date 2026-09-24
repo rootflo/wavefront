@@ -239,6 +239,26 @@ class TestProcessInferenceInputs:
 
         assert isinstance(result[0].content, DocumentMessageContent)
 
+    @pytest.mark.parametrize('bad_base64', ['!!!!', 'SGVs bG8=', 'abc'])
+    def test_malformed_document_base64_rejected(self, bad_base64):
+        """Unlike unreadable content above, this is checkable here. A lenient
+        decode turns `!!!!` into b'', which flo_ai reports to the model as an
+        empty file rather than a broken upload."""
+        doc_input = {
+            'role': 'user',
+            'content': {
+                'document_base64': bad_base64,
+                'mime_type': 'text/plain',
+                'file_name': 'notes.txt',
+            },
+        }
+
+        with pytest.raises(HTTPException) as exc_info:
+            process_inference_inputs([{'role': 'user', 'content': 'hi'}, doc_input])
+
+        assert exc_info.value.status_code == 400
+        assert 'Invalid base64 document data at index 1' in exc_info.value.detail
+
     def test_document_message_default_type(self):
         """Test DocumentMessage processing"""
         document_base64_str = base64.b64encode(b'content').decode('utf-8')

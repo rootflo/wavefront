@@ -437,7 +437,15 @@ class BaseLLM(ABC):
         if document.bytes:
             return document.bytes
         if document.base64:
-            return _base64.b64decode(document.base64)
+            # Strict: the default decode silently drops anything outside the
+            # base64 alphabet, so `!!!!` decodes to empty bytes and would reach
+            # the model as an empty file instead of failing.
+            try:
+                return _base64.b64decode(document.base64, validate=True)
+            except ValueError as exc:
+                raise ValueError(
+                    f'DocumentMessageContent.base64 is not valid base64: {exc}'
+                ) from exc
         if document.url:
             raise ValueError(
                 'URL-based documents are not supported by the default formatter; '

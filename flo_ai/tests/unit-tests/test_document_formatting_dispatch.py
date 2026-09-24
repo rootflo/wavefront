@@ -170,6 +170,19 @@ class TestCachingAndErrors:
                 _document(b'not a zip', DOCX, 'broken.docx')
             )
 
+    @pytest.mark.parametrize(
+        'bad_base64', ['!!!!', 'SGVs bG8=', 'data:x;base64,SGVsbG8=']
+    )
+    async def test_malformed_base64_is_rejected_not_read_as_empty(self, bad_base64):
+        """A lenient decode turns `!!!!` into b'' and the model is told the
+        file is empty. The upload is broken and should fail as such."""
+        document = DocumentMessageContent(
+            base64=bad_base64, mime_type='text/plain', file_name='notes.txt'
+        )
+
+        with pytest.raises(ValueError, match='not valid base64'):
+            await OpenAI(api_key='k').format_document_in_message(document)
+
     async def test_extraction_runs_off_the_event_loop_thread(self):
         """Parsing a DOCX/XLSX must not stall the caller's event loop.
 
