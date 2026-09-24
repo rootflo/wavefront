@@ -170,28 +170,31 @@ def resolve_mime_type(
 ) -> Optional[str]:
     """Best-effort mime type for a media input, most explicit source first.
 
-    A *generic* declared type is the exception to "most explicit first". A
-    browser that cannot identify a file reports ``application/octet-stream``,
-    and one that sees only the OOXML zip container reports
-    ``application/x-zip-compressed`` -- both routine on Windows for .docx and
-    .xlsx. Those name a container, not a format, so `report.docx` is the better
-    answer than either. Taking the declared value literally rejects a file the
-    extension gate had already accepted.
+    A *generic* type is the exception to "most explicit first". A browser that
+    cannot identify a file reports ``application/octet-stream``, and one that
+    sees only the OOXML zip container reports ``application/x-zip-compressed``
+    -- both routine on Windows for .docx and .xlsx. Those name a container, not
+    a format, so `report.docx` is the better answer than either. Taking them
+    literally rejects a file the extension gate had already accepted.
+
+    That holds wherever the generic type appears: the declared field, or the
+    prefix of a data URL. ``FileReader.readAsDataURL`` writes
+    ``data:application/octet-stream;base64,`` for any file whose type the
+    browser left empty, so a client passing its result straight through sends
+    exactly that alongside `report.docx`.
 
     A generic type is still returned when nothing more specific exists, so an
     unidentifiable upload is rejected with its real type in the message, and a
     document with no resolvable type keeps failing open to PDF as before.
     """
     declared = normalize_mime_type(mime_type)
-    if declared and declared not in _GENERIC_MIME_TYPES:
-        return declared
+    from_data_url = mime_type_from_data_url(base64_value)
+    for candidate in (declared, from_data_url):
+        if candidate and candidate not in _GENERIC_MIME_TYPES:
+            return candidate
 
-    specific = (
-        mime_type_from_data_url(base64_value)
-        or mime_type_from_name(file_name)
-        or mime_type_from_name(url)
-    )
-    return specific or declared
+    from_name = mime_type_from_name(file_name) or mime_type_from_name(url)
+    return from_name or declared or from_data_url
 
 
 def _reject(detail: str) -> None:

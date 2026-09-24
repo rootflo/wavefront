@@ -27,7 +27,7 @@ import os
 import subprocess
 import tempfile
 import zipfile
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 from common_module.log.logger import logger
 
@@ -190,37 +190,41 @@ def _cell_to_str(value: object) -> str:
     return str(value)
 
 
+def _trim_row(row: List[str]) -> List[str]:
+    """Drop a row's trailing empty cells, in place."""
+    while row and not row[-1].strip():
+        row.pop()
+    return row
+
+
 def _trim_trailing_empty(rows: List[List[str]]) -> List[List[str]]:
     """Drop trailing empty cells per row, and trailing empty rows.
 
     Spreadsheet readers report the full used range, which is routinely padded
     with hundreds of empty cells from stray formatting.
     """
-    trimmed: List[List[str]] = []
-    for row in rows:
-        while row and not row[-1].strip():
-            row.pop()
-        trimmed.append(row)
+    trimmed = [_trim_row(row) for row in rows]
     while trimmed and not any(cell.strip() for cell in trimmed[-1]):
         trimmed.pop()
     return trimmed
 
 
-# Every extractor takes (data, budget) so the dispatch table stays uniform.
-# Only the spreadsheet readers act on the budget: the rest produce their text in
-# a single decode or parse, where stopping early would save nothing, so they
-# leave the final cap to `_truncate`.
+# Every extractor takes (data, budget) and returns (text, stopped_early) so the
+# dispatch table stays uniform. Only the spreadsheet readers act on the budget:
+# the rest produce their text in a single decode or parse, where stopping early
+# would save nothing, so they always report False and leave the final cap to
+# `_truncate`.
 
 
-def _extract_plain_text(data: bytes, budget: int) -> str:
-    return _decode_text(data)
+def _extract_plain_text(data: bytes, budget: int) -> Tuple[str, bool]:
+    return _decode_text(data), False
 
 
-def _extract_csv(data: bytes, budget: int) -> str:
+def _extract_csv(data: bytes, budget: int) -> Tuple[str, bool]:
     # Already delimited text. Decode and pass through rather than re-serializing:
     # round-tripping through the csv module would normalize the author's
     # delimiter and quoting for no benefit.
-    return _decode_text(data)
+    return _decode_text(data), False
 
 
 def _collect_docx_element(element, document, parts: List[str]) -> None:
@@ -256,7 +260,7 @@ def _collect_docx_element(element, document, parts: List[str]) -> None:
                     _collect_docx_element(nested, document, parts)
 
 
-def _extract_docx(data: bytes, budget: int) -> str:
+def _extract_docx(data: bytes, budget: int) -> Tuple[str, bool]:
     _require_magic(data, _ZIP_MAGIC, 'Word (.docx)')
     _guard_zip_bomb(data)
 
@@ -272,7 +276,7 @@ def _extract_docx(data: bytes, budget: int) -> str:
     for element in document.element.body.iterchildren():
         _collect_docx_element(element, document, parts)
 
-    return '\n\n'.join(parts)
+    return '\n\n'.join(parts), False
 
 
 def _collect_rows(row_values, budget: int) -> tuple[List[List[str]], int]:
@@ -285,22 +289,29 @@ def _collect_rows(row_values, budget: int) -> tuple[List[List[str]], int]:
     blocking. Stopping at the budget makes the cost proportional to what the
     model will actually see.
 
+    Each row is trimmed before it is counted. The same stray formatting can
+    stretch the range out to column XFD, and counting that padding charged
+    ~16k characters per row -- the budget ran out after about a dozen rows of
+    three real cells each.
+
     Returns the rows and the character count, which the caller carries across
     sheets so the budget spans the workbook rather than resetting per sheet.
     """
     rows: List[List[str]] = []
     used = 0
     for raw_row in row_values:
-        row = [_cell_to_str(value) for value in raw_row]
+        row = _trim_row([_cell_to_str(value) for value in raw_row])
         rows.append(row)
-        # +len(row) approximates the separators _rows_to_text will add.
-        used += sum(len(cell) for cell in row) + len(row)
+        # One separator per cell: the commas plus the newline _rows_to_text
+        # will add. A blank row still costs its newline; at zero, a sheet
+        # padded with a million empty rows would be read to the end.
+        used += sum(len(cell) for cell in row) + max(len(row), 1)
         if used >= budget:
             break
     return _trim_trailing_empty(rows), used
 
 
-def _extract_xlsx(data: bytes, budget: int) -> str:
+def _extract_xlsx(data: bytes, budget: int) -> Tuple[str, bool]:
     _require_magic(data, _ZIP_MAGIC, 'Excel (.xlsx)')
     _guard_zip_bomb(data)
 
@@ -315,16 +326,25 @@ def _extract_xlsx(data: bytes, budget: int) -> str:
         for sheet in workbook.worksheets:
             if remaining <= 0:
                 break
+            # read_only pads every row out to the sheet's declared used range,
+            # which is wrong in both directions often enough to matter: stray
+            # formatting stretches it to column XFD, so each row arrives as
+            # 16k cells to convert and trim, and some writers declare A1:A1
+            # over a full sheet, which hides everything past the first cell.
+            # Without it, each row ends at its last stored cell.
+            sheet.reset_dimensions()
             rows, used = _collect_rows(sheet.iter_rows(values_only=True), remaining)
             remaining -= used
             if rows:
                 sections.append(f'### Sheet: {sheet.title}\n{_rows_to_text(rows)}')
-        return '\n\n'.join(sections)
+        # A spent budget means reading stopped there, mid-sheet or before a
+        # later sheet started.
+        return '\n\n'.join(sections), remaining <= 0
     finally:
         workbook.close()
 
 
-def _extract_xls(data: bytes, budget: int) -> str:
+def _extract_xls(data: bytes, budget: int) -> Tuple[str, bool]:
     _require_magic(data, _OLE2_MAGIC, 'Excel (.xls)')
 
     import xlrd
@@ -345,10 +365,10 @@ def _extract_xls(data: bytes, budget: int) -> str:
         remaining -= used
         if rows:
             sections.append(f'### Sheet: {sheet.name}\n{_rows_to_text(rows)}')
-    return '\n\n'.join(sections)
+    return '\n\n'.join(sections), remaining <= 0
 
 
-def _extract_doc(data: bytes, budget: int) -> str:
+def _extract_doc(data: bytes, budget: int) -> Tuple[str, bool]:
     """Extract text from a legacy binary .doc via antiword.
 
     The only format here that needs an external program. antiword is small and
@@ -402,10 +422,12 @@ def _extract_doc(data: bytes, budget: int) -> str:
             'protected, or saved in a format antiword does not support.'
         )
 
-    return _decode_text(result.stdout)
+    return _decode_text(result.stdout), False
 
 
-_EXTRACTORS: Dict[str, Callable[[bytes, int], str]] = {
+_Extractor = Callable[[bytes, int], Tuple[str, bool]]
+
+_EXTRACTORS: Dict[str, _Extractor] = {
     TEXT_MIME_TYPE: _extract_plain_text,
     CSV_MIME_TYPE: _extract_csv,
     DOC_MIME_TYPE: _extract_doc,
@@ -415,7 +437,7 @@ _EXTRACTORS: Dict[str, Callable[[bytes, int], str]] = {
 }
 
 
-def _resolve_extractor(data: bytes, mime_type: str) -> Callable[[bytes, int], str]:
+def _resolve_extractor(data: bytes, mime_type: str) -> _Extractor:
     """Pick the handler, correcting the one mime type that is routinely wrong.
 
     Windows reports ``.csv`` as ``application/vnd.ms-excel``, so that mime type
@@ -428,15 +450,20 @@ def _resolve_extractor(data: bytes, mime_type: str) -> Callable[[bytes, int], st
     return _EXTRACTORS[mime_type]
 
 
-def _truncate(text: str, max_chars: int) -> str:
+def _truncate(text: str, max_chars: int, stopped_early: bool = False) -> str:
     """Cap the text, marking the cut so the model knows content is missing.
 
     The marker deliberately does not quote a total. Spreadsheet extraction now
     stops reading once it has enough, so the length here is what was collected,
     not what the file holds -- reporting it as a total would understate the
     document.
+
+    `stopped_early` forces the marker. The spreadsheet budget is an estimate
+    taken before trailing blank rows and whitespace are stripped, so text read
+    up to the budget can still land under `max_chars`, and the length test
+    alone would then drop the marker.
     """
-    if len(text) <= max_chars:
+    if len(text) <= max_chars and not stopped_early:
         return text
     return (
         f'{text[:max_chars]}\n\n'
@@ -464,7 +491,7 @@ def extract_document_text(
 
     Returns:
         The extracted text, prefixed with a line naming the source file and
-        suffixed with a truncation marker if the budget was exceeded. Empty
+        suffixed with a truncation marker if the budget was reached. Empty
         documents return a line saying so rather than an empty string, so the
         model can tell an empty file from a failed upload.
 
@@ -484,7 +511,7 @@ def extract_document_text(
 
     extractor = _resolve_extractor(data, mime_type)
     try:
-        text = extractor(data, budget)
+        text, stopped_early = extractor(data, budget)
     except DocumentExtractionError:
         raise
     except Exception as exc:
@@ -503,7 +530,7 @@ def extract_document_text(
     # belt-and-braces -- done here rather than in `_decode_text` so no future
     # extractor has to remember it.
     text = text.replace('\x00', '')
-    text = _truncate(text.strip(), budget)
+    text = _truncate(text.strip(), budget, stopped_early)
 
     label = f'"{file_name}"' if file_name else f'an uploaded {mime_type} file'
     if not text:

@@ -16,7 +16,7 @@ from agents_module.models.agent_schemas import (
     AgentInferenceRequest,
     AgentInferenceResponse,
 )
-from agents_module.utils.input_processing_utils import process_inference_inputs
+from agents_module.utils.input_processing_utils import process_inference_inputs_async
 from agents_module.utils.auth_utils import extract_auth_credentials
 from llm_inference_config_module.services.llm_inference_config_service import (
     LlmInferenceConfigService,
@@ -89,7 +89,9 @@ async def agent_inference(
             llm_config = LlmInferenceConfig(**llm_config_dict)
 
     # Process inputs using common utility function
-    resolved_inputs = process_inference_inputs(agent_inference_payload.inputs)
+    resolved_inputs = await process_inference_inputs_async(
+        agent_inference_payload.inputs
+    )
 
     # Perform the complete inference workflow
     result, execution_time = await agent_inference_service.perform_inference(
@@ -175,7 +177,9 @@ async def agent_inference_v2(
     access_token, app_key = extract_auth_credentials(request)
 
     # Process inputs using common utility function
-    resolved_inputs = process_inference_inputs(agent_inference_payload.inputs)
+    resolved_inputs = await process_inference_inputs_async(
+        agent_inference_payload.inputs
+    )
 
     try:
         # Perform the complete inference workflow (v2)

@@ -7,6 +7,7 @@ the readers rather than a real round trip.
 """
 
 import io
+import re
 import zipfile
 from unittest.mock import patch
 
@@ -55,6 +56,23 @@ def build_xlsx(sheets) -> bytes:
 
     buffer = io.BytesIO()
     workbook.save(buffer)
+    return buffer.getvalue()
+
+
+def with_declared_dimension(data: bytes, ref: str) -> bytes:
+    """Rewrite the first sheet's declared used range, as a careless writer would."""
+    source = zipfile.ZipFile(io.BytesIO(data))
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as target:
+        for info in source.infolist():
+            content = source.read(info.filename)
+            if info.filename == 'xl/worksheets/sheet1.xml':
+                content = re.sub(
+                    rb'<dimension ref="[^"]*"',
+                    f'<dimension ref="{ref}"'.encode(),
+                    content,
+                )
+            target.writestr(info, content)
     return buffer.getvalue()
 
 
@@ -425,6 +443,74 @@ class TestSpreadsheetEarlyTermination:
         assert 'Truncated at 200 characters' in result
         # The budget was spent on the first sheet, so the second never starts.
         assert '### Sheet: Two' not in result
+
+    def test_padding_cells_do_not_spend_the_budget(self):
+        """A used range stretched to column XFD pads each row to 16k cells.
+
+        Counted before trimming, the first row alone would exhaust this budget.
+        """
+        padded_row = ('East', '1200', 'Q1') + (None,) * 16381
+
+        rows, used = _collect_rows(iter([padded_row] * 50), 1000)
+
+        assert len(rows) == 50
+        assert rows[0] == ['East', '1200', 'Q1']
+        assert used < 1000
+
+    def test_blank_rows_still_spend_the_budget(self):
+        """Trimmed to nothing, a blank row must still cost something, or a
+        sheet padded with empty rows is read to the very end."""
+        pulled = 0
+
+        def blank_rows():
+            nonlocal pulled
+            for _ in range(10_000):
+                pulled += 1
+                yield (None, None, None)
+
+        rows, used = _collect_rows(blank_rows(), 100)
+
+        assert pulled <= 100, f'read {pulled} blank rows for a 100 char budget'
+        assert rows == []
+
+    def test_early_stop_is_marked_even_when_the_text_lands_under_the_cap(self):
+        """Blank rows spend budget but are trimmed from the output, so text
+        read up to the budget can end up shorter than it. The marker must not
+        depend on the length alone."""
+        data = build_xlsx(
+            {
+                'S': [['x' * 50]] + [[]] * 49 + [['tail']],
+                'Later': [['never read']],
+            }
+        )
+
+        result = extract_document_text(
+            data, XLSX_MIME_TYPE, 'gappy.xlsx', max_chars=100
+        )
+
+        assert 'Truncated at 100 characters' in result
+        assert 'tail' not in result
+        assert 'never read' not in result
+
+    @pytest.mark.parametrize(
+        'declared',
+        [
+            # Stray formatting: every row padded out to the last column.
+            'A1:XFD30',
+            # A writer declaring one cell over a full sheet.
+            'A1:A1',
+        ],
+    )
+    def test_declared_used_range_does_not_limit_what_is_read(self, declared):
+        data = with_declared_dimension(
+            build_xlsx({'S': [[f'row {i}'] for i in range(30)]}), declared
+        )
+
+        result = extract_document_text(data, XLSX_MIME_TYPE, 'odd.xlsx', max_chars=2000)
+
+        assert 'row 0' in result
+        assert 'row 29' in result
+        assert 'Truncated' not in result
 
     def test_small_sheet_is_unaffected(self):
         data = build_xlsx({'S': [['Region', 'Revenue'], ['East', 1200]]})

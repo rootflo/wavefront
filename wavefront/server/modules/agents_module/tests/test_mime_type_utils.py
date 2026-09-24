@@ -178,6 +178,42 @@ class TestGenericMimeTypesDeferToFileName:
             == 'image/png'
         )
 
+    def test_generic_data_url_defers_to_file_name(self):
+        """What readAsDataURL writes for a file the browser could not type."""
+        assert (
+            resolve_mime_type(
+                base64_value=f'data:application/octet-stream;base64,{PDF_B64}',
+                file_name='report.docx',
+            )
+            == self.DOCX
+        )
+
+    def test_docx_in_a_generic_data_url_passes_the_gate(self):
+        assert (
+            ensure_supported_document_mime_type(
+                base64_value=f'data:application/octet-stream;base64,{PDF_B64}',
+                file_name='report.docx',
+            )
+            == self.DOCX
+        )
+
+    def test_generic_data_url_without_a_file_name_is_still_rejected(self):
+        with pytest.raises(HTTPException) as exc_info:
+            ensure_supported_document_mime_type(
+                base64_value=f'data:application/octet-stream;base64,{PDF_B64}'
+            )
+
+        assert 'application/octet-stream' in str(exc_info.value.detail)
+
+    def test_specific_data_url_type_still_wins_over_file_name(self):
+        assert (
+            resolve_mime_type(
+                base64_value=f'data:application/pdf;base64,{PDF_B64}',
+                file_name='mislabelled.docx',
+            )
+            == 'application/pdf'
+        )
+
 
 class TestEnsureSupportedImageMimeType:
     """Test cases for the image gate"""

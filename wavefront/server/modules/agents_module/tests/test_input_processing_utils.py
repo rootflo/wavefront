@@ -3,6 +3,7 @@ Tests for input_processing_utils module
 """
 
 import base64
+import threading
 import pytest
 from unittest.mock import patch
 from fastapi import HTTPException
@@ -16,6 +17,7 @@ from flo_ai import (
 
 from agents_module.utils.input_processing_utils import (
     process_inference_inputs,
+    process_inference_inputs_async,
     is_image_message,
     is_doc_message,
 )
@@ -334,6 +336,44 @@ class TestProcessInferenceInputs:
         assert 'Error processing ImageMessage base64' in str(
             mock_logger.error.call_args
         )
+
+
+class TestProcessInferenceInputsAsync:
+    """The request-handler variant must keep document parsing off the loop."""
+
+    async def test_extraction_runs_off_the_event_loop_thread(self):
+        loop_thread = threading.get_ident()
+        extraction_threads = []
+
+        def record_thread(*args, **kwargs):
+            extraction_threads.append(threading.get_ident())
+            return 'extracted text'
+
+        inputs = [
+            {
+                'role': 'user',
+                'content': {
+                    'document_base64': base64.b64encode(b'a,b\n1,2').decode(),
+                    'mime_type': 'text/csv',
+                    'file_name': 'data.csv',
+                },
+            }
+        ]
+
+        with patch(
+            'agents_module.utils.input_processing_utils.extract_document_text',
+            side_effect=record_thread,
+        ):
+            result = await process_inference_inputs_async(inputs)
+
+        assert extraction_threads and extraction_threads[0] != loop_thread
+        assert result[0].content.text == 'extracted text'
+
+    async def test_bad_input_still_surfaces_as_a_400(self):
+        with pytest.raises(HTTPException) as exc_info:
+            await process_inference_inputs_async([{'role': 'system'}])
+
+        assert exc_info.value.status_code == 400
 
 
 class TestFileNamePropagation:

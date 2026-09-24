@@ -1,6 +1,6 @@
 from typing import Optional
 from uuid import UUID
-from agents_module.utils.input_processing_utils import process_inference_inputs
+from agents_module.utils.input_processing_utils import process_inference_inputs_async
 from agents_module.utils.auth_utils import extract_auth_credentials
 from fastapi import APIRouter, Depends, status, Path, Request, Query
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -86,7 +86,7 @@ async def workflow_inference(
     # Extract authentication credentials
     access_token, app_key = extract_auth_credentials(request)
 
-    resolved_inputs = process_inference_inputs(request_body.inputs)
+    resolved_inputs = await process_inference_inputs_async(request_body.inputs)
     logger.info(f'Inputs to workflow: {resolved_inputs}')
 
     # Prepare event streaming if requested
@@ -303,7 +303,7 @@ async def workflow_inference_v2(
     namespace = workflow_data['namespace']
     workflow_name = workflow_data['name']
 
-    resolved_inputs = process_inference_inputs(request_body.inputs)
+    resolved_inputs = await process_inference_inputs_async(request_body.inputs)
     logger.debug(f'Inputs to workflow: {resolved_inputs}')
 
     # Prepare event streaming if requested
