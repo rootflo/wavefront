@@ -1,5 +1,4 @@
 import glob
-import os
 from contextlib import asynccontextmanager
 from dependency_injector import providers
 
@@ -27,6 +26,9 @@ from inference_app.service.image_embedding import ImageEmbedding
 
 # Initialize dependency containers
 common_container = CommonContainer(cache_manager=None)
+config = common_container.config()
+environment = (config.get('env_config') or {}).get('app_env') or 'production'
+web = config.get('web') or {}
 inference_app_container = InferenceAppContainer()
 
 
@@ -45,8 +47,6 @@ async def lifespan(app: FastAPI):
     yield
 
 
-environment = os.getenv('APP_ENV', 'production')
-
 # The interactive docs and the OpenAPI schema are off everywhere except dev,
 # so a new/unknown APP_ENV value stays closed rather than exposing the surface.
 is_dev = environment == 'dev'
@@ -62,7 +62,7 @@ app = FastAPI(
 )
 
 
-origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:5173')
+origins = web.get('allowed_origins') or 'http://localhost:5173'
 allowed_origins = origins.split(',')
 
 app.add_middleware(RequestIdMiddleware)

@@ -1,6 +1,5 @@
 from contextlib import asynccontextmanager
 import glob
-import os
 from typing import Any, cast
 
 from common_module.common_container import CommonContainer
@@ -26,14 +25,16 @@ from floconsole.db import DatabaseClient
 
 load_dotenv()
 
-environment = os.getenv('APP_ENV', 'production')
+# Initialize containers
+common_container = CommonContainer(cache_manager=None)
+config = common_container.config()
+environment = config['env_config']['app_env'] or 'production'
+web = config.get('web') or {}
 
 # The interactive docs and the OpenAPI schema are off everywhere except dev,
 # so a new/unknown APP_ENV value stays closed rather than exposing the surface.
 is_dev = environment == 'dev'
 
-# Initialize containers
-common_container = CommonContainer(cache_manager=None)
 application_container = ApplicationContainer(common_container=common_container)
 
 # Wire containers
@@ -100,7 +101,7 @@ app = FastAPI(
     redoc_url='/redoc' if is_dev else None,
 )
 
-origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:5173')
+origins = web.get('allowed_origins') or 'http://localhost:5173'
 allowed_origins = origins.split(',')
 
 app.add_middleware(_middleware(RequestIdMiddleware))

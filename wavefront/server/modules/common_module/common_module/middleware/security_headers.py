@@ -126,9 +126,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     def __init__(self, app: ASGIApp):
         super().__init__(app)
 
-        # Get environment-specific configuration
-        self.environment = os.getenv('APP_ENV', 'production')
+        # Prefer process-wide settings from config.ini; fall back for apps that
+        # have not called configure_runtime_settings yet.
+        from common_module import runtime_settings
 
+        self.environment = runtime_settings.app_env or os.getenv(
+            'APP_ENV', 'production'
+        )
         # The docs are only mounted in dev, so only there can a request reach
         # HTML that needs the relaxed policy.
         self.docs_enabled = self.environment == 'dev'

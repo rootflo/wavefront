@@ -7,7 +7,7 @@ from datetime import datetime
 from datetime import timedelta
 from enum import Enum
 from typing import Any
-from flo_cloud._types import FloKMS
+from flo_cloud._types import FloSigner
 
 
 class TokenAlgorithms(str, Enum):
@@ -27,7 +27,7 @@ class TokenService:
         self,
         private_key: str,
         public_key: str,
-        kms_service: FloKMS | None,
+        kms_signer: FloSigner | None,
         algorithm: TokenAlgorithms = TokenAlgorithms.PS256,
         token_expiry: int = 4 * 60 * 60,  # 4 hours in seconds
         temporary_token_expiry: int = 10 * 60,  # 10 minutes in seconds
@@ -36,13 +36,13 @@ class TokenService:
         issuer: str = 'https://console.rootflo.ai',
         audience: str = 'https://console.rootflo.ai',
     ):
-        self.is_dev = app_env == 'dev' or (kms_service is None)
+        self.is_dev = app_env == 'dev' or (kms_signer is None)
         self.private_key = self._load_key(private_key) if self.is_dev else None
         self.public_key = self._load_key(public_key) if self.is_dev else None
         self.algorithm = TokenAlgorithms.RS256.value if self.is_dev else algorithm.value
         self.token_expiry = int(token_expiry)
         self.temporary_token_expiry = int(temporary_token_expiry)
-        self.kms_service = kms_service
+        self.kms_signer = kms_signer
         self.token_prefix = token_prefix or 'fc_'
         self.issuer = issuer
         self.audience = audience
@@ -98,10 +98,10 @@ class TokenService:
 
             digest = hashlib.sha256(message.encode()).digest()
 
-            if self.kms_service is None:
-                raise ValueError('KMS service is not initialized')
+            if self.kms_signer is None:
+                raise ValueError('KMS signer is not initialized')
 
-            signature = self.kms_service.sign(message=digest)
+            signature = self.kms_signer.sign(message=digest)
             signature = self._base64url_encode(signature)
 
             token = f'{message}.{signature}'
@@ -133,14 +133,14 @@ class TokenService:
             digest = hashlib.sha256(message.encode()).digest()
             signature = self._base64url_decode(signature_b64)
 
-            if self.kms_service is None:
-                raise ValueError('KMS service is not initialized')
+            if self.kms_signer is None:
+                raise ValueError('KMS signer is not initialized')
 
-            is_valid = self.kms_service.verify(message=digest, signature=signature)
+            is_valid = self.kms_signer.verify(message=digest, signature=signature)
             if not is_valid:
                 return {}
 
-            public_key_pem = self.kms_service.get_public_key_pem()
+            public_key_pem = self.kms_signer.get_public_key_pem()
 
             decoded = jwt.decode(
                 clean_token,

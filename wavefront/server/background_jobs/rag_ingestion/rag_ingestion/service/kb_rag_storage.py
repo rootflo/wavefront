@@ -8,7 +8,7 @@ import numpy as np
 from flo_utils.utils.log import logger
 from datetime import datetime
 from dataclasses import dataclass
-from rag_ingestion.env import FLOWARE_SERVICE_URL, APP_ENV, PASSTHROUGH_SECRET
+from common_module import runtime_settings
 from rag_ingestion.constants.auth import RootfloHeaders
 from rag_ingestion.models.knowledge_base_embeddings import (
     KnowledgeBaseEmbeddingObject,
@@ -40,8 +40,9 @@ class KBRagStorage:
         self.chunk_overlap = 128
         self.embedding = EmbeddingFunc()
         self.logger = logging.getLogger(__name__)
-        self.app_env = APP_ENV
-        self.passthrough_secret = PASSTHROUGH_SECRET
+        self.app_env = runtime_settings.app_env
+        self.passthrough_secret = runtime_settings.passthrough_secret
+        self.floware_service_url = runtime_settings.floware_base_url
 
     def _fetch_headers(self) -> dict:
         """
@@ -411,7 +412,7 @@ class KBRagStorage:
         max_retries=3,
         initial_delay=1.0,
     ):
-        url = f'{FLOWARE_SERVICE_URL}/floware/v1/store_embedding'
+        url = f'{self.floware_service_url}/floware/v1/store_embedding'
         delay = initial_delay
         for attempt in range(max_retries):
             try:

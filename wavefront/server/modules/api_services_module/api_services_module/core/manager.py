@@ -3,7 +3,6 @@ from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyReposit
 from db_repo_module.models.api_services import ApiServices
 from flo_cloud.cloud_storage import CloudStorageManager
 from typing import List
-from api_services_module.env import SERVICE_DEFINITION_BUCKET
 
 
 class ApiServicesManager:
@@ -94,8 +93,8 @@ class ApiServicesManager:
         )
 
     def _service_storage_bucket(self) -> str:
-        if not SERVICE_DEFINITION_BUCKET:
-            raise ValueError(
-                'SERVICE_DEFINITION_BUCKET is not set in the environment variables'
-            )
-        return SERVICE_DEFINITION_BUCKET
+        storage = self.config.get('storage') or {}
+        bucket = storage.get('application_bucket')
+        if not bucket:
+            raise ValueError('storage.application_bucket must be set')
+        return bucket

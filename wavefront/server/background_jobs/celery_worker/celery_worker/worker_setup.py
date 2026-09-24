@@ -1,7 +1,8 @@
 """
 Initializes all services once per worker process.
 No DB connection owned by the worker — status updates go through Redis Streams.
-DB credentials are read from env vars so config.ini is not required.
+Cloud / Redis / KMS settings come from config.ini (CWD); DB credentials still
+come from env for the DatabaseClient override.
 """
 
 import asyncio
@@ -21,6 +22,7 @@ from agents_module.services.agent_inference_service import AgentInferenceService
 from agents_module.services.workflow_inference_service import WorkflowInferenceService
 from common_module.common_container import CommonContainer
 from common_module.log.logger import logger
+from common_module.runtime_settings import configure_runtime_settings
 from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.database.connection import DatabaseConfig, DatabaseClient
 from db_repo_module.db_repo_container import DatabaseModuleContainer
@@ -32,7 +34,6 @@ from triggers_module.triggers_container import TriggersContainer
 
 from celery_worker.env import (
     AGENT_YAML_BUCKET,
-    AGENTIC_EXECUTIONS_BUCKET,
     APP_NAME,
     CLOUD_PROVIDER,
     DB_HOST,
@@ -40,11 +41,11 @@ from celery_worker.env import (
     DB_PASSWORD,
     DB_PORT,
     DB_USERNAME,
-    GCP_PROJECT_ID,
-    GMAIL_PUBSUB_OIDC_SA_EMAIL,
-    GMAIL_PUBSUB_TOPIC_PREFIX,
-    GMAIL_PUSH_ENDPOINT_TEMPLATE,
-    WORKFLOW_WORKER_TOPIC,
+    REDIS_DB,
+    REDIS_HOST,
+    REDIS_PASSWORD,
+    REDIS_PORT,
+    REDIS_PROTOCOL,
 )
 
 
@@ -196,10 +197,28 @@ def get_services() -> WorkerServices:
         common_container = CommonContainer(
             cache_manager=db_repo_container.cache_manager
         )
+        config = common_container.config()
+        env_config = config.get('env_config') or {}
+        configure_runtime_settings(
+            floware_base_url=env_config.get('base_url') or 'http://localhost:8001',
+            passthrough_secret=env_config.get('passthrough_secret') or None,
+            app_env=env_config.get('app_env') or 'dev',
+        )
 
-        # Override cloud storage manager with env-var-based provider
+        # Override cloud storage with explicit credentials from config.ini / env
+        azure = config.get('azure') or {}
+        cloud = config.get('cloud') or {}
         common_container.cloud_storage_manager.override(
-            providers.Object(CloudStorageManager(provider=CLOUD_PROVIDER))
+            providers.Object(
+                CloudStorageManager(
+                    provider=cloud.get('provider') or CLOUD_PROVIDER,
+                    account_url=azure.get('account_url') or None,
+                    client_id=azure.get('client_id') or None,
+                    client_secret=azure.get('client_secret') or None,
+                    tenant_id=azure.get('tenant_id') or None,
+                    region_name=cloud.get('region') or None,
+                )
+            )
         )
 
         api_services_container: ApiServicesContainer = create_api_services_container(
@@ -213,18 +232,16 @@ def get_services() -> WorkerServices:
         plugins_container = PluginsContainer(
             db_client=db_repo_container.db_client,
             cloud_storage_manager=common_container.cloud_storage_manager,
+            kms_cipher=common_container.kms_cipher,
             dynamic_query_repository=db_repo_container.dynamic_query_repository,
             cache_manager=db_repo_container.cache_manager,
             oauth_app_repository=db_repo_container.oauth_app_repository,
             email_connection_repository=db_repo_container.email_connection_repository,
         )
-        # The email services decrypt tokens through KMS, so the worker needs the
-        # same cloud provider the app uses.
-        plugins_container.config.from_dict(
-            {'cloud_config': {'cloud_provider': CLOUD_PROVIDER}}
-        )
 
-        bucket_name = AGENT_YAML_BUCKET
+        storage = config.get('storage') or {}
+        bucket_name = storage.get('application_bucket') or AGENT_YAML_BUCKET
+        executions_bucket = bucket_name
 
         tools_container = ToolsContainer(
             datasource_repository=db_repo_container.datasource_repository,
@@ -258,26 +275,25 @@ def get_services() -> WorkerServices:
             message_processor_bucket_name=bucket_name,
             api_services_manager=api_services_container.api_service_manager,
             async_agentic_execution_repository=db_repo_container.async_agentic_execution_repository,
-            executions_bucket=AGENTIC_EXECUTIONS_BUCKET,
+            executions_bucket=executions_bucket,
             llm_inference_config_service=llm_inference_config_container.llm_inference_config_service,
+            workflow_queue=common_container.workflow_queue,
         )
 
-        # Inject config values from env vars so services like AgentCrudService
-        # get the correct bucket_name via config.agents.agent_yaml_bucket
-        agents_container.config.from_dict(
-            {
-                'agents': {'agent_yaml_bucket': bucket_name},
-                'cloud_config': {'cloud_provider': CLOUD_PROVIDER},
-                'workflow': {'worker_topic': WORKFLOW_WORKER_TOPIC},
-            }
-        )
-
+        redis = config.get('redis') or {}
+        env_config = config.get('env_config') or {}
         # Must use the same namespace as the floware app so stream keys match
-        # floware's CacheManager uses config.env_config.app_name as its namespace
-        cache = CacheManager(namespace=APP_NAME)
+        cache = CacheManager(
+            namespace=env_config.get('app_name') or APP_NAME,
+            host=redis.get('host') or REDIS_HOST,
+            port=redis.get('port') or REDIS_PORT,
+            protocol=redis.get('protocol') or REDIS_PROTOCOL,
+            password=redis.get('password') or REDIS_PASSWORD or None,
+            db=redis.get('db') or REDIS_DB,
+        )
 
-        # OAuth apps live in the DB. Pub/Sub watch settings come from env /
-        # [triggers_gmail] — not from oauth_apps.
+        # OAuth apps live in the DB. Pub/Sub watch settings come from
+        # [triggers_gmail] in config.ini.
         triggers_container = TriggersContainer(
             trigger_repository=db_repo_container.agentic_trigger_repository,
             email_connection_service=plugins_container.email_connection_service,
@@ -287,21 +303,13 @@ def get_services() -> WorkerServices:
             async_agentic_execution_service=agents_container.async_agentic_execution_service,
             cache_manager=db_repo_container.cache_manager,
         )
-        triggers_container.config.triggers_gmail.from_dict(
-            {
-                'pubsub_project_id': GCP_PROJECT_ID,
-                'pubsub_topic_prefix': GMAIL_PUBSUB_TOPIC_PREFIX,
-                'push_endpoint_template': GMAIL_PUSH_ENDPOINT_TEMPLATE,
-                'oidc_service_account_email': GMAIL_PUBSUB_OIDC_SA_EMAIL,
-            }
-        )
 
         _services = WorkerServices(
             agent_inference=agents_container.agent_inference_service(),
             workflow_inference=agents_container.workflow_inference_service(),
             cloud_storage=common_container.cloud_storage_manager(),
             cache=cache,
-            execution_bucket=AGENTIC_EXECUTIONS_BUCKET,
+            execution_bucket=executions_bucket,
             trigger_event_processor=triggers_container.trigger_event_processor(),
         )
 

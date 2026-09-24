@@ -1,10 +1,9 @@
 import json
-import os
 from urllib.parse import quote
 
 import httpx
 
-FLOWARE_BASE_URL = os.getenv('FLOWARE_BASE_URL', 'http://localhost:8001').rstrip('/')
+from common_module import runtime_settings
 
 
 async def fetch_configuration(namespace: str, key: str) -> str:
@@ -38,7 +37,7 @@ async def fetch_configuration(namespace: str, key: str) -> str:
     value would be dropped or would fail the consuming node outright.
     """
     url = (
-        f'{FLOWARE_BASE_URL}/floware/v1/configurations/'
+        f'{runtime_settings.floware_base_url}/floware/v1/configurations/'
         f'{quote(namespace, safe="")}/{quote(key, safe="")}'
     )
     async with httpx.AsyncClient() as client:

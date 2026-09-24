@@ -1,19 +1,17 @@
 import json
-import os
 from urllib.parse import quote
 
 import httpx
 
-FLOWARE_BASE_URL = os.getenv('FLOWARE_BASE_URL', 'http://localhost:8001').rstrip('/')
+from common_module import runtime_settings
 
 
 def _headers() -> dict:
     headers = {'Content-Type': 'application/json'}
     # Same internal-call convention as the other cross-service callers: the
     # passthrough secret outside production, service mesh identity within it.
-    passthrough_secret = os.getenv('PASSTHROUGH_SECRET')
-    if passthrough_secret:
-        headers['X-Passthrough'] = passthrough_secret
+    if runtime_settings.passthrough_secret:
+        headers['X-Passthrough'] = runtime_settings.passthrough_secret
     return headers
 
 
@@ -28,7 +26,7 @@ async def send_email(
     supplies the recipient, subject and body.
     """
     url = (
-        f'{FLOWARE_BASE_URL}/floware/v1/email-connections/'
+        f'{runtime_settings.floware_base_url}/floware/v1/email-connections/'
         f'{quote(connection_id, safe="")}/send'
     )
     async with httpx.AsyncClient() as client:

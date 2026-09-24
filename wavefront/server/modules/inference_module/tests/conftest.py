@@ -9,9 +9,8 @@ from inference_module.controllers.inference_controller import inference_router
 from inference_module.inference_container import InferenceContainer
 
 INFERENCE_CONFIG = {
-    'cloud_config': {'cloud_provider': 'gcp'},
-    'gcp': {'model_storage_bucket': 'test_bucket'},
-    'aws': {'model_storage_bucket': 'test_bucket'},
+    'cloud': {'provider': 'gcp'},
+    'storage': {'application_bucket': 'test_bucket'},
 }
 
 

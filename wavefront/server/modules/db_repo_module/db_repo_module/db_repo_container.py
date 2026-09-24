@@ -112,7 +112,13 @@ class DatabaseModuleContainer(containers.DeclarativeContainer):
     )
 
     cache_manager = providers.Singleton(
-        CacheManager, namespace=config.env_config.app_name
+        CacheManager,
+        namespace=config.env_config.app_name,
+        host=config.redis.host,
+        port=config.redis.port,
+        protocol=config.redis.protocol,
+        password=config.redis.password,
+        db=config.redis.db,
     )
 
     knowledge_base_repository = providers.Singleton(

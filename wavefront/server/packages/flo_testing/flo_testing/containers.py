@@ -123,6 +123,7 @@ def core_containers(db_client, test_user_id, test_session_id, user_config):
     auth_container = AuthContainer(
         db_client=db_client,
         cache_manager=cache_manager,
+        kms_signer=None,
     )
     auth_container.token_service.override(token_service)
     # Only defined when SUPERSET_FLAG is on, which the plugin defaults to true.

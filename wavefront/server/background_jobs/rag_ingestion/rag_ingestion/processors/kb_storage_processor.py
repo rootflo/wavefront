@@ -7,7 +7,7 @@ from rag_ingestion.service.kb_rag_storage import KBRagStorage
 from rag_ingestion.embeddings.embed import EmbeddingFunc
 from rag_ingestion.models.doc_content import DocContent
 from rag_ingestion.stream.queue_message import QueueMessage
-from flo_cloud.kms import FloKmsService
+from flo_cloud.kms import FloKmsCipher
 from flo_utils.streaming.message_processor import MessageProcessor, ProcessingResult
 from rag_ingestion.processors.file_processor import FileProcessor, DocumentType
 from rag_ingestion.embeddings.image_embed import ImageEmbedding
@@ -28,10 +28,10 @@ class KbStorageProcessor(MessageProcessor):
     def __init__(
         self,
         storage_manager: CloudStorageManager,
-        encryption_service: FloKmsService,
+        kms_cipher: FloKmsCipher | None,
     ):
         self.storage_manager = storage_manager
-        self.encryption_service = encryption_service
+        self.kms_cipher = kms_cipher
         self.kb_rag_storage = KBRagStorage()
         self.embedding_func = EmbeddingFunc()
         self.file_processor = FileProcessor()
@@ -64,10 +64,19 @@ class KbStorageProcessor(MessageProcessor):
                 [kb_insight.insights.doc_content.content]
             )
         elif document_type == DocumentType.IMAGE:
-            docs = [self.image_embedding.embed_image(kb_insight.insights.doc_content.content)]
+            docs = [
+                self.image_embedding.embed_image(
+                    kb_insight.insights.doc_content.content
+                )
+            ]
         else:
             docs = []
-        return docs, kb_insight.insights.doc_id, kb_insight.insights.kb_id, document_type
+        return (
+            docs,
+            kb_insight.insights.doc_id,
+            kb_insight.insights.kb_id,
+            document_type,
+        )
 
     def __insert_kb_from_message(
         self, insights: List[ProcessingResult[KbStorageInsights]]
@@ -125,8 +134,8 @@ class KbStorageProcessor(MessageProcessor):
             message.bucket_name, message.bucket_key
         )
         file_content = (
-            self.encryption_service.decrypt(file_content_encrypt)
-            if self.encryption_service
+            self.kms_cipher.decrypt(file_content_encrypt)
+            if self.kms_cipher
             else file_content_encrypt
         )
         doc_content = await self._extract_content(message, file_content)

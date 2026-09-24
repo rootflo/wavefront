@@ -59,15 +59,35 @@ hmac_routes = [
     if route.strip()
 ]
 
-floware_jwt_audience = os.getenv('FLOWARE_JWT_AUDIENCE', '')
+# Populated from app config via configure_jwt_auth_settings(); defaults keep
+# imports safe before server startup wires config.
+floware_jwt_audience = ''
+floware_jwt_validation_issuer: list[str] = []
+console_token_prefix = 'fc_'
+passthrough_secret: str | None = None
+environment = 'production'
 
-floware_jwt_validation_issuer = os.getenv('FLOWARE_JWT_VALIDATION_ISSUER', '').split(
-    ','
-)
 
-console_token_prefix = os.getenv('CONSOLE_TOKEN_PREFIX', 'fc_')
-passthrough_secret = os.getenv('PASSTHROUGH_SECRET')
-environment = os.getenv('APP_ENV', 'production')
+def configure_jwt_auth_settings(
+    validation_issuer: str,
+    audience: str,
+    token_prefix: str = 'fc_',
+    passthrough_secret_value: str | None = None,
+    app_env: str = 'production',
+) -> None:
+    """Wire JWT / passthrough settings from the app's config.ini."""
+    global floware_jwt_audience, floware_jwt_validation_issuer, console_token_prefix
+    global passthrough_secret, environment
+    floware_jwt_audience = audience or ''
+    floware_jwt_validation_issuer = [
+        issuer.strip()
+        for issuer in (validation_issuer or '').split(',')
+        if issuer.strip()
+    ]
+    console_token_prefix = token_prefix or 'fc_'
+    passthrough_secret = passthrough_secret_value or None
+    environment = app_env or 'production'
+
 
 mtls_allowed_namespaces = [
     namespace.strip()

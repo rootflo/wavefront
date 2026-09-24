@@ -8,8 +8,6 @@ from dependency_injector import containers
 from dependency_injector import providers
 from knowledge_base_module.services.kb_rag_retrieve import KBRagResponse
 from knowledge_base_module.services.kb_rag_storage import KBRagStorage
-from flo_cloud.message_queue import MessageQueueManager
-from flo_cloud.cloud_storage import CloudStorageManager
 from knowledge_base_module.services.image_rag_retrieve import ImageRagRetrieve
 
 
@@ -17,6 +15,8 @@ class KnowledgeBaseContainer(containers.DeclarativeContainer):
     config = providers.Configuration(ini_files=['config.ini'])
     db_client = providers.Dependency()
     cache_manager = providers.Dependency()
+    cloud_storage_manager = providers.Dependency()
+    rag_queue = providers.Dependency()
 
     knowledge_base_repository = providers.Singleton(
         SQLAlchemyRepository[KnowledgeBase],
@@ -67,19 +67,11 @@ class KnowledgeBaseContainer(containers.DeclarativeContainer):
         db_client=db_client,
     )
 
-    cloud_storage = providers.Singleton(
-        CloudStorageManager, provider=config.cloud_config.cloud_provider
-    )
-
-    message_queue = providers.Singleton(
-        MessageQueueManager, cloud_provider=config.cloud_config.cloud_provider
-    )
+    # Alias kept for existing Provide[...] wiring.
+    cloud_storage = cloud_storage_manager
+    message_queue = rag_queue
 
     image_knowledge_base_retrieve = providers.Singleton(
         ImageRagRetrieve,
         knowledge_base_embeddings_repository,
-    )
-
-    cloud_storage_manager = providers.Singleton(
-        CloudStorageManager, provider=config.cloud_config.cloud_provider
     )

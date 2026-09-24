@@ -137,7 +137,6 @@ async def submit_workflow_to_pipeline(
     message_queue_manager: MessageQueueManager = Depends(
         Provide[AgentsContainer.message_queue_manager]
     ),
-    config: dict[str, Any] = Depends(Provide[AgentsContainer.config]),
 ):
     workflow_pipeline = await workflow_pipeline_repository.find_one(
         id=workflow_pipeline_id
@@ -182,7 +181,6 @@ async def submit_workflow_to_pipeline(
             'pipeline_job': pipeline_job_payload['pipeline_job'],
             'workflow_data': workflow_data,
         },
-        topic_name_or_queue_url=config['workflow']['worker_topic'],
     )
 
     return JSONResponse(

@@ -36,12 +36,7 @@ async def model_loading(
     ),
     cache_manager: CacheManager = Depends(Provide[CommonContainer.cache_manager]),
 ):
-    provider = config['cloud_config']['cloud_provider']
-    model_storage_bucket = (
-        config['gcp']['model_storage_bucket']
-        if provider.lower() == 'gcp'
-        else config['aws']['model_storage_bucket']
-    )
+    model_storage_bucket = config['storage']['application_bucket']
     if cache_manager.get_str(f"model_name_key_{model_file.filename.split('.')[0]}"):
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,

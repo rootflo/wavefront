@@ -4,7 +4,6 @@ from uuid import UUID
 # from floconsole.constants.app import AppDeploymentType
 from floconsole.constants.auth import RootfloHeaders
 import httpx
-import os
 from fastapi import Request
 from fastapi.responses import Response, StreamingResponse
 
@@ -30,6 +29,7 @@ class FlowareProxyService:
         app_env: str = 'production',
         token_prefix: str = 'fc_',
         temporary_token_expiry: int = 300,
+        passthrough_secret: str | None = None,
     ):
         self.token_service = token_service
         self.app_service = app_service
@@ -39,7 +39,7 @@ class FlowareProxyService:
         self.app_env = app_env
         self.token_prefix = token_prefix
         self.temporary_token_expiry = int(temporary_token_expiry)
-        self.passthrough_secret = os.getenv('PASSTHROUGH_SECRET')
+        self.passthrough_secret = passthrough_secret or None
 
     async def _get_app_base_url(self, private_url: str, app_id: str) -> str:
         """Get app base URL - used for both floware URL and JWT audience"""

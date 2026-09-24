@@ -1,10 +1,10 @@
-import os
 from typing import Any, cast
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware import _MiddlewareFactory
 
+from common_module import runtime_settings
 from common_module.middleware.request_id_middleware import RequestIdMiddleware
 from common_module.middleware.security_headers import SecurityHeadersMiddleware
 from common_module.telemetry import BaggageMiddleware, instrument_fastapi
@@ -30,8 +30,7 @@ def add_middlewares(app: FastAPI) -> None:
     # without loosening anything in production.
     app.add_middleware(_middleware(SecurityHeadersMiddleware))
 
-    origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:5173')
-    allowed_origins = origins.split(',')
+    allowed_origins = runtime_settings.allowed_origins.split(',')
 
     app.add_middleware(
         _middleware(CORSMiddleware),

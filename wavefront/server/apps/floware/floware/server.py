@@ -1,6 +1,5 @@
 from contextlib import asynccontextmanager
 import glob
-import os
 import asyncio
 from typing import Any, Callable, cast
 
@@ -34,7 +33,11 @@ from gold_module.gold_container import GoldContainer
 
 from knowledge_base_module.knowledge_base_container import KnowledgeBaseContainer
 from user_management_module.user_container import UserContainer
-
+from common_module.runtime_settings import configure_runtime_settings
+from common_module import runtime_settings
+from user_management_module.authorization.require_auth import (
+    configure_jwt_auth_settings,
+)
 from floware.di.application_container import ApplicationContainer
 from floware.middleware.setup import add_middlewares
 from floware.routes import include_routers
@@ -63,16 +66,38 @@ from floware.channels import start_redis_listener
 # Initialize dependency containers
 # Create a single shared instance of the database container
 db_repo_container = DatabaseModuleContainer()
-auth_container = AuthContainer(
-    db_client=db_repo_container.db_client, cache_manager=db_repo_container.cache_manager
-)
 common_container = CommonContainer(cache_manager=db_repo_container.cache_manager)
 config = common_container.config()
+env_config = config.get('env_config') or {}
+web = config.get('web') or {}
+voice_agents = config.get('voice_agents') or {}
+configure_runtime_settings(
+    floware_base_url=env_config.get('base_url') or 'http://localhost:8001',
+    passthrough_secret=env_config.get('passthrough_secret') or None,
+    call_processing_base_url=voice_agents.get('call_processing_base_url') or None,
+    allowed_origins=web.get('allowed_origins') or 'http://localhost:5173',
+    app_env=env_config.get('app_env') or 'production',
+    worker_count=env_config.get('worker_count') or 4,
+    uvicorn_log_level=env_config.get('uvicorn_log_level') or 'critical',
+)
+configure_jwt_auth_settings(
+    validation_issuer=config['jwt_token']['validation_issuer'],
+    audience=config['jwt_token']['audience'],
+    token_prefix=config['jwt_token'].get('console_token_prefix', 'fc_'),
+    passthrough_secret_value=env_config.get('passthrough_secret') or None,
+    app_env=env_config.get('app_env') or 'production',
+)
+auth_container = AuthContainer(
+    db_client=db_repo_container.db_client,
+    cache_manager=db_repo_container.cache_manager,
+    kms_signer=common_container.kms_signer,
+)
 # Built before the containers that send email: both the platform mailer and
 # scheduled jobs send through this container's email_send_service.
 plugins_container = PluginsContainer(
     db_client=db_repo_container.db_client,
     cloud_storage_manager=common_container.cloud_storage_manager,
+    kms_cipher=common_container.kms_cipher,
     dynamic_query_repository=db_repo_container.dynamic_query_repository,
     cache_manager=db_repo_container.cache_manager,
     namespace_repository=db_repo_container.namespace_repository,
@@ -110,10 +135,13 @@ application_container = ApplicationContainer(
 )
 
 knowledge_base_container = KnowledgeBaseContainer(
-    db_client=db_repo_container.db_client, cache_manager=db_repo_container.cache_manager
+    db_client=db_repo_container.db_client,
+    cache_manager=db_repo_container.cache_manager,
+    cloud_storage_manager=common_container.cloud_storage_manager,
+    rag_queue=common_container.rag_queue,
 )
 
-gold_container = GoldContainer()
+gold_container = GoldContainer(gold_queue=common_container.gold_queue)
 
 product_analysis_container = ProductAnalysisContainer()
 
@@ -126,7 +154,7 @@ api_services_container: ApiServicesContainer = create_api_services_container(
     response_formatter=common_container.response_formatter,
 )
 
-bucket_name = config['floware']['asset_storage_bucket']
+bucket_name = config['storage']['application_bucket']
 
 tools_container = ToolsContainer(
     datasource_repository=db_repo_container.datasource_repository,
@@ -165,8 +193,9 @@ agents_container = AgentsContainer(
     message_processor_bucket_name=bucket_name,
     api_services_manager=api_services_container.api_service_manager,
     async_agentic_execution_repository=db_repo_container.async_agentic_execution_repository,
-    executions_bucket=config['agents']['executions_bucket'],
+    executions_bucket=config['storage']['application_bucket'],
     llm_inference_config_service=llm_inference_config_container.llm_inference_config_service,
+    workflow_queue=common_container.workflow_queue,
 )
 
 voice_agents_container = VoiceAgentsContainer(
@@ -308,7 +337,7 @@ async def lifespan(app: FastAPI):
         shutdown_telemetry()
 
 
-environment = os.getenv('APP_ENV', 'production')
+environment = runtime_settings.app_env
 
 # The interactive docs and the OpenAPI schema are off everywhere except dev,
 # so a new/unknown APP_ENV value stays closed rather than exposing the surface.
@@ -326,7 +355,7 @@ app = FastAPI(
 # itself is instrumented further down, after all other middleware is registered.
 configure_telemetry_providers(default_service_name=config['env_config']['app_name'])
 
-floware_base_url = os.getenv('FLOWARE_BASE_URL', 'http://localhost:8001')
+floware_base_url = runtime_settings.floware_base_url
 
 
 OpenApiCallable = Callable[[], dict[str, Any]]
@@ -548,17 +577,14 @@ chatbots_container.wire(
 )
 # Running with Uvicorn (for local development)
 if __name__ == '__main__':
-    worker_count = os.getenv('FLOWARE_WORKER_COUNT', 4)
-    uvicorn_log_level = os.getenv('UVICORN_LOG_LEVEL', 'critical')
-
     print(f'Starting application in environment: {environment}')
     if environment == 'production':
         uvicorn.run(
             'server:app',
             host='0.0.0.0',
             port=8001,
-            workers=int(worker_count),
-            log_level=uvicorn_log_level,
+            workers=int(runtime_settings.worker_count),
+            log_level=runtime_settings.uvicorn_log_level,
             forwarded_allow_ips='*',
         )
     else:

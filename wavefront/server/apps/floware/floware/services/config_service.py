@@ -23,18 +23,19 @@ class ConfigService:
         self.config = config
 
     def _get_floware_credentials(self) -> dict[str, Any]:
-        config_credentials = self.config.get('floware')
-        if not isinstance(config_credentials, dict):
+        storage = self.config.get('storage')
+        if not isinstance(storage, dict):
             raise HTTPException(
-                status_code=500, detail='Floware configuration is missing'
+                status_code=500, detail='Storage configuration is missing'
             )
-        if not config_credentials.get(
-            'asset_storage_bucket'
-        ) or not config_credentials.get('config_file_name'):
+        if not storage.get('application_bucket') or not storage.get('config_file_name'):
             raise HTTPException(
-                status_code=500, detail='Incomplete Floware configuration'
+                status_code=500, detail='Incomplete storage configuration'
             )
-        return config_credentials
+        return {
+            'asset_storage_bucket': storage['application_bucket'],
+            'config_file_name': storage['config_file_name'],
+        }
 
     async def store_app_config(
         self,

@@ -8,7 +8,6 @@ from db_repo_module.models.role import Role
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from dependency_injector import containers
 from dependency_injector import providers
-from flo_cloud.kms import FloKmsService
 
 
 class AuthContainer(containers.DeclarativeContainer):
@@ -16,6 +15,7 @@ class AuthContainer(containers.DeclarativeContainer):
 
     db_client = providers.Dependency()
     cache_manager = providers.Dependency()
+    kms_signer = providers.Dependency()
 
     resource_repository = providers.Singleton(
         SQLAlchemyRepository[Resource],
@@ -35,19 +35,15 @@ class AuthContainer(containers.DeclarativeContainer):
         db_client=db_client,
     )
 
-    kms_service = providers.Selector(
-        config.jwt_token.enable_cloud_kms,
-        true=providers.Singleton(
-            FloKmsService, cloud_provider=config.cloud_config.cloud_provider
-        ),
-        false=providers.Object(None),
-    )
-
     token_service = providers.Singleton(
         TokenService,
         private_key=config.jwt_token.private_key,
         public_key=config.jwt_token.public_key,
-        kms_service=kms_service,
+        kms_signer=providers.Selector(
+            config.jwt_token.enable_cloud_kms,
+            true=kms_signer,
+            false=providers.Object(None),
+        ),
         token_expiry=config.jwt_token.token_expiry,
         temporary_token_expiry=config.jwt_token.temporary_token_expiry,
         app_env=config.env_config.app_env,

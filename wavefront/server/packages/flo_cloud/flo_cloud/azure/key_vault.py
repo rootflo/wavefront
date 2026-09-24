@@ -1,6 +1,3 @@
-import os
-from typing import Optional
-
 from azure.identity import ClientSecretCredential, DefaultAzureCredential
 from azure.keyvault.keys import KeyClient
 from azure.keyvault.keys.crypto import (
@@ -12,57 +9,26 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicNumbers
 
-from .._types import FloKMS
+from .._types import KmsKeySettings
 
 
-class AzureKMS(FloKMS):
-    """Azure Key Vault implementation of FloKMS.
+class AzureKMS:
+    """Azure Key Vault client bound to a single key from ``KmsKeySettings``.
 
-    Authentication modes (same as AzureBlobStorage):
-    1. Service Principal — provide client_id, client_secret, tenant_id explicitly,
-       or set AZURE_CLIENT_ID / AZURE_CLIENT_SECRET / AZURE_TENANT_ID env vars.
-    2. DefaultAzureCredential — falls back to Workload Identity, Managed Identity,
-       Azure CLI, etc.
-
-    Required env vars:
-        AZURE_KEY_VAULT_URL       — e.g. https://my-vault.vault.azure.net/
-        AZURE_KEY_VAULT_KEY_NAME  — name of the RSA key in the vault
-
-    Optional env var:
-        AZURE_KEY_VAULT_KEY_VERSION — specific key version; omit to use the latest
+    Authentication modes:
+    1. Service Principal — provide client_id, client_secret, tenant_id in settings.
+    2. DefaultAzureCredential — when those three are omitted.
     """
 
-    def __init__(
-        self,
-        vault_url: Optional[str] = None,
-        key_name: Optional[str] = None,
-        key_version: Optional[str] = None,
-        enc_key_name: Optional[str] = None,
-        enc_key_version: Optional[str] = None,
-        client_id: Optional[str] = None,
-        client_secret: Optional[str] = None,
-        tenant_id: Optional[str] = None,
-    ):
-        resolved_vault_url = vault_url or os.environ.get('AZURE_KEY_VAULT_URL')
-        resolved_key_name = key_name or os.environ.get('AZURE_KEY_VAULT_KEY_NAME')
-        resolved_key_version = key_version or os.environ.get(
-            'AZURE_KEY_VAULT_KEY_VERSION'
-        )
-        resolved_enc_key_name = enc_key_name or os.environ.get(
-            'AZURE_KEY_VAULT_ENC_KEY_NAME'
-        )
-        resolved_enc_key_version = enc_key_version or os.environ.get(
-            'AZURE_KEY_VAULT_ENC_KEY_VERSION'
-        )
+    def __init__(self, settings: KmsKeySettings):
+        if not settings.vault_url:
+            raise ValueError('vault_url must be set for AzureKMS')
+        if not settings.key:
+            raise ValueError('key (Key Vault key name) must be set for AzureKMS')
 
-        if not resolved_vault_url:
-            raise ValueError(
-                'vault_url must be provided or AZURE_KEY_VAULT_URL must be set'
-            )
-        if not resolved_key_name:
-            raise ValueError(
-                'key_name must be provided or AZURE_KEY_VAULT_KEY_NAME must be set'
-            )
+        client_id = settings.client_id
+        client_secret = settings.client_secret
+        tenant_id = settings.tenant_id
 
         creds_provided = [client_id, client_secret, tenant_id]
         if all(creds_provided):
@@ -79,44 +45,21 @@ class AzureKMS(FloKMS):
         else:
             credential = DefaultAzureCredential()
 
-        self._key_name = resolved_key_name
-        self._key_version = resolved_key_version
-        self.key_client = KeyClient(vault_url=resolved_vault_url, credential=credential)
+        self._key_name = settings.key
+        self._key_version = settings.key_version
+        self.key_client = KeyClient(vault_url=settings.vault_url, credential=credential)
 
-        sign_key = self.key_client.get_key(
-            resolved_key_name, version=resolved_key_version
-        )
-        self.crypto_client = CryptographyClient(sign_key, credential=credential)
-
-        self.enc_crypto_client = (
-            CryptographyClient(
-                self.key_client.get_key(
-                    resolved_enc_key_name, version=resolved_enc_key_version
-                ),
-                credential=credential,
-            )
-            if resolved_enc_key_name
-            else None
-        )
+        key = self.key_client.get_key(settings.key, version=settings.key_version)
+        self.crypto_client = CryptographyClient(key, credential=credential)
 
     def encrypt(self, plaintext: str | bytes) -> bytes:
-        if not self.enc_crypto_client:
-            raise ValueError(
-                'AZURE_KEY_VAULT_ENC_KEY_NAME must be set to use encryption'
-            )
         if isinstance(plaintext, str):
             plaintext = plaintext.encode('utf-8')
-        result = self.enc_crypto_client.encrypt(
-            EncryptionAlgorithm.rsa_oaep_256, plaintext
-        )
+        result = self.crypto_client.encrypt(EncryptionAlgorithm.rsa_oaep_256, plaintext)
         return result.ciphertext
 
     def decrypt(self, ciphertext: bytes) -> bytes:
-        if not self.enc_crypto_client:
-            raise ValueError(
-                'AZURE_KEY_VAULT_ENC_KEY_NAME must be set to use decryption'
-            )
-        result = self.enc_crypto_client.decrypt(
+        result = self.crypto_client.decrypt(
             EncryptionAlgorithm.rsa_oaep_256, ciphertext
         )
         return result.plaintext
@@ -135,7 +78,6 @@ class AzureKMS(FloKMS):
         key = self.key_client.get_key(self._key_name, version=self._key_version)
         jwk = key.key
 
-        # Decode the JWK RSA public key components (big-endian bytes) to integers
         n = int.from_bytes(jwk.n, byteorder='big')
         e = int.from_bytes(jwk.e, byteorder='big')
 

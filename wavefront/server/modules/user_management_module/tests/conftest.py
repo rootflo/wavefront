@@ -56,30 +56,28 @@ def _knowledge_base_container(core_containers):
     from io import BytesIO
     from unittest.mock import Mock
 
-    from dependency_injector import providers
     from knowledge_base_module.knowledge_base_container import (
         KnowledgeBaseContainer,
     )
 
-    container = KnowledgeBaseContainer(
-        db_client=core_containers.db_client,
-        cache_manager=core_containers.cache_manager,
-    )
-
     cloud_storage = Mock()
     cloud_storage.get_file = Mock(return_value=BytesIO(b'file content'))
-    container.cloud_storage.override(providers.Singleton(lambda: cloud_storage))
+    cloud_storage.read_file = Mock(return_value=b'file content')
 
     message_queue = Mock()
     message_queue.add_message = Mock(return_value='message_id_123')
-    container.message_queue.override(providers.Singleton(lambda: message_queue))
+
+    container = KnowledgeBaseContainer(
+        db_client=core_containers.db_client,
+        cache_manager=core_containers.cache_manager,
+        cloud_storage_manager=cloud_storage,
+        rag_queue=message_queue,
+    )
 
     container.config.from_dict(
         {
-            'cloud_config': {'cloud_provider': 'gcp'},
-            'floware': {'asset_storage_bucket': 'test_bucket'},
-            'gcp': {'rag_topic_id': 'test_topic'},
-            'aws': {'queue_url': 'test_queue_url'},
+            'cloud': {'provider': 'gcp'},
+            'storage': {'application_bucket': 'test_bucket'},
         }
     )
     return container

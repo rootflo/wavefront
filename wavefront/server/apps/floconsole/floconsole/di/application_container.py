@@ -1,7 +1,8 @@
 from dependency_injector import containers
 from dependency_injector import providers
 
-from flo_cloud.kms import FloKmsService
+from flo_cloud.kms import FloKmsSigner
+from flo_cloud._types import KmsKeySettings
 from floconsole.db import (
     DatabaseClient,
     DatabaseConfig,
@@ -66,11 +67,24 @@ class ApplicationContainer(containers.DeclarativeContainer):
         app_user_repository=app_user_repository,
     )
 
-    kms_service = providers.Selector(
+    kms_signing_settings = providers.Factory(
+        KmsKeySettings,
+        provider=config.cloud.provider,
+        key=config.kms_signing.key,
+        key_version=config.kms_signing.key_version,
+        key_ring=config.kms_signing.key_ring,
+        project_id=config.cloud.project_id,
+        location=config.cloud.location,
+        region=config.cloud.region,
+        vault_url=config.azure.key_vault_url,
+        client_id=config.azure.client_id,
+        client_secret=config.azure.client_secret,
+        tenant_id=config.azure.tenant_id,
+    )
+
+    kms_signer = providers.Selector(
         config.jwt_token.enable_cloud_kms,
-        true=providers.Singleton(
-            FloKmsService, cloud_provider=config.cloud_config.cloud_provider
-        ),
+        true=providers.Singleton(FloKmsSigner, settings=kms_signing_settings),
         false=providers.Object(None),
     )
 
@@ -78,7 +92,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
         TokenService,
         private_key=config.jwt_token.private_key,
         public_key=config.jwt_token.public_key,
-        kms_service=kms_service,
+        kms_signer=kms_signer,
         token_expiry=config.jwt_token.token_expiry,
         temporary_token_expiry=config.jwt_token.temporary_token_expiry,
         app_env=config.env_config.app_env,
@@ -97,4 +111,5 @@ class ApplicationContainer(containers.DeclarativeContainer):
         app_env=config.env_config.app_env,
         token_prefix=config.jwt_token.token_prefix,
         temporary_token_expiry=config.jwt_token.temporary_token_expiry,
+        passthrough_secret=config.env_config.passthrough_secret,
     )

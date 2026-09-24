@@ -5,23 +5,43 @@ from .aws.kms import AwsKMS
 from .azure.key_vault import AzureKMS
 from .exceptions import KmsError
 from .gcp.kms import GcpKMS
-from ._types import CloudProvider, FloKMS
+from ._types import CloudProvider, FloCipher, FloSigner, KmsKeySettings
 
 
-class FloKmsService(FloKMS):
-    def __init__(self, cloud_provider: str):
-        self.cloud_provider = cloud_provider
-        self.kms_client = self.__get_kms_client()
+def _build_kms_client(settings: KmsKeySettings) -> AwsKMS | GcpKMS | AzureKMS:
+    if settings.provider == CloudProvider.AWS.value:
+        return AwsKMS(settings)
+    elif settings.provider == CloudProvider.GCP.value:
+        return GcpKMS(settings)
+    elif settings.provider == CloudProvider.AZURE.value:
+        return AzureKMS(settings)
+    else:
+        raise ValueError(f'Unsupported cloud provider: {settings.provider}')
 
-    def __get_kms_client(self) -> FloKMS:
-        if self.cloud_provider == CloudProvider.AWS.value:
-            return AwsKMS()
-        elif self.cloud_provider == CloudProvider.GCP.value:
-            return GcpKMS()
-        elif self.cloud_provider == CloudProvider.AZURE.value:
-            return AzureKMS()
-        else:
-            raise ValueError(f'Unsupported cloud provider: {self.cloud_provider}')
+
+class FloKmsSigner(FloSigner):
+    def __init__(self, settings: KmsKeySettings):
+        self.settings = settings
+        self.kms_client = _build_kms_client(settings)
+
+    def sign(self, message: bytes, **kwargs) -> bytes:
+        if isinstance(message, str):
+            message = message.encode('utf-8')
+        return self.kms_client.sign(message, **kwargs)
+
+    def verify(self, message: bytes, signature: bytes, **kwargs) -> bool:
+        if isinstance(message, str):
+            message = message.encode('utf-8')
+        return self.kms_client.verify(message, signature, **kwargs)
+
+    def get_public_key_pem(self, **kwargs) -> bytes | str:
+        return self.kms_client.get_public_key_pem(**kwargs)
+
+
+class FloKmsCipher(FloCipher):
+    def __init__(self, settings: KmsKeySettings):
+        self.settings = settings
+        self.kms_client = _build_kms_client(settings)
 
     def encrypt(self, plaintext: str | bytes) -> bytes:
         """Encrypt plaintext. Returns raw ciphertext bytes (e.g. for blob storage)."""
@@ -64,15 +84,6 @@ class FloKmsService(FloKMS):
             )
         return plaintext.decode('utf-8')
 
-    def sign(self, message: bytes, **kwargs) -> bytes:
-        if isinstance(message, str):
-            message = message.encode('utf-8')
-        return self.kms_client.sign(message, **kwargs)
 
-    def verify(self, message: bytes, signature: bytes, **kwargs) -> bool:
-        if isinstance(message, str):
-            message = message.encode('utf-8')
-        return self.kms_client.verify(message, signature, **kwargs)
-
-    def get_public_key_pem(self, **kwargs) -> bytes | str:
-        return self.kms_client.get_public_key_pem(**kwargs)
+# Deprecated alias — prefer FloKmsSigner / FloKmsCipher.
+FloKmsService = FloKmsCipher

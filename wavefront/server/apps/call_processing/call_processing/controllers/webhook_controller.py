@@ -6,13 +6,13 @@ Handles TwiML generation and WebSocket audio streaming
 
 import html
 import json
-import os
 from uuid import UUID
 from call_processing.utils import normalize_indian_phone_number
 from fastapi import APIRouter, WebSocket, Query, Depends, Form
 from fastapi.responses import Response
 from twilio.twiml.voice_response import VoiceResponse, Connect, Stream
 from call_processing.log.logger import logger
+from common_module import runtime_settings
 from dependency_injector.wiring import inject, Provide
 
 # Pipecat imports for WebSocket handling
@@ -80,7 +80,7 @@ async def inbound_webhook(
     logger.info(f'Agent found for inbound number {To}: {agent_id} ({agent["name"]})')
 
     # Build WebSocket URL
-    base_url = os.getenv('CALL_PROCESSING_BASE_URL', 'http://localhost:8003')
+    base_url = runtime_settings.call_processing_base_url or 'http://localhost:8003'
 
     # Convert https:// to wss:// (or http:// to wss://)
     if base_url.startswith('https://'):
@@ -135,7 +135,7 @@ async def twiml_endpoint(
     logger.info(f'TwiML requested for voice_agent_id: {voice_agent_id}')
 
     # Build WebSocket URL
-    base_url = os.getenv('CALL_PROCESSING_BASE_URL', 'http://localhost:8003')
+    base_url = runtime_settings.call_processing_base_url or 'http://localhost:8003'
 
     # Convert https:// to wss:// (or http:// to wss://)
     if base_url.startswith('https://'):

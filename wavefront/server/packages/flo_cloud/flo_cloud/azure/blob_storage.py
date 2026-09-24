@@ -1,5 +1,4 @@
 import io
-import os
 import re
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -45,19 +44,15 @@ class AzureBlobStorage(CloudStorageHandler):
 
         Args:
             account_url: Azure storage account URL, e.g.
-                         "https://<account>.blob.core.windows.net".
-                         Falls back to the AZURE_STORAGE_ACCOUNT_URL env var.
+                         "https://<account>.blob.core.windows.net". Required.
             client_id: Azure AD application (client) ID.
             client_secret: Azure AD application client secret.
             tenant_id: Azure AD tenant (directory) ID.
         """
-        resolved_url = account_url or os.environ.get('AZURE_STORAGE_ACCOUNT_URL')
-        if not resolved_url:
-            raise ValueError(
-                'account_url must be provided or AZURE_STORAGE_ACCOUNT_URL must be set'
-            )
-        self._account_url = resolved_url
-        self._account_name = self._parse_account_name(resolved_url)
+        if not account_url:
+            raise ValueError('account_url must be provided')
+        self._account_url = account_url
+        self._account_name = self._parse_account_name(account_url)
 
         creds_provided = [client_id, client_secret, tenant_id]
         if all(creds_provided):
@@ -75,7 +70,7 @@ class AzureBlobStorage(CloudStorageHandler):
             credential = DefaultAzureCredential()
 
         self._credential = credential
-        self.client = BlobServiceClient(account_url=resolved_url, credential=credential)
+        self.client = BlobServiceClient(account_url=account_url, credential=credential)
 
     # ------------------------------------------------------------------
     # Helpers

@@ -29,11 +29,26 @@ class CloudStorageFactory:
             provider = CloudProvider(provider.lower())
 
         if provider == CloudProvider.AWS:
-            return S3Storage()
+            return S3Storage(
+                **{
+                    k: v
+                    for k, v in credentials.items()
+                    if k
+                    in ('aws_access_key_id', 'aws_secret_access_key', 'region_name')
+                    and v not in (None, '')
+                }
+            )
         elif provider == CloudProvider.GCP:
             return GCSStorage()
         elif provider == CloudProvider.AZURE:
-            return AzureBlobStorage(**credentials)
+            return AzureBlobStorage(
+                **{
+                    k: v
+                    for k, v in credentials.items()
+                    if k in ('account_url', 'client_id', 'client_secret', 'tenant_id')
+                    and v not in (None, '')
+                }
+            )
         else:
             raise ValueError(f'Unsupported cloud provider: {provider}')
 

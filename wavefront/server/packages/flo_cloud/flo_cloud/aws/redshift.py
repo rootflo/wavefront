@@ -1,4 +1,3 @@
-import os
 import re
 import json
 import string
@@ -48,30 +47,24 @@ class RedshiftClient:
             timeout: Connection timeout in seconds
             **kwargs: Additional connection parameters
         """
-        self.host = host or os.getenv('REDSHIFT_HOST')
+        self.host = host
         self.port = port
-        self.database = database or os.getenv('REDSHIFT_DATABASE')
-        self.user = user or os.getenv('REDSHIFT_USER')
-        self.password = password or os.getenv('REDSHIFT_PASSWORD')
-        self.cluster_identifier = cluster_identifier or os.getenv(
-            'REDSHIFT_CLUSTER_IDENTIFIER'
-        )
-        self.iam_profile = iam_profile or os.getenv('REDSHIFT_IAM_PROFILE')
-        self.region = region or os.getenv('AWS_REGION')
+        self.database = database
+        self.user = user
+        self.password = password
+        self.cluster_identifier = cluster_identifier
+        self.iam_profile = iam_profile
+        self.region = region
         self.ssl = ssl
         self.timeout = timeout
         self.connection_params = kwargs
         self.tcp_keepalive = tcp_keepalive
 
         if not self.host:
-            raise ValueError(
-                'Redshift host must be provided via parameter or REDSHIFT_HOST environment variable'
-            )
+            raise ValueError('Redshift host must be provided')
 
         if not self.database:
-            raise ValueError(
-                'Database name must be provided via parameter or REDSHIFT_DATABASE environment variable'
-            )
+            raise ValueError('Database name must be provided')
 
     def _get_connection_params(self) -> Dict[str, Any]:
         """Get connection parameters for redshift-connector."""

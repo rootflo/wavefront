@@ -1,4 +1,3 @@
-import os
 import time
 from typing import Any, List, Optional, Union
 
@@ -28,11 +27,21 @@ class CacheManager(CommonCache):
         socket_timeout: int = 60,
         socket_keepalive: bool = True,
         pool_size: int = 5,
+        host: str = 'localhost',
+        port: int | str = 6379,
+        protocol: str = 'redis',
+        password: str | None = None,
+        db: int | str = 0,
     ):
         self.namespace = namespace
         self.max_retries = max_retries
         self.initial_backoff = initial_backoff
         self.max_backoff = max_backoff
+        self._redis_host = host
+        self._redis_port = int(port)
+        self._redis_protocol = protocol
+        self._redis_password = password or None
+        self._redis_db = int(db)
 
         self.pool = self._create_connection_pool(
             connection_timeout=connection_timeout,
@@ -60,10 +69,10 @@ class CacheManager(CommonCache):
         pool_size: int,
     ) -> ConnectionPool:
         try:
-            host = os.getenv('REDIS_HOST', 'localhost')
-            port = int(os.getenv('REDIS_PORT', 6379))
-            protocol = os.getenv('REDIS_PROTOCOL', 'redis')
-            password = os.getenv('REDIS_PASSWORD')
+            host = self._redis_host
+            port = self._redis_port
+            protocol = self._redis_protocol
+            password = self._redis_password
 
             connection_class = Connection
             if protocol == 'rediss' or port == 10000:
@@ -74,7 +83,7 @@ class CacheManager(CommonCache):
                 'connection_class': connection_class,
                 'host': host,
                 'port': port,
-                'db': int(os.getenv('REDIS_DB', 0)),
+                'db': self._redis_db,
                 'max_connections': pool_size,
                 'socket_timeout': socket_timeout,
                 'socket_keepalive': socket_keepalive,

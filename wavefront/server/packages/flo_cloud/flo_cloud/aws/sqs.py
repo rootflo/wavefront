@@ -1,16 +1,17 @@
-import os
-from typing import List
-import boto3
 import json
-from .._types import MessageQueue, MessageQueueDict
+from typing import List
 
-queue_url = os.getenv('QUEUE_URL')
+import boto3
+
+from .._types import MessageQueue, MessageQueueDict, QueueSettings
 
 
 class SQSQueue(MessageQueue):
-    def __init__(self):
+    def __init__(self, settings: QueueSettings):
+        if not settings.target:
+            raise ValueError('target (queue URL) must be set for SQSQueue')
         self.sqs_client = boto3.client('sqs')
-        self.queue_url = queue_url
+        self.queue_url = settings.target
 
     def receive_messages(
         self, max_messages=10, wait_time_sec=20, **kwargs
@@ -46,19 +47,14 @@ class SQSQueue(MessageQueue):
         except Exception as e:
             raise e
 
-    def add_message(
-        self, message_body: dict, topic_name_or_queue_url: str = None, **attributes
-    ) -> str:
+    def add_message(self, message_body: dict, **attributes) -> str:
         try:
-            # Use provided queue_url or fall back to default
-            target_queue_url = topic_name_or_queue_url or self.queue_url
-
             message_data = json.dumps(message_body)
+            message_params = {
+                'QueueUrl': self.queue_url,
+                'MessageBody': message_data,
+            }
 
-            # Prepare message parameters
-            message_params = {'QueueUrl': target_queue_url, 'MessageBody': message_data}
-
-            # Add message attributes if provided
             if attributes:
                 message_attributes = {}
                 for key, value in attributes.items():
@@ -68,10 +64,7 @@ class SQSQueue(MessageQueue):
                     }
                 message_params['MessageAttributes'] = message_attributes
 
-            # Send the message
             response = self.sqs_client.send_message(**message_params)
-
             return response['MessageId']
-
         except Exception as e:
             raise e

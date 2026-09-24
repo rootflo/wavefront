@@ -145,7 +145,7 @@ async def upload_document(
 
         # Upload to cloud storage
         logger.info(f'The data filename is {gcs_file_name}')
-        bucket_name = config['floware']['asset_storage_bucket']
+        bucket_name = config['storage']['application_bucket']
         await asyncio.to_thread(
             cloud_storage.save_small_file,
             file_content=file_bytes,
@@ -163,14 +163,7 @@ async def upload_document(
                 'file_type': file.content_type,
                 'parse_type': 'kb_insertion',
             }
-            topic_id = (
-                config['gcp']['rag_topic_id']
-                if config['cloud_config']['cloud_provider'] == 'gcp'
-                else config['aws']['rag_queue_url']
-            )
-            message_id = message_queue.add_message(
-                message_body=data, topic_name_or_queue_url=topic_id
-            )
+            message_id = message_queue.add_message(message_body=data)
             logger.info(f'The subscription message is {message_id}')
 
             return JSONResponse(
@@ -328,7 +321,7 @@ async def get_document_with_id(
             ),
         )
     if signed_url:
-        bucket = config['floware']['asset_storage_bucket']
+        bucket = config['storage']['application_bucket']
         presigned_url = cloude_storage_manager.generate_presigned_url(
             bucket, existing_document.file_path, 'GET'
         )

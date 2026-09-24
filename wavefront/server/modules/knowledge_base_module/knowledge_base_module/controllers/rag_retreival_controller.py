@@ -164,9 +164,7 @@ async def _resolve_image_data(
                 content=response_formatter.buildErrorResponse(str(e)),
             ),
         )
-    cloud_provider = (
-        (config.get('cloud_config') or {}).get('cloud_provider', '').lower()
-    )
+    cloud_provider = (config.get('cloud') or {}).get('provider', '').lower()
     if scheme == 'gs' and cloud_provider != 'gcp':
         return (
             None,

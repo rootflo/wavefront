@@ -21,10 +21,8 @@ from llm_inference_config_module.container import LlmInferenceConfigContainer
 
 KB_CONFIG = {
     'model': {'inference_service_url': 'http://mock-inference-url.com'},
-    'cloud_config': {'cloud_provider': 'gcp'},
-    'floware': {'asset_storage_bucket': 'test_bucket'},
-    'gcp': {'rag_topic_id': 'test_topic'},
-    'aws': {'queue_url': 'test_queue_url'},
+    'cloud': {'provider': 'gcp'},
+    'storage': {'application_bucket': 'test_bucket'},
 }
 
 
@@ -33,6 +31,16 @@ def setup_containers(core_containers):
     # Both of these take the mocked cache manager. The previous version handed
     # them db_repo_container.cache_manager, which is the real Redis-backed
     # provider, contradicting its own "avoid Redis connection" comment.
+    cloud_storage_manager = Mock()
+    cloud_storage_manager.file_protocol = Mock(return_value='gs')
+    cloud_storage_manager.save_small_file = Mock()
+    cloud_storage_manager.save_large_file = Mock()
+    cloud_storage_manager.get_file = Mock(return_value=BytesIO(b'file content'))
+    cloud_storage_manager.read_file = Mock(return_value=b'file content')
+
+    message_queue = Mock()
+    message_queue.add_message = Mock(return_value='message_id_123')
+
     llm_inference_config_container = LlmInferenceConfigContainer(
         db_client=core_containers.db_client,
         cache_manager=core_containers.cache_manager,
@@ -40,26 +48,8 @@ def setup_containers(core_containers):
     knowledge_base_container = KnowledgeBaseContainer(
         db_client=core_containers.db_client,
         cache_manager=core_containers.cache_manager,
-    )
-
-    cloud_storage_manager = Mock()
-    cloud_storage_manager.file_protocol = Mock(return_value='gs')
-    knowledge_base_container.cloud_storage_manager.override(
-        providers.Singleton(lambda: cloud_storage_manager)
-    )
-
-    cloud_storage = Mock()
-    cloud_storage.save_small_file = Mock()
-    cloud_storage.save_large_file = Mock()
-    cloud_storage.get_file = Mock(return_value=BytesIO(b'file content'))
-    knowledge_base_container.cloud_storage.override(
-        providers.Singleton(lambda: cloud_storage)
-    )
-
-    message_queue = Mock()
-    message_queue.add_message = Mock(return_value='message_id_123')
-    knowledge_base_container.message_queue.override(
-        providers.Singleton(lambda: message_queue)
+        cloud_storage_manager=cloud_storage_manager,
+        rag_queue=message_queue,
     )
 
     kb_rag_response = AsyncMock()

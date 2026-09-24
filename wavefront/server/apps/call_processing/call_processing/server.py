@@ -1,8 +1,8 @@
 import glob
-import os
 
 from call_processing.log.logger import logger
 from common_module.middleware.security_headers import SecurityHeadersMiddleware
+from common_module.runtime_settings import configure_runtime_settings
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,10 +15,21 @@ from call_processing.controllers.cache_controller import cache_router
 
 load_dotenv()
 
-environment = os.getenv('APP_ENV', 'production')
-
 # Initialize containers
 application_container = ApplicationContainer()
+config = application_container.config()
+env_config = config.get('env_config') or {}
+web = config.get('web') or {}
+environment = env_config.get('app_env') or 'production'
+configure_runtime_settings(
+    floware_base_url=env_config.get('floware_base_url') or 'http://localhost:8001',
+    passthrough_secret=env_config.get('passthrough_secret') or None,
+    call_processing_base_url=(
+        env_config.get('call_processing_base_url') or 'http://localhost:8003'
+    ),
+    allowed_origins=web.get('allowed_origins') or 'http://localhost:8001',
+    app_env=environment,
+)
 
 # Wire containers
 application_container.wire(
@@ -42,7 +53,7 @@ app = FastAPI(
     redoc_url='/redoc' if is_dev else None,
 )
 
-origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:8001')
+origins = web.get('allowed_origins') or 'http://localhost:8001'
 allowed_origins = origins.split(',')
 
 # Strict default-src 'none' CSP plus the rest of the security headers; /docs and

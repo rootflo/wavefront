@@ -1,9 +1,8 @@
 import json
-import os
 from urllib.parse import quote
 import httpx
 
-FLOWARE_BASE_URL = os.getenv('FLOWARE_BASE_URL', 'http://localhost:8001').rstrip('/')
+from common_module import runtime_settings
 
 
 async def datasource_insert_rows(
@@ -19,7 +18,7 @@ async def datasource_insert_rows(
     rows = [data] if single_row else data
 
     url = (
-        f'{FLOWARE_BASE_URL}/floware/v1/datasources/'
+        f'{runtime_settings.floware_base_url}/floware/v1/datasources/'
         f'{quote(datasource_id, safe="")}/resources/{quote(table_name, safe="")}'
     )
     async with httpx.AsyncClient() as client:
@@ -53,7 +52,7 @@ async def datasource_insert_multi(datasource_id: str, inserts) -> str:
     table. Currently only Postgres datasources support this; others return 501.
     """
     url = (
-        f'{FLOWARE_BASE_URL}/floware/v1/datasources/'
+        f'{runtime_settings.floware_base_url}/floware/v1/datasources/'
         f'{quote(datasource_id, safe="")}/resources/insert'
     )
     async with httpx.AsyncClient() as client:
@@ -119,7 +118,7 @@ async def datasource_execute_query(
     {"quotes": [{...}, {...}]}. An empty list means nothing matched.
     """
     url = (
-        f'{FLOWARE_BASE_URL}/floware/v1/'
+        f'{runtime_settings.floware_base_url}/floware/v1/'
         f'{quote(datasource_id, safe="")}/dynamic-queries/'
         f'{quote(query_id, safe="")}/execute'
     )

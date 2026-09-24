@@ -1,8 +1,8 @@
 """Utility for invalidating cache in call_processing app"""
 
-import os
 import httpx
 from uuid import UUID
+from common_module import runtime_settings
 from common_module.log.logger import logger
 
 
@@ -23,13 +23,13 @@ async def invalidate_call_processing_cache(
         True if successful, False otherwise (never raises exceptions)
         Logs warnings on failures but doesn't break the main operation
     """
-    call_processing_base_url = os.getenv('CALL_PROCESSING_BASE_URL')
-    passthrough_secret = os.getenv('PASSTHROUGH_SECRET')
+    call_processing_base_url = runtime_settings.call_processing_base_url
+    passthrough_secret = runtime_settings.passthrough_secret
 
     if not call_processing_base_url or not passthrough_secret:
         logger.warning(
             f'Cache invalidation skipped for {config_type} {config_id}: '
-            f'CALL_PROCESSING_BASE_URL or PASSTHROUGH_SECRET not configured'
+            f'call_processing_base_url or passthrough_secret not configured'
         )
         return False
 

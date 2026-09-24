@@ -3,15 +3,14 @@ from dotenv import load_dotenv
 # ruff: noqa: E402
 load_dotenv()
 
-from flo_cloud.message_queue import MessageQueueManager
 from db_repo_module.cache.cache_manager import CacheManager
 from workflow_job.workflow_listener import WorkflowListener
 from workflow_job.workflow_processor import WorkflowMessageProcessor
-from flo_cloud.cloud_storage import CloudStorageManager
 
 from api_services_module.api_services_container import create_api_services_container
 from db_repo_module.db_repo_container import DatabaseModuleContainer
 from common_module.common_container import CommonContainer
+from common_module.runtime_settings import configure_runtime_settings
 from api_services_module.api_services_container import ApiServicesContainer
 from agents_module.agents_container import AgentsContainer
 from tools_module.tools_container import ToolsContainer
@@ -22,7 +21,18 @@ from llm_inference_config_module.container import LlmInferenceConfigContainer
 db_repo_container = DatabaseModuleContainer()
 common_container = CommonContainer(cache_manager=db_repo_container.cache_manager)
 config = common_container.config()
-
+env_config = config.get('env_config') or {}
+app_config = config.get('app_config') or {}
+floware = config.get('floware') or {}
+configure_runtime_settings(
+    floware_base_url=(
+        floware.get('service_url')
+        or env_config.get('base_url')
+        or 'http://localhost:8001'
+    ),
+    passthrough_secret=app_config.get('passthrough_secret') or None,
+    app_env=app_config.get('app_env') or env_config.get('app_env') or 'dev',
+)
 # API Services Container
 api_services_container: ApiServicesContainer = create_api_services_container(
     api_service_repository=db_repo_container.api_services_repository,
@@ -35,18 +45,15 @@ api_services_container: ApiServicesContainer = create_api_services_container(
 plugins_container = PluginsContainer(
     db_client=db_repo_container.db_client,
     cloud_storage_manager=common_container.cloud_storage_manager,
+    kms_cipher=common_container.kms_cipher,
     dynamic_query_repository=db_repo_container.dynamic_query_repository,
     cache_manager=db_repo_container.cache_manager,
     oauth_app_repository=db_repo_container.oauth_app_repository,
     email_connection_repository=db_repo_container.email_connection_repository,
 )
 
-cloud_provider = config['cloud_config']['cloud_provider']
-bucket_name = (
-    config['aws']['aws_asset_storage_bucket']
-    if cloud_provider == 'aws'
-    else config['gcp']['gcp_asset_storage_bucket']
-)
+cloud_provider = config['cloud']['provider']
+bucket_name = config['storage']['application_bucket']
 
 tools_container = ToolsContainer(
     datasource_repository=db_repo_container.datasource_repository,
@@ -82,6 +89,7 @@ agents_container = AgentsContainer(
     # Required so workflow agents can resolve `provider: rootflo` model_id
     # references to their LlmInferenceConfig rows
     llm_inference_config_service=llm_inference_config_container.llm_inference_config_service,
+    workflow_queue=common_container.workflow_queue,
 )
 
 common_container.wire(
@@ -114,13 +122,16 @@ api_services_container.wire(
 
 
 def main():
-    message_queue_manager = MessageQueueManager(
-        config['cloud_config']['cloud_provider']
+    message_queue_manager = common_container.workflow_queue()
+    cloud_storage_manager = common_container.cloud_storage_manager()
+    cache_manager = CacheManager(
+        namespace='workflow-worker',
+        host=config['redis']['host'],
+        port=config['redis']['port'],
+        protocol=config['redis']['protocol'],
+        password=config['redis'].get('password') or None,
+        db=config['redis'].get('db', 0),
     )
-    cloud_storage_manager = CloudStorageManager(
-        config['cloud_config']['cloud_provider']
-    )
-    cache_manager = CacheManager(namespace='workflow-worker')
 
     # Initialize stream listener
     listener = WorkflowListener(

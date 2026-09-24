@@ -71,7 +71,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
         datasource_repository=datasource_repository,
         dynamic_query_repository=dynamic_query_repository,
         cloud_storage_manager=cloud_storage_manager,
-        bucket_name=config.floware.asset_storage_bucket,
+        bucket_name=config.storage.application_bucket,
         email_send_service=email_send_service,
         email_connection_service=email_connection_service,
         user_repository=user_repository,

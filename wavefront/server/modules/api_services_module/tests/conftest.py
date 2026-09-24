@@ -501,7 +501,7 @@ def api_services_container(
         response_formatter=mock_response_formatter,
     )
     container.api_service_manager.override(providers.Object(mock_api_services_manager))
-    container.config.from_dict({'api_service': {'application_bucket': 'test-bucket'}})
+    container.config.from_dict({'storage': {'application_bucket': 'test-bucket'}})
     return container
 
 

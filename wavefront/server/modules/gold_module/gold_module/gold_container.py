@@ -1,5 +1,3 @@
-import os
-
 from dependency_injector import containers
 from dependency_injector import providers
 from gold_module.services.cloud_image_service import AWSImageService
@@ -11,35 +9,30 @@ from gold_module.services.image_service import ImageService
 class GoldContainer(containers.DeclarativeContainer):
     config = providers.Configuration(ini_files=['config.ini'])
 
-    cloud_provider = providers.Singleton(
-        lambda: os.environ.get('CLOUD_PROVIDER', 'gcp').lower()
-    )
+    gold_queue = providers.Dependency()
 
     aws_image_service = providers.Singleton(
         AWSImageService,
-        bucket_name=config.floware.asset_storage_bucket,
-        queue_url=config.aws.queue_url,
-        region=config.aws.region,
+        bucket_name=config.storage.application_bucket,
+        message_queue=gold_queue,
+        region=config.cloud.region,
     )
 
     gcp_image_service = providers.Singleton(
         GCPImageService,
-        bucket_name=config.floware.asset_storage_bucket,
-        project_id=config.gcp.gcp_project_id,
-        topic_id=config.gcp.gold_topic_id,
+        bucket_name=config.storage.application_bucket,
+        message_queue=gold_queue,
     )
 
     azure_image_service = providers.Singleton(
         AzureImageService,
-        container_name=config.floware.asset_storage_bucket,
+        container_name=config.storage.application_bucket,
         account_url=config.azure.account_url,
-        queue_url=config.azure.queue_url,
-        queue_name=config.azure.queue_name,
+        message_queue=gold_queue,
     )
 
-    # provider.selector is basically an if/else. if cloud_provider = gcp, gcp_image_service will be selected
     cloud_service = providers.Selector(
-        cloud_provider,
+        config.cloud.provider,
         aws=aws_image_service,
         gcp=gcp_image_service,
         azure=azure_image_service,
