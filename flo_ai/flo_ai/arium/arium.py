@@ -19,7 +19,56 @@ from flo_ai.telemetry import get_tracer
 from flo_ai.utils.profiler import aprofile, record as _profile_record
 from opentelemetry.trace import Status, StatusCode
 import asyncio
+import os
 import time
+
+# Loop prevention: cap on how many nodes a single graph run may execute.
+DEFAULT_MAX_ITERATIONS = 35
+# Bounds for an override. The floor keeps a too-small value from killing even a
+# trivial graph (the start node alone spends an iteration); the ceiling keeps a
+# misconfigured env var from letting a runaway graph burn through tokens.
+MIN_ALLOWED_ITERATIONS = 5
+MAX_ALLOWED_ITERATIONS = 60
+MAX_ITERATIONS_ENV_VAR = 'FLO_AI_MAX_ITERATIONS'
+
+
+def resolve_max_iterations() -> int:
+    """Return the iteration cap for a graph run.
+
+    ``FLO_AI_MAX_ITERATIONS`` takes precedence over
+    :data:`DEFAULT_MAX_ITERATIONS`, and must fall between
+    :data:`MIN_ALLOWED_ITERATIONS` and :data:`MAX_ALLOWED_ITERATIONS`. An
+    out-of-range or unparseable value is ignored (with a warning) rather than
+    failing the run.
+    """
+    raw_value = os.environ.get(MAX_ITERATIONS_ENV_VAR)
+    if raw_value is None or not raw_value.strip():
+        return DEFAULT_MAX_ITERATIONS
+
+    try:
+        max_iterations = int(raw_value.strip())
+    except ValueError:
+        logger.warning(
+            f'Invalid {MAX_ITERATIONS_ENV_VAR}={raw_value!r}, '
+            f'falling back to {DEFAULT_MAX_ITERATIONS}'
+        )
+        return DEFAULT_MAX_ITERATIONS
+
+    if max_iterations < MIN_ALLOWED_ITERATIONS:
+        logger.warning(
+            f'{MAX_ITERATIONS_ENV_VAR}={max_iterations} is below the minimum '
+            f'allowed, using {MIN_ALLOWED_ITERATIONS}'
+        )
+        return MIN_ALLOWED_ITERATIONS
+
+    if max_iterations > MAX_ALLOWED_ITERATIONS:
+        logger.warning(
+            f'{MAX_ITERATIONS_ENV_VAR}={max_iterations} is above the maximum '
+            f'allowed, using {MAX_ALLOWED_ITERATIONS}'
+        )
+        return MAX_ALLOWED_ITERATIONS
+
+    return max_iterations
 
 
 class Arium(BaseArium):
@@ -262,7 +311,7 @@ class Arium(BaseArium):
         current_edge = self.edges[self.start_node_name]
 
         # Loop prevention: track execution steps and node visits
-        max_iterations = 20  # Reasonable limit to prevent infinite loops
+        max_iterations = resolve_max_iterations()
         iteration_count = 0
         node_visit_count = {}  # Track how many times each node is visited
         execution_path = []  # Track the path for debugging
