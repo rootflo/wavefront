@@ -110,7 +110,9 @@ application_container = ApplicationContainer(
 )
 
 knowledge_base_container = KnowledgeBaseContainer(
-    db_client=db_repo_container.db_client, cache_manager=db_repo_container.cache_manager
+    db_client=db_repo_container.db_client,
+    ingestion_db_client=db_repo_container.ingestion_db_client,
+    cache_manager=db_repo_container.cache_manager,
 )
 
 gold_container = GoldContainer()
