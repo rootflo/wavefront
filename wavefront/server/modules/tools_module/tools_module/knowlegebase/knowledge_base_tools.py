@@ -14,6 +14,7 @@ async def querying_knowlegebase(
     cache_manager = db_repo_container.cache_manager
     knowlegebase_contaoiner = KnowledgeBaseContainer(
         db_client=db_client,
+        ingestion_db_client=db_repo_container.ingestion_db_client,
         cache_manager=cache_manager,
     )
 
