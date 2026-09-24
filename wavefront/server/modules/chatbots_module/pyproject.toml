@@ -12,7 +12,7 @@ dependencies = [
     "db-repo-module",
     "llm-inference-config-module",
     "user-management-module",
-    "flo-ai==1.1.11",
+    "flo-ai==1.1.12",
 ]
 
 [tool.uv.sources]
