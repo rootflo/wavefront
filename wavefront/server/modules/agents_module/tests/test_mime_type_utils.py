@@ -288,6 +288,42 @@ class TestEnsureSupportedDocumentMimeType:
         """Missing mime is allowed - the formatter defaults it to PDF"""
         assert ensure_supported_document_mime_type(base64_value=PDF_B64) is None
 
+    @pytest.mark.parametrize('mime_type', sorted(EXTRACTABLE_DOCUMENT_MIME_TYPES))
+    def test_extractable_url_only_rejected(self, mime_type):
+        """flo_ai extracts from bytes and never fetches, so a URL alone would
+        fail at the provider call instead of here."""
+        with pytest.raises(HTTPException) as exc_info:
+            ensure_supported_document_mime_type(
+                mime_type=mime_type, url='https://x.test/report', index=1
+            )
+
+        assert exc_info.value.status_code == 400
+        assert 'document_url' in str(exc_info.value.detail)
+        assert 'at index 1' in str(exc_info.value.detail)
+
+    def test_extractable_type_resolved_from_url_rejected(self):
+        """No mime_type, but the URL's extension makes it extractable"""
+        with pytest.raises(HTTPException):
+            ensure_supported_document_mime_type(url='https://x.test/a/sheet.xlsx?s=1')
+
+    def test_extractable_url_with_base64_passes(self):
+        """The bytes are what get extracted; a URL alongside them is harmless"""
+        assert (
+            ensure_supported_document_mime_type(
+                mime_type='text/csv',
+                base64_value=base64.b64encode(b'a,b\n1,2').decode('utf-8'),
+                url='https://x.test/data.csv',
+            )
+            == 'text/csv'
+        )
+
+    def test_pdf_url_only_still_passes(self):
+        """PDF keeps its native path, where providers can read a URL"""
+        assert (
+            ensure_supported_document_mime_type(url='https://x.test/doc.pdf')
+            == 'application/pdf'
+        )
+
 
 class TestValidateInferenceInputsMedia:
     """Test cases for the raw-payload walker used by the async endpoints"""
@@ -453,4 +489,25 @@ class TestValidateInferenceInputsMedia:
             process_inference_inputs(payload)
 
         assert walker_exc.value.status_code == sync_exc.value.status_code
+        assert walker_exc.value.detail == sync_exc.value.detail
+
+    def test_url_only_extractable_document_rejected_by_both_gates(self):
+        """Neither path may build a DocumentMessageContent that flo_ai would
+        have to fetch before it could extract"""
+        payload = [
+            {
+                'role': 'user',
+                'content': {
+                    'document_url': 'https://x.test/report.docx',
+                    'file_name': 'report.docx',
+                },
+            }
+        ]
+
+        with pytest.raises(HTTPException) as walker_exc:
+            validate_inference_inputs_media(payload)
+        with pytest.raises(HTTPException) as sync_exc:
+            process_inference_inputs(payload)
+
+        assert walker_exc.value.status_code == 400
         assert walker_exc.value.detail == sync_exc.value.detail

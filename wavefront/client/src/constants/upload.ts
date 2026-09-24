@@ -146,19 +146,7 @@ export function documentTypeFor(file: File): string {
   return extensionOf(file.name) || 'bin';
 }
 
-/**
- * The MIME type to send for a file.
- *
- * `file.type` is only trusted when it is a type we actually support. Browsers
- * report nothing for `.doc`/`.xls`, and on Windows commonly report
- * `application/octet-stream` or `application/x-zip-compressed` for
- * `.docx`/`.xlsx`. Forwarding those meant the upload passed the extension check
- * here and was then rejected by the server with a 400.
- */
 export function documentMimeTypeFor(file: File): string {
-  if (file.type && SUPPORTED_DOCUMENT_MIME_TYPES.includes(file.type)) {
-    return file.type;
-  }
   // `||` not `??` on the tail: an unrecognised extension leaves `file.type` as
   // '', which is falsy but not nullish, so `??` would forward the empty string.
   return MIME_TYPE_BY_EXTENSION[extensionOf(file.name)] ?? (file.type || 'application/octet-stream');

@@ -256,6 +256,11 @@ def ensure_supported_document_mime_type(
     That fail-open is why callers must branch on the *returned* value rather
     than on "not a PDF" — ``None`` here means "assume PDF", and must never be
     routed to a text extractor.
+
+    Extractable types sent only as ``document_url`` are rejected too. flo_ai
+    extracts their text from the file bytes and deliberately does not download
+    URLs, so accepting one here only moves the failure to the provider call --
+    after a 202 on the async endpoints.
     """
     resolved = resolve_mime_type(mime_type, base64_value, file_name, url)
     supported = ', '.join(sorted(SUPPORTED_DOCUMENT_MIME_TYPES))
@@ -265,6 +270,12 @@ def ensure_supported_document_mime_type(
             f'Unsupported document type `{resolved}`{_position(index)}. '
             f'Supported document types: {supported}. '
             f'Convert the file to one of those, or send it as an image input.'
+        )
+
+    if resolved in EXTRACTABLE_DOCUMENT_MIME_TYPES and url and not base64_value:
+        _reject(
+            f'Document type `{resolved}`{_position(index)} cannot be sent as '
+            f'`document_url`. Send the file contents as `document_base64`.'
         )
 
     return resolved
