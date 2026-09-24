@@ -16,6 +16,10 @@ from typing import (
 )
 from flo_ai.helpers.generation_params import merge_generation_params
 from flo_ai.tool.base_tool import Tool
+from flo_ai.utils.document_text_extraction import (
+    EXTRACTABLE_DOCUMENT_MIME_TYPES,
+    extract_document_text,
+)
 from flo_ai.utils.logger import logger
 from flo_ai.utils.profiler import aprofile, profile as _sync_profile
 from flo_ai.models.chat_message import (
@@ -126,6 +130,18 @@ def split_request_kwargs(
         target[key] = value
 
     return declared, extra
+
+
+def _normalized_mime(document: DocumentMessageContent) -> Optional[str]:
+    """Lowercased mime type with any ``;charset=...`` parameters dropped.
+
+    Callers pass whatever the upload declared. ``TEXT/CSV; charset=utf-8`` has
+    to route the same way as ``text/csv``, or the choice between extracting and
+    rasterizing turns on capitalization.
+    """
+    if not document.mime_type:
+        return None
+    return document.mime_type.split(';')[0].strip().lower() or None
 
 
 def file_name_text_block(media: MediaMessageContent) -> Optional[Dict[str, Any]]:
@@ -293,22 +309,27 @@ class BaseLLM(ABC):
         pass
 
     async def format_document_in_message(self, document: DocumentMessageContent) -> Any:
-        """Return provider-native content block(s) for a document.
+        """Return provider-ready content for a document.
 
-        Default implementation rasterizes PDF pages to PNG ``image_url``
-        blocks in the OpenAI Chat Completions multimodal shape. This assumes
-        the underlying model is vision-capable (gpt-4o, gpt-4.1, gpt-5,
-        llava, etc.). LLMs that do not support image inputs will error at
-        request time — intentionally; the library does not ship a
-        text-extraction fallback because it silently hides capability
-        mismatches and usually produces worse results than using a vision
-        model.
+        Two paths, chosen by mime type:
 
-        Providers with native PDF support (Anthropic, Gemini, Vertex, the
-        OpenAI Responses API, etc.) override this to return their native
-        document block. Results are cached on the DocumentMessageContent per
-        LLM class so the same document is formatted at most once across all
-        agent nodes and retries in a workflow.
+        - Office and plain-text formats (``EXTRACTABLE_DOCUMENT_MIME_TYPES``)
+          are converted to text and wrapped by ``format_text_content``. No
+          provider flo_ai supports reads Word or Excel through the API shape
+          flo_ai uses, so the alternative is failing the request outright.
+        - Everything else -- PDF, and a missing mime, which is assumed to be
+          PDF -- goes to ``_format_native_document``: a native document block
+          where the provider has one, rasterized pages where it does not.
+
+        PDF is never extracted. A vision model reading the page beats extracted
+        text for PDFs, and silently downgrading would hide the capability
+        mismatch when a model cannot read images at all.
+
+        Results are cached on the DocumentMessageContent per LLM class, so the
+        same document is formatted at most once across all agent nodes and
+        retries in a workflow. Subclasses override ``_format_native_document``
+        and ``format_text_content`` rather than this method, so every provider
+        inherits both the dispatch and the cache.
         """
         cache_key = self.__class__.__name__
         cache = getattr(document, '_formatted_cache', None)
@@ -316,19 +337,59 @@ class BaseLLM(ABC):
             return cache[cache_key]
 
         async with aprofile(f'llm.{cache_key}.format_document'):
-            try:
+            if _normalized_mime(document) in EXTRACTABLE_DOCUMENT_MIME_TYPES:
                 formatted = await asyncio.to_thread(
-                    self._rasterize_pdf_to_images, document
+                    self._format_extracted_document, document
                 )
-            except Exception as e:
-                logger.error(
-                    f'Error formatting document for {self.__class__.__name__}: {e}'
-                )
-                raise Exception(f'Failed to format document: {str(e)}')
+            else:
+                formatted = await self._format_native_document(document)
 
         if isinstance(cache, dict):
             cache[cache_key] = formatted
         return formatted
+
+    def _format_extracted_document(self, document: DocumentMessageContent) -> Any:
+        """Convert an Office or plain-text document to a text content block.
+
+        ``DocumentExtractionError`` is deliberately not wrapped: it means the
+        upload itself is unreadable, which a caller needs to tell apart from a
+        provider failure so it can report it to whoever sent the file.
+        """
+        text = extract_document_text(
+            self._document_to_bytes(document),
+            _normalized_mime(document),
+            document.file_name,
+        )
+        return self.format_text_content(text)
+
+    def format_text_content(self, text: str) -> Any:
+        """Wrap plain text in this provider's content-block shape.
+
+        The default is the OpenAI Chat Completions shape, which Anthropic
+        shares. Providers with a different shape (Gemini's ``Part``) override.
+        """
+        return [{'type': 'text', 'text': text}]
+
+    async def _format_native_document(self, document: DocumentMessageContent) -> Any:
+        """Format a PDF (or unknown-mime) document the provider's native way.
+
+        The default rasterizes PDF pages to PNG ``image_url`` blocks in the
+        OpenAI Chat Completions multimodal shape. This assumes a vision-capable
+        model (gpt-4o, gpt-4.1, gpt-5, llava, etc.); a model without image
+        input errors at request time -- intentionally, rather than quietly
+        falling back to extracted text.
+
+        Providers with native PDF support (Anthropic, Gemini, Vertex, the
+        OpenAI Responses API, etc.) override this to return their native
+        document block. Caching is handled by the caller.
+        """
+        try:
+            return await asyncio.to_thread(self._rasterize_pdf_to_images, document)
+        except Exception as e:
+            logger.error(
+                f'Error formatting document for {self.__class__.__name__}: {e}'
+            )
+            raise Exception(f'Failed to format document: {str(e)}')
 
     def _rasterize_pdf_to_images(
         self, document: DocumentMessageContent

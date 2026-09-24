@@ -53,7 +53,7 @@ override-dependencies = [
     # it at <4.9. textract only touches bs4 in its epub/html parsers; we call it
     # solely as process(pdf, method='pdfminer'), so that cap is inert for us.
     "beautifulsoup4>=4.13.5,<5.0.0",
-    # Same shape of problem: textract caps xlrd at ~=1.2.0, but agents-module
+    # Same shape of problem: textract caps xlrd at ~=1.2.0, but flo-ai
     # needs xlrd 2.x to read legacy .xls uploads (1.2.0's xlsx support was
     # dropped in 2.0 precisely because it was unreliable). textract imports xlrd
     # only from its xls/xlsx parsers, and parsers/__init__.py resolves a parser

@@ -7,6 +7,11 @@ from agents_module.utils.input_processing_utils import (
     process_inference_inputs,
     validate_inference_inputs_media,
 )
+from flo_ai.utils.document_text_extraction import (
+    DOC_MIME_TYPE,
+    EXTRACTABLE_DOCUMENT_MIME_TYPES,
+)
+
 from agents_module.utils.mime_type_utils import (
     SUPPORTED_DOCUMENT_MIME_TYPES,
     SUPPORTED_IMAGE_MIME_TYPES,
@@ -351,28 +356,55 @@ class TestValidateInferenceInputsMedia:
 
         assert 'Unsupported document type' in str(exc_info.value.detail)
 
-    def test_extractable_document_types_accepted(self):
-        """The Office and CSV formats are converted to text, so they pass."""
-        for mime_type in (
-            'text/plain',
-            'text/csv',
-            'application/msword',
-            'application/vnd.openxmlformats-officedocument'
-            '.wordprocessingml.document',
-            'application/vnd.ms-excel',
-            'application/vnd.openxmlformats-officedocument' '.spreadsheetml.sheet',
-        ):
+    @pytest.mark.parametrize('mime_type', sorted(EXTRACTABLE_DOCUMENT_MIME_TYPES))
+    def test_extractable_document_types_accepted(self, mime_type):
+        """Every type flo_ai can extract passes the gate.
+
+        Driven by flo_ai's own set rather than a copy of it, so a format flo_ai
+        gains -- .doc, once it has a reader -- is covered here automatically.
+        """
+        validate_inference_inputs_media(
+            [
+                {
+                    'role': 'user',
+                    'content': {
+                        'document_base64': PDF_B64,
+                        'mime_type': mime_type,
+                    },
+                }
+            ]
+        )
+
+    def test_gate_admits_exactly_pdf_plus_flo_ai_extractable(self):
+        """Pins the coupling: the gate is PDF plus whatever flo_ai extracts."""
+        assert SUPPORTED_DOCUMENT_MIME_TYPES == (
+            {'application/pdf'} | EXTRACTABLE_DOCUMENT_MIME_TYPES
+        )
+
+    @pytest.mark.skipif(
+        DOC_MIME_TYPE in EXTRACTABLE_DOCUMENT_MIME_TYPES,
+        reason='.doc is enabled in flo_ai; the accept test above covers it',
+    )
+    def test_legacy_doc_rejected_while_deferred(self):
+        """.doc has no reader yet, so the gate turns it away up front.
+
+        Rejecting here beats accepting the upload and failing inside flo_ai.
+        Flips once flo_ai adds DOC_MIME_TYPE to its extractable set.
+        """
+        with pytest.raises(HTTPException) as exc_info:
             validate_inference_inputs_media(
                 [
                     {
                         'role': 'user',
                         'content': {
                             'document_base64': PDF_B64,
-                            'mime_type': mime_type,
+                            'mime_type': 'application/msword',
                         },
                     }
                 ]
             )
+
+        assert 'application/msword' in str(exc_info.value.detail)
 
     def test_document_mime_inferred_from_file_name(self):
         """A docx sent with no mime_type is resolved via its file name.

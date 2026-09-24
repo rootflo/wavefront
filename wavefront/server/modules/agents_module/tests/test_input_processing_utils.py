@@ -158,50 +158,51 @@ class TestProcessInferenceInputs:
         # base64 field should contain base64-encoded string
         assert result[0].content.base64 == document_base64_str
 
-    def test_document_message_txt_becomes_text_content(self):
-        """A text/plain document is extracted rather than rejected.
+    @pytest.mark.parametrize(
+        'mime_type, file_name',
+        [
+            ('text/plain', 'notes.txt'),
+            ('text/csv', 'q3.csv'),
+            (
+                'application/vnd.openxmlformats-officedocument'
+                '.wordprocessingml.document',
+                'report.docx',
+            ),
+            (
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'budget.xlsx',
+            ),
+        ],
+    )
+    def test_extractable_document_passes_through_as_document(
+        self, mime_type, file_name
+    ):
+        """Office and text documents reach flo_ai untouched.
 
-        This used to assert a 400: the formatter only rasterizes PDFs, so
-        anything else failed. Extractable types now never reach the formatter —
-        they are converted to a TextMessageContent at the boundary.
+        Extraction is flo_ai's job (BaseLLM.format_document_in_message). This
+        layer only gates the mime type and hands the document on, with its mime
+        type and file name intact so flo_ai can pick the right parser and label
+        the text.
         """
-        document_base64_str = base64.b64encode(b'quarterly notes').decode('utf-8')
+        document_base64_str = base64.b64encode(b'payload').decode('utf-8')
         doc_input = {
             'role': 'user',
             'content': {
                 'document_base64': document_base64_str,
-                'mime_type': 'text/plain',
-                'file_name': 'notes.txt',
+                'mime_type': mime_type,
+                'file_name': file_name,
             },
         }
 
         result = process_inference_inputs([doc_input])
 
         assert len(result) == 1
-        assert isinstance(result[0].content, TextMessageContent)
-        assert 'quarterly notes' in result[0].content.text
-        assert 'notes.txt' in result[0].content.text
-
-    def test_document_message_csv_becomes_text_content(self):
-        document_base64_str = base64.b64encode(b'region,revenue\nEast,1200\n').decode(
-            'utf-8'
-        )
-        doc_input = {
-            'role': 'user',
-            'content': {
-                'document_base64': document_base64_str,
-                'mime_type': 'text/csv',
-                'file_name': 'q3.csv',
-            },
-        }
-
-        result = process_inference_inputs([doc_input])
-
-        assert isinstance(result[0].content, TextMessageContent)
-        assert 'East,1200' in result[0].content.text
+        assert isinstance(result[0].content, DocumentMessageContent)
+        assert result[0].content.mime_type == mime_type
+        assert result[0].content.file_name == file_name
+        assert result[0].content.base64 == document_base64_str
 
     def test_pdf_still_becomes_document_content(self):
-        """The native path must be untouched by the extraction branch."""
         document_base64_str = base64.b64encode(b'%PDF-1.4 fake').decode('utf-8')
         doc_input = {
             'role': 'user',
@@ -215,8 +216,14 @@ class TestProcessInferenceInputs:
 
         assert isinstance(result[0].content, DocumentMessageContent)
 
-    def test_unreadable_extractable_document_is_a_400(self):
-        """A .docx that is not a zip fails at the boundary, not mid-run."""
+    def test_unreadable_document_is_not_rejected_at_the_boundary(self):
+        """A corrupt .docx now fails inside flo_ai, not here.
+
+        Deliberate trade-off of moving extraction into the SDK: this layer no
+        longer parses documents, so it cannot tell a readable .docx from a
+        broken one. The failure surfaces when flo_ai formats the message, as a
+        DocumentExtractionError. Pinned here so the change stays intentional.
+        """
         document_base64_str = base64.b64encode(b'definitely not a zip').decode('utf-8')
         doc_input = {
             'role': 'user',
@@ -230,30 +237,9 @@ class TestProcessInferenceInputs:
             },
         }
 
-        with pytest.raises(HTTPException) as exc_info:
-            process_inference_inputs([doc_input])
+        result = process_inference_inputs([doc_input])
 
-        assert exc_info.value.status_code == 400
-        assert 'index 0' in str(exc_info.value.detail)
-
-    def test_extractable_document_url_without_bytes_is_rejected(self):
-        """Nothing server-side fetches remote documents."""
-        doc_input = {
-            'role': 'user',
-            'content': {
-                'document_url': 'https://example.com/report.docx',
-                'mime_type': (
-                    'application/vnd.openxmlformats-officedocument'
-                    '.wordprocessingml.document'
-                ),
-            },
-        }
-
-        with pytest.raises(HTTPException) as exc_info:
-            process_inference_inputs([doc_input])
-
-        assert exc_info.value.status_code == 400
-        assert 'document_url' in str(exc_info.value.detail)
+        assert isinstance(result[0].content, DocumentMessageContent)
 
     def test_document_message_default_type(self):
         """Test DocumentMessage processing"""
@@ -341,33 +327,27 @@ class TestProcessInferenceInputs:
 class TestProcessInferenceInputsAsync:
     """The request-handler variant must keep document parsing off the loop."""
 
-    async def test_extraction_runs_off_the_event_loop_thread(self):
+    async def test_processing_runs_off_the_event_loop_thread(self):
+        """The wrapper still offloads process_inference_inputs to a thread.
+
+        Document parsing -- the original reason for this -- now happens inside
+        flo_ai, which offloads it itself; that guarantee is tested there. This
+        pins only that the wrapper keeps its own contract.
+        """
         loop_thread = threading.get_ident()
-        extraction_threads = []
+        worker_threads = []
 
-        def record_thread(*args, **kwargs):
-            extraction_threads.append(threading.get_ident())
-            return 'extracted text'
-
-        inputs = [
-            {
-                'role': 'user',
-                'content': {
-                    'document_base64': base64.b64encode(b'a,b\n1,2').decode(),
-                    'mime_type': 'text/csv',
-                    'file_name': 'data.csv',
-                },
-            }
-        ]
+        def record_thread(inputs):
+            worker_threads.append(threading.get_ident())
+            return []
 
         with patch(
-            'agents_module.utils.input_processing_utils.extract_document_text',
+            'agents_module.utils.input_processing_utils.process_inference_inputs',
             side_effect=record_thread,
         ):
-            result = await process_inference_inputs_async(inputs)
+            await process_inference_inputs_async([])
 
-        assert extraction_threads and extraction_threads[0] != loop_thread
-        assert result[0].content.text == 'extracted text'
+        assert worker_threads and worker_threads[0] != loop_thread
 
     async def test_bad_input_still_surfaces_as_a_400(self):
         with pytest.raises(HTTPException) as exc_info:

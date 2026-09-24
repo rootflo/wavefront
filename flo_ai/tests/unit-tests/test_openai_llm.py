@@ -302,11 +302,12 @@ class TestOpenAI:
 
     @pytest.mark.asyncio
     async def test_openai_format_document_includes_file_name(self):
-        """A named document is preceded by its file name, once per call.
+        """A named document is preceded by its file name, exactly once.
 
-        The rasterized pages are cached on the document, so the name block
-        must be prepended to a copy — otherwise repeated calls would stack up
-        duplicate name blocks in the cached list.
+        The base caches the formatted result per LLM class, and the name block
+        is added inside _format_native_document, which runs only on a cache
+        miss. So repeated calls -- across agent nodes and retries -- return the
+        same single-name result instead of stacking duplicate name blocks.
         """
         llm = OpenAI(api_key='test-key-123')
 
@@ -324,8 +325,10 @@ class TestOpenAI:
             {'type': 'image_url', 'image_url': {'url': 'page-1'}},
         ]
         assert second == first
-        # The cached value is the pages alone, unmutated
-        assert document._formatted_cache['OpenAI'] == pages
+        name_blocks = [b for b in second if b.get('type') == 'text']
+        assert len(name_blocks) == 1, 'name block stacked across calls'
+        # The cache holds the final formatted result, name block included.
+        assert document._formatted_cache['OpenAI'] == first
 
     @pytest.mark.asyncio
     async def test_openai_generate_error_handling(self):

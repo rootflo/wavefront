@@ -13,20 +13,45 @@
 
 export const SUPPORTED_IMAGE_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
 
-/** Sent to the model as a document block, as-is. */
-export const NATIVE_DOCUMENT_MIME_TYPES = ['application/pdf'];
+interface DocumentFormat {
+  extension: string;
+  mimeType: string;
+  label: string;
+  /** Sent to the model as a document block, as-is. Otherwise flo_ai extracts it to text. */
+  native?: boolean;
+}
 
-/** Converted to text server-side before reaching the model. */
-export const EXTRACTABLE_DOCUMENT_MIME_TYPES = [
-  'text/plain',
-  'text/csv',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.ms-excel',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+/**
+ * Every supported document format, defined once. The mime, extension and label
+ * lists below are all derived from this, so enabling a format is one entry.
+ */
+const DOCUMENT_FORMATS: DocumentFormat[] = [
+  { extension: 'pdf', mimeType: 'application/pdf', label: 'PDF', native: true },
+  { extension: 'txt', mimeType: 'text/plain', label: 'TXT' },
+  { extension: 'csv', mimeType: 'text/csv', label: 'CSV' },
+  // Legacy .doc is deferred until flo_ai has a reader for it. The server rejects
+  // it too, so listing it now would only move that rejection to after the
+  // upload. To enable it once flo_ai supports it, uncomment:
+  // { extension: 'doc', mimeType: 'application/msword', label: 'DOC' },
+  {
+    extension: 'docx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    label: 'DOCX',
+  },
+  { extension: 'xls', mimeType: 'application/vnd.ms-excel', label: 'XLS' },
+  {
+    extension: 'xlsx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    label: 'XLSX',
+  },
 ];
 
-export const SUPPORTED_DOCUMENT_MIME_TYPES = [...NATIVE_DOCUMENT_MIME_TYPES, ...EXTRACTABLE_DOCUMENT_MIME_TYPES];
+export const NATIVE_DOCUMENT_MIME_TYPES = DOCUMENT_FORMATS.filter((f) => f.native).map((f) => f.mimeType);
+
+/** Converted to text by flo_ai before reaching the model. */
+export const EXTRACTABLE_DOCUMENT_MIME_TYPES = DOCUMENT_FORMATS.filter((f) => !f.native).map((f) => f.mimeType);
+
+export const SUPPORTED_DOCUMENT_MIME_TYPES = DOCUMENT_FORMATS.map((f) => f.mimeType);
 
 /**
  * Extensions are checked alongside the MIME type because `file.type` cannot be
@@ -35,7 +60,11 @@ export const SUPPORTED_DOCUMENT_MIME_TYPES = [...NATIVE_DOCUMENT_MIME_TYPES, ...
  * A MIME-only check rejects legitimate uploads. The server resolves the
  * csv/xls ambiguity from the file's magic bytes.
  */
-export const SUPPORTED_DOCUMENT_EXTENSIONS = ['pdf', 'txt', 'csv', 'doc', 'docx', 'xls', 'xlsx'];
+export const SUPPORTED_DOCUMENT_EXTENSIONS = DOCUMENT_FORMATS.map((f) => f.extension);
+
+const MIME_TYPE_BY_EXTENSION: Record<string, string> = Object.fromEntries(
+  DOCUMENT_FORMATS.map((f) => [f.extension, f.mimeType])
+);
 
 export const SUPPORTED_IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
 
@@ -50,7 +79,7 @@ export const MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024;
 export const MAX_DOCUMENT_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 export const SUPPORTED_IMAGE_LABEL = 'JPEG, PNG, GIF, WebP';
-export const SUPPORTED_DOCUMENT_LABEL = 'PDF, TXT, CSV, DOC, DOCX, XLS, XLSX';
+export const SUPPORTED_DOCUMENT_LABEL = DOCUMENT_FORMATS.map((f) => f.label).join(', ');
 
 function extensionOf(fileName: string): string {
   const parts = fileName.split('.');
@@ -130,16 +159,7 @@ export function documentMimeTypeFor(file: File): string {
   if (file.type && SUPPORTED_DOCUMENT_MIME_TYPES.includes(file.type)) {
     return file.type;
   }
-  const byExtension: Record<string, string> = {
-    pdf: 'application/pdf',
-    txt: 'text/plain',
-    csv: 'text/csv',
-    doc: 'application/msword',
-    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    xls: 'application/vnd.ms-excel',
-    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  };
   // `||` not `??` on the tail: an unrecognised extension leaves `file.type` as
   // '', which is falsy but not nullish, so `??` would forward the empty string.
-  return byExtension[extensionOf(file.name)] ?? (file.type || 'application/octet-stream');
+  return MIME_TYPE_BY_EXTENSION[extensionOf(file.name)] ?? (file.type || 'application/octet-stream');
 }

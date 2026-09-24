@@ -12,13 +12,14 @@ import zipfile
 from unittest.mock import patch
 
 import pytest
-from agents_module.utils.document_text_extraction import (
+from flo_ai.utils.document_text_extraction import (
     CSV_MIME_TYPE,
     DOC_MIME_TYPE,
     DOCX_MIME_TYPE,
     TEXT_MIME_TYPE,
     XLS_MIME_TYPE,
     XLSX_MIME_TYPE,
+    EXTRACTABLE_DOCUMENT_MIME_TYPES,
     DocumentExtractionError,
     _collect_rows,
     extract_document_text,
@@ -207,57 +208,29 @@ class TestWindowsCsvAmbiguity:
             )
 
 
-class TestDoc:
-    def test_non_ole2_content_is_rejected_before_antiword_runs(self):
-        with patch(
-            'agents_module.utils.document_text_extraction.subprocess.run'
-        ) as mock_run:
-            with pytest.raises(DocumentExtractionError):
-                extract_document_text(
-                    b'PK\x03\x04 actually a zip', DOC_MIME_TYPE, 'x.doc'
-                )
+_DOC_ENABLED = DOC_MIME_TYPE in EXTRACTABLE_DOCUMENT_MIME_TYPES
 
-        mock_run.assert_not_called()
 
-    def test_missing_antiword_gives_an_actionable_error(self):
-        with patch(
-            'agents_module.utils.document_text_extraction.subprocess.run',
-            side_effect=FileNotFoundError(),
-        ):
-            with pytest.raises(DocumentExtractionError) as exc_info:
-                extract_document_text(OLE2_HEADER + b'body', DOC_MIME_TYPE, 'x.doc')
+@pytest.mark.skipif(
+    _DOC_ENABLED, reason='.doc is enabled; these pin the deferred contract only'
+)
+class TestDocDeferred:
+    """Legacy .doc is not implemented yet; pin the contract until it is.
 
-        assert 'Convert the file to .docx' in str(exc_info.value)
+    Skips itself once DOC_MIME_TYPE joins EXTRACTABLE_DOCUMENT_MIME_TYPES, so
+    enabling .doc does not also mean hunting down these tests. Add real .doc
+    round-trip tests alongside the reader.
+    """
 
-    def test_antiword_is_invoked_without_a_shell(self):
-        with patch(
-            'agents_module.utils.document_text_extraction.subprocess.run'
-        ) as mock_run:
-            mock_run.return_value.returncode = 0
-            mock_run.return_value.stdout = b'extracted body'
+    def test_doc_is_not_advertised_as_extractable(self):
+        """Callers gate on this set, so .doc must be rejected up front."""
+        assert DOC_MIME_TYPE not in EXTRACTABLE_DOCUMENT_MIME_TYPES
 
-            result = extract_document_text(
-                OLE2_HEADER + b'body', DOC_MIME_TYPE, 'letter.doc'
-            )
+    def test_doc_extraction_raises_an_actionable_error(self):
+        with pytest.raises(DocumentExtractionError) as exc_info:
+            extract_document_text(OLE2_HEADER + b'body', DOC_MIME_TYPE, 'old.doc')
 
-        assert 'extracted body' in result
-        kwargs = mock_run.call_args.kwargs
-        assert kwargs['shell'] is False
-        assert kwargs['timeout'] > 0
-        # The path must be an argv element, never interpolated into a string.
-        assert isinstance(mock_run.call_args.args[0], list)
-
-    def test_antiword_failure_does_not_leak_stderr_to_the_caller(self):
-        with patch(
-            'agents_module.utils.document_text_extraction.subprocess.run'
-        ) as mock_run:
-            mock_run.return_value.returncode = 1
-            mock_run.return_value.stderr = b'/tmp/secret-path.doc: parse error'
-
-            with pytest.raises(DocumentExtractionError) as exc_info:
-                extract_document_text(OLE2_HEADER + b'body', DOC_MIME_TYPE, 'x.doc')
-
-        assert '/tmp/secret-path.doc' not in str(exc_info.value)
+        assert '.docx' in str(exc_info.value)
 
 
 class TestBudgets:
@@ -279,9 +252,7 @@ class TestBudgets:
         assert 'Truncated' not in result
 
     def test_oversized_upload_is_rejected(self):
-        with patch(
-            'agents_module.utils.document_text_extraction.MAX_DOCUMENT_BYTES', 10
-        ):
+        with patch('flo_ai.utils.document_text_extraction.MAX_DOCUMENT_BYTES', 10):
             with pytest.raises(DocumentExtractionError) as exc_info:
                 extract_document_text(b'x' * 100, TEXT_MIME_TYPE, 'big.txt')
 
@@ -336,20 +307,6 @@ class TestUtf16AndNullBytes:
 
         assert '\x00' not in result
         assert 'beforeafter' in result
-
-    def test_null_bytes_from_antiword_output_are_scrubbed(self):
-        """.doc goes through an external program, so its output is arbitrary."""
-        with patch(
-            'agents_module.utils.document_text_extraction.subprocess.run'
-        ) as mock_run:
-            mock_run.return_value.returncode = 0
-            mock_run.return_value.stdout = b'clause\x00 text'
-
-            result = extract_document_text(
-                OLE2_HEADER + b'body', DOC_MIME_TYPE, 'old.doc'
-            )
-
-        assert '\x00' not in result
 
     def test_utf16_text_file_decodes_cleanly(self):
         data = 'quarterly notes\n'.encode('utf-16')

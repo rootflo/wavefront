@@ -17,15 +17,16 @@ this deployment targets. Providers with native document support (Anthropic,
 Gemini, Vertex) accept more, but gating on the narrower set keeps a workflow
 from succeeding on one agent's provider and failing on the next one's.
 
-Documents come in two kinds, and the distinction matters to the caller of this
-module rather than to the gate itself:
+Documents come in two kinds:
 
 - *Native* types reach the provider as a document block and are bounded by what
   the provider can parse -- today that is PDF alone.
-- *Extractable* types are converted to text before they ever reach flo_ai (see
-  ``document_text_extraction``), so they are bounded by what we can parse here,
-  not by the provider. That is why Word, Excel and CSV are supported even though
-  no provider this deployment targets accepts them.
+- *Extractable* types are converted to text by flo_ai when it formats the
+  message (``flo_ai.utils.document_text_extraction``), so they are bounded by
+  what flo_ai can parse, not by the provider. That is why Word, Excel and CSV
+  are supported even though no provider this deployment targets accepts them.
+  The set is imported from flo_ai rather than restated here, so this gate
+  cannot admit a type flo_ai does not know how to handle.
 """
 
 import re
@@ -33,7 +34,7 @@ from typing import Optional, Tuple
 
 from fastapi import HTTPException, status
 
-from agents_module.utils.document_text_extraction import (
+from flo_ai.utils.document_text_extraction import (
     EXTRACTABLE_DOCUMENT_MIME_TYPES,
 )
 
@@ -61,10 +62,13 @@ _MIME_ALIASES = {
     # Browsers and mail clients disagree on how to spell CSV. Note that Windows
     # reports `.csv` as `application/vnd.ms-excel`, which is indistinguishable
     # from a real legacy spreadsheet by mime alone -- that one is resolved from
-    # the file's magic bytes in `document_text_extraction`, not here.
+    # the file's magic bytes in flo_ai's document_text_extraction.
     'application/csv': 'text/csv',
     'text/comma-separated-values': 'text/csv',
     'application/vnd.msexcel': 'application/vnd.ms-excel',
+    # Legacy Word. Harmless while .doc is deferred -- the alias resolves to a
+    # type the gate still rejects -- and correct once flo_ai enables it.
+    'application/vnd.ms-word': 'application/msword',
 }
 
 # Fallback when the caller sends raw base64 with no mime_type but does send a

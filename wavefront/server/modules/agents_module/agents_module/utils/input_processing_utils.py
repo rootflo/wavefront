@@ -3,8 +3,6 @@ Utility functions for processing inference inputs
 """
 
 import asyncio
-import base64
-import binascii
 from typing import Any, List, Union
 from fastapi import HTTPException, status
 from flo_ai import (
@@ -15,11 +13,6 @@ from flo_ai import (
     UserMessage,
 )
 from common_module.log.logger import logger
-from agents_module.utils.document_text_extraction import (
-    EXTRACTABLE_DOCUMENT_MIME_TYPES,
-    DocumentExtractionError,
-    extract_document_text,
-)
 from agents_module.utils.mime_type_utils import (
     ensure_supported_document_mime_type,
     ensure_supported_image_mime_type,
@@ -124,30 +117,20 @@ def process_inference_inputs(
                         else raw_document
                     )
 
-                    # Office and CSV files are converted to text here rather
-                    # than forwarded as a document block: no provider this
-                    # deployment targets can parse them. `document_mime_type` is
-                    # None for an unresolvable mime, which means "assume PDF" --
-                    # the `in` test keeps that case on the native path.
-                    if document_mime_type in EXTRACTABLE_DOCUMENT_MIME_TYPES:
-                        document_content = TextMessageContent(
-                            text=_extract_document_to_text(
-                                base64_value=document_base64,
+                    # Office and CSV documents are passed through as-is: flo_ai
+                    # converts them to text when it formats the message for the
+                    # provider (BaseLLM.format_document_in_message), so every
+                    # provider gets them without this layer knowing about it.
+                    resolved_inputs.append(
+                        UserMessage(
+                            content=DocumentMessageContent(
+                                base64=document_base64,
                                 mime_type=document_mime_type,
-                                file_name=input_content.get('file_name'),
                                 url=input_content.get('document_url'),
-                                index=index,
+                                file_name=input_content.get('file_name'),
                             )
                         )
-                    else:
-                        document_content = DocumentMessageContent(
-                            base64=document_base64,
-                            mime_type=document_mime_type,
-                            url=input_content.get('document_url'),
-                            file_name=input_content.get('file_name'),
-                        )
-
-                    resolved_inputs.append(UserMessage(content=document_content))
+                    )
                 elif is_text_message(input_content):
                     resolved_inputs.append(
                         UserMessage(
@@ -183,63 +166,14 @@ async def process_inference_inputs_async(
 ) -> Union[UserMessage, List[Union[UserMessage, AssistantMessage]]]:
     """`process_inference_inputs`, run off the event loop, for async callers.
 
-    Office documents are decoded and parsed during processing -- a DOCX/XLSX
-    parse, or an antiword subprocess allowed up to its 30 second timeout -- and
-    on an async route that stalls every other request the worker is serving.
-
-    The background workers use it too. Today the Celery worker runs one task
-    at a time under the solo pool, and each workflow_job thread handles its
-    messages one after another, so neither has concurrent work on its loop to
-    starve -- but that is a property of how they are deployed, and this keeps
-    them correct if either starts running jobs side by side.
+    This originally existed because Office documents were parsed here, and a
+    DOCX/XLSX parse stalls every other request an async worker is serving.
+    Extraction has since moved into flo_ai, which runs it in a thread of its
+    own when formatting the message, so what remains here is light: mime
+    resolution and a data-URL split. The wrapper is kept because the controllers
+    and workflow_job already call it, and it is harmless.
     """
     return await asyncio.to_thread(process_inference_inputs, inputs)
-
-
-def _extract_document_to_text(
-    base64_value: Any,
-    mime_type: str,
-    file_name: Any,
-    url: Any,
-    index: int,
-) -> str:
-    """Decode and extract an Office/CSV document, as a 400 on any failure.
-
-    Separated from the loop only to keep the three failure modes — no bytes, bad
-    base64, unreadable document — from burying the branch they belong to.
-    """
-    if not isinstance(base64_value, str) or not base64_value:
-        # A URL is the realistic way to get here: the schema accepts
-        # `document_url`, but nothing server-side fetches remote documents, and
-        # flo_ai's default formatter refuses them too. Failing here beats
-        # handing the model an empty text block.
-        detail = (
-            f'Document at index {index} has no inline content. '
-            f'Send `document_base64`; `document_url` is not supported for '
-            f'`{mime_type}` files.'
-            if url
-            else f'Document at index {index} has no `document_base64` content.'
-        )
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
-
-    try:
-        data = base64.b64decode(base64_value, validate=True)
-    except (binascii.Error, ValueError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f'Invalid base64 document data at index {index}: {exc}',
-        ) from exc
-
-    try:
-        return extract_document_text(
-            data, mime_type, file_name if isinstance(file_name, str) else None
-        )
-    except DocumentExtractionError as exc:
-        logger.error(f'Document extraction failed at input index {index}: {exc}')
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f'Could not read the document at index {index}. {exc}',
-        ) from exc
 
 
 def validate_inference_inputs_media(

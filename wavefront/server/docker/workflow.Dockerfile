@@ -6,7 +6,6 @@ COPY --from=ghcr.io/astral-sh/uv:0.12.10 /uv /uvx /bin/
 
 RUN apt-get update && apt-get install -y \
     git \
-    antiword \
     && rm -rf /var/lib/apt/lists/*
 
 COPY wavefront/server/pyproject.toml wavefront/server/uv.lock ./

@@ -1,35 +1,29 @@
 """Text extraction for Office and plain-text documents.
 
-Documents normally reach the provider as a flo_ai ``DocumentMessageContent``,
-which each adapter either rasterizes (OpenAI/Azure, via PyMuPDF) or forwards as
-a native document block (Anthropic, Gemini). None of those paths accept Word or
-Excel: the Chat Completions API this deployment targets takes PDF only, and
-Anthropic's document block takes PDF and plain text. Bedrock's Converse API does
-accept Office formats natively, but it is not the provider this deployment
-targets.
+No provider flo_ai supports reads Word or Excel through the API shape flo_ai
+uses: OpenAI's Chat Completions takes PDF only, Anthropic's document block takes
+PDF and plain text, and Gemini reads PDF meaningfully and little else. So
+``BaseLLM.format_document_in_message`` converts these formats to text here and
+hands the model an ordinary text block. That works identically on every
+provider, including ones with no document support at all.
 
-So Office and CSV files are converted to text here, at the API boundary, and
-enter the conversation as an ordinary ``TextMessageContent``. flo_ai stays
-unchanged -- it deliberately ships no text-extraction fallback, see the
-docstring on ``BaseLLM.format_document_in_message`` -- and the formats then work
-identically on every provider, including ones with no document support at all.
+PDF is deliberately not handled here. It keeps its native path -- a document
+block where the provider accepts one, rasterized pages where it does not --
+because a vision model reading the page beats extracted text for PDFs.
 
-A note on trust: the mime type reaching this module comes from the client, and
-here it selects which parser runs. That is the same hazard
-``common_module.utils.image_formats`` documents for Pillow decoders, so every
-handler that needs a specific container verifies its magic bytes first rather
-than trusting the declared type.
+A note on trust: the mime type reaching this module usually comes from an
+end user, and here it selects which parser runs. So every handler that needs a
+specific container verifies its magic bytes first rather than trusting the
+declared type.
 """
 
 import csv
 import io
 import os
-import subprocess
-import tempfile
 import zipfile
 from typing import Callable, Dict, List, Optional, Tuple
 
-from common_module.log.logger import logger
+from flo_ai.utils.logger import logger
 
 TEXT_MIME_TYPE = 'text/plain'
 CSV_MIME_TYPE = 'text/csv'
@@ -47,7 +41,7 @@ EXTRACTABLE_DOCUMENT_MIME_TYPES = frozenset(
     {
         TEXT_MIME_TYPE,
         CSV_MIME_TYPE,
-        DOC_MIME_TYPE,
+        # DOC_MIME_TYPE is omitted until _extract_doc is implemented.
         DOCX_MIME_TYPE,
         XLS_MIME_TYPE,
         XLSX_MIME_TYPE,
@@ -89,9 +83,6 @@ MAX_DOCUMENT_BYTES = _env_int('DOCUMENT_MAX_BYTES', 50 * 1024 * 1024)
 #: otherwise inflate to gigabytes inside a worker.
 MAX_UNCOMPRESSED_BYTES = _env_int('DOCUMENT_MAX_UNCOMPRESSED_BYTES', 400 * 1024 * 1024)
 MAX_COMPRESSION_RATIO = _env_int('DOCUMENT_MAX_COMPRESSION_RATIO', 200)
-
-#: antiword is a small C program from 2005. Bound how long it may run.
-ANTIWORD_TIMEOUT_SECONDS = _env_int('DOCUMENT_ANTIWORD_TIMEOUT_SECONDS', 30)
 
 
 class DocumentExtractionError(Exception):
@@ -369,60 +360,18 @@ def _extract_xls(data: bytes, budget: int) -> Tuple[str, bool]:
 
 
 def _extract_doc(data: bytes, budget: int) -> Tuple[str, bool]:
-    """Extract text from a legacy binary .doc via antiword.
+    """Legacy binary .doc (Word 97-2003). Not implemented yet.
 
-    The only format here that needs an external program. antiword is small and
-    packaged in Debian, but it is unmaintained C parsing untrusted input, so it
-    is reached only after the OLE2 magic check and a size check, and it runs
-    with no shell and a hard timeout.
+    Deferred pending a choice of reader. The obvious one, antiword, is a system
+    binary that an SDK cannot install; the candidate pure-Python readers are
+    still being evaluated. DOC_MIME_TYPE is kept out of
+    EXTRACTABLE_DOCUMENT_MIME_TYPES until this lands, so callers gating on that
+    set reject .doc up front instead of reaching this.
     """
-    _require_magic(data, _OLE2_MAGIC, 'Word (.doc)')
-
-    with tempfile.NamedTemporaryFile(suffix='.doc', delete=False) as handle:
-        os.chmod(handle.name, 0o600)
-        handle.write(data)
-        handle.flush()
-        path = handle.name
-
-    try:
-        # `-m UTF-8.txt` selects antiword's UTF-8 output mapping; without it the
-        # output follows the container locale and mangles non-ASCII text.
-        result = subprocess.run(
-            ['antiword', '-m', 'UTF-8.txt', path],
-            capture_output=True,
-            timeout=ANTIWORD_TIMEOUT_SECONDS,
-            check=False,
-            shell=False,
-        )
-    except FileNotFoundError as exc:
-        logger.error('antiword is not installed; cannot extract .doc files')
-        raise DocumentExtractionError(
-            'Legacy .doc extraction is unavailable on this server. '
-            'Convert the file to .docx and upload it again.'
-        ) from exc
-    except subprocess.TimeoutExpired as exc:
-        raise DocumentExtractionError(
-            f'Timed out reading the .doc file after '
-            f'{ANTIWORD_TIMEOUT_SECONDS} seconds.'
-        ) from exc
-    finally:
-        try:
-            os.unlink(path)
-        except OSError:
-            logger.warning(f'Could not remove temporary file {path}')
-
-    if result.returncode != 0:
-        # stderr can name the temp path; log it, but keep it out of the response.
-        logger.error(
-            f'antiword exited {result.returncode}: '
-            f'{result.stderr.decode("utf-8", errors="replace").strip()}'
-        )
-        raise DocumentExtractionError(
-            'Could not read the .doc file. It may be corrupt, password '
-            'protected, or saved in a format antiword does not support.'
-        )
-
-    return _decode_text(result.stdout), False
+    raise DocumentExtractionError(
+        'Legacy .doc files are not supported yet. '
+        'Save the file as .docx and upload it again.'
+    )
 
 
 _Extractor = Callable[[bytes, int], Tuple[str, bool]]
@@ -520,13 +469,11 @@ def extract_document_text(
             f'Could not extract text from the file: {exc}'
         ) from exc
 
-    # U+0000 is rejected by the provider APIs and by Postgres, and the
-    # extracted text reaches both -- it is sent to the model and recorded in
-    # the execution trace (trace_utils.serialize_conversation_trace).
+    # U+0000 is rejected by the provider APIs, and by Postgres wherever a
+    # caller persists the conversation.
     #
     # Reachable on the decoded-text paths: cp1252 maps 0x00 to U+0000, so a
-    # UTF-16 file read as cp1252, a .txt holding raw NULs, or antiword output
-    # all produce them. OOXML forbids NUL outright, so for docx/xlsx this is
+    # UTF-16 file read as cp1252 or a .txt holding raw NULs produces them. OOXML forbids NUL outright, so for docx/xlsx this is
     # belt-and-braces -- done here rather than in `_decode_text` so no future
     # extractor has to remember it.
     text = text.replace('\x00', '')
