@@ -2,7 +2,6 @@
 Utility functions for processing inference inputs
 """
 
-import asyncio
 from typing import Any, List, Union
 from fastapi import HTTPException, status
 from flo_ai import (
@@ -159,21 +158,6 @@ def process_inference_inputs(
                 )
 
     return resolved_inputs
-
-
-async def process_inference_inputs_async(
-    inputs: Union[List[dict | str], str],
-) -> Union[UserMessage, List[Union[UserMessage, AssistantMessage]]]:
-    """`process_inference_inputs`, run off the event loop, for async callers.
-
-    This originally existed because Office documents were parsed here, and a
-    DOCX/XLSX parse stalls every other request an async worker is serving.
-    Extraction has since moved into flo_ai, which runs it in a thread of its
-    own when formatting the message, so what remains here is light: mime
-    resolution and a data-URL split. The wrapper is kept because the controllers
-    and workflow_job already call it, and it is harmless.
-    """
-    return await asyncio.to_thread(process_inference_inputs, inputs)
 
 
 def validate_inference_inputs_media(

@@ -6,7 +6,7 @@ from typing import Any, Dict, List, cast
 import requests
 from workflow_job.constants.auth import RootfloHeaders
 from agents_module.services.workflow_inference_service import WorkflowInferenceService
-from agents_module.utils.input_processing_utils import process_inference_inputs_async
+from agents_module.utils.input_processing_utils import process_inference_inputs
 from db_repo_module.cache.cache_manager import CacheManager
 from flo_ai import BaseMessage
 from flo_cloud.cloud_storage import CloudStorageManager
@@ -67,7 +67,7 @@ class WorkflowMessageProcessor(MessageProcessor[ProcessingResult[Dict[str, Any]]
         pipeline_job = workflow_message.body['pipeline_job']
         workflow_data = workflow_message.body['workflow_data']
 
-        resolved_inputs = await process_inference_inputs_async(pipeline_job['inputs'])
+        resolved_inputs = process_inference_inputs(pipeline_job['inputs'])
         inference_inputs: List[BaseMessage]
         if isinstance(resolved_inputs, list):
             inference_inputs = [cast(BaseMessage, item) for item in resolved_inputs]

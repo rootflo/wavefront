@@ -3,7 +3,6 @@ Tests for input_processing_utils module
 """
 
 import base64
-import threading
 import pytest
 from unittest.mock import patch
 from fastapi import HTTPException
@@ -17,7 +16,6 @@ from flo_ai import (
 
 from agents_module.utils.input_processing_utils import (
     process_inference_inputs,
-    process_inference_inputs_async,
     is_image_message,
     is_doc_message,
 )
@@ -324,34 +322,12 @@ class TestProcessInferenceInputs:
         )
 
 
-class TestProcessInferenceInputsAsync:
-    """The request-handler variant must keep document parsing off the loop."""
-
-    async def test_processing_runs_off_the_event_loop_thread(self):
-        """The wrapper still offloads process_inference_inputs to a thread.
-
-        Document parsing -- the original reason for this -- now happens inside
-        flo_ai, which offloads it itself; that guarantee is tested there. This
-        pins only that the wrapper keeps its own contract.
-        """
-        loop_thread = threading.get_ident()
-        worker_threads = []
-
-        def record_thread(inputs):
-            worker_threads.append(threading.get_ident())
-            return []
-
-        with patch(
-            'agents_module.utils.input_processing_utils.process_inference_inputs',
-            side_effect=record_thread,
-        ):
-            await process_inference_inputs_async([])
-
-        assert worker_threads and worker_threads[0] != loop_thread
-
-    async def test_bad_input_still_surfaces_as_a_400(self):
+class TestInvalidInputs:
+    def test_unknown_role_is_a_400(self):
+        """Carried over from the removed async wrapper's tests, where this was
+        the only check that a bad role surfaces as a 400 rather than a 500."""
         with pytest.raises(HTTPException) as exc_info:
-            await process_inference_inputs_async([{'role': 'system'}])
+            process_inference_inputs([{'role': 'system'}])
 
         assert exc_info.value.status_code == 400
 

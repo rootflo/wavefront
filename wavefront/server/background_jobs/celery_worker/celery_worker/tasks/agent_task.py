@@ -31,8 +31,10 @@ def _reconstruct_inputs(payload: Dict, cloud_storage) -> Any:
     Stored binary entries are fetched from cloud storage and re-encoded to base64
     so that process_inference_inputs() can handle them normally.
 
-    Blocking throughout -- storage reads, then document parsing -- so the
-    tasks call it through `asyncio.to_thread` to keep it off the event loop.
+    Blocking: each stored file is read from cloud storage synchronously and
+    base64-encoded whole, so the tasks call it through `asyncio.to_thread` to
+    keep that off the event loop. (Document parsing no longer happens here --
+    flo_ai does it, off the loop, when it formats the message.)
     """
     raw_inputs = payload['inputs']
 
