@@ -69,6 +69,28 @@ class DatabaseModuleContainer(containers.DeclarativeContainer):
         SQLAlchemyRepository[Email], model=Email, db_client=db_client
     )
 
+    # Same database, separate pool. RAG ingestion writes (bulk embedding
+    # inserts with HNSW index maintenance) can run long under load; on the
+    # shared pool that starves everything else -- including logins, which
+    # touch a completely unrelated table but wait on the same connection
+    # slots. Isolating it here means ingestion can only exhaust its own pool.
+    ingestion_db_config = providers.Factory(
+        DatabaseConfig,
+        username=config.database.username,
+        password=config.database.password,
+        host=config.database.host,
+        port=config.database.port,
+        db_name=config.database.db_name,
+        pool_size=config.database.ingestion_pool_size,
+        max_overflow=config.database.ingestion_max_overflow,
+        pool_timeout=config.database.ingestion_pool_timeout,
+        pool_recycle=config.database.ingestion_pool_recycle,
+    )
+
+    ingestion_db_client = providers.Singleton(
+        DatabaseClient, db_config=ingestion_db_config
+    )
+
     oauth_credential_repository = providers.Singleton(
         SQLAlchemyRepository[OAuthCredential],
         model=OAuthCredential,
