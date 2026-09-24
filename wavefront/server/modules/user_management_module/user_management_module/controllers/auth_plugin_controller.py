@@ -31,7 +31,7 @@ from plugins_module.utils.email_helper import is_allowed_client_redirect
 from user_management_module.user_container import UserContainer
 from user_management_module.services.user_service import UserService
 from user_management_module.utils.password_utils import verify_password
-from user_management_module.utils.user_utils import get_session_cache_key
+from user_management_module.constants.cache import get_session_cache_key
 from user_management_module.utils.user_utils import normalize_email
 
 from authenticator import AuthenticatorType
@@ -191,6 +191,8 @@ async def unified_authenticate(
 
         # Get device info from headers
         device_info = request.headers.get('User-Agent')
+
+        await user_service.invalidate_user_sessions(str(user.id))
 
         # Create new session
         session = await session_repository.create(
@@ -665,6 +667,8 @@ async def _handle_oauth_callback(
         # Get device info from headers
         device_info = request.headers.get('User-Agent')
 
+        await user_service.invalidate_user_sessions(str(user.id))
+
         # Create new session
         session = await session_repository.create(
             user_id=user.id, device_info=device_info, id=uuid4()
@@ -818,6 +822,8 @@ async def _handle_email_password_auth(
 
         # Get device info
         device_info = request.headers.get('User-Agent')
+
+        await user_service.invalidate_user_sessions(str(user.id))
 
         # Create new session
         session = await session_repository.create(

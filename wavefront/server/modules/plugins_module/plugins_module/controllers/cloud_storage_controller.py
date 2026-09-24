@@ -95,7 +95,7 @@ async def read_storage_file(
         )
     except (json.JSONDecodeError, ValueError) as e:
         return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             content=response_formatter.buildErrorResponse(
                 f'Failed to parse file as {type.value}: {str(e)}'
             ),

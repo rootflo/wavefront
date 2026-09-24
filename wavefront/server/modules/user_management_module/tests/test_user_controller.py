@@ -1,5 +1,7 @@
+import copy
 import uuid
 from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock
 
 from db_repo_module.models.resource import Resource
 from db_repo_module.models.resource import ResourceScope
@@ -8,11 +10,14 @@ from db_repo_module.models.role_resource import RoleResource
 from db_repo_module.models.session import Session
 from db_repo_module.models.user import User
 from db_repo_module.models.user_role import UserRole
+import jwt
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from user_management_module.utils.user_utils import get_session_cache_key
+from user_management_module.constants.cache import get_session_cache_key
+from user_management_module.constants.cache import password_reset_latest_key
 from flo_testing import seed_user_session as create_session
+from flo_testing.containers import DEFAULT_CONFIG
 
 
 async def setup_role_with_console_resource(test_session: AsyncSession, role_id: str):
@@ -1224,6 +1229,410 @@ async def test_reset_password_mismatched_confirmation(
     assert 'do not match' in str(response.json()).lower()
 
 
+async def test_send_reset_password_email_cooldown_returns_429(
+    test_client,
+    setup_containers,
+    mock_auth_admin_user_functions,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    _, common_container, user_container = setup_containers
+    email_sender = user_container.email_send_service()
+    email_sender.send.reset_mock()
+    common_container.cache_manager().add.return_value = False
+
+    await create_session(test_session, test_user_id, test_session_id)
+
+    response = test_client.post(
+        '/floware/v1/user/send-reset-password-email',
+        json={'email': 'reset@example.com'},
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 429
+    assert response.headers.get('retry-after') == '60'
+    email_sender.send.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_send_reset_password_email_hourly_cap_returns_429(
+    test_client,
+    setup_containers,
+    mock_auth_admin_user_functions,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    _, common_container, user_container = setup_containers
+    email_sender = user_container.email_send_service()
+    email_sender.send.reset_mock()
+    cache = common_container.cache_manager()
+    cache.add.return_value = True
+    cache.incr_with_expiry.return_value = 4
+
+    await create_session(test_session, test_user_id, test_session_id)
+
+    response = test_client.post(
+        '/floware/v1/user/send-reset-password-email',
+        json={'email': 'reset@example.com'},
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 429
+    email_sender.send.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_reset_password_rejects_replayed_token(
+    test_client,
+    setup_containers,
+    mock_auth_admin_user_functions,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    _, common_container, _ = setup_containers
+    cache = common_container.cache_manager()
+    cache.pop_str.side_effect = [test_user_id, None]
+
+    await create_session(test_session, test_user_id, test_session_id)
+
+    reset_data = {
+        'secret_token': 'mock_token',
+        'new_password': 'Test@123',
+        'confirm_password': 'Test@123',
+    }
+    first = test_client.post(
+        '/floware/v1/user/reset-password',
+        json=reset_data,
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    second = test_client.post(
+        '/floware/v1/user/reset-password',
+        json=reset_data,
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert first.status_code == 200
+    assert second.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_reset_password_rejects_token_without_purpose(
+    test_client,
+    setup_containers,
+    mock_auth_admin_user_functions,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    auth_container, _, _ = setup_containers
+    auth_container.token_service().decode_token.return_value = {
+        'code': 'mock_reset_code',
+    }
+    await create_session(test_session, test_user_id, test_session_id)
+
+    response = test_client.post(
+        '/floware/v1/user/reset-password',
+        json={
+            'secret_token': 'mock_token',
+            'new_password': 'Test@123',
+            'confirm_password': 'Test@123',
+        },
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_reset_password_rejects_malformed_token(
+    test_client,
+    setup_containers,
+    mock_auth_admin_user_functions,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    auth_container, _, _ = setup_containers
+    auth_container.token_service().decode_token.side_effect = jwt.InvalidTokenError(
+        'bad token'
+    )
+    await create_session(test_session, test_user_id, test_session_id)
+
+    response = test_client.post(
+        '/floware/v1/user/reset-password',
+        json={
+            'secret_token': 'not-a-jwt',
+            'new_password': 'Test@123',
+            'confirm_password': 'Test@123',
+        },
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_reset_password_invalidates_sessions(
+    test_client,
+    mock_auth_admin_user_functions,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    await create_session(test_session, test_user_id, test_session_id)
+
+    response = test_client.post(
+        '/floware/v1/user/reset-password',
+        json={
+            'secret_token': 'mock_token',
+            'new_password': 'Test@123',
+            'confirm_password': 'Test@123',
+        },
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+    assert response.status_code == 200
+
+    async with test_session() as session:
+        remaining = (
+            (
+                await session.execute(
+                    select(Session).where(Session.user_id == test_user_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert remaining == []
+
+
+RESET_BODY = {
+    'secret_token': 'mock_token',
+    'new_password': 'Test@123',
+    'confirm_password': 'Test@123',
+}
+
+
+async def _session_rows(test_session, user_id):
+    async with test_session() as session:
+        return (
+            (await session.execute(select(Session).where(Session.user_id == user_id)))
+            .scalars()
+            .all()
+        )
+
+
+def _config_with_cooldown(seconds: str):
+    config = copy.deepcopy(DEFAULT_CONFIG)
+    config['auth']['password_reset_cooldown_seconds'] = seconds
+    return config
+
+
+@pytest.mark.asyncio
+async def test_reset_password_update_failure_keeps_sessions(
+    test_client,
+    setup_containers,
+    mock_auth_admin_user_functions,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+    monkeypatch,
+):
+    _, _, user_container = setup_containers
+    await create_session(test_session, test_user_id, test_session_id)
+    monkeypatch.setattr(
+        user_container.user_repository(),
+        'find_one_and_update',
+        AsyncMock(return_value=None),
+    )
+
+    response = test_client.post(
+        '/floware/v1/user/reset-password',
+        json=RESET_BODY,
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+
+    assert response.status_code == 404
+    assert len(await _session_rows(test_session, test_user_id)) == 1
+
+
+@pytest.mark.asyncio
+async def test_reset_password_succeeds_when_pointer_cleanup_fails(
+    test_client,
+    setup_containers,
+    mock_auth_admin_user_functions,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    _, common_container, _ = setup_containers
+    await create_session(test_session, test_user_id, test_session_id)
+
+    def _remove(key):
+        if key.startswith('pwreset_latest_'):
+            raise RuntimeError('redis down')
+        return True
+
+    common_container.cache_manager().remove.side_effect = _remove
+
+    response = test_client.post(
+        '/floware/v1/user/reset-password',
+        json=RESET_BODY,
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+
+    assert response.status_code == 200
+    assert await _session_rows(test_session, test_user_id) == []
+
+
+@pytest.mark.asyncio
+async def test_reset_password_rejects_deleted_user(
+    test_client,
+    setup_containers,
+    mock_auth_admin_user_functions,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    _, common_container, _ = setup_containers
+    await create_session(test_session, test_user_id, test_session_id)
+    async with test_session() as session:
+        user = User(
+            email='gone@example.com',
+            password='old_hash',
+            first_name='Gone',
+            last_name='User',
+            deleted=True,
+        )
+        session.add(user)
+        await session.flush()
+        deleted_id = str(user.id)
+        await session.commit()
+    common_container.cache_manager().pop_str.side_effect = (
+        lambda key, default=None: deleted_id if key == 'mock_reset_code' else default
+    )
+
+    response = test_client.post(
+        '/floware/v1/user/reset-password',
+        json=RESET_BODY,
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+
+    assert response.status_code == 404
+    async with test_session() as session:
+        stored = await session.scalar(select(User).where(User.id == deleted_id))
+    assert stored.password == 'old_hash'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'path, body',
+    [
+        ('/floware/v1/user/reset-password', RESET_BODY),
+        ('/floware/v1/user/send-reset-password-email', {'email': 'reset@example.com'}),
+    ],
+)
+async def test_password_reset_endpoints_enforce_recaptcha(
+    test_client,
+    setup_containers,
+    core_containers,
+    mock_auth_admin_user_functions,
+    path,
+    body,
+):
+    from dependency_injector import providers
+    from user_management_module.services.recaptcha_service import RecaptchaService
+
+    enabled = RecaptchaService(
+        enabled=True, project_id='p', site_key='s', score_threshold=0.5
+    )
+    core_containers.user.recaptcha_service.override(providers.Object(enabled))
+    try:
+        response = test_client.post(path, json=body)
+    finally:
+        core_containers.user.recaptcha_service.reset_override()
+
+    assert response.status_code == 403
+    core_containers.cache_manager.pop_str.assert_not_called()
+    core_containers.email_send_service.send.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_send_reset_password_email_supersedes_previous_link(
+    test_client,
+    setup_containers,
+    mock_auth_admin_user_functions,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+):
+    _, common_container, _ = setup_containers
+    cache = common_container.cache_manager()
+    await create_session(test_session, test_user_id, test_session_id)
+    async with test_session() as session:
+        user = User(
+            email='reset@example.com',
+            password='hashedpassword',
+            first_name='Reset',
+            last_name='User',
+        )
+        session.add(user)
+        await session.flush()
+        user_id = str(user.id)
+        await session.commit()
+    pointer = password_reset_latest_key(user_id)
+    cache.pop_str.side_effect = (
+        lambda key, default=None: 'old_code' if key == pointer else default
+    )
+
+    response = test_client.post(
+        '/floware/v1/user/send-reset-password-email',
+        json={'email': 'reset@example.com'},
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+
+    assert response.status_code == 200
+    cache.remove.assert_any_call('old_code')
+    pointer_writes = [c for c in cache.add.call_args_list if c.args[:1] == (pointer,)]
+    assert len(pointer_writes) == 1
+    new_code = pointer_writes[0].args[1]
+    assert new_code != 'old_code'
+    cache.add.assert_any_call(new_code, user_id, expiry=600)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('user_config', [_config_with_cooldown('120')])
+async def test_send_reset_password_email_retry_after_follows_config(
+    test_client,
+    setup_containers,
+    mock_auth_admin_user_functions,
+    test_session,
+    test_user_id,
+    test_session_id,
+    auth_token,
+    user_config,
+):
+    _, common_container, _ = setup_containers
+    common_container.cache_manager().add.return_value = False
+    await create_session(test_session, test_user_id, test_session_id)
+
+    response = test_client.post(
+        '/floware/v1/user/send-reset-password-email',
+        json={'email': 'reset@example.com'},
+        headers={'Authorization': f'Bearer {auth_token}'},
+    )
+
+    assert response.status_code == 429
+    assert response.headers.get('retry-after') == '120'
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     'password',
@@ -2069,8 +2478,10 @@ async def test_reset_password_expired_token(
             },
             headers={'Authorization': f'Bearer {auth_token}'},
         )
-        assert response.status_code == 401
-        assert 'expired' in response.json()['meta']['error'].lower()
+        assert response.status_code == 404
+        assert (
+            "couldn't verify your identity" in response.json()['meta']['error'].lower()
+        )
     finally:
         core_containers.token_service.decode_token.side_effect = None
         core_containers.token_service.decode_token.return_value = original.return_value
