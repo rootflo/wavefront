@@ -63,6 +63,7 @@ def _knowledge_base_container(core_containers):
 
     container = KnowledgeBaseContainer(
         db_client=core_containers.db_client,
+        ingestion_db_client=core_containers.db_client,
         cache_manager=core_containers.cache_manager,
     )
 
