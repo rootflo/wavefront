@@ -116,10 +116,6 @@ def process_inference_inputs(
                         else raw_document
                     )
 
-                    # Office and CSV documents are passed through as-is: flo_ai
-                    # converts them to text when it formats the message for the
-                    # provider (BaseLLM.format_document_in_message), so every
-                    # provider gets them without this layer knowing about it.
                     resolved_inputs.append(
                         UserMessage(
                             content=DocumentMessageContent(
