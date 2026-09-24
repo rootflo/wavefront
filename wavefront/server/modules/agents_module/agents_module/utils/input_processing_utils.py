@@ -181,16 +181,17 @@ def process_inference_inputs(
 async def process_inference_inputs_async(
     inputs: Union[List[dict | str], str],
 ) -> Union[UserMessage, List[Union[UserMessage, AssistantMessage]]]:
-    """`process_inference_inputs`, run off the event loop, for request handlers.
+    """`process_inference_inputs`, run off the event loop, for async callers.
 
     Office documents are decoded and parsed during processing -- a DOCX/XLSX
     parse, or an antiword subprocess allowed up to its 30 second timeout -- and
     on an async route that stalls every other request the worker is serving.
 
-    The background workers call the sync version directly: the Celery worker
-    runs one task at a time under the solo pool, and each workflow_job thread
-    handles its messages one after another, so neither has concurrent work on
-    its loop to protect.
+    The background workers use it too. Today the Celery worker runs one task
+    at a time under the solo pool, and each workflow_job thread handles its
+    messages one after another, so neither has concurrent work on its loop to
+    starve -- but that is a property of how they are deployed, and this keeps
+    them correct if either starts running jobs side by side.
     """
     return await asyncio.to_thread(process_inference_inputs, inputs)
 

@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 from datetime import datetime, timezone
@@ -29,6 +30,9 @@ def _reconstruct_inputs(payload: Dict, cloud_storage) -> Any:
     Rebuild inputs from the clean JSON in the task payload.
     Stored binary entries are fetched from cloud storage and re-encoded to base64
     so that process_inference_inputs() can handle them normally.
+
+    Blocking throughout -- storage reads, then document parsing -- so the
+    tasks call it through `asyncio.to_thread` to keep it off the event loop.
     """
     raw_inputs = payload['inputs']
 
@@ -141,7 +145,9 @@ async def _run(task, payload: Dict) -> None:
     )
 
     try:
-        inputs = _reconstruct_inputs(payload, services.cloud_storage)
+        inputs = await asyncio.to_thread(
+            _reconstruct_inputs, payload, services.cloud_storage
+        )
         llm_config = _build_llm_config(payload.get('llm_config'))
 
         (
