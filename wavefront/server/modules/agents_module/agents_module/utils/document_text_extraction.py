@@ -102,15 +102,29 @@ class DocumentExtractionError(Exception):
     """
 
 
+_UTF16_BOMS = (b'\xff\xfe', b'\xfe\xff')
+
+
 def _decode_text(data: bytes) -> str:
     """Decode bytes that are meant to be text, tolerating common encodings.
 
-    ``utf-8-sig`` first because spreadsheets exported from Excel carry a BOM,
-    then cp1252 as the usual source of stray bytes in Windows-authored CSVs.
-    Latin-1 last: it cannot fail, so there is always a result rather than a 400
-    on a single bad byte.
+    ``utf-8-sig`` first because spreadsheets exported from Excel carry a BOM.
+
+    UTF-16 is tried next, and only when the data actually opens with a UTF-16
+    BOM. Order matters: cp1252 maps almost every byte value, so it "succeeds"
+    on UTF-16 input and yields the text interleaved with NULs
+    (``'r\\x00e\\x00g\\x00i\\x00o\\x00n'``). PowerShell ``Export-Csv`` and
+    Excel's "Save As Unicode Text" both default to UTF-16 LE, so this is an
+    ordinary file, not an edge case.
+
+    cp1252 then covers stray bytes in Windows-authored CSVs, and latin-1 last
+    because it cannot fail -- there is always a result rather than a 400 on a
+    single bad byte.
     """
-    for encoding in ('utf-8-sig', 'cp1252'):
+    encodings = ('utf-8-sig', 'utf-16', 'cp1252')
+    for encoding in encodings:
+        if encoding == 'utf-16' and not data.startswith(_UTF16_BOMS):
+            continue
         try:
             return data.decode(encoding)
         except UnicodeDecodeError:
@@ -192,24 +206,61 @@ def _trim_trailing_empty(rows: List[List[str]]) -> List[List[str]]:
     return trimmed
 
 
-def _extract_plain_text(data: bytes) -> str:
+# Every extractor takes (data, budget) so the dispatch table stays uniform.
+# Only the spreadsheet readers act on the budget: the rest produce their text in
+# a single decode or parse, where stopping early would save nothing, so they
+# leave the final cap to `_truncate`.
+
+
+def _extract_plain_text(data: bytes, budget: int) -> str:
     return _decode_text(data)
 
 
-def _extract_csv(data: bytes) -> str:
+def _extract_csv(data: bytes, budget: int) -> str:
     # Already delimited text. Decode and pass through rather than re-serializing:
     # round-tripping through the csv module would normalize the author's
     # delimiter and quoting for no benefit.
     return _decode_text(data)
 
 
-def _extract_docx(data: bytes) -> str:
+def _collect_docx_element(element, document, parts: List[str]) -> None:
+    """Append the text of one body element, descending into content controls.
+
+    Handles the three body children that carry text. ``w:sdt`` is a structured
+    document tag -- Word's content control -- and wraps its real content in a
+    ``w:sdtContent`` child. Documents built from templates, forms and contracts
+    put whole sections inside them, and matching only ``w:p``/``w:tbl`` at the
+    top level drops that text with no error.
+    """
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
+
+    tag = element.tag
+    if tag.endswith('}p'):
+        text = Paragraph(element, document).text.strip()
+        if text:
+            parts.append(text)
+    elif tag.endswith('}tbl'):
+        rows = _trim_trailing_empty(
+            [
+                [cell.text.strip() for cell in row.cells]
+                for row in Table(element, document).rows
+            ]
+        )
+        if rows:
+            parts.append(_rows_to_text(rows))
+    elif tag.endswith('}sdt'):
+        for child in element.iterchildren():
+            if child.tag.endswith('}sdtContent'):
+                for nested in child.iterchildren():
+                    _collect_docx_element(nested, document, parts)
+
+
+def _extract_docx(data: bytes, budget: int) -> str:
     _require_magic(data, _ZIP_MAGIC, 'Word (.docx)')
     _guard_zip_bomb(data)
 
     from docx import Document
-    from docx.table import Table
-    from docx.text.paragraph import Paragraph
 
     document = Document(io.BytesIO(data))
 
@@ -219,24 +270,37 @@ def _extract_docx(data: bytes) -> str:
     # belonged to.
     parts: List[str] = []
     for element in document.element.body.iterchildren():
-        tag = element.tag
-        if tag.endswith('}p'):
-            text = Paragraph(element, document).text.strip()
-            if text:
-                parts.append(text)
-        elif tag.endswith('}tbl'):
-            rows = [
-                [cell.text.strip() for cell in row.cells]
-                for row in Table(element, document).rows
-            ]
-            rows = _trim_trailing_empty(rows)
-            if rows:
-                parts.append(_rows_to_text(rows))
+        _collect_docx_element(element, document, parts)
 
     return '\n\n'.join(parts)
 
 
-def _extract_xlsx(data: bytes) -> str:
+def _collect_rows(row_values, budget: int) -> tuple[List[List[str]], int]:
+    """Format rows from an iterable, stopping once `budget` chars are collected.
+
+    Spreadsheets report their whole used range, which stray formatting can
+    stretch to hundreds of thousands of rows. Reading all of it and then
+    truncating meant a 1.6 MB / 100k-row file took ~19 seconds and threw away
+    over 99% of the result -- on the sync endpoints, that is the request
+    blocking. Stopping at the budget makes the cost proportional to what the
+    model will actually see.
+
+    Returns the rows and the character count, which the caller carries across
+    sheets so the budget spans the workbook rather than resetting per sheet.
+    """
+    rows: List[List[str]] = []
+    used = 0
+    for raw_row in row_values:
+        row = [_cell_to_str(value) for value in raw_row]
+        rows.append(row)
+        # +len(row) approximates the separators _rows_to_text will add.
+        used += sum(len(cell) for cell in row) + len(row)
+        if used >= budget:
+            break
+    return _trim_trailing_empty(rows), used
+
+
+def _extract_xlsx(data: bytes, budget: int) -> str:
     _require_magic(data, _ZIP_MAGIC, 'Excel (.xlsx)')
     _guard_zip_bomb(data)
 
@@ -247,13 +311,12 @@ def _extract_xlsx(data: bytes) -> str:
     workbook = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
     try:
         sections: List[str] = []
+        remaining = budget
         for sheet in workbook.worksheets:
-            rows = _trim_trailing_empty(
-                [
-                    [_cell_to_str(value) for value in row]
-                    for row in sheet.iter_rows(values_only=True)
-                ]
-            )
+            if remaining <= 0:
+                break
+            rows, used = _collect_rows(sheet.iter_rows(values_only=True), remaining)
+            remaining -= used
             if rows:
                 sections.append(f'### Sheet: {sheet.title}\n{_rows_to_text(rows)}')
         return '\n\n'.join(sections)
@@ -261,7 +324,7 @@ def _extract_xlsx(data: bytes) -> str:
         workbook.close()
 
 
-def _extract_xls(data: bytes) -> str:
+def _extract_xls(data: bytes, budget: int) -> str:
     _require_magic(data, _OLE2_MAGIC, 'Excel (.xls)')
 
     import xlrd
@@ -272,19 +335,20 @@ def _extract_xls(data: bytes) -> str:
         raise DocumentExtractionError(f'Could not read the .xls file: {exc}') from exc
 
     sections: List[str] = []
+    remaining = budget
     for sheet in workbook.sheets():
-        rows = _trim_trailing_empty(
-            [
-                [_cell_to_str(value) for value in sheet.row_values(index)]
-                for index in range(sheet.nrows)
-            ]
+        if remaining <= 0:
+            break
+        rows, used = _collect_rows(
+            (sheet.row_values(index) for index in range(sheet.nrows)), remaining
         )
+        remaining -= used
         if rows:
             sections.append(f'### Sheet: {sheet.name}\n{_rows_to_text(rows)}')
     return '\n\n'.join(sections)
 
 
-def _extract_doc(data: bytes) -> str:
+def _extract_doc(data: bytes, budget: int) -> str:
     """Extract text from a legacy binary .doc via antiword.
 
     The only format here that needs an external program. antiword is small and
@@ -341,7 +405,7 @@ def _extract_doc(data: bytes) -> str:
     return _decode_text(result.stdout)
 
 
-_EXTRACTORS: Dict[str, Callable[[bytes], str]] = {
+_EXTRACTORS: Dict[str, Callable[[bytes, int], str]] = {
     TEXT_MIME_TYPE: _extract_plain_text,
     CSV_MIME_TYPE: _extract_csv,
     DOC_MIME_TYPE: _extract_doc,
@@ -351,7 +415,7 @@ _EXTRACTORS: Dict[str, Callable[[bytes], str]] = {
 }
 
 
-def _resolve_extractor(data: bytes, mime_type: str) -> Callable[[bytes], str]:
+def _resolve_extractor(data: bytes, mime_type: str) -> Callable[[bytes, int], str]:
     """Pick the handler, correcting the one mime type that is routinely wrong.
 
     Windows reports ``.csv`` as ``application/vnd.ms-excel``, so that mime type
@@ -365,12 +429,19 @@ def _resolve_extractor(data: bytes, mime_type: str) -> Callable[[bytes], str]:
 
 
 def _truncate(text: str, max_chars: int) -> str:
+    """Cap the text, marking the cut so the model knows content is missing.
+
+    The marker deliberately does not quote a total. Spreadsheet extraction now
+    stops reading once it has enough, so the length here is what was collected,
+    not what the file holds -- reporting it as a total would understate the
+    document.
+    """
     if len(text) <= max_chars:
         return text
     return (
         f'{text[:max_chars]}\n\n'
-        f'[Truncated: showing the first {max_chars} of {len(text)} '
-        f'extracted characters.]'
+        f'[Truncated at {max_chars} characters; the rest of this file was '
+        f'not included.]'
     )
 
 
@@ -409,9 +480,11 @@ def extract_document_text(
             f'limit for text extraction.'
         )
 
+    budget = MAX_EXTRACTED_CHARS if max_chars is None else max_chars
+
     extractor = _resolve_extractor(data, mime_type)
     try:
-        text = extractor(data)
+        text = extractor(data, budget)
     except DocumentExtractionError:
         raise
     except Exception as exc:
@@ -420,7 +493,16 @@ def extract_document_text(
             f'Could not extract text from the file: {exc}'
         ) from exc
 
-    budget = MAX_EXTRACTED_CHARS if max_chars is None else max_chars
+    # U+0000 is rejected by the provider APIs and by Postgres, and the
+    # extracted text reaches both -- it is sent to the model and recorded in
+    # the execution trace (trace_utils.serialize_conversation_trace).
+    #
+    # Reachable on the decoded-text paths: cp1252 maps 0x00 to U+0000, so a
+    # UTF-16 file read as cp1252, a .txt holding raw NULs, or antiword output
+    # all produce them. OOXML forbids NUL outright, so for docx/xlsx this is
+    # belt-and-braces -- done here rather than in `_decode_text` so no future
+    # extractor has to remember it.
+    text = text.replace('\x00', '')
     text = _truncate(text.strip(), budget)
 
     label = f'"{file_name}"' if file_name else f'an uploaded {mime_type} file'

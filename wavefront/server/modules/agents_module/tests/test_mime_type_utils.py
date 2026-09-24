@@ -109,6 +109,76 @@ class TestResolveMimeType:
         assert resolve_mime_type() is None
 
 
+class TestGenericMimeTypesDeferToFileName:
+    """Container-generic declared types must not shadow the file extension.
+
+    Windows browsers report `.docx`/`.xlsx` as application/octet-stream or
+    application/x-zip-compressed. Taking that literally rejected files the
+    extension gate had already accepted, with a 400 after the whole upload.
+    """
+
+    DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
+    @pytest.mark.parametrize(
+        'declared',
+        ['application/octet-stream', 'application/zip', 'application/x-zip-compressed'],
+    )
+    def test_generic_defers_to_file_name(self, declared):
+        assert resolve_mime_type(mime_type=declared, file_name='report.docx') == (
+            self.DOCX
+        )
+
+    def test_generic_defers_to_url_extension(self):
+        assert (
+            resolve_mime_type(
+                mime_type='application/octet-stream',
+                url='https://x.test/a/sheet.xlsx?sig=1',
+            )
+            == self.XLSX
+        )
+
+    def test_generic_kept_when_nothing_more_specific(self):
+        """Still returned, so the rejection names the type the caller sent."""
+        assert resolve_mime_type(mime_type='application/octet-stream') == (
+            'application/octet-stream'
+        )
+
+    def test_specific_declared_type_still_wins_over_file_name(self):
+        """No regression: an explicit, meaningful mime keeps priority."""
+        assert (
+            resolve_mime_type(mime_type='application/pdf', file_name='mislabelled.docx')
+            == 'application/pdf'
+        )
+
+    def test_docx_sent_as_octet_stream_passes_the_gate(self):
+        assert (
+            ensure_supported_document_mime_type(
+                mime_type='application/octet-stream',
+                base64_value=PDF_B64,
+                file_name='report.docx',
+            )
+            == self.DOCX
+        )
+
+    def test_generic_without_a_file_name_is_still_rejected(self):
+        with pytest.raises(HTTPException) as exc_info:
+            ensure_supported_document_mime_type(
+                mime_type='application/octet-stream', base64_value=PDF_B64
+            )
+
+        assert 'application/octet-stream' in str(exc_info.value.detail)
+
+    def test_png_sent_as_octet_stream_passes_the_image_gate(self):
+        """The resolver is shared, so images benefit from the same fix."""
+        assert (
+            ensure_supported_image_mime_type(
+                mime_type='application/octet-stream', file_name='shot.png'
+            )
+            == 'image/png'
+        )
+
+
 class TestEnsureSupportedImageMimeType:
     """Test cases for the image gate"""
 

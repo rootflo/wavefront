@@ -97,6 +97,16 @@ _EXTENSION_TO_MIME = {
     'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
 }
 
+# Types that name a container rather than a format. Treated as weaker evidence
+# than a file extension by `resolve_mime_type`; see the note there.
+_GENERIC_MIME_TYPES = frozenset(
+    {
+        'application/octet-stream',
+        'application/zip',
+        'application/x-zip-compressed',
+    }
+)
+
 _DATA_URL_PATTERN = re.compile(
     r'^data:(?P<mime>[a-zA-Z0-9][a-zA-Z0-9.+-]*/[a-zA-Z0-9][a-zA-Z0-9.+-]*)'
     r'(?P<params>;[^,]*)?,(?P<payload>.*)$',
@@ -158,13 +168,30 @@ def resolve_mime_type(
     file_name: Optional[str] = None,
     url: Optional[str] = None,
 ) -> Optional[str]:
-    """Best-effort mime type for a media input, most explicit source first."""
-    return (
-        normalize_mime_type(mime_type)
-        or mime_type_from_data_url(base64_value)
+    """Best-effort mime type for a media input, most explicit source first.
+
+    A *generic* declared type is the exception to "most explicit first". A
+    browser that cannot identify a file reports ``application/octet-stream``,
+    and one that sees only the OOXML zip container reports
+    ``application/x-zip-compressed`` -- both routine on Windows for .docx and
+    .xlsx. Those name a container, not a format, so `report.docx` is the better
+    answer than either. Taking the declared value literally rejects a file the
+    extension gate had already accepted.
+
+    A generic type is still returned when nothing more specific exists, so an
+    unidentifiable upload is rejected with its real type in the message, and a
+    document with no resolvable type keeps failing open to PDF as before.
+    """
+    declared = normalize_mime_type(mime_type)
+    if declared and declared not in _GENERIC_MIME_TYPES:
+        return declared
+
+    specific = (
+        mime_type_from_data_url(base64_value)
         or mime_type_from_name(file_name)
         or mime_type_from_name(url)
     )
+    return specific or declared
 
 
 def _reject(detail: str) -> None:

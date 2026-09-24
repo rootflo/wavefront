@@ -19,6 +19,7 @@ from agents_module.utils.document_text_extraction import (
     XLS_MIME_TYPE,
     XLSX_MIME_TYPE,
     DocumentExtractionError,
+    _collect_rows,
     extract_document_text,
 )
 
@@ -247,9 +248,10 @@ class TestBudgets:
             b'x' * 5000, TEXT_MIME_TYPE, 'big.txt', max_chars=100
         )
 
-        assert (
-            '[Truncated: showing the first 100 of 5000 extracted characters.]' in result
-        )
+        # The marker quotes no total: spreadsheet extraction stops once the
+        # budget is met, so a total here would be what was read, not what the
+        # file holds.
+        assert '[Truncated at 100 characters' in result
 
     def test_text_within_budget_is_not_marked(self):
         result = extract_document_text(
@@ -283,3 +285,151 @@ class TestDispatch:
         result = extract_document_text(b'body', TEXT_MIME_TYPE, None)
 
         assert 'Contents of' in result
+
+
+class TestUtf16AndNullBytes:
+    """UTF-16 is what PowerShell Export-Csv and Excel's Unicode Text produce.
+
+    cp1252 maps almost every byte, so it "succeeds" on UTF-16 and yields the
+    text interleaved with NULs. U+0000 is rejected by the provider APIs and by
+    Postgres, and the extracted text reaches both -- it is sent to the model
+    and stored in the execution trace.
+    """
+
+    @pytest.mark.parametrize('encoding', ['utf-16', 'utf-16-le', 'utf-16-be'])
+    def test_utf16_csv_decodes_without_null_bytes(self, encoding):
+        data = 'region,revenue\nEast,1200\n'.encode(encoding)
+
+        result = extract_document_text(data, CSV_MIME_TYPE, 'ps-export.csv')
+
+        assert '\x00' not in result
+        assert 'region,revenue' in result
+        assert 'East,1200' in result
+
+    def test_raw_null_bytes_in_a_text_file_are_scrubbed(self):
+        """A .txt holding raw NULs must not carry them through.
+
+        cp1252 maps 0x00 straight to U+0000, so without the scrub this reaches
+        the provider and the stored trace verbatim.
+        """
+        result = extract_document_text(
+            b'before\x00\x00after', TEXT_MIME_TYPE, 'binary-ish.txt'
+        )
+
+        assert '\x00' not in result
+        assert 'beforeafter' in result
+
+    def test_null_bytes_from_antiword_output_are_scrubbed(self):
+        """.doc goes through an external program, so its output is arbitrary."""
+        with patch(
+            'agents_module.utils.document_text_extraction.subprocess.run'
+        ) as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stdout = b'clause\x00 text'
+
+            result = extract_document_text(
+                OLE2_HEADER + b'body', DOC_MIME_TYPE, 'old.doc'
+            )
+
+        assert '\x00' not in result
+
+    def test_utf16_text_file_decodes_cleanly(self):
+        data = 'quarterly notes\n'.encode('utf-16')
+
+        result = extract_document_text(data, TEXT_MIME_TYPE, 'notes.txt')
+
+        assert '\x00' not in result
+        assert 'quarterly notes' in result
+
+
+class TestContentControls:
+    """Word content controls (<w:sdt>) wrap content in templates and forms."""
+
+    @staticmethod
+    def _docx_with_sdt(inner_xml: str) -> bytes:
+        from docx import Document
+        from docx.oxml import parse_xml
+
+        namespace = (
+            'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+        )
+        document = Document()
+        document.add_paragraph('Outside the control')
+        document.element.body.append(
+            parse_xml(
+                f'<w:sdt {namespace}><w:sdtPr/>'
+                f'<w:sdtContent>{inner_xml}</w:sdtContent></w:sdt>'
+            )
+        )
+        buffer = io.BytesIO()
+        document.save(buffer)
+        return buffer.getvalue()
+
+    def test_paragraph_inside_content_control_is_extracted(self):
+        data = self._docx_with_sdt(
+            '<w:p><w:r><w:t>Clause 7: termination</w:t></w:r></w:p>'
+        )
+
+        result = extract_document_text(data, DOCX_MIME_TYPE, 'contract.docx')
+
+        assert 'Outside the control' in result
+        assert 'Clause 7: termination' in result
+
+    def test_table_inside_content_control_is_extracted(self):
+        row = (
+            '<w:tr>'
+            '<w:tc><w:p><w:r><w:t>Region</w:t></w:r></w:p></w:tc>'
+            '<w:tc><w:p><w:r><w:t>East</w:t></w:r></w:p></w:tc>'
+            '</w:tr>'
+        )
+
+        data = self._docx_with_sdt(f'<w:tbl>{row}</w:tbl>')
+
+        result = extract_document_text(data, DOCX_MIME_TYPE, 'form.docx')
+
+        assert 'Region,East' in result
+
+
+class TestSpreadsheetEarlyTermination:
+    def test_collect_rows_stops_at_the_budget(self):
+        """Deterministic check that the reader stops pulling rows.
+
+        Timing would be flaky, so count what the iterator actually yields: a
+        spreadsheet's used range can run to hundreds of thousands of rows and
+        reading all of them blocks the request for the >99% that is discarded.
+        """
+        pulled = 0
+
+        def endless():
+            nonlocal pulled
+            while True:
+                pulled += 1
+                yield ('some filler text value', 'another column')
+
+        rows, used = _collect_rows(endless(), 1000)
+
+        assert used >= 1000
+        assert pulled < 100, f'read {pulled} rows for a 1000 char budget'
+        assert len(rows) == pulled
+
+    def test_budget_spans_the_workbook_not_each_sheet(self):
+        data = build_xlsx(
+            {
+                'One': [[f'row {i} of sheet one'] for i in range(200)],
+                'Two': [[f'row {i} of sheet two'] for i in range(200)],
+            }
+        )
+
+        result = extract_document_text(data, XLSX_MIME_TYPE, 'two.xlsx', max_chars=200)
+
+        assert 'Truncated at 200 characters' in result
+        # The budget was spent on the first sheet, so the second never starts.
+        assert '### Sheet: Two' not in result
+
+    def test_small_sheet_is_unaffected(self):
+        data = build_xlsx({'S': [['Region', 'Revenue'], ['East', 1200]]})
+
+        result = extract_document_text(data, XLSX_MIME_TYPE, 'small.xlsx')
+
+        assert 'Truncated' not in result
+        assert 'East,1200' in result
