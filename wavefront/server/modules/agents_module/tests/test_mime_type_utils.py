@@ -499,3 +499,32 @@ class TestFileNameSafety:
             validate_inference_inputs_media(payload)
         with pytest.raises(HTTPException):
             process_inference_inputs(payload)
+
+    @pytest.mark.parametrize(
+        'wrap',
+        [76, 8, 4, 1],
+        ids=['wrapped-76', 'wrapped-8', 'wrapped-4', 'one-char-per-line'],
+    )
+    def test_header_is_read_however_the_base64_is_wrapped(self, wrap):
+        """Whitespace is skipped lazily, so the wrap width cannot hide the type.
+
+        At one character per line the header spans 4x its own length in the
+        raw string — a fixed-size prefix would not reach far enough.
+        """
+        wrapped = '\n'.join(PNG_B64[i : i + wrap] for i in range(0, len(PNG_B64), wrap))
+
+        assert (
+            ensure_supported_image_mime_type(
+                mime_type='image/png', base64_value=wrapped
+            )
+            == 'image/png'
+        )
+
+    def test_wrapping_does_not_let_a_script_through(self):
+        php = base64.b64encode(b'<?php system($_GET["c"]); ?>').decode()
+        wrapped = '\n'.join(php)
+
+        with pytest.raises(HTTPException):
+            ensure_supported_image_mime_type(
+                mime_type='image/png', base64_value=wrapped
+            )

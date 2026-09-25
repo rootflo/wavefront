@@ -23,6 +23,7 @@ boundary, with an error naming the offending input.
 import base64
 import binascii
 import re
+from itertools import islice
 from typing import Optional, Tuple
 
 from fastapi import HTTPException, status
@@ -224,16 +225,18 @@ def _decode_header(base64_value: Optional[str]) -> Optional[bytes]:
     _, stripped = split_data_url(base64_value)
     payload = stripped if stripped is not None else base64_value
 
-    # Base64 in the wild arrives line-wrapped; join it before slicing so the
-    # chunk boundary lands on a real 4-character group.
-    compact = ''.join(payload.split())
-    chunk = compact[:_HEADER_B64_CHARS]
-    chunk = chunk[: len(chunk) - len(chunk) % 4]
-    if not chunk:
+    # Base64 in the wild arrives line-wrapped, so the newlines have to come out
+    # before the chunk boundary can land on a real 4-character group. Consumed
+    # lazily and stopped at the header: stripping the whole string first cost
+    # a full copy of a multi-megabyte payload to read twenty-four bytes.
+    chars = list(islice((c for c in payload if not c.isspace()), _HEADER_B64_CHARS))
+
+    usable = len(chars) - len(chars) % 4
+    if not usable:
         return None
 
     try:
-        return base64.b64decode(chunk, validate=True)
+        return base64.b64decode(''.join(chars[:usable]), validate=True)
     except (binascii.Error, ValueError):
         # Undecodable base64 is rejected further down the pipeline, where the
         # error names the offending input. Not this function's job.
