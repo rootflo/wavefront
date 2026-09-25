@@ -5,19 +5,23 @@ documents. What flo-ai can actually *do* with them is narrower than what the
 request schema allows, and the failure today happens deep inside the provider
 call rather than at the boundary:
 
-- Images reach the provider as an OpenAI-style ``image_url`` data URL
-  (``AzureOpenAI.format_image_in_message``). Azure vision deployments read
-  PNG, JPEG, GIF and WEBP; anything else is rejected by the API, and a missing
-  mime type raises ``ValueError`` before the request is even built.
+- Images are formatted as an OpenAI-style ``image_url`` data URL, which the
+  vision APIs accept as PNG, JPEG, GIF or WEBP. Anything else is rejected by
+  the provider, and a missing mime type raises ``ValueError`` before the
+  request is even built.
 - Documents are rasterized to PNG pages by ``BaseLLM._rasterize_pdf_to_images``,
   which explicitly refuses any mime that is not a PDF.
 
-So the supported set below is the Azure OpenAI capability set, which is what
-this deployment targets. Providers with native document support (Anthropic,
-Gemini, Vertex) accept more, but gating on the narrower set keeps a workflow
-from succeeding on one agent's provider and failing on the next one's.
+The supported set below is therefore the intersection of what the providers
+accept, not the union. Some providers handle more formats natively, but an
+agent's provider is a property of its configuration: gating on the union would
+let a workflow succeed on one agent and fail on the next for reasons the
+caller cannot see. The narrow set fails the same way everywhere, at the
+boundary, with an error naming the offending input.
 """
 
+import base64
+import binascii
 import re
 from typing import Optional, Tuple
 
@@ -71,11 +75,54 @@ _EXTENSION_TO_MIME = {
     'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
 }
 
+# Everything above resolves a mime type from *metadata* — the `mime_type`
+# field, the `data:` prefix, the file name, the URL — and every one of those is
+# written by the caller. A PHP script sent as `mime_type: image/png` with
+# `file_name: shell.php` satisfies all of them.
+#
+# These are the formats' own self-identification, at a fixed offset, which the
+# caller cannot fake without actually sending a file of that type. A payload
+# whose bytes disagree with its declared type is rejected.
+_MAGIC_SIGNATURES = (
+    (0, b'\x89PNG\r\n\x1a\n', 'image/png'),
+    (0, b'\xff\xd8\xff', 'image/jpeg'),
+    (0, b'GIF87a', 'image/gif'),
+    (0, b'GIF89a', 'image/gif'),
+    (0, b'%PDF-', 'application/pdf'),
+)
+
+# WEBP is the one supported format that needs two checks: 'RIFF' at 0, then
+# 'WEBP' at 8 with the file size in between.
+_WEBP_PREFIX = b'RIFF'
+_WEBP_FORMAT = b'WEBP'
+
+# Enough for every signature above, including WEBP's byte 8-11. Read from the
+# front of the payload only — a whole multi-megabyte upload never gets decoded
+# twice just to identify it.
+_HEADER_BYTES = 24
+_HEADER_B64_CHARS = (_HEADER_BYTES // 3) * 4
+
 _DATA_URL_PATTERN = re.compile(
     r'^data:(?P<mime>[a-zA-Z0-9][a-zA-Z0-9.+-]*/[a-zA-Z0-9][a-zA-Z0-9.+-]*)'
     r'(?P<params>;[^,]*)?,(?P<payload>.*)$',
     re.DOTALL,
 )
+
+# `file_name` is scrubbed before it becomes a storage key, but it is also
+# stored verbatim and returned by the execution-read endpoints for clients to
+# render as a file list. A genuine image named `<img src=x onerror=...>.png`
+# passes every content check and still reaches the consumer's DOM.
+#
+# Blocked rather than allow-listed: an ASCII allow-list would reject any
+# non-Latin filename. These are the characters that let a name break out of
+# the context it is rendered in — HTML, a log line, a quoted header value.
+#
+# Path separators are deliberately *not* blocked. A folder upload legitimately
+# sends `folder/subfolder/report.pdf`, and a separator is harmless in a string
+# meant to be displayed. Nothing derives a path from this value: the storage key
+# is built by _safe_filename, which scrubs separately and far more strictly.
+_UNSAFE_FILE_NAME_CHARS = re.compile(r'[<>"\'&\x00-\x1f\x7f]')
+MAX_FILE_NAME_LENGTH = 255
 
 
 def normalize_mime_type(mime_type: Optional[str]) -> Optional[str]:
@@ -149,6 +196,118 @@ def _position(index: Optional[int]) -> str:
     return f' at index {index}' if index is not None else ''
 
 
+def detect_mime_type_from_bytes(data: Optional[bytes]) -> Optional[str]:
+    """Identify a payload from its magic bytes, or None if unrecognised.
+
+    Only the formats this API accepts are recognised. Anything else — a script,
+    an archive, an office document — returns None and is rejected by the
+    callers below rather than being named, since naming it would imply support.
+    """
+    if not data:
+        return None
+
+    for offset, signature, mime_type in _MAGIC_SIGNATURES:
+        if data[offset : offset + len(signature)] == signature:
+            return mime_type
+
+    if data[:4] == _WEBP_PREFIX and data[8:12] == _WEBP_FORMAT:
+        return 'image/webp'
+
+    return None
+
+
+def _decode_header(base64_value: Optional[str]) -> Optional[bytes]:
+    """Decode just enough of a base64 payload to read its magic bytes."""
+    if not isinstance(base64_value, str):
+        return None
+
+    _, stripped = split_data_url(base64_value)
+    payload = stripped if stripped is not None else base64_value
+
+    # Base64 in the wild arrives line-wrapped; join it before slicing so the
+    # chunk boundary lands on a real 4-character group.
+    compact = ''.join(payload.split())
+    chunk = compact[:_HEADER_B64_CHARS]
+    chunk = chunk[: len(chunk) - len(chunk) % 4]
+    if not chunk:
+        return None
+
+    try:
+        return base64.b64decode(chunk, validate=True)
+    except (binascii.Error, ValueError):
+        # Undecodable base64 is rejected further down the pipeline, where the
+        # error names the offending input. Not this function's job.
+        return None
+
+
+def ensure_bytes_match_mime_type(
+    declared_mime_type: str,
+    base64_value: Optional[str],
+    index: Optional[int] = None,
+) -> None:
+    """Reject a payload whose actual content contradicts its declared type.
+
+    This is what stops a script being accepted as an image: the declared type,
+    the file name and the `data:` prefix are all caller-written, but the magic
+    bytes are the file itself.
+
+    Inputs supplied by URL, path or raw bytes carry no base64 to inspect and
+    are left alone — there is nothing here to check.
+    """
+    header = _decode_header(base64_value)
+    if header is None:
+        return
+
+    actual = detect_mime_type_from_bytes(header)
+
+    if actual is None:
+        _reject(
+            f'The content of the file{_position(index)} is not a supported '
+            f'file type. It was declared as `{declared_mime_type}`, but its '
+            f'contents do not match that or any other accepted format.'
+        )
+
+    if actual != declared_mime_type:
+        _reject(
+            f'File content does not match its declared type{_position(index)}: '
+            f'declared `{declared_mime_type}`, but the contents are `{actual}`.'
+        )
+
+
+def ensure_safe_file_name(
+    file_name: Optional[str],
+    index: Optional[int] = None,
+) -> Optional[str]:
+    """Reject a file name that could not be rendered as text safely.
+
+    The name travels further than the bytes do: it is persisted and returned
+    by the execution-read endpoints, so it has to be safe for a consumer to
+    display, not merely safe to store.
+    """
+    if file_name is None:
+        return None
+
+    if not isinstance(file_name, str):
+        _reject(
+            f'Invalid file name{_position(index)}: expected a string, '
+            f'got {type(file_name).__name__}'
+        )
+
+    if len(file_name) > MAX_FILE_NAME_LENGTH:
+        _reject(
+            f'File name too long{_position(index)}: {len(file_name)} '
+            f'characters, limit is {MAX_FILE_NAME_LENGTH}.'
+        )
+
+    if _UNSAFE_FILE_NAME_CHARS.search(file_name):
+        _reject(
+            f'Invalid file name{_position(index)}: angle brackets, quotes, '
+            f'ampersands and control characters are not allowed.'
+        )
+
+    return file_name
+
+
 def ensure_supported_image_mime_type(
     mime_type: Optional[str] = None,
     base64_value: Optional[str] = None,
@@ -177,6 +336,9 @@ def ensure_supported_image_mime_type(
             f'Supported image types: {supported}'
         )
 
+    # Everything checked so far was the caller's own description of the file.
+    ensure_bytes_match_mime_type(resolved, base64_value, index)
+
     return resolved
 
 
@@ -202,5 +364,10 @@ def ensure_supported_document_mime_type(
             f'Supported document types: {supported}. '
             f'Convert the file to PDF, or send it as an image input.'
         )
+
+    # An unresolvable document mime is still allowed through above, because the
+    # formatter defaults it to PDF — so check the bytes against PDF, not
+    # against the declaration that was never made.
+    ensure_bytes_match_mime_type(resolved or 'application/pdf', base64_value, index)
 
     return resolved

@@ -8,8 +8,10 @@ from agents_module.utils.input_processing_utils import (
     validate_inference_inputs_media,
 )
 from agents_module.utils.mime_type_utils import (
+    MAX_FILE_NAME_LENGTH,
     SUPPORTED_DOCUMENT_MIME_TYPES,
     SUPPORTED_IMAGE_MIME_TYPES,
+    ensure_safe_file_name,
     ensure_supported_document_mime_type,
     ensure_supported_image_mime_type,
     normalize_mime_type,
@@ -263,3 +265,237 @@ class TestValidateInferenceInputsMedia:
 
         assert walker_exc.value.status_code == sync_exc.value.status_code
         assert walker_exc.value.detail == sync_exc.value.detail
+
+
+class TestContentSniffing:
+    """The declared type is caller-written; the magic bytes are the file.
+
+    VAPT finding: a PHP script was accepted as an image because every source
+    the gate consulted — `mime_type`, the `data:` prefix, `file_name`, `url` —
+    is supplied by the same caller sending the bytes.
+    """
+
+    PHP = base64.b64encode(b'<?php system($_GET["c"]); ?>').decode('utf-8')
+    SVG = base64.b64encode(b'<svg onload=alert(1)></svg>').decode('utf-8')
+    HTML = base64.b64encode(b'<html><script>alert(1)</script></html>').decode('utf-8')
+    ELF = base64.b64encode(b'\x7fELF\x02\x01\x01' + b'\x00' * 20).decode('utf-8')
+    ZIP = base64.b64encode(b'PK\x03\x04' + b'\x00' * 20).decode('utf-8')
+
+    @pytest.mark.parametrize(
+        'payload', [PHP, SVG, HTML, ELF, ZIP], ids=['php', 'svg', 'html', 'elf', 'zip']
+    )
+    @pytest.mark.parametrize('declared', sorted(SUPPORTED_IMAGE_MIME_TYPES))
+    def test_non_image_content_rejected_whatever_it_claims(self, payload, declared):
+        with pytest.raises(HTTPException) as exc_info:
+            ensure_supported_image_mime_type(mime_type=declared, base64_value=payload)
+
+        assert exc_info.value.status_code == 400
+
+    def test_the_reported_payload(self):
+        """The exact shape from the report: php bytes, image mime, .php name."""
+        with pytest.raises(HTTPException):
+            ensure_supported_image_mime_type(
+                mime_type='image/png',
+                base64_value=self.PHP,
+                file_name='shell.php',
+            )
+
+    def test_a_benign_extension_does_not_help_either(self):
+        """Renaming the payload to .png must not get it through."""
+        with pytest.raises(HTTPException):
+            ensure_supported_image_mime_type(
+                mime_type='image/png',
+                base64_value=self.PHP,
+                file_name='holiday.png',
+            )
+
+    def test_data_url_prefix_does_not_bypass_the_check(self):
+        with pytest.raises(HTTPException):
+            ensure_supported_image_mime_type(
+                base64_value=f'data:image/png;base64,{self.PHP}'
+            )
+
+    def test_declared_type_must_match_actual_type(self):
+        """A real PNG cannot be passed off as a JPEG."""
+        with pytest.raises(HTTPException) as exc_info:
+            ensure_supported_image_mime_type(
+                mime_type='image/jpeg', base64_value=PNG_B64
+            )
+
+        assert 'does not match' in exc_info.value.detail
+
+    def test_genuine_image_still_accepted(self):
+        assert (
+            ensure_supported_image_mime_type(
+                mime_type='image/png', base64_value=PNG_B64
+            )
+            == 'image/png'
+        )
+
+    def test_genuine_pdf_still_accepted(self):
+        assert (
+            ensure_supported_document_mime_type(
+                mime_type='application/pdf', base64_value=PDF_B64
+            )
+            == 'application/pdf'
+        )
+
+    def test_non_pdf_content_rejected_as_document(self):
+        with pytest.raises(HTTPException):
+            ensure_supported_document_mime_type(
+                mime_type='application/pdf', base64_value=self.PHP
+            )
+
+    def test_undeclared_document_is_checked_against_pdf(self):
+        """A missing mime defaults to PDF downstream, so check it against PDF."""
+        with pytest.raises(HTTPException):
+            ensure_supported_document_mime_type(base64_value=self.PHP)
+
+    def test_url_inputs_are_not_blocked(self):
+        """No base64 to inspect — there is nothing to check here."""
+        assert (
+            ensure_supported_image_mime_type(url='https://example.com/a.png')
+            == 'image/png'
+        )
+
+    def test_line_wrapped_base64_is_still_read(self):
+        """Wrapped base64 must not slip through by breaking the header slice."""
+        wrapped = '\n'.join(self.PHP[i : i + 8] for i in range(0, len(self.PHP), 8))
+
+        with pytest.raises(HTTPException):
+            ensure_supported_image_mime_type(
+                mime_type='image/png', base64_value=wrapped
+            )
+
+    def test_undecodable_base64_is_left_to_the_decoder(self):
+        """Not this gate's error to raise — it is caught with a better message."""
+        assert (
+            ensure_supported_image_mime_type(
+                mime_type='image/png', base64_value='!!!not base64!!!'
+            )
+            == 'image/png'
+        )
+
+    def test_both_paths_reject_the_payload_identically(self):
+        payload = [
+            {
+                'role': 'user',
+                'content': {
+                    'image_base64': PHP_AS_IMAGE,
+                    'mime_type': 'image/png',
+                    'file_name': 'shell.php',
+                },
+            }
+        ]
+
+        with pytest.raises(HTTPException) as walker_exc:
+            validate_inference_inputs_media(payload)
+        with pytest.raises(HTTPException) as sync_exc:
+            process_inference_inputs(payload)
+
+        assert walker_exc.value.detail == sync_exc.value.detail
+
+
+PHP_AS_IMAGE = TestContentSniffing.PHP
+
+
+class TestFileNameSafety:
+    """The name outlives the bytes: it is stored and returned for display.
+
+    _safe_filename scrubs the storage key, but file_name is persisted verbatim
+    and handed back by the execution-read endpoints, so a genuine image called
+    `<img src=x onerror=...>.png` passes every content check and still reaches
+    a consumer's DOM.
+    """
+
+    @pytest.mark.parametrize(
+        'name',
+        [
+            '<img src=x onerror=alert(1)>.png',
+            '<script>alert(1)</script>.png',
+            'a"onmouseover="alert(1).png',
+            "a'onmouseover='alert(1).png",
+            'a&lt;b.png',
+            'tab\there.png',
+            'null\x00byte.png',
+            'newline\nhere.png',
+        ],
+    )
+    def test_unsafe_names_rejected(self, name):
+        with pytest.raises(HTTPException) as exc_info:
+            ensure_safe_file_name(name)
+
+        assert exc_info.value.status_code == 400
+
+    @pytest.mark.parametrize(
+        'name',
+        [
+            'invoice.pdf',
+            'holiday photo.png',
+            'report-2026_final.pdf',
+            'facture-été.pdf',
+            'файл.png',
+            '文件.pdf',
+            'a(1).png',
+            'a[1].png',
+            'a+b=c.png',
+            'a,b;c.png',
+            '100%.png',
+            'invoices/2026/jan.pdf',
+            '../../etc/passwd',
+            'a\\b.png',
+        ],
+    )
+    def test_ordinary_names_accepted(self, name):
+        """An ASCII allow-list would have rejected half of these."""
+        assert ensure_safe_file_name(name) == name
+
+    def test_none_passes_through(self):
+        assert ensure_safe_file_name(None) is None
+
+    def test_length_cap(self):
+        assert ensure_safe_file_name('a' * MAX_FILE_NAME_LENGTH)
+
+        with pytest.raises(HTTPException) as exc_info:
+            ensure_safe_file_name('a' * (MAX_FILE_NAME_LENGTH + 1))
+
+        assert 'too long' in exc_info.value.detail
+
+    def test_non_string_rejected(self):
+        with pytest.raises(HTTPException):
+            ensure_safe_file_name(123)
+
+    def test_gate_rejects_a_genuine_image_with_an_unsafe_name(self):
+        """The bytes are fine; the name is the payload."""
+        payload = [
+            {
+                'role': 'user',
+                'content': {
+                    'image_base64': PNG_B64,
+                    'mime_type': 'image/png',
+                    'file_name': '<img src=x onerror=alert(1)>.png',
+                },
+            }
+        ]
+
+        with pytest.raises(HTTPException):
+            validate_inference_inputs_media(payload)
+        with pytest.raises(HTTPException):
+            process_inference_inputs(payload)
+
+    def test_document_names_are_checked_too(self):
+        payload = [
+            {
+                'role': 'user',
+                'content': {
+                    'document_base64': PDF_B64,
+                    'mime_type': 'application/pdf',
+                    'file_name': '<script>alert(1)</script>.pdf',
+                },
+            }
+        ]
+
+        with pytest.raises(HTTPException):
+            validate_inference_inputs_media(payload)
+        with pytest.raises(HTTPException):
+            process_inference_inputs(payload)

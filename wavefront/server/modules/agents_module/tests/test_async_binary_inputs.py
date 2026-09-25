@@ -141,3 +141,152 @@ class TestPassThrough:
         assert clean == inputs
         assert stored == []
         service.cloud_storage.save_small_file.assert_not_called()
+
+
+class TestStoredObjectNaming:
+    """The stored key's extension decides how a web server treats the object.
+
+    VAPT finding: `file_name` went into the key verbatim, so a caller chose the
+    extension — `shell.php`. It now comes from the validated mime type, and the
+    caller's name survives only as a sanitised stem.
+    """
+
+    def test_caller_cannot_choose_the_extension(self, service):
+        inputs = [
+            {
+                'role': 'user',
+                'content': {
+                    'image_base64': PNG_B64,
+                    'mime_type': 'image/png',
+                    'file_name': 'shell.php',
+                },
+            }
+        ]
+
+        service.pre_save_binary_inputs(inputs, 'p/')
+        key = service.cloud_storage.save_small_file.call_args.kwargs['key']
+
+        assert key.endswith('.png')
+        assert '.php' not in key
+
+    @pytest.mark.parametrize(
+        'file_name',
+        ['../../../etc/passwd', '..\\..\\win.ini', 'a/b/c.png', 'x.html', 'y.svg'],
+    )
+    def test_separators_and_markup_extensions_do_not_survive(self, service, file_name):
+        inputs = [
+            {
+                'role': 'user',
+                'content': {
+                    'image_base64': PNG_B64,
+                    'mime_type': 'image/png',
+                    'file_name': file_name,
+                },
+            }
+        ]
+
+        service.pre_save_binary_inputs(inputs, 'p/')
+        key = service.cloud_storage.save_small_file.call_args.kwargs['key']
+
+        assert key.startswith('p/inputs/')
+        assert '..' not in key
+        assert key.count('/') == 2
+        assert key.endswith('.png')
+
+    def test_original_name_is_still_recorded(self, service):
+        """Sanitising the key must not lose what the user called the file."""
+        inputs = [
+            {
+                'role': 'user',
+                'content': {
+                    'image_base64': PNG_B64,
+                    'mime_type': 'image/png',
+                    'file_name': 'holiday.png',
+                },
+            }
+        ]
+
+        _, stored = service.pre_save_binary_inputs(inputs, 'p/')
+
+        assert stored[0]['file_name'] == 'holiday.png'
+
+    def test_content_type_is_set_from_the_validated_mime(self, service):
+        inputs = [
+            {
+                'role': 'user',
+                'content': {'image_base64': PNG_B64, 'mime_type': 'image/png'},
+            }
+        ]
+
+        service.pre_save_binary_inputs(inputs, 'p/')
+        kwargs = service.cloud_storage.save_small_file.call_args.kwargs
+
+        assert kwargs['content_type'] == 'image/png'
+
+    def test_unsupported_mime_is_stored_as_an_opaque_download(self, service):
+        """Never echo an arbitrary caller string back as the served type."""
+        inputs = [
+            {
+                'role': 'user',
+                'content': {'image_base64': PNG_B64, 'mime_type': 'text/html'},
+            }
+        ]
+
+        service.pre_save_binary_inputs(inputs, 'p/')
+        kwargs = service.cloud_storage.save_small_file.call_args.kwargs
+
+        assert kwargs['content_type'] == 'application/octet-stream'
+
+    @pytest.mark.parametrize(
+        'mime_type', ['image/svg+xml', 'text/html', 'text/csv', 'nonsense', None]
+    )
+    def test_unsupported_mime_never_earns_a_real_extension(self, service, mime_type):
+        """_MIME_TO_EXT is wider than the gate; it must not widen the key too.
+
+        It still maps image/svg+xml to .svg, which is served inline. The gate
+        blocks that type today, so this pins the second line of defence rather
+        than a live hole.
+        """
+        content = {'image_base64': PNG_B64}
+        if mime_type is not None:
+            content['mime_type'] = mime_type
+
+        service.pre_save_binary_inputs([{'role': 'user', 'content': content}], 'p/')
+        key = service.cloud_storage.save_small_file.call_args.kwargs['key']
+
+        assert key.endswith('.bin')
+
+    def test_mime_resolved_from_file_name_when_not_declared(self, service):
+        """The gate accepts photo.png with no mime_type; storage must agree.
+
+        Resolving the extension only in the gate stored a valid image as an
+        unnamed .bin octet-stream, which the UI cannot render from the
+        presigned input_files URL.
+        """
+        inputs = [
+            {
+                'role': 'user',
+                'content': {'image_base64': PNG_B64, 'file_name': 'photo.png'},
+            }
+        ]
+
+        service.pre_save_binary_inputs(inputs, 'p/')
+        kwargs = service.cloud_storage.save_small_file.call_args.kwargs
+
+        assert kwargs['key'] == 'p/inputs/0_photo.png'
+        assert kwargs['content_type'] == 'image/png'
+
+    def test_unresolvable_mime_still_falls_back_to_bin(self, service):
+        """The file-name fallback must not become a way to name the extension."""
+        inputs = [
+            {
+                'role': 'user',
+                'content': {'image_base64': PNG_B64, 'file_name': 'payload.php'},
+            }
+        ]
+
+        service.pre_save_binary_inputs(inputs, 'p/')
+        kwargs = service.cloud_storage.save_small_file.call_args.kwargs
+
+        assert kwargs['key'] == 'p/inputs/0_payload.bin'
+        assert kwargs['content_type'] == 'application/octet-stream'

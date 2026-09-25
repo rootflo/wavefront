@@ -137,7 +137,9 @@ class TestProcessInferenceInputs:
     def test_document_message_pdf(self):
         """Test processing DocumentMessage with PDF type"""
         # Encode bytes to base64 string as expected by implementation
-        document_base64_str = base64.b64encode(b'fake_pdf_content').decode('utf-8')
+        document_base64_str = base64.b64encode(b'%PDF-1.4 fake_pdf_content').decode(
+            'utf-8'
+        )
         doc_input = {
             'role': 'user',
             'content': {
@@ -179,7 +181,7 @@ class TestProcessInferenceInputs:
 
     def test_document_message_default_type(self):
         """Test DocumentMessage processing"""
-        document_base64_str = base64.b64encode(b'content').decode('utf-8')
+        document_base64_str = base64.b64encode(b'%PDF-1.4 content').decode('utf-8')
         doc_input = {
             'role': 'user',
             'content': {'document_base64': document_base64_str},
@@ -195,7 +197,7 @@ class TestProcessInferenceInputs:
     def test_mixed_inputs(self):
         """Test processing mixed list with text, images, and documents"""
         simple_png_b64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
-        document_base64_str = base64.b64encode(b'pdf_content').decode('utf-8')
+        document_base64_str = base64.b64encode(b'%PDF-1.4 pdf_content').decode('utf-8')
 
         inputs = [
             {'role': 'user', 'content': 'Text input'},
@@ -374,7 +376,9 @@ class TestFileNamePropagation:
 
     def test_document_carries_file_name(self):
         """Test that file_name is set on DocumentMessageContent"""
-        document_base64_str = base64.b64encode(b'fake_pdf_content').decode('utf-8')
+        document_base64_str = base64.b64encode(b'%PDF-1.4 fake_pdf_content').decode(
+            'utf-8'
+        )
 
         inputs = [
             {
@@ -396,7 +400,9 @@ class TestFileNamePropagation:
     def test_media_without_file_name_defaults_to_none(self):
         """Test that omitting file_name leaves it None on image and document"""
         simple_png_b64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
-        document_base64_str = base64.b64encode(b'fake_pdf_content').decode('utf-8')
+        document_base64_str = base64.b64encode(b'%PDF-1.4 fake_pdf_content').decode(
+            'utf-8'
+        )
 
         inputs = [
             {
@@ -592,7 +598,7 @@ class TestEdgeCases:
         assert isinstance(result[2].content, TextMessageContent)
 
     def test_svg_image_rejected(self):
-        """Test that SVG is rejected - Azure vision deployments cannot read it"""
+        """Test that SVG is rejected - the vision APIs cannot read it"""
         simple_png_b64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
 
         image_input = {
