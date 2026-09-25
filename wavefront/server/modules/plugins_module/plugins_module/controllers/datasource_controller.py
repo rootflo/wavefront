@@ -1081,8 +1081,8 @@ async def create_dynamic_query(
 async def get_all_dynamic_query_yaml(
     request: Request,
     datasource_id: str,
-    limit: int = Query(50),
-    offset: int = Query(0),
+    limit: int = Query(100, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
     ),
@@ -1218,6 +1218,7 @@ async def execute_dynamic_query(
     # checking if the given query is already in cache
     cache_key = generate_cache_key(
         query_id,
+        datasource_id,
         filter,
         rls_filter_str,
         limit,
@@ -1335,7 +1336,7 @@ async def export_dynamic_query_csv(
         rls_filter_str=rls_filter_str,
     )
     filename = f'export_{query_id}_{export_hash}.csv'
-    file_key = f'dynamic_query_exports/{filename}'
+    file_key = f'dynamic_query_exports/{datasource_id}/{filename}'
 
     # If not force_fetch, return existing file from bucket if present
     if not force_fetch:

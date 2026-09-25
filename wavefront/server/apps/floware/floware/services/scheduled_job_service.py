@@ -1195,7 +1195,7 @@ class ScheduledJobService:
         subject = default_subject
 
         datasource_plugins: dict[str, DatasourcePlugin] = {}
-        yaml_by_query_id: dict[str, tuple[list, str | None]] = {}
+        yaml_by_query_id: dict[tuple[str, str], tuple[list, str | None]] = {}
 
         for spec in merged_specs:
             query_id = spec['query_id']
@@ -1208,14 +1208,17 @@ class ScheduledJobService:
             if datasource_id not in datasource_plugins:
                 plugin, _, _ = await self._get_datasource_plugin(datasource_id)
                 datasource_plugins[datasource_id] = plugin
-            if query_id not in yaml_by_query_id:
+            cache_key = (datasource_id, query_id)
+            if cache_key not in yaml_by_query_id:
                 (
                     yaml_query,
                     yaml_name,
-                ) = await self.dynamic_query_service.get_dynamic_yaml_query(query_id)
+                ) = await self.dynamic_query_service.get_dynamic_yaml_query(
+                    datasource_id, query_id
+                )
                 if not yaml_query:
                     raise ValueError(f'Dynamic query not found: {query_id}')
-                yaml_by_query_id[query_id] = (yaml_query, yaml_name)
+                yaml_by_query_id[cache_key] = (yaml_query, yaml_name)
 
         failed_recipient_user_ids: list[str] = []
         delivered_count = 0
@@ -1244,7 +1247,7 @@ class ScheduledJobService:
             for spec in merged_specs:
                 query_id = spec['query_id']
                 datasource_id = spec['datasource_id']
-                yaml_query, yaml_name = yaml_by_query_id[query_id]
+                yaml_query, yaml_name = yaml_by_query_id[(datasource_id, query_id)]
                 datasource_plugin = datasource_plugins[datasource_id]
                 filter_expr = spec.get('filter')
                 offset = spec.get('offset', 0)

@@ -34,8 +34,9 @@ class DynamicQueryService:
             if not yaml_id:
                 raise ValueError("YAML file must contain an 'id' field")
 
-            # generating file key
-            file_key = f'{self.prefix}/{yaml_id}.yaml'
+            # generating file key, partitioned per datasource so the same
+            # query name can exist independently across datasources
+            file_key = f'{self.prefix}/{datasource_id}/{yaml_id}.yaml'
 
             # Convert the dictionary to YAML string and then to bytes
             yaml_string = yaml.dump(yaml_content, default_flow_style=False)
@@ -49,10 +50,10 @@ class DynamicQueryService:
                 disable_cache=True,
             )
 
-            # strogin to db
+            # strogin to db, scoped by the composite (name, datasource_id) key
+            # so the same query name is independent per datasource
             await self.dynamic_query_repo.upsert(
-                filters={'name': yaml_id},
-                datasource_id=datasource_id,
+                filters={'name': yaml_id, 'datasource_id': datasource_id},
                 file_path=file_key,
             )
 
@@ -100,7 +101,7 @@ class DynamicQueryService:
                 yamls.append(
                     {
                         'version': splitter[1],
-                        'file': splitter[2],
+                        'file': splitter[-1],
                         'full_path': record.file_path,
                     }
                 )
@@ -173,8 +174,11 @@ class DynamicQueryService:
 
             # deleting the file from the cloud storage
             self.cloud_storage_manager.delete_file(self.bucket_name, query.file_path)
-            # deleting the record from the database
-            await self.dynamic_query_repo.delete_all(name=query_id)
+            # deleting the record from the database, scoped to this datasource
+            # so another datasource's query with the same name is untouched
+            await self.dynamic_query_repo.delete_all(
+                name=query_id, datasource_id=datasource_id
+            )
 
         except Exception as e:
             logger.error(f'Error deleting dynamic query {query_id}: {str(e)}')
