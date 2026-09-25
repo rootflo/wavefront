@@ -23,10 +23,21 @@ boundary, with an error naming the offending input.
 import base64
 import binascii
 import re
+from io import BytesIO
 from itertools import islice
 from typing import Optional, Tuple
 
+import pymupdf
 from fastapi import HTTPException, status
+from PIL import Image
+
+from common_module.log.logger import logger
+
+# What is safe to log here is metadata about the check, never the file itself.
+# The base64, the decoded bytes and `file_name` are all off limits — the first
+# two are the document's contents and the third routinely carries PII (a
+# claimant's name, a policy number). Byte size, page count, resolved format and
+# the input's index disclose none of that.
 
 SUPPORTED_IMAGE_MIME_TYPES = frozenset(
     {
@@ -102,6 +113,15 @@ _WEBP_FORMAT = b'WEBP'
 # twice just to identify it.
 _HEADER_BYTES = 24
 _HEADER_B64_CHARS = (_HEADER_BYTES // 3) * 4
+
+# Bounds the pixel buffer a single image decode may allocate. The structural
+# gate calls load(), which decodes every pixel, so an image that declares
+# enormous dimensions is a memory-exhaustion vector. Deliberately stricter than
+# Pillow's ~89 MP default, which only *warns* up to twice that before it
+# raises — this is the hard ceiling, checked before load() allocates anything.
+# Generous for real inputs: a 40 MP image is larger than any current phone
+# camera produces.
+MAX_IMAGE_PIXELS = 40_000_000
 
 _DATA_URL_PATTERN = re.compile(
     r'^data:(?P<mime>[a-zA-Z0-9][a-zA-Z0-9.+-]*/[a-zA-Z0-9][a-zA-Z0-9.+-]*)'
@@ -243,6 +263,104 @@ def _decode_header(base64_value: Optional[str]) -> Optional[bytes]:
         return None
 
 
+def _decode_base64_payload(
+    base64_value: Optional[str], index: Optional[int] = None
+) -> Optional[bytes]:
+    """Decode a whole base64 payload for the structural parser.
+
+    Returns None only when there is nothing to decode — a URL, path or bytes
+    input carries no base64, and the caller skips its parser for those. A
+    payload that IS present but does not decode is rejected here, not returned
+    as None: conflating the two let malformed base64 slip past the structural
+    parse and be accepted on an input the gate never actually inspected.
+
+    Unlike _decode_header this returns every byte, because the parser needs the
+    whole file. Whitespace is stripped first: line-wrapped base64 is common and
+    ``validate=True`` treats a newline as an illegal character.
+    """
+    if not isinstance(base64_value, str):
+        return None
+
+    _, stripped = split_data_url(base64_value)
+    payload = stripped if stripped is not None else base64_value
+
+    try:
+        return base64.b64decode(''.join(payload.split()), validate=True)
+    except (binascii.Error, ValueError):
+        _reject(f'Invalid file format{_position(index)}.')
+
+
+def _ensure_decodable_image(data: bytes, index: Optional[int]) -> None:
+    """Reject image bytes that a real decoder cannot read as an image.
+
+    The magic-byte check confirms the file *starts* like a supported image;
+    this confirms it *is* one. A payload that is only a signature followed by
+    other content — `GIF89a` then a script — passes the former and fails here.
+
+    verify() checks the file's structure but does not decode its pixels, so a
+    GIF — and some JPEGs — with a valid header but undecodable image data pass
+    it and only fail later, inside the provider call. load() decodes for real
+    and catches those at the boundary.
+    """
+    try:
+        with Image.open(BytesIO(data)) as image:
+            # Read the format before verify(), which leaves the object unusable.
+            image_format = image.format
+            image.verify()
+
+        # verify() spends the object, so reopen to decode the pixels. The
+        # declared dimensions are checked before load() allocates the buffer:
+        # Pillow only warns between its bomb threshold and twice that, and on a
+        # full decode that band is hundreds of megabytes — this cap is the hard
+        # limit, enforced before any allocation.
+        with Image.open(BytesIO(data)) as image:
+            pixels = image.size[0] * image.size[1]
+            if pixels > MAX_IMAGE_PIXELS:
+                raise ValueError(f'image exceeds the {MAX_IMAGE_PIXELS}-pixel limit')
+            image.load()
+    except Exception:
+        # A validation boundary fails closed: any reason the decoder could not
+        # read the file — an unknown format, a truncated stream, undecodable
+        # pixels, a size past the pixel cap — is a rejection, not a 500. The
+        # message stays generic on purpose: naming what failed hands a prober
+        # information about the check it is trying to get past.
+        logger.warning(
+            f'Rejected image input{_position(index)}: '
+            f'not a decodable image, {len(data)} bytes'
+        )
+        _reject(f'Invalid file format{_position(index)}.')
+
+    logger.info(
+        f'Validated image input{_position(index)}: '
+        f'{image_format}, {len(data)} bytes'
+    )
+
+
+def _ensure_decodable_pdf(data: bytes, index: Optional[int]) -> None:
+    """Reject document bytes that are not a structurally valid PDF.
+
+    ``%PDF-`` as a prefix is not a PDF any more than `GIF89a` is a GIF: a real
+    PDF has a cross-reference table and at least one page object. Opening it
+    with the parser and reading the page count forces that structure to exist.
+    """
+    try:
+        with pymupdf.open(stream=data, filetype='pdf') as document:
+            page_count = document.page_count
+            if page_count < 1:
+                raise ValueError('PDF has no pages')
+    except Exception:
+        logger.warning(
+            f'Rejected document input{_position(index)}: '
+            f'not a parseable PDF, {len(data)} bytes'
+        )
+        _reject(f'Invalid file format{_position(index)}.')
+
+    logger.info(
+        f'Validated document input{_position(index)}: '
+        f'PDF, {page_count} pages, {len(data)} bytes'
+    )
+
+
 def ensure_bytes_match_mime_type(
     declared_mime_type: str,
     base64_value: Optional[str],
@@ -264,6 +382,10 @@ def ensure_bytes_match_mime_type(
     actual = detect_mime_type_from_bytes(header)
 
     if actual is None:
+        logger.warning(
+            f'Rejected input{_position(index)}: declared `{declared_mime_type}` '
+            f'but the content matches no supported format'
+        )
         _reject(
             f'The content of the file{_position(index)} is not a supported '
             f'file type. It was declared as `{declared_mime_type}`, but its '
@@ -271,6 +393,10 @@ def ensure_bytes_match_mime_type(
         )
 
     if actual != declared_mime_type:
+        logger.warning(
+            f'Rejected input{_position(index)}: declared `{declared_mime_type}` '
+            f'but the content is `{actual}`'
+        )
         _reject(
             f'File content does not match its declared type{_position(index)}: '
             f'declared `{declared_mime_type}`, but the contents are `{actual}`.'
@@ -339,8 +465,14 @@ def ensure_supported_image_mime_type(
             f'Supported image types: {supported}'
         )
 
-    # Everything checked so far was the caller's own description of the file.
+    # Everything checked so far was the caller's own description of the file,
+    # then its first few bytes. The final check parses the whole thing: magic
+    # bytes prove a prefix, not a valid image.
     ensure_bytes_match_mime_type(resolved, base64_value, index)
+
+    data = _decode_base64_payload(base64_value, index)
+    if data is not None:
+        _ensure_decodable_image(data, index)
 
     return resolved
 
@@ -372,5 +504,9 @@ def ensure_supported_document_mime_type(
     # formatter defaults it to PDF — so check the bytes against PDF, not
     # against the declaration that was never made.
     ensure_bytes_match_mime_type(resolved or 'application/pdf', base64_value, index)
+
+    data = _decode_base64_payload(base64_value, index)
+    if data is not None:
+        _ensure_decodable_pdf(data, index)
 
     return resolved

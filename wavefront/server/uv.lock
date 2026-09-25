@@ -119,6 +119,8 @@ dependencies = [
     { name = "flo-cloud" },
     { name = "flo-utils" },
     { name = "llm-inference-config-module" },
+    { name = "pillow" },
+    { name = "pymupdf" },
     { name = "tools-module" },
 ]
 
@@ -137,6 +139,8 @@ requires-dist = [
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "flo-utils", editable = "packages/flo_utils" },
     { name = "llm-inference-config-module", editable = "modules/llm_inference_config_module" },
+    { name = "pillow", specifier = ">=11.0.0" },
+    { name = "pymupdf", specifier = ">=1.25.5,<2.0.0" },
     { name = "tools-module", editable = "modules/tools_module" },
 ]
 
