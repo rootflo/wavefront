@@ -6,11 +6,14 @@ from uuid import UUID
 
 from common_module.common_container import CommonContainer
 from common_module.log.logger import logger
+from common_module.middleware.request_id_middleware import get_current_request_id
 from common_module.response_formatter import ResponseFormatter
+from common_module.utils.guardrails import guardrail_run_scope, run_scoped_stream
 from db_repo_module.models.chatbot import Chatbot
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import JSONResponse, StreamingResponse
+from flo_ai.llm.guarded_llm import GuardrailBlocked
 
 from chatbots_module.chatbots_container import ChatbotsContainer
 from chatbots_module.models.chat_schemas import (
@@ -401,12 +404,28 @@ async def send_message(
             ),
         )
 
+    # Read while the request context is unambiguously current. The streamed
+    # path below runs after this function has returned, and resolving the id
+    # there would read whatever context happens to be current by then.
+    request_id = get_current_request_id()
+
     try:
-        llm = await chat_inference_service.resolve_llm(chatbot)
+        llm = await chat_inference_service.resolve_llm(chatbot, str(user_id))
     except ChatInferenceError as exc:
         return JSONResponse(
             status_code=status.HTTP_502_BAD_GATEWAY,
             content=response_formatter.buildErrorResponse(str(exc)),
+        )
+
+    # Before the write, and before a status code stops being available. See
+    # check_user_message: a refused turn should leave no trace in the thread,
+    # and the streaming branch below can no longer report anything but an
+    # in-band frame. Resolving the llm still comes first -- a broken config is
+    # free to detect, and there is no sense billing a safety provider for a
+    # chatbot that cannot answer either way.
+    with guardrail_run_scope(request_id):
+        await chat_inference_service.check_user_message(
+            chatbot, payload.content, str(user_id)
         )
 
     user_message = await chat_session_service.add_message(
@@ -424,13 +443,21 @@ async def send_message(
                 llm=llm,
                 session=session,
                 history=history,
+                request_id=request_id,
             ),
             media_type='text/event-stream',
             headers=SSE_HEADERS,
         )
 
     try:
-        content = await chat_inference_service.generate(llm, session, history)
+        with guardrail_run_scope(request_id):
+            content = await chat_inference_service.generate(llm, session, history)
+    except GuardrailBlocked:
+        # Handled at the app level, which already logs the operator detail and
+        # returns the decision's caller-facing message. Caught only to keep it
+        # out of the branch below, which would report a policy decision as a
+        # provider failure and invite a retry that cannot succeed.
+        raise
     except Exception:
         logger.exception(f'Chat inference failed for session {session_id}')
         return JSONResponse(
@@ -459,6 +486,7 @@ async def _stream_reply(
     llm,
     session,
     history,
+    request_id: str,
 ):
     """Yield deltas, then persist the assembled reply exactly once.
 
@@ -469,11 +497,17 @@ async def _stream_reply(
     timeouts and dropped connections -- which SSE cannot report in a status code
     anyway, hence the in-band error frame.
 
+    `request_id` is passed in for the same reason, rather than read here.
+
     Each terminal path persists explicitly rather than sharing a `finally`,
     because the disconnect path cannot yield: cleanup runs with GeneratorExit or
     CancelledError in flight, and yielding there raises "async generator ignored
     GeneratorExit". Awaiting is allowed, yielding is not -- so the disconnect
     branch saves without emitting a final event to a socket that is gone.
+
+    One consequence of guarding this path: when policy checks output, nothing
+    is released until the whole reply has been cleared, so the deltas below
+    arrive as a single chunk at the end and the reply stops being incremental.
     """
     chunks: list[str] = []
 
@@ -487,13 +521,23 @@ async def _stream_reply(
         return str(message.id)
 
     try:
-        async for delta in chat_inference_service.stream(llm, session, history):
+        # Scoped per step rather than around the loop: a scope held across a
+        # yield resets its token in whatever context resumes the generator,
+        # which on disconnect is the finaliser's, not this one. See
+        # run_scoped_stream.
+        async for delta in run_scoped_stream(
+            chat_inference_service.stream(llm, session, history), request_id
+        ):
             chunks.append(delta)
             yield f'data: {json.dumps({"content": delta})}\n\n'
     except (GeneratorExit, asyncio.CancelledError):
         # Client hung up mid-reply. Save the partial text -- the tokens were
         # already spent, and a thread ending on an unanswered question is worse
         # than one ending on a short answer.
+        #
+        # This saves nothing when policy checks output: buffering means no
+        # delta has reached `chunks` yet, so there is no partial reply to keep.
+        # The tokens are still spent, but withholding them is the point.
         #
         # Both exception types are caught because which one arrives depends on
         # how the server tears the request down: aclose() throws GeneratorExit,
@@ -508,6 +552,24 @@ async def _stream_reply(
         with contextlib.suppress(asyncio.CancelledError):
             await asyncio.shield(persist())
         raise
+    except GuardrailBlocked as exc:
+        # Nothing is persisted. A block cannot follow a delta that has already
+        # been sent: inbound content is checked before the first chunk is
+        # pulled, and an outbound block only happens in the buffered mode that
+        # releases nothing until the whole reply has been cleared.
+        if getattr(exc, 'retract', False):
+            # Would mean text was released and then withdrawn -- only possible
+            # under incremental release, which this consumer never opts into.
+            logger.error(
+                f'Guardrail asked the chat stream to retract for session '
+                f'{session.id}; text may already be on screen'
+            )
+        # The decision's own message, not MODEL_FAILURE_MESSAGE: nothing was
+        # saved and a block is not retryable, so both halves of that sentence
+        # would be wrong here.
+        logger.warning(f'Chat streaming blocked by policy for session {session.id}')
+        yield f'data: {json.dumps({"error": str(exc)})}\n\n'
+        return
     except Exception:
         # The exception itself stays in the logs -- see MODEL_FAILURE_MESSAGE.
         logger.exception(f'Chat streaming failed for session {session.id}')

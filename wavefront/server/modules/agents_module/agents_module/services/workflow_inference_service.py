@@ -10,7 +10,7 @@ from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyReposit
 from agents_module.utils.agent_guardrails import (
     apply_guardrails,
     guardrail_llm_decorator,
-    guardrail_run_scope,
+    guardrails,
 )
 from flo_ai import AriumBuilder, BaseMessage, FloUtils, Arium, Agent
 from flo_cloud.cloud_storage import CloudStorageManager
@@ -437,7 +437,7 @@ class WorkflowInferenceService:
             processed_inputs = inputs
 
         # Run workflow inference with optional event streaming
-        with guardrail_run_scope():
+        with guardrails():
             result_list: List[MessageMemoryItem] = await workflow.run(
                 processed_inputs,
                 variables=variables,

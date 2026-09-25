@@ -25,6 +25,8 @@ from .contracts import (
     PolicyDecision,
     Principal,
     ResolvedPolicy,
+    StreamCapability,
+    StreamMode,
     WorkflowStage,
 )
 from .run_context import get_run_id
@@ -196,6 +198,48 @@ class GuardrailsEngine:
         policy = await self._resolve(principal)
         return bool(policy.adapters_for(stage))
 
+    async def stream_mode(
+        self, principal: Principal, stage: WorkflowStage
+    ) -> StreamMode:
+        """How a guarded stream at ``stage`` may release chunks.
+
+        Strictest wins, and the order of the checks is the policy:
+
+        The tenant's own preference is consulted **last**, so it can only ever
+        weaken streaming. An adapter that declares itself BUFFERED has said
+        its verdict is not meaningful on a prefix; no tenant setting should be
+        able to overrule that, and putting the check last means none can.
+
+        An adapter the policy names but nothing registered returns BUFFERED
+        rather than INCREMENTAL. Such a policy fails closed on every request
+        (MISCONFIGURED is never eligible for fail-open), so under incremental
+        release every single response would be released and then retracted.
+        Buffering blocks it cleanly instead, before anything escapes.
+
+        The MONITOR check sits above both, and deliberately: in monitor mode
+        nothing is enforced, so the misconfiguration cannot block either, and
+        withholding text to protect a verdict nobody will act on is pure cost.
+        """
+        policy = await self._resolve(principal)
+        specs = policy.adapters_for(stage)
+        if not specs:
+            return StreamMode.PASSTHROUGH
+        if stage not in SUPPORTED_STAGES:
+            return StreamMode.BUFFERED
+        if policy.mode is not EnforcementMode.ENFORCE:
+            return StreamMode.OBSERVE
+
+        for spec in specs:
+            adapter = self._adapters.get(spec.name)
+            if adapter is None:
+                return StreamMode.BUFFERED
+            if adapter.stream_capability_for(spec.options) is StreamCapability.BUFFERED:
+                return StreamMode.BUFFERED
+
+        if policy.stream is StreamCapability.INCREMENTAL:
+            return StreamMode.INCREMENTAL
+        return StreamMode.BUFFERED
+
     async def preview(
         self,
         content: Any,
@@ -227,8 +271,83 @@ class GuardrailsEngine:
         if not specs:
             return PolicyDecision(policy_version=policy.version)
 
+        return await self._assess(content, policy, specs, context)
+
+    async def _assess(
+        self,
+        content: Any,
+        policy: ResolvedPolicy,
+        specs: Sequence[AdapterSpec],
+        context: EvaluationContext,
+    ) -> PolicyDecision:
+        """Run the configured adapters over ``content`` and compose a verdict.
+
+        The bare assessment, with none of the bookkeeping. What the three
+        public entry points differ in is precisely that bookkeeping — whether
+        the verdict is cached, logged and audited — so keeping it out of here
+        makes those differences the only thing that has to be read to tell
+        them apart.
+        """
         results = await self._run_adapters(content, context, specs)
         return await self._decide(content, results, policy, context, specs)
+
+    async def evaluate_prefix(
+        self,
+        content: Any,
+        principal: Principal,
+        stage: WorkflowStage,
+        destination: Optional[str] = None,
+    ) -> PolicyDecision:
+        """Advisory verdict on part of a response. Never audited, never cached.
+
+        Used by a guarded stream to decide how much of what it has so far may
+        be released. Only ``evaluate`` writes to the compliance trail, and it
+        is called once per response, on the whole response.
+
+        Not audited, because a prefix scan is not an event. Fifteen scans of a
+        growing response are one finding observed fifteen times, and fifteen
+        audit rows would report entity counts climbing as the model types --
+        which is not a record of what happened, it is a record of how it was
+        measured. Any "how many responses did PII block this week" query would
+        then be off by however many chunks the provider happened to emit.
+
+        Not cached either, in either direction. Every prefix is a distinct
+        cache key (see ``_cache_key``), so a stored prefix verdict can never be
+        read again: it is a write-once entry that evicts entries which *are*
+        re-read -- a conversation's history verdicts -- from a budget of
+        VERDICT_CACHE_CHAR_BUDGET characters charged at _ENTRY_OVERHEAD_CHARS
+        apiece. One streamed response would churn a measurable fraction of the
+        cache the policy actually depends on, to store entries that are certain
+        to be dead.
+
+        A separate method rather than ``evaluate(audit=False, cache=False)``:
+        a bypass parameter on the main entry point is reachable by accident,
+        and the accident is silent -- a future call site passing it drops
+        compliance rows nobody notices are missing. A narrowly named method
+        whose docstring says "advisory" is greppable and hard to misuse.
+        """
+        policy = await self._resolve(principal)
+        specs = policy.adapters_for(stage)
+        if not specs:
+            return PolicyDecision(policy_version=policy.version)
+
+        context = EvaluationContext(
+            workflow_stage=stage,
+            principal=principal,
+            run_id=get_run_id(),
+            destination=destination,
+            policy_version=policy.version,
+        )
+        decision = await self._assess(content, policy, specs, context)
+
+        # DEBUG, not INFO: one line per scan would drown the single line that
+        # describes the response actually delivered.
+        logger.debug(
+            f'Guardrail {stage.value} prefix -> {decision.observed_action.value} '
+            f'[ns={principal.namespace or "-"} '
+            f'agent={principal.agent_id or "-"}] {len(content)} chars'
+        )
+        return decision
 
     async def evaluate(
         self,
@@ -277,8 +396,7 @@ class GuardrailsEngine:
                 )
                 return cached
 
-        results = await self._run_adapters(content, context, specs)
-        decision = await self._decide(content, results, policy, context, specs)
+        decision = await self._assess(content, policy, specs, context)
         self._log_decision(decision, context, specs)
         await self._audit(decision, context)
 

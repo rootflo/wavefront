@@ -1,5 +1,11 @@
 import floConsoleService from '@app/api';
-import { EnforcementMode, FailureMode, GuardrailAdapterConfig, WorkflowStage } from '@app/api/guardrails-service';
+import {
+  EnforcementMode,
+  FailureMode,
+  GuardrailAdapterConfig,
+  StreamPreference,
+  WorkflowStage,
+} from '@app/api/guardrails-service';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -54,8 +60,12 @@ const canonicalJson = (value: unknown): string => {
 };
 
 /** Value-equality fingerprint of everything this editor can change. */
-const fingerprintPolicy = (isEnabled: boolean, mode: EnforcementMode, adapters: GuardrailAdapterConfig[]): string =>
-  canonicalJson({ is_enabled: isEnabled, mode, adapters });
+const fingerprintPolicy = (
+  isEnabled: boolean,
+  mode: EnforcementMode,
+  adapters: GuardrailAdapterConfig[],
+  stream: StreamPreference
+): string => canonicalJson({ is_enabled: isEnabled, mode, adapters, stream });
 
 const GuardrailsManagement: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();
@@ -68,6 +78,7 @@ const GuardrailsManagement: React.FC = () => {
   const [isEnabled, setIsEnabled] = useState(false);
   const [mode, setMode] = useState<EnforcementMode>('MONITOR');
   const [adapters, setAdapters] = useState<GuardrailAdapterConfig[]>([]);
+  const [stream, setStream] = useState<StreamPreference>('BUFFERED');
   const [saving, setSaving] = useState(false);
   const testPanelRef = useRef<PolicyTestHandle>(null);
 
@@ -96,14 +107,19 @@ const GuardrailsManagement: React.FC = () => {
     const loadedEnabled = policy?.is_enabled ?? false;
     const loadedMode = policy?.mode ?? 'MONITOR';
     const loadedAdapters = policy?.adapters ?? [];
+    const loadedStream = policy?.stream ?? 'BUFFERED';
 
     setIsEnabled(loadedEnabled);
     setMode(loadedMode);
     setAdapters(loadedAdapters);
-    setSavedFingerprint(fingerprintPolicy(loadedEnabled, loadedMode, loadedAdapters));
+    setStream(loadedStream);
+    setSavedFingerprint(fingerprintPolicy(loadedEnabled, loadedMode, loadedAdapters, loadedStream));
   }, [policy, namespace]);
 
-  const draftFingerprint = useMemo(() => fingerprintPolicy(isEnabled, mode, adapters), [isEnabled, mode, adapters]);
+  const draftFingerprint = useMemo(
+    () => fingerprintPolicy(isEnabled, mode, adapters, stream),
+    [isEnabled, mode, adapters, stream]
+  );
   const hasUnsavedChanges = savedFingerprint !== null && draftFingerprint !== savedFingerprint;
 
   const configuredByName = useMemo(() => new Map(adapters.map((adapter) => [adapter.name, adapter])), [adapters]);
@@ -149,6 +165,10 @@ const GuardrailsManagement: React.FC = () => {
         is_enabled: isEnabled,
         mode,
         adapters,
+        // Sent even when unchanged: the server replaces policy_config
+        // wholesale, so leaving it out would revert the namespace to
+        // buffered without anything on this page saying so.
+        stream,
       });
       // The refetch below lands on these same values and resets the baseline
       // anyway, but not until it returns. Moving the baseline now stops the
@@ -291,6 +311,24 @@ const GuardrailsManagement: React.FC = () => {
                     : 'Enforce blocks prompts and redacts responses. Switch here once monitor mode shows an acceptable false-positive rate.'}
                 </p>
               </div>
+
+              <Separator className="my-5" />
+
+              <div>
+                <div className="flex items-center justify-between gap-3">
+                  <Label className="text-base font-semibold">Stream responses</Label>
+                  <Switch
+                    checked={stream === 'INCREMENTAL'}
+                    disabled={!isEnabled}
+                    onCheckedChange={(checked) => setStream(checked ? 'INCREMENTAL' : 'BUFFERED')}
+                  />
+                </div>
+                <p className="mt-1.5 text-sm text-gray-600">
+                  {stream === 'INCREMENTAL'
+                    ? 'Responses appear as they are written, with the end held back until it has been checked. Only providers whose findings are span-local support this; if any configured check does not, the whole response is withheld regardless of this setting.'
+                    : 'Responses are withheld until the whole of them has been checked, so nothing reaches the user before the verdict. Turning this on trades some of that delay for text appearing as it is written.'}
+                </p>
+              </div>
             </section>
 
             <div>
@@ -299,8 +337,8 @@ const GuardrailsManagement: React.FC = () => {
                 cards scroll underneath this, and a transparent header would let
                 their text show through it.
               */}
-              <div className="sticky top-0 z-10 bg-white pb-4">
-                <h2 className="text-lg font-semibold text-gray-900">Safety checks</h2>
+              <div className="sticky top-0 z-10 pb-4">
+                <h2 className="text-lg font-semibold">Safety checks</h2>
                 <p className="mt-1 text-sm text-gray-600">
                   Each check runs at the stages you select. Checks not enabled here are never called.
                 </p>

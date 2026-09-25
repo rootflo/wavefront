@@ -15,6 +15,8 @@ from flo_ai.guardrails import (
     WorkflowStage,
 )
 from flo_ai.guardrails.adapters.base_adapter import BaseAdapter
+from flo_ai.guardrails.contracts import StreamCapability
+from flo_ai.guardrails.stream_guard import GUARDRAIL_CONTROL_KEY, is_control_chunk
 from flo_ai.llm.base_llm import BaseLLM
 from flo_ai.llm.guarded_llm import (
     MAX_CONCURRENT_CHECKS,
@@ -163,6 +165,29 @@ def policy_with(version, stages=(BEFORE,), mode=EnforcementMode.ENFORCE):
     )
 
 
+class IncrementalAdapter(ScriptedAdapter):
+    """An adapter whose findings are span-local, like Presidio's."""
+
+    stream_capability = StreamCapability.INCREMENTAL
+
+
+class MetadataLLM(FakeLLM):
+    """Emits a chunk carrying no text, as a provider reporting usage would."""
+
+    def __init__(self, reply='model reply', metadata=None):
+        super().__init__(reply=reply)
+        self.metadata = metadata or {'usage': {'total_tokens': 7}}
+        self.chunks_yielded = 0
+
+    async def stream(self, messages, functions=None, output_schema=None, **kwargs):
+        self.seen_messages = messages
+        for word in self.reply.split():
+            self.chunks_yielded += 1
+            yield {'content': word + ' '}
+        self.chunks_yielded += 1
+        yield self.metadata
+
+
 def make(
     behaviour='allow',
     stages=(BEFORE,),
@@ -172,12 +197,16 @@ def make(
     reply='model reply',
     cache_chars=None,
     adapter=None,
+    stream=StreamCapability.BUFFERED,
+    supports_retract=False,
+    inner=None,
 ):
     adapter = adapter or ScriptedAdapter(behaviour=behaviour, transform_to=transform_to)
     policy = ResolvedPolicy(
         is_enabled=enabled,
         mode=mode,
         adapters=(AdapterSpec(name='scripted', stages=tuple(stages)),),
+        stream=stream,
     )
     # cache_chars=0 turns the engine's verdict cache off, for the tests that
     # care about how often a provider is actually asked.
@@ -185,8 +214,14 @@ def make(
     engine = GuardrailsEngine(
         resolver=StaticPolicyResolver(policy), adapters=[adapter], **extra
     )
-    inner = FakeLLM(reply=reply)
-    return GuardedLLM(inner, engine, Principal(namespace='acme')), inner, adapter
+    inner = inner or FakeLLM(reply=reply)
+    guarded = GuardedLLM(
+        inner,
+        engine,
+        Principal(namespace='acme'),
+        supports_retract=supports_retract,
+    )
+    return guarded, inner, adapter
 
 
 class TestSubstitutability:
@@ -435,7 +470,13 @@ class TestStreaming:
         assert inner.seen_messages is None
 
     async def test_output_check_blocks_before_any_chunk_is_released(self):
-        """A delivered chunk cannot be recalled, so nothing may escape early."""
+        """A delivered chunk cannot be recalled, so nothing may escape early.
+
+        The regression guard for the buffered guarantee. It is *meant* to be
+        absolute, so do not relax it when adding incremental cases below: a
+        policy that has not opted into incremental release still gets this,
+        and this assertion is what says so.
+        """
         guarded, _, _ = make(behaviour='block', stages=(AFTER,), reply='harmful text')
 
         released = []
@@ -446,6 +487,7 @@ class TestStreaming:
         assert released == []
 
     async def test_output_transform_replaces_the_stream(self):
+        """Also a regression guard: buffered mode collapses to the rewrite."""
         guarded, _, _ = make(
             behaviour='transform',
             stages=(AFTER,),
@@ -456,6 +498,156 @@ class TestStreaming:
         chunks = [c async for c in guarded.stream([{'role': 'user', 'content': 'hi'}])]
 
         assert ''.join(c['content'] for c in chunks) == '<redacted>'
+
+    async def test_buffered_transform_keeps_non_content_chunks(self):
+        """Regression: the rewrite used to return early and drop these.
+
+        A usage or finish-reason chunk is not model output and is not what the
+        policy objected to, but the old transform path yielded the redaction
+        and returned, so every one of them vanished whenever a redaction
+        fired. The wrapper was a silent filter rather than transparent.
+        """
+        inner = MetadataLLM(reply='my number is 555-0100')
+        guarded, _, _ = make(
+            behaviour='transform',
+            stages=(AFTER,),
+            transform_to='<redacted>',
+            inner=inner,
+        )
+
+        chunks = [c async for c in guarded.stream([{'role': 'user', 'content': 'hi'}])]
+
+        assert inner.metadata in chunks
+        text = ''.join(c['content'] for c in chunks if 'content' in c)
+        assert text == '<redacted>'
+
+    async def test_one_buffered_adapter_vetoes_incremental_release(self):
+        """Strictest wins: the tenant's preference cannot overrule an adapter.
+
+        ScriptedAdapter inherits BUFFERED, so even with the policy asking for
+        incremental release the behaviour must be indistinguishable from
+        buffered -- nothing out before the terminal verdict.
+        """
+        guarded, _, _ = make(
+            behaviour='block',
+            stages=(AFTER,),
+            reply='some long harmful text ' * 40,
+            stream=StreamCapability.INCREMENTAL,
+            supports_retract=True,
+        )
+
+        released = []
+        with pytest.raises(GuardrailBlocked):
+            async for chunk in guarded.stream([{'role': 'user', 'content': 'hi'}]):
+                released.append(chunk)
+
+        assert released == []
+
+    async def test_incremental_releases_before_the_provider_is_done(self):
+        """The point of the whole exercise: text out while more is arriving."""
+        inner = MetadataLLM(reply='word ' * 400)
+        guarded, _, _ = make(
+            stages=(AFTER,),
+            adapter=IncrementalAdapter(),
+            stream=StreamCapability.INCREMENTAL,
+            supports_retract=True,
+            inner=inner,
+        )
+
+        # How much the provider had produced when the consumer saw its first
+        # text. Under buffering this is everything; the whole point of
+        # incremental release is that it is not.
+        produced_at_first_release = None
+        async for chunk in guarded.stream([{'role': 'user', 'content': 'hi'}]):
+            if chunk.get('content'):
+                produced_at_first_release = inner.chunks_yielded
+                break
+
+        total = 401  # 400 words plus the trailing metadata chunk
+        assert produced_at_first_release is not None, 'nothing was ever released'
+        assert produced_at_first_release < total, (
+            'the first chunk arrived only once the provider had finished, '
+            'which is buffering'
+        )
+
+    async def test_a_call_site_that_cannot_retract_gets_buffering(self):
+        """Two parties have to agree, and the consumer is the other one."""
+        guarded, _, _ = make(
+            behaviour='block',
+            stages=(AFTER,),
+            reply='some long harmful text ' * 40,
+            adapter=IncrementalAdapter(behaviour='block'),
+            stream=StreamCapability.INCREMENTAL,
+            supports_retract=False,
+        )
+
+        released = []
+        with pytest.raises(GuardrailBlocked) as caught:
+            async for chunk in guarded.stream([{'role': 'user', 'content': 'hi'}]):
+                released.append(chunk)
+
+        assert released == []
+        assert not caught.value.retract, 'nothing escaped, so nothing to withdraw'
+
+    async def test_a_late_block_reports_that_text_escaped(self):
+        """The consumer needs to know whether it has something to withdraw."""
+        state = {'seen': 0}
+
+        class LateBlock(IncrementalAdapter):
+            async def evaluate(self, request):
+                state['seen'] += 1
+                # Clean while the response is being released, refused at the
+                # end -- the case the retract flag exists for.
+                if len(request.content) > 1500:
+                    return await ScriptedAdapter(behaviour='block').evaluate(request)
+                return self._allow()
+
+        guarded, _, _ = make(
+            stages=(AFTER,),
+            reply='word ' * 400,
+            adapter=LateBlock(),
+            stream=StreamCapability.INCREMENTAL,
+            supports_retract=True,
+        )
+
+        released = []
+        with pytest.raises(GuardrailBlocked) as caught:
+            async for chunk in guarded.stream([{'role': 'user', 'content': 'hi'}]):
+                released.append(chunk)
+
+        assert released, 'this test is meaningless if nothing was released'
+        assert caught.value.retract
+
+    async def test_a_control_chunk_carries_no_content(self):
+        """So a consumer keyed on 'content' ignores it instead of appending."""
+
+        class LateRedaction(IncrementalAdapter):
+            async def evaluate(self, request):
+                if 'word' in request.content and len(request.content) > 1500:
+                    return CheckResult(
+                        status=AssessmentStatus.VIOLATION,
+                        action=PolicyAction.TRANSFORM,
+                        adapter=self.name,
+                        transformed_content='<clean>',
+                        message='redacted',
+                    )
+                return self._allow()
+
+        guarded, _, _ = make(
+            stages=(AFTER,),
+            reply='word ' * 400,
+            adapter=LateRedaction(),
+            stream=StreamCapability.INCREMENTAL,
+            supports_retract=True,
+        )
+
+        chunks = [c async for c in guarded.stream([{'role': 'user', 'content': 'hi'}])]
+        controls = [c for c in chunks if is_control_chunk(c)]
+
+        assert controls, 'a rewrite of released text must announce itself'
+        for control in controls:
+            assert 'content' not in control
+            assert control[GUARDRAIL_CONTROL_KEY]['action'] == 'retract'
 
 
 class TestMonitorMode:

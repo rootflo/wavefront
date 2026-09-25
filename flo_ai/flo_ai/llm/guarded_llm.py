@@ -10,9 +10,15 @@ from flo_ai.guardrails.contracts import (
     PolicyAction,
     PolicyDecision,
     Principal,
+    StreamMode,
     WorkflowStage,
 )
 from flo_ai.guardrails.engine import GuardrailsEngine
+from flo_ai.guardrails.stream_guard import (
+    StreamAction,
+    StreamGuard,
+    control_chunk,
+)
 from flo_ai.llm.base_llm import BaseLLM
 from flo_ai.models.agent_error import AgentError
 from flo_ai.utils.logger import logger
@@ -79,6 +85,7 @@ class GuardrailBlocked(AgentError):
         message: str,
         decision: Optional[PolicyDecision] = None,
         message_index: Optional[int] = None,
+        retract: bool = False,
     ):
         super().__init__(message)
         self.decision = decision
@@ -88,6 +95,12 @@ class GuardrailBlocked(AgentError):
         #: refused instead of guessing, which is what keeps a blocked message
         #: out of the conversation it was never allowed to join.
         self.message_index = message_index
+        #: Whether any of the refused response had already been streamed to
+        #: the consumer. False everywhere except a block that arrived after
+        #: incremental release had begun. A consumer that shows partial
+        #: responses needs this to know whether it has something to withdraw
+        #: as well as a refusal to display.
+        self.retract = retract
 
 
 class GuardedLLM(BaseLLM):
@@ -101,6 +114,7 @@ class GuardedLLM(BaseLLM):
         inner_llm: BaseLLM,
         engine: GuardrailsEngine,
         principal: Optional[Principal] = None,
+        supports_retract: bool = False,
     ) -> None:
         # Populate BaseLLM's own attributes from the wrapped instance so the
         # wrapper is substitutable: builders assign llm.temperature, and
@@ -114,6 +128,12 @@ class GuardedLLM(BaseLLM):
         object.__setattr__(self, '_inner_llm', inner_llm)
         self._engine = engine
         self._principal = principal or Principal()
+        #: Whether this call site's consumer can withdraw text it has already
+        #: displayed. Defaults to False, so incremental release is impossible
+        #: until a call site says otherwise: a consumer that ignores a retract
+        #: would leave withdrawn text on screen, and the wrapper cannot tell
+        #: from here what is downstream of it.
+        self._supports_retract = supports_retract
 
     # -- transparent delegation ------------------------------------------
 
@@ -211,6 +231,13 @@ class GuardedLLM(BaseLLM):
         output_schema: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ) -> AsyncIterator[Dict[str, Any]]:
+        """Stream the response, releasing only what policy has cleared.
+
+        How much may be released before the response is complete is decided
+        by the engine, from the policy and from what the configured adapters
+        say about their own verdicts -- see ``StreamGuard`` for the guarantee
+        each mode provides. This method only drives it.
+        """
         messages = await self._guard_input(messages)
 
         # No concrete provider's stream() accepts output_schema - they are all
@@ -221,51 +248,91 @@ class GuardedLLM(BaseLLM):
         if output_schema is not None:
             extra['output_schema'] = output_schema
 
-        # Streaming and output checks are in tension: a chunk already
-        # delivered cannot be recalled. When the policy checks output, the
-        # stream is collected and vetted before any of it is released, which
-        # keeps the guarantee at the cost of incremental delivery. With no
-        # output checks configured, chunks flow straight through.
-        if not await self._engine.has_checks(
+        mode = await self._engine.stream_mode(
             self._principal, WorkflowStage.AFTER_MODEL
-        ):
+        )
+
+        # Incremental release can require the consumer to withdraw text it has
+        # already shown. A consumer that does not implement that would leave
+        # withdrawn text on screen, so the call site has to assert it can --
+        # separately from the tenant's policy, because they are different
+        # parties agreeing to different halves of the same arrangement.
+        if mode is StreamMode.INCREMENTAL and not self._supports_retract:
+            logger.debug(
+                'Guardrail policy asks for incremental release but this call '
+                'site did not declare retract support; buffering instead'
+            )
+            mode = StreamMode.BUFFERED
+
+        if mode is StreamMode.PASSTHROUGH:
             async for chunk in self._inner_llm.stream(messages, functions, **extra):
                 yield chunk
             return
 
-        buffered: List[Dict[str, Any]] = []
-        text_parts: List[str] = []
+        guard = StreamGuard(self._stream_evaluate, mode)
+
         async for chunk in self._inner_llm.stream(messages, functions, **extra):
-            buffered.append(chunk)
-            part = self._chunk_text(chunk)
-            if part:
-                text_parts.append(part)
+            action = await guard.feed(chunk)
+            for emitted in self._apply(action):
+                yield emitted
+            if action.blocked:
+                # Stop pulling from the provider: the response is refused, so
+                # every further token is spend for nothing and exposure for
+                # no reason.
+                self._raise_blocked(action, guard)
 
-        combined = ''.join(text_parts)
-        if combined:
-            decision = await self._engine.evaluate(
-                combined,
-                principal=self._principal,
-                stage=WorkflowStage.AFTER_MODEL,
-                destination='user',
+        action = await guard.finish()
+        for emitted in self._apply(action):
+            yield emitted
+        if action.blocked:
+            self._raise_blocked(action, guard)
+
+    async def _stream_evaluate(self, content: str, terminal: bool) -> PolicyDecision:
+        """Route a guard's scan to the auditing or the advisory entry point.
+
+        The whole difference between a prefix scan and the final one lives
+        here: only the terminal verdict is cached and written to the
+        compliance trail. See ``GuardrailsEngine.evaluate_prefix``.
+        """
+        check = self._engine.evaluate if terminal else self._engine.evaluate_prefix
+        return await check(
+            content,
+            principal=self._principal,
+            stage=WorkflowStage.AFTER_MODEL,
+            destination='user',
+        )
+
+    def _apply(self, action: StreamAction) -> List[Dict[str, Any]]:
+        """Turn a guard's decision into chunks to yield."""
+        emitted: List[Dict[str, Any]] = []
+        if action.retract and not action.blocked:
+            logger.warning(
+                f'Guardrail retracted a streamed response '
+                f'[agent={self._principal.agent_id or "-"}]; the consumer was '
+                f'told to withdraw text it had already been sent'
             )
-            if decision.blocked:
-                logger.warning(
-                    f'Guardrail blocked streamed response '
-                    f'[agent={self._principal.agent_id or "-"}] '
-                    f'{decision.operator_summary()}'
+            emitted.append(
+                control_chunk(
+                    'retract',
+                    'Part of this response was withheld by policy.',
+                    replacement=action.replacement,
                 )
-                raise GuardrailBlocked(decision.caller_message('response'), decision)
-            if decision.transformed:
-                logger.warning(
-                    'Guardrail redacted a streamed response; emitting the '
-                    'redacted text as a single chunk'
-                )
-                yield {'content': decision.transformed_content}
-                return
+            )
+        emitted.extend(action.chunks)
+        return emitted
 
-        for chunk in buffered:
-            yield chunk
+    def _raise_blocked(self, action: StreamAction, guard: StreamGuard) -> None:
+        decision = action.decision
+        logger.warning(
+            f'Guardrail blocked streamed response '
+            f'[agent={self._principal.agent_id or "-"}] '
+            f'{decision.operator_summary() if decision else ""}'
+        )
+        raise GuardrailBlocked(
+            decision.caller_message('response') if decision else 'Response blocked',
+            decision,
+            retract=bool(guard.released_text),
+        )
 
     # -- input checking --------------------------------------------------
 
