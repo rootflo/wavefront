@@ -1182,6 +1182,279 @@ class TestAriumYamlBuilder:
         assert builder._function_nodes[0].name == 'calculator_function_node'
 
 
+class _RecordingWrapper:
+    """Stand-in for a guarding LLM wrapper, recording what it was handed."""
+
+    def __init__(self, inner, node_name):
+        self.inner = inner
+        self.node_name = node_name
+
+
+class TestAriumYamlLlmDecorator:
+    """Coverage of the ``llm_decorator`` hook.
+
+    The contract is "every LLM this builder creates, and nothing it was
+    given". It is what a caller enforcing policy has to rely on, and the
+    failure mode is silent — an undecorated node simply calls the provider —
+    so each construction path is pinned separately rather than trusting one
+    representative case.
+    """
+
+    @staticmethod
+    def _decorator(seen):
+        def decorate(llm, node_name):
+            seen.append(node_name)
+            return _RecordingWrapper(llm, node_name)
+
+        return decorate
+
+    def test_inline_agents_are_decorated_and_prebuilt_ones_are_not(self):
+        yaml_config = """
+        arium:
+          agents:
+            - name: prebuilt_agent
+            - name: inline_agent
+              role: Inline
+              job: "You are defined inline"
+              model:
+                provider: openai
+                name: gpt-4o-mini
+
+          workflow:
+            start: prebuilt_agent
+            edges:
+              - from: prebuilt_agent
+                to: [inline_agent]
+              - from: inline_agent
+                to: [end]
+            end: [inline_agent]
+        """
+        seen = []
+
+        prebuilt = Mock(spec=Agent)
+        prebuilt.name = 'prebuilt_agent'
+        prebuilt_llm = Mock()
+        prebuilt.llm = prebuilt_llm
+
+        with patch('flo_ai.llm.OpenAI'):
+            builder = AriumBuilder.from_yaml(
+                yaml_str=yaml_config,
+                agents={'prebuilt_agent': prebuilt},
+                llm_decorator=self._decorator(seen),
+            )
+
+        assert seen == ['inline_agent']
+
+        inline_agent = next(a for a in builder._agents if a.name == 'inline_agent')
+        assert isinstance(inline_agent.llm, _RecordingWrapper)
+        # The caller's own agent is left exactly as handed over: it has already
+        # had its chance to wrap, and rebinding .llm here would mutate an
+        # object the caller still holds.
+        assert prebuilt.llm is prebuilt_llm
+
+    def test_agents_from_inline_yaml_config_are_decorated(self):
+        """Method 3 goes through AgentBuilder, not _create_agent_from_direct_config."""
+        yaml_config = """
+        arium:
+          agents:
+            - name: yaml_agent
+              yaml_config: |
+                agent:
+                  name: yaml_agent
+                  job: "Nested yaml"
+                  model:
+                    provider: openai
+                    name: gpt-4o-mini
+
+          workflow:
+            start: yaml_agent
+            edges:
+              - from: yaml_agent
+                to: [end]
+            end: [yaml_agent]
+        """
+        seen = []
+
+        with patch('flo_ai.arium.builder.AgentBuilder') as mock_agent_builder:
+            mock_agent = Mock(spec=Agent)
+            mock_agent.name = 'yaml_agent'
+            mock_agent.llm = Mock()
+
+            mock_builder_instance = Mock()
+            mock_builder_instance.build.return_value = mock_agent
+            mock_agent_builder.from_yaml.return_value = mock_builder_instance
+
+            AriumBuilder.from_yaml(
+                yaml_str=yaml_config, llm_decorator=self._decorator(seen)
+            )
+
+        assert seen == ['yaml_agent']
+        assert isinstance(mock_agent.llm, _RecordingWrapper)
+
+    def test_router_llm_is_decorated(self):
+        """A router's prompt embeds the conversation and goes to the provider."""
+        yaml_config = """
+        arium:
+          agents:
+            - name: agent1
+              job: "First"
+              model:
+                provider: openai
+                name: gpt-4o-mini
+            - name: agent2
+              job: "Second"
+              model:
+                provider: openai
+                name: gpt-4o-mini
+
+          routers:
+            - name: content_router
+              type: smart
+              routing_options:
+                agent2: "Always go here"
+              model:
+                provider: openai
+                name: gpt-4o-mini
+
+          workflow:
+            start: agent1
+            edges:
+              - from: agent1
+                to: [agent2]
+                router: content_router
+              - from: agent2
+                to: [end]
+            end: [agent2]
+        """
+        seen = []
+
+        # create_llm_router is deliberately not mocked: the decorator is
+        # applied inside the router now, so mocking the factory would assert
+        # that the plumbing exists rather than that the router's LLM is
+        # actually wrapped.
+        with patch('flo_ai.llm.OpenAI'):
+            AriumBuilder.from_yaml(
+                yaml_str=yaml_config, llm_decorator=self._decorator(seen)
+            )
+
+        assert seen == ['agent1', 'agent2', 'router:content_router']
+
+    def test_router_without_a_model_block_decorates_its_default_llm(self):
+        """The case a caller-side wrap cannot reach.
+
+        With no ``model:`` and no ``base_llm``, the builder hands the router
+        nothing and ``BaseLLMRouter`` builds its own gpt-4o-mini. That client
+        is a live route to the provider, so it has to be decorated too.
+        """
+        yaml_config = """
+        arium:
+          agents:
+            - name: agent1
+              job: "First"
+              model:
+                provider: openai
+                name: gpt-4o-mini
+            - name: agent2
+              job: "Second"
+              model:
+                provider: openai
+                name: gpt-4o-mini
+
+          routers:
+            - name: bare_router
+              type: smart
+              routing_options:
+                agent2: "Always go here"
+
+          workflow:
+            start: agent1
+            edges:
+              - from: agent1
+                to: [agent2]
+                router: bare_router
+              - from: agent2
+                to: [end]
+            end: [agent2]
+        """
+        wrapped = []
+
+        def decorate(llm, node_name):
+            wrapper = _RecordingWrapper(llm, node_name)
+            wrapped.append(wrapper)
+            return wrapper
+
+        # Patched where the router builds its fallback, not where the factory
+        # builds agent LLMs, so the two are told apart.
+        with (
+            patch('flo_ai.llm.OpenAI'),
+            patch('flo_ai.arium.llm_router.OpenAI') as mock_router_default,
+        ):
+            AriumBuilder.from_yaml(yaml_str=yaml_config, llm_decorator=decorate)
+
+        router_wrappers = [w for w in wrapped if w.node_name == 'router:bare_router']
+        assert len(router_wrappers) == 1
+        # It wrapped the router's own default, not something handed in.
+        assert router_wrappers[0].inner is mock_router_default.return_value
+
+    def test_decorator_reaches_subworkflow_nodes(self):
+        """Nesting must not reopen the gap one level down."""
+        yaml_config = """
+        arium:
+          ariums:
+            - name: nested
+              agents:
+                - name: nested_agent
+                  job: "Inside a subworkflow"
+                  model:
+                    provider: openai
+                    name: gpt-4o-mini
+              workflow:
+                start: nested_agent
+                edges:
+                  - from: nested_agent
+                    to: [end]
+                end: [nested_agent]
+
+          workflow:
+            start: nested
+            edges:
+              - from: nested
+                to: [end]
+            end: [nested]
+        """
+        seen = []
+
+        with patch('flo_ai.llm.OpenAI'):
+            AriumBuilder.from_yaml(
+                yaml_str=yaml_config, llm_decorator=self._decorator(seen)
+            )
+
+        assert seen == ['nested_agent']
+
+    def test_no_decorator_leaves_llms_untouched(self):
+        yaml_config = """
+        arium:
+          agents:
+            - name: inline_agent
+              job: "You are defined inline"
+              model:
+                provider: openai
+                name: gpt-4o-mini
+
+          workflow:
+            start: inline_agent
+            edges:
+              - from: inline_agent
+                to: [end]
+            end: [inline_agent]
+        """
+
+        with patch('flo_ai.llm.OpenAI'):
+            builder = AriumBuilder.from_yaml(yaml_str=yaml_config)
+
+        assert not isinstance(builder._agents[0].llm, _RecordingWrapper)
+
+
 class TestAriumYamlForEachCollect:
     """Execution tests for ForEach forward_all_results + input_filter collection."""
 

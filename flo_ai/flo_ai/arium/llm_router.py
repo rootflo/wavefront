@@ -35,6 +35,7 @@ class BaseLLMRouter(ABC):
         temperature: Optional[float] = None,
         max_retries: int = 3,
         fallback_strategy: str = 'first',
+        llm_decorator: Optional[Callable[[BaseLLM], BaseLLM]] = None,
     ):
         """
         Initialize the LLM router.
@@ -46,26 +47,38 @@ class BaseLLMRouter(ABC):
                 DEFAULT_ROUTING_TEMPERATURE and a supplied one keeps its own.
             max_retries: Maximum number of retries for LLM calls
             fallback_strategy: Strategy when LLM fails ("first", "last", "random")
+            llm_decorator: Wraps whichever LLM this router ends up using.
+
+                Applied here rather than by the caller because the default
+                below is only built when ``llm`` is None — so a caller that
+                decorates what it passes in covers every case except the one
+                where it passes nothing, and that case is then the only route
+                to the provider nobody is watching. A router configured with no
+                ``model:`` took exactly that route.
         """
         self.temperature = (
             DEFAULT_ROUTING_TEMPERATURE if temperature is None else temperature
         )
 
         if llm is None:
-            self.llm = OpenAI(model='gpt-4o-mini', temperature=self.temperature)
+            resolved_llm = OpenAI(model='gpt-4o-mini', temperature=self.temperature)
         elif temperature is None:
             # Nothing was asked for, so the supplied LLM keeps the temperature
             # it was configured with. Forcing the routing default on it would
             # override a deliberate choice with one nobody made.
-            self.llm = llm
+            resolved_llm = llm
         else:
             # A supplied LLM is built by the caller (from a YAML `model:` block,
             # say) without knowing the routing temperature, so apply it here -
             # to a copy, because the same instance is routinely the base_llm
             # shared with the workflow's agents, and routers are built after
             # them. The SDK client is shared; only `temperature` differs.
-            self.llm = copy.copy(llm)
-            self.llm.temperature = temperature
+            resolved_llm = copy.copy(llm)
+            resolved_llm.temperature = temperature
+
+        # Decorated last, so the wrapper sees the LLM at its final temperature
+        # rather than one still to be mutated through it.
+        self.llm = llm_decorator(resolved_llm) if llm_decorator else resolved_llm
 
         self.max_retries = max_retries
         self.fallback_strategy = fallback_strategy

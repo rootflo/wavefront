@@ -16,6 +16,7 @@ from floware.controllers.config_controller import config_router
 from floware.controllers.notification_controller import notification_router
 from floware.controllers.scheduled_job_controller import scheduled_job_router
 from gold_module.controllers.router import gold_router
+from guardrails_module.controllers.guardrails_controller import guardrails_router
 from inference_module.controllers.inference_controller import inference_router
 from knowledge_base_module.controllers.knowledge_base_controller import (
     knowledge_base_router,
@@ -78,6 +79,7 @@ FLOWARE_ROUTERS = [
     email_connection_router,
     oauth_app_router,
     gold_router,
+    guardrails_router,
     hmac_router,
     inference_proxy_router,
     inference_router,

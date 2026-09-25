@@ -29,6 +29,7 @@ COPY wavefront/server/modules/auth_module /app/modules/auth_module
 COPY wavefront/server/modules/common_module /app/modules/common_module
 COPY wavefront/server/modules/db_repo_module /app/modules/db_repo_module
 COPY wavefront/server/modules/gold_module /app/modules/gold_module
+COPY wavefront/server/modules/guardrails_module /app/modules/guardrails_module
 COPY wavefront/server/modules/knowledge_base_module /app/modules/knowledge_base_module
 COPY wavefront/server/modules/user_management_module /app/modules/user_management_module
 COPY wavefront/server/modules/llm_inference_config_module /app/modules/llm_inference_config_module
@@ -55,6 +56,29 @@ COPY wavefront/server/scripts/floware-init.sh /app/scripts/floware-init.sh
 RUN chmod +x /app/scripts/floware-init.sh
 
 RUN uv sync --package floware --frozen --no-dev
+
+# spaCy model for Presidio, which arrives with the flo-ai[guardrails] extra
+# that guardrails_module depends on. The model is not a pip dependency of it,
+# and Presidio downloads one on first use when absent -- which would put a
+# multi-hundred-MB fetch inside the first guarded request.
+#
+# `pip` is installed on purpose: `spacy download` resolves the model version
+# and then shells out to `python -m pip install`, and a uv-created venv has no
+# pip, so the download fails without it.
+RUN uv pip install pip && \
+    /app/.venv/bin/python -m spacy download en_core_web_lg
+
+# Bound how long any single regex may run. Presidio's default is 60s and it
+# reads this at import time, so it can only be set from the environment.
+#
+# The default is dangerous here rather than merely slow: the adapter analyses in
+# a two-thread pool, and a pattern that backtracks pins a thread for the whole
+# timeout. The policy's own timeout fires on the awaiting coroutine but cannot
+# cancel a running thread, so requests queue behind it and time out -- and
+# since the PII provider defaults to FAIL_CLOSED, that is a namespace-wide
+# outage. At 2s the pool recovers and the worst case is one pattern finding
+# nothing on one request.
+ENV REGEX_TIMEOUT_SECONDS=2
 
 # Create a non-root user and change ownership of the /app directory
 RUN useradd -m -u 1000 floware && \

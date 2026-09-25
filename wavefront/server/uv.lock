@@ -41,6 +41,7 @@ members = [
     "floconsole",
     "floware",
     "gold-module",
+    "guardrails-module",
     "inference-app",
     "inference-module",
     "knowledge-base-module",
@@ -1930,6 +1931,7 @@ dependencies = [
     { name = "dependency-injector" },
     { name = "fastapi" },
     { name = "gold-module" },
+    { name = "guardrails-module" },
     { name = "inference-module" },
     { name = "knowledge-base-module" },
     { name = "llm-inference-config-module" },
@@ -1963,6 +1965,7 @@ requires-dist = [
     { name = "dependency-injector", specifier = ">=4.42.0,<5.0.0" },
     { name = "fastapi", specifier = ">=0.115.2,<1.0.0" },
     { name = "gold-module", editable = "modules/gold_module" },
+    { name = "guardrails-module", editable = "modules/guardrails_module" },
     { name = "inference-module", editable = "modules/inference_module" },
     { name = "knowledge-base-module", editable = "modules/knowledge_base_module" },
     { name = "llm-inference-config-module", editable = "modules/llm_inference_config_module" },
@@ -2676,6 +2679,41 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/fd/d1/b6e9877fedae3add1afdeae1f89d1927d296da9cf977eca0eb08fb8a460e/grpcio_status-1.71.2.tar.gz", hash = "sha256:c7a97e176df71cdc2c179cd1847d7fc86cca5832ad12e9798d7fed6b7a1aab50", size = 13677, upload-time = "2025-06-28T04:24:05.426Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/67/58/317b0134129b556a93a3b0afe00ee675b5657f0155509e22fcb853bafe2d/grpcio_status-1.71.2-py3-none-any.whl", hash = "sha256:803c98cb6a8b7dc6dbb785b1111aed739f241ab5e9da0bba96888aa74704cfd3", size = 14424, upload-time = "2025-06-28T04:23:42.136Z" },
+]
+
+[[package]]
+name = "guardrails-module"
+version = "0.1.0"
+source = { editable = "modules/guardrails_module" }
+dependencies = [
+    { name = "common-module" },
+    { name = "db-repo-module" },
+    { name = "dependency-injector" },
+    { name = "fastapi" },
+    { name = "flo-ai" },
+    { name = "pydantic" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "common-module", editable = "modules/common_module" },
+    { name = "db-repo-module", editable = "modules/db_repo_module" },
+    { name = "dependency-injector", specifier = ">=4.40.0" },
+    { name = "fastapi", specifier = ">=0.100.0" },
+    { name = "flo-ai", specifier = "==1.1.10" },
+    { name = "pydantic", specifier = ">=2.0.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=9.0.3,<10.0.0" },
+    { name = "pytest-asyncio", specifier = ">=1.0.0,<2.0.0" },
 ]
 
 [[package]]

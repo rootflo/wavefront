@@ -4,6 +4,10 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from agents_module.services.agent_crud_service import AgentCrudService
+from agents_module.utils.agent_guardrails import (
+    apply_guardrails,
+    guardrail_run_scope,
+)
 from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.models.llm_inference_config import LlmInferenceConfig
 from db_repo_module.models.message_processors import MessageProcessors
@@ -44,6 +48,7 @@ class AgentInferenceService:
         message_processor_bucket_name: str,
         api_services_manager: Optional[ApiServicesManager] = None,
         llm_inference_config_service: Optional[LlmInferenceConfigService] = None,
+        guardrails_engine: Optional[Any] = None,
     ):
         """
         Initialize the agent inference service
@@ -67,6 +72,15 @@ class AgentInferenceService:
         self.cloud_storage_manager = cloud_storage_manager
         self.message_processor_bucket_name = message_processor_bucket_name
         self.llm_inference_config_service = llm_inference_config_service
+        self.guardrails_engine = guardrails_engine
+
+    def _apply_guardrails(self, agent, namespace: Optional[str], agent_name: str):
+        """Attach enforcement to a freshly built agent.
+
+        Thin wrapper over the shared helper so this service and the workflow
+        service cannot drift apart again.
+        """
+        return apply_guardrails(agent, self.guardrails_engine, namespace, agent_name)
 
     async def create_agent_from_yaml(
         self,
@@ -75,6 +89,7 @@ class AgentInferenceService:
         llm_config: Optional[LlmInferenceConfig] = None,
         access_token: Optional[str] = None,
         app_key: Optional[str] = None,
+        namespace: Optional[str] = None,
     ):
         """
         Create agent instance from YAML configuration
@@ -142,6 +157,7 @@ class AgentInferenceService:
             agent_builder = agent_builder.with_llm(llm_instance, owned=True)
 
         agent = agent_builder.build()
+        agent = self._apply_guardrails(agent, namespace, agent_name)
         logger.info(f'Successfully created agent for agent: {agent_name}')
         return agent
 
@@ -346,7 +362,8 @@ class AgentInferenceService:
         start_time = time.time()
 
         # Use a generic prompt that allows the agent to use the variables
-        result: List[BaseMessage] = await agent.run(inputs, variables=variables)
+        with guardrail_run_scope():
+            result: List[BaseMessage] = await agent.run(inputs, variables=variables)
 
         execution_time = time.time() - start_time
         logger.info(
@@ -390,7 +407,12 @@ class AgentInferenceService:
 
         # Create agent from YAML with optional LLM override and tools
         agent = await self.create_agent_from_yaml(
-            yaml_content, agent_id, llm_config, access_token, app_key
+            yaml_content,
+            agent_id,
+            llm_config,
+            access_token,
+            app_key,
+            namespace=namespace,
         )
 
         # Run inference
@@ -507,7 +529,7 @@ class AgentInferenceService:
         # Create agent from YAML with optional LLM override and tools.
         # A None llm_config is resolved from the YAML by create_agent_from_yaml.
         agent = await self.create_agent_from_yaml(
-            yaml_content, name, llm_config, access_token, app_key
+            yaml_content, name, llm_config, access_token, app_key, namespace=namespace
         )
 
         # Run inference

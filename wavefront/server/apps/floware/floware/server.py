@@ -49,6 +49,8 @@ from agents_module.agents_container import AgentsContainer
 from triggers_module.triggers_container import TriggersContainer
 from inference_module.inference_container import InferenceContainer
 
+from flo_ai.llm.guarded_llm import GuardrailBlocked
+from guardrails_module.container import GuardrailsContainer
 from llm_inference_config_module.container import LlmInferenceConfigContainer
 from tools_module.tools_container import ToolsContainer
 from chatbots_module.chatbots_container import ChatbotsContainer
@@ -149,6 +151,11 @@ llm_inference_config_container = LlmInferenceConfigContainer(
     cache_manager=db_repo_container.cache_manager,
 )
 
+guardrails_container = GuardrailsContainer(
+    db_client=db_repo_container.db_client,
+    cache_manager=db_repo_container.cache_manager,
+)
+
 agents_container = AgentsContainer(
     db_client=db_repo_container.db_client,
     cloud_storage_manager=common_container.cloud_storage_manager,
@@ -167,6 +174,7 @@ agents_container = AgentsContainer(
     async_agentic_execution_repository=db_repo_container.async_agentic_execution_repository,
     executions_bucket=config['agents']['executions_bucket'],
     llm_inference_config_service=llm_inference_config_container.llm_inference_config_service,
+    guardrails_engine=guardrails_container.guardrails_engine,
 )
 
 voice_agents_container = VoiceAgentsContainer(
@@ -213,6 +221,13 @@ async def lifespan(app: FastAPI):
             raise TypeError('db_client is not an instance of DatabaseClient')
 
         db_client.run_migration()
+
+        # Load the safety providers' models before the first request needs
+        # them. Presidio builds a spaCy model on first use, which takes longer
+        # than the per-check timeout the policy sets — so without this the
+        # first checked request times out and, under a FAIL_CLOSED policy, is
+        # rejected. Paid here, where nothing is waiting on it.
+        await guardrails_container.guardrails_engine().warmup()
 
         scheduled_job_service = application_container.scheduled_job_service()
 
@@ -372,6 +387,45 @@ add_middlewares(app)
 include_routers(app)
 
 
+@app.exception_handler(GuardrailBlocked)
+async def guardrail_blocked_handler(request: Request, exc: GuardrailBlocked):
+    """Turn a policy block into a plain error response.
+
+    A block is the guardrail working, not the server failing. Left to the
+    catch-all below, it arrives as an unhandled exception: a ~100-frame
+    traceback logged twice — once by that handler's ``exc_info``, then again
+    by uvicorn, because Starlette re-raises whatever reaches its 500 handler
+    — for an outcome whose whole explanation fits on one line.
+
+    Which adapter fired, on which finding, under which policy version goes to
+    the log only. The response carries the decision's own caller message,
+    which deliberately names none of that: telling whoever tripped a check
+    exactly which check they tripped is a map of how to phrase the next
+    attempt.
+    """
+    request_id = getattr(request.state, 'request_id', get_current_request_id())
+    detail = exc.decision.operator_summary() if exc.decision else str(exc)
+
+    # A content block is the control doing its job. A block because a check
+    # could not run - provider down with FAIL_CLOSED, or a policy naming an
+    # adapter that is not registered - is rejecting legitimate traffic until
+    # someone intervenes, and stays at error level so alerting still sees it.
+    emit = (
+        logger.error
+        if exc.decision is not None and exc.decision.blocked_by_failure
+        else logger.warning
+    )
+    emit(
+        f'Guardrail blocked {request.method} {request.url.path} '
+        f'[Request ID: {request_id}]: {detail}'
+    )
+
+    return JSONResponse(
+        status_code=500,
+        content=ResponseFormatter().buildErrorResponse(error=str(exc)),
+    )
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     # Skip HTTPExceptions (they're handled by FastAPI)
@@ -462,6 +516,7 @@ common_container.wire(
         'agents_module.services',
         'inference_module.controllers',
         'llm_inference_config_module.controllers',
+        'guardrails_module.controllers',
         'tools_module.controllers',
         'voice_agents_module.controllers',
         'triggers_module.controllers',
@@ -517,6 +572,15 @@ llm_inference_config_container.wire(
         'llm_inference_config_module.controllers',
         'agents_module.controllers',
         'knowledge_base_module.controllers',
+    ],
+)
+
+guardrails_container.wire(
+    modules=[__name__],
+    packages=[
+        'guardrails_module.controllers',
+        # Agent inference resolves policy when constructing a guarded LLM.
+        'agents_module.controllers',
     ],
 )
 

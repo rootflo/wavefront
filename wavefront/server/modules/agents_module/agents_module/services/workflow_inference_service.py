@@ -7,6 +7,11 @@ from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.models.workflow import Workflow
 from db_repo_module.models.workflow_version import WorkflowVersion
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
+from agents_module.utils.agent_guardrails import (
+    apply_guardrails,
+    guardrail_llm_decorator,
+    guardrail_run_scope,
+)
 from flo_ai import AriumBuilder, BaseMessage, FloUtils, Arium, Agent
 from flo_cloud.cloud_storage import CloudStorageManager
 from common_module.log.logger import logger
@@ -48,6 +53,7 @@ class WorkflowInferenceService:
         agent_crud_service: Optional[AgentCrudService] = None,
         tool_loader: Optional[ToolLoader] = None,
         agent_inference_service: Optional[AgentInferenceService] = None,
+        guardrails_engine: Optional[Any] = None,
     ):
         """
         Initialize the workflow inference service
@@ -65,8 +71,11 @@ class WorkflowInferenceService:
             agent_inference_service: Agent inference service, used to build the
                 agents a workflow references so they get the same LLM config
                 resolution and tool support as standalone agents
+            guardrails_engine: Guardrails engine. Agents run unguarded when absent,
+                so entry points that do not build the guardrails stack still work.
         """
         self.cloud_storage_manager = cloud_storage_manager
+        self.guardrails_engine = guardrails_engine
         self.bucket_name = bucket_name
         self.cache_manager = cache_manager
         self.workflow_repository = workflow_repository
@@ -215,6 +224,14 @@ class WorkflowInferenceService:
                     app_key=app_key,
                 )
 
+                # Workflow agents were previously left unguarded: this service
+                # builds its own agents rather than going through
+                # AgentInferenceService, so policy set to ENFORCE protected
+                # single-agent inference and silently did nothing here.
+                agent = apply_guardrails(
+                    agent, self.guardrails_engine, namespace, agent_name
+                )
+
                 agents_dict[agent_ref] = agent
                 logger.info(f'Successfully built agent: {agent_ref}')
 
@@ -229,6 +246,7 @@ class WorkflowInferenceService:
     async def _build_inline_agents(
         self,
         inline_definitions: List[Tuple[str, Dict[str, Any]]],
+        namespace: Optional[str] = None,
         access_token: Optional[str] = None,
         app_key: Optional[str] = None,
     ) -> Dict[str, Agent]:
@@ -242,6 +260,7 @@ class WorkflowInferenceService:
 
         Args:
             inline_definitions: (name, agent_def) pairs from extract_inline_agent_definitions
+            namespace: The workflow's namespace, used as the guardrail principal
 
         Returns:
             Dictionary mapping agent name to built Agent instance
@@ -275,6 +294,13 @@ class WorkflowInferenceService:
                     app_key=app_key,
                 )
 
+                # Building these here bypasses the builder, and with it the
+                # llm_decorator that used to be their only coverage, so the
+                # wrapping has to happen on this path now.
+                agent = apply_guardrails(
+                    agent, self.guardrails_engine, namespace, agent_name
+                )
+
                 # AriumBuilder applies this only on the path we are bypassing, so
                 # without it the agent would read every prior node's output.
                 input_filter = agent_def.get('input_filter')
@@ -296,6 +322,7 @@ class WorkflowInferenceService:
         workflow_name: str,
         access_token: Optional[str] = None,
         app_key: Optional[str] = None,
+        namespace: Optional[str] = None,
     ):
         """
         Create workflow instance from YAML configuration
@@ -303,6 +330,11 @@ class WorkflowInferenceService:
         Args:
             yaml_content: YAML configuration content
             workflow_name: The name of the workflow for logging purposes
+            namespace: The workflow's namespace, which selects the guardrail
+                policy for the nodes built here. Inline agents carry no
+                namespace of their own — unlike a `namespace/name` reference —
+                so the workflow's own is the only one that applies. Omitted
+                means unguarded, for callers that never had a namespace.
 
         Returns:
             Workflow instance created from YAML
@@ -343,17 +375,23 @@ class WorkflowInferenceService:
             )
             agents_dict.update(
                 await self._build_inline_agents(
-                    inline_definitions, access_token, app_key
+                    inline_definitions, namespace, access_token, app_key
                 )
             )
 
-        # Build workflow with pre-built agents and inlined subworkflows
+        # Build workflow with pre-built agents and inlined subworkflows.
+        #
+        # Every agent above is guarded as it is built. The decorator covers
+        # what this service does not construct itself: each router's model,
+        # which the builder creates. Without it a workflow was only as
+        # guarded as its nodes happened to be declared.
         workflow_builder = AriumBuilder.from_yaml(
             agents=agents_dict,
             yaml_str=yaml_content,
             function_registry=FUNCTION_NODE_REGISTRY,
             access_token=access_token,
             app_key=app_key,
+            llm_decorator=guardrail_llm_decorator(self.guardrails_engine, namespace),
         )
         workflow = workflow_builder.build()
 
@@ -399,12 +437,13 @@ class WorkflowInferenceService:
             processed_inputs = inputs
 
         # Run workflow inference with optional event streaming
-        result_list: List[MessageMemoryItem] = await workflow.run(
-            processed_inputs,
-            variables=variables,
-            event_callback=event_callback,
-            events_filter=events_filter,
-        )
+        with guardrail_run_scope():
+            result_list: List[MessageMemoryItem] = await workflow.run(
+                processed_inputs,
+                variables=variables,
+                event_callback=event_callback,
+                events_filter=events_filter,
+            )
 
         result_str = str(result_list[-1].result.content)
         trace = serialize_memory_trace(result_list)
@@ -457,7 +496,7 @@ class WorkflowInferenceService:
 
         # Create workflow from YAML
         workflow = await self.create_workflow_from_yaml(
-            yaml_content, workflow_name, access_token, app_key
+            yaml_content, workflow_name, access_token, app_key, namespace=namespace
         )
 
         # Run inference with optional event streaming
@@ -526,7 +565,7 @@ class WorkflowInferenceService:
 
         # Create workflow from YAML
         workflow = await self.create_workflow_from_yaml(
-            yaml_content, workflow_name, access_token, app_key
+            yaml_content, workflow_name, access_token, app_key, namespace=namespace
         )
 
         # Run inference with optional event streaming
