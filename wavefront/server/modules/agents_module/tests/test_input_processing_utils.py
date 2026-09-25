@@ -21,6 +21,14 @@ from agents_module.utils.input_processing_utils import (
 )
 
 
+# A structurally valid one-page PDF. The gate now parses documents, not just
+# their magic bytes, so a `%PDF-...` prefix alone no longer stands in for one.
+REAL_PDF_BYTES = base64.b64decode(
+    'JVBERi0xLjcKJcK1wrYKJSBXcml0dGVuIGJ5IE11UERGIDEuMjguMgoKMSAwIG9iago8PC9UeXBlL0NhdGFsb2cvUGFnZXMgMiAwIFIvSW5mbzw8L1Byb2R1Y2VyKE11UERGIDEuMjguMik+Pj4+CmVuZG9iagoKMiAwIG9iago8PC9UeXBlL1BhZ2VzL0NvdW50IDEvS2lkc1s0IDAgUl0+PgplbmRvYmoKCjMgMCBvYmoKPDw+PgplbmRvYmoKCjQgMCBvYmoKPDwvVHlwZS9QYWdlL01lZGlhQm94WzAgMCA3MiA3Ml0vUm90YXRlIDAvUmVzb3VyY2VzIDMgMCBSL1BhcmVudCAyIDAgUj4+CmVuZG9iagoKeHJlZgowIDUKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDQyIDAwMDAwIG4gCjAwMDAwMDAxMjAgMDAwMDAgbiAKMDAwMDAwMDE3MiAwMDAwMCBuIAowMDAwMDAwMTkzIDAwMDAwIG4gCgp0cmFpbGVyCjw8L1NpemUgNS9Sb290IDEgMCBSL0lEWzxDMjg5NzY1MjAyMjRDMjgwQzJBOUMyQjhDMzg2QzI5OT48N0Y5NkYwRTY4NUE3NDlFNzI2QzNGMjU2ODY0NzFBMzg+XT4+CnN0YXJ0eHJlZgoyODIKJSVFT0YK'
+)
+REAL_PDF_B64 = base64.b64encode(REAL_PDF_BYTES).decode('utf-8')
+
+
 class TestProcessInferenceInputs:
     """Test cases for process_inference_inputs function"""
 
@@ -137,7 +145,7 @@ class TestProcessInferenceInputs:
     def test_document_message_pdf(self):
         """Test processing DocumentMessage with PDF type"""
         # Encode bytes to base64 string as expected by implementation
-        document_base64_str = base64.b64encode(b'fake_pdf_content').decode('utf-8')
+        document_base64_str = REAL_PDF_B64
         doc_input = {
             'role': 'user',
             'content': {
@@ -261,7 +269,7 @@ class TestProcessInferenceInputs:
 
     def test_document_message_default_type(self):
         """Test DocumentMessage processing"""
-        document_base64_str = base64.b64encode(b'content').decode('utf-8')
+        document_base64_str = REAL_PDF_B64
         doc_input = {
             'role': 'user',
             'content': {'document_base64': document_base64_str},
@@ -277,7 +285,7 @@ class TestProcessInferenceInputs:
     def test_mixed_inputs(self):
         """Test processing mixed list with text, images, and documents"""
         simple_png_b64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
-        document_base64_str = base64.b64encode(b'pdf_content').decode('utf-8')
+        document_base64_str = REAL_PDF_B64
 
         inputs = [
             {'role': 'user', 'content': 'Text input'},
@@ -404,7 +412,7 @@ class TestFileNamePropagation:
         Every provider feeds `.base64` straight to a decoder, so leaving the
         `data:...;base64,` prefix on produces garbage bytes instead of an error.
         """
-        document_base64_str = base64.b64encode(b'%PDF-1.4 fake').decode('utf-8')
+        document_base64_str = REAL_PDF_B64
 
         inputs = [
             {
@@ -424,8 +432,8 @@ class TestFileNamePropagation:
         assert result[0].content.base64 == document_base64_str
         assert result[0].content.mime_type == 'application/pdf'
         # The stripped payload must survive a strict decode
-        assert base64.b64decode(result[0].content.base64, validate=True) == (
-            b'%PDF-1.4 fake'
+        assert (
+            base64.b64decode(result[0].content.base64, validate=True) == REAL_PDF_BYTES
         )
 
     def test_document_data_url_with_unsupported_mime_rejected(self):
@@ -458,7 +466,7 @@ class TestFileNamePropagation:
 
     def test_plain_document_base64_untouched(self):
         """Test that a document with no data URL prefix is passed through as-is"""
-        document_base64_str = base64.b64encode(b'%PDF-1.4 fake').decode('utf-8')
+        document_base64_str = REAL_PDF_B64
 
         inputs = [
             {
@@ -476,7 +484,7 @@ class TestFileNamePropagation:
 
     def test_document_carries_file_name(self):
         """Test that file_name is set on DocumentMessageContent"""
-        document_base64_str = base64.b64encode(b'fake_pdf_content').decode('utf-8')
+        document_base64_str = REAL_PDF_B64
 
         inputs = [
             {
@@ -498,7 +506,7 @@ class TestFileNamePropagation:
     def test_media_without_file_name_defaults_to_none(self):
         """Test that omitting file_name leaves it None on image and document"""
         simple_png_b64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
-        document_base64_str = base64.b64encode(b'fake_pdf_content').decode('utf-8')
+        document_base64_str = REAL_PDF_B64
 
         inputs = [
             {
@@ -694,7 +702,7 @@ class TestEdgeCases:
         assert isinstance(result[2].content, TextMessageContent)
 
     def test_svg_image_rejected(self):
-        """Test that SVG is rejected - Azure vision deployments cannot read it"""
+        """Test that SVG is rejected - the vision APIs cannot read it"""
         simple_png_b64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
 
         image_input = {

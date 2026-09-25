@@ -16,6 +16,8 @@ dependencies = [
     "llm-inference-config-module",
     "flo-ai==1.1.13",
     "celery[redis]>=5.4.0,<6.0.0",
+    "pillow>=11.0.0",
+    "pymupdf>=1.25.5,<2.0.0",
 ]
 
 [tool.uv.sources]

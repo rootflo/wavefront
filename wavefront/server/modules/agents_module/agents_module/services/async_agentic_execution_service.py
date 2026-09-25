@@ -2,6 +2,7 @@ import asyncio
 import base64
 import binascii
 import json
+import re
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
@@ -19,7 +20,16 @@ from agents_module.models.async_agentic_execution_schemas import (
 )
 from agents_module.utils.celery_client import get_celery_client
 from agents_module.utils.execution_variable_utils import with_execution_variables
-from agents_module.utils.mime_type_utils import split_data_url
+from agents_module.utils.mime_type_utils import (
+    SUPPORTED_DOCUMENT_MIME_TYPES,
+    SUPPORTED_IMAGE_MIME_TYPES,
+    resolve_mime_type,
+    split_data_url,
+)
+
+# The only types written as their real content type. Everything else is stored
+# as an opaque download rather than trusting a caller-supplied string.
+_STORABLE_CONTENT_TYPES = SUPPORTED_IMAGE_MIME_TYPES | SUPPORTED_DOCUMENT_MIME_TYPES
 
 _MIME_TO_EXT = {
     'application/pdf': '.pdf',
@@ -55,11 +65,45 @@ def _cache_key(execution_id: UUID) -> str:
     return f'async_agentic_exec:status:{execution_id}'
 
 
+# For the storage *key* only. Anything outside this set becomes '_', so the
+# key cannot carry a path, an extension, or anything else meaningful to a web
+# server. Deliberately stricter than ensure_safe_file_name's blocklist, which
+# guards the display name and has to keep non-Latin characters intact: a key
+# has no reason to be readable in every script, a display name does.
+_UNSAFE_KEY_CHARS = re.compile(r'[^A-Za-z0-9_-]')
+_MAX_NAME_STEM = 64
+
+
 def _safe_filename(idx: int, file_name: Optional[str], mime_type: Optional[str]) -> str:
+    """Build the stored object name from the *validated* mime type.
+
+    The extension decides how a web server treats the object, so it is derived
+    from the mime type the gate verified against the file's magic bytes — never
+    from the caller's file name, which previously went through verbatim and let
+    `shell.php` become the stored key.
+
+    The caller's name is kept as the stem, stripped of anything that is not a
+    letter, digit, hyphen or underscore. That also disposes of `../`, since a
+    separator is not in the allowed set.
+    """
+    # Only a type the gate accepts earns a real extension. _MIME_TO_EXT is the
+    # wider map used elsewhere and still lists `.svg`, `.csv` and friends; an
+    # unreachable entry today is a drift hazard tomorrow, and `.svg` in
+    # particular is served inline. Anything else is stored as `.bin`.
+    ext = (
+        _MIME_TO_EXT.get(mime_type or '', '.bin')
+        if mime_type in _STORABLE_CONTENT_TYPES
+        else '.bin'
+    )
+
+    stem = ''
     if file_name:
-        return f'{idx}_{file_name}'
-    ext = _MIME_TO_EXT.get(mime_type or '', '.bin')
-    return f'{idx}_file{ext}'
+        # Drop the caller's extension before sanitising: it is replaced, not
+        # kept, and leaving it would just add noise like 'shell_php'.
+        stem = str(file_name).rsplit('.', 1)[0]
+        stem = _UNSAFE_KEY_CHARS.sub('_', stem)[:_MAX_NAME_STEM].strip('_')
+
+    return f'{idx}_{stem}{ext}' if stem else f'{idx}_file{ext}'
 
 
 class AsyncAgenticExecutionService:
@@ -135,6 +179,13 @@ class AsyncAgenticExecutionService:
                     raw_b64 = stripped_b64
                     mime_type = mime_type or data_url_mime
 
+                # Fall back to the file name exactly as the gate does. The gate
+                # accepts `photo.png` with no `mime_type` field by resolving the
+                # extension; resolving it only there would store a valid image
+                # as an unnamed `.bin` octet-stream, which the UI cannot render
+                # from its presigned URL.
+                mime_type = resolve_mime_type(mime_type, file_name=file_name)
+
                 safe_name = _safe_filename(idx, file_name, mime_type)
                 key = f'{prefix}inputs/{safe_name}'
 
@@ -144,10 +195,17 @@ class AsyncAgenticExecutionService:
                     raise ValueError(
                         f'Invalid base64 data for input at index {idx}: {exc}'
                     ) from exc
+                # Store the type explicitly rather than letting the provider
+                # guess from the key, and only ever a type the gate accepts —
+                # an unrecognised one is stored as an opaque download so it
+                # cannot be served as script or markup.
                 self.cloud_storage.save_small_file(
                     file_content=file_bytes,
                     bucket_name=self.bucket,
                     key=key,
+                    content_type=mime_type
+                    if mime_type in _STORABLE_CONTENT_TYPES
+                    else 'application/octet-stream',
                 )
 
                 ref = {
