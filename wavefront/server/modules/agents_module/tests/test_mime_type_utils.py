@@ -1,7 +1,9 @@
 import base64
+from io import BytesIO
 
 import pytest
 from fastapi import HTTPException
+from PIL import Image
 
 from agents_module.utils.input_processing_utils import (
     process_inference_inputs,
@@ -369,14 +371,32 @@ class TestContentSniffing:
                 mime_type='image/png', base64_value=wrapped
             )
 
-    def test_undecodable_base64_is_left_to_the_decoder(self):
-        """Not this gate's error to raise — it is caught with a better message."""
-        assert (
+    def test_malformed_base64_is_rejected(self):
+        """A present-but-undecodable payload fails closed, not silently skipped.
+
+        Returning None for malformed base64 conflated it with an absent
+        payload, so the structural parse was skipped and the input accepted.
+        """
+        with pytest.raises(HTTPException) as exc_info:
             ensure_supported_image_mime_type(
                 mime_type='image/png', base64_value='!!!not base64!!!'
             )
-            == 'image/png'
-        )
+
+        assert exc_info.value.status_code == 400
+
+    def test_malformed_base64_after_valid_header_is_rejected(self):
+        """A valid header decodes, but trailing junk must not skip the parse."""
+        with pytest.raises(HTTPException):
+            ensure_supported_image_mime_type(
+                mime_type='image/png',
+                base64_value='iVBORw0KGgoAAAANSUhEUgAA' + '@@@not-base64@@@',
+            )
+
+    def test_malformed_document_base64_is_rejected(self):
+        with pytest.raises(HTTPException):
+            ensure_supported_document_mime_type(
+                mime_type='application/pdf', base64_value='!!!not base64!!!'
+            )
 
     def test_both_paths_reject_the_payload_identically(self):
         payload = [
@@ -615,6 +635,41 @@ class TestStructuralValidation:
             ensure_supported_image_mime_type(
                 mime_type='image/png', base64_value=payload
             )
+
+    def test_truncated_gif_is_rejected(self):
+        """A GIF with a valid header but truncated pixels passes verify() and
+        must be caught by load()."""
+        full = base64.b64decode(_real_image_b64('GIF'))
+        payload = base64.b64encode(full[: len(full) - len(full) // 3]).decode()
+
+        with pytest.raises(HTTPException):
+            ensure_supported_image_mime_type(
+                mime_type='image/gif', base64_value=payload
+            )
+
+    def test_oversized_dimensions_rejected_below_pillow_threshold(self):
+        """A 49 MP image is under Pillow's ~89 MP warn threshold but over the
+        explicit cap, so the cap — not Pillow — is what rejects it."""
+        buffer = BytesIO()
+        Image.new('RGB', (7000, 7000)).save(buffer, format='PNG')
+        payload = base64.b64encode(buffer.getvalue()).decode()
+
+        with pytest.raises(HTTPException):
+            ensure_supported_image_mime_type(
+                mime_type='image/png', base64_value=payload
+            )
+
+    def test_image_at_the_pixel_limit_is_accepted(self):
+        buffer = BytesIO()
+        Image.new('RGB', (6000, 6000)).save(buffer, format='PNG')  # 36 MP
+        payload = base64.b64encode(buffer.getvalue()).decode()
+
+        assert (
+            ensure_supported_image_mime_type(
+                mime_type='image/png', base64_value=payload
+            )
+            == 'image/png'
+        )
 
     def test_url_input_skips_structural_parse(self):
         """A URL input carries no base64, so there is nothing to parse here."""

@@ -114,6 +114,15 @@ _WEBP_FORMAT = b'WEBP'
 _HEADER_BYTES = 24
 _HEADER_B64_CHARS = (_HEADER_BYTES // 3) * 4
 
+# Bounds the pixel buffer a single image decode may allocate. The structural
+# gate calls load(), which decodes every pixel, so an image that declares
+# enormous dimensions is a memory-exhaustion vector. Deliberately stricter than
+# Pillow's ~89 MP default, which only *warns* up to twice that before it
+# raises — this is the hard ceiling, checked before load() allocates anything.
+# Generous for real inputs: a 40 MP image is larger than any current phone
+# camera produces.
+MAX_IMAGE_PIXELS = 40_000_000
+
 _DATA_URL_PATTERN = re.compile(
     r'^data:(?P<mime>[a-zA-Z0-9][a-zA-Z0-9.+-]*/[a-zA-Z0-9][a-zA-Z0-9.+-]*)'
     r'(?P<params>;[^,]*)?,(?P<payload>.*)$',
@@ -254,12 +263,20 @@ def _decode_header(base64_value: Optional[str]) -> Optional[bytes]:
         return None
 
 
-def _decode_base64_payload(base64_value: Optional[str]) -> Optional[bytes]:
-    """Decode a whole base64 payload, or None if it is not base64 at all.
+def _decode_base64_payload(
+    base64_value: Optional[str], index: Optional[int] = None
+) -> Optional[bytes]:
+    """Decode a whole base64 payload for the structural parser.
 
-    Unlike _decode_header this returns every byte, because a structural parser
-    needs the entire file. Whitespace is stripped first: line-wrapped base64 is
-    common and ``validate=True`` treats a newline as an illegal character.
+    Returns None only when there is nothing to decode — a URL, path or bytes
+    input carries no base64, and the caller skips its parser for those. A
+    payload that IS present but does not decode is rejected here, not returned
+    as None: conflating the two let malformed base64 slip past the structural
+    parse and be accepted on an input the gate never actually inspected.
+
+    Unlike _decode_header this returns every byte, because the parser needs the
+    whole file. Whitespace is stripped first: line-wrapped base64 is common and
+    ``validate=True`` treats a newline as an illegal character.
     """
     if not isinstance(base64_value, str):
         return None
@@ -270,7 +287,7 @@ def _decode_base64_payload(base64_value: Optional[str]) -> Optional[bytes]:
     try:
         return base64.b64decode(''.join(payload.split()), validate=True)
     except (binascii.Error, ValueError):
-        return None
+        _reject(f'Invalid file format{_position(index)}.')
 
 
 def _ensure_decodable_image(data: bytes, index: Optional[int]) -> None:
@@ -280,19 +297,31 @@ def _ensure_decodable_image(data: bytes, index: Optional[int]) -> None:
     this confirms it *is* one. A payload that is only a signature followed by
     other content — `GIF89a` then a script — passes the former and fails here.
 
-    ``verify`` reads the image's structure without decoding its pixels, so a
-    small file declaring enormous dimensions cannot exhaust memory on the way
-    through this gate.
+    verify() checks the file's structure but does not decode its pixels, so a
+    GIF — and some JPEGs — with a valid header but undecodable image data pass
+    it and only fail later, inside the provider call. load() decodes for real
+    and catches those at the boundary.
     """
     try:
         with Image.open(BytesIO(data)) as image:
             # Read the format before verify(), which leaves the object unusable.
             image_format = image.format
             image.verify()
+
+        # verify() spends the object, so reopen to decode the pixels. The
+        # declared dimensions are checked before load() allocates the buffer:
+        # Pillow only warns between its bomb threshold and twice that, and on a
+        # full decode that band is hundreds of megabytes — this cap is the hard
+        # limit, enforced before any allocation.
+        with Image.open(BytesIO(data)) as image:
+            pixels = image.size[0] * image.size[1]
+            if pixels > MAX_IMAGE_PIXELS:
+                raise ValueError(f'image exceeds the {MAX_IMAGE_PIXELS}-pixel limit')
+            image.load()
     except Exception:
         # A validation boundary fails closed: any reason the decoder could not
-        # read the file — an unknown format, a truncated stream, a declared
-        # size past Pillow's bomb threshold — is a rejection, not a 500. The
+        # read the file — an unknown format, a truncated stream, undecodable
+        # pixels, a size past the pixel cap — is a rejection, not a 500. The
         # message stays generic on purpose: naming what failed hands a prober
         # information about the check it is trying to get past.
         logger.warning(
@@ -441,7 +470,7 @@ def ensure_supported_image_mime_type(
     # bytes prove a prefix, not a valid image.
     ensure_bytes_match_mime_type(resolved, base64_value, index)
 
-    data = _decode_base64_payload(base64_value)
+    data = _decode_base64_payload(base64_value, index)
     if data is not None:
         _ensure_decodable_image(data, index)
 
@@ -476,7 +505,7 @@ def ensure_supported_document_mime_type(
     # against the declaration that was never made.
     ensure_bytes_match_mime_type(resolved or 'application/pdf', base64_value, index)
 
-    data = _decode_base64_payload(base64_value)
+    data = _decode_base64_payload(base64_value, index)
     if data is not None:
         _ensure_decodable_pdf(data, index)
 
