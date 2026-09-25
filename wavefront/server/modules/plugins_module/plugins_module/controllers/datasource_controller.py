@@ -1081,8 +1081,8 @@ async def create_dynamic_query(
 async def get_all_dynamic_query_yaml(
     request: Request,
     datasource_id: str,
-    page_number: int = Query(1),
-    page_size: int = Query(50),
+    limit: int = Query(100, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
     ),
@@ -1096,14 +1096,8 @@ async def get_all_dynamic_query_yaml(
         raise HTTPException(status_code=401, detail='Unauthorized')
 
     result = await dynamic_query_yaml_service.retrive_dynamic_query_yaml(
-        page_number, page_size
+        datasource_id, limit, offset
     )
-
-    if not result['yamls']:
-        return JSONResponse(
-            status_code=status.HTTP_200_OK,
-            content=response_formatter.buildSuccessResponse({'yamls': []}),
-        )
 
     return JSONResponse(
         status_code=status.HTTP_200_OK,
@@ -1115,6 +1109,7 @@ async def get_all_dynamic_query_yaml(
 @inject
 async def get_dynamic_query(
     request: Request,
+    datasource_id: str,
     query_id: str,
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
@@ -1128,7 +1123,9 @@ async def get_dynamic_query(
     if not is_admin:
         raise HTTPException(status_code=401, detail='Unauthorized')
 
-    yaml_query, yaml_name = await dynamic_query_service.get_dynamic_yaml_query(query_id)
+    yaml_query, yaml_name = await dynamic_query_service.get_dynamic_yaml_query(
+        datasource_id, query_id
+    )
 
     if not yaml_query:
         return JSONResponse(
@@ -1186,7 +1183,7 @@ async def execute_dynamic_query(
     # reported as the 404 it is, matching GET /v1/{datasource_id}/dynamic-queries/{query_id}.
     try:
         yaml_query, _ = await dynamic_query_yaml_service.get_dynamic_yaml_query(
-            query_id
+            datasource_id, query_id
         )
     except CloudStorageFileNotFoundError:
         yaml_query = None
@@ -1221,6 +1218,7 @@ async def execute_dynamic_query(
     # checking if the given query is already in cache
     cache_key = generate_cache_key(
         query_id,
+        datasource_id,
         filter,
         rls_filter_str,
         limit,
@@ -1301,7 +1299,9 @@ async def export_dynamic_query_csv(
                 f'Datasource not found: {datasource_id}'
             ),
         )
-    yaml_query, _ = await dynamic_query_yaml_service.get_dynamic_yaml_query(query_id)
+    yaml_query, _ = await dynamic_query_yaml_service.get_dynamic_yaml_query(
+        datasource_id, query_id
+    )
     if not yaml_query:
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -1336,7 +1336,7 @@ async def export_dynamic_query_csv(
         rls_filter_str=rls_filter_str,
     )
     filename = f'export_{query_id}_{export_hash}.csv'
-    file_key = f'dynamic_query_exports/{filename}'
+    file_key = f'dynamic_query_exports/{datasource_id}/{filename}'
 
     # If not force_fetch, return existing file from bucket if present
     if not force_fetch:
