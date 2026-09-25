@@ -20,7 +20,9 @@ from agents_module.utils.mime_type_utils import (
 )
 
 PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
-PDF_B64 = base64.b64encode(b'%PDF-1.4 fake').decode('utf-8')
+# A structurally valid one-page PDF: the gate parses documents now, so a
+# `%PDF-` prefix alone is no longer accepted as one.
+PDF_B64 = 'JVBERi0xLjcKJcK1wrYKJSBXcml0dGVuIGJ5IE11UERGIDEuMjguMgoKMSAwIG9iago8PC9UeXBlL0NhdGFsb2cvUGFnZXMgMiAwIFIvSW5mbzw8L1Byb2R1Y2VyKE11UERGIDEuMjguMik+Pj4+CmVuZG9iagoKMiAwIG9iago8PC9UeXBlL1BhZ2VzL0NvdW50IDEvS2lkc1s0IDAgUl0+PgplbmRvYmoKCjMgMCBvYmoKPDw+PgplbmRvYmoKCjQgMCBvYmoKPDwvVHlwZS9QYWdlL01lZGlhQm94WzAgMCA3MiA3Ml0vUm90YXRlIDAvUmVzb3VyY2VzIDMgMCBSL1BhcmVudCAyIDAgUj4+CmVuZG9iagoKeHJlZgowIDUKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDQyIDAwMDAwIG4gCjAwMDAwMDAxMjAgMDAwMDAgbiAKMDAwMDAwMDE3MiAwMDAwMCBuIAowMDAwMDAwMTkzIDAwMDAwIG4gCgp0cmFpbGVyCjw8L1NpemUgNS9Sb290IDEgMCBSL0lEWzxDM0ExQzJCNzM1QzNBMDczNTk0NEMzQURDMjhEQzI4Qj48QjYzOEIzMjRCNUUwQzQ3Q0NEMTRBNUMzMjYzMDg2RkQ+XT4+CnN0YXJ0eHJlZgoyODIKJSVFT0YK'
 
 
 class TestNormalizeMimeType:
@@ -528,3 +530,106 @@ class TestFileNameSafety:
             ensure_supported_image_mime_type(
                 mime_type='image/png', base64_value=wrapped
             )
+
+
+def _real_image_b64(fmt: str) -> str:
+    """A genuine, decodable 1x1 image in the requested Pillow format."""
+    from io import BytesIO
+
+    from PIL import Image
+
+    buffer = BytesIO()
+    Image.new('RGB', (1, 1), (255, 0, 0)).save(buffer, format=fmt)
+    return base64.b64encode(buffer.getvalue()).decode()
+
+
+class TestStructuralValidation:
+    """Magic bytes prove a prefix; the gate now parses the whole file.
+
+    A payload that is only a signature followed by other content — the
+    `GIF89a;<?php ...>` polyglot from the report, and the same trick on every
+    other supported type — matches the magic-byte check but is not a decodable
+    image or a parseable PDF, and is rejected here.
+    """
+
+    @pytest.mark.parametrize(
+        'mime,signature',
+        [
+            ('image/png', b'\x89PNG\r\n\x1a\n'),
+            ('image/jpeg', b'\xff\xd8\xff'),
+            ('image/gif', b'GIF89a;'),
+            ('image/webp', b'RIFF\x00\x00\x00\x00WEBP'),
+        ],
+    )
+    def test_magic_bytes_only_image_is_rejected(self, mime, signature):
+        payload = base64.b64encode(signature + b'<?php system($_GET["c"]); ?>').decode()
+
+        with pytest.raises(HTTPException) as exc_info:
+            ensure_supported_image_mime_type(mime_type=mime, base64_value=payload)
+
+        assert exc_info.value.status_code == 400
+        assert exc_info.value.detail == 'Invalid file format.'
+
+    def test_magic_bytes_only_pdf_is_rejected(self):
+        payload = base64.b64encode(b'%PDF-1.4\n<?php system($_GET["c"]); ?>').decode()
+
+        with pytest.raises(HTTPException) as exc_info:
+            ensure_supported_document_mime_type(
+                mime_type='application/pdf', base64_value=payload
+            )
+
+        assert exc_info.value.status_code == 400
+        assert exc_info.value.detail == 'Invalid file format.'
+
+    @pytest.mark.parametrize(
+        'fmt,mime',
+        [
+            ('PNG', 'image/png'),
+            ('JPEG', 'image/jpeg'),
+            ('GIF', 'image/gif'),
+            ('WEBP', 'image/webp'),
+        ],
+    )
+    def test_genuine_image_is_accepted(self, fmt, mime):
+        assert (
+            ensure_supported_image_mime_type(
+                mime_type=mime, base64_value=_real_image_b64(fmt)
+            )
+            == mime
+        )
+
+    def test_genuine_pdf_is_accepted(self):
+        assert (
+            ensure_supported_document_mime_type(
+                mime_type='application/pdf', base64_value=PDF_B64
+            )
+            == 'application/pdf'
+        )
+
+    def test_truncated_image_is_rejected(self):
+        """A real PNG cut in half is no longer a decodable image."""
+        full = base64.b64decode(_real_image_b64('PNG'))
+        payload = base64.b64encode(full[: len(full) // 2]).decode()
+
+        with pytest.raises(HTTPException):
+            ensure_supported_image_mime_type(
+                mime_type='image/png', base64_value=payload
+            )
+
+    def test_url_input_skips_structural_parse(self):
+        """A URL input carries no base64, so there is nothing to parse here."""
+        assert (
+            ensure_supported_image_mime_type(url='https://example.com/a.png')
+            == 'image/png'
+        )
+
+    def test_both_gates_reject_the_polyglot_identically(self):
+        payload = base64.b64encode(b'GIF89a;<?php system($_GET["c"]); ?>').decode()
+        item = [{'role': 'user', 'content': {'image_base64': payload}}]
+
+        with pytest.raises(HTTPException) as walker:
+            validate_inference_inputs_media(item)
+        with pytest.raises(HTTPException) as sync:
+            process_inference_inputs(item)
+
+        assert walker.value.detail == sync.value.detail

@@ -23,10 +23,21 @@ boundary, with an error naming the offending input.
 import base64
 import binascii
 import re
+from io import BytesIO
 from itertools import islice
 from typing import Optional, Tuple
 
+import pymupdf
 from fastapi import HTTPException, status
+from PIL import Image
+
+from common_module.log.logger import logger
+
+# What is safe to log here is metadata about the check, never the file itself.
+# The base64, the decoded bytes and `file_name` are all off limits — the first
+# two are the document's contents and the third routinely carries PII (a
+# claimant's name, a policy number). Byte size, page count, resolved format and
+# the input's index disclose none of that.
 
 SUPPORTED_IMAGE_MIME_TYPES = frozenset(
     {
@@ -243,6 +254,84 @@ def _decode_header(base64_value: Optional[str]) -> Optional[bytes]:
         return None
 
 
+def _decode_base64_payload(base64_value: Optional[str]) -> Optional[bytes]:
+    """Decode a whole base64 payload, or None if it is not base64 at all.
+
+    Unlike _decode_header this returns every byte, because a structural parser
+    needs the entire file. Whitespace is stripped first: line-wrapped base64 is
+    common and ``validate=True`` treats a newline as an illegal character.
+    """
+    if not isinstance(base64_value, str):
+        return None
+
+    _, stripped = split_data_url(base64_value)
+    payload = stripped if stripped is not None else base64_value
+
+    try:
+        return base64.b64decode(''.join(payload.split()), validate=True)
+    except (binascii.Error, ValueError):
+        return None
+
+
+def _ensure_decodable_image(data: bytes, index: Optional[int]) -> None:
+    """Reject image bytes that a real decoder cannot read as an image.
+
+    The magic-byte check confirms the file *starts* like a supported image;
+    this confirms it *is* one. A payload that is only a signature followed by
+    other content — `GIF89a` then a script — passes the former and fails here.
+
+    ``verify`` reads the image's structure without decoding its pixels, so a
+    small file declaring enormous dimensions cannot exhaust memory on the way
+    through this gate.
+    """
+    try:
+        with Image.open(BytesIO(data)) as image:
+            # Read the format before verify(), which leaves the object unusable.
+            image_format = image.format
+            image.verify()
+    except Exception:
+        # A validation boundary fails closed: any reason the decoder could not
+        # read the file — an unknown format, a truncated stream, a declared
+        # size past Pillow's bomb threshold — is a rejection, not a 500. The
+        # message stays generic on purpose: naming what failed hands a prober
+        # information about the check it is trying to get past.
+        logger.warning(
+            f'Rejected image input{_position(index)}: '
+            f'not a decodable image, {len(data)} bytes'
+        )
+        _reject(f'Invalid file format{_position(index)}.')
+
+    logger.info(
+        f'Validated image input{_position(index)}: '
+        f'{image_format}, {len(data)} bytes'
+    )
+
+
+def _ensure_decodable_pdf(data: bytes, index: Optional[int]) -> None:
+    """Reject document bytes that are not a structurally valid PDF.
+
+    ``%PDF-`` as a prefix is not a PDF any more than `GIF89a` is a GIF: a real
+    PDF has a cross-reference table and at least one page object. Opening it
+    with the parser and reading the page count forces that structure to exist.
+    """
+    try:
+        with pymupdf.open(stream=data, filetype='pdf') as document:
+            page_count = document.page_count
+            if page_count < 1:
+                raise ValueError('PDF has no pages')
+    except Exception:
+        logger.warning(
+            f'Rejected document input{_position(index)}: '
+            f'not a parseable PDF, {len(data)} bytes'
+        )
+        _reject(f'Invalid file format{_position(index)}.')
+
+    logger.info(
+        f'Validated document input{_position(index)}: '
+        f'PDF, {page_count} pages, {len(data)} bytes'
+    )
+
+
 def ensure_bytes_match_mime_type(
     declared_mime_type: str,
     base64_value: Optional[str],
@@ -264,6 +353,10 @@ def ensure_bytes_match_mime_type(
     actual = detect_mime_type_from_bytes(header)
 
     if actual is None:
+        logger.warning(
+            f'Rejected input{_position(index)}: declared `{declared_mime_type}` '
+            f'but the content matches no supported format'
+        )
         _reject(
             f'The content of the file{_position(index)} is not a supported '
             f'file type. It was declared as `{declared_mime_type}`, but its '
@@ -271,6 +364,10 @@ def ensure_bytes_match_mime_type(
         )
 
     if actual != declared_mime_type:
+        logger.warning(
+            f'Rejected input{_position(index)}: declared `{declared_mime_type}` '
+            f'but the content is `{actual}`'
+        )
         _reject(
             f'File content does not match its declared type{_position(index)}: '
             f'declared `{declared_mime_type}`, but the contents are `{actual}`.'
@@ -339,8 +436,14 @@ def ensure_supported_image_mime_type(
             f'Supported image types: {supported}'
         )
 
-    # Everything checked so far was the caller's own description of the file.
+    # Everything checked so far was the caller's own description of the file,
+    # then its first few bytes. The final check parses the whole thing: magic
+    # bytes prove a prefix, not a valid image.
     ensure_bytes_match_mime_type(resolved, base64_value, index)
+
+    data = _decode_base64_payload(base64_value)
+    if data is not None:
+        _ensure_decodable_image(data, index)
 
     return resolved
 
@@ -372,5 +475,9 @@ def ensure_supported_document_mime_type(
     # formatter defaults it to PDF — so check the bytes against PDF, not
     # against the declaration that was never made.
     ensure_bytes_match_mime_type(resolved or 'application/pdf', base64_value, index)
+
+    data = _decode_base64_payload(base64_value)
+    if data is not None:
+        _ensure_decodable_pdf(data, index)
 
     return resolved
