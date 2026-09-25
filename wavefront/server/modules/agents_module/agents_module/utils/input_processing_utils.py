@@ -13,6 +13,7 @@ from flo_ai import (
 )
 from common_module.log.logger import logger
 from agents_module.utils.mime_type_utils import (
+    ensure_safe_file_name,
     ensure_supported_document_mime_type,
     ensure_supported_image_mime_type,
     split_data_url,
@@ -81,9 +82,15 @@ def process_inference_inputs(
 
                     image_mime_type = ensure_supported_image_mime_type(
                         mime_type=image_mime_type,
+                        # Passed so the gate can check the magic bytes, not
+                        # just the caller's description of them. Without it
+                        # this path would accept a script as an image while
+                        # the async path rejected it.
+                        base64_value=image_base64,
                         file_name=input_content.get('file_name'),
                         index=index,
                     )
+                    ensure_safe_file_name(input_content.get('file_name'), index)
 
                     resolved_inputs.append(
                         UserMessage(
@@ -104,6 +111,7 @@ def process_inference_inputs(
                         url=input_content.get('document_url'),
                         index=index,
                     )
+                    ensure_safe_file_name(input_content.get('file_name'), index)
 
                     # Documents arrive as a `data:` URL just as often as images
                     # do. The prefix has to come off here: every provider feeds
@@ -196,6 +204,7 @@ def validate_inference_inputs_media(
                 url=input_content.get('image_url'),
                 index=index,
             )
+            ensure_safe_file_name(input_content.get('file_name'), index)
         elif is_doc_message(input_content):
             ensure_supported_document_mime_type(
                 mime_type=input_content.get('mime_type'),
@@ -204,6 +213,7 @@ def validate_inference_inputs_media(
                 url=input_content.get('document_url'),
                 index=index,
             )
+            ensure_safe_file_name(input_content.get('file_name'), index)
 
 
 def is_image_message(input_item: dict) -> bool:
