@@ -1,6 +1,6 @@
 [project]
 name = "flo_ai"
-version = "1.1.12"
+version = "1.1.13"
 description = "A easy way to create structured AI agents"
 authors = [{ name = "rootflo", email = "engineering.tools@rootflo.ai" }]
 requires-python = ">=3.10,<4.0"
@@ -17,6 +17,7 @@ dependencies = [
     "google-genai>=1.25.0,<2",
     "httpx>=0.28.1",
     "openai>=1.77.0,<2",
+    "openpyxl>=3.1.5,<4",
     "opentelemetry-api>=1.28.2,<2",
     "opentelemetry-sdk>=1.28.2,<2",
     "opentelemetry-exporter-otlp>=1.28.2,<2",
@@ -24,7 +25,14 @@ dependencies = [
     "pydantic>=2.9.2,<3",
     "pyjwt>=2.13.0",
     "pymupdf>=1.26.7,<2",
+    "python-docx>=1.1.2,<2",
     "pyyaml>=6.0.3,<7",
+    # xlrd 2.x reads legacy .xls and nothing else (1.x also read .xlsx,
+    # unreliably). openpyxl covers .xlsx.
+    "xlrd>=2.0.1,<3",
+    # Not imported directly: openpyxl hardens its XML parsing only when
+    # defusedxml is importable. Declared so that is never left to chance.
+    "defusedxml>=0.7.1,<0.8",
 ]
 
 [project.optional-dependencies]

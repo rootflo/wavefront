@@ -18,6 +18,17 @@ agent's provider is a property of its configuration: gating on the union would
 let a workflow succeed on one agent and fail on the next for reasons the
 caller cannot see. The narrow set fails the same way everywhere, at the
 boundary, with an error naming the offending input.
+
+Documents come in two kinds:
+
+- *Native* types reach the provider as a document block and are bounded by what
+  the provider can parse -- today that is PDF alone.
+- *Extractable* types are converted to text by flo_ai when it formats the
+  message (``flo_ai.utils.document_text_extraction``), so they are bounded by
+  what flo_ai can parse, not by the provider. That is why Word, Excel and CSV
+  are supported even though no provider this deployment targets accepts them.
+  The set is imported from flo_ai rather than restated here, so this gate
+  cannot admit a type flo_ai does not know how to handle.
 """
 
 import base64
@@ -29,6 +40,10 @@ from typing import Optional, Tuple
 
 import pymupdf
 from fastapi import HTTPException, status
+
+from flo_ai.utils.document_text_extraction import (
+    EXTRACTABLE_DOCUMENT_MIME_TYPES,
+)
 from PIL import Image
 
 from common_module.log.logger import logger
@@ -48,20 +63,35 @@ SUPPORTED_IMAGE_MIME_TYPES = frozenset(
     }
 )
 
-SUPPORTED_DOCUMENT_MIME_TYPES = frozenset({'application/pdf'})
+# Sent to the provider as a document block, as-is.
+NATIVE_DOCUMENT_MIME_TYPES = frozenset({'application/pdf'})
+
+SUPPORTED_DOCUMENT_MIME_TYPES = (
+    NATIVE_DOCUMENT_MIME_TYPES | EXTRACTABLE_DOCUMENT_MIME_TYPES
+)
 
 # Spellings clients send that mean one of the supported types above.
 _MIME_ALIASES = {
     'image/jpg': 'image/jpeg',
     'image/pjpeg': 'image/jpeg',
     'application/x-pdf': 'application/pdf',
+    # Browsers and mail clients disagree on how to spell CSV. Note that Windows
+    # reports `.csv` as `application/vnd.ms-excel`, which is indistinguishable
+    # from a real legacy spreadsheet by mime alone -- that one is resolved from
+    # the file's magic bytes in flo_ai's document_text_extraction.
+    'application/csv': 'text/csv',
+    'text/comma-separated-values': 'text/csv',
+    'application/vnd.msexcel': 'application/vnd.ms-excel',
+    # Legacy Word. Harmless while .doc is deferred -- the alias resolves to a
+    # type the gate still rejects -- and correct once flo_ai enables it.
+    'application/vnd.ms-word': 'application/msword',
 }
 
 # Fallback when the caller sends raw base64 with no mime_type but does send a
 # file name — common enough that rejecting it outright would be unhelpful.
-# Deliberately includes unsupported formats too: resolving `report.docx` to its
-# real mime is what lets the gate reject it with a useful message instead of
-# waving it through as an unknown type.
+# Deliberately includes unsupported formats too (PowerPoint, SVG, HEIC):
+# resolving `deck.pptx` to its real mime is what lets the gate reject it with a
+# useful message instead of waving it through as an unknown type.
 _EXTENSION_TO_MIME = {
     'png': 'image/png',
     'jpg': 'image/jpeg',
@@ -86,6 +116,16 @@ _EXTENSION_TO_MIME = {
     'ppt': 'application/vnd.ms-powerpoint',
     'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
 }
+
+# Types that name a container rather than a format. Treated as weaker evidence
+# than a file extension by `resolve_mime_type`; see the note there.
+_GENERIC_MIME_TYPES = frozenset(
+    {
+        'application/octet-stream',
+        'application/zip',
+        'application/x-zip-compressed',
+    }
+)
 
 # Everything above resolves a mime type from *metadata* — the `mime_type`
 # field, the `data:` prefix, the file name, the URL — and every one of those is
@@ -200,13 +240,33 @@ def resolve_mime_type(
     file_name: Optional[str] = None,
     url: Optional[str] = None,
 ) -> Optional[str]:
-    """Best-effort mime type for a media input, most explicit source first."""
-    return (
-        normalize_mime_type(mime_type)
-        or mime_type_from_data_url(base64_value)
-        or mime_type_from_name(file_name)
-        or mime_type_from_name(url)
-    )
+    """Best-effort mime type for a media input, most explicit source first.
+
+    A *generic* type is the exception to "most explicit first". A browser that
+    cannot identify a file reports ``application/octet-stream``, and one that
+    sees only the OOXML zip container reports ``application/x-zip-compressed``
+    -- both routine on Windows for .docx and .xlsx. Those name a container, not
+    a format, so `report.docx` is the better answer than either. Taking them
+    literally rejects a file the extension gate had already accepted.
+
+    That holds wherever the generic type appears: the declared field, or the
+    prefix of a data URL. ``FileReader.readAsDataURL`` writes
+    ``data:application/octet-stream;base64,`` for any file whose type the
+    browser left empty, so a client passing its result straight through sends
+    exactly that alongside `report.docx`.
+
+    A generic type is still returned when nothing more specific exists, so an
+    unidentifiable upload is rejected with its real type in the message, and a
+    document with no resolvable type keeps failing open to PDF as before.
+    """
+    declared = normalize_mime_type(mime_type)
+    from_data_url = mime_type_from_data_url(base64_value)
+    for candidate in (declared, from_data_url):
+        if candidate and candidate not in _GENERIC_MIME_TYPES:
+            return candidate
+
+    from_name = mime_type_from_name(file_name) or mime_type_from_name(url)
+    return from_name or declared or from_data_url
 
 
 def _reject(detail: str) -> None:
@@ -489,6 +549,15 @@ def ensure_supported_document_mime_type(
     Unlike images, an unresolvable mime type is allowed through: the document
     formatter treats a missing mime as ``application/pdf``, and callers have
     long sent raw PDF base64 with no mime type.
+
+    That fail-open is why callers must branch on the *returned* value rather
+    than on "not a PDF" — ``None`` here means "assume PDF", and must never be
+    routed to a text extractor.
+
+    Extractable types sent only as ``document_url`` are rejected too. flo_ai
+    extracts their text from the file bytes and deliberately does not download
+    URLs, so accepting one here only moves the failure to the provider call --
+    after a 202 on the async endpoints.
     """
     resolved = resolve_mime_type(mime_type, base64_value, file_name, url)
     supported = ', '.join(sorted(SUPPORTED_DOCUMENT_MIME_TYPES))
@@ -497,8 +566,23 @@ def ensure_supported_document_mime_type(
         _reject(
             f'Unsupported document type `{resolved}`{_position(index)}. '
             f'Supported document types: {supported}. '
-            f'Convert the file to PDF, or send it as an image input.'
+            f'Convert the file to one of those, or send it as an image input.'
         )
+
+    if resolved in EXTRACTABLE_DOCUMENT_MIME_TYPES and url and not base64_value:
+        _reject(
+            f'Document type `{resolved}`{_position(index)} cannot be sent as '
+            f'`document_url`. Send the file contents as `document_base64`.'
+        )
+
+    # An unresolvable document mime is still allowed through above, because the
+    # formatter defaults it to PDF — so check the bytes against PDF, not
+    # against the declaration that was never made.
+    ensure_bytes_match_mime_type(resolved or 'application/pdf', base64_value, index)
+
+    data = _decode_base64_payload(base64_value, index)
+    if data is not None:
+        _ensure_decodable_pdf(data, index)
 
     # An unresolvable document mime is still allowed through above, because the
     # formatter defaults it to PDF — so check the bytes against PDF, not

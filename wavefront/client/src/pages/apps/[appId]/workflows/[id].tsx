@@ -8,6 +8,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@app/components/ui/switch';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@app/components/ui/dialog';
 import { appEnv } from '@app/config/env';
+import {
+  documentMimeTypeFor,
+  documentTypeFor,
+  validateDocumentUpload,
+  validateImageUpload,
+} from '@app/constants/upload';
 import { useGetWorkflowVersions, usePromoteWorkflowVersion, useDeleteWorkflowVersion } from '@app/hooks';
 import { getWorkflowVersionsKey } from '@app/hooks/data/query-keys';
 import { useNotifyStore } from '@app/store';
@@ -79,7 +85,7 @@ const WorkflowDetail: React.FC = () => {
       base64: string; // Full data URL for display
       base64Content: string; // Just base64 content for API
       mimeType: string;
-      documentType: 'pdf' | 'txt';
+      documentType: string;
     }>
   >([]);
   const [uploadingDocument, setUploadingDocument] = useState(false);
@@ -127,19 +133,11 @@ const WorkflowDetail: React.FC = () => {
       const files = event.target.files;
       if (!files || files.length === 0) return;
 
-      // Validate file type
-      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
-      const maxSize = 10 * 1024 * 1024; // 10MB
-
       // Validate all files before processing
       for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        if (!allowedTypes.includes(file.type)) {
-          notifyError(`File ${file.name} is not a valid image type. Please select JPEG, PNG, GIF, or WebP files.`);
-          return;
-        }
-        if (file.size > maxSize) {
-          notifyError(`File ${file.name} exceeds 10MB limit`);
+        const imageError = validateImageUpload(files[i]);
+        if (imageError) {
+          notifyError(imageError);
           return;
         }
       }
@@ -226,19 +224,11 @@ const WorkflowDetail: React.FC = () => {
       const files = event.target.files;
       if (!files || files.length === 0) return;
 
-      // Validate file type
-      const allowedTypes = ['application/pdf', 'text/plain'];
-      const maxSize = 50 * 1024 * 1024; // 50MB
-
       // Validate all files before processing
       for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        if (!allowedTypes.includes(file.type)) {
-          notifyError(`Invalid file type for ${file.name}. Please select PDF or TXT files only.`);
-          return;
-        }
-        if (file.size > maxSize) {
-          notifyError(`File ${file.name} is too large. Maximum size is 50MB.`);
+        const documentError = validateDocumentUpload(files[i]);
+        if (documentError) {
+          notifyError(documentError);
           return;
         }
       }
@@ -252,21 +242,20 @@ const WorkflowDetail: React.FC = () => {
           base64: string;
           base64Content: string;
           mimeType: string;
-          documentType: 'pdf' | 'txt';
+          documentType: string;
         }>((resolve, reject) => {
           const reader = new FileReader();
 
           reader.onload = (e) => {
             const dataUrl = e.target?.result as string;
             const base64 = dataUrl.split(',')[1];
-            const documentType = file.type === 'application/pdf' ? 'pdf' : 'txt';
 
             resolve({
               file,
               base64: dataUrl,
               base64Content: base64,
-              mimeType: file.type,
-              documentType,
+              mimeType: documentMimeTypeFor(file),
+              documentType: documentTypeFor(file),
             });
           };
 

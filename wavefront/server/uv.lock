@@ -87,6 +87,7 @@ constraints = [
 overrides = [
     { name = "beautifulsoup4", specifier = ">=4.13.5,<5.0.0" },
     { name = "torch", marker = "sys_platform != 'darwin'", specifier = ">=2.6.0", index = "https://download.pytorch.org/whl/cpu" },
+    { name = "xlrd", specifier = ">=2.0.1,<3.0.0" },
 ]
 
 [[package]]
@@ -115,13 +116,17 @@ dependencies = [
     { name = "api-services-module" },
     { name = "celery", extra = ["redis"] },
     { name = "common-module" },
+    { name = "defusedxml" },
     { name = "flo-ai" },
     { name = "flo-cloud" },
     { name = "flo-utils" },
     { name = "llm-inference-config-module" },
+    { name = "openpyxl" },
+    { name = "python-docx" },
     { name = "pillow" },
     { name = "pymupdf" },
     { name = "tools-module" },
+    { name = "xlrd" },
 ]
 
 [package.dev-dependencies]
@@ -135,13 +140,17 @@ requires-dist = [
     { name = "api-services-module", editable = "modules/api_services_module" },
     { name = "celery", extras = ["redis"], specifier = ">=5.4.0,<6.0.0" },
     { name = "common-module", editable = "modules/common_module" },
+    { name = "defusedxml", specifier = ">=0.7.1,<0.8.0" },
     { name = "flo-ai", specifier = "==1.1.12" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "flo-utils", editable = "packages/flo_utils" },
     { name = "llm-inference-config-module", editable = "modules/llm_inference_config_module" },
+    { name = "openpyxl", specifier = ">=3.1.5,<4.0.0" },
+    { name = "python-docx", specifier = ">=1.1.2,<2.0.0" },
     { name = "pillow", specifier = ">=11.0.0" },
     { name = "pymupdf", specifier = ">=1.25.5,<2.0.0" },
     { name = "tools-module", editable = "modules/tools_module" },
+    { name = "xlrd", specifier = ">=2.0.1,<3.0.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -5235,6 +5244,19 @@ wheels = [
 ]
 
 [[package]]
+name = "python-docx"
+version = "1.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "lxml" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a9/f7/eddfe33871520adab45aaa1a71f0402a2252050c14c7e3009446c8f4701c/python_docx-1.2.0.tar.gz", hash = "sha256:7bc9d7b7d8a69c9c02ca09216118c86552704edc23bac179283f2e38f86220ce", size = 5723256, upload-time = "2025-06-16T20:46:27.921Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d0/00/1e03a4989fa5795da308cd774f05b704ace555a70f9bf9d3be057b680bcf/python_docx-1.2.0-py3-none-any.whl", hash = "sha256:3fd478f3250fbbbfd3b94fe1e985955737c145627498896a8a6bf81f4baf66c7", size = 252987, upload-time = "2025-06-16T20:46:22.506Z" },
+]
+
+[[package]]
 name = "python-dotenv"
 version = "1.2.3"
 source = { registry = "https://pypi.org/simple" }
@@ -6900,11 +6922,11 @@ wheels = [
 
 [[package]]
 name = "xlrd"
-version = "1.2.0"
+version = "2.0.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/aa/05/ec9d4fcbbb74bbf4da9f622b3b61aec541e4eccf31d3c60c5422ec027ce2/xlrd-1.2.0.tar.gz", hash = "sha256:546eb36cee8db40c3eaa46c351e67ffee6eeb5fa2650b71bc4c758a29a1b29b2", size = 554079, upload-time = "2018-12-15T17:47:48.133Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/07/5a/377161c2d3538d1990d7af382c79f3b2372e880b65de21b01b1a2b78691e/xlrd-2.0.2.tar.gz", hash = "sha256:08b5e25de58f21ce71dc7db3b3b8106c1fa776f3024c54e45b45b374e89234c9", size = 100167, upload-time = "2025-06-14T08:46:39.039Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b0/16/63576a1a001752e34bf8ea62e367997530dc553b689356b9879339cf45a4/xlrd-1.2.0-py2.py3-none-any.whl", hash = "sha256:e551fb498759fa3a5384a94ccd4c3c02eb7c00ea424426e212ac0c57be9dfbde", size = 103251, upload-time = "2018-12-15T17:47:45.792Z" },
+    { url = "https://files.pythonhosted.org/packages/1a/62/c8d562e7766786ba6587d09c5a8ba9f718ed3fa8af7f4553e8f91c36f302/xlrd-2.0.2-py2.py3-none-any.whl", hash = "sha256:ea762c3d29f4cca48d82df517b6d89fbce4db3107f9d78713e48cd321d5c9aa9", size = 96555, upload-time = "2025-06-14T08:46:37.766Z" },
 ]
 
 [[package]]

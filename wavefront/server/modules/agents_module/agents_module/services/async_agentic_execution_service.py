@@ -41,6 +41,8 @@ _MIME_TO_EXT = {
     'image/svg+xml': '.svg',
     'text/plain': '.txt',
     'text/csv': '.csv',
+    'application/msword': '.doc',
+    'application/vnd.ms-excel': '.xls',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
 }
