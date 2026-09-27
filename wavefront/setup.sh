@@ -11,7 +11,8 @@
 #      and create the S3 bucket, SQS queue and KMS signing/encryption keys in localstack
 #   4. Install python deps and start floconsole and floware (python server.py)
 #      in new terminal windows, then wait for their /v1/health endpoints
-#      Optionally start the celery worker the same way
+#      Optionally download the inference models and start the inference app,
+#      and start the celery and RAG ingestion workers, the same way
 #   5. Install client deps and start the web client (pnpm run dev) in a new
 #      terminal window
 #
@@ -24,6 +25,8 @@ SERVER_DIR="$ROOT_DIR/server"
 FLOCONSOLE_DIR="$SERVER_DIR/apps/floconsole/floconsole"
 FLOWARE_DIR="$SERVER_DIR/apps/floware/floware"
 CELERY_DIR="$SERVER_DIR/background_jobs/celery_worker"
+RAG_DIR="$SERVER_DIR/background_jobs/rag_ingestion"
+INFERENCE_DIR="$SERVER_DIR/apps/inference_app/inference_app"
 CLIENT_DIR="$ROOT_DIR/client"
 
 REQUIRED_PYTHON_MAJOR=3
@@ -55,6 +58,7 @@ print_banner() {
 ╚███╔███╔╝██║  ██║ ╚████╔╝ ███████╗██║     ██║  ██║╚██████╔╝██║ ╚████║   ██║
  ╚══╝╚══╝ ╚═╝  ╚═╝  ╚═══╝  ╚══════╝╚═╝     ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═══╝   ╚═╝
 BANNER
+  printf "%78s\n" "by Rootflo"
   echo "${RESET}  Local development setup"
 }
 
@@ -259,6 +263,94 @@ setup_celery_env() {
   copy_env_file "$CELERY_DIR/celery_worker/.env.sample" "$CELERY_DIR/celery_worker/.env" || true
 }
 
+RUN_RAG_WORKER=0
+
+setup_rag_env() {
+  step "RAG ingestion worker (knowledge base documents)"
+  if ! confirm "Run the RAG ingestion worker as well?"; then
+    ok "Skipping RAG ingestion worker"
+    return
+  fi
+  RUN_RAG_WORKER=1
+
+  local env_file="$RAG_DIR/rag_ingestion/.env"
+  local floware_secret
+  floware_secret="$(env_get "$FLOWARE_DIR/.env" PASSTHROUGH_SECRET)"
+  if copy_env_file "$RAG_DIR/rag_ingestion/.env.sample" "$env_file"; then
+    # The worker calls floware back with this secret, so they must match.
+    set_env_value "$env_file" PASSTHROUGH_SECRET "$floware_secret"
+    chmod 600 "$env_file"
+    ok "Copied PASSTHROUGH_SECRET from floware"
+  elif [[ "$(env_get "$env_file" PASSTHROUGH_SECRET)" != "$floware_secret" ]]; then
+    warn "PASSTHROUGH_SECRET differs from floware's .env; the worker cannot call floware"
+  fi
+  if is_intel_mac; then
+    warn "The inference app is skipped on Intel Macs, so embedding documents will fail"
+  fi
+}
+
+RUN_INFERENCE_APP=0
+INFERENCE_MODELS_DIR="$INFERENCE_DIR/scripts/.mcache"
+# <env var>:<folder under .mcache>; must match MODELS in scripts/download_models.py
+INFERENCE_MODELS=(
+  "CLIP_VIT_BASE_PATCH32_MODEL_URI:clip-vit-base-patch32-hf"
+  "DINOV3_VITL16_HF_MODEL_URI:dinov3-vitl16-hf"
+)
+
+# True if any inference model folder is missing or empty.
+inference_models_missing() {
+  local entry dir
+  for entry in "${INFERENCE_MODELS[@]}"; do
+    dir="$INFERENCE_MODELS_DIR/${entry#*:}"
+    [[ -d "$dir" && -n "$(ls -A "$dir" 2>/dev/null)" ]] || return 0
+  done
+  return 1
+}
+
+# Intel Macs: PyTorch stopped shipping x86_64 macOS wheels after 2.2.2, below the
+# workspace's torch>=2.6 floor, so the inference app cannot run there natively.
+# Checks the hardware, not `uname -m`, which also says x86_64 under Rosetta.
+is_intel_mac() {
+  [[ "$OSTYPE" == darwin* ]] && [[ "$(sysctl -in hw.optional.arm64 2>/dev/null)" != 1 ]]
+}
+
+setup_inference_env() {
+  step "Inference app (image embeddings, CLIP + DINOv3)"
+  if is_intel_mac; then
+    warn "Skipping: torch has no Intel Mac build at the required version (>= 2.6)"
+    return
+  fi
+  if ! confirm "Run the inference app as well? (downloads several GB of models on first run)"; then
+    ok "Skipping inference app"
+    return
+  fi
+  RUN_INFERENCE_APP=1
+
+  local env_file="$INFERENCE_DIR/.env" entry var
+  copy_env_file "$INFERENCE_DIR/.env.sample" "$env_file" || true
+  # Point empty model URIs at the local download folders (machine-specific paths).
+  for entry in "${INFERENCE_MODELS[@]}"; do
+    var="${entry%%:*}"
+    if [[ -z "$(env_get "$env_file" "$var")" ]]; then
+      set_env_value "$env_file" "$var" "$INFERENCE_MODELS_DIR/${entry#*:}"
+      ok "$var → scripts/.mcache/${entry#*:}"
+    fi
+  done
+
+  # Ask for the token now so the download later runs unattended.
+  if inference_models_missing && [[ -z "${HF_TOKEN:-}" ]]; then
+    echo "  The models are downloaded from Hugging Face. DINOv3 is gated: accept its"
+    echo "  license at https://huggingface.co/facebook/dinov3-vitl16-pretrain-lvd1689m"
+    echo "  and create a read token at https://huggingface.co/settings/tokens"
+    read -r -s -p "  Hugging Face token (input hidden): " HF_TOKEN
+    echo
+    if [[ -z "$HF_TOKEN" ]]; then
+      fail "A Hugging Face token is needed to download the models"
+      exit 1
+    fi
+  fi
+}
+
 setup_client_env() {
   step "Configuring client environment"
   copy_env_file "$CLIENT_DIR/.env.sample" "$CLIENT_DIR/.env" || true
@@ -440,6 +532,8 @@ FLOCONSOLE_PORT=8002
 FLOCONSOLE_HEALTH_URL="http://localhost:$FLOCONSOLE_PORT/floconsole/v1/health"
 FLOWARE_PORT=8001
 FLOWARE_HEALTH_URL="http://localhost:$FLOWARE_PORT/floware/v1/health"
+INFERENCE_PORT=8003
+INFERENCE_HEALTH_URL="http://localhost:$INFERENCE_PORT/inference/v1/health"
 
 install_python_deps() {
   step "Setting up python environment (server/.venv)"
@@ -528,9 +622,9 @@ is_healthy() {
 }
 
 # Start `python server.py` for a service in its own terminal and wait for health.
-#   start_python_service <name> <dir> <port> <health_url>
+#   start_python_service <name> <dir> <port> <health_url> [timeout_seconds]
 start_python_service() {
-  local name="$1" dir="$2" port="$3" health_url="$4"
+  local name="$1" dir="$2" port="$3" health_url="$4" timeout="${5:-180}"
   step "Starting $name"
 
   if is_healthy "$health_url"; then
@@ -547,7 +641,7 @@ start_python_service() {
   open_in_terminal "$name" "$dir" uv run --no-sync python server.py
 
   # First start runs the alembic migrations, so give it a moment.
-  if ! wait_for "$name ($health_url)" 180 is_healthy "$health_url"; then
+  if ! wait_for "$name ($health_url)" "$timeout" is_healthy "$health_url"; then
     fail "Check the $name terminal window for errors"
     exit 1
   fi
@@ -561,6 +655,30 @@ start_floconsole() {
 start_floware() {
   start_python_service floware "$FLOWARE_DIR" "$FLOWARE_PORT" "$FLOWARE_HEALTH_URL"
   ok "Seed login: $(env_get "$FLOWARE_DIR/.env" EMAIL)"
+}
+
+download_inference_models() {
+  (( RUN_INFERENCE_APP )) || return 0
+  step "Downloading inference models (scripts/download_models.py)"
+
+  if ! inference_models_missing; then
+    ok "Models already downloaded to ${INFERENCE_MODELS_DIR#"$ROOT_DIR"/}"
+    return
+  fi
+
+  # Token goes through the environment, not argv, so it stays out of `ps`.
+  (cd "$INFERENCE_DIR/scripts" && HF_TOKEN="${HF_TOKEN:-}" uv run --no-sync python download_models.py)
+  if inference_models_missing; then
+    fail "Model download did not complete; check the output above"
+    exit 1
+  fi
+  ok "Models downloaded to ${INFERENCE_MODELS_DIR#"$ROOT_DIR"/}"
+}
+
+start_inference_app() {
+  (( RUN_INFERENCE_APP )) || return 0
+  # Loading CLIP + DINOv3 into memory at startup takes a while.
+  start_python_service inference "$INFERENCE_DIR" "$INFERENCE_PORT" "$INFERENCE_HEALTH_URL" 300
 }
 
 # Same flags as docker/celery_worker.Dockerfile.
@@ -593,6 +711,39 @@ start_celery_worker() {
     fail "Check the celery-worker terminal window (or ${CELERY_LOG#"$ROOT_DIR"/}) for errors"
     exit 1
   fi
+}
+
+# Same command as docker/rag_ingestion.Dockerfile (startup-rag-ingestion.sh).
+RAG_CMD=(uv run --no-sync python rag_ingestion/main.py)
+RAG_LOG="$ROOT_DIR/.setup-logs/rag-ingestion.log"
+
+is_rag_running() {
+  pgrep -f "python rag_ingestion/main.py" >/dev/null 2>&1
+}
+
+start_rag_worker() {
+  (( RUN_RAG_WORKER )) || return 0
+  step "Starting RAG ingestion worker"
+
+  if is_rag_running; then
+    ok "RAG ingestion worker is already running"
+    return
+  fi
+
+  TEE_LOG=1 open_in_terminal rag-ingestion "$RAG_DIR" "${RAG_CMD[@]}"
+
+  # The worker only polls the queue and logs nothing on startup, so treat it as
+  # up once it has survived startup (config and import errors exit quickly).
+  local waited=0
+  until (( waited >= 15 )); do
+    sleep 3
+    waited=$((waited + 3))
+    if (( waited >= 6 )) && ! is_rag_running; then
+      fail "RAG ingestion worker exited; check the rag-ingestion window (or ${RAG_LOG#"$ROOT_DIR"/})"
+      exit 1
+    fi
+  done
+  ok "RAG ingestion worker is running (polling rag-ingestion-queue)"
 }
 
 # ---------------------------------------------------------------------------
@@ -659,7 +810,9 @@ print_next_steps() {
   echo "    web client   $CLIENT_URL"
   echo "    floconsole   http://localhost:$FLOCONSOLE_PORT"
   echo "    floware      http://localhost:$FLOWARE_PORT"
+  (( RUN_INFERENCE_APP )) && echo "    inference    http://localhost:$INFERENCE_PORT"
   (( RUN_CELERY_WORKER )) && echo "    celery       worker on redis://localhost:6379/0"
+  (( RUN_RAG_WORKER )) && echo "    rag          worker on the rag-ingestion-queue (LocalStack SQS)"
   echo
   echo "${BOLD}  Next steps${RESET}"
   echo
@@ -689,6 +842,8 @@ main() {
   setup_floconsole_env
   setup_floware_env
   setup_celery_env
+  setup_rag_env
+  setup_inference_env
   setup_client_env
   start_services
   setup_database floconsole "$FLOCONSOLE_DIR/.env" CONSOLE_DB_
@@ -697,7 +852,10 @@ main() {
   install_python_deps
   start_floconsole
   start_floware
+  download_inference_models
+  start_inference_app
   start_celery_worker
+  start_rag_worker
   install_client_deps
   start_client
   print_next_steps

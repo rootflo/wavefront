@@ -24,3 +24,6 @@ flo_ai/usecases
 .setup-logs/
 # Backups of .env files made by wavefront/setup.sh
 .env.backup.*
+
+# Models downloaded by inference_app/scripts/download_models.py
+.mcache/
