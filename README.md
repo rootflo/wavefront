@@ -45,17 +45,18 @@
 
 ## What is Wavefront ?
 
-Wavefront AI is an open-source middleware platform designed to:
-- Seamlessly connect to any API, database or file storage system
-- Connect to any LLM or SLM
-- Build AI-driven agents, workflows, and automations across enterprise by connecting to multiple data sources, knowledge bases, and services
-- Provide authentication, authorization, observability, monitoring & evaluation for all agents & workflows
+Wavefront AI is an open-source middleware platform for building production AI applications on enterprise data. It lets you:
+- Connect to databases, APIs and cloud storage, and query them with access control and audit logging
+- Use any LLM or SLM, hosted or self-hosted
+- Build agents, multi-agent workflows, chatbots and voice agents on top of that data, configured in YAML and versioned
+- Add authentication, role-based access control, observability and evaluation to all of them
 
 ## What people build with Wavefront ?
-- To build AI agents & workflows to audit, underwrite, supervise contact center, and automate business processes
-- To build knowledge bases & RAG ready applications for internal enterprise use
-- To build voice & conversational agents collections and sales use-cases
-- To build AI workflows to connect multiple data sources, knowledge bases, and services
+- AI agents and workflows that audit, underwrite, supervise contact centers and automate business processes
+- Knowledge bases and RAG applications for internal enterprise use
+- Voice agents for collections and sales, over inbound and outbound phone calls
+- Chatbots that give each user a persistent conversation with a configured model
+- Workflows that combine multiple data sources, knowledge bases and services
 
 
 <p align="center">
@@ -70,69 +71,87 @@ Wavefront AI is an open-source middleware platform designed to:
 
 ## ✨ Key Capabilities
 
-- **🔌 Unified API Layer**  
-  Standardized APIs for developing, deploying, and managing AI workflows & agents across multiple use cases and frameworks.
+- **🤖 Agents & Workflows**  
+  Define agents and multi-agent workflows in YAML, built on [flo-ai](flo_ai). Every save creates a new version, validated by building the agent or compiling the workflow, and you can promote or roll back versions. Workflows can reference saved agents, define agents inline, or embed other workflows. Run them synchronously with streamed events, or asynchronously on background workers.
 
-- **🔐 Enterprise-Grade Authentication & Authorization**  
-  Native integrations with Google Auth and Microsoft AD/Entra for seamless SSO and access controls for client applications
+- **💬 Chatbots & Sessions**  
+  Configure a chatbot as a system prompt bound to a model. Each user gets persistent chat sessions with stored history and streaming replies. Sessions keep a snapshot of the prompt they started with, so editing a chatbot never rewrites past conversations.
 
-- **🌐 Comprehensive Data Connectivity**  
-  Ingest data from OLAP/OLTP systems (BigQuery, Redshift), HDFS, cloud storage (S3, GCS), databases (PostgreSQL, MongoDB), and enterprise APIs (Salesforce, SAP).
+- **🔊 Voice Agents**  
+  Voice-to-voice agents for inbound and outbound phone calls, built on [Pipecat](https://github.com/pipecat-ai/pipecat). They support multiple languages, tool calls during a call, smart turn detection, and LLM-based evaluation after each call.
+  - Telephony: Twilio, Exotel, Smartflo
+  - Speech-to-text: Deepgram, AssemblyAI, Whisper, Google, Azure, Sarvam, ElevenLabs
+  - Text-to-speech: ElevenLabs, Deepgram, Cartesia, Azure, Google, AWS, Sarvam
 
-- **👥 Granular Role-Based Access Control**  
-  Fine-grained permissions for both AI agents and data sources, ensuring compliance and least-privilege access.
+- **🌐 Data Connectivity**  
+  Connect to BigQuery, Redshift, PostgreSQL and SQL Server as datasources. Read and write through an OData-style API, or define parameterised dynamic queries in YAML and run or export them. Every datasource operation is audit logged. API services connect any REST backend, with API key, Basic and Bearer authentication. Cloud storage works with AWS, GCP and Azure.
+
+- **🧠 Knowledge Bases & RAG**  
+  Upload documents to knowledge bases, with background ingestion and embedding. Retrieval combines vector (pgvector) and keyword search with reranking, and supports image search.
+
+- **🛠️ Tools & Triggers**  
+  Agents can use datasources, knowledge bases, API services, email and custom message processors as tools. Triggers start an agent or workflow from external events, starting with Gmail.
 
 - **🤖 Open Source & Proprietary Model Support**  
-  Works seamlessly with open-source LLMs/SLMs, custom models, and proprietary AI services.
+  OpenAI, Azure OpenAI, Anthropic, Google Gemini, Groq, Ollama and vLLM, managed centrally as reusable model configurations. flo-ai also supports Vertex AI and AWS Bedrock.
+
+- **🔐 Authentication & Authorization**  
+  Email/password, Google OAuth, Microsoft OAuth (Entra) and Microsoft ADFS sign-in. Role-based access control with users, groups, roles and resources, plus account lockout and reCAPTCHA protection.
 
 - **📊 Observability, Monitoring & Evaluation**  
-  Built-in OpenTelemetry telemetry pushed to any APM backend — local Jaeger, Azure Application Insights, AWS X-Ray/CloudWatch, GCP Cloud Trace, or any OTLP-compatible vendor. Track agent performance, audit trails, and guardrail enforcement in real-time.
+  Built-in OpenTelemetry telemetry pushed to any APM backend — local Jaeger, Azure Application Insights, AWS X-Ray/CloudWatch, GCP Cloud Trace, or any OTLP-compatible vendor. See the [OpenTelemetry guide](OPENTELEMETRY_ARCHITECTURE_GUIDE.md).
 
-- **🤖 No Code Agent & Workflow Builder**
-  Built-in capabilities to build and customize AI agents, and AI Workflows, connecting Data Sources, Knowledge Bases, in minutes
+- **🖥️ Web Console**  
+  A web console for configuring agents, workflows, chatbots, voice agents, datasources, knowledge bases, triggers and model providers across all your applications.
 
-- **🔊 Voice & Conversational Agents**  
-  Integrated Voice-to-Voice Bots, ASR models, and agentic flows for contact center and conversational use cases.
+## Architecture
 
-- **🧠 Knowledge Bases & RAG Ready**  
-  Native support for Retrieval-Augmented Generation with MCP connectors and external knowledge bases.
+Each application runs as its own deployment, and a single console manages all of them.
 
-- **🎯 Modular AI Application Integration (Coming Soon)**  
-Deploy diverse AI agents for auditing, underwriting, contact center supervision, and business process automation without rebuilding infrastructure.
+```
+                ┌──────────────────────────────┐
+                │  floconsole                  │  manages apps, builders and access
+                └──────┬───────────────┬───────┘
+                       │               │
+          ┌────────────▼───┐     ┌─────▼──────────┐
+          │ floware (app A)│     │ floware (app B)│  one core server per application
+          └────────────────┘     └────────────────┘
+```
+
+| Service | Role |
+|---------|------|
+| **floconsole** | Creates and manages applications, their users and access, and proxies requests to each app's floware |
+| **floware** | The core server for one application: agents, workflows, chatbots, datasources, knowledge bases, tools, RBAC |
+| **call_processing** | The real-time voice runtime that handles phone calls for voice agents |
+| **Background jobs** | Celery workers for async agent and workflow runs, RAG ingestion, and scheduled workflow jobs |
+| **inference_app** | Hosts custom PyTorch models (experimental) |
+
+Because each application has its own floware, each gets its own database, storage and secrets.
 
 ## Quick Start
 
 **Option 1**: [Schedule a demo](https://calendly.com/meetings-rootflo/30min) and we help you build immediately. 
 
-**Option 2**: Self-host for maximum control and customization. Please find the self-hosting instructions in the [Wavefront Documentation](https://github.com/rootflo/wavefront/tree/develop/wavefront).
+**Option 2**: Self-host for maximum control and customization. Please find the self-hosting instructions in the [Wavefront Documentation](https://github.com/rootflo/wavefront/tree/develop/wavefront) and the [Docker setup guide](DOCKER_SETUP.md).
 
 
 ## Platform Components
 
-As part of the project, we are building the following components
-
 | Component | Description |
 |---------|-------------|
 | **flo-ai** | [FloAI](https://github.com/rootflo/flo-ai/tree/develop/flo_ai) library for Agent Building & A2A Orchestration. Detailed documentation is available [here](https://wavefront.rootflo.ai/flo-ai). |
-| **wavefront-server** | Core Middleware Service, which connects everything and orchestrates the flows. Detailed documentation is available [here](https://github.com/rootflo/wavefront/tree/develop/wavefront). |
-| **wavefront-client** | Unified frontend for configuring agents, workflows, AI models, Guardrails developer-friendly, RBAC etc. Details [here](https://github.com/rootflo/wavefront/tree/develop/wavefront). |
-| **wavefront-cli** | for configuring through cli, for full developer-friendly control (**Coming Soon**) |
+| **wavefront-server** | The backend services: floconsole, floware, call processing and background workers. Detailed documentation is available [here](https://github.com/rootflo/wavefront/tree/develop/wavefront). |
+| **wavefront-client** | The web console for configuring agents, workflows, chatbots, voice agents, models, datasources and RBAC. Details [here](https://github.com/rootflo/wavefront/tree/develop/wavefront). |
+| **wavefront-cli** | For configuring through the command line, for full developer control (**Coming Soon**) |
 
-## Release Timeline
-
-| Quarter | Milestone | Features |
-|---------|-----------|----------|
-| **Nov 2025** | Public README.md | Publish readme and take in community feedback |
-| **Dec 2025** | Open-source Beta Release | Beta with basic features |
-| **Q1 2026** | GA Release | Advanced RBAC, More Data source Integrations|
-| **Q1 2026** | Rootflo Wavefront Cloud | Multi-tenant Cloud offering |
+## Roadmap
 
 See [ROADMAP.md](ROADMAP.md) for detailed feature plans and contribution opportunities.
 
 > [!WARNING]
 > 
 > - This project is under active development and APIs may change without notice. Please checkout the [platform docs](https://wavefront.rootflo.ai) for the latest information.
-> - The platform is not in the GA state, and there are unimplemented feature. Checkout [ROADMAP.md](../ROADMAP.md) for the list of features, and whats missing.
+> - The platform is not in the GA state, and there are unimplemented features. Checkout [ROADMAP.md](ROADMAP.md) for the list of features, and what's missing.
 
 ## ⭐ Show Your Support
 
