@@ -17,3 +17,10 @@ node_modules/
 .vite
 flo_ai/usecases
 .env
+# Logs from wavefront/setup.sh when no terminal window can be opened
+.setup-logs/
+
+# Logs from wavefront/setup.sh when no terminal window can be opened
+.setup-logs/
+# Backups of .env files made by wavefront/setup.sh
+.env.backup.*
