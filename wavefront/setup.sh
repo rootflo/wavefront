@@ -11,6 +11,7 @@
 #      and create the S3 bucket, SQS queue and KMS signing/encryption keys in localstack
 #   4. Install python deps and start floconsole and floware (python server.py)
 #      in new terminal windows, then wait for their /v1/health endpoints
+#      Optionally start the celery worker the same way
 #   5. Install client deps and start the web client (pnpm run dev) in a new
 #      terminal window
 #
@@ -22,6 +23,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVER_DIR="$ROOT_DIR/server"
 FLOCONSOLE_DIR="$SERVER_DIR/apps/floconsole/floconsole"
 FLOWARE_DIR="$SERVER_DIR/apps/floware/floware"
+CELERY_DIR="$SERVER_DIR/background_jobs/celery_worker"
 CLIENT_DIR="$ROOT_DIR/client"
 
 REQUIRED_PYTHON_MAJOR=3
@@ -245,6 +247,18 @@ setup_floware_env() {
   fi
 }
 
+RUN_CELERY_WORKER=0
+
+setup_celery_env() {
+  step "Celery worker (async agent and workflow runs)"
+  if ! confirm "Run the celery worker as well?"; then
+    ok "Skipping celery worker"
+    return
+  fi
+  RUN_CELERY_WORKER=1
+  copy_env_file "$CELERY_DIR/celery_worker/.env.sample" "$CELERY_DIR/celery_worker/.env" || true
+}
+
 setup_client_env() {
   step "Configuring client environment"
   copy_env_file "$CLIENT_DIR/.env.sample" "$CLIENT_DIR/.env" || true
@@ -289,7 +303,8 @@ wait_for() {
 
 LOCALSTACK_URL="http://localhost:4566"
 LOCALSTACK_REGION="us-east-1"
-APPLICATION_BUCKET_NAME="application-bucket"  # S3 bucket names cannot contain '_'
+# S3 bucket names cannot contain '_'. Must match the .env samples.
+S3_BUCKETS=(application-bucket)
 RAG_INGESTION_QUEUE_NAME="rag-ingestion-queue"
 
 # KMS keys use fixed IDs so the ARNs in the .env samples never change.
@@ -379,12 +394,15 @@ setup_localstack_resources() {
   # Required: floconsole and floware sign JWTs with these KMS keys.
   step "Creating AWS resources in LocalStack"
 
-  if awslocal s3api head-bucket --bucket "$APPLICATION_BUCKET_NAME" >/dev/null 2>&1; then
-    ok "S3 bucket '$APPLICATION_BUCKET_NAME' exists"
-  else
-    awslocal s3api create-bucket --bucket "$APPLICATION_BUCKET_NAME" >/dev/null
-    ok "Created S3 bucket '$APPLICATION_BUCKET_NAME'"
-  fi
+  local bucket
+  for bucket in "${S3_BUCKETS[@]}"; do
+    if awslocal s3api head-bucket --bucket "$bucket" >/dev/null 2>&1; then
+      ok "S3 bucket '$bucket' exists"
+    else
+      awslocal s3api create-bucket --bucket "$bucket" >/dev/null
+      ok "Created S3 bucket '$bucket'"
+    fi
+  done
 
   # create-queue is idempotent and returns the existing queue's URL.
   local queue_url
@@ -447,17 +465,22 @@ install_python_deps() {
 
 # Run a command in a new terminal window so it keeps running after setup exits.
 # Falls back to a background process with a log file when no terminal can be opened.
-#   open_in_terminal <title> <dir> <command...>
+# With TEE_LOG=1 the window's output is also copied to .setup-logs/<title>.log,
+# for services whose readiness can only be seen in their output.
+#   [TEE_LOG=1] open_in_terminal <title> <dir> <command...>
 open_in_terminal() {
   local title="$1" dir="$2"; shift 2
   local launcher log_file
   launcher="$(mktemp "${TMPDIR:-/tmp}/wavefront-${title}.XXXXXX")"
   log_file="$ROOT_DIR/.setup-logs/$title.log"
+  mkdir -p "$(dirname "$log_file")"
+  : > "$log_file"
 
   {
     echo '#!/usr/bin/env bash'
     printf 'printf "\\033]0;%%s\\007" %q\n' "$title"
     printf 'cd %q || exit 1\n' "$dir"
+    [[ "${TEE_LOG:-0}" == 1 ]] && printf 'exec > >(tee -a %q) 2>&1\n' "$log_file"
     printf '%q ' "$@"; echo
   } > "$launcher"
   chmod +x "$launcher"
@@ -478,8 +501,7 @@ open_in_terminal() {
     x-terminal-emulator -e bash -c "$launcher; exec bash" &
     ok "Started $title in a new terminal window"
   else
-    mkdir -p "$(dirname "$log_file")"
-    nohup "$launcher" > "$log_file" 2>&1 &
+    nohup "$launcher" >> "$log_file" 2>&1 &
     ok "Started $title in the background (pid $!), logs: ${log_file#"$ROOT_DIR"/}"
   fi
 }
@@ -539,6 +561,38 @@ start_floconsole() {
 start_floware() {
   start_python_service floware "$FLOWARE_DIR" "$FLOWARE_PORT" "$FLOWARE_HEALTH_URL"
   ok "Seed login: $(env_get "$FLOWARE_DIR/.env" EMAIL)"
+}
+
+# Same flags as docker/celery_worker.Dockerfile.
+CELERY_CMD=(uv run --no-sync celery -A celery_worker.celery_app worker
+  --loglevel=info --pool=solo --without-mingle --without-gossip)
+CELERY_LOG="$ROOT_DIR/.setup-logs/celery-worker.log"
+
+is_celery_running() {
+  pgrep -f "celery -A celery_worker.celery_app worker" >/dev/null 2>&1
+}
+
+# Remote control is disabled in celery_app.py (no `inspect ping`), so readiness
+# is celery's "celery@<host> ready." line in the worker's output.
+is_celery_ready() {
+  grep -q ' ready\.' "$CELERY_LOG" 2>/dev/null
+}
+
+start_celery_worker() {
+  (( RUN_CELERY_WORKER )) || return 0
+  step "Starting celery worker"
+
+  if is_celery_running; then
+    ok "celery worker is already running"
+    return
+  fi
+
+  TEE_LOG=1 open_in_terminal celery-worker "$CELERY_DIR" "${CELERY_CMD[@]}"
+
+  if ! wait_for "celery worker" 120 is_celery_ready; then
+    fail "Check the celery-worker terminal window (or ${CELERY_LOG#"$ROOT_DIR"/}) for errors"
+    exit 1
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -605,6 +659,7 @@ print_next_steps() {
   echo "    web client   $CLIENT_URL"
   echo "    floconsole   http://localhost:$FLOCONSOLE_PORT"
   echo "    floware      http://localhost:$FLOWARE_PORT"
+  (( RUN_CELERY_WORKER )) && echo "    celery       worker on redis://localhost:6379/0"
   echo
   echo "${BOLD}  Next steps${RESET}"
   echo
@@ -633,6 +688,7 @@ main() {
   check_prerequisites
   setup_floconsole_env
   setup_floware_env
+  setup_celery_env
   setup_client_env
   start_services
   setup_database floconsole "$FLOCONSOLE_DIR/.env" CONSOLE_DB_
@@ -641,6 +697,7 @@ main() {
   install_python_deps
   start_floconsole
   start_floware
+  start_celery_worker
   install_client_deps
   start_client
   print_next_steps
