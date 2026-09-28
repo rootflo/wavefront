@@ -415,10 +415,18 @@ class KBRagStorage:
         delay = initial_delay
         for attempt in range(max_retries):
             try:
+                # httpx defaults to a 5s timeout when none is given. A batch of
+                # up to STREAMING_BATCH_SIZE items commits in one transaction
+                # that has to update two HNSW indexes per row, which routinely
+                # takes longer than that under load -- the client was giving up
+                # and retrying (re-POSTing the whole batch) while floware was
+                # still legitimately working, which both duplicated rows and
+                # amplified load on an already-busy server.
                 response = httpx.post(
                     url,
                     json={'embeddings': doc_wise_embeddings},
                     headers=self._fetch_headers(),
+                    timeout=httpx.Timeout(180.0, connect=30.0),
                 )
                 if response.status_code == 200:
                     return response
