@@ -283,6 +283,14 @@ setup_rag_env() {
     ok "Copied PASSTHROUGH_SECRET from floware"
   elif [[ "$(env_get "$env_file" PASSTHROUGH_SECRET)" != "$floware_secret" ]]; then
     warn "PASSTHROUGH_SECRET differs from floware's .env; the worker cannot call floware"
+    if confirm "Update it in ${env_file#"$ROOT_DIR"/} to match floware?"; then
+      set_env_value "$env_file" PASSTHROUGH_SECRET "$floware_secret"
+      ok "Synced PASSTHROUGH_SECRET from floware"
+    else
+      RUN_RAG_WORKER=0
+      warn "Skipping RAG ingestion worker: it cannot run with a mismatched secret"
+      return
+    fi
   fi
   if is_intel_mac; then
     warn "The inference app is skipped on Intel Macs, so embedding documents will fail"
