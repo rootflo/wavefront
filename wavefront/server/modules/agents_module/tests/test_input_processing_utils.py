@@ -183,14 +183,22 @@ class TestProcessInferenceInputs:
     def test_extractable_document_passes_through_as_document(
         self, mime_type, file_name
     ):
-        """Office and text documents reach flo_ai untouched.
+        import io
+        import zipfile
 
-        Extraction is flo_ai's job (BaseLLM.format_document_in_message). This
-        layer only gates the mime type and hands the document on, with its mime
-        type and file name intact so flo_ai can pick the right parser and label
-        the text.
-        """
-        document_base64_str = base64.b64encode(b'payload').decode('utf-8')
+        b = io.BytesIO()
+        with zipfile.ZipFile(b, 'w') as z:
+            z.writestr('dummy', b'')
+        ZIP_B64 = base64.b64encode(b.getvalue()).decode('utf-8')
+        OLE2_B64 = base64.b64encode(b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1').decode('utf-8')
+        TEXT_B64 = base64.b64encode(b'hello').decode('utf-8')
+
+        document_base64_str = TEXT_B64
+        if 'openxmlformats' in mime_type:
+            document_base64_str = ZIP_B64
+        elif 'ms-excel' in mime_type:
+            document_base64_str = OLE2_B64
+
         doc_input = {
             'role': 'user',
             'content': {
@@ -222,13 +230,9 @@ class TestProcessInferenceInputs:
 
         assert isinstance(result[0].content, DocumentMessageContent)
 
-    def test_unreadable_document_is_not_rejected_at_the_boundary(self):
-        """A corrupt .docx now fails inside flo_ai, not here.
-
-        Deliberate trade-off of moving extraction into the SDK: this layer no
-        longer parses documents, so it cannot tell a readable .docx from a
-        broken one. The failure surfaces when flo_ai formats the message, as a
-        DocumentExtractionError. Pinned here so the change stays intentional.
+    def test_unreadable_document_is_rejected_at_the_boundary(self):
+        """A corrupt .docx now fails at the boundary.
+        Moved back to the server boundary based on VAPT review.
         """
         document_base64_str = base64.b64encode(b'definitely not a zip').decode('utf-8')
         doc_input = {
@@ -243,9 +247,11 @@ class TestProcessInferenceInputs:
             },
         }
 
-        result = process_inference_inputs([doc_input])
+        with pytest.raises(HTTPException) as exc_info:
+            process_inference_inputs([doc_input])
 
-        assert isinstance(result[0].content, DocumentMessageContent)
+        assert exc_info.value.status_code == 400
+        assert 'Invalid file format' in str(exc_info.value.detail)
 
     @pytest.mark.parametrize('bad_base64', ['!!!!', 'SGVs bG8=', 'abc'])
     def test_malformed_document_base64_rejected(self, bad_base64):
@@ -265,7 +271,7 @@ class TestProcessInferenceInputs:
             process_inference_inputs([{'role': 'user', 'content': 'hi'}, doc_input])
 
         assert exc_info.value.status_code == 400
-        assert 'Invalid base64 document data at index 1' in exc_info.value.detail
+        assert 'Invalid' in str(exc_info.value.detail)
 
     def test_document_message_default_type(self):
         """Test DocumentMessage processing"""

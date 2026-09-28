@@ -32,6 +32,8 @@ Documents come in two kinds:
 """
 
 import base64
+import zipfile
+import io
 import binascii
 import re
 from io import BytesIO
@@ -396,6 +398,45 @@ def _ensure_decodable_image(data: bytes, index: Optional[int]) -> None:
     )
 
 
+def _ensure_decodable_zip_container(data: bytes, index: Optional[int]) -> None:
+    if not data.startswith(b'PK\x03\x04'):
+        _reject(f'Invalid file format{_position(index)}.')
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)):
+            # Just opening the central directory is enough to verify it's a zip
+            pass
+    except zipfile.BadZipFile:
+        _reject(f'Invalid file format{_position(index)}.')
+
+
+def _ensure_decodable_text(data: bytes, index: Optional[int]) -> None:
+    # UTF-16 files must start with BOM
+    if data.startswith((b'\xff\xfe', b'\xfe\xff')):
+        try:
+            data.decode('utf-16')
+        except UnicodeDecodeError:
+            _reject(f'Invalid file format{_position(index)}.')
+    else:
+        # Forbid null bytes to reject binary executables disguised as text.
+        # This must run regardless of UTF-8 validity because null bytes are valid UTF-8.
+        if b'\x00' in data:
+            _reject(f'Invalid file format{_position(index)}.')
+
+        try:
+            data.decode('utf-8')
+        except UnicodeDecodeError:
+            # Safe to fallback to cp1252/latin-1 downstream since we rejected null bytes
+            pass
+
+
+def _ensure_decodable_xls(data: bytes, index: Optional[int]) -> None:
+    _OLE2_MAGIC = b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1'
+    if data.startswith(_OLE2_MAGIC):
+        pass
+    else:
+        _ensure_decodable_text(data, index)
+
+
 def _ensure_decodable_pdf(data: bytes, index: Optional[int]) -> None:
     """Reject document bytes that are not a structurally valid PDF.
 
@@ -442,9 +483,6 @@ def ensure_bytes_match_mime_type(
     actual = detect_mime_type_from_bytes(header)
 
     if actual is None:
-        if declared_mime_type in EXTRACTABLE_DOCUMENT_MIME_TYPES:
-            return
-
         logger.warning(
             f'Rejected input{_position(index)}: declared `{declared_mime_type}` '
             f'but the content matches no supported format'
@@ -581,11 +619,21 @@ def ensure_supported_document_mime_type(
     # An unresolvable document mime is still allowed through above, because the
     # formatter defaults it to PDF — so check the bytes against PDF, not
     # against the declaration that was never made.
-    ensure_bytes_match_mime_type(resolved or 'application/pdf', base64_value, index)
-
     if resolved is None or resolved == 'application/pdf':
-        data = _decode_base64_payload(base64_value, index)
-        if data is not None:
+        ensure_bytes_match_mime_type(resolved or 'application/pdf', base64_value, index)
+
+    data = _decode_base64_payload(base64_value, index)
+    if data is not None:
+        if resolved is None or resolved == 'application/pdf':
             _ensure_decodable_pdf(data, index)
+        elif resolved in (
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ):
+            _ensure_decodable_zip_container(data, index)
+        elif resolved in ('text/csv', 'text/plain'):
+            _ensure_decodable_text(data, index)
+        elif resolved == 'application/vnd.ms-excel':
+            _ensure_decodable_xls(data, index)
 
     return resolved

@@ -29,7 +29,10 @@ from agents_module.utils.mime_type_utils import (
 PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
 # A structurally valid one-page PDF: the gate parses documents now, so a
 # `%PDF-` prefix alone is no longer accepted as one.
-DUMMY_B64 = 'ZHVtbXkgdGV4dCBkYXRhIGZvciBleHRyYWN0YWJsZSBkb2Nz'
+ZIP_B64 = 'UEsDBBQAAAAAAIycPF0AAAAAAAAAAAAAAAAFAAAAZHVtbXlQSwECFAMUAAAAAACMnDxdAAAAAAAAAAAAAAAABQAAAAAAAAAAAAAAgAEAAAAAZHVtbXlQSwUGAAAAAAEAAQAzAAAAIwAAAAAA'
+OLE2_B64 = '0M8R4KGxGuE='
+TEXT_B64 = 'aGVsbG8='
+
 PDF_B64 = 'JVBERi0xLjcKJcK1wrYKJSBXcml0dGVuIGJ5IE11UERGIDEuMjguMgoKMSAwIG9iago8PC9UeXBlL0NhdGFsb2cvUGFnZXMgMiAwIFIvSW5mbzw8L1Byb2R1Y2VyKE11UERGIDEuMjguMik+Pj4+CmVuZG9iagoKMiAwIG9iago8PC9UeXBlL1BhZ2VzL0NvdW50IDEvS2lkc1s0IDAgUl0+PgplbmRvYmoKCjMgMCBvYmoKPDw+PgplbmRvYmoKCjQgMCBvYmoKPDwvVHlwZS9QYWdlL01lZGlhQm94WzAgMCA3MiA3Ml0vUm90YXRlIDAvUmVzb3VyY2VzIDMgMCBSL1BhcmVudCAyIDAgUj4+CmVuZG9iagoKeHJlZgowIDUKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDQyIDAwMDAwIG4gCjAwMDAwMDAxMjAgMDAwMDAgbiAKMDAwMDAwMDE3MiAwMDAwMCBuIAowMDAwMDAwMTkzIDAwMDAwIG4gCgp0cmFpbGVyCjw8L1NpemUgNS9Sb290IDEgMCBSL0lEWzxDM0ExQzJCNzM1QzNBMDczNTk0NEMzQURDMjhEQzI4Qj48QjYzOEIzMjRCNUUwQzQ3Q0NEMTRBNUMzMjYzMDg2RkQ+XT4+CnN0YXJ0eHJlZgoyODIKJSVFT0YK'
 
 
@@ -167,7 +170,7 @@ class TestGenericMimeTypesDeferToFileName:
         assert (
             ensure_supported_document_mime_type(
                 mime_type='application/octet-stream',
-                base64_value=DUMMY_B64,
+                base64_value=ZIP_B64,
                 file_name='report.docx',
             )
             == self.DOCX
@@ -203,7 +206,7 @@ class TestGenericMimeTypesDeferToFileName:
     def test_docx_in_a_generic_data_url_passes_the_gate(self):
         assert (
             ensure_supported_document_mime_type(
-                base64_value=f'data:application/octet-stream;base64,{DUMMY_B64}',
+                base64_value=f'data:application/octet-stream;base64,{ZIP_B64}',
                 file_name='report.docx',
             )
             == self.DOCX
@@ -331,6 +334,52 @@ class TestEnsureSupportedDocumentMimeType:
             == 'application/pdf'
         )
 
+    def test_decodable_zip_container_rejects_non_zip(self):
+        """Test that a .docx file that isn't a zip is rejected."""
+        with pytest.raises(HTTPException) as exc_info:
+            ensure_supported_document_mime_type(
+                mime_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                base64_value=base64.b64encode(b'not a zip').decode('utf-8'),
+            )
+        assert exc_info.value.status_code == 400
+        assert 'Invalid file format' in str(exc_info.value.detail)
+
+    def test_decodable_zip_container_rejects_bad_zip(self):
+        """Test that a .docx file with a valid magic byte but broken structure is rejected."""
+        with pytest.raises(HTTPException) as exc_info:
+            ensure_supported_document_mime_type(
+                mime_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                base64_value=base64.b64encode(b'PK\x03\x04 broken body').decode(
+                    'utf-8'
+                ),
+            )
+        assert exc_info.value.status_code == 400
+        assert 'Invalid file format' in str(exc_info.value.detail)
+
+    def test_decodable_text_rejects_null_bytes(self):
+        """Test that a .csv file containing null bytes (binary file) is rejected."""
+        with pytest.raises(HTTPException) as exc_info:
+            ensure_supported_document_mime_type(
+                mime_type='text/csv',
+                base64_value=base64.b64encode(b'some text \x00 binary data').decode(
+                    'utf-8'
+                ),
+            )
+        assert exc_info.value.status_code == 400
+        assert 'Invalid file format' in str(exc_info.value.detail)
+
+    def test_decodable_xls_rejects_binary(self):
+        """Test that a .xls file not matching OLE2 and having null bytes is rejected."""
+        with pytest.raises(HTTPException) as exc_info:
+            ensure_supported_document_mime_type(
+                mime_type='application/vnd.ms-excel',
+                base64_value=base64.b64encode(b'not OLE2 \x00 binary data').decode(
+                    'utf-8'
+                ),
+            )
+        assert exc_info.value.status_code == 400
+        assert 'Invalid file format' in str(exc_info.value.detail)
+
 
 class TestValidateInferenceInputsMedia:
     """Test cases for the raw-payload walker used by the async endpoints"""
@@ -401,17 +450,19 @@ class TestValidateInferenceInputsMedia:
 
     @pytest.mark.parametrize('mime_type', sorted(EXTRACTABLE_DOCUMENT_MIME_TYPES))
     def test_extractable_document_types_accepted(self, mime_type):
-        """Every type flo_ai can extract passes the gate.
+        """Every type flo_ai can extract passes the gate."""
+        b64 = TEXT_B64
+        if 'openxmlformats' in mime_type:
+            b64 = ZIP_B64
+        elif 'ms-excel' in mime_type:
+            b64 = OLE2_B64
 
-        Driven by flo_ai's own set rather than a copy of it, so a format flo_ai
-        gains -- .doc, once it has a reader -- is covered here automatically.
-        """
         validate_inference_inputs_media(
             [
                 {
                     'role': 'user',
                     'content': {
-                        'document_base64': DUMMY_B64,
+                        'document_base64': b64,
                         'mime_type': mime_type,
                     },
                 }
@@ -460,7 +511,7 @@ class TestValidateInferenceInputsMedia:
                 {
                     'role': 'user',
                     'content': {
-                        'document_base64': DUMMY_B64,
+                        'document_base64': ZIP_B64,
                         'file_name': 'contract.docx',
                     },
                 }
