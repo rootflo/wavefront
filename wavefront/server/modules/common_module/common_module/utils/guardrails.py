@@ -82,11 +82,11 @@ def guarded_llm(
     return wrapped
 
 
-def guardrail_llm_decorator(
+def guardrail_llm_provider(
     guardrails_engine: Any,
     namespace: Optional[str],
 ) -> Optional[Callable[[Any, str], Any]]:
-    """Build the ``llm_decorator`` hook ``AriumBuilder.from_yaml`` accepts.
+    """Build the ``llm_decorator`` AgentBuilder accepts.
 
     ``apply_guardrails`` can only reach agents the server itself built, which
     in a workflow is just the ``namespace/name`` references. Agents declared

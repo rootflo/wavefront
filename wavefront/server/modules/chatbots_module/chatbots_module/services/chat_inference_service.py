@@ -45,7 +45,7 @@ class ChatInferenceService:
         status code.
 
         This is also the single place guardrails are attached, for the same
-        reason `apply_guardrails` wraps after `build()`: wrapping the one object
+        reason `the AgentBuilder decorator hook` wraps after `build()`: wrapping the one object
         every turn goes through does not depend on anyone downstream
         remembering to. `generate` and `stream` are deliberately left taking an
         already-wrapped llm.

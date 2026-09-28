@@ -1191,7 +1191,7 @@ class _RecordingWrapper:
 
 
 class TestAriumYamlLlmDecorator:
-    """Coverage of the ``llm_decorator`` hook.
+    """Coverage of the ``guardrail_provider`` hook.
 
     The contract is "every LLM this builder creates, and nothing it was
     given". It is what a caller enforcing policy has to rely on, and the
@@ -1240,7 +1240,7 @@ class TestAriumYamlLlmDecorator:
             builder = AriumBuilder.from_yaml(
                 yaml_str=yaml_config,
                 agents={'prebuilt_agent': prebuilt},
-                llm_decorator=self._decorator(seen),
+                guardrail_provider=self._decorator(seen),
             )
 
         assert seen == ['inline_agent']
@@ -1285,7 +1285,7 @@ class TestAriumYamlLlmDecorator:
             mock_agent_builder.from_yaml.return_value = mock_builder_instance
 
             AriumBuilder.from_yaml(
-                yaml_str=yaml_config, llm_decorator=self._decorator(seen)
+                yaml_str=yaml_config, guardrail_provider=self._decorator(seen)
             )
 
         assert seen == ['yaml_agent']
@@ -1334,7 +1334,7 @@ class TestAriumYamlLlmDecorator:
         # actually wrapped.
         with patch('flo_ai.llm.OpenAI'):
             AriumBuilder.from_yaml(
-                yaml_str=yaml_config, llm_decorator=self._decorator(seen)
+                yaml_str=yaml_config, guardrail_provider=self._decorator(seen)
             )
 
         assert seen == ['agent1', 'agent2', 'router:content_router']
@@ -1389,7 +1389,7 @@ class TestAriumYamlLlmDecorator:
             patch('flo_ai.llm.OpenAI'),
             patch('flo_ai.arium.llm_router.OpenAI') as mock_router_default,
         ):
-            AriumBuilder.from_yaml(yaml_str=yaml_config, llm_decorator=decorate)
+            AriumBuilder.from_yaml(yaml_str=yaml_config, guardrail_provider=decorate)
 
         router_wrappers = [w for w in wrapped if w.node_name == 'router:bare_router']
         assert len(router_wrappers) == 1
@@ -1426,7 +1426,7 @@ class TestAriumYamlLlmDecorator:
 
         with patch('flo_ai.llm.OpenAI'):
             AriumBuilder.from_yaml(
-                yaml_str=yaml_config, llm_decorator=self._decorator(seen)
+                yaml_str=yaml_config, guardrail_provider=self._decorator(seen)
             )
 
         assert seen == ['nested_agent']

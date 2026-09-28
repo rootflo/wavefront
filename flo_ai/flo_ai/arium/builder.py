@@ -331,7 +331,7 @@ class AriumBuilder:
         base_llm: Optional[BaseLLM] = None,
         function_registry: Optional[Dict[str, Callable]] = None,
         tool_registry: Optional[Dict[str, Tool]] = None,
-        llm_decorator: Optional[Callable[[BaseLLM, str], BaseLLM]] = None,
+        guardrail_provider: Optional[Callable[[BaseLLM, str], BaseLLM]] = None,
         **kwargs,
     ) -> 'AriumBuilder':
         """Create an AriumBuilder from a YAML configuration.
@@ -345,7 +345,7 @@ class AriumBuilder:
             base_llm: Base LLM to use for all agents if not specified in individual agent configs
             function_registry: Dictionary mapping function names to function objects
             tool_registry: Dictionary mapping tool names to Tool objects
-            llm_decorator: ``(llm, node_name) -> llm``, applied to every LLM
+            guardrail_provider: ``(llm, node_name) -> llm``, applied to every LLM
                 behind a node this builder constructs: agents declared inline
                 in the YAML and each router's model, at every nesting depth.
                 A router that configures no model builds its own default, so
@@ -400,10 +400,6 @@ class AriumBuilder:
 
         for agent_config in agents_list:
             agent_name = agent_config.name
-            # Whether this builder constructed the agent, and so owns its LLM.
-            # Tracked rather than inferred from `agent_name in agents` so the
-            # two pre-built branches below stay the single source of truth.
-            built_here = False
 
             # Method 1: Reference pre-built agent
             # Check if only name is provided (no other config fields)
@@ -434,9 +430,12 @@ class AriumBuilder:
                 and agent_config.yaml_file is None
             ):
                 agent = cls._create_agent_from_direct_config(
-                    agent_config, base_llm, tool_registry, **kwargs
+                    agent_config,
+                    base_llm,
+                    tool_registry,
+                    guardrail_provider=guardrail_provider,
+                    **kwargs,
                 )
-                built_here = True
 
             # Method 3: Inline YAML config
             elif agent_config.yaml_config is not None:
@@ -444,10 +443,10 @@ class AriumBuilder:
                     yaml_str=agent_config.yaml_config,
                     base_llm=base_llm,
                     tool_registry=tool_registry,
+                    guardrail_provider=guardrail_provider,
                     **kwargs,
                 )
                 agent = agent_builder.build()
-                built_here = True
 
             # Method 4: External file reference
             elif agent_config.yaml_file is not None:
@@ -455,10 +454,10 @@ class AriumBuilder:
                     yaml_file=agent_config.yaml_file,
                     base_llm=base_llm,
                     tool_registry=tool_registry,
+                    guardrail_provider=guardrail_provider,
                     **kwargs,
                 )
                 agent = agent_builder.build()
-                built_here = True
 
             else:
                 raise ValueError(
@@ -468,11 +467,6 @@ class AriumBuilder:
                     f'  - yaml_config, or\n'
                     f'  - yaml_file'
                 )
-
-            if llm_decorator is not None and built_here:
-                inner_llm = getattr(agent, 'llm', None)
-                if inner_llm is not None:
-                    agent.llm = llm_decorator(inner_llm, agent_name)
 
             agents_dict[agent_name] = agent
             builder.add_agent(agent)
@@ -536,17 +530,12 @@ class AriumBuilder:
             # because a router with no `model:` and no base_llm receives no LLM
             # from us at all — it builds its own default — and wrapping only
             # what we pass in would leave precisely that case unwatched.
-            #
-            # Injected into `settings` so it travels with every LLM router
-            # type, including any added later: each one splats settings into
-            # create_llm_router, which forwards unknown kwargs down to
-            # BaseLLMRouter. `field_match` never reaches a model and is
-            # dispatched below with explicit arguments, so it is unaffected.
-            if llm_decorator is not None:
+            node_decorator = None
+            if guardrail_provider is not None:
                 node_name = f'router:{router.name}'
-                settings['llm_decorator'] = (
-                    lambda llm, _node_name=node_name: llm_decorator(llm, _node_name)
-                )
+
+                def node_decorator(llm, _n=node_name):
+                    return guardrail_provider(llm, _n)
 
             # Create router based on type
             if router_type == 'smart':
@@ -559,6 +548,7 @@ class AriumBuilder:
                     router_type='smart',
                     routing_options=router.routing_options,
                     llm=router_llm,
+                    guardrail_provider=node_decorator,
                     **settings,
                 )
 
@@ -579,6 +569,7 @@ class AriumBuilder:
                     router_type='task_classifier',
                     task_categories=task_categories_dict,
                     llm=router_llm,
+                    guardrail_provider=node_decorator,
                     **settings,
                 )
 
@@ -592,6 +583,7 @@ class AriumBuilder:
                     router_type='conversation_analysis',
                     routing_logic=router.routing_logic,
                     llm=router_llm,
+                    guardrail_provider=node_decorator,
                     **settings,
                 )
 
@@ -605,6 +597,7 @@ class AriumBuilder:
                     router_type='reflection',
                     flow_pattern=router.flow_pattern,
                     llm=router_llm,
+                    guardrail_provider=node_decorator,
                     **settings,
                 )
 
@@ -618,6 +611,7 @@ class AriumBuilder:
                     router_type='plan_execute',
                     agents=router.agents,
                     llm=router_llm,
+                    guardrail_provider=node_decorator,
                     **settings,
                 )
             elif router_type == 'field_match':
@@ -671,7 +665,7 @@ class AriumBuilder:
                     # Forwarded explicitly: a subworkflow builds its own agents
                     # and routers, so omitting it here would leave every nested
                     # level undecorated while the top level was covered.
-                    llm_decorator=llm_decorator,
+                    guardrail_provider=guardrail_provider,
                     **kwargs,
                 )
                 nested_arium = nested_builder.build()
@@ -715,7 +709,7 @@ class AriumBuilder:
                     base_llm=base_llm,
                     function_registry=function_registry,
                     tool_registry=tool_registry,
-                    llm_decorator=llm_decorator,
+                    guardrail_provider=guardrail_provider,
                     **kwargs,
                 )
                 nested_arium = nested_builder.build()
@@ -908,6 +902,7 @@ class AriumBuilder:
         agent_config: AriumAgentConfigModel,
         base_llm: Optional[BaseLLM] = None,
         available_tools: Optional[Dict[str, Tool]] = None,
+        guardrail_provider: Optional[Callable[[BaseLLM, str], BaseLLM]] = None,
         **kwargs,
     ) -> Agent:
         """Create an Agent from direct YAML configuration.
@@ -916,6 +911,7 @@ class AriumBuilder:
             agent_config: AriumAgentConfigModel instance containing agent configuration
             base_llm: Base LLM to use if not specified in config
             available_tools: Available tools dictionary for tool lookup
+            guardrail_provider: Optional decorator to wrap the agent's LLM
 
         Returns:
             Agent: Configured agent instance
@@ -1030,6 +1026,7 @@ class AriumBuilder:
             .with_name(name)
             .with_prompt(job)
             .with_llm(llm, owned=llm_owned)
+            .with_guardrail_provider(guardrail_provider)
             .with_tools(agent_tools)
             .with_retries(max_retries)
             .with_reasoning(reasoning_pattern)

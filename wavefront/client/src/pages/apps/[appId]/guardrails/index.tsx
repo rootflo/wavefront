@@ -337,7 +337,7 @@ const GuardrailsManagement: React.FC = () => {
                 cards scroll underneath this, and a transparent header would let
                 their text show through it.
               */}
-              <div className="sticky top-0 z-10 pb-4">
+              <div className="bg-frost-glass sticky top-0 z-10 -mt-4 pt-4 pb-4 shadow-[inset_0_-1px_0_0_var(--frost-border)] backdrop-blur-md">
                 <h2 className="text-lg font-semibold">Safety checks</h2>
                 <p className="mt-1 text-sm text-gray-600">
                   Each check runs at the stages you select. Checks not enabled here are never called.
