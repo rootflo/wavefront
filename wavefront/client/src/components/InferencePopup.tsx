@@ -2,6 +2,16 @@ import floConsoleService from '@app/api';
 import { Button } from '@app/components/ui/button';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Textarea } from '@app/components/ui/textarea';
+import {
+  DOCUMENT_ACCEPT_ATTRIBUTE,
+  IMAGE_ACCEPT_ATTRIBUTE,
+  SUPPORTED_DOCUMENT_LABEL,
+  SUPPORTED_IMAGE_LABEL,
+  documentMimeTypeFor,
+  documentTypeFor,
+  validateDocumentUpload,
+  validateImageUpload,
+} from '@app/constants/upload';
 import { useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -64,7 +74,7 @@ const InferencePopup: React.FC<InferencePopupProps> = ({ onClose, renderModal = 
       base64: string;
       base64Content: string;
       mimeType: string;
-      documentType: 'pdf' | 'txt';
+      documentType: string;
     }>
   >([]);
   const [uploadingDocument, setUploadingDocument] = useState(false);
@@ -94,17 +104,9 @@ const InferencePopup: React.FC<InferencePopupProps> = ({ onClose, renderModal = 
       const file = event.target.files?.[0];
       if (!file) return;
 
-      // Validate file type
-      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
-      if (!allowedTypes.includes(file.type)) {
-        notifyError('Please select a valid image file (JPEG, PNG, GIF, or WebP)');
-        return;
-      }
-
-      // Validate file size (10MB limit)
-      const maxSize = 10 * 1024 * 1024; // 10MB
-      if (file.size > maxSize) {
-        notifyError('Image file size must be less than 10MB');
+      const imageError = validateImageUpload(file);
+      if (imageError) {
+        notifyError(imageError);
         return;
       }
 
@@ -136,17 +138,10 @@ const InferencePopup: React.FC<InferencePopupProps> = ({ onClose, renderModal = 
       const files = Array.from(event.target.files || []);
       if (files.length === 0) return;
 
-      // Validate file types and sizes
-      const allowedTypes = ['application/pdf', 'text/plain'];
-      const maxSize = 50 * 1024 * 1024; // 50MB
-
       for (const file of files) {
-        if (!allowedTypes.includes(file.type)) {
-          notifyError(`File ${file.name} is not a supported document type (PDF or TXT)`);
-          return;
-        }
-        if (file.size > maxSize) {
-          notifyError(`File ${file.name} is too large (max 50MB)`);
+        const documentError = validateDocumentUpload(file);
+        if (documentError) {
+          notifyError(documentError);
           return;
         }
       }
@@ -159,7 +154,7 @@ const InferencePopup: React.FC<InferencePopupProps> = ({ onClose, renderModal = 
           base64: string;
           base64Content: string;
           mimeType: string;
-          documentType: 'pdf' | 'txt';
+          documentType: string;
         }> = [];
 
         for (const file of files) {
@@ -178,8 +173,8 @@ const InferencePopup: React.FC<InferencePopupProps> = ({ onClose, renderModal = 
               file,
               base64,
               base64Content,
-              mimeType: file.type,
-              documentType: file.type === 'application/pdf' ? 'pdf' : 'txt',
+              mimeType: documentMimeTypeFor(file),
+              documentType: documentTypeFor(file),
             });
           } catch {
             notifyError(`Failed to process file ${file.name}`);
@@ -303,7 +298,7 @@ const InferencePopup: React.FC<InferencePopupProps> = ({ onClose, renderModal = 
               <input
                 type="file"
                 id="imageInput"
-                accept="image/*"
+                accept={IMAGE_ACCEPT_ATTRIBUTE}
                 onChange={handleImageUpload}
                 className="hidden"
                 disabled={uploadingImage}
@@ -350,7 +345,7 @@ const InferencePopup: React.FC<InferencePopupProps> = ({ onClose, renderModal = 
             </div>
           )}
           <p className="pt-3 text-sm font-normal text-[#878787]">
-            Upload an image to test vision-capable workflows. Supported formats: JPEG, PNG, GIF, WebP (max 10MB)
+            Upload an image to test vision-capable workflows. Supported formats: {SUPPORTED_IMAGE_LABEL} (max 10MB)
           </p>
         </div>
 
@@ -363,7 +358,7 @@ const InferencePopup: React.FC<InferencePopupProps> = ({ onClose, renderModal = 
             <input
               type="file"
               id="documentInput"
-              accept=".pdf,.txt,application/pdf,text/plain"
+              accept={DOCUMENT_ACCEPT_ATTRIBUTE}
               onChange={handleDocumentUpload}
               className="hidden"
               disabled={uploadingDocument}
@@ -428,7 +423,7 @@ const InferencePopup: React.FC<InferencePopupProps> = ({ onClose, renderModal = 
           )}
 
           <p className="pt-3 text-sm font-normal text-[#878787]">
-            Upload document(s) to include in your prompt. Supported formats: PDF, TXT (max 50MB each)
+            Upload document(s) to include in your prompt. Supported formats: {SUPPORTED_DOCUMENT_LABEL} (max 50MB each)
           </p>
         </div>
 

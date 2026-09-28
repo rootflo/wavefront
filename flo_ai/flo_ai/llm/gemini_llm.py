@@ -313,31 +313,27 @@ class Gemini(BaseLLM):
             f'Image formatting for Gemini LLM requires either url or base64 data. Received: url={image.url}, base64={bool(image.base64)}'
         )
 
-    async def format_document_in_message(
+    def format_text_content(self, text: str) -> types.Part:
+        """Gemini takes text as a ``Part``, not an OpenAI-style block."""
+        return types.Part.from_text(text=text)
+
+    async def _format_native_document(
         self, document: DocumentMessageContent
     ) -> types.Part:
         """Return a Gemini native Part for this document.
 
-        Gemini accepts PDFs (and many other document formats) as `inline_data`
-        Parts, so there is no need to extract or rasterize locally.
+        Gemini accepts PDFs as `inline_data` Parts, so there is no need to
+        rasterize locally. Office formats never reach here: the base converts
+        them to text first, since Gemini reads PDF meaningfully and little
+        else. Caching is handled by the base.
         """
-        cache_key = self.__class__.__name__
-        cache = getattr(document, '_formatted_cache', None)
-        if isinstance(cache, dict) and cache_key in cache:
-            return cache[cache_key]
-
         mime = document.mime_type or 'application/pdf'
         if document.bytes:
-            part = types.Part.from_bytes(data=document.bytes, mime_type=mime)
-        elif document.base64:
-            part = types.Part.from_bytes(
+            return types.Part.from_bytes(data=document.bytes, mime_type=mime)
+        if document.base64:
+            return types.Part.from_bytes(
                 data=base64.b64decode(document.base64), mime_type=mime
             )
-        elif document.url:
-            part = types.Part.from_uri(file_uri=document.url, mime_type=mime)
-        else:
-            raise ValueError('DocumentMessageContent has no bytes, base64, or url')
-
-        if isinstance(cache, dict):
-            cache[cache_key] = part
-        return part
+        if document.url:
+            return types.Part.from_uri(file_uri=document.url, mime_type=mime)
+        raise ValueError('DocumentMessageContent has no bytes, base64, or url')

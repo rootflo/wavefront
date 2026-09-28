@@ -48,7 +48,7 @@ export class ToolService {
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async getToolNamesAndDetails(): Promise<any> {
-    const response = await this.http.get(`/v1/:appId/floware/v1/tools/names`);
+    const response = await this.http.get(`/v1/:appId/floware/v1/tools`);
     return response;
   }
 
