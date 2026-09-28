@@ -39,6 +39,10 @@ def setup_containers(core_containers):
     )
     knowledge_base_container = KnowledgeBaseContainer(
         db_client=core_containers.db_client,
+        # Same test db_client as above -- tests run against one database, so
+        # the ingestion write pool doesn't need to be a genuinely separate
+        # engine here the way it is in production.
+        ingestion_db_client=core_containers.db_client,
         cache_manager=core_containers.cache_manager,
     )
 
