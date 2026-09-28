@@ -442,6 +442,9 @@ def ensure_bytes_match_mime_type(
     actual = detect_mime_type_from_bytes(header)
 
     if actual is None:
+        if declared_mime_type in EXTRACTABLE_DOCUMENT_MIME_TYPES:
+            return
+
         logger.warning(
             f'Rejected input{_position(index)}: declared `{declared_mime_type}` '
             f'but the content matches no supported format'
@@ -580,17 +583,9 @@ def ensure_supported_document_mime_type(
     # against the declaration that was never made.
     ensure_bytes_match_mime_type(resolved or 'application/pdf', base64_value, index)
 
-    data = _decode_base64_payload(base64_value, index)
-    if data is not None:
-        _ensure_decodable_pdf(data, index)
-
-    # An unresolvable document mime is still allowed through above, because the
-    # formatter defaults it to PDF — so check the bytes against PDF, not
-    # against the declaration that was never made.
-    ensure_bytes_match_mime_type(resolved or 'application/pdf', base64_value, index)
-
-    data = _decode_base64_payload(base64_value, index)
-    if data is not None:
-        _ensure_decodable_pdf(data, index)
+    if resolved is None or resolved == 'application/pdf':
+        data = _decode_base64_payload(base64_value, index)
+        if data is not None:
+            _ensure_decodable_pdf(data, index)
 
     return resolved

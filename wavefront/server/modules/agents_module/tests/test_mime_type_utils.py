@@ -29,6 +29,7 @@ from agents_module.utils.mime_type_utils import (
 PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
 # A structurally valid one-page PDF: the gate parses documents now, so a
 # `%PDF-` prefix alone is no longer accepted as one.
+DUMMY_B64 = 'ZHVtbXkgdGV4dCBkYXRhIGZvciBleHRyYWN0YWJsZSBkb2Nz'
 PDF_B64 = 'JVBERi0xLjcKJcK1wrYKJSBXcml0dGVuIGJ5IE11UERGIDEuMjguMgoKMSAwIG9iago8PC9UeXBlL0NhdGFsb2cvUGFnZXMgMiAwIFIvSW5mbzw8L1Byb2R1Y2VyKE11UERGIDEuMjguMik+Pj4+CmVuZG9iagoKMiAwIG9iago8PC9UeXBlL1BhZ2VzL0NvdW50IDEvS2lkc1s0IDAgUl0+PgplbmRvYmoKCjMgMCBvYmoKPDw+PgplbmRvYmoKCjQgMCBvYmoKPDwvVHlwZS9QYWdlL01lZGlhQm94WzAgMCA3MiA3Ml0vUm90YXRlIDAvUmVzb3VyY2VzIDMgMCBSL1BhcmVudCAyIDAgUj4+CmVuZG9iagoKeHJlZgowIDUKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDQyIDAwMDAwIG4gCjAwMDAwMDAxMjAgMDAwMDAgbiAKMDAwMDAwMDE3MiAwMDAwMCBuIAowMDAwMDAwMTkzIDAwMDAwIG4gCgp0cmFpbGVyCjw8L1NpemUgNS9Sb290IDEgMCBSL0lEWzxDM0ExQzJCNzM1QzNBMDczNTk0NEMzQURDMjhEQzI4Qj48QjYzOEIzMjRCNUUwQzQ3Q0NEMTRBNUMzMjYzMDg2RkQ+XT4+CnN0YXJ0eHJlZgoyODIKJSVFT0YK'
 
 
@@ -166,7 +167,7 @@ class TestGenericMimeTypesDeferToFileName:
         assert (
             ensure_supported_document_mime_type(
                 mime_type='application/octet-stream',
-                base64_value=PDF_B64,
+                base64_value=DUMMY_B64,
                 file_name='report.docx',
             )
             == self.DOCX
@@ -202,7 +203,7 @@ class TestGenericMimeTypesDeferToFileName:
     def test_docx_in_a_generic_data_url_passes_the_gate(self):
         assert (
             ensure_supported_document_mime_type(
-                base64_value=f'data:application/octet-stream;base64,{PDF_B64}',
+                base64_value=f'data:application/octet-stream;base64,{DUMMY_B64}',
                 file_name='report.docx',
             )
             == self.DOCX
@@ -410,7 +411,7 @@ class TestValidateInferenceInputsMedia:
                 {
                     'role': 'user',
                     'content': {
-                        'document_base64': PDF_B64,
+                        'document_base64': DUMMY_B64,
                         'mime_type': mime_type,
                     },
                 }
@@ -459,7 +460,7 @@ class TestValidateInferenceInputsMedia:
                 {
                     'role': 'user',
                     'content': {
-                        'document_base64': PDF_B64,
+                        'document_base64': DUMMY_B64,
                         'file_name': 'contract.docx',
                     },
                 }

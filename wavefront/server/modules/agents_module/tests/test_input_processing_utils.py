@@ -209,7 +209,7 @@ class TestProcessInferenceInputs:
         assert result[0].content.base64 == document_base64_str
 
     def test_pdf_still_becomes_document_content(self):
-        document_base64_str = base64.b64encode(b'%PDF-1.4 fake').decode('utf-8')
+        document_base64_str = REAL_PDF_B64
         doc_input = {
             'role': 'user',
             'content': {
