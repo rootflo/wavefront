@@ -13,13 +13,17 @@ from db_repo_module.models.user import User
 from db_repo_module.models.user_role import UserRole
 from dependency_injector import providers
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker
+from user_management_module.constants.cache import get_session_cache_key
 from user_management_module.constants.cache import user_by_id_cache_key
 from user_management_module.utils.password_utils import hash_password
 
 
 @pytest.mark.asyncio
-async def test_authenticate(test_client, test_session: AsyncSession, test_user_id):
+async def test_authenticate(
+    test_client, test_session: async_sessionmaker, test_user_id
+):
     # Create test IDs
     role_id = str(uuid4())
     resource_id = str(uuid4())
@@ -76,7 +80,7 @@ async def test_authenticate(test_client, test_session: AsyncSession, test_user_i
 
 @pytest.mark.asyncio
 async def test_authenticate_invalid_role(
-    test_client, test_session: AsyncSession, test_user_id
+    test_client, test_session: async_sessionmaker, test_user_id
 ):
     # Hash the password before storing it
     hashed_password = hash_password('test_password')
@@ -102,7 +106,7 @@ async def test_authenticate_invalid_role(
 
 @pytest.mark.asyncio
 async def test_authenticate_invalid_password(
-    test_client, test_session: AsyncSession, test_user_id
+    test_client, test_session: async_sessionmaker, test_user_id
 ):
     # Hash the password before storing it
     hashed_password = hash_password('test_password')
@@ -168,7 +172,11 @@ async def test_authenticate_does_not_enforce_password_complexity(test_client):
 # testing auth logout
 @pytest.mark.asyncio
 async def test_logout(
-    test_client, auth_token, test_session: AsyncSession, test_user_id, test_session_id
+    test_client,
+    auth_token,
+    test_session: async_sessionmaker,
+    test_user_id,
+    test_session_id,
 ):
     user = User(
         id=test_user_id,
@@ -198,7 +206,7 @@ async def test_logout(
 async def test_logout_invalid_cache(
     test_client,
     auth_token,
-    test_session: AsyncSession,
+    test_session: async_sessionmaker,
     test_user_id,
     test_session_id,
     setup_containers,
@@ -220,7 +228,7 @@ async def test_logout_invalid_cache(
 
 @pytest.mark.asyncio
 async def test_authenticate_multiple_failed_attempts_lockout(
-    test_client, test_session: AsyncSession, test_user_id
+    test_client, test_session: async_sessionmaker, test_user_id
 ):
     """Test that multiple failed login attempts result in account lockout"""
     # Get max failed attempts from environment variable, default to 3
@@ -288,7 +296,7 @@ async def test_authenticate_multiple_failed_attempts_lockout(
 
 @pytest.mark.asyncio
 async def test_authenticate_with_already_locked_account(
-    test_client, test_session: AsyncSession, test_user_id
+    test_client, test_session: async_sessionmaker, test_user_id
 ):
     """Test authentication attempt with an already locked account"""
     # Get max failed attempts from environment variable, default to 3
@@ -326,7 +334,7 @@ async def test_authenticate_with_already_locked_account(
 
 @pytest.mark.asyncio
 async def test_authenticate_resets_failed_attempts_on_success(
-    test_client, test_session: AsyncSession, test_user_id
+    test_client, test_session: async_sessionmaker, test_user_id
 ):
     """Test that successful login resets failed attempts counter"""
     # Get max failed attempts from environment variable, default to 3
@@ -389,7 +397,11 @@ async def test_authenticate_resets_failed_attempts_on_success(
 
 @pytest.mark.asyncio
 async def test_authenticate_inactive_account_feature_disabled(
-    test_client, test_session: AsyncSession, test_user_id, monkeypatch, mock_config
+    test_client,
+    test_session: async_sessionmaker,
+    test_user_id,
+    monkeypatch,
+    mock_config,
 ):
     """Test that inactive users can login when feature flag is disabled"""
     # Get threshold from config (same config that service uses)
@@ -459,7 +471,11 @@ async def test_authenticate_inactive_account_feature_disabled(
 
 @pytest.mark.asyncio
 async def test_authenticate_inactive_account_feature_enabled_first_time_user(
-    test_client, test_session: AsyncSession, test_user_id, monkeypatch, mock_config
+    test_client,
+    test_session: async_sessionmaker,
+    test_user_id,
+    monkeypatch,
+    mock_config,
 ):
     """Test that first-time users (no last_login_at) can login when feature is enabled"""
 
@@ -524,7 +540,11 @@ async def test_authenticate_inactive_account_feature_enabled_first_time_user(
 
 @pytest.mark.asyncio
 async def test_authenticate_inactive_account_feature_enabled_within_threshold(
-    test_client, test_session: AsyncSession, test_user_id, monkeypatch, mock_config
+    test_client,
+    test_session: async_sessionmaker,
+    test_user_id,
+    monkeypatch,
+    mock_config,
 ):
     """Test that active users within threshold can login when feature is enabled"""
     # Get threshold from config (same config that service uses)
@@ -594,7 +614,11 @@ async def test_authenticate_inactive_account_feature_enabled_within_threshold(
 
 @pytest.mark.asyncio
 async def test_authenticate_inactive_account_feature_enabled_over_threshold(
-    test_client, test_session: AsyncSession, test_user_id, monkeypatch, mock_config
+    test_client,
+    test_session: async_sessionmaker,
+    test_user_id,
+    monkeypatch,
+    mock_config,
 ):
     """Test that inactive users over threshold are rejected when feature is enabled"""
     # Get threshold from config (same config that service uses)
@@ -665,7 +689,7 @@ async def test_authenticate_inactive_account_feature_enabled_over_threshold(
 
 @pytest.mark.asyncio
 async def test_authenticate_updates_last_login_timestamp(
-    test_client, test_session: AsyncSession, test_user_id
+    test_client, test_session: async_sessionmaker, test_user_id
 ):
     """Test that successful login updates user's last_login_at timestamp"""
     # Create test IDs
@@ -738,7 +762,11 @@ async def test_authenticate_updates_last_login_timestamp(
 
 @pytest.mark.asyncio
 async def test_authenticate_inactive_account_with_wrong_password(
-    test_client, test_session: AsyncSession, test_user_id, monkeypatch, mock_config
+    test_client,
+    test_session: async_sessionmaker,
+    test_user_id,
+    monkeypatch,
+    mock_config,
 ):
     """Test that inactivity error takes precedence over wrong password error"""
     # Get threshold from config (same config that service uses)
@@ -813,7 +841,11 @@ async def test_authenticate_inactive_account_with_wrong_password(
 
 @pytest.mark.asyncio
 async def test_authenticate_inactive_account_with_lockout(
-    test_client, test_session: AsyncSession, test_user_id, monkeypatch, mock_config
+    test_client,
+    test_session: async_sessionmaker,
+    test_user_id,
+    monkeypatch,
+    mock_config,
 ):
     """Test that lockout error takes precedence over inactivity error"""
     # Get threshold from config (same config that service uses)
@@ -873,7 +905,7 @@ async def test_authenticate_inactive_account_with_lockout(
 
 @pytest.mark.asyncio
 async def test_locked_account_wrong_password_increments_attempts(
-    test_client, test_session: AsyncSession, test_user_id
+    test_client, test_session: async_sessionmaker, test_user_id
 ):
     """Wrong passwords while locked keep updating attempt count and timestamp."""
     hashed_password = hash_password('test_password')
@@ -922,7 +954,7 @@ async def test_locked_account_wrong_password_increments_attempts(
 
 @pytest.mark.asyncio
 async def test_locked_account_correct_password_does_not_increment_attempts(
-    test_client, test_session: AsyncSession, test_user_id
+    test_client, test_session: async_sessionmaker, test_user_id
 ):
     """A correct password during lockout is blocked but not counted as a failure."""
     hashed_password = hash_password('test_password')
@@ -957,7 +989,7 @@ async def test_locked_account_correct_password_does_not_increment_attempts(
 
 @pytest.mark.asyncio
 async def test_successful_login_refreshes_user_cache_with_last_login(
-    test_client, test_session: AsyncSession, test_user_id, setup_containers
+    test_client, test_session: async_sessionmaker, test_user_id, setup_containers
 ):
     """Successful login updates last_login_at in DB and the shared user cache."""
     role_id = str(uuid4())
@@ -1039,7 +1071,7 @@ async def test_health_endpoint(test_client):
 
 @pytest.mark.asyncio
 async def test_authenticate_after_lockout_expiry_resets_attempts(
-    test_client, test_session: AsyncSession, test_user_id, mock_config
+    test_client, test_session: async_sessionmaker, test_user_id, mock_config
 ):
     """Expired lock clears the slate so the next failure starts at attempt 1."""
     hashed_password = hash_password('correct_password')
@@ -1097,3 +1129,61 @@ async def test_authenticate_recaptcha_blocks_when_enabled(
         assert 'recaptcha' in str(response.json()).lower()
     finally:
         core_containers.user.recaptcha_service.reset_override()
+
+
+@pytest.mark.asyncio
+async def test_authenticate_replaces_existing_sessions(
+    test_client, test_session: async_sessionmaker, test_user_id, core_containers
+):
+    role_id = str(uuid4())
+    resource_id = str(uuid4())
+    old_session_id = uuid4()
+
+    async with test_session() as session:
+        session.add(
+            User(
+                id=test_user_id,
+                email='test@example.com',
+                password=hash_password('test_password'),
+                first_name='Test',
+                last_name='User',
+            )
+        )
+        session.add(Role(id=role_id, name='Test Role', description='Test Role'))
+        session.add(
+            Resource(
+                id=resource_id,
+                key='console_resource',
+                value='test_resource',
+                description='Test Resource',
+                scope=ResourceScope.CONSOLE,
+            )
+        )
+        await session.flush()
+        session.add(RoleResource(role_id=role_id, resource_id=resource_id))
+        session.add(UserRole(user_id=test_user_id, role_id=role_id))
+        # An orphan left behind by a session that was never logged out.
+        session.add(Session(id=old_session_id, user_id=test_user_id, device_info='old'))
+        await session.commit()
+
+    response = test_client.post(
+        '/floware/v1/authenticate',
+        json={'email': 'test@example.com', 'password': 'test_password'},
+    )
+    assert response.status_code == 200
+
+    core_containers.cache_manager.remove.assert_any_call(
+        get_session_cache_key(old_session_id)
+    )
+    async with test_session() as session:
+        remaining = (
+            (
+                await session.execute(
+                    select(Session).where(Session.user_id == test_user_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert len(remaining) == 1
+    assert remaining[0].id != old_session_id

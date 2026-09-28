@@ -124,7 +124,7 @@ async def async_agent_inference(
         )
     except ValueError as e:
         return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             content=response_formatter.buildErrorResponse(str(e)),
         )
 
@@ -194,7 +194,7 @@ async def async_workflow_inference(
         )
     except ValueError as e:
         return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             content=response_formatter.buildErrorResponse(str(e)),
         )
 
