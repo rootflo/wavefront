@@ -134,6 +134,44 @@ Because each application has its own floware, each gets its own database, storag
 
 **Option 2**: Self-host for maximum control and customization. Please find the self-hosting instructions in the [Wavefront Documentation](https://github.com/rootflo/wavefront/tree/develop/wavefront) and the [Docker setup guide](DOCKER_SETUP.md).
 
+**Option 3**: Run Wavefront locally for development with the setup script.
+
+### Local development setup
+
+[`wavefront/setup.sh`](wavefront/setup.sh) sets up and starts the whole stack on your machine. It is safe to re-run: services that are already running are left as they are.
+
+**Prerequisites**: Python 3.11+, [uv](https://docs.astral.sh/uv/), Docker (running), Node.js 20+, pnpm (`corepack enable`) and openssl. The script checks for all of them first.
+
+```bash
+cd wavefront
+./setup.sh
+```
+
+The script:
+1. Creates each service's `.env` from its checked-in sample (`.env.example` / `.env.sample`). If a `.env` already exists, it asks before replacing it and keeps a backup. Secrets such as `PASSTHROUGH_SECRET` are generated.
+2. Starts Postgres (pgvector), Redis and [LocalStack](https://github.com/localstack/localstack) with `server/docker-compose.yml`. LocalStack provides S3, SQS and KMS locally, so no cloud account is needed.
+3. Creates the databases, the S3 bucket, the RAG ingestion queue and the KMS keys used to sign tokens.
+4. Installs the Python dependencies into `server/.venv` and the web client's dependencies.
+5. Starts each service in its own terminal window, and waits until it is healthy.
+
+| Service | URL | Reloads on code changes |
+|---------|-----|-------------------------|
+| Web client | http://localhost:5173 | Yes |
+| floconsole | http://localhost:8002 | Yes |
+| floware | http://localhost:8001 | Yes |
+| inference_app *(optional)* | http://localhost:8003 | Yes |
+| Celery worker *(optional)* | Redis queue | No, restart it |
+| RAG ingestion worker *(optional)* | LocalStack SQS queue | No, restart it |
+
+The script asks whether to run each optional service. The inference app downloads its models (several GB) from Hugging Face on first run, and needs a Hugging Face token with access to the gated DINOv3 model. It is skipped on Intel Macs, which have no supported PyTorch build.
+
+When the script finishes:
+1. Open the web client at http://localhost:5173 and log in with the seed user from `server/apps/floconsole/floconsole/.env` (`CONSOLE_EMAIL` / `CONSOLE_PASSWORD`).
+2. Add floware as an app: **Apps → Create new app**, with App Name `localhost`, Deployment Type **Manual**, and `http://localhost:8001` as both the Public and Private URL.
+3. Start building.
+
+To stop a service, close its terminal window. To start it again, re-run `./setup.sh`.
+
 
 ## Platform Components
 
