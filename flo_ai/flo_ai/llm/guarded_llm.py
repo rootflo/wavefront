@@ -140,6 +140,10 @@ class GuardedLLM(BaseLLM):
             if inner is not None:
                 setattr(inner, key, value)
 
+    def declare_retract_support(self) -> None:
+        """Tell the wrapper that its consumer can withdraw text it has already displayed."""
+        object.__setattr__(self, '_supports_retract', True)
+
     # -- BaseLLM abstract surface ----------------------------------------
 
     def get_message_content(self, response: Any) -> str:

@@ -5,7 +5,7 @@ from uuid import UUID
 
 from agents_module.services.agent_crud_service import AgentCrudService
 from agents_module.utils.agent_guardrails import (
-    apply_guardrails,
+    guardrail_llm_provider,
     guardrail_run_scope,
 )
 from db_repo_module.cache.cache_manager import CacheManager
@@ -74,13 +74,18 @@ class AgentInferenceService:
         self.llm_inference_config_service = llm_inference_config_service
         self.guardrails_engine = guardrails_engine
 
-    def _apply_guardrails(self, agent, namespace: Optional[str], agent_name: str):
-        """Attach enforcement to a freshly built agent.
+    def _guardrail_provider(self, namespace: Optional[str], principal_agent_id: str):
+        """Build the decorator AgentBuilder applies at construction.
 
-        Thin wrapper over the shared helper so this service and the workflow
-        service cannot drift apart again.
+        The builder passes its own node name; it is ignored and the caller's
+        principal bound instead, because each entry point identifies an agent
+        differently -- v1 by id, v2 by name, workflow refs by bare name -- and the
+        YAML `name:` is none of them.
         """
-        return apply_guardrails(agent, self.guardrails_engine, namespace, agent_name)
+        base = guardrail_llm_provider(self.guardrails_engine, namespace)
+        if base is None:
+            return None
+        return lambda llm, _node_name: base(llm, principal_agent_id)
 
     async def create_agent_from_yaml(
         self,
@@ -90,6 +95,7 @@ class AgentInferenceService:
         access_token: Optional[str] = None,
         app_key: Optional[str] = None,
         namespace: Optional[str] = None,
+        principal_agent_id: Optional[str] = None,
     ):
         """
         Create agent instance from YAML configuration
@@ -101,6 +107,10 @@ class AgentInferenceService:
                 When omitted, it is resolved from the YAML's `agent.model` block
                 (see _resolve_rootflo_llm_config), so every caller gets the same
                 treatment of `provider: rootflo` references.
+            access_token: Optional access token
+            app_key: Optional app key
+            namespace: Optional namespace for the guardrails engine. If omitted, the agent will be unguarded.
+            principal_agent_id: Optional principal agent id. Defaults to agent_name if omitted.
 
         Returns:
             Agent instance created from YAML
@@ -144,6 +154,9 @@ class AgentInferenceService:
             tool_registry=tool_register,
             access_token=access_token,
             app_key=app_key,
+            guardrail_provider=self._guardrail_provider(
+                namespace, principal_agent_id or agent_name
+            ),
         )
 
         # Override LLM if config is provided
@@ -157,7 +170,6 @@ class AgentInferenceService:
             agent_builder = agent_builder.with_llm(llm_instance, owned=True)
 
         agent = agent_builder.build()
-        agent = self._apply_guardrails(agent, namespace, agent_name)
         logger.info(f'Successfully created agent for agent: {agent_name}')
         return agent
 

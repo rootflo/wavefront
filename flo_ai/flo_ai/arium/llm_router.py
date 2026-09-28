@@ -35,7 +35,7 @@ class BaseLLMRouter(ABC):
         temperature: Optional[float] = None,
         max_retries: int = 3,
         fallback_strategy: str = 'first',
-        llm_decorator: Optional[Callable[[BaseLLM], BaseLLM]] = None,
+        guardrail_provider: Optional[Callable[[BaseLLM], BaseLLM]] = None,
     ):
         """
         Initialize the LLM router.
@@ -47,7 +47,7 @@ class BaseLLMRouter(ABC):
                 DEFAULT_ROUTING_TEMPERATURE and a supplied one keeps its own.
             max_retries: Maximum number of retries for LLM calls
             fallback_strategy: Strategy when LLM fails ("first", "last", "random")
-            llm_decorator: Wraps whichever LLM this router ends up using.
+            guardrail_provider: Wraps whichever LLM this router ends up using.
 
                 Applied here rather than by the caller because the default
                 below is only built when ``llm`` is None — so a caller that
@@ -78,7 +78,9 @@ class BaseLLMRouter(ABC):
 
         # Decorated last, so the wrapper sees the LLM at its final temperature
         # rather than one still to be mutated through it.
-        self.llm = llm_decorator(resolved_llm) if llm_decorator else resolved_llm
+        self.llm = (
+            guardrail_provider(resolved_llm) if guardrail_provider else resolved_llm
+        )
 
         self.max_retries = max_retries
         self.fallback_strategy = fallback_strategy
@@ -878,7 +880,9 @@ Next route:"""
 
 
 def create_llm_router(
-    router_type: str, **config
+    router_type: str,
+    guardrail_provider: Optional[Callable[[BaseLLM], BaseLLM]] = None,
+    **config,
 ) -> Callable[[MessageMemory, Optional[dict]], Awaitable[str]]:
     """
     Factory function to create LLM-powered routers with different configurations.
@@ -943,7 +947,7 @@ def create_llm_router(
         if 'routing_options' not in config:
             raise ValueError("SmartRouter requires 'routing_options' parameter")
 
-        router_instance = SmartRouter(**config)
+        router_instance = SmartRouter(guardrail_provider=guardrail_provider, **config)
 
     elif router_type == 'task_classifier':
         if 'task_categories' not in config:
@@ -951,7 +955,9 @@ def create_llm_router(
                 "TaskClassifierRouter requires 'task_categories' parameter"
             )
 
-        router_instance = TaskClassifierRouter(**config)
+        router_instance = TaskClassifierRouter(
+            guardrail_provider=guardrail_provider, **config
+        )
 
     elif router_type == 'conversation_analysis':
         if 'routing_logic' not in config:
@@ -959,19 +965,25 @@ def create_llm_router(
                 "ConversationAnalysisRouter requires 'routing_logic' parameter"
             )
 
-        router_instance = ConversationAnalysisRouter(**config)
+        router_instance = ConversationAnalysisRouter(
+            guardrail_provider=guardrail_provider, **config
+        )
 
     elif router_type == 'reflection':
         if 'flow_pattern' not in config:
             raise ValueError("ReflectionRouter requires 'flow_pattern' parameter")
 
-        router_instance = ReflectionRouter(**config)
+        router_instance = ReflectionRouter(
+            guardrail_provider=guardrail_provider, **config
+        )
 
     elif router_type == 'plan_execute':
         if 'agents' not in config:
             raise ValueError("PlanExecuteRouter requires 'agents' parameter")
 
-        router_instance = PlanExecuteRouter(**config)
+        router_instance = PlanExecuteRouter(
+            guardrail_provider=guardrail_provider, **config
+        )
 
     else:
         raise ValueError(f'Unknown router type: {router_type}')

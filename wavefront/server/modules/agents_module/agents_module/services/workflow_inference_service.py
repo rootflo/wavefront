@@ -8,8 +8,7 @@ from db_repo_module.models.workflow import Workflow
 from db_repo_module.models.workflow_version import WorkflowVersion
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from agents_module.utils.agent_guardrails import (
-    apply_guardrails,
-    guardrail_llm_decorator,
+    guardrail_llm_provider,
     guardrail_run_scope,
 )
 from flo_ai import AriumBuilder, BaseMessage, FloUtils, Arium, Agent
@@ -222,14 +221,8 @@ class WorkflowInferenceService:
                     agent_ref,
                     access_token=access_token,
                     app_key=app_key,
-                )
-
-                # Workflow agents were previously left unguarded: this service
-                # builds its own agents rather than going through
-                # AgentInferenceService, so policy set to ENFORCE protected
-                # single-agent inference and silently did nothing here.
-                agent = apply_guardrails(
-                    agent, self.guardrails_engine, namespace, agent_name
+                    namespace=namespace,  # the referenced agent's own namespace
+                    principal_agent_id=agent_name,  # bare name, version stripped
                 )
 
                 agents_dict[agent_ref] = agent
@@ -292,13 +285,7 @@ class WorkflowInferenceService:
                     agent_name,
                     access_token=access_token,
                     app_key=app_key,
-                )
-
-                # Building these here bypasses the builder, and with it the
-                # llm_decorator that used to be their only coverage, so the
-                # wrapping has to happen on this path now.
-                agent = apply_guardrails(
-                    agent, self.guardrails_engine, namespace, agent_name
+                    namespace=namespace,
                 )
 
                 # AriumBuilder applies this only on the path we are bypassing, so
@@ -391,7 +378,9 @@ class WorkflowInferenceService:
             function_registry=FUNCTION_NODE_REGISTRY,
             access_token=access_token,
             app_key=app_key,
-            llm_decorator=guardrail_llm_decorator(self.guardrails_engine, namespace),
+            guardrail_provider=guardrail_llm_provider(
+                self.guardrails_engine, namespace
+            ),
         )
         workflow = workflow_builder.build()
 
