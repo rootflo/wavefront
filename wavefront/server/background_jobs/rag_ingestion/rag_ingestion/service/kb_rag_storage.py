@@ -31,9 +31,6 @@ class KBRagStorage:
     """Configuration class for EmailRag settings."""
 
     def __init__(self):
-        self.llm_model_name = 'flora-q8'
-        self.embedding_model = 'mxbai-embed-large'
-        self.embedding_dim = 1024
         self.max_token_size = 8500
         self.tiktoken_model = 'gpt-4o'
         self.chunk_size = 1200
