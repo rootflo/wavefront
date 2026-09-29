@@ -48,17 +48,29 @@ jobs:
           version=$(uv version --short)
           echo "flo-ai version: $version"
           status=$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/flo-ai/$version/json")
-          if [ "$status" = "200" ]; then
-            echo "::error::flo-ai $version is already published on PyPI. Bump the version in flo_ai/pyproject.toml."
-            exit 1
-          fi
+          case "$status" in
+            404) ;;
+            200)
+              echo "::error::flo-ai $version is already published on PyPI. Bump the version in flo_ai/pyproject.toml."
+              exit 1
+              ;;
+            *)
+              echo "::error::Could not check PyPI for flo-ai $version (HTTP $status). Re-run once PyPI is reachable."
+              exit 1
+              ;;
+          esac
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Build sdist and wheel
         run: uv build --no-sources --out-dir dist
 
+      # Run from outside the checkout, or `import flo_ai` would pick up the
+      # source package in the working directory instead of the built wheel.
       - name: Smoke test the wheel
-        run: uv run --isolated --no-project --with dist/*.whl python -c "import flo_ai"
+        run: |
+          wheel=$(realpath dist/*.whl)
+          cd "$RUNNER_TEMP"
+          uv run --isolated --no-project --with "$wheel" python -c "import flo_ai"
 
       - name: Upload dist
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
