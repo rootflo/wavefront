@@ -145,7 +145,7 @@ class TestRejectedMetadata:
             model.model_validate_json(raw)
 
         message = str(exc_info.value)
-        assert 'unexpected field in metadata' in message
+        assert 'metadata may only contain' in message
         # The validator's message never surfaces the untrusted key or script
         # value. (FastAPI's default 422 still echoes the raw input separately in
         # pydantic's `input` field — that is the framework's doing, not asserted
@@ -165,7 +165,7 @@ class TestRejectedMetadata:
         with pytest.raises(ValidationError) as exc_info:
             build(model, inputs)
 
-        assert 'unexpected field in metadata' in str(exc_info.value)
+        assert 'metadata may only contain' in str(exc_info.value)
 
     @pytest.mark.parametrize('model', REQUEST_MODELS)
     def test_metadata_must_be_an_object(self, model):

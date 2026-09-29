@@ -192,8 +192,12 @@ def _validate_input_metadata(metadata: Any, location: str) -> None:
         )
 
     if not set(metadata).issubset(_ALLOWED_METADATA_KEYS):
+        # Name the allowed fields — they are our own static constants, so this
+        # states the contract without echoing the caller's unexpected key.
+        allowed = ', '.join(f"'{key}'" for key in sorted(_ALLOWED_METADATA_KEYS))
         raise ValueError(
-            f'Invalid input{_describe(location)}: unexpected field in metadata.'
+            f'Invalid input{_describe(location)}: metadata may only contain '
+            f'{allowed}.'
         )
 
     # The exact same rule the file-name gate enforces (ensure_safe_file_name),
