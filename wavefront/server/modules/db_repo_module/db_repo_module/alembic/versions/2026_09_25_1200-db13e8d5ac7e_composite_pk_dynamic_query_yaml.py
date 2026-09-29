@@ -21,6 +21,29 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     # datasource_id must be non-null to take part in the primary key.
+    # Existing deployments have a single datasource, so orphaned rows are
+    # assigned to it before the constraint is enforced.
+    conn = op.get_bind()
+    conn.execute(
+        sa.text(
+            """
+            UPDATE dynamic_query_yaml
+            SET datasource_id = (
+                SELECT id FROM datasource ORDER BY created_at, id LIMIT 1
+            )
+            WHERE datasource_id IS NULL
+            """
+        )
+    )
+    remaining = conn.execute(
+        sa.text('SELECT COUNT(*) FROM dynamic_query_yaml WHERE datasource_id IS NULL')
+    ).scalar()
+    if remaining:
+        raise RuntimeError(
+            f'{remaining} dynamic_query_yaml row(s) have no datasource_id and no '
+            'datasource exists to assign them to; resolve before upgrading.'
+        )
+
     op.alter_column(
         'dynamic_query_yaml',
         'datasource_id',
