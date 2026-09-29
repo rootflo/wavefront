@@ -253,13 +253,13 @@ class TestCircuitBreaker:
 
         breaker.record_failure()
         breaker.record_failure()
-        assert breaker.is_open
+        assert breaker.is_open()
 
         clock['now'] += 29.0
-        assert breaker.is_open
+        assert breaker.is_open()
 
         clock['now'] += 2.0
-        assert not breaker.is_open
+        assert not breaker.is_open()
 
 
 class TestEnvConfiguration:

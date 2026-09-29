@@ -9,6 +9,11 @@ from agents_module.utils.input_processing_utils import (
     process_inference_inputs,
     validate_inference_inputs_media,
 )
+from flo_ai.utils.document_text_extraction import (
+    DOC_MIME_TYPE,
+    EXTRACTABLE_DOCUMENT_MIME_TYPES,
+)
+
 from agents_module.utils.mime_type_utils import (
     MAX_FILE_NAME_LENGTH,
     SUPPORTED_DOCUMENT_MIME_TYPES,
@@ -24,6 +29,10 @@ from agents_module.utils.mime_type_utils import (
 PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
 # A structurally valid one-page PDF: the gate parses documents now, so a
 # `%PDF-` prefix alone is no longer accepted as one.
+ZIP_B64 = 'UEsDBBQAAAAAAIycPF0AAAAAAAAAAAAAAAAFAAAAZHVtbXlQSwECFAMUAAAAAACMnDxdAAAAAAAAAAAAAAAABQAAAAAAAAAAAAAAgAEAAAAAZHVtbXlQSwUGAAAAAAEAAQAzAAAAIwAAAAAA'
+OLE2_B64 = '0M8R4KGxGuE='
+TEXT_B64 = 'aGVsbG8='
+
 PDF_B64 = 'JVBERi0xLjcKJcK1wrYKJSBXcml0dGVuIGJ5IE11UERGIDEuMjguMgoKMSAwIG9iago8PC9UeXBlL0NhdGFsb2cvUGFnZXMgMiAwIFIvSW5mbzw8L1Byb2R1Y2VyKE11UERGIDEuMjguMik+Pj4+CmVuZG9iagoKMiAwIG9iago8PC9UeXBlL1BhZ2VzL0NvdW50IDEvS2lkc1s0IDAgUl0+PgplbmRvYmoKCjMgMCBvYmoKPDw+PgplbmRvYmoKCjQgMCBvYmoKPDwvVHlwZS9QYWdlL01lZGlhQm94WzAgMCA3MiA3Ml0vUm90YXRlIDAvUmVzb3VyY2VzIDMgMCBSL1BhcmVudCAyIDAgUj4+CmVuZG9iagoKeHJlZgowIDUKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDQyIDAwMDAwIG4gCjAwMDAwMDAxMjAgMDAwMDAgbiAKMDAwMDAwMDE3MiAwMDAwMCBuIAowMDAwMDAwMTkzIDAwMDAwIG4gCgp0cmFpbGVyCjw8L1NpemUgNS9Sb290IDEgMCBSL0lEWzxDM0ExQzJCNzM1QzNBMDczNTk0NEMzQURDMjhEQzI4Qj48QjYzOEIzMjRCNUUwQzQ3Q0NEMTRBNUMzMjYzMDg2RkQ+XT4+CnN0YXJ0eHJlZgoyODIKJSVFT0YK'
 
 
@@ -115,6 +124,112 @@ class TestResolveMimeType:
         assert resolve_mime_type() is None
 
 
+class TestGenericMimeTypesDeferToFileName:
+    """Container-generic declared types must not shadow the file extension.
+
+    Windows browsers report `.docx`/`.xlsx` as application/octet-stream or
+    application/x-zip-compressed. Taking that literally rejected files the
+    extension gate had already accepted, with a 400 after the whole upload.
+    """
+
+    DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
+    @pytest.mark.parametrize(
+        'declared',
+        ['application/octet-stream', 'application/zip', 'application/x-zip-compressed'],
+    )
+    def test_generic_defers_to_file_name(self, declared):
+        assert resolve_mime_type(mime_type=declared, file_name='report.docx') == (
+            self.DOCX
+        )
+
+    def test_generic_defers_to_url_extension(self):
+        assert (
+            resolve_mime_type(
+                mime_type='application/octet-stream',
+                url='https://x.test/a/sheet.xlsx?sig=1',
+            )
+            == self.XLSX
+        )
+
+    def test_generic_kept_when_nothing_more_specific(self):
+        """Still returned, so the rejection names the type the caller sent."""
+        assert resolve_mime_type(mime_type='application/octet-stream') == (
+            'application/octet-stream'
+        )
+
+    def test_specific_declared_type_still_wins_over_file_name(self):
+        """No regression: an explicit, meaningful mime keeps priority."""
+        assert (
+            resolve_mime_type(mime_type='application/pdf', file_name='mislabelled.docx')
+            == 'application/pdf'
+        )
+
+    def test_docx_sent_as_octet_stream_passes_the_gate(self):
+        assert (
+            ensure_supported_document_mime_type(
+                mime_type='application/octet-stream',
+                base64_value=ZIP_B64,
+                file_name='report.docx',
+            )
+            == self.DOCX
+        )
+
+    def test_generic_without_a_file_name_is_still_rejected(self):
+        with pytest.raises(HTTPException) as exc_info:
+            ensure_supported_document_mime_type(
+                mime_type='application/octet-stream', base64_value=PDF_B64
+            )
+
+        assert 'application/octet-stream' in str(exc_info.value.detail)
+
+    def test_png_sent_as_octet_stream_passes_the_image_gate(self):
+        """The resolver is shared, so images benefit from the same fix."""
+        assert (
+            ensure_supported_image_mime_type(
+                mime_type='application/octet-stream', file_name='shot.png'
+            )
+            == 'image/png'
+        )
+
+    def test_generic_data_url_defers_to_file_name(self):
+        """What readAsDataURL writes for a file the browser could not type."""
+        assert (
+            resolve_mime_type(
+                base64_value=f'data:application/octet-stream;base64,{PDF_B64}',
+                file_name='report.docx',
+            )
+            == self.DOCX
+        )
+
+    def test_docx_in_a_generic_data_url_passes_the_gate(self):
+        assert (
+            ensure_supported_document_mime_type(
+                base64_value=f'data:application/octet-stream;base64,{ZIP_B64}',
+                file_name='report.docx',
+            )
+            == self.DOCX
+        )
+
+    def test_generic_data_url_without_a_file_name_is_still_rejected(self):
+        with pytest.raises(HTTPException) as exc_info:
+            ensure_supported_document_mime_type(
+                base64_value=f'data:application/octet-stream;base64,{PDF_B64}'
+            )
+
+        assert 'application/octet-stream' in str(exc_info.value.detail)
+
+    def test_specific_data_url_type_still_wins_over_file_name(self):
+        assert (
+            resolve_mime_type(
+                base64_value=f'data:application/pdf;base64,{PDF_B64}',
+                file_name='mislabelled.docx',
+            )
+            == 'application/pdf'
+        )
+
+
 class TestEnsureSupportedImageMimeType:
     """Test cases for the image gate"""
 
@@ -154,11 +269,16 @@ class TestEnsureSupportedDocumentMimeType:
         assert ensure_supported_document_mime_type(mime_type=mime_type) == mime_type
 
     def test_unsupported_type_rejected(self):
+        """PowerPoint has no extractor, so the gate still turns it away.
+
+        This asserted on .docx until Office formats became supported; the gate
+        now covers PDF plus everything document_text_extraction can read.
+        """
         with pytest.raises(HTTPException) as exc_info:
             ensure_supported_document_mime_type(
                 mime_type=(
                     'application/vnd.openxmlformats-officedocument'
-                    '.wordprocessingml.document'
+                    '.presentationml.presentation'
                 )
             )
 
@@ -169,14 +289,96 @@ class TestEnsureSupportedDocumentMimeType:
         """No mime_type, but the file name gives it away"""
         with pytest.raises(HTTPException) as exc_info:
             ensure_supported_document_mime_type(
-                base64_value=PDF_B64, file_name='quarterly.xlsx'
+                base64_value=PDF_B64, file_name='quarterly.pptx'
             )
 
-        assert 'spreadsheetml.sheet' in str(exc_info.value.detail)
+        assert 'presentationml.presentation' in str(exc_info.value.detail)
 
     def test_unresolvable_type_allowed(self):
         """Missing mime is allowed - the formatter defaults it to PDF"""
         assert ensure_supported_document_mime_type(base64_value=PDF_B64) is None
+
+    @pytest.mark.parametrize('mime_type', sorted(EXTRACTABLE_DOCUMENT_MIME_TYPES))
+    def test_extractable_url_only_rejected(self, mime_type):
+        """flo_ai extracts from bytes and never fetches, so a URL alone would
+        fail at the provider call instead of here."""
+        with pytest.raises(HTTPException) as exc_info:
+            ensure_supported_document_mime_type(
+                mime_type=mime_type, url='https://x.test/report', index=1
+            )
+
+        assert exc_info.value.status_code == 400
+        assert 'document_url' in str(exc_info.value.detail)
+        assert 'at index 1' in str(exc_info.value.detail)
+
+    def test_extractable_type_resolved_from_url_rejected(self):
+        """No mime_type, but the URL's extension makes it extractable"""
+        with pytest.raises(HTTPException):
+            ensure_supported_document_mime_type(url='https://x.test/a/sheet.xlsx?s=1')
+
+    def test_extractable_url_with_base64_passes(self):
+        """The bytes are what get extracted; a URL alongside them is harmless"""
+        assert (
+            ensure_supported_document_mime_type(
+                mime_type='text/csv',
+                base64_value=base64.b64encode(b'a,b\n1,2').decode('utf-8'),
+                url='https://x.test/data.csv',
+            )
+            == 'text/csv'
+        )
+
+    def test_pdf_url_only_still_passes(self):
+        """PDF keeps its native path, where providers can read a URL"""
+        assert (
+            ensure_supported_document_mime_type(url='https://x.test/doc.pdf')
+            == 'application/pdf'
+        )
+
+    def test_decodable_zip_container_rejects_non_zip(self):
+        """Test that a .docx file that isn't a zip is rejected."""
+        with pytest.raises(HTTPException) as exc_info:
+            ensure_supported_document_mime_type(
+                mime_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                base64_value=base64.b64encode(b'not a zip').decode('utf-8'),
+            )
+        assert exc_info.value.status_code == 400
+        assert 'Invalid file format' in str(exc_info.value.detail)
+
+    def test_decodable_zip_container_rejects_bad_zip(self):
+        """Test that a .docx file with a valid magic byte but broken structure is rejected."""
+        with pytest.raises(HTTPException) as exc_info:
+            ensure_supported_document_mime_type(
+                mime_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                base64_value=base64.b64encode(b'PK\x03\x04 broken body').decode(
+                    'utf-8'
+                ),
+            )
+        assert exc_info.value.status_code == 400
+        assert 'Invalid file format' in str(exc_info.value.detail)
+
+    def test_decodable_text_rejects_null_bytes(self):
+        """Test that a .csv file containing null bytes (binary file) is rejected."""
+        with pytest.raises(HTTPException) as exc_info:
+            ensure_supported_document_mime_type(
+                mime_type='text/csv',
+                base64_value=base64.b64encode(b'some text \x00 binary data').decode(
+                    'utf-8'
+                ),
+            )
+        assert exc_info.value.status_code == 400
+        assert 'Invalid file format' in str(exc_info.value.detail)
+
+    def test_decodable_xls_rejects_binary(self):
+        """Test that a .xls file not matching OLE2 and having null bytes is rejected."""
+        with pytest.raises(HTTPException) as exc_info:
+            ensure_supported_document_mime_type(
+                mime_type='application/vnd.ms-excel',
+                base64_value=base64.b64encode(b'not OLE2 \x00 binary data').decode(
+                    'utf-8'
+                ),
+            )
+        assert exc_info.value.status_code == 400
+        assert 'Invalid file format' in str(exc_info.value.detail)
 
 
 class TestValidateInferenceInputsMedia:
@@ -223,6 +425,11 @@ class TestValidateInferenceInputsMedia:
         assert 'at index 1' in str(exc_info.value.detail)
 
     def test_unsupported_document_rejected(self):
+        """PowerPoint has no extractor, so the gate still turns it away.
+
+        This used to assert on text/plain, which is now supported: the gate
+        covers PDF plus everything `document_text_extraction` can read.
+        """
         with pytest.raises(HTTPException) as exc_info:
             validate_inference_inputs_media(
                 [
@@ -230,16 +437,88 @@ class TestValidateInferenceInputsMedia:
                         'role': 'user',
                         'content': {
                             'document_base64': PDF_B64,
-                            'mime_type': 'text/plain',
+                            'mime_type': (
+                                'application/vnd.openxmlformats-officedocument'
+                                '.presentationml.presentation'
+                            ),
                         },
                     }
                 ]
             )
 
-        assert 'Unsupported document type `text/plain`' in str(exc_info.value.detail)
+        assert 'Unsupported document type' in str(exc_info.value.detail)
+
+    @pytest.mark.parametrize('mime_type', sorted(EXTRACTABLE_DOCUMENT_MIME_TYPES))
+    def test_extractable_document_types_accepted(self, mime_type):
+        """Every type flo_ai can extract passes the gate."""
+        b64 = TEXT_B64
+        if 'openxmlformats' in mime_type:
+            b64 = ZIP_B64
+        elif 'ms-excel' in mime_type:
+            b64 = OLE2_B64
+
+        validate_inference_inputs_media(
+            [
+                {
+                    'role': 'user',
+                    'content': {
+                        'document_base64': b64,
+                        'mime_type': mime_type,
+                    },
+                }
+            ]
+        )
+
+    def test_gate_admits_exactly_pdf_plus_flo_ai_extractable(self):
+        """Pins the coupling: the gate is PDF plus whatever flo_ai extracts."""
+        assert SUPPORTED_DOCUMENT_MIME_TYPES == (
+            {'application/pdf'} | EXTRACTABLE_DOCUMENT_MIME_TYPES
+        )
+
+    @pytest.mark.skipif(
+        DOC_MIME_TYPE in EXTRACTABLE_DOCUMENT_MIME_TYPES,
+        reason='.doc is enabled in flo_ai; the accept test above covers it',
+    )
+    def test_legacy_doc_rejected_while_deferred(self):
+        """.doc has no reader yet, so the gate turns it away up front.
+
+        Rejecting here beats accepting the upload and failing inside flo_ai.
+        Flips once flo_ai adds DOC_MIME_TYPE to its extractable set.
+        """
+        with pytest.raises(HTTPException) as exc_info:
+            validate_inference_inputs_media(
+                [
+                    {
+                        'role': 'user',
+                        'content': {
+                            'document_base64': PDF_B64,
+                            'mime_type': 'application/msword',
+                        },
+                    }
+                ]
+            )
+
+        assert 'application/msword' in str(exc_info.value.detail)
 
     def test_document_mime_inferred_from_file_name(self):
-        """A docx sent with no mime_type is still caught via its file name"""
+        """A docx sent with no mime_type is resolved via its file name.
+
+        Previously this asserted rejection; the resolution is what matters and
+        is unchanged, only the verdict flipped.
+        """
+        validate_inference_inputs_media(
+            [
+                {
+                    'role': 'user',
+                    'content': {
+                        'document_base64': ZIP_B64,
+                        'file_name': 'contract.docx',
+                    },
+                }
+            ]
+        )
+
+    def test_unsupported_mime_still_inferred_from_file_name(self):
         with pytest.raises(HTTPException):
             validate_inference_inputs_media(
                 [
@@ -247,7 +526,7 @@ class TestValidateInferenceInputsMedia:
                         'role': 'user',
                         'content': {
                             'document_base64': PDF_B64,
-                            'file_name': 'contract.docx',
+                            'file_name': 'deck.pptx',
                         },
                     }
                 ]
@@ -268,6 +547,27 @@ class TestValidateInferenceInputsMedia:
             process_inference_inputs(payload)
 
         assert walker_exc.value.status_code == sync_exc.value.status_code
+        assert walker_exc.value.detail == sync_exc.value.detail
+
+    def test_url_only_extractable_document_rejected_by_both_gates(self):
+        """Neither path may build a DocumentMessageContent that flo_ai would
+        have to fetch before it could extract"""
+        payload = [
+            {
+                'role': 'user',
+                'content': {
+                    'document_url': 'https://x.test/report.docx',
+                    'file_name': 'report.docx',
+                },
+            }
+        ]
+
+        with pytest.raises(HTTPException) as walker_exc:
+            validate_inference_inputs_media(payload)
+        with pytest.raises(HTTPException) as sync_exc:
+            process_inference_inputs(payload)
+
+        assert walker_exc.value.status_code == 400
         assert walker_exc.value.detail == sync_exc.value.detail
 
 

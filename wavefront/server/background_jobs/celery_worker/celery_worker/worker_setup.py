@@ -16,6 +16,7 @@ from api_services_module.api_services_container import (
     create_api_services_container,
 )
 from agents_module.agents_container import AgentsContainer
+from guardrails_module.container import GuardrailsContainer
 from llm_inference_config_module.container import LlmInferenceConfigContainer
 from agents_module.services.agent_inference_service import AgentInferenceService
 from agents_module.services.workflow_inference_service import WorkflowInferenceService
@@ -242,6 +243,11 @@ def get_services() -> WorkerServices:
             cache_manager=db_repo_container.cache_manager,
         )
 
+        guardrails_container = GuardrailsContainer(
+            db_client=db_repo_container.db_client,
+            cache_manager=db_repo_container.cache_manager,
+        )
+
         agents_container = AgentsContainer(
             db_client=db_repo_container.db_client,
             cloud_storage_manager=common_container.cloud_storage_manager,
@@ -260,6 +266,7 @@ def get_services() -> WorkerServices:
             async_agentic_execution_repository=db_repo_container.async_agentic_execution_repository,
             executions_bucket=AGENTIC_EXECUTIONS_BUCKET,
             llm_inference_config_service=llm_inference_config_container.llm_inference_config_service,
+            guardrails_engine=guardrails_container.guardrails_engine,
         )
 
         # Inject config values from env vars so services like AgentCrudService

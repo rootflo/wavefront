@@ -91,6 +91,8 @@ class Agent(BaseAgent):
         # same message. Restoring the snapshot is exact regardless of what
         # reordered the list in between.
         history_before_turn = list(self.conversation_history)
+        system_prompt_before_turn = self.system_prompt
+        resolved_variables_before_turn = self.resolved_variables
 
         # Perform runtime variable validation if not already resolved (single agent usage)
         if not self.resolved_variables:
@@ -155,6 +157,8 @@ class Agent(BaseAgent):
             # run, which strips any existing one first, so restoring a snapshot
             # taken before it moved is safe.
             self.conversation_history = history_before_turn
+            self.system_prompt = system_prompt_before_turn
+            self.resolved_variables = resolved_variables_before_turn
             raise
 
     async def _handle_response_with_parser(
@@ -210,18 +214,14 @@ class Agent(BaseAgent):
 
                 return self.conversation_history
 
+            except GuardrailBlocked:
+                raise
             except Exception as e:
                 retry_count += 1
                 context = {
                     'conversation_history': self.conversation_history,
                     'attempt': retry_count,
                 }
-
-                # A policy decision is final. Surface it unchanged so callers
-                # can tell "blocked by guardrails" from "the model failed";
-                # wrapping it in AgentError loses both the type and the reason.
-                if getattr(e, 'retryable', True) is False:
-                    raise
 
                 should_retry, analysis = await self.handle_error(e, context)
 
@@ -449,15 +449,14 @@ class Agent(BaseAgent):
 
                 return self.conversation_history
 
+            except GuardrailBlocked:
+                raise
             except Exception as e:
                 retry_count += 1
                 context = {
                     'conversation_history': self.conversation_history,
                     'attempt': retry_count,
                 }
-
-                if getattr(e, 'retryable', True) is False:
-                    raise
 
                 should_retry, analysis = await self.handle_error(e, context)
                 if should_retry and retry_count <= self.max_retries:

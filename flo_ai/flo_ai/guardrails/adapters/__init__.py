@@ -6,9 +6,19 @@ a language model — and a deployment should only pay for the providers its
 policy actually names.
 """
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .base_adapter import BaseAdapter
+
+if TYPE_CHECKING:
+    from .azure_adapter import AzureContentSafetyAdapter
+    from .presidio_adapter import PresidioAdapter
+    from .pii_catalog import (
+        ENTITY_CATALOG,
+        EntityMeta,
+        describe as describe_entity,
+        group_sort_key,
+    )
 
 __all__ = [
     'AzureContentSafetyAdapter',
