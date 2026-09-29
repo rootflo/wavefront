@@ -431,7 +431,10 @@ class TestAriumYamlBuilder:
 
             # Verify AgentBuilder.from_yaml was called with yaml_file
             mock_agent_builder.from_yaml.assert_called_with(
-                yaml_file='path/to/agent.yaml', base_llm=None, tool_registry=None
+                yaml_file='path/to/agent.yaml',
+                base_llm=None,
+                tool_registry=None,
+                guardrail_provider=None,
             )
 
     def test_from_yaml_with_base_llm(self):
@@ -895,6 +898,9 @@ class TestAriumYamlBuilder:
                     mock_direct_builder
                 )
                 mock_direct_builder.with_role.return_value = mock_direct_builder
+                mock_direct_builder.with_guardrail_provider.return_value = (
+                    mock_direct_builder
+                )
                 mock_direct_builder.build.return_value = mock_direct_agent
 
                 # Mock the AgentBuilder class to return our mocked builder
@@ -1096,6 +1102,9 @@ class TestAriumYamlBuilder:
                     mock_direct_builder
                 )
                 mock_direct_builder.with_role.return_value = mock_direct_builder
+                mock_direct_builder.with_guardrail_provider.return_value = (
+                    mock_direct_builder
+                )
                 mock_direct_builder.build.return_value = mock_direct_agent
 
                 # Mock the AgentBuilder class to return our mocked builder
@@ -1282,7 +1291,14 @@ class TestAriumYamlLlmDecorator:
 
             mock_builder_instance = Mock()
             mock_builder_instance.build.return_value = mock_agent
-            mock_agent_builder.from_yaml.return_value = mock_builder_instance
+
+            def mock_from_yaml(*args, **kwargs):
+                provider = kwargs.get('guardrail_provider')
+                if provider:
+                    mock_agent.llm = provider(mock_agent.llm, mock_agent.name)
+                return mock_builder_instance
+
+            mock_agent_builder.from_yaml.side_effect = mock_from_yaml
 
             AriumBuilder.from_yaml(
                 yaml_str=yaml_config, guardrail_provider=self._decorator(seen)

@@ -2,13 +2,12 @@ from unittest.mock import Mock
 from flo_ai.agent.builder import AgentBuilder
 from flo_ai.llm.base_llm import BaseLLM
 from flo_ai.llm.guarded_llm import GuardedLLM
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, AsyncIterator
 
 
 class DummyLLM(BaseLLM):
     def __init__(self, temperature: float = 0.7):
-        self.temperature = temperature
-        self._supports_retract = False
+        super().__init__(model='dummy', temperature=temperature)
 
     def get_message_content(self, response: Any) -> str:
         return ''
@@ -32,6 +31,15 @@ class DummyLLM(BaseLLM):
         output_schema: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         return {}
+
+    async def stream(
+        self,
+        messages: List[Dict[str, str]],
+        functions: Optional[List[Dict[str, Any]]] = None,
+        output_schema: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        yield {}
 
 
 def dummy_decorator(llm: BaseLLM, node_name: str) -> BaseLLM:

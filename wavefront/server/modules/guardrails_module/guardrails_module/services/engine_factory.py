@@ -174,6 +174,13 @@ def _build_verdict_cache(cache_manager: Any, cache_chars: int) -> Optional[Any]:
         )
         return None
 
+    if not os.getenv(ENV_CACHE_SECRET):
+        logger.warning(
+            f'Guardrails: shared verdict cache disabled because '
+            f'{ENV_CACHE_SECRET} is unset. Verdicts stay per-process.'
+        )
+        return None
+
     ttl = _env_int(ENV_CACHE_TTL, DEFAULT_TTL_SECONDS)
 
     try:

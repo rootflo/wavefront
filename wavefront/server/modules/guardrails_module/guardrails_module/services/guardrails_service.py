@@ -1,13 +1,21 @@
 """Guardrail policy CRUD with caching."""
 
+import asyncio
 import json
+import time
 from typing import Any, Dict, List
 
+from sqlalchemy import func
 from common_module.log.logger import logger
 from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.models.guardrail_policy import GuardrailPolicy
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
+from concurrent.futures import ThreadPoolExecutor
 from guardrails_module.utils.cache_utils import get_guardrail_policy_cache_key
+
+_CACHE_EXECUTOR = ThreadPoolExecutor(
+    max_workers=32, thread_name_prefix='guardrails-cache'
+)
 
 
 class GuardrailsService:
@@ -47,7 +55,23 @@ class GuardrailsService:
         """Return the effective policy, falling back to a disabled default."""
         cache_key = get_guardrail_policy_cache_key(namespace)
 
-        cached = self.cache_manager.get_str(cache_key)
+        loop = asyncio.get_running_loop()
+        try:
+            cached = await asyncio.wait_for(
+                loop.run_in_executor(
+                    _CACHE_EXECUTOR, self.cache_manager.get_str, cache_key
+                ),
+                0.25,
+            )
+        except (TimeoutError, asyncio.TimeoutError):
+            logger.warning(f'Guardrails: Redis timeout fetching policy for {namespace}')
+            cached = None
+        except Exception as e:
+            logger.warning(
+                f'Guardrails: Redis error fetching policy for {namespace}: {e}'
+            )
+            cached = None
+
         if cached:
             try:
                 return json.loads(cached)
@@ -56,14 +80,37 @@ class GuardrailsService:
                 logger.warning(
                     f'Discarding unreadable guardrail policy cache for {namespace}'
                 )
-                self.cache_manager.remove(cache_key)
+                try:
+                    await asyncio.wait_for(
+                        loop.run_in_executor(
+                            _CACHE_EXECUTOR, self.cache_manager.remove, cache_key
+                        ),
+                        0.25,
+                    )
+                except Exception:
+                    pass
 
         policy = await self.guardrail_policy_repository.find_one(namespace=namespace)
         policy_dict = policy.to_dict() if policy else self.default_policy(namespace)
 
-        self.cache_manager.add(
-            cache_key, json.dumps(policy_dict), expiry=self.policy_cache_time
-        )
+        try:
+            # functools.partial is needed because run_in_executor doesn't take **kwargs directly
+            import functools
+
+            await asyncio.wait_for(
+                loop.run_in_executor(
+                    _CACHE_EXECUTOR,
+                    functools.partial(
+                        self.cache_manager.add,
+                        cache_key,
+                        json.dumps(policy_dict),
+                        expiry=self.policy_cache_time,
+                    ),
+                ),
+                0.25,
+            )
+        except Exception:
+            pass
         return policy_dict
 
     async def update_policy(
@@ -84,6 +131,7 @@ class GuardrailsService:
             is_enabled=is_enabled,
             mode=mode,
             policy_config={'adapters': adapters},
+            updated_at=func.now(),
         )
 
         # Invalidate before re-reading so a concurrent reader cannot repopulate
@@ -183,6 +231,11 @@ class DatabasePolicyResolver:
 
     def __init__(self, guardrails_service: GuardrailsService):
         self.guardrails_service = guardrails_service
+        # Seconds a resolved policy is reused in-process. Bounds how long an
+        # edit takes to reach other workers, and removes Redis from the
+        # per-call path.
+        self._ttl = 5.0
+        self._memo: dict = {}
 
     async def resolve(self, principal: Any):
         from flo_ai.guardrails.contracts import DISABLED_POLICY
@@ -193,7 +246,12 @@ class DatabasePolicyResolver:
             # policy would be worse than not enforcing one.
             return DISABLED_POLICY
 
-        policy = await self.guardrails_service.get_policy(namespace)
+        hit = self._memo.get(namespace)
+        if hit and hit[0] > time.monotonic():
+            policy = hit[1]
+        else:
+            policy = await self.guardrails_service.get_policy(namespace)
+            self._memo[namespace] = (time.monotonic() + self._ttl, policy)
         if not policy.get('is_enabled'):
             return DISABLED_POLICY
 

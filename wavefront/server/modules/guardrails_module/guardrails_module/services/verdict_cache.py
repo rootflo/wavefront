@@ -18,10 +18,15 @@ from __future__ import annotations
 
 import asyncio
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Optional
 
 from common_module.log.logger import logger
 from flo_ai.guardrails import PolicyDecision, decode_decision, encode_decision
+
+_REDIS_EXECUTOR = ThreadPoolExecutor(
+    max_workers=32, thread_name_prefix='guardrails-redis'
+)
 
 #: Entries outlive a policy edit only in the sense that nothing reads them: the
 #: policy version is folded into the key digest, so an edit strands the old
@@ -58,7 +63,6 @@ class _CircuitBreaker:
         self._failures = 0
         self._open_until = 0.0
 
-    @property
     def is_open(self) -> bool:
         if self._open_until == 0.0:
             return False
@@ -123,10 +127,13 @@ class RedisVerdictCache:
         waiting on it. The abandoned thread drains when its socket times out,
         which the breaker then keeps from happening on every subsequent call.
         """
-        return await asyncio.wait_for(asyncio.to_thread(fn, *args), self._timeout)
+        loop = asyncio.get_running_loop()
+        return await asyncio.wait_for(
+            loop.run_in_executor(_REDIS_EXECUTOR, fn, *args), self._timeout
+        )
 
     async def get(self, key: str) -> Optional[PolicyDecision]:
-        if self._breaker.is_open:
+        if self._breaker.is_open():
             return None
 
         try:
@@ -155,7 +162,7 @@ class RedisVerdictCache:
         if payload is None:
             # Carries a message body. Stays in the in-process tier only.
             return
-        if self._breaker.is_open:
+        if self._breaker.is_open():
             return
 
         try:
