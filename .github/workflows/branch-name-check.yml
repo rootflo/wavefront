@@ -9,6 +9,8 @@ permissions: {}
 jobs:
   branch-name:
     name: validate branch name
+    # Only enforce for branches pushed to this repo; fork PRs are exempt.
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
