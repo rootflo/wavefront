@@ -1,0 +1,34 @@
+name: Branch Name Check
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited]
+
+permissions: {}
+
+jobs:
+  branch-name:
+    name: validate branch name
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check branch matches CU-<clickupid>
+        env:
+          # Passed via env, never interpolated into the script, so a crafted
+          # branch name can't inject shell commands.
+          BRANCH: ${{ github.head_ref }}
+        run: |
+          # Promotion PRs between long-lived branches are exempt.
+          case "$BRANCH" in
+            develop|main)
+              echo "Branch '$BRANCH' is a long-lived branch; skipping check."
+              exit 0
+              ;;
+          esac
+
+          if [[ "$BRANCH" =~ ^CU-[A-Za-z0-9]+ ]]; then
+            echo "Branch '$BRANCH' is valid."
+          else
+            echo "::error title=Invalid branch name::Branch '$BRANCH' must start with CU-<clickupid> (e.g. CU-86abc123-fix-login)."
+            exit 1
+          fi
