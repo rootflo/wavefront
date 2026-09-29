@@ -1,0 +1,107 @@
+name: Publish flo-ai to PyPI
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: publish-flo-ai-pypi
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: flo_ai
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Python
+        uses: actions/setup-python@7f4fc3e22c37d6ff65e88745f38bd3157c663f7c # v4.9.1
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: "0.12.10"
+          enable-cache: true
+          cache-dependency-glob: "flo_ai/uv.lock"
+
+      # Fail before anyone is asked to approve, not after: PyPI rejects
+      # re-uploads of an existing version, so a forgotten bump would only
+      # surface once the publish job runs.
+      - name: Check version is not already on PyPI
+        id: version
+        run: |
+          version=$(uv version --short)
+          echo "flo-ai version: $version"
+          status=$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/flo-ai/$version/json")
+          if [ "$status" = "200" ]; then
+            echo "::error::flo-ai $version is already published on PyPI. Bump the version in flo_ai/pyproject.toml."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build sdist and wheel
+        run: uv build --no-sources --out-dir dist
+
+      - name: Smoke test the wheel
+        run: uv run --isolated --no-project --with dist/*.whl python -c "import flo_ai"
+
+      - name: Upload dist
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: flo-ai-dist
+          path: flo_ai/dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: publish ${{ needs.build.outputs.version }}
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    # Required reviewers on this environment gate the upload.
+    environment:
+      name: floai-pypi
+      url: https://pypi.org/project/flo-ai/${{ needs.build.outputs.version }}/
+
+    permissions:
+      contents: read
+      id-token: write # PyPI trusted publishing
+
+    steps:
+      - name: Download dist
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: flo-ai-dist
+          path: dist/
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: "0.12.10"
+
+      # Uses the environment's PYPI_API_TOKEN secret when set, otherwise
+      # falls back to trusted publishing via the OIDC token above.
+      - name: Publish to PyPI
+        env:
+          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          if [ -n "$PYPI_API_TOKEN" ]; then
+            export UV_PUBLISH_TOKEN="$PYPI_API_TOKEN"
+          fi
+          uv publish dist/*
