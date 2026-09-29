@@ -1,5 +1,10 @@
 import re
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Union
+
+from agents_module.utils.mime_type_utils import (
+    MAX_FILE_NAME_LENGTH,
+    file_name_safety_issue,
+)
 
 # Inference variables are substituted into agent prompts, so the characters they
 # may carry are restricted. Values also allow spaces, since a variable
@@ -147,6 +152,148 @@ def validate_inference_variables(
         _validate_variable_value(value, key)
 
     return variables
+
+
+# Allowlist of keys an input item and its `content` object may carry; anything
+# not enumerated here is refused at the boundary. The content set is the union of
+# the media keys the backend reads (is_image_message / is_doc_message) and the
+# descriptive fields the client sends (image_type / document_type / metadata).
+# All but `metadata` are dropped downstream, so only `metadata` is validated
+# further.
+_ALLOWED_INPUT_ITEM_KEYS = frozenset({'role', 'content'})
+_ALLOWED_INPUT_ROLES = frozenset({'user', 'assistant'})
+_ALLOWED_CONTENT_KEYS = frozenset(
+    {
+        'image_base64',
+        'image_url',
+        'image_bytes',
+        'image_file_path',
+        'image_type',
+        'document_base64',
+        'document_url',
+        'document_bytes',
+        'document_file_path',
+        'document_type',
+        'mime_type',
+        'file_name',
+        'metadata',
+    }
+)
+# `metadata` is an expected passthrough object, but only these descriptive fields
+# are allowed inside it. Any other, free-form key is refused so a script or other
+# payload cannot ride in one.
+_ALLOWED_METADATA_KEYS = frozenset({'filename', 'size'})
+
+
+def _validate_input_metadata(metadata: Any, location: str) -> None:
+    if not isinstance(metadata, dict):
+        raise ValueError(
+            f'Invalid input{_describe(location)}: metadata must be an object.'
+        )
+
+    if not set(metadata).issubset(_ALLOWED_METADATA_KEYS):
+        # Name the allowed fields — they are our own static constants, so this
+        # states the contract without echoing the caller's unexpected key.
+        allowed = ', '.join(f"'{key}'" for key in sorted(_ALLOWED_METADATA_KEYS))
+        raise ValueError(
+            f'Invalid input{_describe(location)}: metadata may only contain '
+            f'{allowed}.'
+        )
+
+    # The exact same rule the file-name gate enforces (ensure_safe_file_name),
+    # via the one shared classifier — this value is displayed like a file name
+    # and must get the same XSS-safe treatment without the two drifting.
+    issue = file_name_safety_issue(metadata.get('filename'))
+    if issue == 'type':
+        raise ValueError(
+            f'Invalid input{_describe(location)}: metadata filename must be a '
+            'string.'
+        )
+    if issue == 'length':
+        raise ValueError(
+            f'Invalid input{_describe(location)}: metadata filename too long, '
+            f'limit is {MAX_FILE_NAME_LENGTH} characters.'
+        )
+    if issue == 'charset':
+        raise ValueError(
+            f'Invalid input{_describe(location)}: metadata filename contains '
+            'unsupported characters.'
+        )
+
+    # Must be numeric — a byte count — and never negative. bool is an int
+    # subclass, so it is excluded explicitly rather than sneaking through.
+    size = metadata.get('size')
+    if size is not None and (
+        isinstance(size, bool) or not isinstance(size, int) or size < 0
+    ):
+        raise ValueError(
+            f'Invalid input{_describe(location)}: metadata size must be a '
+            'non-negative integer.'
+        )
+
+
+def _validate_input_content(content: Any, location: str) -> None:
+    # Text content is a bare string and has no key surface to constrain; only an
+    # object (a media message) does.
+    if not isinstance(content, dict):
+        return
+
+    if not set(content).issubset(_ALLOWED_CONTENT_KEYS):
+        raise ValueError(
+            f'Invalid input{_describe(location)}: unexpected field in content.'
+        )
+
+    if 'metadata' in content:
+        _validate_input_metadata(content['metadata'], location)
+
+
+def validate_inference_inputs(
+    inputs: Union[List[Union[dict, str]], str, None],
+) -> Union[List[Union[dict, str]], str, None]:
+    """Hold an inference request's `inputs` to a known set of fields.
+
+    Each item, its `content` object and its `metadata` object are checked against
+    an explicit key allowlist so an unvalidated field cannot cross the boundary.
+    The offending value is otherwise dropped further down the pipeline, so this
+    only turns silent acceptance into an explicit rejection — no behaviour changes
+    for a well-formed request.
+
+    The message stays generic and index-located: this validator never puts the
+    untrusted key or value into the error text. (FastAPI's default 422 still
+    echoes the raw input separately, in pydantic's `input` field — that is the
+    framework's doing, not this validator's.)
+
+    Returns `inputs` unchanged so it can be used as a pydantic field validator.
+    """
+    if inputs is None or isinstance(inputs, str):
+        return inputs
+
+    for index, item in enumerate(inputs):
+        location = f'index {index}'
+
+        if isinstance(item, str):
+            continue
+
+        if not isinstance(item, dict):
+            raise ValueError(
+                f'Invalid input{_describe(location)}: must be a string or an ' 'object.'
+            )
+
+        if not set(item).issubset(_ALLOWED_INPUT_ITEM_KEYS):
+            raise ValueError(f'Invalid input{_describe(location)}: unexpected field.')
+
+        role = item.get('role')
+        if role is not None and (
+            not isinstance(role, str) or role not in _ALLOWED_INPUT_ROLES
+        ):
+            raise ValueError(
+                f'Invalid input{_describe(location)}: role must be '
+                "'user' or 'assistant'."
+            )
+
+        _validate_input_content(item.get('content'), location)
+
+    return inputs
 
 
 def validate_agent_workflow_name(name: str, type: str = 'agent') -> None:
