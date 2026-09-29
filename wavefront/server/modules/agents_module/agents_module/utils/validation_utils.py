@@ -254,8 +254,10 @@ def validate_inference_inputs(
     only turns silent acceptance into an explicit rejection — no behaviour changes
     for a well-formed request.
 
-    Messages stay generic and index-located: the caller learns which item is
-    wrong without the untrusted key or value being echoed back.
+    The message stays generic and index-located: this validator never puts the
+    untrusted key or value into the error text. (FastAPI's default 422 still
+    echoes the raw input separately, in pydantic's `input` field — that is the
+    framework's doing, not this validator's.)
 
     Returns `inputs` unchanged so it can be used as a pydantic field validator.
     """
@@ -277,7 +279,9 @@ def validate_inference_inputs(
             raise ValueError(f'Invalid input{_describe(location)}: unexpected field.')
 
         role = item.get('role')
-        if role is not None and role not in _ALLOWED_INPUT_ROLES:
+        if role is not None and (
+            not isinstance(role, str) or role not in _ALLOWED_INPUT_ROLES
+        ):
             raise ValueError(
                 f'Invalid input{_describe(location)}: role must be '
                 "'user' or 'assistant'."

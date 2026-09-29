@@ -146,7 +146,10 @@ class TestRejectedMetadata:
 
         message = str(exc_info.value)
         assert 'unexpected field in metadata' in message
-        # The untrusted key and its script value are never echoed back.
+        # The validator's message never surfaces the untrusted key or script
+        # value. (FastAPI's default 422 still echoes the raw input separately in
+        # pydantic's `input` field — that is the framework's doing, not asserted
+        # here.)
         assert 'comment' not in message
         assert 'php' not in message.lower()
 
