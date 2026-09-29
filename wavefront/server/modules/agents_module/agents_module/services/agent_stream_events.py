@@ -16,7 +16,7 @@ guarded LLM and policy still runs on every streamed call.
 
 import functools
 import time
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional
+from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional
 
 from common_module.log.logger import logger
 from flo_ai.llm.base_llm import BaseLLM
@@ -52,25 +52,12 @@ class AgentEventType:
     ERROR = 'error'
 
 
-#: Cap on any single free-text field in an event. Tool arguments carry whatever
-#: the model passed - a base64 image round-tripped through a tool would
-#: otherwise be re-sent down the stream in full.
-MAX_EVENT_FIELD_CHARS = 2000
-
-Emit = Callable[[Dict[str, Any]], None]
+Emit = Callable[[Dict[str, Any]], Awaitable[None]]
 
 
 def make_event(event_type: str, **fields: Any) -> Dict[str, Any]:
     """An event frame with its timestamp filled in."""
     return {'event_type': event_type, 'timestamp': time.time(), **fields}
-
-
-def truncate_for_event(value: Any, limit: int = MAX_EVENT_FIELD_CHARS) -> str:
-    """Render `value` as text bounded to `limit` characters."""
-    text = value if isinstance(value, str) else repr(value)
-    if len(text) <= limit:
-        return text
-    return f'{text[:limit]}... [truncated, {len(text)} chars]'
 
 
 class _StreamedResponse:
@@ -177,17 +164,19 @@ class StreamingTapLLM(BaseLLM):
         async for chunk in self._inner_llm.stream(messages):
             control = chunk.get(GUARDRAIL_CONTROL_KEY) if chunk else None
             if control is not None:
-                parts = self._apply_control(control, parts)
+                parts = await self._apply_control(control, parts)
                 continue
             content = chunk.get('content') if chunk else None
             if not content:
                 continue
             parts.append(content)
-            self._emit(make_event(AgentEventType.CONTENT_DELTA, content=content))
+            await self._emit(make_event(AgentEventType.CONTENT_DELTA, content=content))
 
         return _StreamedResponse(''.join(parts))
 
-    def _apply_control(self, control: Dict[str, Any], parts: List[str]) -> List[str]:
+    async def _apply_control(
+        self, control: Dict[str, Any], parts: List[str]
+    ) -> List[str]:
         """Act on a guardrail control chunk; return the reply text to keep.
 
         Only ``retract`` is actioned. An unrecognised action is passed over
@@ -208,7 +197,7 @@ class StreamingTapLLM(BaseLLM):
         # console was told to render. ``or ''`` rather than a get() default:
         # the key is always present and may be None.
         replacement = control.get('replacement') or ''
-        self._emit(
+        await self._emit(
             make_event(
                 AgentEventType.RETRACT,
                 content=replacement,
@@ -277,31 +266,28 @@ def instrument_tools(agent: Any, emit: Emit) -> None:
         def make_wrapper(tool_name: str, fn: Callable[..., Any]) -> Callable[..., Any]:
             @functools.wraps(fn)
             async def wrapper(**kwargs: Any) -> Any:
-                emit(
+                await emit(
                     make_event(
                         AgentEventType.TOOL_CALLED,
                         tool_name=tool_name,
-                        arguments=truncate_for_event(kwargs),
                     )
                 )
                 started = time.time()
                 try:
                     result = await fn(**kwargs)
-                except Exception as exc:
-                    emit(
+                except Exception:
+                    await emit(
                         make_event(
                             AgentEventType.TOOL_FAILED,
                             tool_name=tool_name,
-                            error=str(exc),
                             execution_time=time.time() - started,
                         )
                     )
                     raise
-                emit(
+                await emit(
                     make_event(
                         AgentEventType.TOOL_RESULT,
                         tool_name=tool_name,
-                        result=truncate_for_event(result),
                         execution_time=time.time() - started,
                     )
                 )

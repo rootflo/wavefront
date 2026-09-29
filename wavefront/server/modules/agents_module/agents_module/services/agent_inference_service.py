@@ -652,8 +652,7 @@ class AgentInferenceService:
         generator cannot yield while it is awaiting: the events have to reach
         the queue from somewhere other than this coroutine.
         """
-        queue: asyncio.Queue = asyncio.Queue()
-        done = object()
+        queue: asyncio.Queue = asyncio.Queue(maxsize=32)
 
         # The tap is only attached to an agent whose reply can actually be
         # streamed; on the others it would emit flo_ai's internal
@@ -666,8 +665,8 @@ class AgentInferenceService:
             # it release before the response is complete. Neither belongs
             # without the other.
             declare_retract_support(agent.llm)
-            agent.llm = StreamingTapLLM(agent.llm, queue.put_nowait)
-        instrument_tools(agent, queue.put_nowait)
+            agent.llm = StreamingTapLLM(agent.llm, queue.put)
+        instrument_tools(agent, queue.put)
 
         logger.info(
             f'Streaming inference for agent {agent_name} '
@@ -678,11 +677,8 @@ class AgentInferenceService:
         start_time = time.time()
 
         async def run() -> List[BaseMessage]:
-            try:
-                with guardrails():
-                    return await agent.run(inputs, variables=variables)
-            finally:
-                queue.put_nowait(done)
+            with guardrails():
+                return await agent.run(inputs, variables=variables)
 
         task = asyncio.create_task(run())
 
@@ -697,11 +693,22 @@ class AgentInferenceService:
                 agent_name=agent_name,
             )
 
-            while True:
-                event = await queue.get()
-                if event is done:
-                    break
-                yield event
+            get_task = asyncio.create_task(queue.get())
+            try:
+                while True:
+                    done_set, pending = await asyncio.wait(
+                        [get_task, task], return_when=asyncio.FIRST_COMPLETED
+                    )
+                    if get_task in done_set:
+                        yield get_task.result()
+                        get_task = asyncio.create_task(queue.get())
+                    else:
+                        while not queue.empty():
+                            yield queue.get_nowait()
+                        break
+            finally:
+                if not get_task.done():
+                    get_task.cancel()
 
             result = await task
 

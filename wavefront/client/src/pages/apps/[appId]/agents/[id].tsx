@@ -620,19 +620,21 @@ const AgentDetail: React.FC = () => {
     } catch (error) {
       // An abort is the user starting another run or leaving the page, not a
       // failure worth reporting.
-      if ((error as Error)?.name !== 'AbortError') {
+      if ((error as Error)?.name !== 'AbortError' && abortControllerRef.current === controller) {
         notifyError(error instanceof Error ? error.message : 'Agent streaming failed');
       }
     } finally {
-      setChatHistory((prev) => {
-        const last = prev[prev.length - 1];
-        if (last && last.role === 'assistant' && last.content === '') {
-          return prev.slice(0, -1);
-        }
-        return prev;
-      });
-      setIsStreaming(false);
-      abortControllerRef.current = null;
+      if (abortControllerRef.current === controller) {
+        setChatHistory((prev) => {
+          const last = prev[prev.length - 1];
+          if (last && last.role === 'assistant' && last.content === '') {
+            return prev.slice(0, -1);
+          }
+          return prev;
+        });
+        setIsStreaming(false);
+        abortControllerRef.current = null;
+      }
     }
   };
 
