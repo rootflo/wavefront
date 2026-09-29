@@ -504,6 +504,28 @@ def ensure_bytes_match_mime_type(
         )
 
 
+def file_name_safety_issue(file_name: Optional[str]) -> Optional[str]:
+    """Classify why a file name is unsafe to display, or ``None`` if it is fine.
+
+    Returns ``'type'`` (not a string), ``'length'`` (over the cap) or
+    ``'charset'`` (carries a character that could break out of the context it is
+    rendered in), so each caller can phrase its own message and raise its own
+    exception. The single source of truth for the actual rule — the length cap
+    and the character blocklist — lives here, so the HTTP-layer gate
+    (`ensure_safe_file_name`) and the request-model validator that reuses it
+    cannot drift apart.
+    """
+    if file_name is None:
+        return None
+    if not isinstance(file_name, str):
+        return 'type'
+    if len(file_name) > MAX_FILE_NAME_LENGTH:
+        return 'length'
+    if _UNSAFE_FILE_NAME_CHARS.search(file_name):
+        return 'charset'
+    return None
+
+
 def ensure_safe_file_name(
     file_name: Optional[str],
     index: Optional[int] = None,
@@ -514,22 +536,18 @@ def ensure_safe_file_name(
     by the execution-read endpoints, so it has to be safe for a consumer to
     display, not merely safe to store.
     """
-    if file_name is None:
-        return None
-
-    if not isinstance(file_name, str):
+    issue = file_name_safety_issue(file_name)
+    if issue == 'type':
         _reject(
             f'Invalid file name{_position(index)}: expected a string, '
             f'got {type(file_name).__name__}'
         )
-
-    if len(file_name) > MAX_FILE_NAME_LENGTH:
+    if issue == 'length':
         _reject(
             f'File name too long{_position(index)}: {len(file_name)} '
             f'characters, limit is {MAX_FILE_NAME_LENGTH}.'
         )
-
-    if _UNSAFE_FILE_NAME_CHARS.search(file_name):
+    if issue == 'charset':
         _reject(
             f'Invalid file name{_position(index)}: angle brackets, quotes, '
             f'ampersands and control characters are not allowed.'

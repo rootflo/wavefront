@@ -2,7 +2,10 @@ import uuid
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field, field_validator
 
-from agents_module.utils.validation_utils import validate_inference_variables
+from agents_module.utils.validation_utils import (
+    validate_inference_inputs,
+    validate_inference_variables,
+)
 
 
 class AgentInferenceRequest(BaseModel):
@@ -37,6 +40,14 @@ class AgentInferenceRequest(BaseModel):
             'Translate the following text: <text_to_translate> to <target_language>'
         ],
     )
+
+    # Same rationale as check_variables: validated on the model so v1, v2 and the
+    # async v3 endpoint are all covered, since they share this schema.
+    @field_validator('inputs')
+    @classmethod
+    def check_inputs(cls, v):
+        return validate_inference_inputs(v)
+
     llm_inference_config_id: Optional[uuid.UUID] = Field(
         default=None,
         description="Optional ID of LLM inference configuration to override agent's default LLM",
