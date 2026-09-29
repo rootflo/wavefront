@@ -164,18 +164,86 @@ class TestProcessInferenceInputs:
         # base64 field should contain base64-encoded string
         assert result[0].content.base64 == document_base64_str
 
-    def test_document_message_txt_rejected(self):
-        """Test that a non-PDF document is rejected at the boundary
+    @pytest.mark.parametrize(
+        'mime_type, file_name',
+        [
+            ('text/plain', 'notes.txt'),
+            ('text/csv', 'q3.csv'),
+            (
+                'application/vnd.openxmlformats-officedocument'
+                '.wordprocessingml.document',
+                'report.docx',
+            ),
+            (
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'budget.xlsx',
+            ),
+        ],
+    )
+    def test_extractable_document_passes_through_as_document(
+        self, mime_type, file_name
+    ):
+        import io
+        import zipfile
 
-        The document formatter only rasterizes PDFs, so a text/plain document
-        would fail inside the provider call rather than here.
-        """
-        document_base64_str = base64.b64encode(b'fake_txt_content').decode('utf-8')
+        b = io.BytesIO()
+        with zipfile.ZipFile(b, 'w') as z:
+            z.writestr('dummy', b'')
+        ZIP_B64 = base64.b64encode(b.getvalue()).decode('utf-8')
+        OLE2_B64 = base64.b64encode(b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1').decode('utf-8')
+        TEXT_B64 = base64.b64encode(b'hello').decode('utf-8')
+
+        document_base64_str = TEXT_B64
+        if 'openxmlformats' in mime_type:
+            document_base64_str = ZIP_B64
+        elif 'ms-excel' in mime_type:
+            document_base64_str = OLE2_B64
+
         doc_input = {
             'role': 'user',
             'content': {
                 'document_base64': document_base64_str,
-                'mime_type': 'text/plain',
+                'mime_type': mime_type,
+                'file_name': file_name,
+            },
+        }
+
+        result = process_inference_inputs([doc_input])
+
+        assert len(result) == 1
+        assert isinstance(result[0].content, DocumentMessageContent)
+        assert result[0].content.mime_type == mime_type
+        assert result[0].content.file_name == file_name
+        assert result[0].content.base64 == document_base64_str
+
+    def test_pdf_still_becomes_document_content(self):
+        document_base64_str = REAL_PDF_B64
+        doc_input = {
+            'role': 'user',
+            'content': {
+                'document_base64': document_base64_str,
+                'mime_type': 'application/pdf',
+            },
+        }
+
+        result = process_inference_inputs([doc_input])
+
+        assert isinstance(result[0].content, DocumentMessageContent)
+
+    def test_unreadable_document_is_rejected_at_the_boundary(self):
+        """A corrupt .docx now fails at the boundary.
+        Moved back to the server boundary based on VAPT review.
+        """
+        document_base64_str = base64.b64encode(b'definitely not a zip').decode('utf-8')
+        doc_input = {
+            'role': 'user',
+            'content': {
+                'document_base64': document_base64_str,
+                'mime_type': (
+                    'application/vnd.openxmlformats-officedocument'
+                    '.wordprocessingml.document'
+                ),
+                'file_name': 'broken.docx',
             },
         }
 
@@ -183,7 +251,27 @@ class TestProcessInferenceInputs:
             process_inference_inputs([doc_input])
 
         assert exc_info.value.status_code == 400
-        assert 'Unsupported document type `text/plain`' in str(exc_info.value.detail)
+        assert 'Invalid file format' in str(exc_info.value.detail)
+
+    @pytest.mark.parametrize('bad_base64', ['!!!!', 'SGVs bG8=', 'abc'])
+    def test_malformed_document_base64_rejected(self, bad_base64):
+        """Unlike unreadable content above, this is checkable here. A lenient
+        decode turns `!!!!` into b'', which flo_ai reports to the model as an
+        empty file rather than a broken upload."""
+        doc_input = {
+            'role': 'user',
+            'content': {
+                'document_base64': bad_base64,
+                'mime_type': 'text/plain',
+                'file_name': 'notes.txt',
+            },
+        }
+
+        with pytest.raises(HTTPException) as exc_info:
+            process_inference_inputs([{'role': 'user', 'content': 'hi'}, doc_input])
+
+        assert exc_info.value.status_code == 400
+        assert 'Invalid' in str(exc_info.value.detail)
 
     def test_document_message_default_type(self):
         """Test DocumentMessage processing"""
@@ -268,6 +356,16 @@ class TestProcessInferenceInputs:
         )
 
 
+class TestInvalidInputs:
+    def test_unknown_role_is_a_400(self):
+        """Carried over from the removed async wrapper's tests, where this was
+        the only check that a bad role surfaces as a 400 rather than a 500."""
+        with pytest.raises(HTTPException) as exc_info:
+            process_inference_inputs([{'role': 'system'}])
+
+        assert exc_info.value.status_code == 400
+
+
 class TestFileNamePropagation:
     """Test cases for carrying the original file_name onto media content"""
 
@@ -345,14 +443,24 @@ class TestFileNamePropagation:
         )
 
     def test_document_data_url_with_unsupported_mime_rejected(self):
-        """Test that the mime in a document data URL is still gated"""
+        """Test that the mime in a document data URL is still gated
+
+        Uses .pptx: this asserted on text/csv until CSV became an extractable
+        type, and the point of the test is the data-URL mime being read at all.
+        """
         document_base64_str = base64.b64encode(b'fake').decode('utf-8')
+        pptx_mime = (
+            'application/vnd.openxmlformats-officedocument'
+            '.presentationml.presentation'
+        )
 
         inputs = [
             {
                 'role': 'user',
                 'content': {
-                    'document_base64': f'data:text/csv;base64,{document_base64_str}'
+                    'document_base64': (
+                        f'data:{pptx_mime};base64,{document_base64_str}'
+                    )
                 },
             }
         ]
@@ -360,7 +468,7 @@ class TestFileNamePropagation:
         with pytest.raises(HTTPException) as exc_info:
             process_inference_inputs(inputs)
 
-        assert 'Unsupported document type `text/csv`' in str(exc_info.value.detail)
+        assert f'Unsupported document type `{pptx_mime}`' in str(exc_info.value.detail)
 
     def test_plain_document_base64_untouched(self):
         """Test that a document with no data URL prefix is passed through as-is"""

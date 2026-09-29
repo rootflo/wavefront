@@ -747,9 +747,11 @@ async def store_embeddings(
     knowledge_base_repository: SQLAlchemyRepository[KnowledgeBase] = Depends(
         Provide[KnowledgeBaseContainer.knowledge_base_repository]
     ),
-    knowledge_base_embeddings_repository: SQLAlchemyRepository[
+    knowledge_base_embeddings_write_repository: SQLAlchemyRepository[
         KnowledgeBaseEmbeddings
-    ] = Depends(Provide[KnowledgeBaseContainer.knowledge_base_embeddings_repository]),
+    ] = Depends(
+        Provide[KnowledgeBaseContainer.knowledge_base_embeddings_write_repository]
+    ),
 ) -> JSONResponse:
     embeddings_table = []
     for embedding in payload.embeddings:
@@ -793,7 +795,7 @@ async def store_embeddings(
 
         embeddings_table.extend(kb_embeddings)
 
-    async with knowledge_base_embeddings_repository.session() as session:
+    async with knowledge_base_embeddings_write_repository.session() as session:
         session.add_all(embeddings_table)
         await session.commit()
 

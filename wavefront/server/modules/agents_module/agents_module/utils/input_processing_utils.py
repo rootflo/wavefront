@@ -2,6 +2,7 @@
 Utility functions for processing inference inputs
 """
 
+import base64
 from typing import Any, List, Union
 from fastapi import HTTPException, status
 from flo_ai import (
@@ -123,6 +124,21 @@ def process_inference_inputs(
                         if stripped_document is not None
                         else raw_document
                     )
+
+                    # Strict, as the async endpoints already are at enqueue. A
+                    # lenient decode drops anything outside the alphabet, so
+                    # `!!!!` would reach the model as an empty file.
+                    if document_base64 is not None:
+                        try:
+                            base64.b64decode(document_base64, validate=True)
+                        except (ValueError, TypeError) as exc:
+                            raise HTTPException(
+                                status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=(
+                                    f'Invalid base64 document data at index '
+                                    f'{index}: {exc}'
+                                ),
+                            )
 
                     resolved_inputs.append(
                         UserMessage(

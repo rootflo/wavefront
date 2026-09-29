@@ -17,11 +17,11 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for backwards compatibility when using relative exclude-newer values.
+exclude-newer = "2026-09-21T12:09:55.906567Z"
 exclude-newer-span = "P7D"
 
 [options.exclude-newer-package]
-flo-ai = { timestamp = "0001-01-01T00:00:00Z", span = "PT0S" }
+flo-ai = { timestamp = "2026-09-28T12:09:55.90659Z", span = "PT0S" }
 
 [manifest]
 members = [
@@ -88,6 +88,7 @@ constraints = [
 overrides = [
     { name = "beautifulsoup4", specifier = ">=4.13.5,<5.0.0" },
     { name = "torch", marker = "sys_platform != 'darwin'", specifier = ">=2.6.0", index = "https://download.pytorch.org/whl/cpu" },
+    { name = "xlrd", specifier = ">=2.0.1,<3.0.0" },
 ]
 
 [[package]]
@@ -136,7 +137,7 @@ requires-dist = [
     { name = "api-services-module", editable = "modules/api_services_module" },
     { name = "celery", extras = ["redis"], specifier = ">=5.4.0,<6.0.0" },
     { name = "common-module", editable = "modules/common_module" },
-    { name = "flo-ai", specifier = "==1.1.12" },
+    { name = "flo-ai", specifier = "==1.1.13" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "flo-utils", editable = "packages/flo_utils" },
     { name = "llm-inference-config-module", editable = "modules/llm_inference_config_module" },
@@ -1076,7 +1077,7 @@ dependencies = [
 requires-dist = [
     { name = "common-module", editable = "modules/common_module" },
     { name = "db-repo-module", editable = "modules/db_repo_module" },
-    { name = "flo-ai", specifier = "==1.1.12" },
+    { name = "flo-ai", specifier = "==1.1.13" },
     { name = "llm-inference-config-module", editable = "modules/llm_inference_config_module" },
     { name = "user-management-module", editable = "modules/user_management_module" },
 ]
@@ -1763,7 +1764,7 @@ wheels = [
 
 [[package]]
 name = "flo-ai"
-version = "1.1.12"
+version = "1.1.13"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1771,12 +1772,14 @@ dependencies = [
     { name = "boto3" },
     { name = "chardet" },
     { name = "cryptography" },
+    { name = "defusedxml" },
     { name = "google-cloud-aiplatform", version = "1.145.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14' or sys_platform != 'darwin'" },
     { name = "google-cloud-aiplatform", version = "1.148.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14' and sys_platform == 'darwin'" },
     { name = "google-genai", version = "1.60.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14' or sys_platform != 'darwin'" },
     { name = "google-genai", version = "1.75.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14' and sys_platform == 'darwin'" },
     { name = "httpx" },
     { name = "openai" },
+    { name = "openpyxl" },
     { name = "opentelemetry-api" },
     { name = "opentelemetry-exporter-otlp" },
     { name = "opentelemetry-instrumentation" },
@@ -1784,11 +1787,13 @@ dependencies = [
     { name = "pydantic" },
     { name = "pyjwt" },
     { name = "pymupdf" },
+    { name = "python-docx" },
     { name = "pyyaml" },
+    { name = "xlrd" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/62/78/98ecb2fae76b4a1d61ab6eb12505088c37c2ceeca6722d09726a812c788c/flo_ai-1.1.12.tar.gz", hash = "sha256:f8e22868d8a25b23d61022dd9d550f4189820366440ff1c1b6ea0b21bc5bc748", size = 115794, upload-time = "2026-09-24T05:53:55.969Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/19/84/1c322ff392f54045758bf7025d193c13bd791f112b86ca9b7ff85fe54b08/flo_ai-1.1.13.tar.gz", hash = "sha256:6ace5ca5797da996076ae556ce651d7378bbb3cee01a0063c668af00d9b6bff5", size = 123783, upload-time = "2026-09-28T08:51:25.278Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/9e/f1/36cf4e1ff873bb15ddf1ddea3917fb3046ef8e5894c93af9191faacabecf/flo_ai-1.1.12-py3-none-any.whl", hash = "sha256:535c61e96d62cba4787c4a48791e895d170ed348f4d35fc22460ca37fd62f644", size = 145179, upload-time = "2026-09-24T05:53:54.404Z" },
+    { url = "https://files.pythonhosted.org/packages/a3/18/6c7a38bd3a7139cf32ae3123c5177436799793c32a095bc3570624177032/flo_ai-1.1.13-py3-none-any.whl", hash = "sha256:34308ac0d35e33f4cfc3476a499702a1281c9161871abf9f88ffa67d4eb631b4", size = 153513, upload-time = "2026-09-28T08:51:23.73Z" },
 ]
 
 [[package]]
@@ -2157,9 +2162,9 @@ resolution-markers = [
     "(python_full_version < '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'linux')",
 ]
 dependencies = [
-    { name = "cryptography" },
-    { name = "pyasn1-modules" },
-    { name = "rsa" },
+    { name = "cryptography", marker = "python_full_version < '3.14' or sys_platform != 'darwin'" },
+    { name = "pyasn1-modules", marker = "python_full_version < '3.14' or sys_platform != 'darwin'" },
+    { name = "rsa", marker = "python_full_version < '3.14' or sys_platform != 'darwin'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/0c/41/242044323fbd746615884b1c16639749e73665b718209946ebad7ba8a813/google_auth-2.48.0.tar.gz", hash = "sha256:4f7e706b0cd3208a3d940a19a822c37a476ddba5450156c3e6624a71f7c841ce", size = 326522, upload-time = "2026-01-26T19:22:47.157Z" }
 wheels = [
@@ -2168,7 +2173,7 @@ wheels = [
 
 [package.optional-dependencies]
 requests = [
-    { name = "requests" },
+    { name = "requests", marker = "python_full_version < '3.14' or sys_platform != 'darwin'" },
 ]
 
 [[package]]
@@ -2179,8 +2184,8 @@ resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'darwin'",
 ]
 dependencies = [
-    { name = "cryptography" },
-    { name = "pyasn1-modules" },
+    { name = "cryptography", marker = "python_full_version >= '3.14' and sys_platform == 'darwin'" },
+    { name = "pyasn1-modules", marker = "python_full_version >= '3.14' and sys_platform == 'darwin'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/ac/ca/f398a483ce5aad18ca2f735646e45ccee2439bd94a41a4ad0cfa646bd495/google_auth-2.58.0.tar.gz", hash = "sha256:55e30cf15e737de92c5323d78cda8a83fcd57e7ffbaf900c4600039fd60a80fd", size = 380018, upload-time = "2026-09-09T20:49:38.043Z" }
 wheels = [
@@ -2189,7 +2194,7 @@ wheels = [
 
 [package.optional-dependencies]
 requests = [
-    { name = "requests" },
+    { name = "requests", marker = "python_full_version >= '3.14' and sys_platform == 'darwin'" },
 ]
 
 [[package]]
@@ -2224,18 +2229,18 @@ resolution-markers = [
     "(python_full_version < '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'linux')",
 ]
 dependencies = [
-    { name = "docstring-parser" },
-    { name = "google-api-core", extra = ["grpc"] },
-    { name = "google-auth", version = "2.48.0", source = { registry = "https://pypi.org/simple" } },
-    { name = "google-cloud-bigquery" },
-    { name = "google-cloud-resource-manager" },
-    { name = "google-cloud-storage" },
-    { name = "google-genai", version = "1.60.0", source = { registry = "https://pypi.org/simple" } },
-    { name = "packaging" },
-    { name = "proto-plus" },
-    { name = "protobuf" },
-    { name = "pydantic" },
-    { name = "typing-extensions" },
+    { name = "docstring-parser", marker = "python_full_version < '3.14' or sys_platform != 'darwin'" },
+    { name = "google-api-core", extra = ["grpc"], marker = "python_full_version < '3.14' or sys_platform != 'darwin'" },
+    { name = "google-auth", version = "2.48.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14' or sys_platform != 'darwin'" },
+    { name = "google-cloud-bigquery", marker = "python_full_version < '3.14' or sys_platform != 'darwin'" },
+    { name = "google-cloud-resource-manager", marker = "python_full_version < '3.14' or sys_platform != 'darwin'" },
+    { name = "google-cloud-storage", marker = "python_full_version < '3.14' or sys_platform != 'darwin'" },
+    { name = "google-genai", version = "1.60.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14' or sys_platform != 'darwin'" },
+    { name = "packaging", marker = "python_full_version < '3.14' or sys_platform != 'darwin'" },
+    { name = "proto-plus", marker = "python_full_version < '3.14' or sys_platform != 'darwin'" },
+    { name = "protobuf", marker = "python_full_version < '3.14' or sys_platform != 'darwin'" },
+    { name = "pydantic", marker = "python_full_version < '3.14' or sys_platform != 'darwin'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.14' or sys_platform != 'darwin'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/26/e5/6442d9d2c019456638825d4665b1e87ec4eaf1d182950ba426d0f0210eab/google_cloud_aiplatform-1.145.0.tar.gz", hash = "sha256:7894c4f3d2684bdb60e9a122004c01678e3b585174a27298ae7a3ed1e5eaf3bd", size = 10222904, upload-time = "2026-04-02T14:06:58.322Z" }
 wheels = [
@@ -2250,18 +2255,18 @@ resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'darwin'",
 ]
 dependencies = [
-    { name = "docstring-parser" },
-    { name = "google-api-core", extra = ["grpc"] },
-    { name = "google-auth", version = "2.58.0", source = { registry = "https://pypi.org/simple" } },
-    { name = "google-cloud-bigquery" },
-    { name = "google-cloud-resource-manager" },
-    { name = "google-cloud-storage" },
-    { name = "google-genai", version = "1.75.0", source = { registry = "https://pypi.org/simple" } },
-    { name = "packaging" },
-    { name = "proto-plus" },
-    { name = "protobuf" },
-    { name = "pydantic" },
-    { name = "typing-extensions" },
+    { name = "docstring-parser", marker = "python_full_version >= '3.14' and sys_platform == 'darwin'" },
+    { name = "google-api-core", extra = ["grpc"], marker = "python_full_version >= '3.14' and sys_platform == 'darwin'" },
+    { name = "google-auth", version = "2.58.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14' and sys_platform == 'darwin'" },
+    { name = "google-cloud-bigquery", marker = "python_full_version >= '3.14' and sys_platform == 'darwin'" },
+    { name = "google-cloud-resource-manager", marker = "python_full_version >= '3.14' and sys_platform == 'darwin'" },
+    { name = "google-cloud-storage", marker = "python_full_version >= '3.14' and sys_platform == 'darwin'" },
+    { name = "google-genai", version = "1.75.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14' and sys_platform == 'darwin'" },
+    { name = "packaging", marker = "python_full_version >= '3.14' and sys_platform == 'darwin'" },
+    { name = "proto-plus", marker = "python_full_version >= '3.14' and sys_platform == 'darwin'" },
+    { name = "protobuf", marker = "python_full_version >= '3.14' and sys_platform == 'darwin'" },
+    { name = "pydantic", marker = "python_full_version >= '3.14' and sys_platform == 'darwin'" },
+    { name = "typing-extensions", marker = "python_full_version >= '3.14' and sys_platform == 'darwin'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/c9/f3/b2a9417014c93858a2e3266134f931eefd972c2d410b25d7b8782fc6f143/google_cloud_aiplatform-1.148.1.tar.gz", hash = "sha256:75d605fba34e68714bd08e1e482755d0a6e3ae972805f809d088e686c30879e7", size = 10278758, upload-time = "2026-04-17T23:45:26.738Z" }
 wheels = [
@@ -2470,16 +2475,16 @@ resolution-markers = [
     "(python_full_version < '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'linux')",
 ]
 dependencies = [
-    { name = "anyio" },
-    { name = "distro" },
-    { name = "google-auth", version = "2.48.0", source = { registry = "https://pypi.org/simple" }, extra = ["requests"] },
-    { name = "httpx" },
-    { name = "pydantic" },
-    { name = "requests" },
-    { name = "sniffio" },
-    { name = "tenacity" },
-    { name = "typing-extensions" },
-    { name = "websockets" },
+    { name = "anyio", marker = "python_full_version < '3.14' or sys_platform != 'darwin'" },
+    { name = "distro", marker = "python_full_version < '3.14' or sys_platform != 'darwin'" },
+    { name = "google-auth", version = "2.48.0", source = { registry = "https://pypi.org/simple" }, extra = ["requests"], marker = "python_full_version < '3.14' or sys_platform != 'darwin'" },
+    { name = "httpx", marker = "python_full_version < '3.14' or sys_platform != 'darwin'" },
+    { name = "pydantic", marker = "python_full_version < '3.14' or sys_platform != 'darwin'" },
+    { name = "requests", marker = "python_full_version < '3.14' or sys_platform != 'darwin'" },
+    { name = "sniffio", marker = "python_full_version < '3.14' or sys_platform != 'darwin'" },
+    { name = "tenacity", marker = "python_full_version < '3.14' or sys_platform != 'darwin'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.14' or sys_platform != 'darwin'" },
+    { name = "websockets", marker = "python_full_version < '3.14' or sys_platform != 'darwin'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/0a/3f/a753be0dcee352b7d63bc6d1ba14a72591d63b6391dac0cdff7ac168c530/google_genai-1.60.0.tar.gz", hash = "sha256:9768061775fddfaecfefb0d6d7a6cabefb3952ebd246cd5f65247151c07d33d1", size = 487721, upload-time = "2026-01-21T22:17:30.398Z" }
 wheels = [
@@ -2494,16 +2499,16 @@ resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'darwin'",
 ]
 dependencies = [
-    { name = "anyio" },
-    { name = "distro" },
-    { name = "google-auth", version = "2.58.0", source = { registry = "https://pypi.org/simple" }, extra = ["requests"] },
-    { name = "httpx" },
-    { name = "pydantic" },
-    { name = "requests" },
-    { name = "sniffio" },
-    { name = "tenacity" },
-    { name = "typing-extensions" },
-    { name = "websockets" },
+    { name = "anyio", marker = "python_full_version >= '3.14' and sys_platform == 'darwin'" },
+    { name = "distro", marker = "python_full_version >= '3.14' and sys_platform == 'darwin'" },
+    { name = "google-auth", version = "2.58.0", source = { registry = "https://pypi.org/simple" }, extra = ["requests"], marker = "python_full_version >= '3.14' and sys_platform == 'darwin'" },
+    { name = "httpx", marker = "python_full_version >= '3.14' and sys_platform == 'darwin'" },
+    { name = "pydantic", marker = "python_full_version >= '3.14' and sys_platform == 'darwin'" },
+    { name = "requests", marker = "python_full_version >= '3.14' and sys_platform == 'darwin'" },
+    { name = "sniffio", marker = "python_full_version >= '3.14' and sys_platform == 'darwin'" },
+    { name = "tenacity", marker = "python_full_version >= '3.14' and sys_platform == 'darwin'" },
+    { name = "typing-extensions", marker = "python_full_version >= '3.14' and sys_platform == 'darwin'" },
+    { name = "websockets", marker = "python_full_version >= '3.14' and sys_platform == 'darwin'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/9d/59/3ed61240ef20b3ae6ed54e82c6f8b6d1f194947bc6679679dd6cdb037594/google_genai-1.75.0.tar.gz", hash = "sha256:56bac3991b311c93f980c0a2abcd287b672146905df1fbd71c92ed633d5a07cf", size = 539039, upload-time = "2026-05-04T22:48:54.857Z" }
 wheels = [
@@ -3155,7 +3160,7 @@ dev = [
 requires-dist = [
     { name = "boto3", specifier = ">=1.42.22,<2.0.0" },
     { name = "datasource", editable = "plugins/datasource" },
-    { name = "flo-ai", specifier = "==1.1.12" },
+    { name = "flo-ai", specifier = "==1.1.13" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "google-cloud-pubsub", specifier = "~=2.30.0" },
     { name = "numpy", specifier = ">=1.24,<2.0" },
@@ -5273,6 +5278,19 @@ wheels = [
 ]
 
 [[package]]
+name = "python-docx"
+version = "1.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "lxml" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a9/f7/eddfe33871520adab45aaa1a71f0402a2252050c14c7e3009446c8f4701c/python_docx-1.2.0.tar.gz", hash = "sha256:7bc9d7b7d8a69c9c02ca09216118c86552704edc23bac179283f2e38f86220ce", size = 5723256, upload-time = "2025-06-16T20:46:27.921Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d0/00/1e03a4989fa5795da308cd774f05b704ace555a70f9bf9d3be057b680bcf/python_docx-1.2.0-py3-none-any.whl", hash = "sha256:3fd478f3250fbbbfd3b94fe1e985955737c145627498896a8a6bf81f4baf66c7", size = 252987, upload-time = "2025-06-16T20:46:22.506Z" },
+]
+
+[[package]]
 name = "python-dotenv"
 version = "1.2.3"
 source = { registry = "https://pypi.org/simple" }
@@ -6219,7 +6237,7 @@ dev = [
 requires-dist = [
     { name = "common-module", editable = "modules/common_module" },
     { name = "datasource", editable = "plugins/datasource" },
-    { name = "flo-ai", specifier = "==1.1.12" },
+    { name = "flo-ai", specifier = "==1.1.13" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "httpx", specifier = ">=0.27.0,<1.0.0" },
     { name = "knowledge-base-module", editable = "modules/knowledge_base_module" },
@@ -6237,13 +6255,13 @@ name = "torch"
 version = "2.13.0+cpu"
 source = { registry = "https://download.pytorch.org/whl/cpu" }
 dependencies = [
-    { name = "filelock" },
-    { name = "fsspec" },
-    { name = "jinja2" },
-    { name = "networkx" },
-    { name = "setuptools" },
-    { name = "sympy" },
-    { name = "typing-extensions" },
+    { name = "filelock", marker = "sys_platform != 'darwin'" },
+    { name = "fsspec", marker = "sys_platform != 'darwin'" },
+    { name = "jinja2", marker = "sys_platform != 'darwin'" },
+    { name = "networkx", marker = "sys_platform != 'darwin'" },
+    { name = "setuptools", marker = "sys_platform != 'darwin'" },
+    { name = "sympy", marker = "sys_platform != 'darwin'" },
+    { name = "typing-extensions", marker = "sys_platform != 'darwin'" },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.13.0%2Bcpu-cp311-cp311-linux_s390x.whl", hash = "sha256:6e9817dbdf5ea76789babd46e457eac5bf14ff566cf85f8addbfdff2d56601ce", upload-time = "2026-07-08T19:27:52Z" },
@@ -6283,10 +6301,10 @@ resolution-markers = [
     "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
 ]
 dependencies = [
-    { name = "numpy" },
-    { name = "pillow" },
-    { name = "requests" },
-    { name = "torch" },
+    { name = "numpy", marker = "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'" },
+    { name = "pillow", marker = "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'" },
+    { name = "requests", marker = "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'" },
+    { name = "torch", marker = "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'" },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/torchvision-0.16.0-cp311-cp311-linux_aarch64.whl", hash = "sha256:9ed5f21e5a56e466667c6f9f6f93dba2a75e29921108bd70043eaf8e9ba0a7cc", upload-time = "2023-10-06T21:47:32Z" },
@@ -6303,9 +6321,9 @@ resolution-markers = [
     "python_full_version < '3.12' and sys_platform == 'darwin'",
 ]
 dependencies = [
-    { name = "numpy" },
-    { name = "pillow" },
-    { name = "requests" },
+    { name = "numpy", marker = "sys_platform == 'darwin'" },
+    { name = "pillow", marker = "sys_platform == 'darwin'" },
+    { name = "requests", marker = "sys_platform == 'darwin'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/23/84/46481327771d4f63feb59dd0d9e1cd6a42e985dbd371965f486a5bf9f323/torchvision-0.16.0-cp311-cp311-macosx_10_13_x86_64.whl", hash = "sha256:31fdf289bdfb2976f65a14f79f6ddd1ee60113db34622674918e61521c2dc41f", size = 1705744, upload-time = "2023-10-04T17:02:41.079Z" },
@@ -6326,10 +6344,10 @@ resolution-markers = [
     "(python_full_version < '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'linux')",
 ]
 dependencies = [
-    { name = "numpy" },
-    { name = "pillow" },
-    { name = "requests" },
-    { name = "torch" },
+    { name = "numpy", marker = "(python_full_version >= '3.12' and sys_platform == 'linux') or (platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
+    { name = "pillow", marker = "(python_full_version >= '3.12' and sys_platform == 'linux') or (platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
+    { name = "requests", marker = "(python_full_version >= '3.12' and sys_platform == 'linux') or (platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
+    { name = "torch", marker = "(python_full_version >= '3.12' and sys_platform == 'linux') or (platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/cpu/torchvision-0.16.0%2Bcpu-cp311-cp311-linux_x86_64.whl", hash = "sha256:be317c0b0b32d008309a1de6018e77b500d1cf966e158a5db1070da5c0cfea88", upload-time = "2023-10-06T00:36:02Z" },
@@ -6938,11 +6956,11 @@ wheels = [
 
 [[package]]
 name = "xlrd"
-version = "1.2.0"
+version = "2.0.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/aa/05/ec9d4fcbbb74bbf4da9f622b3b61aec541e4eccf31d3c60c5422ec027ce2/xlrd-1.2.0.tar.gz", hash = "sha256:546eb36cee8db40c3eaa46c351e67ffee6eeb5fa2650b71bc4c758a29a1b29b2", size = 554079, upload-time = "2018-12-15T17:47:48.133Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/07/5a/377161c2d3538d1990d7af382c79f3b2372e880b65de21b01b1a2b78691e/xlrd-2.0.2.tar.gz", hash = "sha256:08b5e25de58f21ce71dc7db3b3b8106c1fa776f3024c54e45b45b374e89234c9", size = 100167, upload-time = "2025-06-14T08:46:39.039Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b0/16/63576a1a001752e34bf8ea62e367997530dc553b689356b9879339cf45a4/xlrd-1.2.0-py2.py3-none-any.whl", hash = "sha256:e551fb498759fa3a5384a94ccd4c3c02eb7c00ea424426e212ac0c57be9dfbde", size = 103251, upload-time = "2018-12-15T17:47:45.792Z" },
+    { url = "https://files.pythonhosted.org/packages/1a/62/c8d562e7766786ba6587d09c5a8ba9f718ed3fa8af7f4553e8f91c36f302/xlrd-2.0.2-py2.py3-none-any.whl", hash = "sha256:ea762c3d29f4cca48d82df517b6d89fbce4db3107f9d78713e48cd321d5c9aa9", size = 96555, upload-time = "2025-06-14T08:46:37.766Z" },
 ]
 
 [[package]]

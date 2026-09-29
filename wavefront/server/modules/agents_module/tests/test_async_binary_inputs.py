@@ -238,7 +238,7 @@ class TestStoredObjectNaming:
         assert kwargs['content_type'] == 'application/octet-stream'
 
     @pytest.mark.parametrize(
-        'mime_type', ['image/svg+xml', 'text/html', 'text/csv', 'nonsense', None]
+        'mime_type', ['image/svg+xml', 'text/html', 'nonsense', None]
     )
     def test_unsupported_mime_never_earns_a_real_extension(self, service, mime_type):
         """_MIME_TO_EXT is wider than the gate; it must not widen the key too.

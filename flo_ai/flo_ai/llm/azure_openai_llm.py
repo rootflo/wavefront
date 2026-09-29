@@ -234,13 +234,16 @@ class AzureOpenAI(BaseLLM):
         """Format tools for Azure OpenAI's API (OpenAI-compatible)."""
         return [self.format_tool_for_llm(tool) for tool in tools]
 
-    async def format_document_in_message(
+    async def _format_native_document(
         self, document: DocumentMessageContent
     ) -> list[dict]:
-        """Rasterized document pages, preceded by the file's name if known."""
-        blocks = await super().format_document_in_message(document)
+        """Rasterized document pages, preceded by the file's name if known.
+
+        Runs once per document per LLM class -- the base caches the result --
+        so the name block cannot stack up across agent nodes or retries.
+        """
+        blocks = await super()._format_native_document(document)
         name_block = file_name_text_block(document)
-        # New list — `blocks` is the cached value held on the document.
         return [name_block, *blocks] if name_block else blocks
 
     def format_image_in_message(self, image: ImageMessageContent) -> list[dict]:
