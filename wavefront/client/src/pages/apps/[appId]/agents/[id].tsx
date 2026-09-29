@@ -574,6 +574,8 @@ const AgentDetail: React.FC = () => {
 
     try {
       await floConsoleService.agentService.streamInference(id, inputs, variables, {
+        llmInferenceConfigId: selectedLLMConfigId || undefined,
+        toolNames: selectedTools.length > 0 ? selectedTools.map((tool) => tool.value) : undefined,
         version: selectedVersion,
         signal: controller.signal,
         onEvent: (event) => {
@@ -622,6 +624,13 @@ const AgentDetail: React.FC = () => {
         notifyError(error instanceof Error ? error.message : 'Agent streaming failed');
       }
     } finally {
+      setChatHistory((prev) => {
+        const last = prev[prev.length - 1];
+        if (last && last.role === 'assistant' && last.content === '') {
+          return prev.slice(0, -1);
+        }
+        return prev;
+      });
       setIsStreaming(false);
       abortControllerRef.current = null;
     }

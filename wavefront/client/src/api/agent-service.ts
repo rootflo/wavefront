@@ -145,6 +145,8 @@ export class AgentService {
     inputs: string | unknown[],
     variables: Record<string, unknown> = {},
     options: {
+      llmInferenceConfigId?: string;
+      toolNames?: string[];
       version?: number;
       signal?: AbortSignal;
       onEvent: (event: AgentStreamEvent) => void;
@@ -154,6 +156,22 @@ export class AgentService {
     const query = options.version !== undefined ? `&version=${options.version}` : '';
     const url = `${appEnv.baseURL}/v1/${appId}/floware/v2/agents/${id}/inference?stream=true${query}`;
 
+    const requestBody: {
+      variables: Record<string, unknown>;
+      inputs: string | unknown[];
+      llm_inference_config_id?: string;
+      tool_names?: string[];
+      output_json_enabled: boolean;
+    } = { variables, inputs, output_json_enabled: false };
+
+    if (options.llmInferenceConfigId) {
+      requestBody.llm_inference_config_id = options.llmInferenceConfigId;
+    }
+
+    if (options.toolNames && options.toolNames.length > 0) {
+      requestBody.tool_names = options.toolNames;
+    }
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -162,7 +180,7 @@ export class AgentService {
         Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY)}`,
         'Cache-Control': 'no-cache',
       },
-      body: JSON.stringify({ variables, inputs, output_json_enabled: false }),
+      body: JSON.stringify(requestBody),
       signal: options.signal,
     });
 
