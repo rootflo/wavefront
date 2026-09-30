@@ -156,6 +156,15 @@ class KbStorageProcessor(MessageProcessor):
                 except Exception as err:
                     self.__mark_embedding_failed(kb_insight, err, failed_doc_ids)
                     continue
+                if not docs:
+                    # e.g. an empty file or a scanned PDF with no text layer;
+                    # floware would reject it, so don't send it at all
+                    self.__mark_embedding_failed(
+                        kb_insight,
+                        ValueError('The document produced no embeddings'),
+                        failed_doc_ids,
+                    )
+                    continue
                 embeddings.append(
                     EmbeddingsToStore(
                         kb_embeddings=docs,
@@ -171,11 +180,42 @@ class KbStorageProcessor(MessageProcessor):
             )
             return
 
-        self.kb_rag_storage.upload_embedding_with_retry(embeddings=embeddings)
-        logger.info(
-            f'Stored embeddings for {len(embeddings)} doc(s); '
-            f'{len(failed_doc_ids)} failed to embed: {failed_doc_ids}'
+        response = self.kb_rag_storage.upload_embedding_with_retry(
+            embeddings=embeddings
         )
+        rejected_doc_ids = self.__mark_rejected_by_floware(insights, response)
+        logger.info(
+            f'Stored embeddings for {len(embeddings) - len(rejected_doc_ids)} doc(s); '
+            f'{len(failed_doc_ids)} failed to embed: {failed_doc_ids}; '
+            f'{len(rejected_doc_ids)} rejected by floware: {rejected_doc_ids}'
+        )
+
+    def __mark_rejected_by_floware(
+        self, insights: List[ProcessingResult[KbStorageInsights]], response
+    ) -> List[str]:
+        """Mark documents floware left out of the upload as failed.
+
+        floware stores valid documents and lists the rest under
+        `data.rejected` (e.g. an image sent to a text knowledge base).
+        """
+        rejected = (response.json().get('data') or {}).get('rejected') or []
+        reasons = {
+            str(item['document_id']).lower(): item.get('reason', 'rejected')
+            for item in rejected
+        }
+        rejected_doc_ids = []
+        for kb_insight in insights:
+            doc_id = str(kb_insight.insights.doc_id).lower()
+            if kb_insight.success and doc_id in reasons:
+                kb_insight.success = False
+                kb_insight.error = f'Rejected by floware: {reasons[doc_id]}'
+                rejected_doc_ids.append(kb_insight.insights.doc_id)
+                logger.error(
+                    f'floware rejected doc {kb_insight.insights.doc_id} '
+                    f'(kb {kb_insight.insights.kb_id}): {reasons[doc_id]}',
+                    exc_info=False,
+                )
+        return rejected_doc_ids
 
     async def process(
         self, message: RagEventMessage
