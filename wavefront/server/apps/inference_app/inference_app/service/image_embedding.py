@@ -71,8 +71,8 @@ class ImageEmbedding:
                 io.BytesIO(image_content), formats=SUPPORTED_PILLOW_FORMATS
             ).convert('RGB')
         except Exception as e:
-            print(f'Error opening image: {e}')
-            return []
+            logger.error(f'Error opening image: {e}', exc_info=True)
+            raise ValueError(f'Failed to decode image: {e}') from e
 
         results = []
 
