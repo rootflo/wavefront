@@ -1,7 +1,7 @@
 from typing import Any, AsyncIterator, Optional
 
 from common_module.log.logger import logger
-from common_module.utils.guardrails import guarded_llm
+from common_module.utils.guardrails import declare_retract_support, guarded_llm
 from db_repo_module.models.chat_message import ChatMessage
 from db_repo_module.models.chat_session import ChatSession
 from db_repo_module.models.chatbot import Chatbot
@@ -75,13 +75,15 @@ class ChatInferenceService:
         except ValueError as exc:
             raise ChatInferenceError(str(exc)) from exc
 
-        return guarded_llm(
+        wrapped = guarded_llm(
             llm,
             self.guardrails_engine,
             chatbot.namespace,
             chatbot.name,
             user_id,
         )
+        declare_retract_support(wrapped)
+        return wrapped
 
     async def check_user_message(
         self,
@@ -165,28 +167,8 @@ class ChatInferenceService:
         llm: BaseLLM,
         session: ChatSession,
         history: list[ChatMessage],
-    ) -> AsyncIterator[str]:
-        """Yield content deltas. `llm` comes from resolve_llm().
-
-        Every provider's stream() yields `{'content': <delta>}` -- verified for
-        openai, azure_openai, anthropic, gemini, ollama and vllm -- so keying on
-        that is safe across the set build_llm() can return.
-
-        A guarded stream can also release incrementally and then *retract* what
-        it already sent, replacing it. This consumer cannot do that: a delta
-        yielded here has been appended to the client's transcript and there is
-        no frame to take it back. So chat never calls `declare_retract_support`
-        -- which is what makes `GuardedLLM` downgrade incremental release to
-        buffering, where nothing is emitted before the whole reply has been
-        cleared and a retract can therefore never arise.
-
-        The guard below is for if that stops being true. A control chunk
-        reaching this loop means the invariant broke somewhere above, and
-        letting it fall through to `.get('content')` would drop it in silence,
-        leaving withdrawn text on the user's screen. To support incremental
-        release properly, add a retract frame to the SSE protocol and follow
-        `agents_module.services.agent_stream_events._apply_control`.
-        """
+    ) -> AsyncIterator[str | dict[str, Any]]:
+        """Yield content deltas or guardrail control chunks. `llm` comes from resolve_llm()."""
         messages = self.build_messages(session, history)
 
         logger.info(
@@ -194,13 +176,14 @@ class ChatInferenceService:
             f'messages={len(messages)}'
         )
 
+        try:
+            from flo_ai.guardrails.stream_guard import GUARDRAIL_CONTROL_KEY
+        except ImportError:
+            GUARDRAIL_CONTROL_KEY = 'guardrail'
+
         async for chunk in llm.stream(messages):
             if is_control_chunk(chunk):
-                logger.warning(
-                    f'Discarding a guardrail control chunk on the chat stream '
-                    f'for session={session.id}; this path does not implement '
-                    f'retract and should never have been sent one'
-                )
+                yield chunk[GUARDRAIL_CONTROL_KEY]
                 continue
             content: Optional[str] = chunk.get('content') if chunk else None
             if content:

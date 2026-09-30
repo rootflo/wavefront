@@ -528,6 +528,19 @@ async def _stream_reply(
         async for delta in run_scoped_stream(
             chat_inference_service.stream(llm, session, history), request_id
         ):
+            if isinstance(delta, dict):
+                if delta.get('action') == 'retract':
+                    replacement = delta.get('replacement') or ''
+                    chunks.clear()
+                    chunks.append(replacement)
+                    yield f'data: {json.dumps({"retract": True, "content": replacement, "reason": delta.get("message")})}\n\n'
+                else:
+                    logger.warning(
+                        f'Ignoring unrecognised guardrail control action '
+                        f'{delta.get("action")!r} on the chat stream'
+                    )
+                continue
+
             chunks.append(delta)
             yield f'data: {json.dumps({"content": delta})}\n\n'
     except (GeneratorExit, asyncio.CancelledError):
@@ -558,12 +571,10 @@ async def _stream_reply(
         # pulled, and an outbound block only happens in the buffered mode that
         # releases nothing until the whole reply has been cleared.
         if getattr(exc, 'retract', False):
-            # Would mean text was released and then withdrawn -- only possible
-            # under incremental release, which this consumer never opts into.
-            logger.error(
-                f'Guardrail asked the chat stream to retract for session '
-                f'{session.id}; text may already be on screen'
-            )
+            # A block arrived after text was released. The stream is ending,
+            # so the replacement is empty.
+            chunks.clear()
+            yield f'data: {json.dumps({"retract": True, "content": "", "reason": "Response blocked by policy"})}\n\n'
         # The decision's own message, not MODEL_FAILURE_MESSAGE: nothing was
         # saved and a block is not retryable, so both halves of that sentence
         # would be wrong here.

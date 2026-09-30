@@ -82,6 +82,30 @@ def guarded_llm(
     return wrapped
 
 
+def declare_retract_support(llm: Any) -> bool:
+    """Tell a ``GuardedLLM`` that its consumer can withdraw text already shown.
+
+    ``GuardedLLM`` refuses to release a response incrementally unless the call
+    site asserts this, and it is right to: incremental release can end in a
+    retract, and a consumer that ignores one leaves withdrawn text on screen.
+    The wrapper cannot see what is downstream of it, so the assertion has to
+    come from something that can.
+
+    Returns whether anything was declared, which is False for an unguarded
+    agent - the ordinary case when no policy applies to the namespace.
+    """
+    try:
+        from flo_ai.llm.guarded_llm import GuardedLLM
+    except ImportError:
+        return False
+
+    if not isinstance(llm, GuardedLLM):
+        return False
+
+    llm.declare_retract_support()
+    return True
+
+
 def guardrail_llm_provider(
     guardrails_engine: Any,
     namespace: Optional[str],
