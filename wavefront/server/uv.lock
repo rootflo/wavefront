@@ -137,7 +137,7 @@ requires-dist = [
     { name = "api-services-module", editable = "modules/api_services_module" },
     { name = "celery", extras = ["redis"], specifier = ">=5.4.0,<6.0.0" },
     { name = "common-module", editable = "modules/common_module" },
-    { name = "flo-ai", specifier = "==1.1.14" },
+    { name = "flo-ai", specifier = "==1.1.15" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "flo-utils", editable = "packages/flo_utils" },
     { name = "llm-inference-config-module", editable = "modules/llm_inference_config_module" },
@@ -1140,7 +1140,7 @@ dependencies = [
 requires-dist = [
     { name = "common-module", editable = "modules/common_module" },
     { name = "db-repo-module", editable = "modules/db_repo_module" },
-    { name = "flo-ai", specifier = "==1.1.14" },
+    { name = "flo-ai", specifier = "==1.1.15" },
     { name = "llm-inference-config-module", editable = "modules/llm_inference_config_module" },
     { name = "user-management-module", editable = "modules/user_management_module" },
 ]
@@ -1904,7 +1904,7 @@ wheels = [
 
 [[package]]
 name = "flo-ai"
-version = "1.1.14"
+version = "1.1.15"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -2858,7 +2858,7 @@ requires-dist = [
     { name = "db-repo-module", editable = "modules/db_repo_module" },
     { name = "dependency-injector", specifier = ">=4.40.0" },
     { name = "fastapi", specifier = ">=0.100.0" },
-    { name = "flo-ai", extras = ["guardrails"], specifier = "==1.1.14" },
+    { name = "flo-ai", extras = ["guardrails"], specifier = "==1.1.15" },
     { name = "pydantic", specifier = ">=2.0.0" },
 ]
 
@@ -3307,7 +3307,7 @@ dev = [
 requires-dist = [
     { name = "boto3", specifier = ">=1.42.22,<2.0.0" },
     { name = "datasource", editable = "plugins/datasource" },
-    { name = "flo-ai", specifier = "==1.1.14" },
+    { name = "flo-ai", specifier = "==1.1.15" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "google-cloud-pubsub", specifier = "~=2.30.0" },
     { name = "numpy", specifier = ">=1.24,<2.0" },
@@ -6793,7 +6793,7 @@ dev = [
 requires-dist = [
     { name = "common-module", editable = "modules/common_module" },
     { name = "datasource", editable = "plugins/datasource" },
-    { name = "flo-ai", specifier = "==1.1.14" },
+    { name = "flo-ai", specifier = "==1.1.15" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "httpx", specifier = ">=0.27.0,<1.0.0" },
     { name = "knowledge-base-module", editable = "modules/knowledge_base_module" },
