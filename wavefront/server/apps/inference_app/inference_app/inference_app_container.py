@@ -1,5 +1,10 @@
 from dependency_injector import containers
 from dependency_injector import providers
+from inference_app.env import (
+    RATE_LIMIT_REQUESTS_PER_MINUTE,
+    RATE_LIMIT_REQUESTS_PER_SECOND,
+)
+from inference_app.rate_limiter import SlidingWindowRateLimiter
 from inference_app.service.image_embedding import ImageEmbedding
 
 
@@ -14,3 +19,11 @@ class InferenceAppContainer(containers.DeclarativeContainer):
     config = providers.Configuration(ini_files=['config.ini'])
 
     image_embedding = providers.Singleton(ImageEmbedding)
+
+    rate_limiter = providers.Singleton(
+        SlidingWindowRateLimiter,
+        limits=[
+            (RATE_LIMIT_REQUESTS_PER_SECOND, 1.0),
+            (RATE_LIMIT_REQUESTS_PER_MINUTE, 60.0),
+        ],
+    )

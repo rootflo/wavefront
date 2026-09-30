@@ -63,12 +63,6 @@ class KbStorageProcessor(MessageProcessor):
             docs = self.kb_rag_storage.process_document(
                 [kb_insight.insights.doc_content.content]
             )
-        elif document_type == DocumentType.IMAGE:
-            docs = [
-                self.image_embedding.embed_image(
-                    kb_insight.insights.doc_content.content
-                )
-            ]
         else:
             docs = []
         return (
@@ -78,16 +72,34 @@ class KbStorageProcessor(MessageProcessor):
             document_type,
         )
 
+    def __mark_embedding_failed(
+        self,
+        kb_insight: ProcessingResult[KbStorageInsights],
+        err: Exception,
+        failed_doc_ids: List[str],
+    ):
+        insight = kb_insight.insights
+        kb_insight.success = False
+        kb_insight.error = f'Embedding failed: {err}'
+        failed_doc_ids.append(insight.doc_id)
+        logger.error(
+            f'Failed to embed doc {insight.doc_id} '
+            f'(kb {insight.kb_id}, type {insight.file_type}): {err}',
+            exc_info=err,
+        )
+
     def __insert_kb_from_message(
         self, insights: List[ProcessingResult[KbStorageInsights]]
     ):
         """
         Embeds each document in the batch and uploads the embeddings in one request.
 
-        A document that fails to embed (e.g. an image the inference service
-        rejects) is marked failed on its ProcessingResult and left out of the
-        upload, so the listener retries just that message. Upload failures are
-        raised so store() fails the whole batch.
+        Text and PDF documents are embedded in parallel; images are sent to the
+        inference service together in batches. A document that fails to embed
+        (e.g. an image the inference service rejects) is marked failed on its
+        ProcessingResult and left out of the upload, so the listener retries
+        just that message. Upload failures are raised so store() fails the
+        whole batch.
 
         Args:
             insights: Processing results holding each document's extracted content.
@@ -98,25 +110,51 @@ class KbStorageProcessor(MessageProcessor):
         logger.info('Embeddings storing process is started')
         embeddings: List[EmbeddingsToStore] = []
         failed_doc_ids: List[str] = []
+        image_insights = [
+            kb_insight
+            for kb_insight in insights
+            if kb_insight.insights.doc_content.document_type == DocumentType.IMAGE
+        ]
+        other_insights = [
+            kb_insight
+            for kb_insight in insights
+            if kb_insight.insights.doc_content.document_type != DocumentType.IMAGE
+        ]
         with ThreadPoolExecutor(max_workers=10) as executor:
             futures = {
                 executor.submit(self.__embed_single_insight, kb_insight): kb_insight
-                for kb_insight in insights
+                for kb_insight in other_insights
             }
+
+            # Runs while the text/PDF futures are in flight.
+            image_results = (
+                self.image_embedding.embed_images(
+                    [ki.insights.doc_content.content for ki in image_insights]
+                )
+                if image_insights
+                else []
+            )
+            for kb_insight, result in zip(image_insights, image_results):
+                if result.error is not None:
+                    self.__mark_embedding_failed(
+                        kb_insight, result.error, failed_doc_ids
+                    )
+                    continue
+                embeddings.append(
+                    EmbeddingsToStore(
+                        kb_embeddings=[result.embedding],
+                        doc_id=kb_insight.insights.doc_id,
+                        kb_id=kb_insight.insights.kb_id,
+                        file_type=DocumentType.IMAGE,
+                    )
+                )
+
             for future in as_completed(futures):
                 kb_insight = futures[future]
-                failed_insight = kb_insight.insights
                 try:
                     docs, doc_id, kb_id, document_type = future.result()
                 except Exception as err:
-                    kb_insight.success = False
-                    kb_insight.error = f'Embedding failed: {err}'
-                    failed_doc_ids.append(failed_insight.doc_id)
-                    logger.error(
-                        f'Failed to embed doc {failed_insight.doc_id} '
-                        f'(kb {failed_insight.kb_id}, type {failed_insight.file_type}): {err}',
-                        exc_info=True,
-                    )
+                    self.__mark_embedding_failed(kb_insight, err, failed_doc_ids)
                     continue
                 embeddings.append(
                     EmbeddingsToStore(

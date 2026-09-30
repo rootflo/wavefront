@@ -15,7 +15,16 @@ dependencies = [
     "dependency-injector>=4.42.0,<5.0.0",
     "python-multipart>=0.0.31",
     "python-dotenv>=1.1.0,<2.0.0",
-    "torchvision==0.16.0",
+    # >=2.6 for the torch.load weights_only fix (CVE-2025-32434). torchvision
+    # is left unpinned so it resolves to the build matching torch; transformers'
+    # DINOv3 image processor only has a torchvision-backed "fast" variant.
+    "torch>=2.6.0 ; sys_platform != 'darwin' or platform_machine != 'x86_64'",
+    # Dev-only exception: PyTorch stopped shipping Intel-Mac wheels after 2.2.2,
+    # so that is the newest torch an Intel Mac can run. The CVE is in torch.load
+    # of untrusted .bin checkpoints; our models load from safetensors, and
+    # transformers refuses .bin loading on torch<2.6 regardless. Never deployed.
+    "torch==2.2.2 ; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "torchvision",
     "opencv-python>=4.11.0.86",
     "pillow>=12.3.0,<13",
     "psycopg2-binary>=2.9.10,<3.0.0",

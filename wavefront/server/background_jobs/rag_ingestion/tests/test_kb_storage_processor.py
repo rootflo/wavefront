@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from flo_utils.streaming.message_processor import ProcessingResult
+from rag_ingestion.embeddings.image_embed import ImageEmbeddingResult
 from rag_ingestion.models.doc_content import DocContent
 from rag_ingestion.models.knowledge_base_embeddings import (
     KnowledgeBaseEmbeddingObject,
@@ -28,10 +29,13 @@ EMBEDDING = KnowledgeBaseEmbeddingObject(
 )
 
 
-def fake_embed_image(content: bytes) -> KnowledgeBaseEmbeddingObject:
-    if content == b'bad':
-        raise RuntimeError('inference service returned 400')
-    return EMBEDDING
+def fake_embed_images(contents: list) -> list:
+    return [
+        ImageEmbeddingResult(error=RuntimeError('inference service returned 400'))
+        if content == b'bad'
+        else ImageEmbeddingResult(embedding=EMBEDDING)
+        for content in contents
+    ]
 
 
 @pytest.fixture
@@ -44,7 +48,7 @@ def processor():
         processor = KbStorageProcessor(
             storage_manager=MagicMock(), encryption_service=None
         )
-    processor.image_embedding.embed_image.side_effect = fake_embed_image
+    processor.image_embedding.embed_images.side_effect = fake_embed_images
     processor.kb_rag_storage.process_document.return_value = [EMBEDDING]
     return processor
 
@@ -89,6 +93,26 @@ class TestStore:
         assert bad.success is False
         assert 'inference service returned 400' in bad.error
         assert image.success is True and text.success is True
+
+    def test_images_are_embedded_together_and_text_separately(self, processor):
+        insights = [
+            make_insight('d1', DocumentType.IMAGE, b'img-1'),
+            make_insight('d2', DocumentType.TEXT, 'some text'),
+            make_insight('d3', DocumentType.IMAGE, b'img-2'),
+        ]
+
+        assert processor.store(insights) is True
+
+        processor.image_embedding.embed_images.assert_called_once_with(
+            [b'img-1', b'img-2']
+        )
+        processor.kb_rag_storage.process_document.assert_called_once_with(['some text'])
+        assert uploaded_doc_ids(processor) == ['d1', 'd2', 'd3']
+
+    def test_text_only_batch_does_not_call_inference(self, processor):
+        assert processor.store([make_insight('d1', DocumentType.TEXT, 'txt')]) is True
+
+        processor.image_embedding.embed_images.assert_not_called()
 
     def test_all_failed_skips_upload_and_marks_each_failed(self, processor):
         insights = [
