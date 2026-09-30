@@ -737,6 +737,56 @@ async def delete_system_prompt(
     )
 
 
+KB_NOT_FOUND_REASON = 'There is no knowledge bases based on the id'
+VECTOR_SIZE_MISMATCH_REASON = (
+    "The vector size on the embedding doesn't match the required embedding vector size"
+)
+
+
+def _parse_chunk_index(value: str) -> Optional[int]:
+    """'chunk_3' -> 3; None if the value is not in that form."""
+    prefix, _, number = value.partition('_')
+    return int(number) if prefix == 'chunk' and number.isdigit() else None
+
+
+def _store_rejection_reason(
+    embedding: EmbeddingSchema, kb: Optional[KnowledgeBase]
+) -> Optional[str]:
+    """Why this document's embeddings cannot be stored, or None if they can.
+
+    A knowledge base with vector_size_1 set (an image KB: CLIP + DINO) needs a
+    second vector for every chunk; one without it (a text KB) must not get
+    one. That catches an image stored into a text KB even when the two
+    primary vector sizes happen to match.
+    """
+    if kb is None:
+        return KB_NOT_FOUND_REASON
+    chunk_count = len(embedding.embedding_vector)
+    if chunk_count == 0:
+        return 'The document has no embeddings'
+    if (
+        len(embedding.chunk_text) != chunk_count
+        or len(embedding.chunk_index) != chunk_count
+    ):
+        return 'embedding_vector, chunk_text and chunk_index must have the same length'
+    if any(len(vector) != kb.vector_size for vector in embedding.embedding_vector):
+        return VECTOR_SIZE_MISMATCH_REASON
+    second_vectors = embedding.embedding_vector_1 or []
+    if kb.vector_size_1:
+        if len(second_vectors) != chunk_count or any(
+            len(vector) != kb.vector_size_1 for vector in second_vectors
+        ):
+            return VECTOR_SIZE_MISMATCH_REASON
+    elif any(second_vectors):
+        return (
+            'The embedding has a second vector (e.g. an image embedding) but the '
+            'knowledge base only accepts one'
+        )
+    if any(_parse_chunk_index(index) is None for index in embedding.chunk_index):
+        return "chunk_index values must look like 'chunk_<number>'"
+    return None
+
+
 @rag_retrieval_router.post('/v1/store_embedding')
 @inject
 async def store_embeddings(
@@ -753,37 +803,37 @@ async def store_embeddings(
         Provide[KnowledgeBaseContainer.knowledge_base_embeddings_write_repository]
     ),
 ) -> JSONResponse:
-    embeddings_table = []
-    for embedding in payload.embeddings:
-        existing_kb = await knowledge_base_repository.find_one(id=embedding.kb_id)
-        if not existing_kb:
-            return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content=response_formatter.buildErrorResponse(
-                    'There is no knowledge bases based on the id'
-                ),
-            )
-        vector_size = existing_kb.vector_size
-        vector_size_1 = existing_kb.vector_size_1
-        if len(embedding.embedding_vector[0]) != vector_size or (
-            vector_size_1 and len(embedding.embedding_vector_1[0]) != vector_size_1
-        ):
-            return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content=response_formatter.buildErrorResponse(
-                    "The vector size on the embedding doesn't match the required embedding vector size"
-                ),
-            )
+    """Store each document's embeddings, validating documents independently.
 
-        kb_embeddings = [
+    Documents that fail validation are left out and listed under `rejected`
+    in the response, so one bad document no longer fails the whole request.
+    Only when every document is rejected does the request fail with 400.
+    """
+    embeddings_table = []
+    rejected = []
+    knowledge_bases: dict = {}
+    for embedding in payload.embeddings:
+        if embedding.kb_id not in knowledge_bases:
+            knowledge_bases[embedding.kb_id] = await knowledge_base_repository.find_one(
+                id=embedding.kb_id
+            )
+        reason = _store_rejection_reason(embedding, knowledge_bases[embedding.kb_id])
+        if reason:
+            rejected.append(
+                {'document_id': str(embedding.document_id), 'reason': reason}
+            )
+            continue
+
+        second_vectors = embedding.embedding_vector_1 or []
+        embeddings_table.extend(
             KnowledgeBaseEmbeddings(
                 document_id=embedding.document_id,
                 embedding_vector=embedding.embedding_vector[index],
-                embedding_vector_1=embedding.embedding_vector_1[index]
-                if embedding.embedding_vector_1[index]
+                embedding_vector_1=second_vectors[index]
+                if index < len(second_vectors) and second_vectors[index]
                 else None,
                 chunk_text=embedding.chunk_text[index],
-                chunk_index=int(embedding.chunk_index[index].split('_')[1]),
+                chunk_index=_parse_chunk_index(embedding.chunk_index[index]),
                 # Set at write time so retrieval never has to backfill it — the
                 # read path used to run this as an UPDATE ... WHERE token IS NULL
                 # over the whole table on every search, contending with ingestion
@@ -791,9 +841,14 @@ async def store_embeddings(
                 token=func.to_tsvector('english', embedding.chunk_text[index]),
             )
             for index in range(len(embedding.embedding_vector))
-        ]
+        )
 
-        embeddings_table.extend(kb_embeddings)
+    if rejected and not embeddings_table:
+        reasons = list(dict.fromkeys(item['reason'] for item in rejected))
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse('; '.join(reasons)),
+        )
 
     async with knowledge_base_embeddings_write_repository.session() as session:
         session.add_all(embeddings_table)
@@ -804,6 +859,7 @@ async def store_embeddings(
         content=response_formatter.buildSuccessResponse(
             {
                 'message': 'Created the knowledge base documents and embeddings successfully',
+                'rejected': rejected,
             }
         ),
     )

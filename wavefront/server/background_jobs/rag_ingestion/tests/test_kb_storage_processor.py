@@ -50,7 +50,23 @@ def processor():
         )
     processor.image_embedding.embed_images.side_effect = fake_embed_images
     processor.kb_rag_storage.process_document.return_value = [EMBEDDING]
+    set_floware_rejections(processor, {})
     return processor
+
+
+def set_floware_rejections(processor, reasons_by_doc_id: dict):
+    """Make the mocked floware upload report these documents as rejected."""
+    response = MagicMock()
+    response.json.return_value = {
+        'data': {
+            'message': 'ok',
+            'rejected': [
+                {'document_id': doc_id, 'reason': reason}
+                for doc_id, reason in reasons_by_doc_id.items()
+            ],
+        }
+    }
+    processor.kb_rag_storage.upload_embedding_with_retry.return_value = response
 
 
 def make_insight(doc_id: str, document_type: DocumentType, content):
@@ -134,6 +150,37 @@ class TestStore:
 
     def test_empty_batch_returns_false(self, processor):
         assert processor.store([]) is False
+
+
+class TestNoEmbeddingsAndRejections:
+    def test_document_with_no_embeddings_is_failed_and_not_uploaded(self, processor):
+        processor.kb_rag_storage.process_document.side_effect = lambda contents: (
+            [] if contents == [''] else [EMBEDDING]
+        )
+        empty = make_insight('d1', DocumentType.TEXT, '')
+        text = make_insight('d2', DocumentType.TEXT, 'some text')
+
+        assert processor.store([empty, text]) is True
+
+        assert uploaded_doc_ids(processor) == ['d2']
+        assert empty.success is False
+        assert 'no embeddings' in empty.error
+        assert text.success is True
+
+    def test_documents_rejected_by_floware_are_marked_failed(self, processor):
+        set_floware_rejections(
+            processor,
+            {'D1': 'The embedding has a second vector but the KB only accepts one'},
+        )
+        image = make_insight('d1', DocumentType.IMAGE, b'img')
+        text = make_insight('d2', DocumentType.TEXT, 'some text')
+
+        assert processor.store([image, text]) is True
+
+        assert image.success is False
+        assert 'Rejected by floware' in image.error
+        assert 'only accepts one' in image.error
+        assert text.success is True
 
 
 class TestProcess:

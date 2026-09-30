@@ -19,6 +19,10 @@ from rag_ingestion.embeddings.embed import EmbeddingFunc
 from rag_ingestion.processors.file_processor import DocumentType
 
 
+class EmbeddingsRejectedError(Exception):
+    """floware refused the whole upload with a 4xx; retrying cannot help."""
+
+
 @dataclass
 class EmbeddingsToStore:
     kb_embeddings: List[KnowledgeBaseEmbeddingObject]
@@ -427,8 +431,15 @@ class KBRagStorage:
                 )
                 if response.status_code == 200:
                     return response
-                else:
-                    logger.info(f'The error request was {response.text}')
+                if 400 <= response.status_code < 500 and response.status_code != 429:
+                    # floware rejected every document; resending won't change that
+                    raise EmbeddingsRejectedError(
+                        f'floware rejected the embeddings ({response.status_code}): '
+                        f'{response.text}'
+                    )
+                logger.info(f'The error request was {response.text}')
+            except EmbeddingsRejectedError:
+                raise
             except Exception as e:
                 logger.error(f'The error while uploading doc wise embeddings was {e}')
             if attempt < max_retries - 1:

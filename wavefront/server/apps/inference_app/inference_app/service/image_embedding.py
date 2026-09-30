@@ -39,9 +39,10 @@ class ImageEmbedding:
 
         logger.info('Loading DINOv3 model from %s', dino_path)
         self.dino_processor = AutoImageProcessor.from_pretrained(dino_path)
-        self.dino_model = AutoModel.from_pretrained(
-            dino_path, trust_remote_code=True
-        ).to(self.device)
+        # DINOv3 is built into transformers (>=4.56), so the model directory's
+        # own Python is never executed: no trust_remote_code. Anyone able to
+        # write to the model bucket must not be able to run code here.
+        self.dino_model = AutoModel.from_pretrained(dino_path).to(self.device)
         self.dino_model.eval()
 
         self.embedders: Dict[str, Dict[str, Any]] = {
