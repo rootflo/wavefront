@@ -28,6 +28,8 @@ class FakeEmbedding:
 
     def query_embed(self, image_content):
         self.singles.append(image_content)
+        if image_content == b'bad':
+            raise ValueError('Failed to decode image: cannot identify image file')
         return [{'clip': [1.0]}, {'dino': [2.0]}]
 
     def query_embed_batch(self, image_batch):
@@ -195,3 +197,14 @@ def test_single_endpoint_accepts_valid_base64_forms(client_and_service, image_da
 
     assert response.status_code == 200
     assert fake.singles == [b'hello']
+
+
+def test_single_endpoint_returns_400_naming_decode_failure(client_and_service):
+    client, _ = client_and_service
+    bad = {'image_data': base64.b64encode(b'bad').decode('ascii')}
+
+    response = client.post(SINGLE_URL, json=bad)
+
+    assert response.status_code == 400
+    assert 'Failed to decode image' in response.text
+    assert 'No Embedding data' not in response.text

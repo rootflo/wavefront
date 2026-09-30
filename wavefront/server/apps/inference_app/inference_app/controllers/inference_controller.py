@@ -65,7 +65,14 @@ def image_embedding(
             status_code=status.HTTP_400_BAD_REQUEST,
             content=response_formatter.buildErrorResponse('Invalid base64 image data'),
         )
-    embeddings = image_embedding_service.query_embed(image_data)
+    try:
+        embeddings = image_embedding_service.query_embed(image_data)
+    except ValueError as err:
+        # query_embed raises ValueError when the bytes are not a decodable image
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(str(err)),
+        )
     if not embeddings:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,

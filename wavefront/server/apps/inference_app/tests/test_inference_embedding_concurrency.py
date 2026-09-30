@@ -9,6 +9,7 @@ import base64
 import io
 import threading
 import time
+from unittest.mock import patch
 
 import pytest
 
@@ -19,6 +20,7 @@ from dependency_injector import providers  # noqa: E402
 from PIL import Image  # noqa: E402
 
 from inference_app.rate_limiter import SlidingWindowRateLimiter  # noqa: E402
+from inference_app.service import image_embedding  # noqa: E402
 from inference_app.service.image_embedding import ImageEmbedding  # noqa: E402
 
 
@@ -147,3 +149,20 @@ def test_concurrent_query_embed_batch_calls_do_not_overlap_forward_passes():
     assert stats['max_active'] == 1
     for result in results:
         assert result == [{'clip': [[0.5] * 4] * 2}, {'dino': [[0.5] * 4] * 2}]
+
+
+@pytest.mark.parametrize('method', ['query_embed', 'query_embed_batch'])
+def test_undecodable_image_raises_value_error_and_logs(method):
+    service, stats = make_service_with_fake_models()
+    payload = (
+        b'not an image' if method == 'query_embed' else [png_bytes(), b'not an image']
+    )
+
+    with (
+        patch.object(image_embedding, 'logger') as logger,
+        pytest.raises(ValueError, match='(?i)failed to decode image'),
+    ):
+        getattr(service, method)(payload)
+
+    logger.error.assert_called_once()
+    assert stats['max_active'] == 0, 'model ran on an undecodable image'
