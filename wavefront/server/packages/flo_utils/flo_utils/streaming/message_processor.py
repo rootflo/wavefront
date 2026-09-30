@@ -23,5 +23,10 @@ class MessageProcessor(ABC, Generic[T]):
 
     @abstractmethod
     def store(self, insights: List[T], is_failed: bool = False) -> bool:
-        """Store insights using appropriate repositories"""
+        """Store insights using appropriate repositories.
+
+        Return False to fail the whole batch. To fail only some messages, set
+        success=False (and error) on their results and return True; the
+        listener keeps those messages on the queue for retry.
+        """
         pass

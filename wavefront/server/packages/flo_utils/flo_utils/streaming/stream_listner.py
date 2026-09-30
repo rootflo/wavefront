@@ -1,6 +1,6 @@
 import asyncio
 import concurrent.futures
-from typing import List
+from typing import List, Tuple
 from flo_cloud._types import MessageQueueDict
 from common_module.log.logger import logger
 from db_repo_module.cache.cache_manager import CacheManager
@@ -51,6 +51,9 @@ class StreamListener(ABC):
                 self.cache_manager.remove(error_key)
             else:
                 self.cache_manager.add(error_key, current_retry_count + 1, expiry=3600)
+                # Drop the in-flight marker so the redelivered message is
+                # processed again instead of being skipped until it expires.
+                self.cache_manager.remove(str(message_id))
                 logger.warning(
                     f'Retrying {message_id}. Attempt {current_retry_count} of {self.retry_count}'
                 )
@@ -74,7 +77,7 @@ class StreamListener(ABC):
             try:
                 response = self.event_manager.receive_messages(
                     max_messages=self.streaming_batch_size,
-                    wait_time_sec=self.wait_time_sec
+                    wait_time_sec=self.wait_time_sec,
                 )
                 messages: List[BaseEventMessage] = self.get_event_messages(response)
                 logger.info(f'{worker_id}: listening for messages...')
@@ -82,7 +85,8 @@ class StreamListener(ABC):
                     await asyncio.sleep(5)
                     continue
 
-                message_ids_to_delete = []
+                # (message_id, receipt_id, result) for each message sent to store()
+                processed: List[Tuple[str, str, ProcessingResult]] = []
                 insights_to_commit: List[ProcessingResult] = []
 
                 for message in messages:
@@ -100,7 +104,9 @@ class StreamListener(ABC):
 
                         if result.success:
                             insights_to_commit.append(result)
-                            message_ids_to_delete.append(message_receipt_id)
+                            processed.append(
+                                (message_id_str, message_receipt_id, result)
+                            )
                         else:
                             self.handle_error(message_id_str, message_receipt_id)
 
@@ -117,20 +123,29 @@ class StreamListener(ABC):
                 if insights_to_commit and self.processor:
                     is_successful = self.processor.store(insights_to_commit)
                     if is_successful:
+                        # store() may flag individual results as failed
+                        # (success=False); those stay on the queue for retry.
+                        stored = [p for p in processed if p[2].success]
+                        failed = [p for p in processed if not p[2].success]
                         logger.info(
-                            f'Successfully stored insights for {len(insights_to_commit)} items'
+                            f'Successfully stored insights for {len(stored)} items'
                         )
-                        for message_receipt_id in message_ids_to_delete:
+                        for _, message_receipt_id, _ in stored:
                             self.delete_message(message_receipt_id)
                     else:
                         logger.error(
                             f'Failed to store insights for {len(insights_to_commit)} items'
                         )
+                        failed = processed
+                    for message_id, message_receipt_id, result in failed:
+                        logger.error(
+                            f'Failed to store insights for message {message_id}: {result.error}'
+                        )
                         self.handle_error(
-                            message_id_str,
+                            message_id,
                             message_receipt_id,
                             self.processor,
-                            insights_to_commit,
+                            [result],
                         )
             except Exception as e:
                 logger.error(

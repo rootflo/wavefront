@@ -64,47 +64,80 @@ class KbStorageProcessor(MessageProcessor):
                 [kb_insight.insights.doc_content.content]
             )
         elif document_type == DocumentType.IMAGE:
-            docs = [self.image_embedding.embed_image(kb_insight.insights.doc_content.content)]
+            docs = [
+                self.image_embedding.embed_image(
+                    kb_insight.insights.doc_content.content
+                )
+            ]
         else:
             docs = []
-        return docs, kb_insight.insights.doc_id, kb_insight.insights.kb_id, document_type
+        return (
+            docs,
+            kb_insight.insights.doc_id,
+            kb_insight.insights.kb_id,
+            document_type,
+        )
 
     def __insert_kb_from_message(
         self, insights: List[ProcessingResult[KbStorageInsights]]
     ):
         """
-        Processes a message transcript and inserts KB embeddings if the conversation type is 'kb_insertion'.
+        Embeds each document in the batch and uploads the embeddings in one request.
+
+        A document that fails to embed (e.g. an image the inference service
+        rejects) is marked failed on its ProcessingResult and left out of the
+        upload, so the listener retries just that message. Upload failures are
+        raised so store() fails the whole batch.
 
         Args:
-            message: An object with a 'doc_id' field.
-            doc_content: A DocContent object containing the extracted text.
+            insights: Processing results holding each document's extracted content.
 
         Returns:
             None
         """
-        try:
-            logger.info('Embeddings storing process is started')
-            with ThreadPoolExecutor(max_workers=10) as executor:
-                futures = {
-                    executor.submit(self.__embed_single_insight, kb_insight): kb_insight
-                    for kb_insight in insights
-                }
-                embeddings: List[EmbeddingsToStore] = []
-                for future in as_completed(futures):
+        logger.info('Embeddings storing process is started')
+        embeddings: List[EmbeddingsToStore] = []
+        failed_doc_ids: List[str] = []
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            futures = {
+                executor.submit(self.__embed_single_insight, kb_insight): kb_insight
+                for kb_insight in insights
+            }
+            for future in as_completed(futures):
+                kb_insight = futures[future]
+                failed_insight = kb_insight.insights
+                try:
                     docs, doc_id, kb_id, document_type = future.result()
-                    embeddings.append(
-                        EmbeddingsToStore(
-                            kb_embeddings=docs,
-                            doc_id=doc_id,
-                            kb_id=kb_id,
-                            file_type=document_type,
-                        )
+                except Exception as err:
+                    kb_insight.success = False
+                    kb_insight.error = f'Embedding failed: {err}'
+                    failed_doc_ids.append(failed_insight.doc_id)
+                    logger.error(
+                        f'Failed to embed doc {failed_insight.doc_id} '
+                        f'(kb {failed_insight.kb_id}, type {failed_insight.file_type}): {err}',
+                        exc_info=True,
                     )
+                    continue
+                embeddings.append(
+                    EmbeddingsToStore(
+                        kb_embeddings=docs,
+                        doc_id=doc_id,
+                        kb_id=kb_id,
+                        file_type=document_type,
+                    )
+                )
 
-            self.kb_rag_storage.upload_embedding_with_retry(embeddings=embeddings)
-            logger.info('Embeddings are stored in the db')
-        except Exception as err:
-            logger.info(f'The error message captured is {err}')
+        if not embeddings:
+            logger.error(
+                f'Embedding failed for every document in the batch: {failed_doc_ids}'
+            )
+            return
+
+        self.kb_rag_storage.upload_embedding_with_retry(embeddings=embeddings)
+        logger.info(
+            f'Stored embeddings for {len(embeddings)} doc(s); '
+            f'{len(failed_doc_ids)} failed to embed: {failed_doc_ids}'
+        )
 
     async def process(
         self, message: RagEventMessage
@@ -121,15 +154,25 @@ class KbStorageProcessor(MessageProcessor):
         logger.info(f'Processing message: {message.id}')
         logger.info(f'Processing file: {message.bucket_name}/{message.bucket_key}')
 
-        file_content_encrypt = self.storage_manager.read_file(
-            message.bucket_name, message.bucket_key
-        )
-        file_content = (
-            self.encryption_service.decrypt(file_content_encrypt)
-            if self.encryption_service
-            else file_content_encrypt
-        )
-        doc_content = await self._extract_content(message, file_content)
+        # An exception escaping process() makes the stream listener abandon every
+        # message it received alongside this one, so fail only this message.
+        try:
+            file_content_encrypt = self.storage_manager.read_file(
+                message.bucket_name, message.bucket_key
+            )
+            file_content = (
+                self.encryption_service.decrypt(file_content_encrypt)
+                if self.encryption_service
+                else file_content_encrypt
+            )
+            doc_content = await self._extract_content(message, file_content)
+        except Exception as err:
+            logger.error(
+                f'Failed to extract content for doc {message.doc_id} '
+                f'({message.file_type}): {err}',
+                exc_info=True,
+            )
+            return ProcessingResult[KbStorageInsights](success=False, error=str(err))
         return ProcessingResult[KbStorageInsights](
             success=True,
             insights=KbStorageInsights(
