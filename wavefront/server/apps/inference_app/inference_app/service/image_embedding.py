@@ -3,6 +3,7 @@ from pathlib import Path
 from transformers import CLIPProcessor, CLIPModel, AutoImageProcessor, AutoModel
 from PIL import Image
 import io
+import threading
 from typing import List, Dict, Any, Union
 from common_module.log.logger import logger
 from common_module.utils.image_formats import SUPPORTED_PILLOW_FORMATS
@@ -23,6 +24,9 @@ class ImageEmbedding:
         dino_model_dir: Union[str, Path],
     ):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        # Requests run on FastAPI's threadpool; serialise the forward passes so
+        # concurrent requests don't oversubscribe CPU threads or GPU memory.
+        self._model_lock = threading.Lock()
         logger.info(f'Using device: {self.device}')
 
         clip_path = str(Path(clip_model_dir))
@@ -72,17 +76,20 @@ class ImageEmbedding:
 
         results = []
 
-        for name, embedder in self.embedders.items():
-            inputs = embedder['processor'](images=image, return_tensors='pt')
+        with self._model_lock:
+            for name, embedder in self.embedders.items():
+                inputs = embedder['processor'](images=image, return_tensors='pt')
 
-            inputs = {k: v.to(self.device) for k, v in inputs.items()}
+                inputs = {k: v.to(self.device) for k, v in inputs.items()}
 
-            image_features = embedder['extractor'](inputs)
+                image_features = embedder['extractor'](inputs)
 
-            image_features = image_features / image_features.norm(dim=-1, keepdim=True)
-            embedding = image_features.squeeze().cpu().numpy().tolist()
+                image_features = image_features / image_features.norm(
+                    dim=-1, keepdim=True
+                )
+                embedding = image_features.squeeze().cpu().numpy().tolist()
 
-            results.append({name: embedding})
+                results.append({name: embedding})
 
         return results
 
@@ -121,17 +128,20 @@ class ImageEmbedding:
 
         results: List[Dict[str, List[List[float]]]] = []
 
-        for name, embedder in self.embedders.items():
-            inputs = embedder['processor'](images=images, return_tensors='pt')
-            inputs = {k: v.to(self.device) for k, v in inputs.items()}
+        with self._model_lock:
+            for name, embedder in self.embedders.items():
+                inputs = embedder['processor'](images=images, return_tensors='pt')
+                inputs = {k: v.to(self.device) for k, v in inputs.items()}
 
-            # Batched forward pass.
-            image_features = embedder['extractor'](inputs)  # (batch, dim)
+                # Batched forward pass.
+                image_features = embedder['extractor'](inputs)  # (batch, dim)
 
-            # L2-normalize per-vector.
-            image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+                # L2-normalize per-vector.
+                image_features = image_features / image_features.norm(
+                    dim=-1, keepdim=True
+                )
 
-            embeddings = image_features.cpu().numpy().tolist()  # batch x dim
-            results.append({name: embeddings})
+                embeddings = image_features.cpu().numpy().tolist()  # batch x dim
+                results.append({name: embeddings})
 
         return results

@@ -18,7 +18,6 @@ dependencies = [
     "httpx>=0.28.1",
     "python-dotenv>=1.1.0,<2.0.0",
     "pyjwt[crypto]>=2.9.0",
-    "torchvision==0.16.0",
     "accelerate>=0.33.0,<1.0.0",
 ]
 

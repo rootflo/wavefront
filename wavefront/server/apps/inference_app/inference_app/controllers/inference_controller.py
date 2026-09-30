@@ -1,12 +1,15 @@
 import base64
 import binascii
+import math
 
 from common_module.common_container import CommonContainer
 from common_module.response_formatter import ResponseFormatter
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
+from inference_app.env import MAX_EMBEDDING_BATCH_SIZE
 from inference_app.inference_app_container import InferenceAppContainer
+from inference_app.rate_limiter import SlidingWindowRateLimiter
 from inference_app.service.image_embedding import ImageEmbedding
 from pydantic import BaseModel
 
@@ -19,12 +22,34 @@ class ImageBatchPayload(BaseModel):
     image_batch: list[str]  # list of base64 encoded image data
 
 
-inference_app_router = APIRouter()
+@inject
+async def enforce_rate_limit(
+    rate_limiter: SlidingWindowRateLimiter = Depends(
+        Provide[InferenceAppContainer.rate_limiter]
+    ),
+):
+    # async so it runs on the event loop: an over-limit request is rejected
+    # immediately even when every threadpool thread is waiting on the model.
+    retry_after = rate_limiter.acquire()
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail='Rate limit exceeded for embedding requests',
+            headers={'Retry-After': str(math.ceil(retry_after))},
+        )
 
 
+# Health checks live on the app, not this router, so they are never limited.
+inference_app_router = APIRouter(dependencies=[Depends(enforce_rate_limit)])
+
+
+# The embedding handlers are plain `def` on purpose: the model forward pass is
+# synchronous and slow, so FastAPI must run it in its threadpool rather than on
+# the event loop, where it would stall every other request, health checks
+# included.
 @inference_app_router.post('/v1/query/embeddings')
 @inject
-async def image_embedding(
+def image_embedding(
     payload: ImagePayload,
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
@@ -51,7 +76,7 @@ async def image_embedding(
 
 @inference_app_router.post('/v1/query/embeddings/batch')
 @inject
-async def image_embedding_batch(
+def image_embedding_batch(
     payload: ImageBatchPayload,
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
@@ -60,6 +85,20 @@ async def image_embedding_batch(
         Provide[InferenceAppContainer.image_embedding]
     ),
 ):
+    batch_size = len(payload.image_batch)
+    if batch_size == 0:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse('image_batch is empty'),
+        )
+    if batch_size > MAX_EMBEDDING_BATCH_SIZE:
+        return JSONResponse(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            content=response_formatter.buildErrorResponse(
+                f'Batch of {batch_size} images exceeds the maximum of '
+                f'{MAX_EMBEDDING_BATCH_SIZE}'
+            ),
+        )
     try:
         image_batch = [
             extract_decoded_image_data(image_data) for image_data in payload.image_batch
@@ -71,7 +110,14 @@ async def image_embedding_batch(
                 'Invalid base64 image data in batch'
             ),
         )
-    embeddings = image_embedding_service.query_embed_batch(image_batch)
+    try:
+        embeddings = image_embedding_service.query_embed_batch(image_batch)
+    except ValueError as err:
+        # query_embed_batch raises ValueError naming the image it could not decode
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(str(err)),
+        )
     if not embeddings:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
