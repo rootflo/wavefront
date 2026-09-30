@@ -47,7 +47,7 @@ from user_management_module.user_container import UserContainer
 from user_management_module.services.user_service import UserService
 from user_management_module.utils.password_utils import verify_password
 from user_management_module.utils.user_utils import create_account_lockout_response
-from user_management_module.utils.user_utils import get_session_cache_key
+from user_management_module.constants.cache import get_session_cache_key
 from user_management_module.utils.user_utils import normalize_email
 
 auth_router = APIRouter(prefix='/v1')
@@ -168,10 +168,7 @@ async def authenticate(
     # Get device info from headers
     device_info = request.headers.get('User-Agent')
 
-    existing_sessions = await session_repository.find(user_id=user.id, limit=1000)
-    for s in existing_sessions:
-        cache_manager.remove(get_session_cache_key(s.id))
-    await session_repository.delete_all(user_id=user.id)
+    await user_service.invalidate_user_sessions(str(user.id))
 
     # Create new session
     session = await session_repository.create(

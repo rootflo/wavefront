@@ -1,6 +1,5 @@
 """Test wiring specific to inference_module."""
 
-from unittest.mock import AsyncMock
 from unittest.mock import Mock
 
 import pytest
@@ -24,7 +23,7 @@ def setup_containers(core_containers):
     )
 
     cloud_storage_manager = Mock()
-    cloud_storage_manager.save_large_file = AsyncMock(return_value=None)
+    cloud_storage_manager.save_large_file = Mock(return_value=None)
     inference_container.cloud_storage_manager.override(
         providers.Singleton(lambda: cloud_storage_manager)
     )

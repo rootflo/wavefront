@@ -173,6 +173,24 @@ class CacheManager(CommonCache):
             logger.error(f'Error popping key: {key} from cache: {e}')
             raise
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        retry=retry_if_exception_type((RedisError, ConnectionError, TimeoutError)),
+    )
+    def incr_with_expiry(self, key: str, expiry: int) -> int:
+        """INCR a fixed-window counter. EXPIRE NX opens the window on first hit."""
+        namespaced = f'{self.namespace}/{key}'
+        try:
+            pipe = self.redis.pipeline()
+            pipe.incr(namespaced)
+            pipe.expire(namespaced, expiry, nx=True)
+            count, _ = pipe.execute()
+            return int(count)
+        except (RedisError, ConnectionError, TimeoutError) as e:
+            logger.error(f'Error incrementing key: {key} in cache: {e}')
+            raise
+
     # Retries on the same terms as add()/get_str(). A dropped delete is the one
     # failure that outlives the request: the key keeps serving the pre-write
     # value until its TTL expires, so a transient blip here means stale reads

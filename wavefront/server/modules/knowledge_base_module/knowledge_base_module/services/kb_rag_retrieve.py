@@ -9,7 +9,6 @@ from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyReposit
 from knowledge_base_module.embeddings.llm import LLMModelFunc
 from knowledge_base_module.embeddings.embed import EmbeddingFunc
 from knowledge_base_module.queries.generate_query import QueryGenerator
-from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 
@@ -142,14 +141,11 @@ class KBRagResponse:
             List of retrieved documents
         """
         try:
-            # Update text search tokens. Scoped to its own short-lived session so
-            # this connection is released before the (potentially slow) search
-            # query below opens its own — holding both open for the search's
-            # full duration doubled connection usage on this hot path.
-            async with self.knowledge_base_embeddings_repository.session() as session:
-                update_stmt = text(self.query_generator.get_update_tokens_query())
-                await session.execute(update_stmt)
-                await session.commit()
+            # token is now set at insert time in store_embeddings, so rows never
+            # arrive NULL and this search never needs to backfill it. Removed the
+            # per-request UPDATE ... WHERE token IS NULL that used to run here on
+            # every single call -- an unindexed full-table scan on every search,
+            # regardless of whether anything matched.
 
             # Get and execute the combined search query
             sql_query, query_params = self.query_generator.get_combined_search_query(

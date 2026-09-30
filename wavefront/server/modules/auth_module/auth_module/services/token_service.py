@@ -25,8 +25,6 @@ class TokenAlgorithms(str, Enum):
 class TokenService:
     def __init__(
         self,
-        private_key: str,
-        public_key: str,
         kms_service: FloKMS,
         algorithm: TokenAlgorithms = TokenAlgorithms.PS256,
         token_expiry: int = 4 * 60 * 60,  # 4 hours in seconds
@@ -35,10 +33,7 @@ class TokenService:
         issuer: str = 'https://floware.rootflo.ai',
         audience: str = 'https://floware.rootflo.ai',
     ):
-        self.is_dev = app_env == 'dev' or (kms_service is None)
-        self.private_key = self._load_key(private_key) if self.is_dev else None
-        self.public_key = self._load_key(public_key) if self.is_dev else None
-        self.algorithm = TokenAlgorithms.RS256.value if self.is_dev else algorithm.value
+        self.algorithm = algorithm.value
         self.token_expiry = int(token_expiry)
         self.temporary_token_expiry = int(temporary_token_expiry)
         self.kms_service = kms_service
@@ -83,76 +78,62 @@ class TokenService:
 
         if payload:
             data.update(payload)
+        header = {'alg': self.algorithm, 'typ': 'JWT'}
 
-        if self.is_dev:
-            return jwt.encode({**data}, self.private_key, algorithm=self.algorithm)
-        else:
-            header = {'alg': self.algorithm, 'typ': 'JWT'}
+        header_b64 = self._base64url_encode(json.dumps(header).encode())
+        payload_b64 = self._base64url_encode(json.dumps(data).encode())
+        message = f'{header_b64}.{payload_b64}'
 
-            header_b64 = self._base64url_encode(json.dumps(header).encode())
-            payload_b64 = self._base64url_encode(json.dumps(data).encode())
-            message = f'{header_b64}.{payload_b64}'
+        digest = hashlib.sha256(message.encode()).digest()
 
-            digest = hashlib.sha256(message.encode()).digest()
+        signature = self.kms_service.sign(message=digest)
+        signature = self._base64url_encode(signature)
 
-            signature = self.kms_service.sign(message=digest)
-            signature = self._base64url_encode(signature)
-
-            return f'{message}.{signature}'
+        return f'{message}.{signature}'
 
     def decode_token(self, token: str) -> dict:
-        if self.is_dev:
+        try:
+            header_b64, payload_b64, signature_b64 = token.split('.')
+        except ValueError as e:
+            raise jwt.InvalidTokenError('Invalid token format') from e
+
+        try:
+            message = f'{header_b64}.{payload_b64}'
+            digest = hashlib.sha256(message.encode()).digest()
+            signature = self._base64url_decode(signature_b64)
+        except (binascii.Error, ValueError) as e:
+            raise jwt.InvalidTokenError('Invalid token format') from e
+
+        try:
+            is_valid = self.kms_service.verify(message=digest, signature=signature)
+        except (binascii.Error, ValueError, TypeError, json.JSONDecodeError) as e:
+            raise jwt.InvalidTokenError('Invalid token signature') from e
+        except Exception as e:
+            raise jwt.InvalidTokenError('Invalid token signature') from e
+
+        if not is_valid:
+            return {}
+
+        try:
+            public_key_pem = self.kms_service.get_public_key_pem()
+        except Exception as e:
+            raise jwt.InvalidTokenError('Invalid token') from e
+
+        try:
             decoded = jwt.decode(
                 token,
-                self.public_key,
+                public_key_pem,
                 algorithms=[self.algorithm],
                 issuer=self.issuer,
                 audience=self.audience,
             )
-            return decoded
-        else:
-            try:
-                header_b64, payload_b64, signature_b64 = token.split('.')
-            except ValueError as e:
-                raise jwt.InvalidTokenError("Invalid token format") from e
-
-            try:
-                message = f'{header_b64}.{payload_b64}'
-                digest = hashlib.sha256(message.encode()).digest()
-                signature = self._base64url_decode(signature_b64)
-            except (binascii.Error, ValueError) as e:
-                raise jwt.InvalidTokenError("Invalid token format") from e
-
-            try:
-                is_valid = self.kms_service.verify(message=digest, signature=signature)
-            except (binascii.Error, ValueError, TypeError, json.JSONDecodeError) as e:
-                raise jwt.InvalidTokenError("Invalid token signature") from e
-            except Exception as e:
-                raise jwt.InvalidTokenError("Invalid token signature") from e
-
-            if not is_valid:
-                return {}
-
-            try:
-                public_key_pem = self.kms_service.get_public_key_pem()
-            except Exception as e:
-                raise jwt.InvalidTokenError("Invalid token") from e
-
-            try:
-                decoded = jwt.decode(
-                    token,
-                    public_key_pem,
-                    algorithms=[self.algorithm],
-                    issuer=self.issuer,
-                    audience=self.audience,
-                )
-            except jwt.InvalidTokenError:
-                raise
-            except (binascii.Error, ValueError, json.JSONDecodeError, KeyError) as e:
-                raise jwt.InvalidTokenError("Invalid token") from e
-            except Exception as e:
-                raise jwt.InvalidTokenError("Invalid token") from e
-            return decoded
+        except jwt.InvalidTokenError:
+            raise
+        except (binascii.Error, ValueError, json.JSONDecodeError, KeyError) as e:
+            raise jwt.InvalidTokenError('Invalid token') from e
+        except Exception as e:
+            raise jwt.InvalidTokenError('Invalid token') from e
+        return decoded
 
     def _base64url_encode(self, data: bytes) -> str:
         return base64.urlsafe_b64encode(data).rstrip(b'=').decode('utf-8')

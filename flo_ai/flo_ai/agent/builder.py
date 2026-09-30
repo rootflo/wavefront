@@ -1,5 +1,5 @@
 import copy
-from typing import List, Optional, Dict, Any, Union, Type
+from typing import List, Optional, Dict, Any, Union, Type, Callable
 from flo_ai.models import AssistantMessage
 import yaml
 from flo_ai.agent import Agent
@@ -22,6 +22,7 @@ class AgentBuilder:
         self._name = 'AI Assistant'
         self._system_prompt: str | AssistantMessage = 'You are a helpful AI assistant.'
         self._llm: Optional[BaseLLM] = None
+        self._guardrail_provider: Optional[Callable[[BaseLLM, str], BaseLLM]] = None
         self._owns_llm = False
         self._temperature: Optional[float] = None
         self._generation_params: Dict[str, Any] = {}
@@ -61,6 +62,13 @@ class AgentBuilder:
         """
         self._llm = llm
         self._owns_llm = owned
+        return self
+
+    def with_guardrail_provider(
+        self, decorator: Optional[Callable[[BaseLLM, str], BaseLLM]]
+    ) -> 'AgentBuilder':
+        """Set the LLM decorator, applied in build()"""
+        self._guardrail_provider = decorator
         return self
 
     def with_temperature(self, temperature: float) -> 'AgentBuilder':
@@ -226,6 +234,14 @@ class AgentBuilder:
             if self._generation_params:
                 llm.apply_generation_params(self._generation_params)
 
+        # Decorated last, so the wrapper sees the LLM at its final temperature and
+        # generation params rather than ones still to be mutated through it. A
+        # GuardedLLM forwards __setattr__ to its inner LLM, so decorating earlier
+        # would push this agent's settings onto a shared base_llm and defeat the
+        # copy guard above. Mirrors BaseLLMRouter.__init__.
+        if self._guardrail_provider is not None:
+            llm = self._guardrail_provider(llm, self._name)
+
         return Agent(
             name=self._name,
             system_prompt=self._system_prompt,
@@ -276,6 +292,7 @@ class AgentBuilder:
         tools: Optional[List[Tool]] = None,
         base_llm: Optional[BaseLLM] = None,
         tool_registry: Optional[Dict[str, Tool]] = None,
+        guardrail_provider: Optional[Callable[[BaseLLM, str], BaseLLM]] = None,
         **kwargs,
     ) -> 'AgentBuilder':
         """Create an agent builder from a YAML configuration string or file
@@ -338,6 +355,9 @@ class AgentBuilder:
                     'Model must be specified in YAML configuration or base_llm must be provided'
                 )
             builder.with_llm(base_llm)
+
+        if guardrail_provider is not None:
+            builder.with_guardrail_provider(guardrail_provider)
 
         # Applied here because several factories build their client without
         # it; an explicit settings.temperature below still wins.

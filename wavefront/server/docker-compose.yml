@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: ankane/pgvector
@@ -26,6 +24,23 @@ services:
       - no-new-privileges:true
     ports:
       - "6379:6379"
+    networks:
+      - floware-network
+
+  # Local S3 + SQS for CLOUD_PROVIDER=aws.
+  # Pinned to 4.14, the last community release that runs without LOCALSTACK_AUTH_TOKEN.
+  # State is in-memory; setup.sh creates the bucket and queue after it starts.
+  localstack:
+    image: localstack/localstack:4.14
+    container_name: localstack
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - SERVICES=s3,sqs,kms
+      - SQS_ENDPOINT_STRATEGY=path
+      - LOCALSTACK_HOST=localhost:4566
+    ports:
+      - '4566:4566'
     networks:
       - floware-network
 

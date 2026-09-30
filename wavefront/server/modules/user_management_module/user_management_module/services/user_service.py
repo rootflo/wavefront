@@ -12,6 +12,7 @@ from db_repo_module.cache.cache_manager import CacheManager
 from sqlalchemy import select, Result, and_, or_, func
 from user_management_module.constants.auth import ADMIN_ROLE_NAME
 from user_management_module.constants.cache import USER_DATA_PATTERN
+from user_management_module.constants.cache import get_session_cache_key
 from common_module.response_formatter import ResponseFormatter
 from common_module.log.logger import logger
 from user_management_module.utils.password_utils import hash_password
@@ -304,6 +305,26 @@ class UserService:
             result: Result = await session.execute(statement)
             return result.scalar()
 
+    async def invalidate_user_sessions(self, user_id: str) -> None:
+        """Drop every live session for a user, cache and DB alike.
+
+        require_auth accepts a session cache hit without checking the DB, and
+        cache keys are per session id rather than per user, so deleting the DB
+        rows alone would leave cached sessions valid until their TTL. The ids are
+        therefore read back from the DB and each cache key removed first.
+
+        The loop stays small because every login path calls this before creating
+        its session, so a user normally has a single session row. If a cache
+        remove still fails after CacheManager's retries, the exception propagates
+        before the DB rows are deleted, so the caller fails rather than reporting
+        success with a live session.
+        """
+        sessions = await self.session_repository.find(user_id=user_id, limit=100)
+        for s in sessions:
+            self.cache_manager.remove(get_session_cache_key(s.id))
+        self.cache_manager.remove(str(user_id))
+        await self.session_repository.delete_all(user_id=user_id)
+
     async def delete_user(self, user_id: str) -> bool:
         await self.user_role_repository.delete_all(user_id=user_id)
         # The user row is only soft-deleted, so the FK cascade never fires and
@@ -311,13 +332,7 @@ class UserService:
         # access if the account were later reactivated.
         await self.user_group_member_repository.delete_all(user_id=user_id)
 
-        sessions = await self.session_repository.find(user_id=user_id, limit=1000)
-        for s in sessions:
-            self.cache_manager.remove(f'session_{s.id}')
-
-        self.cache_manager.remove(user_id)
-
-        await self.session_repository.delete_all(user_id=user_id)
+        await self.invalidate_user_sessions(user_id)
 
         response = await self.user_repository.find_one_and_update(
             {'id': user_id}, deleted=True

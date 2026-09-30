@@ -10,6 +10,7 @@ import { ConfigurationService } from './configuration-service';
 import { ConsoleAuthService } from './console-auth-service';
 import { DataPipelineService } from './data-pipeline-service';
 import { DatasourcesService } from './datasources-service';
+import { GuardrailsService } from './guardrails-service';
 import { EmailConnectionService } from './email-service';
 import { OAuthAppService } from './oauth-app-service';
 import { KnowledgeBaseService } from './knowledge-base-service';
@@ -72,6 +73,10 @@ class FloConsoleService {
 
   get datasourcesService() {
     return new DatasourcesService(this.http);
+  }
+
+  get guardrailsService() {
+    return new GuardrailsService(this.http);
   }
 
   get emailConnectionService() {

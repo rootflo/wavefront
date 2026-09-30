@@ -1,3 +1,4 @@
+import asyncio
 from typing import Dict
 
 from common_module.log.logger import logger
@@ -31,7 +32,9 @@ async def _run(task, payload: Dict) -> None:
     )
 
     try:
-        inputs = _reconstruct_inputs(payload, services.cloud_storage)
+        inputs = await asyncio.to_thread(
+            _reconstruct_inputs, payload, services.cloud_storage
+        )
 
         (
             result,

@@ -27,7 +27,7 @@ from starlette.datastructures import Headers
 from starlette.middleware.base import BaseHTTPMiddleware
 from user_management_module.user_container import UserContainer
 from user_management_module.utils.user_utils import check_is_admin
-from user_management_module.utils.user_utils import get_session_cache_key
+from user_management_module.constants.cache import get_session_cache_key
 
 optional_auth_apis = [
     '/floware/v1/health',

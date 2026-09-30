@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from unittest.mock import AsyncMock
+from unittest.mock import Mock
 
 from fastapi import FastAPI
 from common_module.response_formatter import ResponseFormatter
@@ -42,7 +43,7 @@ async def test_service_deletion_cleanup():
     # Register service manually
     service_registry.register_service(service_def)
 
-    api_change_publisher = AsyncMock()
+    api_change_publisher = Mock()
     api_proxy = ApiProxy(service_registry, api_services_manager, api_change_publisher)
 
     # Initialize Proxy and Router

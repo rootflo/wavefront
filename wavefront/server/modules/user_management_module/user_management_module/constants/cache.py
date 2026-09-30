@@ -13,7 +13,8 @@ prefix would be invisible to the invalidation and would serve stale reads until
 its TTL ran out.
 """
 
-from typing import List, Optional
+import uuid
+from typing import List, Optional, Union
 
 # The literal braces are part of the key. They must appear before any
 # interpolated value so that user-supplied text (a search term containing a
@@ -47,3 +48,13 @@ def user_list_cache_key(
 def user_by_id_cache_key(user_id: str) -> str:
     """Key for a single user resolved by id."""
     return f'{USER_DATA_TAG}_id_{user_id}'
+
+
+def get_session_cache_key(session_id: Union[str, uuid.UUID]) -> str:
+    """Cache key for a live auth session."""
+    return f'session_{str(session_id)}'
+
+
+def password_reset_latest_key(user_id: str) -> str:
+    """Pointer from a user to the reset code currently in force."""
+    return f'pwreset_latest_{user_id}'

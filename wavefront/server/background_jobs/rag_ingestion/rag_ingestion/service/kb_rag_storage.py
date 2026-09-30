@@ -31,9 +31,6 @@ class KBRagStorage:
     """Configuration class for EmailRag settings."""
 
     def __init__(self):
-        self.llm_model_name = 'flora-q8'
-        self.embedding_model = 'mxbai-embed-large'
-        self.embedding_dim = 1024
         self.max_token_size = 8500
         self.tiktoken_model = 'gpt-4o'
         self.chunk_size = 1200
@@ -415,10 +412,18 @@ class KBRagStorage:
         delay = initial_delay
         for attempt in range(max_retries):
             try:
+                # httpx defaults to a 5s timeout when none is given. A batch of
+                # up to STREAMING_BATCH_SIZE items commits in one transaction
+                # that has to update two HNSW indexes per row, which routinely
+                # takes longer than that under load -- the client was giving up
+                # and retrying (re-POSTing the whole batch) while floware was
+                # still legitimately working, which both duplicated rows and
+                # amplified load on an already-busy server.
                 response = httpx.post(
                     url,
                     json={'embeddings': doc_wise_embeddings},
                     headers=self._fetch_headers(),
+                    timeout=httpx.Timeout(180.0, connect=30.0),
                 )
                 if response.status_code == 200:
                     return response

@@ -2,7 +2,10 @@ import uuid
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field, field_validator
 
-from agents_module.utils.validation_utils import validate_inference_variables
+from agents_module.utils.validation_utils import (
+    validate_inference_inputs,
+    validate_inference_variables,
+)
 
 
 class WorkflowInferenceRequest(BaseModel):
@@ -37,6 +40,14 @@ class WorkflowInferenceRequest(BaseModel):
             'Process the following text: <text_to_process> with <target_language>'
         ],
     )
+
+    # Same rationale as check_variables: validated on the model so v1, v2 and the
+    # async v3 endpoint are all covered, since they share this schema.
+    @field_validator('inputs')
+    @classmethod
+    def check_inputs(cls, v):
+        return validate_inference_inputs(v)
+
     output_json_enabled: bool = Field(
         default=False,
         description='Whether to extract JSON from workflow response. If False, returns raw string output.',
