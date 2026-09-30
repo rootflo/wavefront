@@ -117,4 +117,4 @@ explicit = true
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 addopts = "--strict-markers --strict-config"
-testpaths = ["apps", "modules", "packages", "plugins"]
+testpaths = ["apps", "background_jobs", "modules", "packages", "plugins"]

@@ -4,6 +4,7 @@ import textract
 from typing import Tuple
 from enum import Enum
 from common_module.log.logger import logger
+from common_module.utils.image_formats import SUPPORTED_PILLOW_MIME_TYPES
 
 
 class DocumentType(Enum):
@@ -52,6 +53,11 @@ class FileProcessor:
         if file_type.startswith('text/plain'):
             return DocumentType.TEXT
         if file_type.startswith('image/'):
+            # The inference service only decodes SUPPORTED_PILLOW_FORMATS; fail
+            # here rather than after a round trip to it.
+            mime_type = file_type.split(';')[0].strip().lower()
+            if mime_type not in SUPPORTED_PILLOW_MIME_TYPES:
+                raise ValueError(f'Unsupported image type: {file_type}')
             return DocumentType.IMAGE
         if file_type in ('application/pdf', 'application/x-pdf'):
             return DocumentType.PDF
