@@ -37,6 +37,17 @@ class ChatInferenceService:
         a deleted config would then report success and hide the error inside the
         event stream. Callers resolve first, while they can still choose a
         status code.
+
+        This is also the single place guardrails are attached, for the same
+        reason `the AgentBuilder decorator hook` wraps after `build()`: wrapping the one object
+        every turn goes through does not depend on anyone downstream
+        remembering to. `generate` and `stream` are deliberately left taking an
+        already-wrapped llm.
+
+        A fresh LLM is built per call, which is what makes it safe to bind
+        `user_id` into the principal here. If this ever grows a cache keyed by
+        chatbot, drop `user_id` at the same time -- a reused wrapper would
+        attribute one person's turns to whoever built it first.
         """
         config_dict = await self.llm_inference_config_service.get_config(
             chatbot.llm_config_id

@@ -178,6 +178,7 @@ class BaseLLM(ABC):
         self.api_key = api_key
         self.temperature = temperature
         self.kwargs = kwargs
+        self._supports_retract = False
 
     def __copy__(self) -> 'BaseLLM':
         """A copy whose per-agent settings are independent of this instance's.

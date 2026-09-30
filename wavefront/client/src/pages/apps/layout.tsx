@@ -97,6 +97,13 @@ const navItems = [
     description: 'Manage and configure LLMs for your application',
   },
   {
+    id: 'guardrails',
+    name: 'Guardrails',
+    icon: PermissionIcon,
+    link: `/apps/:appId/guardrails`,
+    description: 'Configure AI safety policies for your application',
+  },
+  {
     id: 'model-inference',
     name: 'Model Inference',
     icon: ModelInferenceIcon,

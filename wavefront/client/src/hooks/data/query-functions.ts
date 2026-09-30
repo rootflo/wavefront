@@ -1,4 +1,5 @@
 import floConsoleService from '@app/api';
+import { GuardrailAdapterListData, GuardrailPolicy, PiiEntityListData } from '@app/api/guardrails-service';
 import { DocumentData, InferenceData, KbData } from '@app/api/knowledge-base-service';
 import { ModelData } from '@app/api/model-inference-service';
 import { NamespaceItem } from '@app/api/namespace-service';
@@ -136,12 +137,44 @@ const getAuthenticatorQueryFn = async (authId: string): Promise<Authenticator | 
   return null;
 };
 
+const getGuardrailPoliciesQueryFn = async (): Promise<GuardrailPolicy[]> => {
+  const response = await floConsoleService.guardrailsService.listPolicies();
+  if (response.data?.meta?.status === 'success' && response.data.data?.policies) {
+    return response.data.data.policies;
+  }
+  return [];
+};
+
 const getOAuthAppsQueryFn = async (): Promise<OAuthApp[]> => {
   const response = await floConsoleService.oauthAppService.getAllOAuthApps();
   if (response.data?.meta?.status === 'success' && response.data.data?.apps) {
     return response.data.data.apps;
   }
   return [];
+};
+
+const getGuardrailPolicyQueryFn = async (namespace: string): Promise<GuardrailPolicy | null> => {
+  const response = await floConsoleService.guardrailsService.getPolicy(namespace);
+  if (response.data?.meta?.status === 'success' && response.data.data?.policy) {
+    return response.data.data.policy;
+  }
+  return null;
+};
+
+const getGuardrailAdaptersQueryFn = async (): Promise<GuardrailAdapterListData> => {
+  const response = await floConsoleService.guardrailsService.listSupportedAdapters();
+  if (response.data?.meta?.status === 'success' && response.data.data) {
+    return response.data.data;
+  }
+  return { adapters: [], unavailable: [] };
+};
+
+const getGuardrailPiiEntitiesQueryFn = async (): Promise<PiiEntityListData> => {
+  const response = await floConsoleService.guardrailsService.listPiiEntities();
+  if (response.data?.meta?.status === 'success' && response.data.data) {
+    return response.data.data;
+  }
+  return { groups: [], available: false };
 };
 
 const getOAuthAppQueryFn = async (oauthAppId: string): Promise<OAuthApp | null> => {
@@ -547,6 +580,10 @@ export {
   getKnowledgeBaseQueryFn,
   getKnowledgeBasesQueryFn,
   getLLMConfigQueryFn,
+  getGuardrailAdaptersQueryFn,
+  getGuardrailPiiEntitiesQueryFn,
+  getGuardrailPoliciesQueryFn,
+  getGuardrailPolicyQueryFn,
   getLLMConfigsQueryFn,
   getMessageProcessorQueryFn,
   getConfigurationQueryFn,

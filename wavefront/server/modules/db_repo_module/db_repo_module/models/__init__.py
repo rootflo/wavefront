@@ -25,6 +25,8 @@ from db_repo_module.models.datasource_audit_log import DatasourceAuditLog
 from db_repo_module.models.documents import Document
 from db_repo_module.models.dynamic_query_yaml import DynamicQueryYaml
 from db_repo_module.models.email_connection import EmailConnection
+from db_repo_module.models.guardrail_audit_event import GuardrailAuditEvent
+from db_repo_module.models.guardrail_policy import GuardrailPolicy
 from db_repo_module.models.ikb_models import ImageKnowledgeBase
 from db_repo_module.models.image_search_models import ReferenceImageFeatures
 from db_repo_module.models.image_search_models import SIFTFeatures
@@ -88,6 +90,8 @@ __all__ = [
     'Document',
     'DynamicQueryYaml',
     'EmailConnection',
+    'GuardrailAuditEvent',
+    'GuardrailPolicy',
     'ImageKnowledgeBase',
     'KnowledgeBase',
     'KnowledgeBaseDocuments',

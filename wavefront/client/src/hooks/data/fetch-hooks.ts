@@ -1,3 +1,4 @@
+import { GuardrailAdapterListData, GuardrailPolicy, PiiEntityListData } from '@app/api/guardrails-service';
 import { DocumentData, InferenceData, KbData } from '@app/api/knowledge-base-service';
 import { ModelData } from '@app/api/model-inference-service';
 import { NamespaceItem } from '@app/api/namespace-service';
@@ -53,6 +54,10 @@ import {
   getKnowledgeBaseQueryFn,
   getKnowledgeBasesQueryFn,
   getLLMConfigQueryFn,
+  getGuardrailAdaptersQueryFn,
+  getGuardrailPiiEntitiesQueryFn,
+  getGuardrailPoliciesQueryFn,
+  getGuardrailPolicyQueryFn,
   getLLMConfigsQueryFn,
   getConfigurationQueryFn,
   getConfigurationsQueryFn,
@@ -111,6 +116,10 @@ import {
   getKnowledgeBaseKey,
   getKnowledgeBasesKey,
   getLLMConfigKey,
+  getGuardrailAdaptersKey,
+  getGuardrailPiiEntitiesKey,
+  getGuardrailPoliciesKey,
+  getGuardrailPolicyKey,
   getLLMConfigsKey,
   getConfigurationKey,
   getConfigurationsKey,
@@ -229,6 +238,36 @@ export const useGetAuthenticator = (
     () => getAuthenticatorQueryFn(authId!),
     !!appId && !!authId
   );
+};
+
+export const useGetGuardrailPolicies = (appId: string | undefined): UseQueryResult<GuardrailPolicy[], Error> => {
+  return useQueryInit(getGuardrailPoliciesKey(appId || ''), getGuardrailPoliciesQueryFn, !!appId);
+};
+
+export const useGetGuardrailPolicy = (
+  appId: string | undefined,
+  namespace: string | undefined
+): UseQueryResult<GuardrailPolicy | null, Error> => {
+  return useQueryInit(
+    getGuardrailPolicyKey(appId || '', namespace || ''),
+    () => getGuardrailPolicyQueryFn(namespace!),
+    !!appId && !!namespace
+  );
+};
+
+export const useGetGuardrailAdapters = (appId: string | undefined): UseQueryResult<GuardrailAdapterListData, Error> => {
+  return useQueryInit(getGuardrailAdaptersKey(appId || ''), getGuardrailAdaptersQueryFn, !!appId);
+};
+
+/**
+ * The entity types this deployment can detect.
+ *
+ * Fixed for the life of the server process — the recogniser registry is built
+ * once at startup — and the first call pays for loading a spaCy model, so this
+ * is deliberately never refetched.
+ */
+export const useGetGuardrailPiiEntities = (appId: string | undefined): UseQueryResult<PiiEntityListData, Error> => {
+  return useQueryInit(getGuardrailPiiEntitiesKey(appId || ''), getGuardrailPiiEntitiesQueryFn, !!appId);
 };
 
 export const useGetOAuthApps = (appId: string | undefined): UseQueryResult<OAuthApp[], Error> => {
