@@ -58,8 +58,13 @@ def image_embedding(
         Provide[InferenceAppContainer.image_embedding]
     ),
 ):
-    # 1. Decode Base64 string
-    image_data = extract_decoded_image_data(payload.image_data)
+    try:
+        image_data = extract_decoded_image_data(payload.image_data)
+    except binascii.Error:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse('Invalid base64 image data'),
+        )
     embeddings = image_embedding_service.query_embed(image_data)
     if not embeddings:
         return JSONResponse(
@@ -132,6 +137,11 @@ def image_embedding_batch(
 
 
 def extract_decoded_image_data(image_data: str) -> bytes:
+    """Decode base64 image data, optionally prefixed as a data URL.
+
+    Raises binascii.Error on characters outside the base64 alphabet instead of
+    silently dropping them. Whitespace (e.g. MIME line wrapping) is allowed.
+    """
     parts = image_data.split(',')
     base64_data = parts[1] if len(parts) == 2 else parts[0]
-    return base64.b64decode(base64_data)
+    return base64.b64decode(''.join(base64_data.split()), validate=True)

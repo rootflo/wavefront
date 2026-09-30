@@ -24,8 +24,10 @@ HEALTH_URL = '/inference/v1/health'
 class FakeEmbedding:
     def __init__(self):
         self.batches = []
+        self.singles = []
 
     def query_embed(self, image_content):
+        self.singles.append(image_content)
         return [{'clip': [1.0]}, {'dino': [2.0]}]
 
     def query_embed_batch(self, image_batch):
@@ -144,3 +146,52 @@ def test_health_check_is_not_rate_limited(rate_limited_client):
         client.post(BATCH_URL, json=encode(b'a'))
 
     assert all(client.get(HEALTH_URL).status_code == 200 for _ in range(5))
+
+
+@pytest.mark.parametrize(
+    'image_data',
+    [
+        'not-base64!',
+        # valid base64 of b'hello' with junk appended: b64decode without
+        # validate=True used to drop the junk and decode it anyway
+        'aGVsbG8=$$',
+        'aGVs*bG8=',
+    ],
+)
+def test_single_endpoint_rejects_invalid_base64_with_400(
+    client_and_service, image_data
+):
+    client, fake = client_and_service
+
+    response = client.post(SINGLE_URL, json={'image_data': image_data})
+
+    assert response.status_code == 400
+    assert 'Invalid base64' in response.text
+    assert fake.singles == []
+
+
+def test_batch_endpoint_rejects_characters_outside_base64_alphabet(client_and_service):
+    client, fake = client_and_service
+
+    response = client.post(BATCH_URL, json={'image_batch': ['aGVsbG8=', 'aGVs*bG8=']})
+
+    assert response.status_code == 400
+    assert fake.batches == []
+
+
+@pytest.mark.parametrize(
+    'image_data',
+    [
+        'aGVsbG8=',
+        'data:image/png;base64,aGVsbG8=',
+        # MIME-style line wrapping
+        'aGVs\nbG8=',
+    ],
+)
+def test_single_endpoint_accepts_valid_base64_forms(client_and_service, image_data):
+    client, fake = client_and_service
+
+    response = client.post(SINGLE_URL, json={'image_data': image_data})
+
+    assert response.status_code == 200
+    assert fake.singles == [b'hello']
