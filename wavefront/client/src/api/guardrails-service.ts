@@ -5,6 +5,17 @@ export type WorkflowStage = 'BEFORE_MODEL' | 'AFTER_MODEL';
 export type FailureMode = 'FAIL_OPEN' | 'FAIL_CLOSED';
 export type EnforcementMode = 'MONITOR' | 'ENFORCE';
 
+/**
+ * Whether a streamed response may be shown before it has all been checked.
+ *
+ * BUFFERED withholds it until the whole response has been vetted.
+ * INCREMENTAL releases it as it arrives, holding back enough of the tail that
+ * a finding cannot straddle the boundary. INCREMENTAL only takes effect where
+ * every configured provider supports it, so what was asked for and what
+ * happens can differ -- see `effective_stream_mode` on the save response.
+ */
+export type StreamPreference = 'BUFFERED' | 'INCREMENTAL';
+
 export interface GuardrailAdapterConfig {
   name: string;
   stages: WorkflowStage[];
@@ -25,6 +36,7 @@ export interface GuardrailPolicy {
   /** MONITOR records verdicts without acting; ENFORCE blocks and redacts. */
   mode: EnforcementMode;
   adapters: GuardrailAdapterConfig[];
+  stream: StreamPreference;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -33,6 +45,11 @@ export interface UpdateGuardrailPolicyRequest {
   is_enabled: boolean;
   mode: EnforcementMode;
   adapters: GuardrailAdapterConfig[];
+  /**
+   * Must be sent on every save. The server replaces `policy_config` wholesale,
+   * so omitting this silently reverts the namespace to BUFFERED.
+   */
+  stream: StreamPreference;
 }
 
 export interface GuardrailPolicyData {

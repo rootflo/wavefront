@@ -1,11 +1,14 @@
 from typing import Any, AsyncIterator, Optional
 
 from common_module.log.logger import logger
+from common_module.utils.guardrails import declare_retract_support, guarded_llm
 from db_repo_module.models.chat_message import ChatMessage
 from db_repo_module.models.chat_session import ChatSession
 from db_repo_module.models.chatbot import Chatbot
 from db_repo_module.models.llm_inference_config import LlmInferenceConfig
+from flo_ai.guardrails import Principal, WorkflowStage, is_control_chunk
 from flo_ai.llm import BaseLLM
+from flo_ai.llm.guarded_llm import GuardrailBlocked
 
 from chatbots_module.utils.constants import ROLE_SYSTEM
 from chatbots_module.utils.llm_factory import build_llm, resolve_temperature
@@ -25,10 +28,13 @@ class ChatInferenceService:
     messages already have the shape every flo_ai LLM expects.
     """
 
-    def __init__(self, llm_inference_config_service):
+    def __init__(self, llm_inference_config_service, guardrails_engine=None):
         self.llm_inference_config_service = llm_inference_config_service
+        self.guardrails_engine = guardrails_engine
 
-    async def resolve_llm(self, chatbot: Chatbot) -> BaseLLM:
+    async def resolve_llm(
+        self, chatbot: Chatbot, user_id: Optional[str] = None
+    ) -> BaseLLM:
         """Build the chatbot's LLM, or raise ChatInferenceError.
 
         Public and separate from generate/stream on purpose. Async generators
@@ -65,9 +71,69 @@ class ChatInferenceService:
         temperature = resolve_temperature(chatbot.config)
 
         try:
-            return build_llm(llm_config, temperature)
+            llm = build_llm(llm_config, temperature)
         except ValueError as exc:
             raise ChatInferenceError(str(exc)) from exc
+
+        wrapped = guarded_llm(
+            llm,
+            self.guardrails_engine,
+            chatbot.namespace,
+            chatbot.name,
+            user_id,
+        )
+        declare_retract_support(wrapped)
+        return wrapped
+
+    async def check_user_message(
+        self,
+        chatbot: Chatbot,
+        content: str,
+        user_id: Optional[str] = None,
+    ) -> None:
+        """Evaluate a just-typed message, raising GuardrailBlocked if refused.
+
+        `GuardedLLM` already checks inbound content, but it does so on the way
+        to the provider -- by which point the route has committed the user's
+        message. A refused turn would be stored anyway, and every retry would
+        store it again. Checking here keeps the write out of a turn that policy
+        will not answer, and it is the only point at which the streaming path
+        can still choose a status code: once `StreamingResponse` is returned
+        the headers are gone.
+
+        Blocks only. A transform is deliberately ignored: at BEFORE_MODEL it
+        applies to the copy sent to the provider and is not written back, so
+        the thread keeps the raw text the person actually typed while the
+        provider sees the redacted one.
+
+        The second evaluation this implies is close to free -- the verdict
+        cache is keyed on (namespace, stage, policy version, content), so
+        `GuardedLLM` finds this verdict and is deliberately neither logged nor
+        audited again. The exception is an error verdict, which is never
+        cached: during a safety-provider outage under FAIL_OPEN a turn costs
+        two adapter attempts instead of one.
+        """
+        if self.guardrails_engine is None or not chatbot.namespace:
+            return
+
+        decision = await self.guardrails_engine.evaluate(
+            content,
+            principal=Principal(
+                namespace=chatbot.namespace,
+                agent_id=chatbot.name,
+                user_id=user_id,
+            ),
+            stage=WorkflowStage.BEFORE_MODEL,
+            destination='llm_provider',
+        )
+
+        if decision.blocked:
+            logger.warning(
+                f'Guardrail blocked a chat message before it was stored '
+                f'[ns={chatbot.namespace}, chatbot={chatbot.name}] '
+                f'{decision.operator_summary()}'
+            )
+            raise GuardrailBlocked(decision.caller_message('request'), decision)
 
     @staticmethod
     def build_messages(
@@ -101,13 +167,8 @@ class ChatInferenceService:
         llm: BaseLLM,
         session: ChatSession,
         history: list[ChatMessage],
-    ) -> AsyncIterator[str]:
-        """Yield content deltas. `llm` comes from resolve_llm().
-
-        Every provider's stream() yields `{'content': <delta>}` -- verified for
-        openai, azure_openai, anthropic, gemini, ollama and vllm -- so keying on
-        that is safe across the set build_llm() can return.
-        """
+    ) -> AsyncIterator[str | dict[str, Any]]:
+        """Yield content deltas or guardrail control chunks. `llm` comes from resolve_llm()."""
         messages = self.build_messages(session, history)
 
         logger.info(
@@ -115,7 +176,15 @@ class ChatInferenceService:
             f'messages={len(messages)}'
         )
 
+        try:
+            from flo_ai.guardrails.stream_guard import GUARDRAIL_CONTROL_KEY
+        except ImportError:
+            GUARDRAIL_CONTROL_KEY = 'guardrail'
+
         async for chunk in llm.stream(messages):
+            if is_control_chunk(chunk):
+                yield chunk[GUARDRAIL_CONTROL_KEY]
+                continue
             content: Optional[str] = chunk.get('content') if chunk else None
             if content:
                 yield content

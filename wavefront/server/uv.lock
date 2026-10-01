@@ -137,7 +137,7 @@ requires-dist = [
     { name = "api-services-module", editable = "modules/api_services_module" },
     { name = "celery", extras = ["redis"], specifier = ">=5.4.0,<6.0.0" },
     { name = "common-module", editable = "modules/common_module" },
-    { name = "flo-ai", specifier = "==1.1.14" },
+    { name = "flo-ai", specifier = "==1.1.15" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "flo-utils", editable = "packages/flo_utils" },
     { name = "llm-inference-config-module", editable = "modules/llm_inference_config_module" },
@@ -1140,7 +1140,7 @@ dependencies = [
 requires-dist = [
     { name = "common-module", editable = "modules/common_module" },
     { name = "db-repo-module", editable = "modules/db_repo_module" },
-    { name = "flo-ai", specifier = "==1.1.14" },
+    { name = "flo-ai", specifier = "==1.1.15" },
     { name = "llm-inference-config-module", editable = "modules/llm_inference_config_module" },
     { name = "user-management-module", editable = "modules/user_management_module" },
 ]
@@ -1904,7 +1904,7 @@ wheels = [
 
 [[package]]
 name = "flo-ai"
-version = "1.1.14"
+version = "1.1.15"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1931,9 +1931,9 @@ dependencies = [
     { name = "pyyaml" },
     { name = "xlrd" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/60/81/943a9c35541a02e80f7ea01e196e66777b0c02b949521cccb18836ea5149/flo_ai-1.1.14.tar.gz", hash = "sha256:c001cb698ae441ba07a5e09051eaac46c735a5947ad54c2e16cb293a0d0aad1b", size = 166100, upload-time = "2026-09-29T13:17:15.444Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f9/f8/4ce09a73734b50504c9abefaad0261bc5d385cdd3ecd160b624aa724b40a/flo_ai-1.1.15.tar.gz", hash = "sha256:928412bd11ecaf738cdd13f88d422ccc52f9214e82018fc2986249049dfe08db", size = 177293, upload-time = "2026-10-01T09:38:58.188Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/30/9b/99052c9959ee932f77d258f94892d7501229bfba338d0e9d00a71fb1fea9/flo_ai-1.1.14-py3-none-any.whl", hash = "sha256:854e5ce42e5fb07da353e3bc2bdc278e9871e63f9e9e0a51b476fbe54867e224", size = 202172, upload-time = "2026-09-29T13:17:14.386Z" },
+    { url = "https://files.pythonhosted.org/packages/8b/1b/273fcec677725984c191c6c54b5a6afe27a936b86d37d154ec5539204004/flo_ai-1.1.15-py3-none-any.whl", hash = "sha256:8008a17aabbba32786a65f817a2ed8fc6caa47c478fd99b203dcec568204a3ad", size = 214675, upload-time = "2026-10-01T09:38:56.936Z" },
 ]
 
 [package.optional-dependencies]
@@ -2858,7 +2858,7 @@ requires-dist = [
     { name = "db-repo-module", editable = "modules/db_repo_module" },
     { name = "dependency-injector", specifier = ">=4.40.0" },
     { name = "fastapi", specifier = ">=0.100.0" },
-    { name = "flo-ai", extras = ["guardrails"], specifier = "==1.1.14" },
+    { name = "flo-ai", extras = ["guardrails"], specifier = "==1.1.15" },
     { name = "pydantic", specifier = ">=2.0.0" },
 ]
 
@@ -3307,7 +3307,7 @@ dev = [
 requires-dist = [
     { name = "boto3", specifier = ">=1.42.22,<2.0.0" },
     { name = "datasource", editable = "plugins/datasource" },
-    { name = "flo-ai", specifier = "==1.1.14" },
+    { name = "flo-ai", specifier = "==1.1.15" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "google-cloud-pubsub", specifier = "~=2.30.0" },
     { name = "numpy", specifier = ">=1.24,<2.0" },
@@ -6793,7 +6793,7 @@ dev = [
 requires-dist = [
     { name = "common-module", editable = "modules/common_module" },
     { name = "datasource", editable = "plugins/datasource" },
-    { name = "flo-ai", specifier = "==1.1.14" },
+    { name = "flo-ai", specifier = "==1.1.15" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "httpx", specifier = ">=0.27.0,<1.0.0" },
     { name = "knowledge-base-module", editable = "modules/knowledge_base_module" },

@@ -1,7 +1,7 @@
 from typing import Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, status, Path, Request, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from dependency_injector.wiring import inject, Provide
 
 from common_module.log.logger import logger
@@ -18,6 +18,7 @@ from agents_module.models.agent_schemas import (
 )
 from agents_module.utils.input_processing_utils import process_inference_inputs
 from agents_module.utils.auth_utils import extract_auth_credentials
+from agents_module.utils.sse_utils import SSE_HEADERS, format_sse
 from llm_inference_config_module.services.llm_inference_config_service import (
     LlmInferenceConfigService,
 )
@@ -140,6 +141,13 @@ async def agent_inference_v2(
     version: Optional[int] = Query(
         None, description='Specific agent version to run; defaults to current_version'
     ),
+    stream: bool = Query(
+        False,
+        description=(
+            'Stream the run as server-sent events instead of returning one '
+            'JSON response'
+        ),
+    ),
     agent_inference_service: AgentInferenceService = Depends(
         Provide[AgentsContainer.agent_inference_service]
     ),
@@ -162,20 +170,67 @@ async def agent_inference_v2(
     LLM is built from that config. Any `llm_inference_config_id` on the payload
     is ignored in v2.
 
+    With `stream=true` the response is `text/event-stream` instead: one JSON
+    object per `data:` frame, carrying `agent_started`, `content_delta`,
+    `tool_called`/`tool_result` and finally `output` or `error`. See
+    AgentInferenceService.stream_agent_inference for which agents produce
+    deltas.
+
     Args:
         agent_id: The UUID of the agent
         request: Request containing variables for the agent
+        stream: Whether to return the run as an SSE stream
 
     Returns:
         AgentInferenceResponse: Contains the inference result and metadata
     """
-    logger.info(f'Starting v2 inference for agent_id: {agent_id}')
+    logger.info(f'Starting v2 inference for agent_id: {agent_id}, stream: {stream}')
 
     # Extract authentication credentials
     access_token, app_key = extract_auth_credentials(request)
 
     # Process inputs using common utility function
     resolved_inputs = process_inference_inputs(agent_inference_payload.inputs)
+
+    if stream:
+        # Built before the response, not inside the generator: an async
+        # generator does not run until Starlette iterates it, which is after
+        # the 200 and the headers have gone out. A missing agent or an
+        # unresolvable rootflo model_id would then be reported as a success
+        # with the error hidden in the stream.
+        try:
+            agent, namespace, name = await agent_inference_service.prepare_agent_v2(
+                agent_id,
+                access_token=access_token,
+                app_key=app_key,
+                version=version,
+            )
+        except ValueError as e:
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content=response_formatter.buildErrorResponse(str(e)),
+            )
+
+        async def event_stream():
+            events = agent_inference_service.stream_agent_inference(
+                agent=agent,
+                inputs=resolved_inputs
+                if isinstance(resolved_inputs, list)
+                else [resolved_inputs],
+                variables=agent_inference_payload.variables or {},
+                agent_name=name,
+                namespace=namespace,
+                agent_id=str(agent_id),
+                output_json_enabled=agent_inference_payload.output_json_enabled,
+            )
+            async for event in events:
+                yield format_sse(event)
+
+        return StreamingResponse(
+            event_stream(),
+            media_type='text/event-stream',
+            headers=SSE_HEADERS,
+        )
 
     try:
         # Perform the complete inference workflow (v2)

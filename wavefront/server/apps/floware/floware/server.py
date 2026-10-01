@@ -189,6 +189,7 @@ chatbots_container = ChatbotsContainer(
     db_client=db_repo_container.db_client,
     cache_manager=db_repo_container.cache_manager,
     llm_inference_config_service=llm_inference_config_container.llm_inference_config_service,
+    guardrails_engine=guardrails_container.guardrails_engine,
 )
 
 triggers_container = TriggersContainer(
