@@ -1,6 +1,6 @@
 import asyncio
 import concurrent.futures
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 from flo_cloud._types import MessageQueueDict
 from common_module.log.logger import logger
 from db_repo_module.cache.cache_manager import CacheManager
@@ -32,24 +32,22 @@ class StreamListener(ABC):
         self,
         message_id: str,
         message_receipt_id: str,
-        processor: MessageProcessor = None,
-        insights_to_commit: List = [],
+        processor: Optional[MessageProcessor] = None,
+        failed_results: Optional[List[ProcessingResult]] = None,
     ):
+        """Schedule a retry for a failed message, or give up on it.
+
+        Below retry_count the message stays on the queue to be redelivered.
+        Once retries are exhausted, `failed_results` (this message's results,
+        success=False) are handed to processor.store(..., is_failed=True) so
+        the failure is recorded. The message is removed only once that
+        succeeds; if it can't be recorded it stays queued and the next
+        delivery tries again. With nothing to record it is removed directly.
+        """
         try:
             error_key = f'error_{message_id}'
             current_retry_count = self.cache_manager.get_int(error_key, 0)
-            if current_retry_count >= self.retry_count:
-                logger.error(
-                    f'Max retries exceeded for {message_id}. Removing from queue.'
-                )
-                self.delete_message(message_receipt_id)
-                if processor and len(insights_to_commit) > 0:
-                    logger.error(
-                        f'Storing failed insights for {message_id} after max retries.'
-                    )
-                    processor.store(insights_to_commit, as_failed=True)
-                self.cache_manager.remove(error_key)
-            else:
+            if current_retry_count < self.retry_count:
                 self.cache_manager.add(error_key, current_retry_count + 1, expiry=3600)
                 # Drop the in-flight marker so the redelivered message is
                 # processed again instead of being skipped until it expires.
@@ -57,8 +55,42 @@ class StreamListener(ABC):
                 logger.warning(
                     f'Retrying {message_id}. Attempt {current_retry_count} of {self.retry_count}'
                 )
+                return
+
+            if processor and failed_results:
+                if not processor.store(failed_results, is_failed=True):
+                    logger.error(
+                        f'Max retries exceeded for {message_id} but its failure '
+                        'could not be recorded; leaving it on the queue to try again.'
+                    )
+                    # Keep the retry count so the next delivery comes straight
+                    # back here, and let that delivery through the dedup check.
+                    self.cache_manager.add(error_key, current_retry_count, expiry=3600)
+                    self.cache_manager.remove(str(message_id))
+                    return
+                logger.error(
+                    f'Max retries exceeded for {message_id}; failure recorded. '
+                    'Removing from queue.'
+                )
+            else:
+                logger.error(
+                    f'Max retries exceeded for {message_id}. Removing from queue.'
+                )
+            self.delete_message(message_receipt_id)
+            self.cache_manager.remove(error_key)
         except Exception as e:
             logger.error(f'Error in error handling: {e}')
+
+    def _failure_results(
+        self, message: BaseEventMessage, error: str
+    ) -> List[ProcessingResult]:
+        """A failed result for `message` from the processor, if it can build one."""
+        try:
+            result = self.processor.failed_result(message, error)
+        except Exception as e:
+            logger.error(f'Could not build a failure result for {message.id}: {e}')
+            return []
+        return [result] if result is not None else []
 
     def delete_message(self, message_id: str):
         try:
@@ -108,7 +140,16 @@ class StreamListener(ABC):
                                 (message_id_str, message_receipt_id, result)
                             )
                         else:
-                            self.handle_error(message_id_str, message_receipt_id)
+                            self.handle_error(
+                                message_id_str,
+                                message_receipt_id,
+                                self.processor,
+                                [result]
+                                if result.insights is not None
+                                else self._failure_results(
+                                    message, result.error or 'Processing failed'
+                                ),
+                            )
 
                     except asyncio.TimeoutError:
                         logger.error(
@@ -118,7 +159,9 @@ class StreamListener(ABC):
                             message_id_str,
                             message_receipt_id,
                             self.processor,
-                            insights_to_commit,
+                            self._failure_results(
+                                message, 'Processing timed out after 5 minutes'
+                            ),
                         )
                 if insights_to_commit and self.processor:
                     is_successful = self.processor.store(insights_to_commit)
@@ -137,6 +180,9 @@ class StreamListener(ABC):
                             f'Failed to store insights for {len(insights_to_commit)} items'
                         )
                         failed = processed
+                        for _, _, result in failed:
+                            result.success = False
+                            result.error = result.error or 'Failed to store insights'
                     for message_id, message_receipt_id, result in failed:
                         logger.error(
                             f'Failed to store insights for message {message_id}: {result.error}'

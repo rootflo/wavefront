@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from db_repo_module.models.knowledge_base_documents import IndexStatus
 from flo_utils.streaming.message_processor import ProcessingResult
 from rag_ingestion.embeddings.image_embed import ImageEmbeddingResult
 from rag_ingestion.models.doc_content import DocContent
@@ -46,8 +47,11 @@ def processor():
         patch.object(kb_storage_processor, 'ImageEmbedding'),
     ):
         processor = KbStorageProcessor(
-            storage_manager=MagicMock(), encryption_service=None
+            storage_manager=MagicMock(),
+            encryption_service=None,
+            index_status_publisher=MagicMock(),
         )
+    processor.index_status_publisher.publish.return_value = True
     processor.image_embedding.embed_images.side_effect = fake_embed_images
     processor.kb_rag_storage.process_document.return_value = [EMBEDDING]
     set_floware_rejections(processor, {})
@@ -222,3 +226,67 @@ class TestExtractDocumentType:
     def test_unsupported_image_types_are_rejected(self, mime_type):
         with pytest.raises(ValueError, match='Unsupported image type'):
             FileProcessor().extract_document_type(mime_type)
+
+
+def published(processor) -> list:
+    """(doc_id, status, error) for each status the processor published."""
+    return [
+        (c.args[0], c.args[2], c.kwargs.get('error'))
+        for c in processor.index_status_publisher.publish.call_args_list
+    ]
+
+
+class TestIndexStatus:
+    async def test_process_reports_in_progress(self, processor):
+        processor.storage_manager.read_file.return_value = b'png-bytes'
+
+        await processor.process(make_message('image/png', doc_id='doc-7'))
+
+        processor.index_status_publisher.publish.assert_called_once_with(
+            'doc-7', 'kb-1', IndexStatus.IN_PROGRESS, error=None
+        )
+
+    async def test_failed_process_result_carries_the_document(self, processor):
+        processor.storage_manager.read_file.side_effect = Exception('bucket down')
+
+        result = await processor.process(make_message('image/png', doc_id='doc-7'))
+
+        assert result.success is False
+        assert result.insights.doc_id == 'doc-7'
+        assert result.insights.kb_id == 'kb-1'
+
+    def test_store_reports_complete_only_for_stored_documents(self, processor):
+        bad = make_insight('d1', DocumentType.IMAGE, b'bad')
+        good = make_insight('d2', DocumentType.IMAGE, b'ok')
+
+        assert processor.store([bad, good]) is True
+
+        assert published(processor) == [('d2', IndexStatus.COMPLETE, None)]
+
+    def test_failed_upload_reports_nothing(self, processor):
+        processor.kb_rag_storage.upload_embedding_with_retry.side_effect = Exception(
+            'floware down'
+        )
+
+        assert processor.store([make_insight('d1', DocumentType.TEXT, 'txt')]) is False
+
+        assert published(processor) == []
+
+    def test_complete_publish_failure_does_not_fail_the_store(self, processor):
+        processor.index_status_publisher.publish.return_value = False
+
+        assert processor.store([make_insight('d1', DocumentType.TEXT, 'txt')]) is True
+
+    def test_is_failed_reports_failed_with_the_error(self, processor):
+        failed = processor.failed_result(make_message('image/png', 'doc-9'), 'boom')
+
+        assert processor.store([failed], is_failed=True) is True
+
+        assert published(processor) == [('doc-9', IndexStatus.FAILED, 'boom')]
+        processor.kb_rag_storage.upload_embedding_with_retry.assert_not_called()
+
+    def test_is_failed_returns_false_when_failure_cannot_be_reported(self, processor):
+        processor.index_status_publisher.publish.return_value = False
+        failed = processor.failed_result(make_message('image/png', 'doc-9'), 'boom')
+
+        assert processor.store([failed], is_failed=True) is False

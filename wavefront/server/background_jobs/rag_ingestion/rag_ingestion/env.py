@@ -4,7 +4,7 @@ import os
 load_dotenv()
 
 CLOUD_PROVIDER = os.getenv('CLOUD_PROVIDER', 'gcp')
-RETRY_COUNT = os.getenv('RETRY_COUNT', 3)
+RETRY_COUNT = int(os.getenv('RETRY_COUNT', 3))
 INFERENCE_SERVICE_URL = os.getenv('INFERENCE_SERVICE_URL')
 FLOWARE_SERVICE_URL = os.getenv('FLOWARE_SERVICE_URL')
 APP_ENV = os.getenv('APP_ENV', 'dev')
@@ -14,3 +14,6 @@ STREAMING_BATCH_SIZE = int(os.getenv('STREAMING_BATCH_SIZE', 5))
 # the service's MAX_EMBEDDING_BATCH_SIZE (8 by default); a larger batch is
 # rejected and falls back to one call per image.
 IMAGE_EMBEDDING_BATCH_SIZE = int(os.getenv('IMAGE_EMBEDDING_BATCH_SIZE', 8))
+# floware's APP_NAME: index status events go to a Redis Stream under floware's
+# CacheManager namespace, so this must match it.
+FLOWARE_APP_NAME = os.getenv('FLOWARE_APP_NAME', 'floware')

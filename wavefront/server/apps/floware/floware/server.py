@@ -33,6 +33,9 @@ from fastapi.responses import JSONResponse
 from gold_module.gold_container import GoldContainer
 
 from knowledge_base_module.knowledge_base_container import KnowledgeBaseContainer
+from knowledge_base_module.services.kb_index_status_consumer import (
+    KbIndexStatusConsumer,
+)
 from user_management_module.user_container import UserContainer
 
 from floware.di.application_container import ApplicationContainer
@@ -297,6 +300,15 @@ async def lifespan(app: FastAPI):
             async_agentic_exec_consumer.start()
         )
 
+        # Start Redis Stream consumer for knowledge base document index statuses
+        kb_index_status_consumer = KbIndexStatusConsumer(
+            documents_repo=knowledge_base_container.knowledge_base_documents_repository(),
+            cache_manager=db_repo_container.cache_manager(),
+        )
+        kb_index_status_consumer_task = asyncio.create_task(
+            kb_index_status_consumer.start()
+        )
+
         # Set app reference in proxy router so new routes can be added dynamically
         proxy_router = api_services_container.proxy_router()
         proxy_router.set_app(app, prefix='/floware')
@@ -314,6 +326,12 @@ async def lifespan(app: FastAPI):
             logger.warning(
                 'AsyncAgenticExecutionResultConsumer did not stop within 5s; cancelled'
             )
+        kb_index_status_consumer.stop()
+        try:
+            await asyncio.wait_for(kb_index_status_consumer_task, timeout=5)
+        except asyncio.TimeoutError:
+            kb_index_status_consumer_task.cancel()
+            logger.warning('KbIndexStatusConsumer did not stop within 5s; cancelled')
         logger.info('Shutting down application...')
 
     except Exception as e:

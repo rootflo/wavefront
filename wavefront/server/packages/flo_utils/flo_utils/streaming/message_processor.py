@@ -28,5 +28,19 @@ class MessageProcessor(ABC, Generic[T]):
         Return False to fail the whole batch. To fail only some messages, set
         success=False (and error) on their results and return True; the
         listener keeps those messages on the queue for retry.
+
+        With is_failed=True the listener has given up on these messages after
+        retry_count attempts: record the failure (results have success=False
+        and error set) and return True once it is recorded. The listener only
+        removes the messages from the queue after that returns True.
         """
         pass
+
+    def failed_result(
+        self, message: BaseEventMessage, error: str
+    ) -> Optional[ProcessingResult]:
+        """Build a failed ProcessingResult for a message that has none (e.g.
+        process() timed out), so its failure can be passed to
+        store(..., is_failed=True). Return None if there is nothing to record.
+        """
+        return None
