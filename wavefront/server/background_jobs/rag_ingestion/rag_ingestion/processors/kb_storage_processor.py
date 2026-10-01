@@ -1,7 +1,7 @@
 from flo_cloud.cloud_storage import CloudStorageManager
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 from flo_utils.utils.log import logger
 from rag_ingestion.service.kb_rag_storage import KBRagStorage
 from rag_ingestion.embeddings.embed import EmbeddingFunc
@@ -14,14 +14,17 @@ from rag_ingestion.embeddings.image_embed import ImageEmbedding
 from rag_ingestion.models.knowledge_base_embeddings import KnowledgeBaseEmbeddingObject
 from rag_ingestion.models.rag_message import RagEventMessage
 from rag_ingestion.service.kb_rag_storage import EmbeddingsToStore
+from rag_ingestion.service.index_status_publisher import IndexStatusPublisher
+from db_repo_module.models.knowledge_base_documents import IndexStatus
 
 
 @dataclass
 class KbStorageInsights:
     doc_id: str
-    doc_content: DocContent
+    # None on a failure result built before the content was extracted
+    doc_content: Optional[DocContent]
     kb_id: str
-    file_type: DocumentType
+    file_type: Optional[DocumentType]
 
 
 class KbStorageProcessor(MessageProcessor):
@@ -29,9 +32,11 @@ class KbStorageProcessor(MessageProcessor):
         self,
         storage_manager: CloudStorageManager,
         encryption_service: FloKmsService,
+        index_status_publisher: Optional[IndexStatusPublisher] = None,
     ):
         self.storage_manager = storage_manager
         self.encryption_service = encryption_service
+        self.index_status_publisher = index_status_publisher
         self.kb_rag_storage = KBRagStorage()
         self.embedding_func = EmbeddingFunc()
         self.file_processor = FileProcessor()
@@ -231,6 +236,8 @@ class KbStorageProcessor(MessageProcessor):
         """
         logger.info(f'Processing message: {message.id}')
         logger.info(f'Processing file: {message.bucket_name}/{message.bucket_key}')
+        # Best effort: indexing goes ahead even if floware can't be told.
+        self.__publish_status(message.doc_id, message.kb_id, IndexStatus.IN_PROGRESS)
 
         # An exception escaping process() makes the stream listener abandon every
         # message it received alongside this one, so fail only this message.
@@ -250,7 +257,7 @@ class KbStorageProcessor(MessageProcessor):
                 f'({message.file_type}): {err}',
                 exc_info=True,
             )
-            return ProcessingResult[KbStorageInsights](success=False, error=str(err))
+            return self.failed_result(message, str(err))
         return ProcessingResult[KbStorageInsights](
             success=True,
             insights=KbStorageInsights(
@@ -261,12 +268,75 @@ class KbStorageProcessor(MessageProcessor):
             ),
         )
 
-    def store(self, insights: List[ProcessingResult[KbStorageInsights]]):
+    def failed_result(
+        self, message: RagEventMessage, error: str
+    ) -> ProcessingResult[KbStorageInsights]:
+        """A failed result carrying the message's doc and KB ids, so the
+        failure can be reported for that document."""
+        return ProcessingResult[KbStorageInsights](
+            success=False,
+            error=error,
+            insights=KbStorageInsights(
+                doc_id=message.doc_id,
+                doc_content=None,
+                kb_id=message.kb_id,
+                file_type=None,
+            ),
+        )
+
+    def store(
+        self,
+        insights: List[ProcessingResult[KbStorageInsights]],
+        is_failed: bool = False,
+    ) -> bool:
         if not insights:
             return False
+        if is_failed:
+            return self.__record_failures(insights)
         try:
             self.__insert_kb_from_message(insights)
-            return True
         except Exception as e:
             logger.error(f'Failed to store data to the database: {e}')
             return False
+        for kb_insight in insights:
+            if kb_insight.success:
+                # Embeddings are stored; if this event is lost the document
+                # shows IN_PROGRESS, but retrying would duplicate embeddings,
+                # so it is logged rather than failing the message.
+                self.__publish_status(
+                    kb_insight.insights.doc_id,
+                    kb_insight.insights.kb_id,
+                    IndexStatus.COMPLETE,
+                )
+        return True
+
+    def __record_failures(
+        self, insights: List[ProcessingResult[KbStorageInsights]]
+    ) -> bool:
+        """Report FAILED for documents the listener has given up on. Returns
+        True only if every failure reached floware, so the listener keeps the
+        messages queued otherwise."""
+        recorded = True
+        for kb_insight in insights:
+            insight = kb_insight.insights
+            if insight is None:
+                continue
+            published = self.__publish_status(
+                insight.doc_id,
+                insight.kb_id,
+                IndexStatus.FAILED,
+                error=kb_insight.error or 'Indexing failed',
+            )
+            recorded = recorded and published
+        return recorded
+
+    def __publish_status(
+        self,
+        doc_id: str,
+        kb_id: Optional[str],
+        status: IndexStatus,
+        error: Optional[str] = None,
+    ) -> bool:
+        if self.index_status_publisher is None:
+            return True
+        return self.index_status_publisher.publish(doc_id, kb_id, status, error=error)

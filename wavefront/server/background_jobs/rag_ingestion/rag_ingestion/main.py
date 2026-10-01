@@ -2,7 +2,13 @@ from rag_ingestion.stream.rag_streamer import RagStreamListener
 from rag_ingestion.processors.kb_storage_processor import KbStorageProcessor
 from db_repo_module.cache.cache_manager import CacheManager
 from flo_cloud.kms import FloKmsService
-from rag_ingestion.env import CLOUD_PROVIDER, RETRY_COUNT, STREAMING_BATCH_SIZE
+from rag_ingestion.env import (
+    CLOUD_PROVIDER,
+    FLOWARE_APP_NAME,
+    RETRY_COUNT,
+    STREAMING_BATCH_SIZE,
+)
+from rag_ingestion.service.index_status_publisher import IndexStatusPublisher
 from flo_cloud.cloud_storage import CloudStorageManager
 from flo_cloud.message_queue import MessageQueueManager
 import os
@@ -13,6 +19,10 @@ def main():
     event_manager = MessageQueueManager(CLOUD_PROVIDER)
     storage_manager = CloudStorageManager(CLOUD_PROVIDER)
     cache_manager = CacheManager(namespace='rag')
+    # Separate namespace: status events are read by floware under its own.
+    index_status_publisher = IndexStatusPublisher(
+        CacheManager(namespace=FLOWARE_APP_NAME)
+    )
     encryption_service = None
     if (
         (CLOUD_PROVIDER == 'aws' and os.getenv('AWS_KMS_ARN'))
@@ -35,6 +45,7 @@ def main():
         processor=KbStorageProcessor(
             storage_manager,
             encryption_service,
+            index_status_publisher=index_status_publisher,
         ),
         cache_manager=cache_manager,
         retry_count=RETRY_COUNT,

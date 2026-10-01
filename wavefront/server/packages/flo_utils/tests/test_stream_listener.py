@@ -4,6 +4,7 @@ get retried, and how the retry limit is enforced. The queue, cache and
 processor are all in-memory fakes.
 """
 
+import asyncio
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 from unittest.mock import MagicMock
@@ -40,21 +41,47 @@ class FakeCache:
 
 
 class FakeProcessor(MessageProcessor):
-    """Fails process() for ids in fail_process, marks ids in fail_store as
-    failed inside store(), and returns store_result from store()."""
+    """Fails process() for ids in fail_process (and times out for ids in
+    time_out), marks ids in fail_store as failed inside store(), and returns
+    store_result from store(). store(..., is_failed=True) calls are recorded in
+    failure_calls and answered with record_result."""
 
-    def __init__(self, fail_process=(), fail_store=(), store_result=True):
+    def __init__(
+        self,
+        fail_process=(),
+        fail_store=(),
+        store_result=True,
+        time_out=(),
+        record_result=True,
+        builds_failed_results=True,
+    ):
         self.fail_process = set(fail_process)
         self.fail_store = set(fail_store)
         self.store_result = store_result
+        self.time_out = set(time_out)
+        self.record_result = record_result
+        self.builds_failed_results = builds_failed_results
         self.store_calls: List[List[str]] = []
+        self.failure_calls: List[List[tuple]] = []
 
     async def process(self, message) -> ProcessingResult:
+        if message.id in self.time_out:
+            raise asyncio.TimeoutError()
         if message.id in self.fail_process:
             return ProcessingResult(success=False, error='process failed')
         return ProcessingResult(success=True, insights={'id': message.id})
 
-    def store(self, insights, **kwargs) -> bool:
+    def failed_result(self, message, error):
+        if not self.builds_failed_results:
+            return None
+        return ProcessingResult(success=False, error=error, insights={'id': message.id})
+
+    def store(self, insights, is_failed=False) -> bool:
+        if is_failed:
+            self.failure_calls.append(
+                [(i.insights['id'], i.success, i.error) for i in insights]
+            )
+            return self.record_result
         self.store_calls.append([i.insights['id'] for i in insights])
         for insight in insights:
             if insight.insights['id'] in self.fail_store:
@@ -172,3 +199,93 @@ async def test_message_is_deleted_after_retry_limit():
 
     assert deleted_acks(queue) == ['ack-m1']
     assert 'error_m1' not in cache.data
+
+
+async def exhaust_retries(listener, queue, message_id, retry_count=3):
+    """Deliver a message until its retries are used up (retry_count + 1 times)."""
+    for _ in range(retry_count + 1):
+        await receive_once(listener, queue, make_messages(message_id))
+
+
+async def test_failure_is_recorded_before_message_is_removed():
+    processor = FakeProcessor(fail_store={'m1'})
+    listener, queue = make_listener(processor)
+
+    await exhaust_retries(listener, queue, 'm1')
+
+    assert processor.failure_calls == [[('m1', False, 'store failed')]]
+    assert deleted_acks(queue) == ['ack-m1']
+
+
+async def test_message_stays_queued_when_failure_cannot_be_recorded():
+    cache = FakeCache()
+    processor = FakeProcessor(fail_store={'m1'}, record_result=False)
+    listener, queue = make_listener(processor, cache)
+
+    await exhaust_retries(listener, queue, 'm1')
+
+    queue.delete_message.assert_not_called()
+    assert len(processor.failure_calls) == 1
+    # still at the retry limit, and the next delivery is not skipped
+    assert cache.get_int('error_m1') == 3
+    assert 'm1' not in cache.data
+
+    processor.record_result = True
+    await receive_once(listener, queue, make_messages('m1'))
+
+    assert len(processor.failure_calls) == 2
+    assert deleted_acks(queue) == ['ack-m1']
+    assert 'error_m1' not in cache.data
+
+
+async def test_process_failure_records_the_processors_failed_result():
+    processor = FakeProcessor(fail_process={'m1'})
+    listener, queue = make_listener(processor)
+
+    await exhaust_retries(listener, queue, 'm1')
+
+    assert processor.failure_calls == [[('m1', False, 'process failed')]]
+    assert deleted_acks(queue) == ['ack-m1']
+
+
+async def test_timeout_records_a_timeout_failure():
+    processor = FakeProcessor(time_out={'m1'})
+    listener, queue = make_listener(processor)
+
+    await exhaust_retries(listener, queue, 'm1')
+
+    [[(message_id, success, error)]] = processor.failure_calls
+    assert (message_id, success) == ('m1', False)
+    assert 'timed out' in error
+    assert deleted_acks(queue) == ['ack-m1']
+
+
+async def test_store_returning_false_records_failures_with_an_error():
+    processor = FakeProcessor(store_result=False)
+    listener, queue = make_listener(processor)
+
+    await exhaust_retries(listener, queue, 'm1')
+
+    assert processor.failure_calls == [[('m1', False, 'Failed to store insights')]]
+    assert deleted_acks(queue) == ['ack-m1']
+
+
+async def test_nothing_to_record_removes_the_message_directly():
+    # e.g. the workflow processor, which builds no failure result
+    processor = FakeProcessor(fail_process={'m1'}, builds_failed_results=False)
+    listener, queue = make_listener(processor)
+
+    await exhaust_retries(listener, queue, 'm1')
+
+    assert processor.failure_calls == []
+    assert deleted_acks(queue) == ['ack-m1']
+
+
+async def test_only_the_failed_message_is_recorded_not_the_rest_of_the_batch():
+    processor = FakeProcessor(fail_store={'m2'})
+    listener, queue = make_listener(processor)
+
+    for _ in range(4):
+        await receive_once(listener, queue, make_messages('m1', 'm2'))
+
+    assert processor.failure_calls == [[('m2', False, 'store failed')]]

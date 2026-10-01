@@ -1,13 +1,32 @@
 from datetime import datetime
+from enum import Enum
 import json
 import uuid
 from typing import Optional
 
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
-from sqlalchemy import ForeignKey, JSON
+from sqlalchemy import ForeignKey, JSON, Text
 
 from ..database.base import Base
+
+
+class IndexStatus(str, Enum):
+    """Where a document is in RAG indexing.
+
+    QUEUED is set by floware when the document is put on the RAG queue; the
+    rag_ingestion worker reports the rest through KB_INDEX_STATUS_STREAM.
+    """
+
+    QUEUED = 'QUEUED'
+    IN_PROGRESS = 'IN_PROGRESS'
+    COMPLETE = 'COMPLETE'
+    FAILED = 'FAILED'
+
+
+# Redis Stream the rag_ingestion worker appends index status events to and
+# floware consumes (key is prefixed with floware's CacheManager namespace).
+KB_INDEX_STATUS_STREAM = 'kb_document:index_status'
 
 
 class KnowledgeBaseDocuments(Base):
@@ -50,6 +69,13 @@ class KnowledgeBaseDocuments(Base):
     filter4: Mapped[Optional[str]] = mapped_column(nullable=True)
     filter5: Mapped[Optional[str]] = mapped_column(nullable=True)
     filter6: Mapped[Optional[str]] = mapped_column(nullable=True)
+    # RAG indexing state (see IndexStatus). NULL for documents uploaded before
+    # status tracking existed.
+    index_status: Mapped[Optional[str]] = mapped_column(nullable=True)
+    index_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Worker-side (UTC) time of the status event last applied. Events can arrive
+    # out of order, so an update only applies if it is newer than this.
+    index_status_updated_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
 
     def to_dict(self):
         result = {}

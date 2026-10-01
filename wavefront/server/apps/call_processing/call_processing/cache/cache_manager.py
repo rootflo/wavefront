@@ -9,6 +9,7 @@ from call_processing.log.logger import logger
 
 from redis import Connection
 from redis import ConnectionError
+from redis import BlockingConnectionPool
 from redis import ConnectionPool
 from redis import Redis
 from redis import RedisError
@@ -42,6 +43,17 @@ class AzureManagedRedisProvider(CredentialProvider):
             raise
 
 
+# Per-process cap on pooled Redis connections. Each process (every floware
+# worker, celery worker, background job) has its own pool, so the Redis server
+# may see up to this times the number of processes.
+DEFAULT_POOL_SIZE = int(os.getenv('REDIS_POOL_SIZE', '10'))
+# Seconds a caller waits for a free pooled connection before
+# ConnectionError('No connection available.'). Most CacheManager calls are
+# synchronous and many run on an asyncio event loop, where this wait stalls
+# the whole process, so keep it short; methods with @retry may wait up to 3x.
+DEFAULT_POOL_TIMEOUT = float(os.getenv('REDIS_POOL_TIMEOUT', '2'))
+
+
 class CacheManager:
     def __init__(
         self,
@@ -52,8 +64,18 @@ class CacheManager:
         connection_timeout: int = 60,
         socket_timeout: int = 60,
         socket_keepalive: bool = True,
-        pool_size: int = 10,
+        pool_size: Optional[int] = None,
     ):
+        """
+        Args:
+            pool_size: Max Redis connections this process may open. Defaults to
+                REDIS_POOL_SIZE (10). Connections are opened on demand, so the
+                cap only costs anything under concurrency. When all are in use,
+                a caller waits up to REDIS_POOL_TIMEOUT (2s) for one to be
+                released, then gets ConnectionError('No connection available.').
+        """
+        if pool_size is None:
+            pool_size = DEFAULT_POOL_SIZE
         self.namespace = namespace
         self.max_retries = max_retries
         self.initial_backoff = initial_backoff
@@ -111,7 +133,9 @@ class CacheManager:
             elif password:
                 pool_kwargs['password'] = password
 
-            return ConnectionPool(**pool_kwargs)
+            # Blocking: when every connection is busy, wait briefly for one to
+            # be released instead of failing at once with 'Too many connections'.
+            return BlockingConnectionPool(timeout=DEFAULT_POOL_TIMEOUT, **pool_kwargs)
         except Exception as e:
             logger.error(f'Failed to create connection pool: {e}s')
             raise
@@ -242,7 +266,7 @@ class CacheManager:
         while retries < self.max_retries:
             try:
                 return func(*args, **kwargs)
-            except (RedisError, ConnectionPool, TimeoutError) as e:
+            except (RedisError, ConnectionError, TimeoutError) as e:
                 retries += 1
                 if retries >= self.max_retries:
                     logger.error(f'Max retries reached for {func.__name__}: {e}')

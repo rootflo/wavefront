@@ -542,7 +542,10 @@ class QueryGenerator:
                 file_size,
                 created_at,
                 updated_at,
-                metadata_value
+                metadata_value,
+                index_status,
+                index_error,
+                index_status_updated_at
             FROM
                 {KnowledgeBaseDocuments.__tablename__}
             WHERE

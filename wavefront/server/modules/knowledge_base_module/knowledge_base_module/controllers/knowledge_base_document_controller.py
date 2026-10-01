@@ -8,7 +8,10 @@ import uuid
 from common_module.common_container import CommonContainer
 from common_module.log.logger import logger
 from common_module.response_formatter import ResponseFormatter
-from db_repo_module.models.knowledge_base_documents import KnowledgeBaseDocuments
+from db_repo_module.models.knowledge_base_documents import (
+    IndexStatus,
+    KnowledgeBaseDocuments,
+)
 from db_repo_module.models.knowledge_base_embeddings import KnowledgeBaseEmbeddings
 from db_repo_module.models.knowledge_bases import KnowledgeBase
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
@@ -138,6 +141,10 @@ async def upload_document(
                 filter4=metadata.filter4 if metadata else None,
                 filter5=metadata.filter5 if metadata else None,
                 filter6=metadata.filter6 if metadata else None,
+                # Set before the message is queued, not after: the worker may
+                # report IN_PROGRESS before this request finishes, and that must
+                # not be overwritten. Failures below flip it to FAILED.
+                index_status=IndexStatus.QUEUED.value,
             )
 
             session.add(new_kb_document)
@@ -146,13 +153,21 @@ async def upload_document(
         # Upload to cloud storage
         logger.info(f'The data filename is {gcs_file_name}')
         bucket_name = config['floware']['asset_storage_bucket']
-        await asyncio.to_thread(
-            cloud_storage.save_small_file,
-            file_content=file_bytes,
-            bucket_name=bucket_name,
-            key=gcs_file_name,
-            content_type=file.content_type,
-        )
+        try:
+            await asyncio.to_thread(
+                cloud_storage.save_small_file,
+                file_content=file_bytes,
+                bucket_name=bucket_name,
+                key=gcs_file_name,
+                content_type=file.content_type,
+            )
+        except Exception as err:
+            await _mark_index_failed(
+                knowledge_base_documents_repository,
+                doc_id,
+                f'Failed to upload the file to storage: {err}',
+            )
+            raise
         logger.info(f'File uploaded to cloud storage: {gcs_file_name}')
         try:
             data = {
@@ -183,6 +198,11 @@ async def upload_document(
                 ),
             )
         except Exception as err:
+            await _mark_index_failed(
+                knowledge_base_documents_repository,
+                doc_id,
+                f'Failed to queue the document for indexing: {err}',
+            )
             return JSONResponse(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 content=response_formatter.buildErrorResponse(
@@ -198,6 +218,23 @@ async def upload_document(
     finally:
         if temp_file_path and os.path.exists(temp_file_path):
             os.unlink(temp_file_path)
+
+
+async def _mark_index_failed(
+    knowledge_base_documents_repository: SQLAlchemyRepository[KnowledgeBaseDocuments],
+    doc_id: uuid.UUID,
+    error: str,
+) -> None:
+    """Record that a document never reached the RAG queue. Best effort: the
+    request is already failing, so a second error here is only logged."""
+    try:
+        await knowledge_base_documents_repository.find_one_and_update(
+            {'id': doc_id},
+            index_status=IndexStatus.FAILED.value,
+            index_error=error,
+        )
+    except Exception as err:
+        logger.error(f'Could not mark document {doc_id} as FAILED: {err}')
 
 
 def _document_row_to_dict(row: dict) -> dict:
