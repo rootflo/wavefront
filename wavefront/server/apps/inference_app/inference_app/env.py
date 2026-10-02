@@ -20,3 +20,17 @@ MAX_EMBEDDING_BATCH_SIZE = int(os.getenv('MAX_EMBEDDING_BATCH_SIZE', '8'))
 # call counts as one request). Set either to 0 to disable that window.
 RATE_LIMIT_REQUESTS_PER_SECOND = int(os.getenv('RATE_LIMIT_REQUESTS_PER_SECOND', '4'))
 RATE_LIMIT_REQUESTS_PER_MINUTE = int(os.getenv('RATE_LIMIT_REQUESTS_PER_MINUTE', '240'))
+
+# HF model: BAAI/bge-m3 (text embeddings, dense + sparse). Optional: when unset
+# the text embedding endpoint is disabled, and a failed load never stops the
+# server. A local dir or cloud URI, like the image models; prepare it with
+# scripts/download_models.py, which converts the weights to safetensors.
+BGE_M3_MODEL_URI = os.getenv('BGE_M3_MODEL_URI', '')
+
+# Texts per /v1/query/text-embeddings request. BGE-M3 is XLM-RoBERTa-large
+# (~570M params) on CPU, so keep batches small.
+MAX_TEXT_EMBEDDING_BATCH_SIZE = int(os.getenv('MAX_TEXT_EMBEDDING_BATCH_SIZE', '16'))
+
+# Tokens per text; longer texts are truncated. BGE-M3 accepts up to 8192, but
+# attention cost grows quadratically, which is slow on CPU.
+MAX_TEXT_EMBEDDING_TOKENS = int(os.getenv('MAX_TEXT_EMBEDDING_TOKENS', '512'))

@@ -22,8 +22,10 @@ from fastapi.responses import JSONResponse
 
 from inference_app.inference_app_container import InferenceAppContainer
 from inference_app.controllers.inference_controller import inference_app_router
-from inference_app.model_sync import sync_embedding_models
+from inference_app.env import BGE_M3_MODEL_URI, MAX_TEXT_EMBEDDING_TOKENS
+from inference_app.model_sync import sync_embedding_models, sync_text_embedding_model
 from inference_app.service.image_embedding import ImageEmbedding
+from inference_app.service.text_embedding import TextEmbedding
 
 # Initialize dependency containers
 common_container = CommonContainer(cache_manager=None)
@@ -42,7 +44,26 @@ async def lifespan(app: FastAPI):
     )
     inference_app_container.image_embedding()
     logger.info('ML models loaded and ready.')
+    start_text_embedding_model()
     yield
+
+
+def load_text_embedding_model() -> TextEmbedding:
+    return TextEmbedding(
+        sync_text_embedding_model(), max_length=MAX_TEXT_EMBEDDING_TOKENS
+    )
+
+
+def start_text_embedding_model() -> None:
+    """BGE-M3 is optional: start it loading in the background if configured,
+    without holding up startup or failing it."""
+    if not BGE_M3_MODEL_URI:
+        logger.info('BGE_M3_MODEL_URI not set; text embeddings disabled.')
+        return
+    logger.info('Loading BGE-M3 text embedding model in the background...')
+    inference_app_container.text_embedding_provider().start_loading(
+        load_text_embedding_model
+    )
 
 
 environment = os.getenv('APP_ENV', 'production')

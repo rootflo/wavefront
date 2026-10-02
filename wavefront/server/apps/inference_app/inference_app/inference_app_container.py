@@ -6,6 +6,7 @@ from inference_app.env import (
 )
 from inference_app.rate_limiter import SlidingWindowRateLimiter
 from inference_app.service.image_embedding import ImageEmbedding
+from inference_app.service.text_embedding import TextEmbeddingProvider
 
 
 class InferenceAppContainer(containers.DeclarativeContainer):
@@ -19,6 +20,10 @@ class InferenceAppContainer(containers.DeclarativeContainer):
     config = providers.Configuration(ini_files=['config.ini'])
 
     image_embedding = providers.Singleton(ImageEmbedding)
+
+    # Optional BGE-M3 model; loaded in the background from the lifespan when
+    # BGE_M3_MODEL_URI is set, unavailable (503) otherwise.
+    text_embedding_provider = providers.Singleton(TextEmbeddingProvider)
 
     rate_limiter = providers.Singleton(
         SlidingWindowRateLimiter,

@@ -303,6 +303,7 @@ INFERENCE_MODELS_DIR="$INFERENCE_DIR/scripts/.mcache"
 INFERENCE_MODELS=(
   "CLIP_VIT_BASE_PATCH32_MODEL_URI:clip-vit-base-patch32-hf"
   "DINOV3_VITL16_HF_MODEL_URI:dinov3-vitl16-hf"
+  "BGE_M3_MODEL_URI:bge-m3-hf"
 )
 
 # True if any inference model folder is missing or empty.
@@ -310,7 +311,8 @@ inference_models_missing() {
   local entry dir
   for entry in "${INFERENCE_MODELS[@]}"; do
     dir="$INFERENCE_MODELS_DIR/${entry#*:}"
-    [[ -d "$dir" && -n "$(ls -A "$dir" 2>/dev/null)" ]] || return 0
+    # `ls` without -A: a failed download leaves only a hidden .cache/ behind
+    [[ -d "$dir" && -n "$(ls "$dir" 2>/dev/null)" ]] || return 0
   done
   return 1
 }
@@ -323,7 +325,7 @@ is_intel_mac() {
 }
 
 setup_inference_env() {
-  step "Inference app (image embeddings, CLIP + DINOv3)"
+  step "Inference app (image embeddings, CLIP + DINOv3; text embeddings, BGE-M3)"
   if is_intel_mac; then
     warn "Skipping: torch has no Intel Mac build at the required version (>= 2.6)"
     return
@@ -685,7 +687,8 @@ download_inference_models() {
 
 start_inference_app() {
   (( RUN_INFERENCE_APP )) || return 0
-  # Loading CLIP + DINOv3 into memory at startup takes a while.
+  # Loading CLIP + DINOv3 into memory at startup takes a while (BGE-M3 loads in
+  # the background after the app is up).
   start_python_service inference "$INFERENCE_DIR" "$INFERENCE_PORT" "$INFERENCE_HEALTH_URL" 300
 }
 
