@@ -219,3 +219,153 @@ async def test_malformed_document_is_rejected_with_400(
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert reason_fragment in response.json()['meta']['error']
+
+
+# --- text (BGE-M3) documents -------------------------------------------------
+
+TEXT_DIM = 1024
+
+
+def bge_doc(kb_id, doc_id, chunks=1, dense_dim=TEXT_DIM, sparse=None):
+    doc = {
+        'text_embedding': [[0.01] * dense_dim for _ in range(chunks)],
+        'document_id': str(doc_id),
+        'kb_id': str(kb_id),
+        'chunk_text': [f'chunk {i}' for i in range(chunks)],
+        'chunk_index': [f'chunk_{i}' for i in range(chunks)],
+    }
+    doc['text_sparse_embedding'] = (
+        sparse
+        if sparse is not None
+        else [{'indices': [5, 99], 'values': [0.3, 0.2]} for _ in range(chunks)]
+    )
+    return doc
+
+
+async def stored_text_rows(test_session, doc_id):
+    async with test_session() as session:
+        result = await session.execute(
+            select(
+                KnowledgeBaseEmbeddings.chunk_index,
+                KnowledgeBaseEmbeddings.text_embedding,
+                KnowledgeBaseEmbeddings.text_sparse_embedding,
+                KnowledgeBaseEmbeddings.embedding_vector,
+            )
+            .where(KnowledgeBaseEmbeddings.document_id == doc_id)
+            .order_by(KnowledgeBaseEmbeddings.chunk_index)
+        )
+        return result.all()
+
+
+@pytest.mark.asyncio
+async def test_text_document_is_stored_in_the_text_columns(
+    seeded, test_client, auth_token, test_session
+):
+    kb_id = await create_kb(test_session, vector_size=TEXT_DIM)
+    doc_id = await create_doc(test_session, kb_id)
+
+    response = store(test_client, auth_token, bge_doc(kb_id, doc_id, chunks=2))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()['data']['rejected'] == []
+    rows = await stored_text_rows(test_session, doc_id)
+    assert [row.chunk_index for row in rows] == [0, 1]
+    for row in rows:
+        assert row.text_embedding is not None
+        assert row.text_sparse_embedding is not None
+        assert row.embedding_vector is None
+
+
+@pytest.mark.asyncio
+async def test_text_document_with_empty_sparse_vector_stores_null_sparse(
+    seeded, test_client, auth_token, test_session
+):
+    kb_id = await create_kb(test_session, vector_size=TEXT_DIM)
+    doc_id = await create_doc(test_session, kb_id)
+
+    response = store(
+        test_client,
+        auth_token,
+        bge_doc(kb_id, doc_id, sparse=[{'indices': [], 'values': []}]),
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    [row] = await stored_text_rows(test_session, doc_id)
+    assert row.text_embedding is not None and row.text_sparse_embedding is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ('kb_sizes', 'doc_kwargs', 'reason_fragment'),
+    [
+        # text into an image KB (CLIP 512 + DINO 1024)
+        ({'vector_size': 512, 'vector_size_1': 1024}, {}, 'not set up for text'),
+        # text KB created with the wrong size
+        ({'vector_size': 1536}, {}, 'not set up for text'),
+        ({'vector_size': TEXT_DIM}, {'dense_dim': 512}, 'vector size'),
+        (
+            {'vector_size': TEXT_DIM},
+            {'sparse': [{'indices': [1, 2], 'values': [0.5]}]},
+            'same length',
+        ),
+        (
+            {'vector_size': TEXT_DIM},
+            {'sparse': [{'indices': [250002], 'values': [0.5]}]},
+            'unique token ids',
+        ),
+        (
+            {'vector_size': TEXT_DIM},
+            {'sparse': [{'indices': [3, 3], 'values': [0.5, 0.4]}]},
+            'unique token ids',
+        ),
+        (
+            {'vector_size': TEXT_DIM},
+            {'sparse': [{'indices': list(range(1001)), 'values': [0.1] * 1001}]},
+            'at most 1000',
+        ),
+        (
+            {'vector_size': TEXT_DIM},
+            {'chunks': 2, 'sparse': [{'indices': [1], 'values': [0.5]}]},
+            'one entry per chunk',
+        ),
+    ],
+)
+async def test_invalid_text_documents_are_rejected(
+    seeded, test_client, auth_token, test_session, kb_sizes, doc_kwargs, reason_fragment
+):
+    kb_id = await create_kb(test_session, **kb_sizes)
+    doc_id = await create_doc(test_session, kb_id)
+
+    response = store(test_client, auth_token, bge_doc(kb_id, doc_id, **doc_kwargs))
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert reason_fragment in response.json()['meta']['error']
+    assert await stored_doc_ids(test_session, doc_id) == []
+
+
+@pytest.mark.asyncio
+async def test_document_with_both_text_and_image_vectors_is_rejected(
+    seeded, test_client, auth_token, test_session
+):
+    kb_id = await create_kb(test_session, vector_size=TEXT_DIM)
+    doc_id = await create_doc(test_session, kb_id)
+    doc = {**bge_doc(kb_id, doc_id), 'embedding_vector': [[0.1] * TEXT_DIM]}
+
+    response = store(test_client, auth_token, doc)
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert 'not both' in response.json()['meta']['error']
+
+
+@pytest.mark.asyncio
+async def test_image_document_into_text_kb_is_rejected(
+    seeded, test_client, auth_token, test_session
+):
+    kb_id = await create_kb(test_session, vector_size=TEXT_DIM)
+    doc_id = await create_doc(test_session, kb_id)
+
+    response = store(
+        test_client, auth_token, image_doc(kb_id, doc_id, [0.1] * 512, [0.2] * 1024)
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST

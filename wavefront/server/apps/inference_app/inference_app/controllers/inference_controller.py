@@ -153,6 +153,10 @@ def image_embedding_batch(
     )
 
 
+# Seconds clients are told to wait (Retry-After) while BGE-M3 is loading.
+TEXT_MODEL_LOADING_RETRY_AFTER_S = 10
+
+
 @inference_app_router.post('/v1/query/text-embeddings')
 @inject
 def text_embedding(
@@ -194,9 +198,15 @@ def text_embedding(
     try:
         model = text_embedding_provider.get()
     except TextEmbeddingUnavailable as err:
+        # While the model loads, tell clients when to come back; a disabled or
+        # failed model won't recover by waiting, so no Retry-After then.
+        loading = text_embedding_provider.status == TextEmbeddingProvider.LOADING
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content=response_formatter.buildErrorResponse(str(err)),
+            headers={'Retry-After': str(TEXT_MODEL_LOADING_RETRY_AFTER_S)}
+            if loading
+            else None,
         )
 
     embeddings = model.embed(

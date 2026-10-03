@@ -17,3 +17,6 @@ IMAGE_EMBEDDING_BATCH_SIZE = int(os.getenv('IMAGE_EMBEDDING_BATCH_SIZE', 8))
 # floware's APP_NAME: index status events go to a Redis Stream under floware's
 # CacheManager namespace, so this must match it.
 FLOWARE_APP_NAME = os.getenv('FLOWARE_APP_NAME', 'floware')
+# Texts per call to the inference app's text embedding endpoint. Keep at or
+# below its MAX_TEXT_EMBEDDING_BATCH_SIZE (16 by default) or calls get a 413.
+TEXT_EMBEDDING_BATCH_SIZE = int(os.getenv('TEXT_EMBEDDING_BATCH_SIZE', 16))

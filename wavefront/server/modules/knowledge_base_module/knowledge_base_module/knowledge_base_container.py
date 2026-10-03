@@ -7,7 +7,6 @@ from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyReposit
 from dependency_injector import containers
 from dependency_injector import providers
 from knowledge_base_module.services.kb_rag_retrieve import KBRagResponse
-from knowledge_base_module.services.kb_rag_storage import KBRagStorage
 from flo_cloud.message_queue import MessageQueueManager
 from flo_cloud.cloud_storage import CloudStorageManager
 from knowledge_base_module.services.image_rag_retrieve import ImageRagRetrieve
@@ -53,17 +52,13 @@ class KnowledgeBaseContainer(containers.DeclarativeContainer):
         db_client=db_client,
     )
 
-    email_rag_service = providers.Factory(
-        KBRagStorage, embedding_url=config.embedding_url.embedding_service_url
-    )
-
     knowledge_base = providers.Singleton(KnowledgeBase)
 
     knowledge_base_retrieve = providers.Singleton(
         KBRagResponse,
         knowledge_base_documents_repository,
         knowledge_base_embeddings_repository,
-        embedding_url=config.embedding_url.embedding_service_url,
+        inference_url=config.model.inference_service_url,
     )
 
     knowledge_base_embeddings_repository = providers.Singleton(

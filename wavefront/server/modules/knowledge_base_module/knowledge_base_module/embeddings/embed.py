@@ -1,58 +1,65 @@
-import os
-import requests
-from typing import List
-from dataclasses import dataclass
+from typing import Any, Dict, Optional
+
+import httpx
+
+TEXT_EMBEDDINGS_PATH = '/inference/v1/query/text-embeddings'
 
 
-@dataclass
-class KnowledgeBaseEmbeddingObject:
-    embedding_vector: List[float]
-    chunk_text: str
-    chunk_index: str
+class TextEmbeddingError(RuntimeError):
+    """The inference service could not embed the text.
+
+    status_code is the inference service's HTTP status, or None if it could
+    not be reached.
+    """
+
+    def __init__(self, message: str, status_code: Optional[int] = None):
+        super().__init__(message)
+        self.status_code = status_code
+
+    @property
+    def retryable(self) -> bool:
+        """The service is up but can't serve yet: model still loading or
+        disabled (503), or rate limited (429)."""
+        return self.status_code in (429, 503)
 
 
 class EmbeddingFunc:
-    def __init__(self, embedding_url):
-        self.max_batch_size = 32
-        self.bgm_url = f'{embedding_url}'
+    """Query embeddings from the inference app's BGE-M3 text endpoint.
 
-    def generate_document_embeddings(self, chunks):
-        contents = [v['content'] for v in chunks.values()]
-        batches = [
-            contents[i : i + self.max_batch_size]
-            for i in range(0, len(contents), self.max_batch_size)
-        ]
+    The same model and endpoint embed documents at ingestion
+    (rag_ingestion), so query and chunk vectors are comparable.
+    """
 
-        embeddings = [self.bgm_embedding(batch) for batch in batches]
-        # Flatten embeddings list
-        flat_embeddings = [item for sublist in embeddings for item in sublist]
+    def __init__(self, inference_url: str):
+        self.url = f'{(inference_url or "").rstrip("/")}{TEXT_EMBEDDINGS_PATH}'
 
-        data_list = []
-        for i, (k, v) in enumerate(chunks.items()):
-            data_list.append(
-                KnowledgeBaseEmbeddingObject(
-                    embedding_vector=flat_embeddings,
-                    chunk_text=v['content'],
-                    chunk_index=k,
+    async def embed_query(self, query: str) -> Dict[str, Any]:
+        """BGE-M3 dense and sparse embeddings for one query:
+        {'dense': [...], 'sparse': {'indices': [...], 'values': [...]}}."""
+        try:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(60.0, connect=10.0)
+            ) as client:
+                response = await client.post(
+                    self.url,
+                    json={
+                        'texts': [query],
+                        'return_dense': True,
+                        'return_sparse': True,
+                    },
                 )
+        except httpx.HTTPError as err:
+            raise TextEmbeddingError(
+                f'Could not reach the inference service at {self.url}: {err}'
+            ) from err
+        if response.status_code != 200:
+            raise TextEmbeddingError(
+                f'Inference service returned {response.status_code}: {response.text}',
+                status_code=response.status_code,
             )
-        return data_list, flat_embeddings
-
-    def generate_chunk_embeddings(self, chunks):
-        embeddings = [self.bgm_embedding(chunks)]
-        return embeddings
-
-    def bgm_embedding(self, texts):
-        openai_api_key = os.getenv('OPENAI_API_KEY') or ''
-        response = requests.post(
-            self.bgm_url,
-            headers={'Authorization': 'Bearer ' + openai_api_key},
-            json={
-                # 'model': 'BAAI/bge-m3',
-                'model': 'text-embedding-3-small',
-                'input': texts,
-                'encoding_format': 'float',
-            },
-        )
-        res = response.json()
-        return res['data'][0]['embedding']
+        results = (response.json().get('data') or {}).get('response') or []
+        if len(results) != 1 or 'dense' not in results[0] or 'sparse' not in results[0]:
+            raise TextEmbeddingError(
+                f'Unexpected text embedding response: {response.text[:500]}'
+            )
+        return {'dense': results[0]['dense'], 'sparse': results[0]['sparse']}

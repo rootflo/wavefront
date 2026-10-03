@@ -195,3 +195,24 @@ class TestStartup:
             threading.Event().wait(0.01)
         assert provider.status == 'failed'
         assert 'No objects found' in provider.error
+
+
+@pytest.mark.parametrize(
+    ('setup', 'retry_after'),
+    [
+        (lambda p: setattr(p, 'status', TextEmbeddingProvider.LOADING), '10'),
+        (lambda p: None, None),
+        (lambda p: p.load(lambda: (_ for _ in ()).throw(OSError('no weights'))), None),
+    ],
+)
+def test_retry_after_is_sent_only_while_the_model_loads(setup, retry_after):
+    # Clients (rag_ingestion) honour it, so they wait out a loading model; a
+    # disabled or failed model won't recover by waiting.
+    provider = TextEmbeddingProvider()
+    setup(provider)
+
+    for client in make_client(provider):
+        response = client.post(URL, json={'texts': ['a']})
+
+    assert response.status_code == 503
+    assert response.headers.get('retry-after') == retry_after

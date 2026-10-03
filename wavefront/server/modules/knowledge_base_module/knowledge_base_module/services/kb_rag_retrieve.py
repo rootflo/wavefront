@@ -23,9 +23,9 @@ class KBRagResponse:
         knowledge_base_embeddings_repository: SQLAlchemyRepository[
             KnowledgeBaseEmbeddings
         ],
-        embedding_url,
+        inference_url,
     ):
-        self.embedding = EmbeddingFunc(embedding_url)
+        self.embedding = EmbeddingFunc(inference_url)
         self.knowledge_base_documents_repository = knowledge_base_documents_repository
         self.knowledge_base_embeddings_repository = knowledge_base_embeddings_repository
         self.logger = logging.getLogger(__name__)
@@ -77,17 +77,19 @@ class KBRagResponse:
         if not isinstance(query, str):
             raise ValueError('Query must be in string format')
 
-        query_embeddings = self.embedding.generate_chunk_embeddings([query])
+        query_embedding = await self.embedding.embed_query(query)
+        # Explicit None checks, so threshold=0 or a weight of 0 is honoured
+        # rather than replaced by the default.
         params = {
-            'threshold': threshold or 0.2,
-            'vector_weight': vector_weight or 0.7,
-            'keyword_weight': keyword_weight or 0.3,
+            'threshold': 0.2 if threshold is None else threshold,
+            'vector_weight': 0.7 if vector_weight is None else vector_weight,
+            'keyword_weight': 0.3 if keyword_weight is None else keyword_weight,
             'kb_id': kb_id,
         }
 
         reranked_docs = await self.combined_search_with_reranking(
-            query,
-            query_embeddings,
+            query_embedding['dense'],
+            query_embedding['sparse'],
             params,
             query_filter,
             offset,
@@ -111,8 +113,8 @@ class KBRagResponse:
 
     async def combined_search_with_reranking(
         self,
-        query: str,
-        query_embeddings: str,
+        query_dense: list,
+        query_sparse: dict,
         params: dict,
         filter: str,
         offset: Optional[int] = None,
@@ -129,12 +131,12 @@ class KBRagResponse:
         created_at_end=None,
     ) -> list:
         """
-        Perform combined vector and keyword search with reranking in a single SQL query,
-        filtered by knowledge base ID.
+        Hybrid BGE-M3 dense + sparse search in a single SQL query, filtered by
+        knowledge base ID (see QueryGenerator.get_combined_search_query).
 
         Args:
-            query: The search query text
-            query_embeddings: The vector embeddings of the query
+            query_dense: The query's BGE-M3 dense vector
+            query_sparse: The query's BGE-M3 sparse vector, {indices, values}
             params: Dictionary containing query parameters
 
         Returns:
@@ -149,8 +151,8 @@ class KBRagResponse:
 
             # Get and execute the combined search query
             sql_query, query_params = self.query_generator.get_combined_search_query(
-                query,
-                query_embeddings,
+                query_dense,
+                query_sparse,
                 params,
                 filter,
                 offset,
@@ -166,10 +168,18 @@ class KBRagResponse:
                 created_at_start,
                 created_at_end,
             )
+            # Sets hnsw.ef_search and iterative scans for this query, so the
+            # KB/filter conditions (applied after the HNSW scan) don't leave
+            # the candidate searches short -- pgvector otherwise stops at 40
+            # candidates across the whole table.
+            ef_search = self.query_generator.compute_ef_search(
+                query_params['candidate_limit']
+            )
             retrieved_docs = (
                 await self.knowledge_base_embeddings_repository.execute_query(
                     sql_query,
                     query_params,
+                    ef_search=ef_search,
                 )
             )
             return retrieved_docs

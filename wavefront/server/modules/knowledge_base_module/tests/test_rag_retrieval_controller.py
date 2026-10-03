@@ -688,3 +688,237 @@ async def test_store_embeddings_vector_size_mismatch(
         response_data['meta']['error']
         == "The vector size on the embedding doesn't match the required embedding vector size"
     )
+
+
+def test_legacy_retrieve_endpoint_is_removed(test_client, auth_token):
+    # Replaced by /v1/knowledge-base/{kb_id}/retrieve
+    response = test_client.post(
+        '/floware/v1/retrieve',
+        headers={'Authorization': f'Bearer {auth_token}'},
+        json={'query': 'q', 'kb_id': str(uuid4())},
+    )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+# --- result count: limit overrides top_k, default 10, for every mode ---------
+
+
+async def _seed_kb(test_session, test_user_id, test_session_id):
+    await create_session(test_session, test_user_id, test_session_id)
+    kb_id = uuid4()
+    async with test_session() as session:
+        session.add(
+            KnowledgeBase(
+                id=kb_id,
+                name='Result count KB',
+                description='',
+                type='document',
+                vector_size=1024,
+            )
+        )
+        await session.commit()
+    return kb_id
+
+
+def _mock_retrieval(kb_container):
+    text = AsyncMock()
+    text.retrieve_documents.return_value = [{'doc': 'text doc'}]
+    image = AsyncMock()
+    image.retrieve_images.return_value = [{'doc': 'image doc'}]
+    kb_container.knowledge_base_retrieve.override(providers.Singleton(lambda: text))
+    kb_container.image_knowledge_base_retrieve.override(
+        providers.Singleton(lambda: image)
+    )
+    return text, image
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ('params', 'expected'),
+    [({'top_k': 3}, 3), ({'limit': 4}, 4), ({'top_k': 3, 'limit': 7}, 7), ({}, 10)],
+)
+async def test_text_search_result_count(
+    test_client,
+    auth_token,
+    test_session,
+    test_user_id,
+    test_session_id,
+    setup_containers,
+    params,
+    expected,
+):
+    kb_id = await _seed_kb(test_session, test_user_id, test_session_id)
+    text, _ = _mock_retrieval(setup_containers[3])
+
+    response = test_client.post(
+        f'/floware/v1/knowledge-base/{kb_id}/retrieve',
+        headers={'Authorization': f'Bearer {auth_token}'},
+        params={'query': 'hello', **params},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    # retrieve_documents(query, kb_id, threshold, vector_weight,
+    #                    keyword_weight, query_filter, offset, limit, ...)
+    assert text.retrieve_documents.await_args.args[7] == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ('params', 'expected'),
+    [({'top_k': 3}, 3), ({'limit': 4}, 4), ({'top_k': 3, 'limit': 7}, 7), ({}, 10)],
+)
+async def test_image_search_result_count(
+    test_client,
+    auth_token,
+    test_session,
+    test_user_id,
+    test_session_id,
+    setup_containers,
+    params,
+    expected,
+):
+    kb_id = await _seed_kb(test_session, test_user_id, test_session_id)
+    _, image = _mock_retrieval(setup_containers[3])
+
+    response = test_client.post(
+        f'/floware/v1/knowledge-base/{kb_id}/retrieve',
+        headers={'Authorization': f'Bearer {auth_token}'},
+        params=params,
+        json={'image_data': 'base64-image-data'},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    # retrieve_images(image_data, inference_url, kb_id, top_k, ...)
+    assert image.retrieve_images.await_args.args[3] == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('params', [{'top_k': 0}, {'limit': 0}, {'top_k': -5}])
+async def test_non_positive_result_counts_are_rejected(
+    test_client,
+    auth_token,
+    test_session,
+    test_user_id,
+    test_session_id,
+    setup_containers,
+    params,
+):
+    kb_id = await _seed_kb(test_session, test_user_id, test_session_id)
+    text, _ = _mock_retrieval(setup_containers[3])
+
+    response = test_client.post(
+        f'/floware/v1/knowledge-base/{kb_id}/retrieve',
+        headers={'Authorization': f'Bearer {auth_token}'},
+        params={'query': 'hello', **params},
+    )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    text.retrieve_documents.assert_not_awaited()
+
+
+def test_image_queries_no_longer_receive_a_missing_top_k():
+    # The CLIP-only/DINO-only image queries did int(params.get('top_k', 10)),
+    # which crashed on top_k=None; the controller now always passes a number.
+    from knowledge_base_module.controllers.rag_retreival_controller import (
+        _result_limit,
+    )
+
+    assert _result_limit(None, None) == 10
+    assert _result_limit(5, None) == 5
+    assert _result_limit(5, 2) == 2
+
+
+# --- query embedding failures map to 503 / 502 --------------------------------
+
+from knowledge_base_module.embeddings.embed import TextEmbeddingError  # noqa: E402
+
+EMBEDDING_FAILURES = [
+    (TextEmbeddingError('model still loading', status_code=503), 503),
+    (TextEmbeddingError('rate limited', status_code=429), 503),
+    (TextEmbeddingError('inference crashed', status_code=500), 502),
+    (TextEmbeddingError('connection refused'), 502),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(('error', 'expected_status'), EMBEDDING_FAILURES)
+async def test_retrieve_maps_embedding_failures(
+    test_client,
+    auth_token,
+    test_session,
+    test_user_id,
+    test_session_id,
+    setup_containers,
+    error,
+    expected_status,
+):
+    kb_id = await _seed_kb(test_session, test_user_id, test_session_id)
+    text, _ = _mock_retrieval(setup_containers[3])
+    text.retrieve_documents.side_effect = error
+
+    response = test_client.post(
+        f'/floware/v1/knowledge-base/{kb_id}/retrieve',
+        headers={'Authorization': f'Bearer {auth_token}'},
+        params={'query': 'hello'},
+    )
+
+    assert response.status_code == expected_status
+    assert 'Could not embed the query' in response.json()['meta']['error']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(('error', 'expected_status'), EMBEDDING_FAILURES)
+async def test_augment_maps_embedding_failures(
+    test_client,
+    auth_token,
+    test_session,
+    test_user_id,
+    test_session_id,
+    setup_containers,
+    error,
+    expected_status,
+):
+    await create_session(test_session, test_user_id, test_session_id)
+    kb_id, inference_id, config_id = uuid4(), uuid4(), uuid4()
+    async with test_session() as session:
+        session.add(
+            KnowledgeBase(
+                id=kb_id,
+                name='Augment KB',
+                description='',
+                type='document',
+                vector_size=1024,
+            )
+        )
+        await session.commit()
+        session.add(
+            LlmInferenceConfig(
+                id=config_id,
+                llm_model='gemini-2.5-flash',
+                display_name='cfg',
+                api_key='test-api-key-placeholder',
+                type='gemini',
+                base_url='https://generativelanguage.googleapis.com/',
+            )
+        )
+        await session.commit()
+        session.add(
+            KnowledgeBaseInferences(
+                inference_id=inference_id,
+                knowledge_base_id=kb_id,
+                inference_content={'prompt': 'System prompt'},
+                config_id=config_id,
+            )
+        )
+        await session.commit()
+    text, _ = _mock_retrieval(setup_containers[3])
+    text.query.side_effect = error
+
+    response = test_client.post(
+        f'/floware/v1/knowledge-base/{kb_id}/augment/{inference_id}',
+        headers={'Authorization': f'Bearer {auth_token}'},
+        params={'query': 'hello'},
+    )
+
+    assert response.status_code == expected_status

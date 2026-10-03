@@ -43,7 +43,6 @@ def fake_embed_images(contents: list) -> list:
 def processor():
     with (
         patch.object(kb_storage_processor, 'KBRagStorage'),
-        patch.object(kb_storage_processor, 'EmbeddingFunc'),
         patch.object(kb_storage_processor, 'ImageEmbedding'),
     ):
         processor = KbStorageProcessor(

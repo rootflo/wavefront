@@ -21,11 +21,11 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-09-23T13:13:38.554401Z"
+exclude-newer = "2026-09-25T14:49:25.340531Z"
 exclude-newer-span = "P7D"
 
 [options.exclude-newer-package]
-flo-ai = { timestamp = "2026-09-30T13:13:38.554418Z", span = "PT0S" }
+flo-ai = { timestamp = "2026-10-02T14:49:25.340549Z", span = "PT0S" }
 
 [manifest]
 members = [
@@ -5768,6 +5768,7 @@ source = { editable = "background_jobs/rag_ingestion" }
 dependencies = [
     { name = "accelerate" },
     { name = "asyncpg" },
+    { name = "charset-normalizer" },
     { name = "db-repo-module" },
     { name = "flo-cloud" },
     { name = "flo-utils" },
@@ -5784,6 +5785,7 @@ dependencies = [
 requires-dist = [
     { name = "accelerate", specifier = ">=0.33.0,<1.0.0" },
     { name = "asyncpg", specifier = ">=0.30.0" },
+    { name = "charset-normalizer", specifier = ">=3.4.0" },
     { name = "db-repo-module", editable = "modules/db_repo_module" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "flo-utils", editable = "packages/flo_utils" },

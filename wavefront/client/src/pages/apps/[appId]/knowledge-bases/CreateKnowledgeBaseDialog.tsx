@@ -17,6 +17,10 @@ import React, { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
+// Text knowledge bases are embedded with BGE-M3, whose dense vectors are
+// 1024-dim; the server rejects text documents for any other vector_size.
+const TEXT_EMBEDDING_DIM = 1024;
+
 const createKnowledgeBaseSchema = z.object({
   name: z.string().min(1, 'Knowledge base name is required'),
   type: z.string().min(1, 'Type is required'),
@@ -48,7 +52,7 @@ const CreateKnowledgeBaseDialog: React.FC<CreateKnowledgeBaseDialogProps> = ({
       name: '',
       type: '',
       description: '',
-      vector_size: 1536,
+      vector_size: TEXT_EMBEDDING_DIM,
     },
   });
 
@@ -59,7 +63,7 @@ const CreateKnowledgeBaseDialog: React.FC<CreateKnowledgeBaseDialogProps> = ({
         name: '',
         type: '',
         description: '',
-        vector_size: 1536,
+        vector_size: TEXT_EMBEDDING_DIM,
       });
     }
   }, [isOpen, form]);
@@ -166,7 +170,7 @@ const CreateKnowledgeBaseDialog: React.FC<CreateKnowledgeBaseDialogProps> = ({
                   <FormControl>
                     <Input
                       type="number"
-                      placeholder="e.g., 1536"
+                      placeholder="e.g., 1024"
                       {...field}
                       onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
                       value={field.value || ''}
