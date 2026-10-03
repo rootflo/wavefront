@@ -3,4 +3,8 @@ export interface FailedInferenceRecovery<T> {
   clearAttachments: boolean;
 }
 
-export function recoverFailedInference<T>(historyBeforeRequest: T[], errorMessage?: string): FailedInferenceRecovery<T>;
+export function recoverFailedInference<T>(
+  historyBeforeRequest: T[],
+  errorMessage?: string,
+  inputBeforeRequest?: string
+): FailedInferenceRecovery<T> & { input: string };

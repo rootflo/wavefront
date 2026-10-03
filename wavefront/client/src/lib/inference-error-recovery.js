@@ -8,11 +8,13 @@ const INVALID_FILE_FORMAT = /invalid file format/i;
  * @template T
  * @param {T[]} historyBeforeRequest
  * @param {string | undefined} errorMessage
- * @returns {{ history: T[]; clearAttachments: boolean }}
+ * @param {string} inputBeforeRequest
+ * @returns {{ history: T[]; input: string; clearAttachments: boolean }}
  */
-export function recoverFailedInference(historyBeforeRequest, errorMessage) {
+export function recoverFailedInference(historyBeforeRequest, errorMessage, inputBeforeRequest = '') {
   return {
     history: historyBeforeRequest,
+    input: inputBeforeRequest,
     clearAttachments: typeof errorMessage === 'string' && INVALID_FILE_FORMAT.test(errorMessage),
   };
 }

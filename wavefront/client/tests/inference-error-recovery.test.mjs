@@ -11,10 +11,11 @@ test('a failed request rolls optimistic messages back to the prior chat history'
     { role: 'user', content: 'Hello' },
   ];
 
-  const recovery = recoverFailedInference(previousHistory, 'Request failed');
+  const recovery = recoverFailedInference(previousHistory, 'Request failed', 'retry me');
 
   assert.deepEqual(rejectedHistory.slice(0, recovery.history.length), recovery.history);
   assert.deepEqual(recovery.history, previousHistory);
+  assert.equal(recovery.input, 'retry me');
   assert.equal(recovery.clearAttachments, false);
 });
 

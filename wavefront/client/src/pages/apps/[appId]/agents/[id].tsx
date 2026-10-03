@@ -137,7 +137,8 @@ const AgentDetail: React.FC = () => {
 
   const handleQuestionEntered = () => {
     if (inferenceInput.trim().length > 0) {
-      handleRunInference();
+      const submittedInput = inferenceInput;
+      handleRunInference(submittedInput);
       setInferenceInput('');
       requestAnimationFrame(() => {
         setTimeout(() => scrollToBottom('message-container', 'smooth'), 150);
@@ -396,12 +397,12 @@ const AgentDetail: React.FC = () => {
     });
   };
 
-  const handleRunInference = async () => {
+  const handleRunInference = async (inputBeforeRequest = inferenceInput) => {
     // Validate input: require either text input, uploaded image, uploaded document(s), or selected tools
     if (
       !appId ||
       !id ||
-      (!inferenceInput.trim() &&
+      (!inputBeforeRequest.trim() &&
         uploadedImages.length === 0 &&
         uploadedDocuments.length === 0 &&
         selectedTools.length === 0)
@@ -427,7 +428,7 @@ const AgentDetail: React.FC = () => {
       // Prepare inputs based on what's provided
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let inputs: string | any[];
-      const finalTextInput = inferenceInput.trim();
+      const finalTextInput = inputBeforeRequest.trim();
       // Handle different input combinations
       const conversationInputs: Array<{ role: string; content: ChatMessageContent }> = [];
 
@@ -519,13 +520,14 @@ const AgentDetail: React.FC = () => {
     } catch (error) {
       console.error('Error running inference:', error);
       const errorMessage = extractErrorMessage(error);
-      const recovery = recoverFailedInference(historyBeforeRequest, errorMessage);
+      const recovery = recoverFailedInference(historyBeforeRequest, errorMessage, inputBeforeRequest);
       setChatHistory(recovery.history);
+      setInferenceInput(recovery.input);
       if (recovery.clearAttachments) {
         setUploadedImages([]);
         setUploadedDocuments([]);
-        if (errorMessage) notifyError(errorMessage);
       }
+      if (errorMessage) notifyError(errorMessage);
     } finally {
       setRunningInference(false);
     }
