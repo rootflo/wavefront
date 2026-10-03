@@ -316,7 +316,7 @@ const ChatBot = ({
             accept={IMAGE_ACCEPT_ATTRIBUTE}
             onChange={handleImageUpload}
             className="hidden"
-            disabled={uploadingImage}
+            disabled={uploadingImage || runningInference}
             multiple
           />
           <input
@@ -325,7 +325,7 @@ const ChatBot = ({
             accept={DOCUMENT_ACCEPT_ATTRIBUTE}
             onChange={handleDocumentUpload}
             className="hidden"
-            disabled={uploadingDocument}
+            disabled={uploadingDocument || runningInference}
             multiple
           />
           {showVariablesInput && (
@@ -375,7 +375,10 @@ const ChatBot = ({
               open={showUploadMenu}
               onOpenChange={setShowUploadMenu}
             >
-              <SelectTrigger className="frost-text inline-flex cursor-pointer rounded-md border-0 bg-transparent text-sm font-medium whitespace-nowrap shadow-none ring-0 transition-all outline-none focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 [&>span]:hidden [&>svg:last-child]:hidden">
+              <SelectTrigger
+                disabled={runningInference}
+                className="frost-text inline-flex cursor-pointer rounded-md border-0 bg-transparent text-sm font-medium whitespace-nowrap shadow-none ring-0 transition-all outline-none focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 [&>span]:hidden [&>svg:last-child]:hidden"
+              >
                 <Plus />
               </SelectTrigger>
               <SelectContent>
@@ -391,6 +394,7 @@ const ChatBot = ({
               <Textarea
                 value={inferenceInput}
                 onChange={(e) => setInferenceInput(e.target.value)}
+                disabled={runningInference}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
@@ -404,6 +408,7 @@ const ChatBot = ({
               <button
                 type="button"
                 onClick={handleQuestionEntered}
+                disabled={runningInference}
                 className="bg-brand hover:bg-brand-hover h-max w-max rounded-full p-2 text-white"
               >
                 <svg className="h-4 w-4 rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">

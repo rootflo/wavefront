@@ -56,6 +56,7 @@ const AgentDetail: React.FC = () => {
   const [inferenceInput, setInferenceInput] = useState('');
   const [inferenceVariables, setInferenceVariables] = useState('{}');
   const [runningInference, setRunningInference] = useState(false);
+  const inferenceInFlightRef = useRef(false);
 
   // LLM Config selection state
   const [selectedLLMConfigId, setSelectedLLMConfigId] = useState<string>('');
@@ -398,6 +399,7 @@ const AgentDetail: React.FC = () => {
   };
 
   const handleRunInference = async (inputBeforeRequest = inferenceInput) => {
+    if (inferenceInFlightRef.current) return;
     // Validate input: require either text input, uploaded image, uploaded document(s), or selected tools
     if (
       !appId ||
@@ -411,6 +413,7 @@ const AgentDetail: React.FC = () => {
       return;
     }
 
+    inferenceInFlightRef.current = true;
     const historyBeforeRequest = chatHistory;
     setRunningInference(true);
     try {
@@ -420,6 +423,7 @@ const AgentDetail: React.FC = () => {
           variables = JSON.parse(inferenceVariables);
         } catch {
           notifyError('Invalid JSON in variables field');
+          inferenceInFlightRef.current = false;
           setRunningInference(false);
           return;
         }
@@ -547,6 +551,7 @@ const AgentDetail: React.FC = () => {
       }
       if (errorMessage) notifyError(errorMessage);
     } finally {
+      inferenceInFlightRef.current = false;
       setRunningInference(false);
     }
   };
