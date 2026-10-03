@@ -31,7 +31,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router';
 import EditAgentDialog from './EditAgentDialog';
 import { extractErrorMessage, formatAppName } from '@app/lib/utils';
-import { recoverFailedInference } from '@app/lib/inference-error-recovery.js';
+import { recoverFailedInference, runInferenceWithRecovery } from '@app/lib/inference-error-recovery.js';
 
 const AgentDetail: React.FC = () => {
   const { app: appId, id } = useParams<{ app: string; id: string }>();
@@ -498,14 +498,32 @@ const AgentDetail: React.FC = () => {
           },
         ];
       }
-      const result = await floConsoleService.agentService.runInference(
-        id,
-        inputs,
-        variables,
-        selectedLLMConfigId || undefined,
-        selectedTools.length > 0 ? selectedTools.map((tool) => tool.value) : undefined,
-        selectedVersion
+      const inferenceResult = await runInferenceWithRecovery(
+        () =>
+          floConsoleService.agentService.runInference(
+            id,
+            inputs,
+            variables,
+            selectedLLMConfigId || undefined,
+            selectedTools.length > 0 ? selectedTools.map((tool) => tool.value) : undefined,
+            selectedVersion
+          ),
+        {
+          historyBeforeRequest,
+          inputBeforeRequest,
+          getErrorMessage: extractErrorMessage,
+          setChatHistory,
+          setInferenceInput,
+          clearUploadedImages: () => setUploadedImages([]),
+          clearUploadedDocuments: () => setUploadedDocuments([]),
+          notifyError,
+        }
       );
+      if (!inferenceResult.success) {
+        console.error('Error running inference:', inferenceResult.error);
+        return;
+      }
+      const result = inferenceResult.value;
       const responseData = (result as { data?: { data?: { data?: { result?: string | object } } } }).data?.data?.data;
       const agentResponse =
         typeof responseData?.result === 'string' ? responseData.result : JSON.stringify(responseData?.result, null, 2);
