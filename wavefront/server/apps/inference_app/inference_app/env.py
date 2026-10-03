@@ -34,3 +34,8 @@ MAX_TEXT_EMBEDDING_BATCH_SIZE = int(os.getenv('MAX_TEXT_EMBEDDING_BATCH_SIZE', '
 # Tokens per text; longer texts are truncated. BGE-M3 accepts up to 8192, but
 # attention cost grows quadratically, which is slow on CPU.
 MAX_TEXT_EMBEDDING_TOKENS = int(os.getenv('MAX_TEXT_EMBEDDING_TOKENS', '512'))
+
+# Serve mock embeddings instead of the real models: "auto" (default) does so
+# only when torch isn't installed -- i.e. on Intel Macs, where PyTorch has no
+# build at the supported version -- "true" forces mock mode, "false" never.
+INFERENCE_MOCK_MODELS = os.getenv('INFERENCE_MOCK_MODELS', 'auto').strip().lower()

@@ -8,8 +8,6 @@ import base64
 
 import pytest
 
-pytest.importorskip('torch')
-
 from dependency_injector import providers  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 

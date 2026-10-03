@@ -1,6 +1,7 @@
 import base64
 import binascii
 import math
+from typing import TYPE_CHECKING
 
 from common_module.common_container import CommonContainer
 from common_module.response_formatter import ResponseFormatter
@@ -10,11 +11,14 @@ from fastapi.responses import JSONResponse
 from inference_app.env import MAX_EMBEDDING_BATCH_SIZE, MAX_TEXT_EMBEDDING_BATCH_SIZE
 from inference_app.inference_app_container import InferenceAppContainer
 from inference_app.rate_limiter import SlidingWindowRateLimiter
-from inference_app.service.image_embedding import ImageEmbedding
-from inference_app.service.text_embedding import (
+from inference_app.service.text_embedding_provider import (
     TextEmbeddingProvider,
     TextEmbeddingUnavailable,
 )
+
+if TYPE_CHECKING:
+    # Annotation only: the real model needs torch, which mock mode runs without
+    from inference_app.service.image_embedding import ImageEmbedding
 from pydantic import BaseModel
 
 
@@ -64,7 +68,7 @@ def image_embedding(
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
     ),
-    image_embedding_service: ImageEmbedding = Depends(
+    image_embedding_service: 'ImageEmbedding' = Depends(
         Provide[InferenceAppContainer.image_embedding]
     ),
 ):
@@ -103,7 +107,7 @@ def image_embedding_batch(
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
     ),
-    image_embedding_service: ImageEmbedding = Depends(
+    image_embedding_service: 'ImageEmbedding' = Depends(
         Provide[InferenceAppContainer.image_embedding]
     ),
 ):

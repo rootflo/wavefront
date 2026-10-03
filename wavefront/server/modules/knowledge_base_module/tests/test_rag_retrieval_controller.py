@@ -24,7 +24,7 @@ async def test_retrieve_query_success(
             id=kb_id,
             name='Test KB for Retrieve',
             description='Test Description',
-            type='document',
+            type='text',
             vector_size=1536,
         )
         session.add(new_kb)
@@ -236,7 +236,7 @@ async def test_retrieve_query_no_matching_documents(
             id=kb_id,
             name='Test KB for No Docs',
             description='Test Description',
-            type='document',
+            type='text',
             vector_size=1536,
         )
         session.add(new_kb)
@@ -290,7 +290,7 @@ async def test_rag_response_with_query_success(
             id=kb_id,
             name='Test KB RAG Query',
             description='Test Description',
-            type='document',
+            type='text',
             vector_size=1536,
         )
         llm_config = LlmInferenceConfig(
@@ -339,7 +339,7 @@ async def test_rag_response_empty_query(
             id=kb_id,
             name='Test KB RAG Query',
             description='Test Description',
-            type='document',
+            type='text',
             vector_size=1536,
         )
         llm_config = LlmInferenceConfig(
@@ -411,7 +411,7 @@ async def test_rag_response_inference_not_found(
             id=kb_id,
             name='Test KB RAG No Inference',
             description='Test Description',
-            type='document',
+            type='text',
             vector_size=1536,
         )
         session.add(new_kb)
@@ -448,7 +448,7 @@ async def test_create_system_prompt_success(
             id=kb_id,
             name='Test KB RAG Query',
             description='Test Description',
-            type='document',
+            type='text',
             vector_size=1536,
         )
         llm_config = LlmInferenceConfig(
@@ -501,7 +501,7 @@ async def test_get_system_prompt_success(
             id=kb_id,
             name='Test KB Get Prompt',
             description='Test Description',
-            type='document',
+            type='text',
             vector_size=1536,
         )
         session.add(new_kb)
@@ -539,7 +539,7 @@ async def test_get_system_prompt_no_prompt_found(
             id=kb_id,
             name='Test KB Get No Prompt',
             description='Test Description',
-            type='document',
+            type='text',
             vector_size=1536,
         )
         session.add(new_kb)
@@ -569,9 +569,8 @@ async def test_store_embeddings_success(
             id=kb_id,
             name='Test KB Embeddings',
             description='Test Description',
-            type='document',
-            vector_size=3,
-            vector_size_1=0,
+            type='text',
+            vector_size=1024,
         )
         session.add(new_kb)
         await session.commit()
@@ -587,7 +586,7 @@ async def test_store_embeddings_success(
         await session.commit()
 
     embedding_payload = {
-        'embedding_vector': [[0.1, 0.2, 0.3]],
+        'text_embedding': [[0.1] * 1024],  # BGE-M3 dense
         'document_id': str(doc_id),
         'kb_id': str(kb_id),
         'chunk_text': ['chunk 1'],
@@ -659,15 +658,14 @@ async def test_store_embeddings_vector_size_mismatch(
             id=kb_id,
             name='Test KB Vector Size Mismatch',
             description='Test Description',
-            type='document',
-            vector_size=10,
-            vector_size_1=0,
+            type='text',
+            vector_size=1024,
         )
         session.add(new_kb)
         await session.commit()
 
     embedding_payload = {
-        'embedding_vector': [[0.1, 0.2, 0.3]],  # Incorrect size
+        'text_embedding': [[0.1, 0.2, 0.3]],  # Incorrect size (BGE-M3 is 1024)
         'document_id': str(doc_id),
         'kb_id': str(kb_id),
         'chunk_text': ['chunk 1'],
@@ -713,7 +711,7 @@ async def _seed_kb(test_session, test_user_id, test_session_id):
                 id=kb_id,
                 name='Result count KB',
                 description='',
-                type='document',
+                type='text',
                 vector_size=1024,
             )
         )
@@ -887,7 +885,7 @@ async def test_augment_maps_embedding_failures(
                 id=kb_id,
                 name='Augment KB',
                 description='',
-                type='document',
+                type='text',
                 vector_size=1024,
             )
         )

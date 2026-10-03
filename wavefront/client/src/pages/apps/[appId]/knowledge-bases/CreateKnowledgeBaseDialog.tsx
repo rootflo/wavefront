@@ -1,5 +1,5 @@
 import floConsoleService from '@app/api';
-import { NewKnowledgeBasePayload } from '@app/api/knowledge-base-service';
+import { KNOWLEDGE_BASE_TYPES, NewKnowledgeBasePayload } from '@app/api/knowledge-base-service';
 import { Button } from '@app/components/ui/button';
 import {
   Dialog,
@@ -11,21 +11,17 @@ import {
 } from '@app/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
 import React, { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
-// Text knowledge bases are embedded with BGE-M3, whose dense vectors are
-// 1024-dim; the server rejects text documents for any other vector_size.
-const TEXT_EMBEDDING_DIM = 1024;
-
 const createKnowledgeBaseSchema = z.object({
   name: z.string().min(1, 'Knowledge base name is required'),
-  type: z.string().min(1, 'Type is required'),
+  type: z.enum(['text', 'image'], { message: 'Type is required' }),
   description: z.string().optional(),
-  vector_size: z.number().min(1, 'Vector size must be at least 1'),
 });
 
 type CreateKnowledgeBaseInput = z.infer<typeof createKnowledgeBaseSchema>;
@@ -50,9 +46,8 @@ const CreateKnowledgeBaseDialog: React.FC<CreateKnowledgeBaseDialogProps> = ({
     resolver: zodResolver(createKnowledgeBaseSchema),
     defaultValues: {
       name: '',
-      type: '',
+      type: 'text',
       description: '',
-      vector_size: TEXT_EMBEDDING_DIM,
     },
   });
 
@@ -61,9 +56,8 @@ const CreateKnowledgeBaseDialog: React.FC<CreateKnowledgeBaseDialogProps> = ({
     if (!isOpen) {
       form.reset({
         name: '',
-        type: '',
+        type: 'text',
         description: '',
-        vector_size: TEXT_EMBEDDING_DIM,
       });
     }
   }, [isOpen, form]);
@@ -78,8 +72,7 @@ const CreateKnowledgeBaseDialog: React.FC<CreateKnowledgeBaseDialogProps> = ({
       const payload: NewKnowledgeBasePayload = {
         name: data.name.trim(),
         description: data.description?.trim() || '',
-        type: data.type.trim(),
-        vector_size: data.vector_size,
+        type: data.type,
       };
 
       const response = await floConsoleService.knowledgeBaseService.createKnowledgeBase(payload);
@@ -131,9 +124,24 @@ const CreateKnowledgeBaseDialog: React.FC<CreateKnowledgeBaseDialogProps> = ({
                     <FormLabel>
                       Type<span className="text-red-500">*</span>
                     </FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g., General" {...field} />
-                    </FormControl>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger className="cursor-pointer">
+                          <SelectValue placeholder="Select a type" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {KNOWLEDGE_BASE_TYPES.map((kbType) => (
+                          <SelectItem key={kbType.value} className="cursor-pointer" value={kbType.value}>
+                            {kbType.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-muted-foreground text-xs">
+                      Accepts {KNOWLEDGE_BASE_TYPES.find((t) => t.value === field.value)?.accepts ?? '—'}. The type
+                      can&apos;t be changed later.
+                    </p>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -152,28 +160,6 @@ const CreateKnowledgeBaseDialog: React.FC<CreateKnowledgeBaseDialogProps> = ({
                       placeholder="A brief description of the knowledge base's purpose"
                       className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex min-h-[80px] w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                       {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="vector_size"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    Vector Size<span className="text-red-500">*</span>
-                  </FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      placeholder="e.g., 1024"
-                      {...field}
-                      onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
-                      value={field.value || ''}
                     />
                   </FormControl>
                   <FormMessage />

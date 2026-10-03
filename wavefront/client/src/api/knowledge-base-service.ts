@@ -1,26 +1,33 @@
 import { IApiResponse } from '@app/lib/axios';
 import { AxiosInstance } from 'axios';
 
+// A knowledge base's type decides its embedding models and the files it
+// accepts; the server sets the vector sizes from it and it can't be changed.
+export type KnowledgeBaseType = 'text' | 'image';
+
+export const KNOWLEDGE_BASE_TYPES: { value: KnowledgeBaseType; label: string; accepts: string }[] = [
+  { value: 'text', label: 'Text', accepts: 'Text (.txt) and PDF files' },
+  { value: 'image', label: 'Image', accepts: 'JPEG, PNG, GIF, WebP, BMP and TIFF images' },
+];
+
 // Interface for creating a new knowledge base
 export interface NewKnowledgeBasePayload {
   name: string;
   description: string;
-  type: string;
-  vector_size: number;
+  type: KnowledgeBaseType;
 }
 
-// Interface for partially updating a knowledge base
+// Interface for partially updating a knowledge base (type is fixed at creation)
 export interface UpdateKnowledgeBasePayload {
   name?: string;
   description?: string;
-  type?: string;
 }
 
 export interface KbData {
   id: string;
   name: string;
   description: string;
-  type: string;
+  type: KnowledgeBaseType;
   created_at: string;
   updated_at: string;
 }

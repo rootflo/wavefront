@@ -26,6 +26,7 @@ from fastapi.params import Depends
 from fastapi.responses import JSONResponse
 from fastapi import Form
 from knowledge_base_module.knowledge_base_container import KnowledgeBaseContainer
+from knowledge_base_module.models.knowledge_base_schema import upload_rejection_reason
 from flo_cloud.message_queue import MessageQueueManager
 from flo_cloud.cloud_storage import CloudStorageManager
 from pydantic import BaseModel
@@ -103,6 +104,15 @@ async def upload_document(
                 content=response_formatter.buildErrorResponse(
                     'Knowledge Base with the given id does not exist'
                 ),
+            )
+
+        # Only files this type of knowledge base can index, checked before
+        # anything is stored or queued.
+        rejection = upload_rejection_reason(existing_kb.type, file.content_type)
+        if rejection:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content=response_formatter.buildErrorResponse(rejection),
             )
 
         # Check for existing document

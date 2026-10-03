@@ -24,10 +24,23 @@ from huggingface_hub import snapshot_download
 # optional (optional)           → the inference app starts without it
 MODELS = [
     {
+        # The repo ships PyTorch weights only as pytorch_model.bin (plus TF and
+        # Flax copies we skip, ~1.2GB); converted to safetensors after download.
         'local_name': 'clip-vit-base-patch32-hf',
         'source': 'hf',
         'repo_id': 'openai/clip-vit-base-patch32',
         'env_var': 'CLIP_VIT_BASE_PATCH32_MODEL_URI',
+        'allow_patterns': [
+            'config.json',
+            'preprocessor_config.json',
+            'pytorch_model.bin',
+            'tokenizer.json',
+            'tokenizer_config.json',
+            'vocab.json',
+            'merges.txt',
+            'special_tokens_map.json',
+        ],
+        'post_process': 'convert_clip_to_safetensors',
     },
     {
         'local_name': 'dinov3-vitl16-hf',
@@ -107,22 +120,21 @@ def _post_process(model: dict, dest: Path) -> None:
         POST_PROCESS_STEPS[step](dest)
 
 
-def convert_bge_m3_to_safetensors(model_dir: Path) -> None:
-    """Convert BGE-M3's pickled weights to safetensors and drop the pickles.
+def convert_to_safetensors(model_dir: Path, conversions) -> None:
+    """Convert pickled PyTorch weights to safetensors and drop the pickles.
 
-    BAAI/bge-m3 ships only pytorch_model.bin. transformers refuses to load
-    .bin checkpoints on torch < 2.6 (CVE-2025-32434), and the inference app
-    loads safetensors only, so nothing in a synced model directory is ever
-    unpickled. Converting here uses torch.load(weights_only=True), which only
-    reconstructs tensors. Idempotent: does nothing once converted.
+    transformers refuses to load .bin checkpoints on torch < 2.6
+    (CVE-2025-32434) -- the Intel Mac build is 2.2.2 -- and safetensors are
+    never unpickled when loaded. Converting here uses
+    torch.load(weights_only=True), which only reconstructs tensors.
+    Idempotent: does nothing for files already converted.
+
+    Args:
+        conversions: (source, target) file names inside model_dir.
     """
     import torch
     from safetensors.torch import save_file
 
-    conversions = [
-        ('pytorch_model.bin', 'model.safetensors'),
-        ('sparse_linear.pt', 'sparse_linear.safetensors'),
-    ]
     for source_name, target_name in conversions:
         source, target = model_dir / source_name, model_dir / target_name
         if target.exists():
@@ -144,7 +156,29 @@ def convert_bge_m3_to_safetensors(model_dir: Path) -> None:
         source.unlink()
 
 
+def convert_clip_to_safetensors(model_dir: Path) -> None:
+    """CLIP: convert pytorch_model.bin, and remove the TF / Flax weights a
+    download from before allow_patterns may have left behind."""
+    convert_to_safetensors(model_dir, [('pytorch_model.bin', 'model.safetensors')])
+    for unused in ('tf_model.h5', 'flax_model.msgpack'):
+        if (model_dir / unused).exists():
+            print(f'[cleanup] removing unused {unused}')
+            (model_dir / unused).unlink()
+
+
+def convert_bge_m3_to_safetensors(model_dir: Path) -> None:
+    """BGE-M3: the encoder and its sparse head both ship as pickles."""
+    convert_to_safetensors(
+        model_dir,
+        [
+            ('pytorch_model.bin', 'model.safetensors'),
+            ('sparse_linear.pt', 'sparse_linear.safetensors'),
+        ],
+    )
+
+
 POST_PROCESS_STEPS = {
+    'convert_clip_to_safetensors': convert_clip_to_safetensors,
     'convert_bge_m3_to_safetensors': convert_bge_m3_to_safetensors,
 }
 

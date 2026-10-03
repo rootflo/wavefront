@@ -7,14 +7,12 @@ import threading
 
 import pytest
 
-pytest.importorskip('torch')
-
 from dependency_injector import providers  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from inference_app.controllers import inference_controller  # noqa: E402
 from inference_app.rate_limiter import SlidingWindowRateLimiter  # noqa: E402
-from inference_app.service.text_embedding import TextEmbeddingProvider  # noqa: E402
+from inference_app.service.text_embedding_provider import TextEmbeddingProvider  # noqa: E402
 
 URL = '/inference/v1/query/text-embeddings'
 

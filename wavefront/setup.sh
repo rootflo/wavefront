@@ -292,9 +292,6 @@ setup_rag_env() {
       return
     fi
   fi
-  if is_intel_mac; then
-    warn "The inference app is skipped on Intel Macs, so embedding documents will fail"
-  fi
 }
 
 RUN_INFERENCE_APP=0
@@ -317,26 +314,43 @@ inference_models_missing() {
   return 1
 }
 
-# Intel Macs: PyTorch stopped shipping x86_64 macOS wheels after 2.2.2, below the
-# workspace's torch>=2.6 floor, so the inference app cannot run there natively.
-# Checks the hardware, not `uname -m`, which also says x86_64 under Rosetta.
+# Inference runs on CPU (CPU-only torch from the pytorch-cpu index) on Linux and
+# Apple Silicon. Intel Macs have no PyTorch build at the supported version
+# (>= 2.6), so torch isn't installed there and the inference app serves mock
+# embeddings instead: same API and shapes, synthetic vectors, no models to
+# download. Checks the hardware, not `uname -m`, which also says x86_64 under
+# Rosetta.
+INFERENCE_MOCK=0
 is_intel_mac() {
   [[ "$OSTYPE" == darwin* ]] && [[ "$(sysctl -in hw.optional.arm64 2>/dev/null)" != 1 ]]
 }
 
 setup_inference_env() {
   step "Inference app (image embeddings, CLIP + DINOv3; text embeddings, BGE-M3)"
+  local env_file="$INFERENCE_DIR/.env" entry var
+
   if is_intel_mac; then
-    warn "Skipping: torch has no Intel Mac build at the required version (>= 2.6)"
+    echo "  Intel Mac: PyTorch has no build here at the supported version (>= 2.6), so"
+    echo "  the inference app runs in mock mode: the same API returning synthetic"
+    echo "  embeddings, for integration testing. Search results won't be meaningful."
+    echo "  Use Apple Silicon or Linux for real embeddings."
+    if ! confirm "Run the inference app in mock mode?"; then
+      ok "Skipping inference app"
+      return
+    fi
+    RUN_INFERENCE_APP=1
+    INFERENCE_MOCK=1
+    copy_env_file "$INFERENCE_DIR/.env.sample" "$env_file" || true
     return
   fi
+
+  echo "  All three models together need roughly 4-5 GB of free memory."
   if ! confirm "Run the inference app as well? (downloads several GB of models on first run)"; then
     ok "Skipping inference app"
     return
   fi
   RUN_INFERENCE_APP=1
 
-  local env_file="$INFERENCE_DIR/.env" entry var
   copy_env_file "$INFERENCE_DIR/.env.sample" "$env_file" || true
   # Point empty model URIs at the local download folders (machine-specific paths).
   for entry in "${INFERENCE_MODELS[@]}"; do
@@ -670,6 +684,10 @@ start_floware() {
 download_inference_models() {
   (( RUN_INFERENCE_APP )) || return 0
   step "Downloading inference models (scripts/download_models.py)"
+  if (( INFERENCE_MOCK )); then
+    ok "Mock mode: no models to download"
+    return
+  fi
 
   if ! inference_models_missing; then
     ok "Models already downloaded to ${INFERENCE_MODELS_DIR#"$ROOT_DIR"/}"
@@ -688,7 +706,7 @@ download_inference_models() {
 start_inference_app() {
   (( RUN_INFERENCE_APP )) || return 0
   # Loading CLIP + DINOv3 into memory at startup takes a while (BGE-M3 loads in
-  # the background after the app is up).
+  # the background after the app is up). Mock mode starts in seconds.
   start_python_service inference "$INFERENCE_DIR" "$INFERENCE_PORT" "$INFERENCE_HEALTH_URL" 300
 }
 
@@ -821,7 +839,13 @@ print_next_steps() {
   echo "    web client   $CLIENT_URL"
   echo "    floconsole   http://localhost:$FLOCONSOLE_PORT"
   echo "    floware      http://localhost:$FLOWARE_PORT"
-  (( RUN_INFERENCE_APP )) && echo "    inference    http://localhost:$INFERENCE_PORT"
+  if (( RUN_INFERENCE_APP )); then
+    if (( INFERENCE_MOCK )); then
+      echo "    inference    http://localhost:$INFERENCE_PORT  (mock embeddings)"
+    else
+      echo "    inference    http://localhost:$INFERENCE_PORT"
+    fi
+  fi
   (( RUN_CELERY_WORKER )) && echo "    celery       worker on redis://localhost:6379/0"
   (( RUN_RAG_WORKER )) && echo "    rag          worker on the rag-ingestion-queue (LocalStack SQS)"
   echo

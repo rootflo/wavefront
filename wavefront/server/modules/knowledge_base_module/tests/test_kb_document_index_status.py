@@ -53,7 +53,7 @@ async def create_kb(test_session) -> UUID:
                 id=kb_id,
                 name=f'KB {kb_id}',
                 description='index status test',
-                type='document',
+                type='text',
                 vector_size=3,
             )
         )

@@ -13,7 +13,7 @@ from db_repo_module.models.knowledge_base_embeddings import (
     KnowledgeBaseEmbeddings,
 )
 from db_repo_module.models.llm_inference_config import LlmInferenceConfig
-from db_repo_module.models.knowledge_bases import KnowledgeBase
+from db_repo_module.models.knowledge_bases import KnowledgeBase, KnowledgeBaseType
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from dependency_injector.wiring import inject
 from dependency_injector.wiring import Provide
@@ -833,10 +833,13 @@ def _store_rejection_reason(
 def _image_rejection_reason(
     embedding: EmbeddingSchema, kb: KnowledgeBase, chunk_count: int
 ) -> Optional[str]:
-    """A knowledge base with vector_size_1 set (an image KB: CLIP + DINO) needs
-    a second vector for every chunk; one without it must not get one. That
-    catches an image stored into a text KB even when the primary vector sizes
-    happen to match."""
+    """Image documents (CLIP + DINO vectors per chunk) only go into image
+    knowledge bases."""
+    if kb.type != KnowledgeBaseType.IMAGE.value:
+        return (
+            f'Image embeddings can only be stored in an image knowledge base; '
+            f'this one is {kb.type}'
+        )
     if any(len(vector) != kb.vector_size for vector in embedding.embedding_vector):
         return VECTOR_SIZE_MISMATCH_REASON
     second_vectors = embedding.embedding_vector_1 or []
@@ -856,12 +859,12 @@ def _image_rejection_reason(
 def _text_rejection_reason(
     embedding: EmbeddingSchema, kb: KnowledgeBase, chunk_count: int
 ) -> Optional[str]:
-    """Text knowledge bases hold BGE-M3 vectors: vector_size must be the
-    model's dense size and there is no second (image) vector."""
-    if kb.vector_size != TEXT_EMBEDDING_DIM or kb.vector_size_1:
+    """Text documents (BGE-M3 vectors per chunk) only go into text knowledge
+    bases."""
+    if kb.type != KnowledgeBaseType.TEXT.value:
         return (
-            f'The knowledge base is not set up for text: text knowledge bases '
-            f'need vector_size {TEXT_EMBEDDING_DIM} (BGE-M3) and no vector_size_1'
+            f'Text embeddings can only be stored in a text knowledge base; '
+            f'this one is {kb.type}'
         )
     if any(len(vector) != TEXT_EMBEDDING_DIM for vector in embedding.text_embedding):
         return VECTOR_SIZE_MISMATCH_REASON
