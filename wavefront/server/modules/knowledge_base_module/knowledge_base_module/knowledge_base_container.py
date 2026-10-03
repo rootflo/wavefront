@@ -1,8 +1,6 @@
-from db_repo_module.models.kb_inferences import KnowledgeBaseInferences
 from db_repo_module.models.knowledge_base_documents import KnowledgeBaseDocuments
 from db_repo_module.models.knowledge_base_embeddings import KnowledgeBaseEmbeddings
 from db_repo_module.models.knowledge_bases import KnowledgeBase
-from db_repo_module.models.llm_inference_config import LlmInferenceConfig
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from dependency_injector import containers
 from dependency_injector import providers
@@ -46,12 +44,6 @@ class KnowledgeBaseContainer(containers.DeclarativeContainer):
         db_client=ingestion_db_client,
     )
 
-    llm_config_repository = providers.Singleton(
-        SQLAlchemyRepository[LlmInferenceConfig],
-        model=LlmInferenceConfig,
-        db_client=db_client,
-    )
-
     knowledge_base = providers.Singleton(KnowledgeBase)
 
     knowledge_base_retrieve = providers.Singleton(
@@ -64,12 +56,6 @@ class KnowledgeBaseContainer(containers.DeclarativeContainer):
     knowledge_base_embeddings_repository = providers.Singleton(
         SQLAlchemyRepository[KnowledgeBaseEmbeddings],
         model=KnowledgeBaseEmbeddings,
-        db_client=db_client,
-    )
-
-    kb_inference_repository = providers.Singleton(
-        SQLAlchemyRepository[KnowledgeBaseInferences],
-        model=KnowledgeBaseInferences,
         db_client=db_client,
     )
 

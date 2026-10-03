@@ -95,32 +95,6 @@
     "required": [],
     "category": "datasource"
   },
-  "querying_knowlegebase": {
-    "name": "querying_knowlegebase",
-    "description": "Query the knowlegebase using the configured datasource. Returns a descriptive string indicating success or failure with connection details.",
-    "parameters": {
-      "kb_id": {
-        "type": "string",
-        "description": "UUID of the configured BigQuery datasource"
-      },
-      "inference_id": {
-        "type": "string",
-        "description": "UUID of the configured BigQuery datasource"
-      },
-      "question": {
-        "type": "string",
-        "description": "Question to query the knowlegebase"
-      }
-    },
-    "prefill_values": [
-      "kb_id",
-      "inference_id"
-    ],
-    "required": [
-      "question"
-    ],
-    "category": "knowlegebase"
-  },
   "send_email": {
     "name": "send_email",
     "description": "Send an email to the specified recipient from the connected mailbox. Returns a descriptive string indicating success or failure of the email delivery process.",

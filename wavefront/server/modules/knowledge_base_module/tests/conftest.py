@@ -68,7 +68,6 @@ def setup_containers(core_containers):
 
     kb_rag_response = AsyncMock()
     kb_rag_response.retrieve_documents.return_value = [{'doc': 'test doc'}]
-    kb_rag_response.query.return_value = {'response': 'test response'}
     knowledge_base_container.knowledge_base_retrieve.override(
         providers.Singleton(lambda: kb_rag_response)
     )

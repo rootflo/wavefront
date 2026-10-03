@@ -45,10 +45,6 @@ class UpdateKnowledge(BaseModel):
     type: Optional[KnowledgeBaseType] = None
 
 
-class NewInference(BaseModel):
-    prompt: str
-
-
 # Upload content types each knowledge base type accepts: what rag_ingestion's
 # FileProcessor can turn into that type's embeddings.
 ACCEPTED_UPLOAD_TYPES: dict[KnowledgeBaseType, FrozenSet[str]] = {

@@ -4,9 +4,7 @@ import uuid
 
 from db_repo_module.models.knowledge_base_documents import KnowledgeBaseDocuments
 from db_repo_module.models.knowledge_base_embeddings import KnowledgeBaseEmbeddings
-from db_repo_module.models.llm_inference_config import LlmInferenceConfig
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
-from knowledge_base_module.embeddings.llm import LLMModelFunc
 from knowledge_base_module.embeddings.embed import EmbeddingFunc
 from knowledge_base_module.queries.generate_query import QueryGenerator
 from sqlalchemy.exc import SQLAlchemyError
@@ -30,7 +28,6 @@ class KBRagResponse:
         self.knowledge_base_embeddings_repository = knowledge_base_embeddings_repository
         self.logger = logging.getLogger(__name__)
         self.query_generator = QueryGenerator()
-        self.llm_model_func = LLMModelFunc()
         self.reranked_docs = []
 
     async def retrieve_documents(
@@ -189,58 +186,3 @@ class KBRagResponse:
             raise RuntimeError(
                 f'Failed to execute the query for retrieval documents: {e}'
             )
-
-    async def query(
-        self,
-        query: str,
-        kb_id: uuid.UUID,
-        prompt: str,
-        threshold: Optional[float] = None,
-        vector_weight: Optional[float] = None,
-        keyword_weight: Optional[float] = None,
-        model: Optional[str] = 'gemini-2.5-pro',
-        query_filter: Optional[str] = '',
-        offset: Optional[int] = None,
-        limit: Optional[int] = None,
-        llm_config: Optional[LlmInferenceConfig] = None,
-    ):
-        """
-        Rag Response for a specific knowledge base
-
-        Args:
-            query: Text query for search
-            kb_id: Knowledge base ID to filter results
-            threshold: Cosine similarity threshold (default: 0.2)
-            top_k: Number of results to return (default: 10)
-            vector_weight: Weight for vector similarity score (default: 0.7)
-            keyword_weight: Weight for keyword similarity score (default: 0.3)
-            model: Model name (used if llm_config not provided)
-            query_filter: Optional filter query
-            offset: Optional offset for pagination
-            limit: Optional limit for pagination
-            llm_config: Optional LLM inference configuration
-
-        Returns:
-            Rag Response in json or string format
-        """
-        retrieved_docs = await self.retrieve_documents(
-            query,
-            kb_id,
-            threshold,
-            vector_weight,
-            keyword_weight,
-            query_filter,
-            offset,
-            limit,
-        )
-        content = '\n--New Chunk--\n'.join(
-            [data['chunk_text'] for data in retrieved_docs]
-        )
-        sys_prompt = prompt.format(
-            content_data=content,
-        )
-
-        response = await self.llm_model_func.generate_response(
-            query, sys_prompt, model, llm_config
-        )
-        return response
