@@ -30,7 +30,8 @@ import yaml from 'js-yaml';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import EditAgentDialog from './EditAgentDialog';
-import { formatAppName } from '@app/lib/utils';
+import { extractErrorMessage, formatAppName } from '@app/lib/utils';
+import { recoverFailedInference } from '@app/lib/inference-error-recovery.js';
 
 const AgentDetail: React.FC = () => {
   const { app: appId, id } = useParams<{ app: string; id: string }>();
@@ -409,6 +410,7 @@ const AgentDetail: React.FC = () => {
       return;
     }
 
+    const historyBeforeRequest = chatHistory;
     setRunningInference(true);
     try {
       let variables: Record<string, unknown> = {};
@@ -516,6 +518,14 @@ const AgentDetail: React.FC = () => {
       setUploadedImages([]);
     } catch (error) {
       console.error('Error running inference:', error);
+      const errorMessage = extractErrorMessage(error);
+      const recovery = recoverFailedInference(historyBeforeRequest, errorMessage);
+      setChatHistory(recovery.history);
+      if (recovery.clearAttachments) {
+        setUploadedImages([]);
+        setUploadedDocuments([]);
+        if (errorMessage) notifyError(errorMessage);
+      }
     } finally {
       setRunningInference(false);
     }
