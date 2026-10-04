@@ -31,8 +31,8 @@ from inference_app.scripts.download_models import (  # noqa: E402
     MODELS,
     convert_bge_m3_to_safetensors,
 )
-from inference_app.service.text_embedding import (  # noqa: E402
-    TextEmbedding,
+from inference_app.service.text_embedding import TextEmbedding  # noqa: E402
+from inference_app.service.text_embedding_provider import (  # noqa: E402
     TextEmbeddingProvider,
     TextEmbeddingUnavailable,
 )
