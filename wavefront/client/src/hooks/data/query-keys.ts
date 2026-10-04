@@ -45,7 +45,7 @@ const getModelKey = (appId: string, modelId: string) => ['model', appId, modelId
 const getKnowledgeBasesKey = (appId: string) => ['knowledge-bases', appId];
 const getKnowledgeBaseKey = (appId: string, kbId: string) => ['knowledge-base', appId, kbId];
 const getKnowledgeBaseDocumentsKey = (appId: string, kbId: string) => ['knowledge-base-documents', appId, kbId];
-const getKnowledgeBaseInferencesKey = (appId: string, kbId: string) => ['knowledge-base-inferences', appId, kbId];
+const getKnowledgeBaseIndexStatusKey = (appId: string, kbId: string) => ['knowledge-base-index-status', appId, kbId];
 const getWorkflowsKey = (appId: string, namespace?: string) => {
   if (namespace) {
     return ['workflows', appId, namespace];
@@ -119,7 +119,7 @@ export {
   getOAuthAppsKey,
   readDynamicQueryKey,
   getKnowledgeBaseDocumentsKey,
-  getKnowledgeBaseInferencesKey,
+  getKnowledgeBaseIndexStatusKey,
   getKnowledgeBaseKey,
   getKnowledgeBasesKey,
   getGuardrailAdaptersKey,

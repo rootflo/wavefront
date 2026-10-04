@@ -11,7 +11,7 @@ from typing import Callable, List
 import httpx
 import pytest
 
-from rag_ingestion.embeddings import image_embed
+from rag_ingestion.embeddings import image_embed, inference_http
 from rag_ingestion.embeddings.image_embed import ImageEmbedding
 
 BATCH_PATH = '/inference/v1/query/embeddings/batch'
@@ -224,7 +224,7 @@ def test_429_waits_for_retry_after_capped_at_60s(
     make_client, monkeypatch, retry_after, expected_wait
 ):
     sleeps = []
-    monkeypatch.setattr(image_embed.time, 'sleep', sleeps.append)
+    monkeypatch.setattr(inference_http.time, 'sleep', sleeps.append)
     handler, calls = rate_limited_then_ok(retry_after)
     client = make_client(FakeInferenceService())
     client._client = httpx.Client(transport=httpx.MockTransport(handler))

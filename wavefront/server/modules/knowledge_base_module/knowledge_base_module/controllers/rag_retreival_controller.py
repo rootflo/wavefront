@@ -1,14 +1,17 @@
 import base64
 import dataclasses
+import math
 from typing import List, Optional, Tuple
 import uuid
 
 from common_module.common_container import CommonContainer
 from common_module.response_formatter import ResponseFormatter
-from db_repo_module.models.kb_inferences import KnowledgeBaseInferences
-from db_repo_module.models.knowledge_base_embeddings import KnowledgeBaseEmbeddings
-from db_repo_module.models.llm_inference_config import LlmInferenceConfig
-from db_repo_module.models.knowledge_bases import KnowledgeBase
+from db_repo_module.models.knowledge_base_embeddings import (
+    TEXT_EMBEDDING_DIM,
+    TEXT_SPARSE_EMBEDDING_DIM,
+    KnowledgeBaseEmbeddings,
+)
+from db_repo_module.models.knowledge_bases import KnowledgeBase, KnowledgeBaseType
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from dependency_injector.wiring import inject
 from dependency_injector.wiring import Provide
@@ -18,9 +21,7 @@ from fastapi import status
 from fastapi.params import Depends
 from fastapi.responses import JSONResponse
 from knowledge_base_module.knowledge_base_container import KnowledgeBaseContainer
-from knowledge_base_module.models.knowledge_base_schema import (
-    NewInference,
-)
+from knowledge_base_module.embeddings.embed import TextEmbeddingError
 from knowledge_base_module.services.kb_rag_retrieve import KBRagResponse
 from knowledge_base_module.services.image_rag_retrieve import (
     DEFAULT_EXACT_MATCH_MAX_CANDIDATES,
@@ -28,44 +29,34 @@ from knowledge_base_module.services.image_rag_retrieve import (
     ImageRagRetrieve,
 )
 from flo_cloud.cloud_storage import CloudStorageManager
+from pgvector import SparseVector
 from pydantic import BaseModel, Field
 from datetime import datetime
-from sqlalchemy import func
-from sqlalchemy import Result
-from sqlalchemy import select
 
 rag_retrieval_router = APIRouter()
 
 
-class KnowledgeInferenceResponse(BaseModel):
-    """Response model for knowledge base data."""
+class SparseEmbeddingSchema(BaseModel):
+    """A BGE-M3 sparse (lexical) vector: token ids and their weights."""
 
-    inference_id: uuid.UUID
-    knowledge_base_id: uuid.UUID
-    inference_content: dict
-    created_at: datetime
-    updated_at: datetime
-
-
-class RetrieveSchema(BaseModel):
-    """Response model for Retrieve schema."""
-
-    embedding: Optional[List[float]] = None
-    query: str
-    kb_id: uuid.UUID
-    threshold: Optional[float] = None
-    top_k: Optional[int] = None
-    vector_weight: Optional[float] = None
-    keyword_weight: Optional[float] = None
+    indices: List[int]
+    values: List[float]
 
 
 class EmbeddingSchema(BaseModel):
-    """Response model for Embedding vector."""
+    """One document's chunk embeddings.
 
-    embedding_vector: List[List[float]]
+    Image documents send embedding_vector (CLIP) and embedding_vector_1
+    (DINO); text documents send text_embedding (BGE-M3 dense) and, optionally,
+    text_sparse_embedding (BGE-M3 sparse), one entry per chunk.
+    """
+
+    embedding_vector: List[List[float]] = Field(default_factory=list)
     embedding_vector_1: Optional[List[List[float]]] = Field(
         default_factory=lambda: [[]]
     )
+    text_embedding: List[List[float]] = Field(default_factory=list)
+    text_sparse_embedding: List[SparseEmbeddingSchema] = Field(default_factory=list)
     document_id: uuid.UUID
     kb_id: uuid.UUID
     chunk_text: List[str]
@@ -227,6 +218,31 @@ def _resolve_exact_match_candidate_cap(config: dict) -> int:
     return min(configured_cap, EXACT_MATCH_HARD_CEILING)
 
 
+def _embedding_error_response(
+    err: TextEmbeddingError, response_formatter: ResponseFormatter
+) -> JSONResponse:
+    """503 when the inference service is up but can't embed yet (model still
+    loading, disabled, or rate limited), so callers retry; 502 otherwise."""
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE
+        if err.retryable
+        else status.HTTP_502_BAD_GATEWAY,
+        content=response_formatter.buildErrorResponse(
+            f'Could not embed the query: {err}'
+        ),
+    )
+
+
+DEFAULT_TOP_K = 10
+
+
+def _result_limit(top_k: Optional[int], limit: Optional[int]) -> int:
+    """How many results to return: limit if given, else top_k, else the default."""
+    if limit is not None:
+        return limit
+    return top_k if top_k is not None else DEFAULT_TOP_K
+
+
 @rag_retrieval_router.post('/v1/knowledge-base/{kb_id}/retrieve')
 @inject
 async def retrieve_query(
@@ -234,7 +250,9 @@ async def retrieve_query(
     query: Optional[str] = None,
     payload: Optional[ImagePayload] = None,
     threshold: Optional[float] = Query(None, description='Cosine similarity threshold'),
-    top_k: Optional[int] = Query(None, description='Number of results to return'),
+    top_k: Optional[int] = Query(
+        None, ge=1, description=f'Number of results to return (default {DEFAULT_TOP_K})'
+    ),
     vector_weight: Optional[float] = Query(
         None, description='Weight for vector similarity score'
     ),
@@ -243,7 +261,7 @@ async def retrieve_query(
     ),
     offset: Optional[int] = Query(None, description='Number of results to skip'),
     limit: Optional[int] = Query(
-        None, description='Number of results to return (overrides top_k)'
+        None, ge=1, description='Number of results to return (overrides top_k)'
     ),
     query_filter: str | None = Query(None, alias='$filter'),
     exact_match: bool = Query(
@@ -406,6 +424,11 @@ async def retrieve_query(
         )
 
     match_count = None
+    # One result count for every search mode: limit overrides top_k, and both
+    # fall back to DEFAULT_TOP_K. (Text search used to read only limit and
+    # image search only top_k; image search also crashed on a missing top_k.)
+    result_limit = _result_limit(top_k, limit)
+
     if exact_match:
         image_data, error_response = await _resolve_image_data(
             payload, cloud_storage, config, response_formatter
@@ -434,26 +457,29 @@ async def retrieve_query(
         retrieved_docs = convert_uuids_to_str(retrieved_docs)
         match_count = len(retrieved_docs)
     elif query:
-        retrieved_docs = await rag_retrieval.retrieve_documents(
-            query,
-            kb_id,
-            threshold,
-            vector_weight,
-            keyword_weight,
-            query_filter,
-            offset,
-            limit,
-            filter1,
-            filter2,
-            filter3,
-            filter4,
-            filter5,
-            filter6,
-            document_date_start,
-            document_date_end,
-            created_at_start,
-            created_at_end,
-        )
+        try:
+            retrieved_docs = await rag_retrieval.retrieve_documents(
+                query,
+                kb_id,
+                threshold,
+                vector_weight,
+                keyword_weight,
+                query_filter,
+                offset,
+                result_limit,
+                filter1,
+                filter2,
+                filter3,
+                filter4,
+                filter5,
+                filter6,
+                document_date_start,
+                document_date_end,
+                created_at_start,
+                created_at_end,
+            )
+        except TextEmbeddingError as err:
+            return _embedding_error_response(err, response_formatter)
     else:
         image_data, error_response = await _resolve_image_data(
             payload, cloud_storage, config, response_formatter
@@ -465,7 +491,7 @@ async def retrieve_query(
             image_data,
             inference_url,
             kb_id,
-            top_k,
+            result_limit,
             query_filter,
             filter1,
             filter2,
@@ -497,250 +523,13 @@ async def retrieve_query(
     )
 
 
-@rag_retrieval_router.post('/v1/knowledge-base/{kb_id}/augment/{inference_id}')
-@inject
-async def rag_response(
-    kb_id: uuid.UUID,
-    inference_id: uuid.UUID,
-    query: Optional[str] = Query(None, description='rag query to passed'),
-    model: Optional[str] = Query(None, description='model name to be passed'),
-    threshold: Optional[float] = Query(None, description='Cosine similarity threshold'),
-    vector_weight: Optional[float] = Query(
-        None, description='Weight for vector similarity score'
-    ),
-    keyword_weight: Optional[float] = Query(
-        None, description='Weight for keyword similarity score'
-    ),
-    offset: Optional[int] = Query(None, description='Number of results to skip'),
-    limit: Optional[int] = Query(
-        None, description='Number of results to return (overrides top_k)'
-    ),
-    query_filter: str | None = Query(None, alias='$filter'),
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter]
-    ),
-    knowledge_base_repository: SQLAlchemyRepository[KnowledgeBase] = Depends(
-        Provide[KnowledgeBaseContainer.knowledge_base_repository]
-    ),
-    rag_retrieval: KBRagResponse = Depends(
-        Provide[KnowledgeBaseContainer.knowledge_base_retrieve]
-    ),
-    kb_inference_repository: SQLAlchemyRepository[KnowledgeBaseInferences] = Depends(
-        Provide[KnowledgeBaseContainer.kb_inference_repository]
-    ),
-):
-    existing_kb = await knowledge_base_repository.find_one(id=kb_id)
-    if not existing_kb:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(
-                'Knowledge Base with the mentioned id doesnt exist'
-            ),
-        )
-    existing_inference = await kb_inference_repository.find_one(
-        knowledge_base_id=kb_id, inference_id=inference_id
-    )
-    if not existing_inference:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(
-                'Knowledge Base inference with the mentioned knowledge_base_id and inference_id doesnt exist'
-            ),
-        )
-    # Validate query is provided
-    if not query:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(
-                'Query must be provided either in request body or as query parameter'
-            ),
-        )
-
-    # Fetch LLM config if provided
-    llm_config = None
-    llm_inference_config_id = existing_inference.config_id
-    async with kb_inference_repository.session() as session:
-        statement = (
-            select(LlmInferenceConfig)
-            .join(
-                KnowledgeBaseInferences,
-                LlmInferenceConfig.id == KnowledgeBaseInferences.config_id,
-            )
-            .where(LlmInferenceConfig.id == llm_inference_config_id)
-        )
-        result: Result = await session.execute(statement)
-        llm_config_result = result.scalars().first()
-        llm_config_dict = (
-            llm_config_result.to_dict(exclude_api_key=False)
-            if llm_config_result
-            else None
-        )
-
-    if not llm_config_dict:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(
-                f'LLM inference configuration not found: {llm_inference_config_id}'
-            ),
-        )
-    else:
-        llm_config = LlmInferenceConfig(**llm_config_dict)
-
-    prompt = existing_inference.inference_content
-    response = await rag_retrieval.query(
-        query,
-        kb_id,
-        prompt,
-        threshold,
-        vector_weight,
-        keyword_weight,
-        model,
-        query_filter,
-        offset,
-        limit,
-        llm_config,
-    )
-    return JSONResponse(
-        status_code=status.HTTP_200_OK,
-        content=response_formatter.buildSuccessResponse(data={'response': response}),
-    )
-
-
-@rag_retrieval_router.post(
-    '/v1/knowledge-base/{kb_id}/llm_config/{config_id}/inference'
-)
-@inject
-async def create_system_prompt(
-    kb_id: uuid.UUID,
-    config_id: uuid.UUID,
-    inference: NewInference,
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter]
-    ),
-    knowledge_base_repository: SQLAlchemyRepository[KnowledgeBase] = Depends(
-        Provide[KnowledgeBaseContainer.knowledge_base_repository]
-    ),
-    kb_inference_repository: SQLAlchemyRepository[KnowledgeBaseInferences] = Depends(
-        Provide[KnowledgeBaseContainer.kb_inference_repository]
-    ),
-    llm_config_repository: SQLAlchemyRepository[LlmInferenceConfig] = Depends(
-        Provide[KnowledgeBaseContainer.llm_config_repository]
-    ),
-):
-    existing_kb = await knowledge_base_repository.find_one(id=kb_id)
-    if not existing_kb:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(
-                'Knowledge Base with the mentioned id doesnt exist'
-            ),
-        )
-    llm_config = await llm_config_repository.find_one(id=config_id)
-    if not llm_config:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(
-                'LLM config id is not present on llm config table'
-            ),
-        )
-    async with kb_inference_repository.session() as session:
-        new_inference = KnowledgeBaseInferences(
-            knowledge_base_id=kb_id,
-            inference_content=inference.prompt,
-            config_id=config_id,
-        )
-        session.add(new_inference)
-        await session.flush()
-        new_inference_id = new_inference.inference_id
-        await session.commit()
-
-        return JSONResponse(
-            status_code=status.HTTP_200_OK,
-            content=response_formatter.buildSuccessResponse(
-                {
-                    'message': 'Created the knowledge base inference table successfully',
-                    'inference_id': str(new_inference_id),
-                }
-            ),
-        )
-
-
-@rag_retrieval_router.get('/v1/knowledge-base/{kb_id}/inference')
-@inject
-async def get_system_prompt(
-    kb_id: uuid.UUID,
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter]
-    ),
-    kb_inference_repository: SQLAlchemyRepository[KnowledgeBaseInferences] = Depends(
-        Provide[KnowledgeBaseContainer.kb_inference_repository]
-    ),
-):
-    existing_inference = await kb_inference_repository.find_one(knowledge_base_id=kb_id)
-    if not existing_inference:
-        return JSONResponse(
-            status_code=status.HTTP_200_OK,
-            content=response_formatter.buildSuccessResponse(data={'resources': []}),
-        )
-
-    async with kb_inference_repository.session() as session:
-        query = select(KnowledgeBaseInferences).where(
-            KnowledgeBaseInferences.knowledge_base_id == kb_id
-        )
-
-        results: Result = await session.execute(query)
-        resources = results.scalars().all()
-        data = [res.to_dict() for res in resources]
-
-        return JSONResponse(
-            status_code=status.HTTP_200_OK,
-            content=response_formatter.buildSuccessResponse(data={'resources': data}),
-        )
-
-
-@rag_retrieval_router.delete('/v1/knowledge-base/{kb_id}/inference/{inference_id}')
-@inject
-async def delete_system_prompt(
-    kb_id: uuid.UUID,
-    inference_id: uuid.UUID,
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter]
-    ),
-    kb_inference_repository: SQLAlchemyRepository[KnowledgeBaseInferences] = Depends(
-        Provide[KnowledgeBaseContainer.kb_inference_repository]
-    ),
-):
-    existing_inference = await kb_inference_repository.find_one(
-        knowledge_base_id=kb_id, inference_id=inference_id
-    )
-    if not existing_inference:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(
-                'Inference Id is not present in the knowledge base inference'
-            ),
-        )
-
-    # Delete document and embeddings
-    await kb_inference_repository.delete_all(
-        inference_id=inference_id, knowledge_base_id=kb_id
-    )
-
-    return JSONResponse(
-        status_code=status.HTTP_204_NO_CONTENT,
-        content=response_formatter.buildSuccessResponse(
-            {
-                'message': 'Deleted the inference  successfully',
-                'inference_id': str(inference_id),
-            }
-        ),
-    )
-
-
 KB_NOT_FOUND_REASON = 'There is no knowledge bases based on the id'
 VECTOR_SIZE_MISMATCH_REASON = (
     "The vector size on the embedding doesn't match the required embedding vector size"
 )
+# pgvector's HNSW index on sparsevec accepts at most 1,000 non-zero entries;
+# BGE-M3 at 512 tokens per chunk stays well under it.
+MAX_SPARSE_NONZERO = 1000
 
 
 def _parse_chunk_index(value: str) -> Optional[int]:
@@ -752,23 +541,45 @@ def _parse_chunk_index(value: str) -> Optional[int]:
 def _store_rejection_reason(
     embedding: EmbeddingSchema, kb: Optional[KnowledgeBase]
 ) -> Optional[str]:
-    """Why this document's embeddings cannot be stored, or None if they can.
-
-    A knowledge base with vector_size_1 set (an image KB: CLIP + DINO) needs a
-    second vector for every chunk; one without it (a text KB) must not get
-    one. That catches an image stored into a text KB even when the two
-    primary vector sizes happen to match.
-    """
+    """Why this document's embeddings cannot be stored, or None if they can."""
     if kb is None:
         return KB_NOT_FOUND_REASON
-    chunk_count = len(embedding.embedding_vector)
-    if chunk_count == 0:
+    is_text = bool(embedding.text_embedding)
+    is_image = bool(embedding.embedding_vector)
+    if is_text and is_image:
+        return 'A document must send either text or image embeddings, not both'
+    if not (is_text or is_image):
         return 'The document has no embeddings'
+    chunk_count = len(
+        embedding.text_embedding if is_text else embedding.embedding_vector
+    )
     if (
         len(embedding.chunk_text) != chunk_count
         or len(embedding.chunk_index) != chunk_count
     ):
-        return 'embedding_vector, chunk_text and chunk_index must have the same length'
+        return 'The embeddings, chunk_text and chunk_index must have the same length'
+    reason = (
+        _text_rejection_reason(embedding, kb, chunk_count)
+        if is_text
+        else _image_rejection_reason(embedding, kb, chunk_count)
+    )
+    if reason:
+        return reason
+    if any(_parse_chunk_index(index) is None for index in embedding.chunk_index):
+        return "chunk_index values must look like 'chunk_<number>'"
+    return None
+
+
+def _image_rejection_reason(
+    embedding: EmbeddingSchema, kb: KnowledgeBase, chunk_count: int
+) -> Optional[str]:
+    """Image documents (CLIP + DINO vectors per chunk) only go into image
+    knowledge bases."""
+    if kb.type != KnowledgeBaseType.IMAGE.value:
+        return (
+            f'Image embeddings can only be stored in an image knowledge base; '
+            f'this one is {kb.type}'
+        )
     if any(len(vector) != kb.vector_size for vector in embedding.embedding_vector):
         return VECTOR_SIZE_MISMATCH_REASON
     second_vectors = embedding.embedding_vector_1 or []
@@ -782,9 +593,87 @@ def _store_rejection_reason(
             'The embedding has a second vector (e.g. an image embedding) but the '
             'knowledge base only accepts one'
         )
-    if any(_parse_chunk_index(index) is None for index in embedding.chunk_index):
-        return "chunk_index values must look like 'chunk_<number>'"
     return None
+
+
+def _text_rejection_reason(
+    embedding: EmbeddingSchema, kb: KnowledgeBase, chunk_count: int
+) -> Optional[str]:
+    """Text documents (BGE-M3 vectors per chunk) only go into text knowledge
+    bases."""
+    if kb.type != KnowledgeBaseType.TEXT.value:
+        return (
+            f'Text embeddings can only be stored in a text knowledge base; '
+            f'this one is {kb.type}'
+        )
+    if any(len(vector) != TEXT_EMBEDDING_DIM for vector in embedding.text_embedding):
+        return VECTOR_SIZE_MISMATCH_REASON
+    sparse = embedding.text_sparse_embedding
+    if sparse and len(sparse) != chunk_count:
+        return 'text_sparse_embedding must have one entry per chunk'
+    for vector in sparse:
+        if len(vector.indices) != len(vector.values):
+            return 'Sparse embedding indices and values must have the same length'
+        if len(vector.indices) > MAX_SPARSE_NONZERO:
+            return (
+                f'Sparse embeddings may have at most {MAX_SPARSE_NONZERO} '
+                'non-zero entries'
+            )
+        if len(set(vector.indices)) != len(vector.indices) or any(
+            not 0 <= index < TEXT_SPARSE_EMBEDDING_DIM for index in vector.indices
+        ):
+            return (
+                'Sparse embedding indices must be unique token ids in '
+                f'[0, {TEXT_SPARSE_EMBEDDING_DIM})'
+            )
+        if not all(math.isfinite(value) for value in vector.values):
+            return 'Sparse embedding values must be finite numbers'
+    return None
+
+
+def _sparse_value(vector: Optional[SparseEmbeddingSchema]) -> Optional[SparseVector]:
+    if vector is None or not vector.indices:
+        return None
+    return SparseVector(
+        dict(zip(vector.indices, vector.values)), TEXT_SPARSE_EMBEDDING_DIM
+    )
+
+
+def _embedding_rows(embedding: EmbeddingSchema) -> List[KnowledgeBaseEmbeddings]:
+    is_text = bool(embedding.text_embedding)
+    chunk_count = len(
+        embedding.text_embedding if is_text else embedding.embedding_vector
+    )
+    second_vectors = embedding.embedding_vector_1 or []
+    sparse = embedding.text_sparse_embedding
+    rows = []
+    for index in range(chunk_count):
+        vectors = (
+            {
+                'text_embedding': embedding.text_embedding[index],
+                'text_sparse_embedding': _sparse_value(
+                    sparse[index] if sparse else None
+                ),
+            }
+            if is_text
+            else {
+                'embedding_vector': embedding.embedding_vector[index],
+                'embedding_vector_1': second_vectors[index]
+                if index < len(second_vectors) and second_vectors[index]
+                else None,
+            }
+        )
+        rows.append(
+            KnowledgeBaseEmbeddings(
+                document_id=embedding.document_id,
+                chunk_text=embedding.chunk_text[index],
+                chunk_index=_parse_chunk_index(embedding.chunk_index[index]),
+                # No `token` (English tsvector): text search now scores
+                # keywords with BGE-M3 sparse vectors, which are multilingual.
+                **vectors,
+            )
+        )
+    return rows
 
 
 @rag_retrieval_router.post('/v1/store_embedding')
@@ -824,24 +713,7 @@ async def store_embeddings(
             )
             continue
 
-        second_vectors = embedding.embedding_vector_1 or []
-        embeddings_table.extend(
-            KnowledgeBaseEmbeddings(
-                document_id=embedding.document_id,
-                embedding_vector=embedding.embedding_vector[index],
-                embedding_vector_1=second_vectors[index]
-                if index < len(second_vectors) and second_vectors[index]
-                else None,
-                chunk_text=embedding.chunk_text[index],
-                chunk_index=_parse_chunk_index(embedding.chunk_index[index]),
-                # Set at write time so retrieval never has to backfill it — the
-                # read path used to run this as an UPDATE ... WHERE token IS NULL
-                # over the whole table on every search, contending with ingestion
-                # inserts for locks on the same rows.
-                token=func.to_tsvector('english', embedding.chunk_text[index]),
-            )
-            for index in range(len(embedding.embedding_vector))
-        )
+        embeddings_table.extend(_embedding_rows(embedding))
 
     if rejected and not embeddings_table:
         reasons = list(dict.fromkeys(item['reason'] for item in rejected))
@@ -861,66 +733,5 @@ async def store_embeddings(
                 'message': 'Created the knowledge base documents and embeddings successfully',
                 'rejected': rejected,
             }
-        ),
-    )
-
-
-@rag_retrieval_router.post('/v1/retrieve')
-@inject
-async def retrieve_record(
-    payload: RetrieveSchema,
-    response_formatter: ResponseFormatter = Depends(
-        Provide[CommonContainer.response_formatter]
-    ),
-    knowledge_base_repository: SQLAlchemyRepository[KnowledgeBase] = Depends(
-        Provide[KnowledgeBaseContainer.knowledge_base_repository]
-    ),
-    rag_retrieval: KBRagResponse = Depends(
-        Provide[KnowledgeBaseContainer.knowledge_base_retrieve]
-    ),
-):
-    existing_kb = await knowledge_base_repository.find_one(id=payload.kb_id)
-    if not existing_kb:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(
-                "Knowledge Base with the mentioned id doesn't exist"
-            ),
-        )
-    if not payload.embedding:
-        retrieved_docs = await rag_retrieval.retrieve_documents(
-            payload.query,
-            payload.kb_id,
-            payload.threshold,
-            payload.top_k,
-            payload.vector_weight,
-            payload.keyword_weight,
-        )
-    else:
-        params = {
-            'threshold': payload.threshold or 0.2,
-            'top_k': payload.top_k or 5,
-            'vector_weight': payload.vector_weight or 0.7,
-            'keyword_weight': payload.keyword_weight or 0.3,
-            'kb_id': payload.kb_id,
-        }
-        retrieved_docs = await rag_retrieval.combined_search_with_reranking(
-            payload.query, payload.embedding, params
-        )
-        for doc in retrieved_docs:
-            for key, value in doc.items():
-                if isinstance(value, uuid.UUID):
-                    doc[key] = str(value)
-    if not retrieved_docs:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(
-                f'There doesnt exist any matching documents on the mentioned query {payload.query}'
-            ),
-        )
-    return JSONResponse(
-        status_code=status.HTTP_200_OK,
-        content=response_formatter.buildSuccessResponse(
-            data={'documents': retrieved_docs}
         ),
     )

@@ -1,19 +1,13 @@
 import base64
-import time
 from dataclasses import dataclass
 from typing import Any, List, Optional
 
 import httpx
 from flo_utils.utils.log import logger
 
+from rag_ingestion.embeddings.inference_http import post_with_retry
 from rag_ingestion.env import IMAGE_EMBEDDING_BATCH_SIZE, INFERENCE_SERVICE_URL
 from rag_ingestion.models.knowledge_base_embeddings import KnowledgeBaseEmbeddingObject
-
-# Status codes that mean "try again shortly" rather than "this request is bad".
-_RETRYABLE_STATUS_CODES = {429, 502, 503, 504}
-
-# Upper bound on how long a Retry-After header can make us wait.
-_MAX_RETRY_AFTER_SECONDS = 60.0
 
 
 @dataclass
@@ -103,49 +97,9 @@ class ImageEmbedding:
             return ImageEmbeddingResult(error=err)
 
     def _post_with_retry(self, url: str, payload: dict) -> Any:
-        """POST, retrying connection failures and 429/502/503/504 with backoff.
-
-        A 429's Retry-After header, when present, sets the minimum wait before
-        the next attempt. Read timeouts are not retried: the service is still
-        working on the request, and re-sending it would only add to its queue.
-        """
-        delay = self.initial_delay
-        for attempt in range(1, self.max_retries + 1):
-            wait = delay
-            try:
-                response = self._client.post(url, json=payload)
-                if response.status_code not in _RETRYABLE_STATUS_CODES:
-                    response.raise_for_status()
-                    return response.json()
-                last_error: Exception = httpx.HTTPStatusError(
-                    f'{response.status_code} from inference service',
-                    request=response.request,
-                    response=response,
-                )
-                wait = max(wait, self._retry_after_seconds(response))
-            except (
-                httpx.ConnectError,
-                httpx.ConnectTimeout,
-                httpx.RemoteProtocolError,
-            ) as err:
-                last_error = err
-            if attempt < self.max_retries:
-                logger.warning(
-                    f'Inference call to {url} failed (attempt {attempt}/'
-                    f'{self.max_retries}): {last_error}; retrying in {wait:.1f}s'
-                )
-                time.sleep(wait)
-                delay *= 1.5
-        raise last_error
-
-    @staticmethod
-    def _retry_after_seconds(response: httpx.Response) -> float:
-        """Seconds from a Retry-After header (capped), or 0 if absent/invalid."""
-        try:
-            seconds = float(response.headers.get('Retry-After', 0))
-        except ValueError:
-            return 0.0
-        return min(max(seconds, 0.0), _MAX_RETRY_AFTER_SECONDS)
+        return post_with_retry(
+            self._client, url, payload, self.max_retries, self.initial_delay
+        )
 
     @staticmethod
     def _encode(content: bytes) -> str:

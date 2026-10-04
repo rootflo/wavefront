@@ -18,18 +18,54 @@ from huggingface_hub import snapshot_download
 # ── Model registry ────────────────────────────────────────────────────────────
 # source: "hf"   → downloaded via huggingface_hub.snapshot_download
 # source: "timm" → downloaded via timm.create_model (weights saved as safetensors)
+# allow_patterns (hf, optional) → only these files are downloaded
+# post_process (optional)       → name of a step run after download (and on
+#                                 re-runs, so an interrupted one is finished)
+# optional (optional)           → the inference app starts without it
 MODELS = [
     {
+        # The repo ships PyTorch weights only as pytorch_model.bin (plus TF and
+        # Flax copies we skip, ~1.2GB); converted to safetensors after download.
         'local_name': 'clip-vit-base-patch32-hf',
         'source': 'hf',
         'repo_id': 'openai/clip-vit-base-patch32',
         'env_var': 'CLIP_VIT_BASE_PATCH32_MODEL_URI',
+        'allow_patterns': [
+            'config.json',
+            'preprocessor_config.json',
+            'pytorch_model.bin',
+            'tokenizer.json',
+            'tokenizer_config.json',
+            'vocab.json',
+            'merges.txt',
+            'special_tokens_map.json',
+        ],
+        'post_process': 'convert_clip_to_safetensors',
     },
     {
         'local_name': 'dinov3-vitl16-hf',
         'source': 'hf',
         'repo_id': 'facebook/dinov3-vitl16-pretrain-lvd1689m',
         'env_var': 'DINOV3_VITL16_HF_MODEL_URI',
+    },
+    {
+        # Text embeddings (dense + sparse). Skips the repo's ONNX export,
+        # ColBERT head and images (~2GB more).
+        'local_name': 'bge-m3-hf',
+        'source': 'hf',
+        'repo_id': 'BAAI/bge-m3',
+        'env_var': 'BGE_M3_MODEL_URI',
+        'allow_patterns': [
+            'config.json',
+            'pytorch_model.bin',
+            'sparse_linear.pt',
+            'sentencepiece.bpe.model',
+            'special_tokens_map.json',
+            'tokenizer.json',
+            'tokenizer_config.json',
+        ],
+        'post_process': 'convert_bge_m3_to_safetensors',
+        'optional': True,
     },
 ]
 
@@ -44,8 +80,9 @@ def download_models(hf_token: str) -> None:
     LOCAL_CACHE.mkdir(exist_ok=True)
     for model in MODELS:
         dest = LOCAL_CACHE / model['local_name']
-        if dest.exists() and any(dest.iterdir()):
+        if _has_model_files(dest):
             print(f"[skip] {model['local_name']} already downloaded.")
+            _post_process(model, dest)
             continue
 
         if model['source'] == 'hf':
@@ -54,6 +91,7 @@ def download_models(hf_token: str) -> None:
                 repo_id=model['repo_id'],
                 local_dir=str(dest),
                 token=hf_token,
+                allow_patterns=model.get('allow_patterns'),
             )
 
         elif model['source'] == 'timm':
@@ -65,13 +103,91 @@ def download_models(hf_token: str) -> None:
             m = timm.create_model(model['repo_id'], pretrained=True)
             save_file(m.state_dict(), str(dest / 'model.safetensors'))
 
+        _post_process(model, dest)
         print(f"[done] {model['local_name']}")
+
+
+def _has_model_files(dest: Path) -> bool:
+    """True once the folder holds model files. Ignores hidden entries such as
+    the .cache/ huggingface_hub creates up front, which a failed download
+    (e.g. a gated repo without a token) leaves behind on its own."""
+    return dest.is_dir() and any(not p.name.startswith('.') for p in dest.iterdir())
+
+
+def _post_process(model: dict, dest: Path) -> None:
+    step = model.get('post_process')
+    if step:
+        POST_PROCESS_STEPS[step](dest)
+
+
+def convert_to_safetensors(model_dir: Path, conversions) -> None:
+    """Convert pickled PyTorch weights to safetensors and drop the pickles.
+
+    transformers refuses to load .bin checkpoints on torch < 2.6
+    (CVE-2025-32434) -- the Intel Mac build is 2.2.2 -- and safetensors are
+    never unpickled when loaded. Converting here uses
+    torch.load(weights_only=True), which only reconstructs tensors.
+    Idempotent: does nothing for files already converted.
+
+    Args:
+        conversions: (source, target) file names inside model_dir.
+    """
+    import torch
+    from safetensors.torch import save_file
+
+    for source_name, target_name in conversions:
+        source, target = model_dir / source_name, model_dir / target_name
+        if target.exists():
+            if source.exists():
+                source.unlink()
+            continue
+        if not source.exists():
+            raise FileNotFoundError(f'{source} is missing; re-run the download')
+        print(f'[convert] {source_name} → {target_name}')
+        state_dict = torch.load(source, map_location='cpu', weights_only=True)
+        # clone: safetensors refuses tensors that share storage
+        tensors = {
+            name: tensor.contiguous().clone() for name, tensor in state_dict.items()
+        }
+        # write-then-rename so an interrupted run never leaves a partial file
+        partial = target.with_suffix('.partial')
+        save_file(tensors, str(partial), metadata={'format': 'pt'})
+        partial.rename(target)
+        source.unlink()
+
+
+def convert_clip_to_safetensors(model_dir: Path) -> None:
+    """CLIP: convert pytorch_model.bin, and remove the TF / Flax weights a
+    download from before allow_patterns may have left behind."""
+    convert_to_safetensors(model_dir, [('pytorch_model.bin', 'model.safetensors')])
+    for unused in ('tf_model.h5', 'flax_model.msgpack'):
+        if (model_dir / unused).exists():
+            print(f'[cleanup] removing unused {unused}')
+            (model_dir / unused).unlink()
+
+
+def convert_bge_m3_to_safetensors(model_dir: Path) -> None:
+    """BGE-M3: the encoder and its sparse head both ship as pickles."""
+    convert_to_safetensors(
+        model_dir,
+        [
+            ('pytorch_model.bin', 'model.safetensors'),
+            ('sparse_linear.pt', 'sparse_linear.safetensors'),
+        ],
+    )
+
+
+POST_PROCESS_STEPS = {
+    'convert_clip_to_safetensors': convert_clip_to_safetensors,
+    'convert_bge_m3_to_safetensors': convert_bge_m3_to_safetensors,
+}
 
 
 def _print_env_vars() -> None:
     print('\nDone.\nSet these env vars for the inference app:')
     for model in MODELS:
-        print(f"  {model['env_var']}={LOCAL_CACHE / model['local_name']}")
+        note = '  # optional' if model.get('optional') else ''
+        print(f"  {model['env_var']}={LOCAL_CACHE / model['local_name']}{note}")
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────

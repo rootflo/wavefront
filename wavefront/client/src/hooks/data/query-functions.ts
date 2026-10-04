@@ -1,6 +1,6 @@
 import floConsoleService from '@app/api';
 import { GuardrailAdapterListData, GuardrailPolicy, PiiEntityListData } from '@app/api/guardrails-service';
-import { DocumentData, InferenceData, KbData } from '@app/api/knowledge-base-service';
+import { DocumentData, KbData, KnowledgeBaseIndexStatusData } from '@app/api/knowledge-base-service';
 import { ModelData } from '@app/api/model-inference-service';
 import { NamespaceItem } from '@app/api/namespace-service';
 import { AgentApi, AgentListItem } from '@app/types/agent';
@@ -243,12 +243,9 @@ const getKnowledgeBaseDocumentsQueryFn = async (kbId: string): Promise<DocumentD
   return [];
 };
 
-const getKnowledgeBaseInferencesQueryFn = async (kbId: string): Promise<InferenceData[]> => {
-  const response = await floConsoleService.knowledgeBaseService.listInferencesForKnowledgeBase(kbId);
-  if (response.data?.data?.resources) {
-    return response.data.data.resources;
-  }
-  return [];
+const getKnowledgeBaseIndexStatusQueryFn = async (kbId: string): Promise<KnowledgeBaseIndexStatusData | null> => {
+  const response = await floConsoleService.knowledgeBaseService.getKnowledgeBaseIndexStatus(kbId);
+  return response.data?.data ?? null;
 };
 
 const getWorkflowsQueryFn = async (namespace?: string): Promise<WorkflowListItem[]> => {
@@ -576,7 +573,7 @@ export {
   getDatasourceQueryFn,
   getDatasourceResourcesQueryFn,
   getKnowledgeBaseDocumentsQueryFn,
-  getKnowledgeBaseInferencesQueryFn,
+  getKnowledgeBaseIndexStatusQueryFn,
   getKnowledgeBaseQueryFn,
   getKnowledgeBasesQueryFn,
   getLLMConfigQueryFn,

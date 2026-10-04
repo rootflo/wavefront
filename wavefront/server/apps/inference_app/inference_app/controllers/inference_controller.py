@@ -1,16 +1,24 @@
 import base64
 import binascii
 import math
+from typing import TYPE_CHECKING
 
 from common_module.common_container import CommonContainer
 from common_module.response_formatter import ResponseFormatter
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
-from inference_app.env import MAX_EMBEDDING_BATCH_SIZE
+from inference_app.env import MAX_EMBEDDING_BATCH_SIZE, MAX_TEXT_EMBEDDING_BATCH_SIZE
 from inference_app.inference_app_container import InferenceAppContainer
 from inference_app.rate_limiter import SlidingWindowRateLimiter
-from inference_app.service.image_embedding import ImageEmbedding
+from inference_app.service.text_embedding_provider import (
+    TextEmbeddingProvider,
+    TextEmbeddingUnavailable,
+)
+
+if TYPE_CHECKING:
+    # Annotation only: the real model needs torch, which mock mode runs without
+    from inference_app.service.image_embedding import ImageEmbedding
 from pydantic import BaseModel
 
 
@@ -20,6 +28,12 @@ class ImagePayload(BaseModel):
 
 class ImageBatchPayload(BaseModel):
     image_batch: list[str]  # list of base64 encoded image data
+
+
+class TextEmbeddingPayload(BaseModel):
+    texts: list[str]
+    return_dense: bool = True
+    return_sparse: bool = True
 
 
 @inject
@@ -54,7 +68,7 @@ def image_embedding(
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
     ),
-    image_embedding_service: ImageEmbedding = Depends(
+    image_embedding_service: 'ImageEmbedding' = Depends(
         Provide[InferenceAppContainer.image_embedding]
     ),
 ):
@@ -93,7 +107,7 @@ def image_embedding_batch(
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
     ),
-    image_embedding_service: ImageEmbedding = Depends(
+    image_embedding_service: 'ImageEmbedding' = Depends(
         Provide[InferenceAppContainer.image_embedding]
     ),
 ):
@@ -140,6 +154,80 @@ def image_embedding_batch(
     return JSONResponse(
         status_code=status.HTTP_200_OK,
         content=response_formatter.buildSuccessResponse(data={'response': embeddings}),
+    )
+
+
+# Seconds clients are told to wait (Retry-After) while BGE-M3 is loading.
+TEXT_MODEL_LOADING_RETRY_AFTER_S = 10
+
+
+@inference_app_router.post('/v1/query/text-embeddings')
+@inject
+def text_embedding(
+    payload: TextEmbeddingPayload,
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+    text_embedding_provider: TextEmbeddingProvider = Depends(
+        Provide[InferenceAppContainer.text_embedding_provider]
+    ),
+):
+    """BGE-M3 dense and/or sparse embeddings, one result per text, in order.
+
+    sparse is {indices, values}: token ids and their lexical weights, over a
+    vocabulary of `sparse_dim` (e.g. for a pgvector sparsevec). Texts longer
+    than MAX_TEXT_EMBEDDING_TOKENS are truncated.
+    """
+    batch_size = len(payload.texts)
+    if batch_size == 0:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse('texts is empty'),
+        )
+    if batch_size > MAX_TEXT_EMBEDDING_BATCH_SIZE:
+        return JSONResponse(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            content=response_formatter.buildErrorResponse(
+                f'Batch of {batch_size} texts exceeds the maximum of '
+                f'{MAX_TEXT_EMBEDDING_BATCH_SIZE}'
+            ),
+        )
+    if not (payload.return_dense or payload.return_sparse):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                'At least one of return_dense or return_sparse must be true'
+            ),
+        )
+    try:
+        model = text_embedding_provider.get()
+    except TextEmbeddingUnavailable as err:
+        # While the model loads, tell clients when to come back; a disabled or
+        # failed model won't recover by waiting, so no Retry-After then.
+        loading = text_embedding_provider.status == TextEmbeddingProvider.LOADING
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content=response_formatter.buildErrorResponse(str(err)),
+            headers={'Retry-After': str(TEXT_MODEL_LOADING_RETRY_AFTER_S)}
+            if loading
+            else None,
+        )
+
+    embeddings = model.embed(
+        payload.texts,
+        return_dense=payload.return_dense,
+        return_sparse=payload.return_sparse,
+    )
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            data={
+                'model': 'bge-m3',
+                'dense_dim': model.dense_dim,
+                'sparse_dim': model.sparse_dim,
+                'response': embeddings,
+            }
+        ),
     )
 
 

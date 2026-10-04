@@ -5,7 +5,6 @@ from db_repo_module.models.auth_secrets import AuthSecrets
 from db_repo_module.models.datasource import Datasource
 from db_repo_module.models.email_connection import EmailConnection
 from db_repo_module.models.oauth_app import OAuthApp
-from db_repo_module.models.kb_inferences import KnowledgeBaseInferences
 from db_repo_module.models.knowledge_base_documents import KnowledgeBaseDocuments
 from db_repo_module.models.knowledge_base_embeddings import KnowledgeBaseEmbeddings
 from db_repo_module.models.knowledge_bases import KnowledgeBase
@@ -155,12 +154,6 @@ class DatabaseModuleContainer(containers.DeclarativeContainer):
         db_client=db_client,
     )
 
-    kb_inference_repository = providers.Singleton(
-        SQLAlchemyRepository[KnowledgeBaseInferences],
-        model=KnowledgeBaseInferences,
-        db_client=db_client,
-    )
-
     auth_secrets_repository = providers.Singleton(
         SQLAlchemyRepository[AuthSecrets],
         model=AuthSecrets,
@@ -287,11 +280,6 @@ class DatabaseModuleContainer(containers.DeclarativeContainer):
     scheduled_job_execution_repository = providers.Singleton(
         SQLAlchemyRepository[ScheduledJobExecution],
         model=ScheduledJobExecution,
-        db_client=db_client,
-    )
-    knowledge_base_inference_repository = providers.Singleton(
-        SQLAlchemyRepository[KnowledgeBaseInferences],
-        model=KnowledgeBaseInferences,
         db_client=db_client,
     )
 

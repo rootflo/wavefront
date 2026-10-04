@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 from flo_utils.utils.log import logger
 from rag_ingestion.service.kb_rag_storage import KBRagStorage
-from rag_ingestion.embeddings.embed import EmbeddingFunc
 from rag_ingestion.models.doc_content import DocContent
 from rag_ingestion.stream.queue_message import QueueMessage
 from flo_cloud.kms import FloKmsService
@@ -38,7 +37,6 @@ class KbStorageProcessor(MessageProcessor):
         self.encryption_service = encryption_service
         self.index_status_publisher = index_status_publisher
         self.kb_rag_storage = KBRagStorage()
-        self.embedding_func = EmbeddingFunc()
         self.file_processor = FileProcessor()
         self.image_embedding = ImageEmbedding()
 

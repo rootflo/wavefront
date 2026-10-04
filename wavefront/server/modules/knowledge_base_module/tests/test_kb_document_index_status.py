@@ -53,7 +53,7 @@ async def create_kb(test_session) -> UUID:
                 id=kb_id,
                 name=f'KB {kb_id}',
                 description='index status test',
-                type='document',
+                type='text',
                 vector_size=3,
             )
         )
@@ -276,3 +276,130 @@ class TestUploadStatus:
         [resource] = response.json()['data']['resources']
         assert resource['index_status'] == 'QUEUED'
         assert 'index_error' in resource and 'index_status_updated_at' in resource
+
+
+# --- GET /v1/knowledge-bases/{kb_id}/index-status ----------------------------
+
+
+async def add_docs(test_session, kb_id, statuses, base_time=T0):
+    """One document per (status, error) pair; FAILED ones get increasing
+    index_status_updated_at so their order is known."""
+    ids = []
+    async with test_session() as session:
+        for i, (index_status, error) in enumerate(statuses):
+            doc_id = uuid4()
+            ids.append(doc_id)
+            session.add(
+                KnowledgeBaseDocuments(
+                    id=doc_id,
+                    knowledge_base_id=kb_id,
+                    file_path=f'bucket/{doc_id}',
+                    file_name=f'doc-{i}.txt',
+                    file_type='plain',
+                    file_size=10,
+                    index_status=index_status,
+                    index_error=error,
+                    index_status_updated_at=(base_time + timedelta(minutes=i)).replace(
+                        tzinfo=None
+                    )
+                    if index_status
+                    else None,
+                )
+            )
+        await session.commit()
+    return ids
+
+
+def get_index_status(test_client, auth_token, kb_id, **params):
+    return test_client.get(
+        f'/floware/v1/knowledge-bases/{kb_id}/index-status',
+        headers={'Authorization': f'Bearer {auth_token}'},
+        params=params,
+    )
+
+
+class TestIndexStatusSummary:
+    async def test_counts_every_status(
+        self, seeded, test_client, auth_token, test_session
+    ):
+        kb_id = await create_kb(test_session)
+        await add_docs(
+            test_session,
+            kb_id,
+            [
+                ('QUEUED', None),
+                ('QUEUED', None),
+                ('IN_PROGRESS', None),
+                ('COMPLETE', None),
+                ('COMPLETE', None),
+                ('COMPLETE', None),
+                ('FAILED', 'bad image'),
+                (None, None),  # uploaded before status tracking
+            ],
+        )
+        other_kb = await create_kb(test_session)
+        await add_docs(test_session, other_kb, [('FAILED', 'other kb')] * 3)
+
+        response = get_index_status(test_client, auth_token, kb_id)
+
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()['data']
+        assert data['knowledge_base_id'] == str(kb_id)
+        assert data['total'] == 8
+        assert data['counts'] == {
+            'QUEUED': 2,
+            'IN_PROGRESS': 1,
+            'COMPLETE': 3,
+            'FAILED': 1,
+            'NOT_TRACKED': 1,
+        }
+        assert [d['index_error'] for d in data['failed_documents']] == ['bad image']
+
+    async def test_failed_documents_newest_first_and_limited(
+        self, seeded, test_client, auth_token, test_session
+    ):
+        kb_id = await create_kb(test_session)
+        ids = await add_docs(
+            test_session, kb_id, [('FAILED', f'error {i}') for i in range(5)]
+        )
+
+        data = get_index_status(test_client, auth_token, kb_id, failed_limit=3).json()[
+            'data'
+        ]
+
+        assert data['counts']['FAILED'] == 5
+        failed = data['failed_documents']
+        assert [d['id'] for d in failed] == [str(i) for i in reversed(ids[-3:])]
+        assert failed[0] == {
+            'id': str(ids[4]),
+            'file_name': 'doc-4.txt',
+            'index_error': 'error 4',
+            'index_status_updated_at': '2026-10-01T12:04:00',
+        }
+
+    async def test_empty_knowledge_base_has_zero_counts(
+        self, seeded, test_client, auth_token, test_session
+    ):
+        kb_id = await create_kb(test_session)
+
+        data = get_index_status(test_client, auth_token, kb_id).json()['data']
+
+        assert data['total'] == 0
+        assert set(data['counts'].values()) == {0}
+        assert data['failed_documents'] == []
+
+    async def test_unknown_knowledge_base_is_rejected(
+        self, seeded, test_client, auth_token
+    ):
+        response = get_index_status(test_client, auth_token, uuid4())
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    async def test_failed_limit_is_bounded(
+        self, seeded, test_client, auth_token, test_session
+    ):
+        kb_id = await create_kb(test_session)
+
+        response = get_index_status(test_client, auth_token, kb_id, failed_limit=500)
+
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT

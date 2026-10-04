@@ -80,3 +80,67 @@ def test_gives_up_after_max_retries(storage):
         storage._upload_doc_wise_embeddings([{'document_id': 'd1'}], max_retries=3)
 
     assert post.call_count == 3
+
+
+# --- payload shape ---------------------------------------------------------
+
+from rag_ingestion.models.knowledge_base_embeddings import (  # noqa: E402
+    KnowledgeBaseEmbeddingObject,
+)
+from rag_ingestion.processors.file_processor import DocumentType  # noqa: E402
+from rag_ingestion.service.kb_rag_storage import EmbeddingsToStore  # noqa: E402
+
+
+def captured_payload(storage, *documents):
+    with patch.object(
+        storage, '_upload_doc_wise_embeddings', return_value='ok'
+    ) as upload:
+        storage.upload_embedding_with_retry(embeddings=list(documents))
+    return upload.call_args.args[0]
+
+
+def test_text_documents_send_bge_m3_dense_and_sparse(storage):
+    chunks = [
+        KnowledgeBaseEmbeddingObject(
+            chunk_text='first',
+            chunk_index='chunk_0',
+            text_embedding=[0.1, 0.2],
+            text_sparse_embedding={'indices': [7], 'values': [0.4]},
+        ),
+        KnowledgeBaseEmbeddingObject(
+            chunk_text='second', chunk_index='chunk_1', text_embedding=[0.3, 0.4]
+        ),
+    ]
+
+    [payload] = captured_payload(
+        storage, EmbeddingsToStore(chunks, 'doc-1', 'kb-1', DocumentType.PDF)
+    )
+
+    assert payload == {
+        'document_id': 'doc-1',
+        'kb_id': 'kb-1',
+        'chunk_text': ['first', 'second'],
+        'chunk_index': ['chunk_0', 'chunk_1'],
+        'text_embedding': [[0.1, 0.2], [0.3, 0.4]],
+        'text_sparse_embedding': [
+            {'indices': [7], 'values': [0.4]},
+            {'indices': [], 'values': []},
+        ],
+    }
+
+
+def test_image_documents_send_clip_and_dino(storage):
+    chunk = KnowledgeBaseEmbeddingObject(
+        chunk_text='image data',
+        chunk_index='chunk_0',
+        embedding_vector=[0.5],
+        embedding_vector_1=[0.6],
+    )
+
+    [payload] = captured_payload(
+        storage, EmbeddingsToStore([chunk], 'doc-2', 'kb-2', DocumentType.IMAGE)
+    )
+
+    assert payload['embedding_vector'] == [[0.5]]
+    assert payload['embedding_vector_1'] == [[0.6]]
+    assert 'text_embedding' not in payload and 'text_sparse_embedding' not in payload

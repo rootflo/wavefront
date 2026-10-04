@@ -252,8 +252,7 @@ adding one file there.
 
 | Variable | Description |
 |----------|-------------|
-| `INFERENCE_SERVICE_URL` | URL for the inference service (default: `http://inference_app:8003`) |
-| `EMBEDDING_SERVICE_URL` | URL for the embedding service |
+| `INFERENCE_SERVICE_URL` | URL for the inference service (default: `http://inference_app:8003`). Serves both image embeddings (CLIP + DINOv3) and text embeddings (BGE-M3) |
 | `CALL_PROCESSING_BASE_URL` | URL for call processing service (default: `http://call_processing:8004`) |
 | `HERMES_URL` | URL for Hermes service |
 
