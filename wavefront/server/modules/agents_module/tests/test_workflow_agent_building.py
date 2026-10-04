@@ -77,6 +77,7 @@ def agent_service() -> AgentInferenceService:
     service.llm_inference_config_service = AsyncMock(
         get_config=AsyncMock(return_value=stored_config())
     )
+    service.guardrails_engine = None
     return service
 
 
@@ -166,9 +167,12 @@ class TestBuildReferencedAgents:
         create = workflow_service.agent_inference_service.create_agent_from_yaml
         assert create.await_count == 2
         # access_token/app_key must survive the hand-off
+        # The second call is checked because it uses 'second' as principal
         assert create.await_args.kwargs == {
             'access_token': 'token',
             'app_key': 'key',
+            'namespace': 'ns',
+            'principal_agent_id': 'second',
         }
 
     async def test_versioned_reference_keeps_its_key_and_resolves_the_version(
@@ -181,6 +185,15 @@ class TestBuildReferencedAgents:
         assert (
             workflow_service.agent_crud_service.get_agent_yaml_from_bucket.await_args[1]
             == {'version': 3}
+        )
+        assert (
+            workflow_service.agent_inference_service.create_agent_from_yaml.await_args.kwargs
+            == {
+                'access_token': None,
+                'app_key': None,
+                'namespace': 'ns',
+                'principal_agent_id': 'first',
+            }
         )
 
     async def test_malformed_reference_is_skipped(self, workflow_service):
@@ -199,6 +212,20 @@ class TestBuildReferencedAgents:
             ValueError, match='Failed to build referenced agent ns/first'
         ):
             await workflow_service._build_referenced_agents(['ns/first'])
+
+    async def test_build_inline_agents_passes_namespace(self, workflow_service):
+        agents = await workflow_service._build_inline_agents(
+            [('inline-agent', {'job': 'test'})],
+            namespace='test-ns',
+        )
+
+        assert list(agents.keys()) == ['inline-agent']
+        create = workflow_service.agent_inference_service.create_agent_from_yaml
+        assert create.await_args.kwargs == {
+            'access_token': None,
+            'app_key': None,
+            'namespace': 'test-ns',
+        }
 
 
 # The workflow shape that exposed the gap: agents written inline in the arium YAML

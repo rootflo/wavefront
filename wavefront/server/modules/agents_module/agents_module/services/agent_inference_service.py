@@ -4,6 +4,10 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from agents_module.services.agent_crud_service import AgentCrudService
+from agents_module.utils.agent_guardrails import (
+    guardrail_llm_provider,
+    guardrail_run_scope,
+)
 from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.models.llm_inference_config import LlmInferenceConfig
 from db_repo_module.models.message_processors import MessageProcessors
@@ -44,6 +48,7 @@ class AgentInferenceService:
         message_processor_bucket_name: str,
         api_services_manager: Optional[ApiServicesManager] = None,
         llm_inference_config_service: Optional[LlmInferenceConfigService] = None,
+        guardrails_engine: Optional[Any] = None,
     ):
         """
         Initialize the agent inference service
@@ -67,6 +72,20 @@ class AgentInferenceService:
         self.cloud_storage_manager = cloud_storage_manager
         self.message_processor_bucket_name = message_processor_bucket_name
         self.llm_inference_config_service = llm_inference_config_service
+        self.guardrails_engine = guardrails_engine
+
+    def _guardrail_provider(self, namespace: Optional[str], principal_agent_id: str):
+        """Build the decorator AgentBuilder applies at construction.
+
+        The builder passes its own node name; it is ignored and the caller's
+        principal bound instead, because each entry point identifies an agent
+        differently -- v1 by id, v2 by name, workflow refs by bare name -- and the
+        YAML `name:` is none of them.
+        """
+        base = guardrail_llm_provider(self.guardrails_engine, namespace)
+        if base is None:
+            return None
+        return lambda llm, _node_name: base(llm, principal_agent_id)
 
     async def create_agent_from_yaml(
         self,
@@ -75,6 +94,8 @@ class AgentInferenceService:
         llm_config: Optional[LlmInferenceConfig] = None,
         access_token: Optional[str] = None,
         app_key: Optional[str] = None,
+        namespace: Optional[str] = None,
+        principal_agent_id: Optional[str] = None,
     ):
         """
         Create agent instance from YAML configuration
@@ -86,6 +107,10 @@ class AgentInferenceService:
                 When omitted, it is resolved from the YAML's `agent.model` block
                 (see _resolve_rootflo_llm_config), so every caller gets the same
                 treatment of `provider: rootflo` references.
+            access_token: Optional access token
+            app_key: Optional app key
+            namespace: Optional namespace for the guardrails engine. If omitted, the agent will be unguarded.
+            principal_agent_id: Optional principal agent id. Defaults to agent_name if omitted.
 
         Returns:
             Agent instance created from YAML
@@ -129,6 +154,9 @@ class AgentInferenceService:
             tool_registry=tool_register,
             access_token=access_token,
             app_key=app_key,
+            guardrail_provider=self._guardrail_provider(
+                namespace, principal_agent_id or agent_name
+            ),
         )
 
         # Override LLM if config is provided
@@ -346,7 +374,8 @@ class AgentInferenceService:
         start_time = time.time()
 
         # Use a generic prompt that allows the agent to use the variables
-        result: List[BaseMessage] = await agent.run(inputs, variables=variables)
+        with guardrail_run_scope():
+            result: List[BaseMessage] = await agent.run(inputs, variables=variables)
 
         execution_time = time.time() - start_time
         logger.info(
@@ -390,7 +419,12 @@ class AgentInferenceService:
 
         # Create agent from YAML with optional LLM override and tools
         agent = await self.create_agent_from_yaml(
-            yaml_content, agent_id, llm_config, access_token, app_key
+            yaml_content,
+            agent_id,
+            llm_config,
+            access_token,
+            app_key,
+            namespace=namespace,
         )
 
         # Run inference
@@ -507,7 +541,7 @@ class AgentInferenceService:
         # Create agent from YAML with optional LLM override and tools.
         # A None llm_config is resolved from the YAML by create_agent_from_yaml.
         agent = await self.create_agent_from_yaml(
-            yaml_content, name, llm_config, access_token, app_key
+            yaml_content, name, llm_config, access_token, app_key, namespace=namespace
         )
 
         # Run inference

@@ -45,8 +45,6 @@ class AuthContainer(containers.DeclarativeContainer):
 
     token_service = providers.Singleton(
         TokenService,
-        private_key=config.jwt_token.private_key,
-        public_key=config.jwt_token.public_key,
         kms_service=kms_service,
         token_expiry=config.jwt_token.token_expiry,
         temporary_token_expiry=config.jwt_token.temporary_token_expiry,

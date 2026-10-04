@@ -17,6 +17,7 @@ dependencies = [
     "common-module",
     "triggers-module",
     "llm-inference-config-module",
+    "guardrails-module",
     "celery[redis]>=5.5.3,<6.0.0",
     "python-dotenv>=1.1.0,<2.0.0",
 ]
@@ -31,6 +32,7 @@ api-services-module = { workspace = true }
 common-module       = { workspace = true }
 triggers-module               = { workspace = true }
 llm-inference-config-module   = { workspace = true }
+guardrails-module             = { workspace = true }
 
 [tool.uv]
 package = true
