@@ -116,10 +116,3 @@ class TextEmbedding:
                 best[token_id] = weight
         indices = sorted(best)
         return {'indices': indices, 'values': [best[i] for i in indices]}
-
-
-# Re-exported: these used to live here, and don't need torch.
-from inference_app.service.text_embedding_provider import (  # noqa: E402,F401
-    TextEmbeddingProvider,
-    TextEmbeddingUnavailable,
-)
