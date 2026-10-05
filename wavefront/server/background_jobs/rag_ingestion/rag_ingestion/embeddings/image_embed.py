@@ -9,6 +9,12 @@ from rag_ingestion.embeddings.inference_http import post_with_retry
 from rag_ingestion.env import IMAGE_EMBEDDING_BATCH_SIZE, INFERENCE_SERVICE_URL
 from rag_ingestion.models.knowledge_base_embeddings import KnowledgeBaseEmbeddingObject
 
+# Statuses that mean "this batch is bad", so retrying image by image isolates
+# the failure: 400 (an image can't be decoded), 413 (batch over the service's
+# limit). Anything else (429, auth, 5xx) is about the service, not the images;
+# one call per image would only add load, so the chunk fails and is retried later.
+PER_IMAGE_FALLBACK_STATUSES = {400, 413}
+
 
 @dataclass
 class ImageEmbeddingResult:
@@ -73,10 +79,8 @@ class ImageEmbedding:
             )
             clips, dinos = self._parse_response(body, expected_count=len(chunk))
         except httpx.HTTPStatusError as err:
-            if not err.response.is_client_error:
+            if err.response.status_code not in PER_IMAGE_FALLBACK_STATUSES:
                 return [ImageEmbeddingResult(error=err) for _ in chunk]
-            # 400 (bad image in the batch) or 413 (batch larger than the
-            # service allows): isolate the failure by embedding one at a time.
             logger.warning(
                 f'Batch of {len(chunk)} images rejected with '
                 f'{err.response.status_code}: {err.response.text}; '

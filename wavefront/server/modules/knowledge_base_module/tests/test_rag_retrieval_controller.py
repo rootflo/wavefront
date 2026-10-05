@@ -510,8 +510,19 @@ async def test_image_search_result_count(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('params', [{'top_k': 0}, {'limit': 0}, {'top_k': -5}])
-async def test_non_positive_result_counts_are_rejected(
+@pytest.mark.parametrize(
+    'params',
+    [
+        {'top_k': 0},
+        {'limit': 0},
+        {'top_k': -5},
+        {'top_k': 101},
+        {'limit': 101},
+        {'offset': -1},
+        {'offset': 901},
+    ],
+)
+async def test_out_of_range_paging_is_rejected(
     test_client,
     auth_token,
     test_session,
@@ -604,3 +615,26 @@ def test_kb_inference_endpoints_are_removed(test_client, auth_token, method, pat
         status.HTTP_404_NOT_FOUND,
         status.HTTP_405_METHOD_NOT_ALLOWED,
     )
+
+
+@pytest.mark.asyncio
+async def test_paging_at_its_bounds_is_accepted(
+    test_client,
+    auth_token,
+    test_session,
+    test_user_id,
+    test_session_id,
+    setup_containers,
+):
+    kb_id = await _seed_kb(test_session, test_user_id, test_session_id)
+    text, _ = _mock_retrieval(setup_containers[3])
+
+    response = test_client.post(
+        f'/floware/v1/knowledge-base/{kb_id}/retrieve',
+        headers={'Authorization': f'Bearer {auth_token}'},
+        params={'query': 'hello', 'top_k': 100, 'limit': 100, 'offset': 900},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    # retrieve_documents(..., query_filter, offset, limit, ...)
+    assert text.retrieve_documents.await_args.args[6:8] == (900, 100)

@@ -234,6 +234,10 @@ def _embedding_error_response(
 
 
 DEFAULT_TOP_K = 10
+# Bounds on paging, so candidate retrieval and response size stay predictable:
+# limit + offset never exceeds 1000, pgvector's hnsw.ef_search maximum.
+MAX_TOP_K = 100
+MAX_OFFSET = 900
 
 
 def _result_limit(top_k: Optional[int], limit: Optional[int]) -> int:
@@ -251,7 +255,10 @@ async def retrieve_query(
     payload: Optional[ImagePayload] = None,
     threshold: Optional[float] = Query(None, description='Cosine similarity threshold'),
     top_k: Optional[int] = Query(
-        None, ge=1, description=f'Number of results to return (default {DEFAULT_TOP_K})'
+        None,
+        ge=1,
+        le=MAX_TOP_K,
+        description=f'Number of results to return (default {DEFAULT_TOP_K})',
     ),
     vector_weight: Optional[float] = Query(
         None, description='Weight for vector similarity score'
@@ -259,9 +266,14 @@ async def retrieve_query(
     keyword_weight: Optional[float] = Query(
         None, description='Weight for keyword similarity score'
     ),
-    offset: Optional[int] = Query(None, description='Number of results to skip'),
+    offset: Optional[int] = Query(
+        None, ge=0, le=MAX_OFFSET, description='Number of results to skip'
+    ),
     limit: Optional[int] = Query(
-        None, ge=1, description='Number of results to return (overrides top_k)'
+        None,
+        ge=1,
+        le=MAX_TOP_K,
+        description='Number of results to return (overrides top_k)',
     ),
     query_filter: str | None = Query(None, alias='$filter'),
     exact_match: bool = Query(

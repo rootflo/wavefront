@@ -25,6 +25,15 @@ _POLL_COUNT = 50
 _POLL_INTERVAL_S = float(os.getenv('KB_INDEX_STATUS_POLL_INTERVAL_S', '5'))
 _HEARTBEAT_INTERVAL_S = int(os.getenv('KB_INDEX_STATUS_HEARTBEAT_S', '60'))
 
+# Recovery of events that were delivered but never acknowledged (processing
+# failed, or the replica holding them died): every _RECLAIM_INTERVAL_S, entries
+# idle for _RECLAIM_MIN_IDLE_MS are claimed from any consumer and applied
+# again. An entry delivered _MAX_DELIVERIES times is acknowledged and dropped,
+# so one that can never be applied doesn't stay pending forever.
+_RECLAIM_INTERVAL_S = float(os.getenv('KB_INDEX_STATUS_RECLAIM_INTERVAL_S', '60'))
+_RECLAIM_MIN_IDLE_MS = int(os.getenv('KB_INDEX_STATUS_RECLAIM_MIN_IDLE_MS', '60000'))
+_MAX_DELIVERIES = int(os.getenv('KB_INDEX_STATUS_MAX_DELIVERIES', '5'))
+
 _VALID_STATUSES = {status.value for status in IndexStatus}
 
 
@@ -36,7 +45,9 @@ class KbIndexStatusConsumer:
     The worker appends {doc_id, status, at, error} to KB_INDEX_STATUS_STREAM.
     A consumer group delivers each event to one floware replica, and an event
     is acknowledged only after it is applied, so none are lost while floware
-    restarts (unlike Redis pub/sub).
+    restarts (unlike Redis pub/sub). Events left unacknowledged -- processing
+    failed, or the replica holding them died -- are replayed on startup and
+    reclaimed when idle, up to _MAX_DELIVERIES attempts.
 
     Events from different replicas or retries can be applied out of order, so
     each update only lands if its `at` is newer than the stored
@@ -93,12 +104,21 @@ class KbIndexStatusConsumer:
             f'group={_GROUP}, consumer={_CONSUMER}'
         )
 
+        # Events this consumer received before a restart but never acknowledged
+        await self._drain_own_pending()
+
         polls = 0
         received = 0
         last_heartbeat = time.monotonic()
+        last_reclaim = time.monotonic()
 
         while self._running:
             try:
+                now = time.monotonic()
+                if now - last_reclaim >= _RECLAIM_INTERVAL_S:
+                    last_reclaim = now
+                    await self._reclaim_idle()
+
                 messages = await asyncio.to_thread(
                     self._cache.xread_group,
                     _GROUP,
@@ -111,7 +131,6 @@ class KbIndexStatusConsumer:
                 batch_size = sum(len(entries) for _stream, entries in messages)
                 received += batch_size
 
-                now = time.monotonic()
                 if now - last_heartbeat >= _HEARTBEAT_INTERVAL_S:
                     last_heartbeat = now
                     logger.info(
@@ -121,16 +140,7 @@ class KbIndexStatusConsumer:
 
                 for _stream_name, entries in messages:
                     for msg_id, fields in entries:
-                        try:
-                            await self.process(fields)
-                            await asyncio.to_thread(
-                                self._cache.xack, KB_INDEX_STATUS_STREAM, _GROUP, msg_id
-                            )
-                        except Exception as e:
-                            logger.error(
-                                f'Failed to apply index status message {msg_id} '
-                                f'({fields}): {e}. Message remains in PEL.'
-                            )
+                        await self._apply_and_ack(msg_id, fields)
 
                 # A full batch means more may be waiting: read again straight
                 # away. Otherwise the stream is drained, so wait.
@@ -139,6 +149,109 @@ class KbIndexStatusConsumer:
             except Exception as e:
                 logger.error(f'KbIndexStatusConsumer poll error: {e}')
                 await self._sleep(max(_POLL_INTERVAL_S, 2))
+
+    async def _apply_and_ack(self, msg_id: str, fields: Optional[dict]) -> None:
+        """Apply one event and acknowledge it. On failure it stays pending and
+        is retried by _reclaim_idle once idle."""
+        if not fields:
+            # Trimmed from the stream while pending: nothing left to apply
+            await self._ack(msg_id)
+            return
+        try:
+            await self.process(fields)
+            await self._ack(msg_id)
+        except Exception as e:
+            logger.error(
+                f'Failed to apply index status message {msg_id} ({fields}): {e}. '
+                'It stays pending and will be retried.'
+            )
+
+    async def _ack(self, *msg_ids: str) -> None:
+        await asyncio.to_thread(
+            self._cache.xack, KB_INDEX_STATUS_STREAM, _GROUP, *msg_ids
+        )
+
+    async def _pending(self, **filters) -> list:
+        return await asyncio.to_thread(
+            self._cache.xpending_range,
+            KB_INDEX_STATUS_STREAM,
+            _GROUP,
+            _POLL_COUNT,
+            **filters,
+        )
+
+    async def _drop_exhausted(self, pending: list) -> set:
+        """Acknowledge (drop) pending entries already delivered _MAX_DELIVERIES
+        times. Returns their ids."""
+        exhausted = {
+            str(entry['message_id'])
+            for entry in pending
+            if entry.get('times_delivered', 0) >= _MAX_DELIVERIES
+        }
+        if exhausted:
+            logger.error(
+                f'Dropping {len(exhausted)} index status event(s) after '
+                f'{_MAX_DELIVERIES} failed deliveries: {sorted(exhausted)}'
+            )
+            await self._ack(*exhausted)
+        return exhausted
+
+    async def _drain_own_pending(self) -> None:
+        """Replay this consumer's own pending entries (read from ID 0) once,
+        e.g. after a restart. The cursor moves past each entry, so one that
+        fails again is left for _reclaim_idle rather than retried in a loop."""
+        cursor = '0'
+        while self._running:
+            try:
+                exhausted = await self._drop_exhausted(
+                    await self._pending(consumer=_CONSUMER, start=cursor)
+                )
+                messages = await asyncio.to_thread(
+                    self._cache.xread_group,
+                    _GROUP,
+                    _CONSUMER,
+                    {KB_INDEX_STATUS_STREAM: cursor},
+                    _POLL_COUNT,
+                    None,
+                )
+            except Exception as e:
+                logger.error(
+                    f'KbIndexStatusConsumer could not read pending entries: {e}'
+                )
+                return
+            entries = [entry for _stream, batch in messages for entry in batch]
+            if not entries:
+                return
+            for msg_id, fields in entries:
+                if str(msg_id) not in exhausted:
+                    await self._apply_and_ack(msg_id, fields)
+            cursor = str(entries[-1][0])
+            if len(entries) < _POLL_COUNT:
+                return
+
+    async def _reclaim_idle(self) -> None:
+        """Retry entries left pending by failed processing or by a replica
+        that died: drop those out of deliveries, claim the rest, apply them."""
+        try:
+            await self._drop_exhausted(
+                await self._pending(min_idle_ms=_RECLAIM_MIN_IDLE_MS)
+            )
+            claimed = await asyncio.to_thread(
+                self._cache.xautoclaim,
+                KB_INDEX_STATUS_STREAM,
+                _GROUP,
+                _CONSUMER,
+                _RECLAIM_MIN_IDLE_MS,
+                '0-0',
+                _POLL_COUNT,
+            )
+        except Exception as e:
+            logger.error(f'KbIndexStatusConsumer could not reclaim idle entries: {e}')
+            return
+        if claimed:
+            logger.info(f'Reclaimed {len(claimed)} idle index status event(s)')
+        for msg_id, fields in claimed:
+            await self._apply_and_ack(msg_id, fields)
 
     async def _sleep(self, seconds: float) -> None:
         """Sleep, returning early if stop() is called."""

@@ -148,6 +148,19 @@ def test_persistent_server_error_fails_the_chunk_without_fallback(make_client):
     assert all(isinstance(r.error, httpx.HTTPStatusError) for r in results)
 
 
+@pytest.mark.parametrize('status_code', [429, 401, 404, 422])
+def test_other_client_errors_fail_the_chunk_without_fallback(make_client, status_code):
+    # Still rate limited after retries, or a request the service won't take
+    # whatever the images: one call per image would only add load.
+    service = FakeInferenceService(batch_responses=[status_code] * 3)
+    client = make_client(service)
+
+    results = client.embed_images([b'a', b'b'])
+
+    assert service.single_calls == 0
+    assert [r.error.response.status_code for r in results] == [status_code] * 2
+
+
 def test_connection_errors_are_retried(make_client):
     service = FakeInferenceService(
         batch_responses=[httpx.ConnectError('connection refused')]

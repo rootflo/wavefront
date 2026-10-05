@@ -31,7 +31,15 @@ class ScriptedCache:
     def xgroup_create(self, *args, **kwargs):
         pass
 
+    def xpending_range(self, *args, **kwargs):
+        return []
+
+    def xautoclaim(self, *args, **kwargs):
+        return []
+
     def xread_group(self, group, consumer, streams, count, block_ms):
+        if list(streams.values()) != ['>']:
+            return []  # startup replay of own pending entries: none here
         self.block_args.append(block_ms)
         self.read_times.append(time.monotonic())
         if not self.batches:
@@ -109,14 +117,21 @@ async def test_stop_interrupts_the_sleep_between_polls(monkeypatch):
     monkeypatch.setattr(module, '_POLL_INTERVAL_S', 30)
     cache = MagicMock(namespace='floware')
     cache.xread_group.return_value = []
+    cache.xpending_range.return_value = []
+    cache.xautoclaim.return_value = []
     consumer = KbIndexStatusConsumer(documents_repo=MagicMock(), cache_manager=cache)
 
+    def polls():  # reads of new entries, not the startup replay
+        return [
+            c for c in cache.xread_group.call_args_list if '>' in c.args[2].values()
+        ]
+
     task = asyncio.create_task(consumer.start())
-    while cache.xread_group.call_count == 0:
+    while not polls():
         await asyncio.sleep(0.01)
     started = time.monotonic()
     consumer.stop()
     await asyncio.wait_for(task, timeout=2)
 
     assert time.monotonic() - started < 1
-    assert cache.xread_group.call_count == 1
+    assert len(polls()) == 1

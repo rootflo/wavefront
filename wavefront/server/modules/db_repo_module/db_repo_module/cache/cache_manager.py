@@ -403,6 +403,70 @@ class CacheManager(CommonCache):
             logger.error(f'Error acknowledging messages on stream {stream}: {e}')
             raise
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        retry=retry_if_exception_type((RedisError, ConnectionError, TimeoutError)),
+    )
+    def xpending_range(
+        self,
+        stream: str,
+        group: str,
+        count: int,
+        min_idle_ms: Optional[int] = None,
+        consumer: Optional[str] = None,
+        start: str = '-',
+        end: str = '+',
+    ) -> list:
+        """Pending (delivered, unacknowledged) entries of a consumer group:
+        dicts with message_id, consumer, time_since_delivered (ms) and
+        times_delivered. min_idle_ms / consumer narrow the result."""
+        try:
+            return self.redis.xpending_range(
+                f'{self.namespace}/{stream}',
+                group,
+                min=start,
+                max=end,
+                count=count,
+                consumername=consumer,
+                idle=min_idle_ms,
+            )
+        except (RedisError, ConnectionError, TimeoutError) as e:
+            logger.error(f'Error listing pending entries on stream {stream}: {e}')
+            raise
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        retry=retry_if_exception_type((RedisError, ConnectionError, TimeoutError)),
+    )
+    def xautoclaim(
+        self,
+        stream: str,
+        group: str,
+        consumer: str,
+        min_idle_ms: int,
+        start_id: str = '0-0',
+        count: Optional[int] = None,
+    ) -> list:
+        """Claim entries pending longer than min_idle_ms (from any consumer)
+        for `consumer`. Returns [(message_id, fields), ...]; entries deleted
+        from the stream meanwhile are dropped from the pending list by Redis."""
+        try:
+            result = self.redis.xautoclaim(
+                f'{self.namespace}/{stream}',
+                group,
+                consumer,
+                min_idle_ms,
+                start_id=start_id,
+                count=count,
+            )
+        except (RedisError, ConnectionError, TimeoutError) as e:
+            logger.error(f'Error claiming idle entries on stream {stream}: {e}')
+            raise
+        # [next_start_id, claimed, deleted_ids] (Redis 7) or the first two (6.2)
+        return result[1] if result and len(result) > 1 else []
+
     def close(self):
         try:
             self.pool.disconnect()

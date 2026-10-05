@@ -1,6 +1,7 @@
 """Redis connection pool sizing and blocking behaviour for CacheManager. No
 Redis server is used: the connectivity ping and socket connects are patched."""
 
+import importlib.util
 import threading
 import time
 from unittest.mock import patch
@@ -18,11 +19,31 @@ def no_redis_ping():
         yield
 
 
-def test_default_pool_size_is_20(monkeypatch):
-    monkeypatch.delenv('REDIS_POOL_SIZE', raising=False)
+def import_fresh(monkeypatch, *unset_env):
+    """A separate copy of cache_manager imported with `unset_env` removed, so
+    its import-time defaults are checked without reloading the shared module."""
+    for name in unset_env:
+        monkeypatch.delenv(name, raising=False)
+    spec = importlib.util.spec_from_file_location(
+        'cache_manager_fresh', module.__file__
+    )
+    fresh = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fresh)
+    return fresh
 
-    assert module.DEFAULT_POOL_SIZE == 20
-    assert CacheManager(namespace='test').pool.max_connections == 20
+
+def test_default_pool_size_is_20(monkeypatch):
+    fresh = import_fresh(monkeypatch, 'REDIS_POOL_SIZE')
+
+    assert fresh.DEFAULT_POOL_SIZE == 20
+    with patch.object(fresh.Redis, 'ping', return_value=True):
+        assert fresh.CacheManager(namespace='test').pool.max_connections == 20
+
+
+def test_pool_size_is_read_from_env_at_import(monkeypatch):
+    monkeypatch.setenv('REDIS_POOL_SIZE', '15')
+
+    assert import_fresh(monkeypatch).DEFAULT_POOL_SIZE == 15
 
 
 def test_default_comes_from_module_setting(monkeypatch):
@@ -63,9 +84,9 @@ def test_pool_blocks_with_the_configured_timeout(monkeypatch):
 
 
 def test_default_wait_is_two_seconds(monkeypatch):
-    monkeypatch.delenv('REDIS_POOL_TIMEOUT', raising=False)
+    fresh = import_fresh(monkeypatch, 'REDIS_POOL_TIMEOUT')
 
-    assert module.DEFAULT_POOL_TIMEOUT == 2
+    assert fresh.DEFAULT_POOL_TIMEOUT == 2
 
 
 def test_exhausted_pool_waits_then_raises(monkeypatch, offline_connections):
