@@ -1,24 +1,31 @@
-import os
 import json
 from typing import List
-from google.cloud import pubsub_v1
-from .._types import MessageQueue, MessageQueueDict
 
-gcp_project_id = os.getenv('GCP_PROJECT_ID')
-gcp_pubsub_subscription_id = os.getenv('GCP_PUBSUB_SUBSCRIPTION_ID')
-gcp_pubsub_topic_id = os.getenv('GCP_PUBSUB_TOPIC_ID')
+from google.cloud import pubsub_v1
+
+from .._types import MessageQueue, MessageQueueDict, QueueSettings
 
 
 class PubSubQueue(MessageQueue):
-    def __init__(self):
-        self.project_id = gcp_project_id
+    def __init__(self, settings: QueueSettings):
+        if not settings.project_id:
+            raise ValueError('project_id must be set for PubSubQueue')
+        if not settings.target:
+            raise ValueError('target (topic id) must be set for PubSubQueue')
+
+        self.project_id = settings.project_id
+        self.topic_id = settings.target
         self.subscription_path = (
-            f'projects/{self.project_id}/subscriptions/{gcp_pubsub_subscription_id}'
+            f'projects/{self.project_id}/subscriptions/{settings.subscription}'
+            if settings.subscription
+            else None
         )
         self.subscriber = pubsub_v1.SubscriberClient()
         self.publisher = pubsub_v1.PublisherClient()
 
     def delete_message(self, ack_id: str):
+        if not self.subscription_path:
+            raise ValueError('subscription must be set to delete messages')
         try:
             self.subscriber.acknowledge(
                 request={'subscription': self.subscription_path, 'ack_ids': [ack_id]}
@@ -29,6 +36,8 @@ class PubSubQueue(MessageQueue):
     def receive_messages(
         self, max_messages=10, wait_time_sec=20
     ) -> List[MessageQueueDict]:
+        if not self.subscription_path:
+            raise ValueError('subscription must be set to receive messages')
         try:
             response = self.subscriber.pull(
                 request={
@@ -55,29 +64,15 @@ class PubSubQueue(MessageQueue):
         except Exception as e:
             raise e
 
-    def add_message(
-        self,
-        message_body: dict,
-        topic_name_or_queue_url: str | None = None,
-        **attributes,
-    ):
+    def add_message(self, message_body: dict, **attributes) -> str:
         try:
-            if not topic_name_or_queue_url:
-                topic_name_or_queue_url = gcp_pubsub_topic_id
-
-            topic_path = f'projects/{self.project_id}/topics/{topic_name_or_queue_url}'
-
+            topic_path = f'projects/{self.project_id}/topics/{self.topic_id}'
             message_data = json.dumps(message_body).encode('utf-8')
-
-            # Publish with optional attributes
             future = self.publisher.publish(
                 topic_path,
                 message_data,
-                **attributes,  # Can include custom attributes like {"source": "api", "version": "1.0"}
+                **attributes,
             )
-
-            message_id = future.result()
-            return message_id
-
+            return future.result()
         except Exception as e:
             raise e
