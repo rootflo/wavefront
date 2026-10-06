@@ -23,7 +23,7 @@ from call_processing.router import include_routers
 application_container = ApplicationContainer()
 config = application_container.config()
 configure_call_processing(CallProcessingAppSettings.from_config(config))
-configure_logging(config['env_config'].get('log_level') or 'INFO')
+configure_logging(config['env_config']['log_level'])
 runtime = RuntimeSettings.from_config(config)
 environment = runtime.app_env
 
@@ -74,10 +74,17 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # Running with Uvicorn (for local development)
 if __name__ == '__main__':
+    server = config['server']
+    host = server['host']
+    port = int(server['port'])
     print(f'Starting application in environment: {environment}')
     if environment == 'production':
         uvicorn.run(
-            'server:app', host='0.0.0.0', port=8004, workers=1, log_level='critical'
+            'server:app',
+            host=host,
+            port=port,
+            workers=1,
+            log_level=server['uvicorn_log_level'],
         )
         print(f'Started application in environment: {environment}')
 
@@ -89,11 +96,11 @@ if __name__ == '__main__':
 
         uvicorn.run(
             'server:app',
-            host='0.0.0.0',
-            port=8004,
+            host=host,
+            port=port,
             workers=1,
             reload=True,
             reload_includes=dirs,
-            log_level='info',
+            log_level=server['reload_log_level'],
         )
         print(f'Started application in environment: {environment}')

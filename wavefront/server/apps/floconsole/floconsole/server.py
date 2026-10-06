@@ -117,10 +117,18 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # Running with Uvicorn (for local development)
 if __name__ == '__main__':
+    config = application_container.config()
+    server = config['server']
+    host = server['host']
+    port = int(server['port'])
     print(f'Starting application in environment: {environment}')
     if environment == 'production':
         uvicorn.run(
-            'server:app', host='0.0.0.0', port=8002, workers=1, log_level='critical'
+            'server:app',
+            host=host,
+            port=port,
+            workers=1,
+            log_level=server['uvicorn_log_level'],
         )
         print(f'Started application in environment: {environment}')
 
@@ -132,11 +140,11 @@ if __name__ == '__main__':
 
         uvicorn.run(
             'server:app',
-            host='0.0.0.0',
-            port=8002,
+            host=host,
+            port=port,
             workers=1,
             reload=True,
             reload_includes=dirs,
-            log_level='info',
+            log_level=server['reload_log_level'],
         )
         print(f'Started application in environment: {environment}')

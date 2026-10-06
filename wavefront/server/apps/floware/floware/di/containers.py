@@ -38,7 +38,7 @@ configure_azure_openai_api_version(
 )
 configure_logging(
     app_name=config['env_config']['app_name'],
-    log_level=config['env_config'].get('log_level') or 'INFO',
+    log_level=config['env_config']['log_level'],
 )
 
 # ruff: noqa: E402
@@ -51,7 +51,7 @@ from user_management_module.authorization.require_auth import (
 configure_jwt_auth_settings(
     validation_issuer=config['jwt_token']['validation_issuer'],
     audience=config['jwt_token']['audience'],
-    token_prefix=config['jwt_token'].get('console_token_prefix', 'fc_'),
+    token_prefix=config['jwt_token']['console_token_prefix'],
 )
 
 from agents_module.agents_container import AgentsContainer

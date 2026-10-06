@@ -8,10 +8,10 @@ from typing import Any, Mapping
 
 @dataclass(frozen=True)
 class CallEvalSettings:
-    azure_endpoint: str = ''
-    azure_api_key: str = ''
-    llm_model: str = 'gpt-4.1'
-    api_version: str = '2025-01-01-preview'
+    azure_endpoint: str
+    azure_api_key: str
+    llm_model: str
+    api_version: str
 
     def as_azure_dict(self) -> dict[str, str] | None:
         endpoint = self.azure_endpoint.rstrip('/')
@@ -27,11 +27,11 @@ class CallEvalSettings:
 
 @dataclass(frozen=True)
 class PipecatSettings:
-    enable_tracing: bool = True
-    enable_turn_tracking: bool = True
-    otlp_endpoint: str | None = None
-    tracing_service_name: str = 'call-processing'
-    enable_filler_phrases_before_tool_call: bool = False
+    enable_tracing: bool
+    enable_turn_tracking: bool
+    otlp_endpoint: str | None
+    tracing_service_name: str
+    enable_filler_phrases_before_tool_call: bool
 
 
 @dataclass(frozen=True)
@@ -41,12 +41,10 @@ class CallProcessingAppSettings:
 
     @classmethod
     def from_config(cls, config: Mapping[str, Any]) -> CallProcessingAppSettings:
-        call_eval = config.get('call_eval') or {}
-        pipecat = config.get('pipecat') or {}
+        call_eval = config['call_eval']
+        pipecat = config['pipecat']
 
-        def truthy(value: Any, default: bool = True) -> bool:
-            if value is None or value == '':
-                return default
+        def truthy(value: Any) -> bool:
             return str(value).strip().lower() in {'1', 'true', 'yes', 'on'}
 
         otlp = pipecat.get('otlp_endpoint') or None
@@ -55,19 +53,18 @@ class CallProcessingAppSettings:
 
         return cls(
             call_eval=CallEvalSettings(
-                azure_endpoint=call_eval.get('azure_endpoint') or '',
-                azure_api_key=call_eval.get('azure_api_key') or '',
-                llm_model=call_eval.get('llm_model') or 'gpt-4.1',
-                api_version=call_eval.get('api_version') or '2025-01-01-preview',
+                azure_endpoint=call_eval['azure_endpoint'],
+                azure_api_key=call_eval['azure_api_key'],
+                llm_model=call_eval['llm_model'],
+                api_version=call_eval['api_version'],
             ),
             pipecat=PipecatSettings(
-                enable_tracing=truthy(pipecat.get('enable_tracing'), True),
-                enable_turn_tracking=truthy(pipecat.get('enable_turn_tracking'), True),
+                enable_tracing=truthy(pipecat['enable_tracing']),
+                enable_turn_tracking=truthy(pipecat['enable_turn_tracking']),
                 otlp_endpoint=otlp,
-                tracing_service_name=pipecat.get('tracing_service_name')
-                or 'call-processing',
+                tracing_service_name=pipecat['tracing_service_name'],
                 enable_filler_phrases_before_tool_call=truthy(
-                    pipecat.get('enable_filler_phrases_before_tool_call'), False
+                    pipecat['enable_filler_phrases_before_tool_call']
                 ),
             ),
         )
@@ -83,7 +80,7 @@ def configure_call_processing(settings: CallProcessingAppSettings) -> None:
 
 def get_call_processing_settings() -> CallProcessingAppSettings:
     if _settings is None:
-        return CallProcessingAppSettings(
-            call_eval=CallEvalSettings(), pipecat=PipecatSettings()
+        raise RuntimeError(
+            'Call-processing settings not configured; call configure_call_processing first'
         )
     return _settings
