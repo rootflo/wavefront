@@ -14,7 +14,8 @@ class IndexStatusPublisher:
 
     floware's KbIndexStatusConsumer applies these events to
     knowledge_base_documents. The CacheManager must use floware's namespace
-    (FLOWARE_APP_NAME), not the worker's own, or floware never sees them.
+    (app_config.floware_app_name), not the worker's own, or floware never sees
+    them.
     """
 
     def __init__(self, cache_manager: CacheManager):

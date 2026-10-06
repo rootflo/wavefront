@@ -22,7 +22,7 @@ def response(status_code: int) -> MagicMock:
 @pytest.fixture
 def storage():
     with patch.object(kb_rag_storage, 'EmbeddingFunc'):
-        return KBRagStorage()
+        return KBRagStorage(inference_service_url='http://inference:8003')
 
 
 def upload_with_responses(storage, *responses):

@@ -4,7 +4,6 @@ import httpx
 from flo_utils.utils.log import logger
 
 from rag_ingestion.embeddings.inference_http import post_with_retry
-from rag_ingestion.env import INFERENCE_SERVICE_URL, TEXT_EMBEDDING_BATCH_SIZE
 from rag_ingestion.models.knowledge_base_embeddings import KnowledgeBaseEmbeddingObject
 
 
@@ -18,10 +17,16 @@ class EmbeddingFunc:
     and chunk vectors are comparable.
     """
 
-    def __init__(self, max_retries: int = 3, initial_delay: float = 1.0):
+    def __init__(
+        self,
+        inference_service_url: str,
+        max_batch_size: int | str = 16,
+        max_retries: int = 3,
+        initial_delay: float = 1.0,
+    ):
         # Matches the inference app's MAX_TEXT_EMBEDDING_BATCH_SIZE default
-        self.max_batch_size = TEXT_EMBEDDING_BATCH_SIZE
-        base = (INFERENCE_SERVICE_URL or '').rstrip('/')
+        self.max_batch_size = int(max_batch_size)
+        base = (inference_service_url or '').rstrip('/')
         self.url = f'{base}{TEXT_EMBEDDINGS_PATH}'
         self.max_retries = max_retries
         self.initial_delay = initial_delay
