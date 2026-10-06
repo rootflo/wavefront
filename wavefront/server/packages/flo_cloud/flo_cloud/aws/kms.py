@@ -1,38 +1,33 @@
-import os
 import boto3
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
-from .._types import FloKMS
 
-aws_kms_arn = os.getenv('AWS_KMS_ARN')
-aws_kms_enc_arn = os.getenv('AWS_KMS_ENC_ARN')
-aws_region = os.getenv('AWS_REGION')
+from .._types import KmsKeySettings
 
 
-class AwsKMS(FloKMS):
-    def __init__(self):
-        if not all([aws_region, aws_kms_arn]):
-            raise ValueError('Region and KMS ARN must be set')
+class AwsKMS:
+    """AWS KMS client bound to a single key ARN from ``KmsKeySettings``."""
 
-        self.aws_kms_arn = aws_kms_arn
-        self.aws_kms_enc_arn = aws_kms_enc_arn
-        self.aws_region = aws_region
-        self.kms_client = boto3.client('kms', region_name=aws_region)
+    def __init__(self, settings: KmsKeySettings):
+        if not settings.region:
+            raise ValueError('region must be set for AwsKMS')
+        if not settings.key:
+            raise ValueError('key (KMS ARN) must be set for AwsKMS')
+
+        self.aws_kms_arn = settings.key
+        self.aws_region = settings.region
+        self.kms_client = boto3.client('kms', region_name=settings.region)
 
     def encrypt(self, plaintext: str | bytes) -> bytes:
-        if not self.aws_kms_enc_arn:
-            raise ValueError('AWS_KMS_ENC_ARN must be set to use encryption')
         if isinstance(plaintext, str):
             plaintext = plaintext.encode('utf-8')
-        return self.kms_client.encrypt(KeyId=self.aws_kms_enc_arn, Plaintext=plaintext)[
+        return self.kms_client.encrypt(KeyId=self.aws_kms_arn, Plaintext=plaintext)[
             'CiphertextBlob'
         ]
 
     def decrypt(self, ciphertext: bytes) -> bytes:
-        if not self.aws_kms_enc_arn:
-            raise ValueError('AWS_KMS_ENC_ARN must be set to use decryption')
         return self.kms_client.decrypt(
-            KeyId=self.aws_kms_enc_arn, CiphertextBlob=ciphertext
+            KeyId=self.aws_kms_arn, CiphertextBlob=ciphertext
         )['Plaintext']
 
     def sign(self, message: bytes, **kwargs) -> bytes:

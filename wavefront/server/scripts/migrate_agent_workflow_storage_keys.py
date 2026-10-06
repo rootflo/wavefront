@@ -19,7 +19,7 @@ Usage:
 
 Required environment variables (same as alembic/env.py and celery_worker/env.py):
     DB_USERNAME, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME
-    CLOUD_PROVIDER, AGENT_YAML_BUCKET
+    CLOUD_PROVIDER, APPLICATION_BUCKET
 """
 
 import asyncio
@@ -88,8 +88,17 @@ async def main() -> None:
     )
     db_client = DatabaseClient(db_config=db_config)
 
-    cloud_storage_manager = CloudStorageManager(provider=os.environ['CLOUD_PROVIDER'])
-    bucket_name = os.environ['AGENT_YAML_BUCKET']
+    cloud_storage_manager = CloudStorageManager(
+        provider=os.environ['CLOUD_PROVIDER'],
+        account_url=os.environ.get('AZURE_STORAGE_ACCOUNT_URL') or None,
+        client_id=os.environ.get('AZURE_CLIENT_ID') or None,
+        client_secret=os.environ.get('AZURE_CLIENT_SECRET') or None,
+        tenant_id=os.environ.get('AZURE_TENANT_ID') or None,
+        region_name=os.environ.get('CLOUD_REGION') or None,
+    )
+    bucket_name = (
+        os.environ.get('APPLICATION_BUCKET') or os.environ['AGENT_YAML_BUCKET']
+    )
 
     agent_repository = SQLAlchemyRepository[Agent](model=Agent, db_client=db_client)
     workflow_repository = SQLAlchemyRepository[Workflow](
