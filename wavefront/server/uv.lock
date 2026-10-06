@@ -21,11 +21,11 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-09-29T14:57:53.346385Z"
+exclude-newer = "2026-09-29T18:02:39.07626Z"
 exclude-newer-span = "P7D"
 
 [options.exclude-newer-package]
-flo-ai = { timestamp = "2026-10-06T14:57:53.346755Z", span = "PT0S" }
+flo-ai = { timestamp = "2026-10-06T18:02:39.07678Z", span = "PT0S" }
 
 [manifest]
 members = [
@@ -7293,6 +7293,12 @@ dependencies = [
     { name = "twilio" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "common-module", editable = "modules/common_module" },
@@ -7300,6 +7306,12 @@ requires-dist = [
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "httpx", specifier = ">=0.27.0,<1.0.0" },
     { name = "twilio" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=9.0.3,<10.0.0" },
+    { name = "pytest-asyncio", specifier = ">=1.0.0,<2.0.0" },
 ]
 
 [[package]]
