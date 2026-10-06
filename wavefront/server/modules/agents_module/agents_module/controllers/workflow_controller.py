@@ -26,8 +26,6 @@ from agents_module.models.workflow_schemas import (
     WorkflowInferenceRequest,
     WorkflowInferenceResponse,
 )
-from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
-from db_repo_module.models.workflow_pipeline import WorkflowPipeline
 
 workflows_router = APIRouter()
 
@@ -777,9 +775,6 @@ async def delete_workflow(
     workflow_crud_service: WorkflowCrudService = Depends(
         Provide[AgentsContainer.workflow_crud_service]
     ),
-    workflow_pipeline_repository: SQLAlchemyRepository[WorkflowPipeline] = Depends(
-        Provide[AgentsContainer.workflow_pipeline_repository]
-    ),
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
     ),
@@ -795,18 +790,6 @@ async def delete_workflow(
     """
     logger.info(f'Deleting workflow - ID: {workflow_id}')
 
-    # Check if there are any workflow pipelines associated with this workflow
-    workflow_pipeline = await workflow_pipeline_repository.find(workflow_id=workflow_id)
-
-    if len(workflow_pipeline) > 0:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(
-                'Delete workflow pipelines associated with this workflow first'
-            ),
-        )
-
-    # No pipelines found, proceed with deletion
     await workflow_crud_service.delete_workflow(workflow_id)
 
     logger.info(f'Successfully deleted workflow - ID: {workflow_id}')
