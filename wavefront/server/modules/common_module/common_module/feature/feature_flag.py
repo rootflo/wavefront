@@ -32,10 +32,15 @@ feature_flag_config = {name: 'false' for name in _ALL_FLAGS}
 
 
 def configure_feature_flags(**values: str) -> None:
-    """Apply ``[feature_flags]`` from an app's config.ini at startup."""
+    """Apply ``[feature_flags]`` from an app's config.ini at startup.
+
+    Config parsers may lowercase section keys; names are matched case-insensitively
+    against the known flag constants.
+    """
     for name, value in values.items():
-        if name in feature_flag_config and value is not None and value != '':
-            feature_flag_config[name] = value
+        key = name.upper()
+        if key in feature_flag_config and value is not None and value != '':
+            feature_flag_config[key] = value
 
 
 def is_feature_enabled(feature: str):
