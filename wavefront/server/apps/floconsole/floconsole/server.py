@@ -1,40 +1,34 @@
 from contextlib import asynccontextmanager
 import glob
-import os
-from typing import Any, cast
 
 from common_module.common_container import CommonContainer
 from common_module.log.logger import logger
 from common_module.response_formatter import ResponseFormatter
-from common_module.middleware.request_id_middleware import RequestIdMiddleware
-from common_module.middleware.security_headers import SecurityHeadersMiddleware
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
-from starlette.middleware import _MiddlewareFactory
 
-from floconsole.authorization.require_auth import RequireAuthMiddleware
 from floconsole.di.application_container import ApplicationContainer
-from floconsole.controllers.app_controller import app_router
-from floconsole.controllers.app_user_controller import app_user_router
-from floconsole.controllers.auth_controller import auth_router
-from floconsole.controllers.floware_proxy_controller import floware_proxy_router
-from floconsole.controllers.user_controller import user_router
 from floconsole.db import DatabaseClient
+from floconsole.middleware.setup import add_middlewares
+from floconsole.router.setup import include_routers
 
 load_dotenv()
 
-environment = os.getenv('APP_ENV', 'production')
+common_container = CommonContainer(cache_manager=None)
+config = common_container.config()
+environment = config['env_config']['app_env'] or 'production'
+web = config.get('web') or {}
 
 # The interactive docs and the OpenAPI schema are off everywhere except dev,
 # so a new/unknown APP_ENV value stays closed rather than exposing the surface.
 is_dev = environment == 'dev'
 
-# Initialize containers
-common_container = CommonContainer(cache_manager=None)
-application_container = ApplicationContainer(common_container=common_container)
+application_container = ApplicationContainer(
+    common_container=common_container,
+    kms_signer=common_container.kms_signer,
+)
 
 # Wire containers
 application_container.wire(
@@ -50,10 +44,6 @@ common_container.wire(
         'floconsole.controllers',
     ],
 )
-
-
-def _middleware(cls: type[Any]) -> _MiddlewareFactory[Any]:
-    return cast(_MiddlewareFactory[Any], cls)
 
 
 @asynccontextmanager
@@ -100,41 +90,10 @@ app = FastAPI(
     redoc_url='/redoc' if is_dev else None,
 )
 
-origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:5173')
-allowed_origins = origins.split(',')
-
-app.add_middleware(_middleware(RequestIdMiddleware))
-app.add_middleware(_middleware(RequireAuthMiddleware))
-# Strict default-src 'none' CSP plus the rest of the security headers; /docs and
-# /redoc get their own relaxed policy when APP_ENV=dev.
-app.add_middleware(_middleware(SecurityHeadersMiddleware))
-
-# Configure CORS with proper security settings
-app.add_middleware(
-    _middleware(CORSMiddleware),
-    allow_origins=allowed_origins,
-    allow_credentials=True,
-    allow_methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allow_headers=['*'],
-    expose_headers=[
-        'X-Content-Type-Options',
-        'X-XSS-Protection',
-        'X-Frame-Options',
-        'Referrer-Policy',
-        'Content-Security-Policy',
-        'Pragma',
-        'Expires',
-        'Strict-Transport-Security',
-        'Cache-Control',
-    ],
-)
-
-# Include routers
-app.include_router(auth_router, prefix='/floconsole')
-app.include_router(floware_proxy_router, prefix='/floconsole')
-app.include_router(user_router, prefix='/floconsole')
-app.include_router(app_router, prefix='/floconsole')
-app.include_router(app_user_router, prefix='/floconsole')
+# Middlewares & Routers
+origins = str(web.get('allowed_origins') or 'http://localhost:5173')
+add_middlewares(app, allowed_origins=origins.split(','))
+include_routers(app)
 
 
 @app.exception_handler(Exception)

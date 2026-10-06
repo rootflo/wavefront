@@ -1,7 +1,6 @@
 from dependency_injector import containers
 from dependency_injector import providers
 
-from flo_cloud.kms import FloKmsService
 from floconsole.db import (
     DatabaseClient,
     DatabaseConfig,
@@ -23,6 +22,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
 
     # Common module container (external dependency)
     common_container = providers.Dependency()
+    kms_signer = providers.Dependency()
 
     # Database configuration and client
     db_config = providers.Factory(
@@ -66,17 +66,9 @@ class ApplicationContainer(containers.DeclarativeContainer):
         app_user_repository=app_user_repository,
     )
 
-    kms_service = providers.Selector(
-        config.jwt_token.enable_cloud_kms,
-        true=providers.Singleton(
-            FloKmsService, cloud_provider=config.cloud_config.cloud_provider
-        ),
-        false=providers.Object(None),
-    )
-
     token_service = providers.Singleton(
         TokenService,
-        kms_service=kms_service,
+        kms_signer=kms_signer,
         token_expiry=config.jwt_token.token_expiry,
         temporary_token_expiry=config.jwt_token.temporary_token_expiry,
         app_env=config.env_config.app_env,
@@ -95,4 +87,5 @@ class ApplicationContainer(containers.DeclarativeContainer):
         app_env=config.env_config.app_env,
         token_prefix=config.jwt_token.token_prefix,
         temporary_token_expiry=config.jwt_token.temporary_token_expiry,
+        passthrough_secret=config.env_config.passthrough_secret,
     )
