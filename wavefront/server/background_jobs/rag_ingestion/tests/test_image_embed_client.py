@@ -11,7 +11,7 @@ from typing import Callable, List
 import httpx
 import pytest
 
-from rag_ingestion.embeddings import image_embed, inference_http
+from rag_ingestion.embeddings import inference_http
 from rag_ingestion.embeddings.image_embed import ImageEmbedding
 
 BATCH_PATH = '/inference/v1/query/embeddings/batch'
@@ -73,11 +73,11 @@ class FakeInferenceService:
 
 
 @pytest.fixture
-def make_client(monkeypatch) -> Callable[..., ImageEmbedding]:
-    monkeypatch.setattr(image_embed, 'INFERENCE_SERVICE_URL', 'http://inference')
-
+def make_client() -> Callable[..., ImageEmbedding]:
     def factory(service: FakeInferenceService, batch_size: int = 8) -> ImageEmbedding:
-        client = ImageEmbedding(batch_size=batch_size, initial_delay=0)
+        client = ImageEmbedding(
+            'http://inference', batch_size=batch_size, initial_delay=0
+        )
         client._client = httpx.Client(transport=httpx.MockTransport(service))
         return client
 

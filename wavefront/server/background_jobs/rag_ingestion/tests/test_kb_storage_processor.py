@@ -47,8 +47,9 @@ def processor():
     ):
         processor = KbStorageProcessor(
             storage_manager=MagicMock(),
-            encryption_service=None,
+            kms_cipher=None,
             index_status_publisher=MagicMock(),
+            inference_service_url='http://inference:8003',
         )
     processor.index_status_publisher.publish.return_value = True
     processor.image_embedding.embed_images.side_effect = fake_embed_images
