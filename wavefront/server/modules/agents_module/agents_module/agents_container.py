@@ -8,7 +8,6 @@ from agents_module.services.async_agentic_execution_service import (
 from agents_module.services.namespace_service import NamespaceService
 from agents_module.services.workflow_crud_service import WorkflowCrudService
 from agents_module.services.workflow_inference_service import WorkflowInferenceService
-from flo_cloud.message_queue import MessageQueueManager
 
 
 class AgentsContainer(containers.DeclarativeContainer):
@@ -21,9 +20,6 @@ class AgentsContainer(containers.DeclarativeContainer):
     cache_manager = providers.Dependency()
 
     tool_loader = providers.Dependency()
-
-    workflow_pipeline_repository = providers.Dependency()
-    workflow_runs_repository = providers.Dependency()
 
     namespace_repository = providers.Dependency()
 
@@ -63,7 +59,7 @@ class AgentsContainer(containers.DeclarativeContainer):
         namespace_service=namespace_service,
         cloud_storage_manager=cloud_storage_manager,
         cache_manager=cache_manager,
-        bucket_name=config.agents.agent_yaml_bucket,
+        bucket_name=config.storage.application_bucket,
         message_processor_repository=message_processor_repository,
         message_processor_bucket_name=message_processor_bucket_name,
         api_services_manager=api_services_manager,
@@ -90,7 +86,7 @@ class AgentsContainer(containers.DeclarativeContainer):
         namespace_service=namespace_service,
         cloud_storage_manager=cloud_storage_manager,
         cache_manager=cache_manager,
-        bucket_name=config.agents.agent_yaml_bucket,
+        bucket_name=config.storage.application_bucket,
         agent_crud_service=agent_crud_service,
         tool_loader=tool_loader,
         agent_inference_service=agent_inference_service,
@@ -101,7 +97,7 @@ class AgentsContainer(containers.DeclarativeContainer):
         guardrails_engine=guardrails_engine,
         cloud_storage_manager=cloud_storage_manager,
         cache_manager=cache_manager,
-        bucket_name=config.agents.agent_yaml_bucket,
+        bucket_name=config.storage.application_bucket,
         workflow_repository=workflow_repository,
         workflow_version_repository=workflow_version_repository,
         agent_crud_service=agent_crud_service,
@@ -115,9 +111,4 @@ class AgentsContainer(containers.DeclarativeContainer):
         cloud_storage_manager=cloud_storage_manager,
         cache_manager=cache_manager,
         executions_bucket=executions_bucket,
-    )
-
-    message_queue_manager = providers.Singleton(
-        MessageQueueManager,
-        cloud_provider=config.cloud_config.cloud_provider,
     )
