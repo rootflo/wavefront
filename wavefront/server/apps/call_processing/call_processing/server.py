@@ -1,24 +1,26 @@
 import glob
-import os
 
 from call_processing.log.logger import logger
-from common_module.middleware.security_headers import SecurityHeadersMiddleware
+from common_module.runtime_settings import configure_runtime_settings
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
 
 from call_processing.di.application_container import ApplicationContainer
-from call_processing.controllers.webhook_controller import webhook_router
-from call_processing.controllers.cache_controller import cache_router
+from call_processing.middleware import add_middlewares
+from call_processing.router import include_routers
 
 load_dotenv()
 
-environment = os.getenv('APP_ENV', 'production')
-
 # Initialize containers
 application_container = ApplicationContainer()
+config = application_container.config()
+env_config = config.get('env_config') or {}
+web = config.get('web') or {}
+environment = env_config.get('app_env') or 'production'
+# Shared SecurityHeadersMiddleware still reads runtime_settings.app_env.
+configure_runtime_settings(app_env=environment)
 
 # Wire containers
 application_container.wire(
@@ -42,36 +44,10 @@ app = FastAPI(
     redoc_url='/redoc' if is_dev else None,
 )
 
-origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:8001')
-allowed_origins = origins.split(',')
-
-# Strict default-src 'none' CSP plus the rest of the security headers; /docs and
-# /redoc get their own relaxed policy when APP_ENV=dev.
-app.add_middleware(SecurityHeadersMiddleware)
-
-# Configure CORS with proper security settings
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True,
-    allow_methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allow_headers=['*'],
-    expose_headers=[
-        'X-Content-Type-Options',
-        'X-XSS-Protection',
-        'X-Frame-Options',
-        'Referrer-Policy',
-        'Content-Security-Policy',
-        'Pragma',
-        'Expires',
-        'Strict-Transport-Security',
-        'Cache-Control',
-    ],
-)
-
-# Include routers
-app.include_router(webhook_router, prefix='/webhooks')
-app.include_router(cache_router, prefix='/api')
+# Middlewares & Routers
+origins = str(web.get('allowed_origins') or 'http://localhost:8001')
+add_middlewares(app, origins.split(','))
+include_routers(app)
 
 
 @app.get('/health')

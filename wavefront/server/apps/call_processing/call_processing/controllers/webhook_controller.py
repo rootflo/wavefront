@@ -6,7 +6,6 @@ Handles TwiML generation and WebSocket audio streaming
 
 import html
 import json
-import os
 from uuid import UUID
 from call_processing.utils import normalize_indian_phone_number
 from fastapi import APIRouter, WebSocket, Query, Depends, Form
@@ -37,6 +36,18 @@ from call_processing.serializers.smartflo_serializer import SmartfloFrameSeriali
 webhook_router = APIRouter()
 
 
+def _media_stream_websocket_url(base_url: str | None) -> str:
+    """Build the Twilio Media Stream wss URL from the call-processing base URL."""
+    resolved = base_url or 'http://localhost:8003'
+    if resolved.startswith('https://'):
+        websocket_url = resolved.replace('https://', 'wss://')
+    elif resolved.startswith('http://'):
+        websocket_url = resolved.replace('http://', 'wss://')
+    else:
+        websocket_url = f'wss://{resolved}'
+    return f'{websocket_url}/webhooks/ws'
+
+
 @webhook_router.post('/inbound')
 @inject
 async def inbound_webhook(
@@ -45,6 +56,9 @@ async def inbound_webhook(
     CallSid: str = Form(...),
     voice_agent_cache_service: VoiceAgentCacheService = Depends(
         Provide[ApplicationContainer.voice_agent_cache_service]
+    ),
+    call_processing_base_url: str = Depends(
+        Provide[ApplicationContainer.config.env_config.call_processing_base_url]
     ),
 ):
     """
@@ -79,19 +93,7 @@ async def inbound_webhook(
     agent_id = agent['id']
     logger.info(f'Agent found for inbound number {To}: {agent_id} ({agent["name"]})')
 
-    # Build WebSocket URL
-    base_url = os.getenv('CALL_PROCESSING_BASE_URL', 'http://localhost:8003')
-
-    # Convert https:// to wss:// (or http:// to wss://)
-    if base_url.startswith('https://'):
-        websocket_url = base_url.replace('https://', 'wss://')
-    elif base_url.startswith('http://'):
-        websocket_url = base_url.replace('http://', 'wss://')
-    else:
-        websocket_url = f'wss://{base_url}'
-
-    websocket_url = f'{websocket_url}/webhooks/ws'
-
+    websocket_url = _media_stream_websocket_url(call_processing_base_url)
     logger.info(f'WebSocket URL: {websocket_url}')
 
     # Generate TwiML response
@@ -118,10 +120,14 @@ async def inbound_webhook(
 
 
 @webhook_router.post('/twiml')
+@inject
 async def twiml_endpoint(
     From: str = Form(...),
     To: str = Form(...),
     voice_agent_id: str = Query(...),
+    call_processing_base_url: str = Depends(
+        Provide[ApplicationContainer.config.env_config.call_processing_base_url]
+    ),
 ):
     """
     Twilio TwiML endpoint
@@ -134,19 +140,7 @@ async def twiml_endpoint(
     """
     logger.info(f'TwiML requested for voice_agent_id: {voice_agent_id}')
 
-    # Build WebSocket URL
-    base_url = os.getenv('CALL_PROCESSING_BASE_URL', 'http://localhost:8003')
-
-    # Convert https:// to wss:// (or http:// to wss://)
-    if base_url.startswith('https://'):
-        websocket_url = base_url.replace('https://', 'wss://')
-    elif base_url.startswith('http://'):
-        websocket_url = base_url.replace('http://', 'wss://')
-    else:
-        websocket_url = f'wss://{base_url}'
-
-    websocket_url = f'{websocket_url}/webhooks/ws'
-
+    websocket_url = _media_stream_websocket_url(call_processing_base_url)
     logger.info(f'WebSocket URL: {websocket_url}')
 
     # Generate TwiML response
