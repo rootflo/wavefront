@@ -1,3 +1,0 @@
-import os
-
-SERVICE_DEFINITION_BUCKET = os.getenv('APPLICATION_BUCKET')
