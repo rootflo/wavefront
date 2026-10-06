@@ -118,3 +118,10 @@ class AdhocImageUploadRequest(BaseModel):
         if not v.strip():
             raise ValueError('loan_id must not be empty')
         return v
+
+
+class ImageSegmentRequest(BaseModel):
+    """Fraud-search sync segmentation: data URL image, no loan metadata required."""
+
+    image: str
+    segment_prompt: Optional[str] = 'jewellery'

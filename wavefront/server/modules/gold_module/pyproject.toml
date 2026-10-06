@@ -16,6 +16,8 @@ dependencies = [
     "azure-identity>=1.17.0,<2.0.0",
     "azure-storage-blob>=12.20.0,<13.0.0",
     "azure-storage-queue>=12.10.0,<13.0.0",
+    "httpx>=0.27.0,<1.0.0",
+    "pillow>=11.0.0",
 ]
 
 [tool.uv.sources]

@@ -1,18 +1,25 @@
 import io
-from typing import Any, Dict
+import os
 import uuid
 from datetime import datetime
 import json
+from typing import Any, Dict, List
 
+import httpx
 from common_module.log.logger import logger
 from common_module.utils.image_formats import SUPPORTED_PILLOW_FORMATS
 from gold_module.services.cloud_image_service import CloudImageService
+from gold_module.utils.segment_utils import (
+    bytes_to_data_url,
+    extract_image_bytes_from_contours,
+)
 from PIL import Image
 
 
 class ImageService:
     def __init__(self, cloud_service: CloudImageService):
         self.cloud_service = cloud_service
+        self.image_analysis_url = os.environ.get('IMAGE_ANALYSIS_URL')
 
     async def save_image(self, image_data: bytes, image_name: str):
         validated_image_data = await self._validate_image(image_data)
@@ -57,6 +64,73 @@ class ImageService:
         except Exception as e:
             logger.error(f'Error processing image: {str(e)}')
             raise Exception(f'Failed to process image: {str(e)}')
+
+    async def segment_image(
+        self,
+        image_data: bytes,
+        segment_prompt: str = 'jewellery',
+    ) -> Dict[str, Any]:
+        """
+        Run SAM segmentation via IMAGE_ANALYSIS_URL and return crop previews
+        for the Fraud Search UI to pick from before KB retrieve.
+        """
+        if not self.image_analysis_url:
+            raise ValueError('IMAGE_ANALYSIS_URL is not configured')
+
+        validated = await self._validate_image(image_data)
+        filename = 'fraud_search_segment.jpg'
+        files = {'image': (filename, validated, 'image/jpeg')}
+        data = {'segment_prompt': segment_prompt or 'jewellery'}
+
+        logger.info(
+            f'[image_segment] Calling IMAGE_ANALYSIS_URL={self.image_analysis_url}'
+        )
+        try:
+            async with httpx.AsyncClient(timeout=240.0) as client:
+                response = await client.post(
+                    self.image_analysis_url,
+                    files=files,
+                    data=data,
+                )
+            response.raise_for_status()
+        except httpx.HTTPError as e:
+            logger.error(f'[image_segment] Predict request failed: {e}', exc_info=True)
+            raise Exception(f'Image segmentation service failed: {e}') from e
+
+        prediction = response.json()
+        raw_items = prediction.get('items') or []
+        items: List[Dict[str, Any]] = []
+
+        for item in raw_items:
+            contours = item.get('contours')
+            if not contours:
+                continue
+            if item.get('status') not in (None, 'success'):
+                continue
+            try:
+                crop_bytes = extract_image_bytes_from_contours(
+                    validated, contours, padding=0
+                )
+            except Exception as e:
+                logger.warning(
+                    f'[image_segment] Skipping item {item.get("item_index")}: {e}'
+                )
+                continue
+            items.append(
+                {
+                    'index': item.get('item_index', len(items)),
+                    'image': bytes_to_data_url(crop_bytes),
+                    'predicted_category': item.get('predicted_category'),
+                    'confidence_score': item.get('confidence_score'),
+                }
+            )
+
+        logger.info(f'[image_segment] Returning {len(items)} segment crop(s)')
+        return {
+            'items': items,
+            'total_items': len(items),
+            'status': 'success' if items else 'no_items_detected',
+        }
 
     async def _validate_image(self, image_data: bytes) -> bytes:
         try:
