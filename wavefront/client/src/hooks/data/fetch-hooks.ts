@@ -1,5 +1,5 @@
 import { GuardrailAdapterListData, GuardrailPolicy, PiiEntityListData } from '@app/api/guardrails-service';
-import { DocumentData, InferenceData, KbData } from '@app/api/knowledge-base-service';
+import { DocumentData, KbData, KnowledgeBaseIndexStatusData } from '@app/api/knowledge-base-service';
 import { ModelData } from '@app/api/model-inference-service';
 import { NamespaceItem } from '@app/api/namespace-service';
 import { useQueryInit } from '@app/lib/react-query';
@@ -24,7 +24,7 @@ import { ScheduledJob } from '@app/types/scheduled-job';
 import { Trigger } from '@app/types/trigger';
 import { WorkflowListItem, WorkflowPipelineListItem, WorkflowRunListData } from '@app/types/workflow';
 import { EntityVersion } from '@app/types/version';
-import { UseQueryResult } from '@tanstack/react-query';
+import { UseQueryResult, useQuery } from '@tanstack/react-query';
 
 import { IUser } from '@app/types/user';
 import {
@@ -50,7 +50,7 @@ import {
   getOAuthAppQueryFn,
   getOAuthAppsQueryFn,
   getKnowledgeBaseDocumentsQueryFn,
-  getKnowledgeBaseInferencesQueryFn,
+  getKnowledgeBaseIndexStatusQueryFn,
   getKnowledgeBaseQueryFn,
   getKnowledgeBasesQueryFn,
   getLLMConfigQueryFn,
@@ -112,7 +112,7 @@ import {
   getOAuthAppKey,
   getOAuthAppsKey,
   getKnowledgeBaseDocumentsKey,
-  getKnowledgeBaseInferencesKey,
+  getKnowledgeBaseIndexStatusKey,
   getKnowledgeBaseKey,
   getKnowledgeBasesKey,
   getLLMConfigKey,
@@ -352,15 +352,25 @@ export const useGetKnowledgeBaseDocuments = (
   );
 };
 
-export const useGetKnowledgeBaseInferences = (
+// While any document is queued or being indexed, refresh every few seconds so
+// the counts move on their own; stop once everything has settled.
+const INDEX_STATUS_POLL_MS = 5000;
+
+export const useGetKnowledgeBaseIndexStatus = (
   appId: string | undefined,
   kbId: string | undefined
-): UseQueryResult<InferenceData[], Error> => {
-  return useQueryInit(
-    getKnowledgeBaseInferencesKey(appId || '', kbId || ''),
-    () => getKnowledgeBaseInferencesQueryFn(kbId!),
-    !!appId && !!kbId
-  );
+): UseQueryResult<KnowledgeBaseIndexStatusData | null, Error> => {
+  return useQuery({
+    queryKey: getKnowledgeBaseIndexStatusKey(appId || '', kbId || ''),
+    queryFn: () => getKnowledgeBaseIndexStatusQueryFn(kbId!),
+    enabled: !!appId && !!kbId,
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchInterval: (query) => {
+      const counts = query.state.data?.counts;
+      return counts && counts.QUEUED + counts.IN_PROGRESS > 0 ? INDEX_STATUS_POLL_MS : false;
+    },
+  });
 };
 
 export const useGetWorkflows = (

@@ -6,9 +6,6 @@ for use by the ToolLoader.
 """
 
 from tools_module.registry.registries.datasource_registry import DATASOURCE_REGISTRY
-from tools_module.registry.registries.knowledge_base_registry import (
-    KNOWLEDGE_BASE_REGISTRY,
-)
 from tools_module.registry.registries.email_registry import EMAIL_REGISTRY
 from tools_module.registry.registries.util_function_registry import (
     UTIL_FUNCTION_REGISTRY,
@@ -43,7 +40,6 @@ def _merge_registries(*registries):
 
 FUNCTION_REGISTRY = _merge_registries(
     DATASOURCE_REGISTRY,
-    KNOWLEDGE_BASE_REGISTRY,
     EMAIL_REGISTRY,
     UTIL_FUNCTION_REGISTRY,
     MESSAGE_PROCESSOR_REGISTRY,

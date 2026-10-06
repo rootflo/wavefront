@@ -17,6 +17,7 @@ from flo_cloud.cloud_storage import CloudStorageManager
 from common_module.log.logger import logger
 
 from inference_app.env import (
+    BGE_M3_MODEL_URI,
     CLOUD_PROVIDER,
     CLIP_VIT_BASE_PATCH32_MODEL_URI,
     DINOV3_VITL16_HF_MODEL_URI,
@@ -24,7 +25,7 @@ from inference_app.env import (
 )
 
 _CLOUD_URI_PATTERN = re.compile(
-    r"^(?:gs://|s3://|azure://).+",
+    r'^(?:gs://|s3://|azure://).+',
     re.IGNORECASE,
 )
 
@@ -78,22 +79,22 @@ def sync_cloud_model(uri: str, *, provider: str, cache_root: Path) -> Path:
     uri = uri.strip()
     if not is_cloud_uri(uri):
         raise ValueError(
-            f"Model URI must be a cloud URI (gs://, s3://, or azure://); got {uri!r}"
+            f'Model URI must be a cloud URI (gs://, s3://, or azure://); got {uri!r}'
         )
 
     storage = CloudStorageManager(provider)
     bucket_name, prefix = storage.get_bucket_key(uri)
-    if prefix and not prefix.endswith("/"):
-        prefix = f"{prefix}/"
+    if prefix and not prefix.endswith('/'):
+        prefix = f'{prefix}/'
 
     dest_dir = cache_root / _cache_key(uri)
-    marker = dest_dir / ".sync_complete"
+    marker = dest_dir / '.sync_complete'
     if marker.is_file():
-        logger.info("Using cached model at %s (uri=%s)", dest_dir, uri)
+        logger.info('Using cached model at %s (uri=%s)', dest_dir, uri)
         return dest_dir
 
     logger.info(
-        "Syncing model from %s (bucket=%s, prefix=%s) -> %s",
+        'Syncing model from %s (bucket=%s, prefix=%s) -> %s',
         uri,
         bucket_name,
         prefix,
@@ -102,21 +103,21 @@ def sync_cloud_model(uri: str, *, provider: str, cache_root: Path) -> Path:
 
     keys = _list_all_keys(storage, bucket_name, prefix)
     if not keys:
-        raise ValueError(f"No objects found at cloud URI {uri!r}")
+        raise ValueError(f'No objects found at cloud URI {uri!r}')
 
     for key in keys:
-        if key.endswith("/"):
+        if key.endswith('/'):
             continue
-        relative = key[len(prefix):] if prefix and key.startswith(prefix) else key
+        relative = key[len(prefix) :] if prefix and key.startswith(prefix) else key
         if not relative:
             continue
         local_path = dest_dir / relative
         local_path.parent.mkdir(parents=True, exist_ok=True)
         local_path.write_bytes(storage.read_file(bucket_name, key))
-        logger.debug("Downloaded %s", relative)
+        logger.debug('Downloaded %s', relative)
 
-    marker.write_text(uri, encoding="utf-8")
-    logger.info("Synced %d object(s) to %s", len(keys), dest_dir)
+    marker.write_text(uri, encoding='utf-8')
+    logger.info('Synced %d object(s) to %s', len(keys), dest_dir)
     return dest_dir
 
 
@@ -141,23 +142,23 @@ def resolve_model_dir(name: str, uri: str, cache_root: Path) -> Path:
         ValueError: If uri is empty, not a cloud URI, and not an existing local dir.
     """
     if not uri:
-        raise ValueError(f"{name} env var is required but not set")
+        raise ValueError(f'{name} env var is required but not set')
 
     if is_cloud_uri(uri):
         if not CLOUD_PROVIDER:
             raise ValueError(
-                "CLOUD_PROVIDER env var is required when using a cloud URI"
+                'CLOUD_PROVIDER env var is required when using a cloud URI'
             )
         return sync_cloud_model(uri, provider=CLOUD_PROVIDER, cache_root=cache_root)
 
     local = Path(uri)
     if local.is_dir():
-        logger.info("Using local model dir for %s: %s", name, local)
+        logger.info('Using local model dir for %s: %s', name, local)
         return local
 
     raise ValueError(
-        f"{name}={uri!r} is neither a cloud URI (gs://, s3://, azure://)"
-        f" nor an existing local directory"
+        f'{name}={uri!r} is neither a cloud URI (gs://, s3://, azure://)'
+        f' nor an existing local directory'
     )
 
 
@@ -181,6 +182,23 @@ def sync_embedding_models() -> tuple[Path, Path]:
         ValueError: If required env vars are missing or point to invalid sources.
     """
     cache_root = _ensure_cache_dir()
-    clip_dir = resolve_model_dir("CLIP_VIT_BASE_PATCH32_MODEL_URI", CLIP_VIT_BASE_PATCH32_MODEL_URI, cache_root)
-    dino_dir = resolve_model_dir("DINOV3_VITL16_HF_MODEL_URI", DINOV3_VITL16_HF_MODEL_URI, cache_root)
+    clip_dir = resolve_model_dir(
+        'CLIP_VIT_BASE_PATCH32_MODEL_URI', CLIP_VIT_BASE_PATCH32_MODEL_URI, cache_root
+    )
+    dino_dir = resolve_model_dir(
+        'DINOV3_VITL16_HF_MODEL_URI', DINOV3_VITL16_HF_MODEL_URI, cache_root
+    )
     return clip_dir, dino_dir
+
+
+def sync_text_embedding_model() -> Path:
+    """
+    Resolve the BGE-M3 model directory from BGE_M3_MODEL_URI (cloud URI or
+    local directory, as for the image models).
+
+    Callers should check BGE_M3_MODEL_URI first: the model is optional.
+
+    Raises:
+        ValueError: If BGE_M3_MODEL_URI is unset or points to an invalid source.
+    """
+    return resolve_model_dir('BGE_M3_MODEL_URI', BGE_M3_MODEL_URI, _ensure_cache_dir())

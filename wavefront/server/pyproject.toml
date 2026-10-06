@@ -47,7 +47,6 @@ exclude-newer = "7 days"
 exclude-newer-package = { flo-ai = "0 days" }
 
 override-dependencies = [
-    "torch>=2.6.0 ; sys_platform != 'darwin'",
     # redshift-connector >=2.1.14 (fixes an eval() RCE in its vector_in result
     # handler) needs beautifulsoup4 >=4.13.5, but abandoned textract 1.6.5 caps
     # it at <4.9. textract only touches bs4 in its epub/html parsers; we call it
@@ -102,9 +101,12 @@ constraint-dependencies = [
 ]
 
 
+# torch runs on CPU everywhere, inference_app included, so every platform
+# (macOS dev machines too) installs the CPU-only wheels; this keeps ~2GB of
+# nvidia-*-cu12 CUDA libraries out of images.
 [tool.uv.sources]
-torch = [{ index = "pytorch-cpu", marker = "sys_platform != 'darwin'" }]
-torchvision = [{ index = "pytorch-cpu", marker = "sys_platform != 'darwin'" }]
+torch = [{ index = "pytorch-cpu" }]
+torchvision = [{ index = "pytorch-cpu" }]
 flo-testing = { workspace = true }
 
 [[tool.uv.index]]
@@ -117,4 +119,4 @@ explicit = true
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 addopts = "--strict-markers --strict-config"
-testpaths = ["apps", "modules", "packages", "plugins"]
+testpaths = ["apps", "background_jobs", "modules", "packages", "plugins"]

@@ -15,13 +15,23 @@ dependencies = [
     "dependency-injector>=4.42.0,<5.0.0",
     "python-multipart>=0.0.31",
     "python-dotenv>=1.1.0,<2.0.0",
-    "torchvision==0.16.0",
+    # >=2.6 for the torch.load weights_only fix (CVE-2025-32434). torchvision
+    # is left unpinned so it resolves to the build matching torch; transformers'
+    # DINOv3 image processor only has a torchvision-backed "fast" variant.
+    #
+    # Not installed on Intel Macs: PyTorch has no Intel macOS build at >= 2.6
+    # (the last is 2.2.2), and older torch isn't supported. There the app runs
+    # with mock embeddings for integration testing (see inference_app/mock.py).
+    # accelerate is marked the same way because it depends on torch.
+    "torch>=2.6.0 ; sys_platform != 'darwin' or platform_machine != 'x86_64'",
+    "torchvision ; sys_platform != 'darwin' or platform_machine != 'x86_64'",
     "opencv-python>=4.11.0.86",
     "pillow>=12.3.0,<13",
     "psycopg2-binary>=2.9.10,<3.0.0",
     "numpy>=1.26.4,<2.0.0",
-    "accelerate>=0.33.0,<1.0.0",
-    "transformers>=4.45.0"
+    "accelerate>=0.33.0,<1.0.0 ; sys_platform != 'darwin' or platform_machine != 'x86_64'",
+    # >=4.56 for built-in DINOv3 support, so it loads without trust_remote_code
+    "transformers>=4.56.0"
 ]
 
 [tool.uv.sources]

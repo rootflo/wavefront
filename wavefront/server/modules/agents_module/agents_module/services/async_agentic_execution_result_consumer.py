@@ -16,7 +16,11 @@ _STREAM = os.getenv('ASYNC_AGENTIC_EXEC_RESULTS_STREAM', 'async_agentic_exec:res
 _GROUP = os.getenv('ASYNC_AGENTIC_EXEC_CONSUMER_GROUP', 'floware-agentic-consumers')
 _CONSUMER = f'floware-{socket.gethostname()}'
 _POLL_COUNT = 10
-_BLOCK_MS = 1000
+# Seconds to wait after a poll that did not fill a batch. Each poll is a
+# non-blocking read, so the shared Redis pool connection is only borrowed for
+# one round trip (a blocking read held it for the whole block, nearly all the
+# time); result status updates can lag by up to this much.
+_POLL_INTERVAL_S = float(os.getenv('ASYNC_AGENTIC_EXEC_POLL_INTERVAL_S', '5'))
 
 # Proof-of-life cadence. Silence from this loop is otherwise ambiguous: it looks
 # identical whether the task died or is polling a key that never has anything.
@@ -49,6 +53,7 @@ class AsyncAgenticExecutionResultConsumer:
         self._repo = exec_repo
         self._cache = cache_manager
         self._running = False
+        self._stop_requested = asyncio.Event()
 
     async def start(self) -> None:
         """Entry point — call as asyncio.create_task(consumer.start())."""
@@ -97,10 +102,11 @@ class AsyncAgenticExecutionResultConsumer:
                     _CONSUMER,
                     {_STREAM: '>'},
                     _POLL_COUNT,
-                    _BLOCK_MS,
+                    None,  # don't block: hold the pooled connection for one round trip
                 )
                 polls += 1
-                received += sum(len(entries) for _stream, entries in messages)
+                batch_size = sum(len(entries) for _stream, entries in messages)
+                received += batch_size
 
                 # Heartbeat distinguishes "loop is dead" from "loop is alive but
                 # this key never yields anything".
@@ -135,12 +141,25 @@ class AsyncAgenticExecutionResultConsumer:
                                 'Message remains in PEL until a claim/drain runs.'
                             )
 
+                # A full batch means more may be waiting: read again straight
+                # away. Otherwise the stream is drained, so wait.
+                if batch_size < _POLL_COUNT and self._running:
+                    await self._sleep(_POLL_INTERVAL_S)
+
             except Exception as e:
                 logger.error(f'AsyncAgenticExecutionResultConsumer poll error: {e}')
-                await asyncio.sleep(2)  # brief back-off before retrying
+                await self._sleep(max(_POLL_INTERVAL_S, 2))  # back off before retrying
+
+    async def _sleep(self, seconds: float) -> None:
+        """Sleep, returning early if stop() is called."""
+        try:
+            await asyncio.wait_for(self._stop_requested.wait(), timeout=seconds)
+        except asyncio.TimeoutError:
+            pass
 
     def stop(self) -> None:
         self._running = False
+        self._stop_requested.set()  # wake the loop if it is sleeping between polls
         logger.info('AsyncAgenticExecutionResultConsumer stopping')
 
     async def _process(self, fields: dict) -> None:

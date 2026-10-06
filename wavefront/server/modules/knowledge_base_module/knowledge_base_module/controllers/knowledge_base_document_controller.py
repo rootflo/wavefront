@@ -5,10 +5,15 @@ import re
 from typing import Optional
 import uuid
 
+from sqlalchemy import func, select
+
 from common_module.common_container import CommonContainer
 from common_module.log.logger import logger
 from common_module.response_formatter import ResponseFormatter
-from db_repo_module.models.knowledge_base_documents import KnowledgeBaseDocuments
+from db_repo_module.models.knowledge_base_documents import (
+    IndexStatus,
+    KnowledgeBaseDocuments,
+)
 from db_repo_module.models.knowledge_base_embeddings import KnowledgeBaseEmbeddings
 from db_repo_module.models.knowledge_bases import KnowledgeBase
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
@@ -23,6 +28,7 @@ from fastapi.params import Depends
 from fastapi.responses import JSONResponse
 from fastapi import Form
 from knowledge_base_module.knowledge_base_container import KnowledgeBaseContainer
+from knowledge_base_module.models.knowledge_base_schema import upload_rejection_reason
 from flo_cloud.message_queue import MessageQueueManager
 from flo_cloud.cloud_storage import CloudStorageManager
 from pydantic import BaseModel
@@ -102,6 +108,15 @@ async def upload_document(
                 ),
             )
 
+        # Only files this type of knowledge base can index, checked before
+        # anything is stored or queued.
+        rejection = upload_rejection_reason(existing_kb.type, file.content_type)
+        if rejection:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content=response_formatter.buildErrorResponse(rejection),
+            )
+
         # Check for existing document
         existing_kb_documents = await knowledge_base_documents_repository.find_one(
             id=kb_id
@@ -138,6 +153,10 @@ async def upload_document(
                 filter4=metadata.filter4 if metadata else None,
                 filter5=metadata.filter5 if metadata else None,
                 filter6=metadata.filter6 if metadata else None,
+                # Set before the message is queued, not after: the worker may
+                # report IN_PROGRESS before this request finishes, and that must
+                # not be overwritten. Failures below flip it to FAILED.
+                index_status=IndexStatus.QUEUED.value,
             )
 
             session.add(new_kb_document)
@@ -146,13 +165,21 @@ async def upload_document(
         # Upload to cloud storage
         logger.info(f'The data filename is {gcs_file_name}')
         bucket_name = config['floware']['asset_storage_bucket']
-        await asyncio.to_thread(
-            cloud_storage.save_small_file,
-            file_content=file_bytes,
-            bucket_name=bucket_name,
-            key=gcs_file_name,
-            content_type=file.content_type,
-        )
+        try:
+            await asyncio.to_thread(
+                cloud_storage.save_small_file,
+                file_content=file_bytes,
+                bucket_name=bucket_name,
+                key=gcs_file_name,
+                content_type=file.content_type,
+            )
+        except Exception as err:
+            await _mark_index_failed(
+                knowledge_base_documents_repository,
+                doc_id,
+                f'Failed to upload the file to storage: {err}',
+            )
+            raise
         logger.info(f'File uploaded to cloud storage: {gcs_file_name}')
         try:
             data = {
@@ -183,6 +210,11 @@ async def upload_document(
                 ),
             )
         except Exception as err:
+            await _mark_index_failed(
+                knowledge_base_documents_repository,
+                doc_id,
+                f'Failed to queue the document for indexing: {err}',
+            )
             return JSONResponse(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 content=response_formatter.buildErrorResponse(
@@ -198,6 +230,23 @@ async def upload_document(
     finally:
         if temp_file_path and os.path.exists(temp_file_path):
             os.unlink(temp_file_path)
+
+
+async def _mark_index_failed(
+    knowledge_base_documents_repository: SQLAlchemyRepository[KnowledgeBaseDocuments],
+    doc_id: uuid.UUID,
+    error: str,
+) -> None:
+    """Record that a document never reached the RAG queue. Best effort: the
+    request is already failing, so a second error here is only logged."""
+    try:
+        await knowledge_base_documents_repository.find_one_and_update(
+            {'id': doc_id},
+            index_status=IndexStatus.FAILED.value,
+            index_error=error,
+        )
+    except Exception as err:
+        logger.error(f'Could not mark document {doc_id} as FAILED: {err}')
 
 
 def _document_row_to_dict(row: dict) -> dict:
@@ -251,6 +300,94 @@ async def get_documents(
             status_code=status.HTTP_400_BAD_REQUEST,
             content=response_formatter.buildErrorResponse(str(e)),
         )
+
+
+# Documents uploaded before index status tracking have no status at all
+NOT_TRACKED = 'NOT_TRACKED'
+
+
+@kb_document_router.get('/v1/knowledge-bases/{kb_id}/index-status')
+@inject
+async def get_index_status(
+    kb_id: uuid.UUID,
+    failed_limit: int = Query(
+        20, ge=0, le=100, description='How many failed documents to list'
+    ),
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+    knowledge_base_repository: SQLAlchemyRepository[KnowledgeBase] = Depends(
+        Provide[KnowledgeBaseContainer.knowledge_base_repository]
+    ),
+    knowledge_base_documents_repository: SQLAlchemyRepository[
+        KnowledgeBaseDocuments
+    ] = Depends(Provide[KnowledgeBaseContainer.knowledge_base_documents_repository]),
+) -> JSONResponse:
+    """How many documents the knowledge base has, how many are in each indexing
+    state, and the most recently failed ones with their errors.
+
+    Counted in the database, so it covers every document, not one page.
+    """
+    if not await knowledge_base_repository.find_one(id=kb_id):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                'Knowledge Base with the given id does not exist'
+            ),
+        )
+
+    documents = KnowledgeBaseDocuments
+    counts = {status_value.value: 0 for status_value in IndexStatus}
+    counts[NOT_TRACKED] = 0
+    async with knowledge_base_documents_repository.session() as session:
+        rows = await session.execute(
+            select(documents.index_status, func.count())
+            .where(documents.knowledge_base_id == kb_id)
+            .group_by(documents.index_status)
+        )
+        for index_status, count in rows.all():
+            counts[index_status or NOT_TRACKED] = count
+        failed = (
+            await session.execute(
+                select(
+                    documents.id,
+                    documents.file_name,
+                    documents.index_error,
+                    documents.index_status_updated_at,
+                )
+                .where(
+                    documents.knowledge_base_id == kb_id,
+                    documents.index_status == IndexStatus.FAILED.value,
+                )
+                .order_by(
+                    documents.index_status_updated_at.desc().nulls_last(),
+                    documents.created_at.desc(),
+                )
+                .limit(failed_limit)
+            )
+        ).all()
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            {
+                'knowledge_base_id': str(kb_id),
+                'total': sum(counts.values()),
+                'counts': counts,
+                'failed_documents': [
+                    {
+                        'id': str(row.id),
+                        'file_name': row.file_name,
+                        'index_error': row.index_error,
+                        'index_status_updated_at': row.index_status_updated_at.isoformat()
+                        if row.index_status_updated_at
+                        else None,
+                    }
+                    for row in failed
+                ],
+            }
+        ),
+    )
 
 
 @kb_document_router.delete('/v1/knowledge-bases/{kb_id}/documents/{document_id}')

@@ -22,7 +22,7 @@ async def test_upload_document_success(
             id=kb_id,
             name='Test KB',
             description='Test Description',
-            type='document',
+            type='text',
             vector_size=1536,
         )
         session.add(new_kb)
@@ -92,7 +92,7 @@ async def test_upload_document_kb_id_not_exists(
             id=kb_id,
             name='Test KB',
             description='Test Description',
-            type='document',
+            type='text',
             vector_size=1536,
         )
         session.add(new_kb)
@@ -152,7 +152,7 @@ async def test_get_documents_success(
             id=kb_id,
             name='Test KB for Get',
             description='Test Description',
-            type='document',
+            type='text',
             vector_size=1536,
         )
         session.add(new_kb)
@@ -218,7 +218,7 @@ async def test_get_documents_filter_by_type(
             id=kb_id,
             name='Test KB Filter',
             description='Test Description',
-            type='document',
+            type='text',
             vector_size=1536,
         )
         session.add(new_kb)
@@ -276,7 +276,7 @@ async def test_get_documents_no_documents_found(
             id=kb_id,
             name='Test KB No Docs',
             description='Test Description',
-            type='document',
+            type='text',
             vector_size=1536,
         )
         session.add(new_kb)
@@ -306,7 +306,7 @@ async def test_delete_document_success(
             id=kb_id,
             name='Test KB for Delete',
             description='Test Description',
-            type='document',
+            type='text',
             vector_size=1536,
         )
         session.add(new_kb)
@@ -362,7 +362,7 @@ async def test_delete_document_not_found(
             id=kb_id,
             name='Test KB for Delete Non Existent',
             description='Test Description',
-            type='document',
+            type='text',
             vector_size=1536,
         )
         session.add(new_kb)

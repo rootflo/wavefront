@@ -1,10 +1,7 @@
 import logging
 import tiktoken
-import uuid
 import httpx
 import time
-import ast
-import numpy as np
 from flo_utils.utils.log import logger
 from datetime import datetime
 from dataclasses import dataclass
@@ -12,11 +9,14 @@ from rag_ingestion.env import FLOWARE_SERVICE_URL, APP_ENV, PASSTHROUGH_SECRET
 from rag_ingestion.constants.auth import RootfloHeaders
 from rag_ingestion.models.knowledge_base_embeddings import (
     KnowledgeBaseEmbeddingObject,
-    RetrieveParams,
 )
-from typing import Any, List, Dict, Tuple, Optional
+from typing import Any, List, Dict, Tuple
 from rag_ingestion.embeddings.embed import EmbeddingFunc
 from rag_ingestion.processors.file_processor import DocumentType
+
+
+class EmbeddingsRejectedError(Exception):
+    """floware refused the whole upload with a 4xx; retrying cannot help."""
 
 
 @dataclass
@@ -335,44 +335,6 @@ class KBRagStorage:
 
         return processed_docs
 
-    def retrieve_documents(
-        self,
-        query: str,
-        kb_id: uuid.UUID,
-        threshold: Optional[float] = None,
-        top_k: Optional[int] = None,
-        vector_weight: Optional[float] = None,
-        keyword_weight: Optional[float] = None,
-    ) -> list:
-        """
-        Retrieve documents for a specific knowledge base
-        Args:
-            query: Text query for search
-            kb_id: Knowledge base ID to filter results
-            threshold: Cosine similarity threshold (default: 0.2)
-            top_k: Number of results to return (default: 5)
-            vector_weight: Weight for vector similarity score (default: 0.7)
-            keyword_weight: Weight for keyword similarity score (default: 0.3)
-        Returns:
-            List of retrieved documents
-        """
-        if not isinstance(query, str):
-            raise ValueError('Query must be in string format')
-
-        query_embeddings = self.embedding.generate_chunk_embeddings([query])
-        query_embeddings = np.array(query_embeddings, dtype=np.float16).tolist()
-        query_embeddings = ast.literal_eval(','.join(map(str, query_embeddings[0])))
-
-        params = RetrieveParams(
-            kb_id=str(kb_id),
-            threshold=threshold,
-            top_k=top_k,
-            vector_weight=vector_weight,
-            keyword_weight=keyword_weight,
-        )
-        reranked_docs = self.retrieve_docs_with_retry(query, query_embeddings, params)
-        return reranked_docs
-
     def upload_embedding_with_retry(
         self,
         embeddings: List[EmbeddingsToStore],
@@ -386,17 +348,24 @@ class KBRagStorage:
         for embedding_obj in embeddings:
             data = embedding_obj.kb_embeddings
             payload = {
-                'embedding_vector': [
-                    embedding_obj.embedding_vector for embedding_obj in data
-                ],
-                'embedding_vector_1': [
-                    embedding_obj.embedding_vector_1 for embedding_obj in data
-                ],
                 'document_id': embedding_obj.doc_id,
                 'kb_id': embedding_obj.kb_id,
-                'chunk_text': [embedding_obj.chunk_text for embedding_obj in data],
-                'chunk_index': [embedding_obj.chunk_index for embedding_obj in data],
+                'chunk_text': [chunk.chunk_text for chunk in data],
+                'chunk_index': [chunk.chunk_index for chunk in data],
             }
+            if embedding_obj.file_type == DocumentType.IMAGE:
+                payload['embedding_vector'] = [chunk.embedding_vector for chunk in data]
+                payload['embedding_vector_1'] = [
+                    chunk.embedding_vector_1 for chunk in data
+                ]
+            else:
+                # Text (incl. PDF) chunks: BGE-M3 dense + sparse vectors, which
+                # floware stores in text_embedding / text_sparse_embedding.
+                payload['text_embedding'] = [chunk.text_embedding for chunk in data]
+                payload['text_sparse_embedding'] = [
+                    chunk.text_sparse_embedding or {'indices': [], 'values': []}
+                    for chunk in data
+                ]
             doc_wise_embeddings.append(payload)
         return self._upload_doc_wise_embeddings(
             doc_wise_embeddings, max_retries, initial_delay
@@ -427,8 +396,15 @@ class KBRagStorage:
                 )
                 if response.status_code == 200:
                     return response
-                else:
-                    logger.info(f'The error request was {response.text}')
+                if 400 <= response.status_code < 500 and response.status_code != 429:
+                    # floware rejected every document; resending won't change that
+                    raise EmbeddingsRejectedError(
+                        f'floware rejected the embeddings ({response.status_code}): '
+                        f'{response.text}'
+                    )
+                logger.info(f'The error request was {response.text}')
+            except EmbeddingsRejectedError:
+                raise
             except Exception as e:
                 logger.error(f'The error while uploading doc wise embeddings was {e}')
             if attempt < max_retries - 1:

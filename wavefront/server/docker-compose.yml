@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: ankane/pgvector
+    image: pgvector/pgvector:pg15
     container_name: postgres
     restart: always
     security_opt:

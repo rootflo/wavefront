@@ -30,7 +30,6 @@ from db_repo_module.models.guardrail_policy import GuardrailPolicy
 from db_repo_module.models.ikb_models import ImageKnowledgeBase
 from db_repo_module.models.image_search_models import ReferenceImageFeatures
 from db_repo_module.models.image_search_models import SIFTFeatures
-from db_repo_module.models.kb_inferences import KnowledgeBaseInferences
 from db_repo_module.models.knowledge_base_documents import KnowledgeBaseDocuments
 from db_repo_module.models.knowledge_base_embeddings import KnowledgeBaseEmbeddings
 from db_repo_module.models.knowledge_bases import KnowledgeBase
@@ -96,7 +95,6 @@ __all__ = [
     'KnowledgeBase',
     'KnowledgeBaseDocuments',
     'KnowledgeBaseEmbeddings',
-    'KnowledgeBaseInferences',
     'LlmInferenceConfig',
     'MessageProcessors',
     'ModelSchema',
