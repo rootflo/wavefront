@@ -21,7 +21,8 @@ def build_app(*routers: Any, prefix: str = '/floware') -> FastAPI:
 
     app = FastAPI()
     app.add_middleware(RequestIdMiddleware)
-    app.add_middleware(RequireAuthMiddleware)
+    # Non-production so passthrough auth is honoured, as when APP_ENV=test.
+    app.add_middleware(RequireAuthMiddleware, app_env='test')
     for router in routers:
         app.include_router(router, prefix=prefix)
     return app

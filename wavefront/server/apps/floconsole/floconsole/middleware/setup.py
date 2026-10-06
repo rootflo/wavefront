@@ -14,13 +14,15 @@ def _middleware(cls: type[Any]) -> _MiddlewareFactory[Any]:
     return cast(_MiddlewareFactory[Any], cls)
 
 
-def add_middlewares(app: FastAPI, *, allowed_origins: Sequence[str]) -> None:
+def add_middlewares(
+    app: FastAPI, *, allowed_origins: Sequence[str], environment: str
+) -> None:
     # Order matters: last added runs first on incoming requests.
     app.add_middleware(_middleware(RequestIdMiddleware))
     app.add_middleware(_middleware(RequireAuthMiddleware))
     # Strict default-src 'none' CSP plus the rest of the security headers; /docs
     # and /redoc get their own relaxed policy when APP_ENV=dev.
-    app.add_middleware(_middleware(SecurityHeadersMiddleware))
+    app.add_middleware(_middleware(SecurityHeadersMiddleware), environment=environment)
 
     app.add_middleware(
         _middleware(CORSMiddleware),

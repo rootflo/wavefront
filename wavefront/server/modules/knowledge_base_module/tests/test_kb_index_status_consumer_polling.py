@@ -8,7 +8,6 @@ import asyncio
 import time
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 from knowledge_base_module.services import kb_index_status_consumer as module
 from knowledge_base_module.services.kb_index_status_consumer import (
     KbIndexStatusConsumer,
@@ -56,9 +55,13 @@ class ScriptedCache:
         self.acked.append(msg_id)
 
 
-def make_consumer(batches):
+def make_consumer(batches, *, poll_interval_s: float = 0.01):
     cache = ScriptedCache(batches)
-    consumer = KbIndexStatusConsumer(documents_repo=MagicMock(), cache_manager=cache)
+    consumer = KbIndexStatusConsumer(
+        documents_repo=MagicMock(),
+        cache_manager=cache,
+        poll_interval_s=poll_interval_s,
+    )
     cache.consumer = consumer
     consumer.process = AsyncMock(return_value=True)
     consumer._sleep = AsyncMock(wraps=consumer._sleep)
@@ -67,11 +70,6 @@ def make_consumer(batches):
 
 async def run(consumer):
     await asyncio.wait_for(consumer.start(), timeout=5)
-
-
-@pytest.fixture(autouse=True)
-def short_interval(monkeypatch):
-    monkeypatch.setattr(module, '_POLL_INTERVAL_S', 0.01)
 
 
 async def test_reads_do_not_block_on_redis():
@@ -113,13 +111,16 @@ async def test_poll_error_backs_off_at_least_two_seconds(monkeypatch):
     consumer._sleep.assert_awaited_once_with(2)
 
 
-async def test_stop_interrupts_the_sleep_between_polls(monkeypatch):
-    monkeypatch.setattr(module, '_POLL_INTERVAL_S', 30)
+async def test_stop_interrupts_the_sleep_between_polls():
     cache = MagicMock(namespace='floware')
     cache.xread_group.return_value = []
     cache.xpending_range.return_value = []
     cache.xautoclaim.return_value = []
-    consumer = KbIndexStatusConsumer(documents_repo=MagicMock(), cache_manager=cache)
+    consumer = KbIndexStatusConsumer(
+        documents_repo=MagicMock(),
+        cache_manager=cache,
+        poll_interval_s=30,
+    )
 
     def polls():  # reads of new entries, not the startup replay
         return [

@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 from flo_utils.utils.log import logger
+from common_module.runtime_settings import RuntimeSettings
 from rag_ingestion.service.kb_rag_storage import KBRagStorage
 from rag_ingestion.models.doc_content import DocContent
 from rag_ingestion.stream.queue_message import QueueMessage
@@ -34,6 +35,7 @@ class KbStorageProcessor(MessageProcessor):
         index_status_publisher: Optional[IndexStatusPublisher] = None,
         *,
         inference_service_url: str,
+        runtime_settings: RuntimeSettings,
         text_embedding_batch_size: int | str = 16,
         image_embedding_batch_size: int | str = 8,
     ):
@@ -42,6 +44,7 @@ class KbStorageProcessor(MessageProcessor):
         self.index_status_publisher = index_status_publisher
         self.kb_rag_storage = KBRagStorage(
             inference_service_url=inference_service_url,
+            runtime_settings=runtime_settings,
             text_embedding_batch_size=text_embedding_batch_size,
         )
         self.file_processor = FileProcessor()

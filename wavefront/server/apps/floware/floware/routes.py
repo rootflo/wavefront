@@ -4,15 +4,12 @@ from agents_module.controllers.agent_controller import agents_router
 from agents_module.controllers.async_inference_controller import async_router
 from agents_module.controllers.namespace_controller import namespace_router
 from agents_module.controllers.workflow_controller import workflows_router
-from agents_module.controllers.workflow_pipeline_controller import (
-    workflow_pipeline_router,
-)
-from agents_module.controllers.workflow_runs import workflow_runs_router
 from auth_module.controllers.hmac_controller import hmac_router
 from auth_module.controllers.superset_controller import superset_controller
 from chatbots_module.controllers.chatbot_controller import chatbot_router
 from chatbots_module.controllers.chat_session_controller import chat_session_router
 from floware.controllers.config_controller import config_router
+from floware.controllers.health_controller import health_router
 from floware.controllers.notification_controller import notification_router
 from floware.controllers.scheduled_job_controller import scheduled_job_router
 from gold_module.controllers.router import gold_router
@@ -53,7 +50,6 @@ from product_analysis_module.controllers.product_anaysis_controllers import (
     product_analysis_router,
 )
 from tools_module.controllers.tools_controller import tools_router
-from triggers_module.controllers.trigger_controller import trigger_router
 from user_management_module.router import user_management_router
 from voice_agents_module.controllers.stt_config_controller import stt_config_router
 from voice_agents_module.controllers.telephony_config_controller import (
@@ -66,6 +62,7 @@ from voice_agents_module.controllers.voice_agent_controller import voice_agent_r
 FLOWARE_PREFIX = '/floware'
 
 FLOWARE_ROUTERS = [
+    health_router,
     agents_router,
     async_router,
     authenticator_router,
@@ -97,12 +94,9 @@ FLOWARE_ROUTERS = [
     telephony_config_router,
     tool_router,
     tools_router,
-    trigger_router,
     tts_config_router,
     user_management_router,
     voice_agent_router,
-    workflow_pipeline_router,
-    workflow_runs_router,
     workflows_router,
 ]
 

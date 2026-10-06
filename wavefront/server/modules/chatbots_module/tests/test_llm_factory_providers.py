@@ -10,6 +10,7 @@ Two of these are real bugs that were shipped and fixed:
 """
 
 import pytest
+from agents_module.runtime_config import configure_azure_openai_api_version
 from db_repo_module.models.llm_inference_config import LlmInferenceConfig
 from flo_ai.llm import Anthropic, AzureOpenAI, Gemini, OllamaLLM, OpenAI, OpenAIVLLM
 
@@ -30,9 +31,9 @@ def _config(**overrides) -> LlmInferenceConfig:
 
 
 @pytest.fixture(autouse=True)
-def _azure_api_version(monkeypatch):
+def _azure_api_version():
     # AzureOpenAI will not construct without one.
-    monkeypatch.setenv('AZURE_OPENAI_API_VERSION', '2024-06-01')
+    configure_azure_openai_api_version('2024-06-01')
 
 
 class TestAzureOpenAI:
@@ -42,8 +43,8 @@ class TestAzureOpenAI:
         )
         assert isinstance(llm, AzureOpenAI)
 
-    def test_api_version_falls_back_to_the_environment(self, monkeypatch):
-        monkeypatch.setenv('AZURE_OPENAI_API_VERSION', '2099-01-01')
+    def test_api_version_falls_back_to_startup_config(self):
+        configure_azure_openai_api_version('2099-01-01')
         # Constructing at all is the assertion: a missing api_version raises.
         assert build_llm(
             _config(type='azure_openai', base_url='https://x.openai.azure.com')

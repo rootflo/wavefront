@@ -1,6 +1,5 @@
 from contextlib import asynccontextmanager
 import glob
-import os
 import asyncio
 from typing import Any, Callable, cast
 
@@ -16,12 +15,19 @@ load_dotenv()  # Loading env values before importing modules to fix late read pr
 from auth_module.auth_container import AuthContainer
 from common_module.common_container import CommonContainer
 from common_module.middleware.request_id_middleware import get_current_request_id
-from common_module.log.logger import logger
+from common_module.log.logger import configure_logging, logger
+from common_module.feature.feature_flag import configure_feature_flags
 from common_module.telemetry import (
+    TelemetrySettings,
     configure_telemetry_providers,
     instrument_sqlalchemy,
     record_exception_on_span,
     shutdown_telemetry,
+)
+from common_module.utils.odata_settings import configure_odata_cloud_provider
+from agents_module.runtime_config import (
+    configure_azure_openai_api_version,
+    configure_celery_broker,
 )
 from common_module.response_formatter import ResponseFormatter
 
@@ -37,7 +43,10 @@ from knowledge_base_module.services.kb_index_status_consumer import (
     KbIndexStatusConsumer,
 )
 from user_management_module.user_container import UserContainer
-
+from user_management_module.authorization.require_auth import (
+    DEFAULT_MTLS_ALLOWED_NAMESPACES,
+    configure_jwt_auth_settings,
+)
 from floware.di.application_container import ApplicationContainer
 from floware.middleware.setup import add_middlewares
 from floware.routes import include_routers
@@ -49,7 +58,6 @@ from agents_module.services.async_agentic_execution_result_consumer import (
     AsyncAgenticExecutionResultConsumer,
 )
 from agents_module.agents_container import AgentsContainer
-from triggers_module.triggers_container import TriggersContainer
 from inference_module.inference_container import InferenceContainer
 
 from flo_ai.llm.guarded_llm import GuardrailBlocked
@@ -65,19 +73,45 @@ from api_services_module.api_services_container import ApiServicesContainer
 from floware.channels import start_redis_listener
 
 
+def _csv(value: str | None, default: tuple[str, ...] = ()) -> list[str]:
+    """Split a comma-separated config value; ``default`` when it is not set."""
+    if value is None:
+        return list(default)
+    return [item.strip() for item in value.split(',') if item.strip()]
+
+
 # Initialize dependency containers
 # Create a single shared instance of the database container
 db_repo_container = DatabaseModuleContainer()
-auth_container = AuthContainer(
-    db_client=db_repo_container.db_client, cache_manager=db_repo_container.cache_manager
-)
 common_container = CommonContainer(cache_manager=db_repo_container.cache_manager)
 config = common_container.config()
+runtime = common_container.runtime_settings()
+configure_feature_flags(**(config.get('feature_flags') or {}))
+configure_odata_cloud_provider(config['cloud']['provider'])
+configure_celery_broker(config['celery']['broker_url'])
+configure_azure_openai_api_version(
+    (config.get('model') or {}).get('azure_openai_api_version')
+)
+configure_logging(
+    app_name=config['env_config']['app_name'],
+    log_level=config['env_config'].get('log_level') or 'INFO',
+)
+configure_jwt_auth_settings(
+    validation_issuer=config['jwt_token']['validation_issuer'],
+    audience=config['jwt_token']['audience'],
+    token_prefix=config['jwt_token'].get('console_token_prefix', 'fc_'),
+)
+auth_container = AuthContainer(
+    db_client=db_repo_container.db_client,
+    cache_manager=db_repo_container.cache_manager,
+    kms_signer=common_container.kms_signer,
+)
 # Built before the containers that send email: both the platform mailer and
 # scheduled jobs send through this container's email_send_service.
 plugins_container = PluginsContainer(
     db_client=db_repo_container.db_client,
     cloud_storage_manager=common_container.cloud_storage_manager,
+    kms_cipher=common_container.kms_cipher,
     dynamic_query_repository=db_repo_container.dynamic_query_repository,
     cache_manager=db_repo_container.cache_manager,
     namespace_repository=db_repo_container.namespace_repository,
@@ -118,11 +152,14 @@ knowledge_base_container = KnowledgeBaseContainer(
     db_client=db_repo_container.db_client,
     ingestion_db_client=db_repo_container.ingestion_db_client,
     cache_manager=db_repo_container.cache_manager,
+    cloud_storage_manager=common_container.cloud_storage_manager,
+    rag_queue=common_container.rag_queue,
 )
 
-gold_container = GoldContainer()
+gold_container = GoldContainer(gold_queue=common_container.gold_queue)
 
 product_analysis_container = ProductAnalysisContainer()
+product_analysis_container.config.from_dict(config)
 
 # API Services Container (must be created before tools_container)
 api_services_container: ApiServicesContainer = create_api_services_container(
@@ -133,7 +170,7 @@ api_services_container: ApiServicesContainer = create_api_services_container(
     response_formatter=common_container.response_formatter,
 )
 
-bucket_name = config['floware']['asset_storage_bucket']
+bucket_name = config['storage']['application_bucket']
 
 tools_container = ToolsContainer(
     datasource_repository=db_repo_container.datasource_repository,
@@ -142,6 +179,8 @@ tools_container = ToolsContainer(
     api_services_manager=api_services_container.api_service_manager,
     cloud_storage_manager=common_container.cloud_storage_manager,
     message_processor_bucket_name=bucket_name,
+    floware_base_url=runtime.floware_base_url,
+    passthrough_secret=runtime.passthrough_secret,
 )
 
 inference_container = InferenceContainer(
@@ -152,20 +191,20 @@ inference_container = InferenceContainer(
 llm_inference_config_container = LlmInferenceConfigContainer(
     db_client=db_repo_container.db_client,
     cache_manager=db_repo_container.cache_manager,
+    call_processing_cache_invalidator=common_container.call_processing_cache_invalidator,
 )
 
 guardrails_container = GuardrailsContainer(
     db_client=db_repo_container.db_client,
     cache_manager=db_repo_container.cache_manager,
 )
+guardrails_container.config.from_dict(config)
 
 agents_container = AgentsContainer(
     db_client=db_repo_container.db_client,
     cloud_storage_manager=common_container.cloud_storage_manager,
     cache_manager=db_repo_container.cache_manager,
     tool_loader=tools_container.tool_loader,
-    workflow_pipeline_repository=db_repo_container.workflow_pipeline_repository,
-    workflow_runs_repository=db_repo_container.workflow_runs_repository,
     namespace_repository=db_repo_container.namespace_repository,
     agent_repository=db_repo_container.agent_repository,
     agent_version_repository=db_repo_container.agent_version_repository,
@@ -175,7 +214,7 @@ agents_container = AgentsContainer(
     message_processor_bucket_name=bucket_name,
     api_services_manager=api_services_container.api_service_manager,
     async_agentic_execution_repository=db_repo_container.async_agentic_execution_repository,
-    executions_bucket=config['agents']['executions_bucket'],
+    executions_bucket=config['storage']['application_bucket'],
     llm_inference_config_service=llm_inference_config_container.llm_inference_config_service,
     guardrails_engine=guardrails_container.guardrails_engine,
 )
@@ -184,22 +223,14 @@ voice_agents_container = VoiceAgentsContainer(
     db_client=db_repo_container.db_client,
     cache_manager=db_repo_container.cache_manager,
     cloud_storage_manager=common_container.cloud_storage_manager,
+    call_processing_cache_invalidator=common_container.call_processing_cache_invalidator,
 )
+voice_agents_container.config.from_dict(config)
 
 chatbots_container = ChatbotsContainer(
     db_client=db_repo_container.db_client,
     cache_manager=db_repo_container.cache_manager,
     llm_inference_config_service=llm_inference_config_container.llm_inference_config_service,
-)
-
-triggers_container = TriggersContainer(
-    trigger_repository=db_repo_container.agentic_trigger_repository,
-    email_connection_service=plugins_container.email_connection_service,
-    event_repository=db_repo_container.agentic_trigger_event_repository,
-    agent_repository=db_repo_container.agent_repository,
-    workflow_repository=db_repo_container.workflow_repository,
-    async_agentic_execution_service=agents_container.async_agentic_execution_service,
-    cache_manager=db_repo_container.cache_manager,
 )
 
 scheduler_manager = SchedulerManager()
@@ -244,18 +275,6 @@ async def lifespan(app: FastAPI):
         scheduler_manager.register_stale_lock_recovery(
             callback=scheduled_job_service.recover_stale_locks_sync
         )
-
-        trigger_subscription_renewer = triggers_container.trigger_subscription_renewer()
-
-        def _run_trigger_renewer_sync() -> None:
-            try:
-                asyncio.run(trigger_subscription_renewer.run_once())
-            except Exception as exc:
-                logger.warning(f'Trigger subscription renewer failed: {exc}')
-
-        scheduler_manager.register_trigger_subscription_renewer(
-            callback=_run_trigger_renewer_sync
-        )
         logger.info('Database connection established.')
 
         # Load API services from database into registry
@@ -290,9 +309,19 @@ async def lifespan(app: FastAPI):
         )
 
         # Start Redis Stream consumer for async execution status updates
+        streams = config['streams']
         async_agentic_exec_consumer = AsyncAgenticExecutionResultConsumer(
             exec_repo=db_repo_container.async_agentic_execution_repository(),
             cache_manager=db_repo_container.cache_manager(),
+            stream=streams['async_agentic_exec_results'],
+            group=streams.get('async_agentic_exec_consumer_group')
+            or 'floware-agentic-consumers',
+            poll_interval_s=float(
+                streams.get('async_agentic_exec_poll_interval_s') or 5
+            ),
+            heartbeat_interval_s=int(
+                streams.get('async_agentic_exec_heartbeat_s') or 60
+            ),
         )
         async_agentic_exec_consumer_task = asyncio.create_task(
             async_agentic_exec_consumer.start()
@@ -302,6 +331,17 @@ async def lifespan(app: FastAPI):
         kb_index_status_consumer = KbIndexStatusConsumer(
             documents_repo=knowledge_base_container.knowledge_base_documents_repository(),
             cache_manager=db_repo_container.cache_manager(),
+            group=streams.get('kb_index_status_consumer_group')
+            or 'floware-kb-index-status',
+            poll_interval_s=float(streams.get('kb_index_status_poll_interval_s') or 5),
+            heartbeat_interval_s=int(streams.get('kb_index_status_heartbeat_s') or 60),
+            reclaim_interval_s=float(
+                streams.get('kb_index_status_reclaim_interval_s') or 60
+            ),
+            reclaim_min_idle_ms=int(
+                streams.get('kb_index_status_reclaim_min_idle_ms') or 60000
+            ),
+            max_deliveries=int(streams.get('kb_index_status_max_deliveries') or 5),
         )
         kb_index_status_consumer_task = asyncio.create_task(
             kb_index_status_consumer.start()
@@ -341,7 +381,7 @@ async def lifespan(app: FastAPI):
         shutdown_telemetry()
 
 
-environment = os.getenv('APP_ENV', 'production')
+environment = runtime.app_env
 
 # The interactive docs and the OpenAPI schema are off everywhere except dev,
 # so a new/unknown APP_ENV value stays closed rather than exposing the surface.
@@ -357,10 +397,11 @@ app = FastAPI(
 
 # Providers must exist before any instrumentation is attached. The FastAPI app
 # itself is instrumented further down, after all other middleware is registered.
-configure_telemetry_providers(default_service_name=config['env_config']['app_name'])
-
-floware_base_url = os.getenv('FLOWARE_BASE_URL', 'http://localhost:8001')
-
+configure_telemetry_providers(
+    TelemetrySettings.from_config(
+        config, default_service_name=config['env_config']['app_name']
+    )
+)
 
 OpenApiCallable = Callable[[], dict[str, Any]]
 
@@ -375,7 +416,7 @@ def custom_openapi() -> dict[str, Any]:
         version='1.0.0',
         description='Floware Server - AI Middleware API',
         routes=app.routes,
-        servers=[{'url': floware_base_url, 'description': 'floware server'}],
+        servers=[{'url': runtime.floware_base_url, 'description': 'floware server'}],
     )
 
     # Add Bearer authentication security scheme
@@ -401,7 +442,15 @@ app.openapi = cast(OpenApiCallable, custom_openapi)  # type: ignore[assignment]
 
 
 # Middlewares & Routers
-add_middlewares(app)
+add_middlewares(
+    app,
+    runtime=runtime,
+    hmac_routes=_csv(config['auth'].get('hmac_routes')),
+    mtls_allowed_namespaces=_csv(
+        config['auth'].get('mtls_allowed_namespaces'),
+        DEFAULT_MTLS_ALLOWED_NAMESPACES,
+    ),
+)
 include_routers(app)
 
 
@@ -537,7 +586,6 @@ common_container.wire(
         'guardrails_module.controllers',
         'tools_module.controllers',
         'voice_agents_module.controllers',
-        'triggers_module.controllers',
     ],
 )
 
@@ -559,7 +607,6 @@ plugins_container.wire(
         'user_management_module.controllers',
         'user_management_module.authorization',
         'tools_module.datasources',
-        'triggers_module.services',
     ],
 )
 
@@ -568,14 +615,6 @@ agents_container.wire(
     packages=[
         'agents_module.controllers',
         'agents_module.services',
-    ],
-)
-
-triggers_container.wire(
-    modules=[__name__],
-    packages=[
-        'triggers_module.controllers',
-        'triggers_module.services',
     ],
 )
 
@@ -630,17 +669,14 @@ chatbots_container.wire(
 )
 # Running with Uvicorn (for local development)
 if __name__ == '__main__':
-    worker_count = os.getenv('FLOWARE_WORKER_COUNT', 4)
-    uvicorn_log_level = os.getenv('UVICORN_LOG_LEVEL', 'critical')
-
     print(f'Starting application in environment: {environment}')
     if environment == 'production':
         uvicorn.run(
             'server:app',
             host='0.0.0.0',
             port=8001,
-            workers=int(worker_count),
-            log_level=uvicorn_log_level,
+            workers=runtime.worker_count,
+            log_level=runtime.uvicorn_log_level,
             forwarded_allow_ips='*',
         )
     else:

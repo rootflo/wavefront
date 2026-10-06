@@ -1,3 +1,5 @@
+import socket
+
 from dependency_injector import containers
 from dependency_injector import providers
 
@@ -7,6 +9,10 @@ from floware.repositories.knowledge_base_repository import AppKnowledgeBaseRepos
 from floware.services.notification_service import NotificationService
 from floware.services.config_service import ConfigService
 from floware.services.scheduled_job_service import ScheduledJobService
+
+
+def _scheduler_worker_id(configured: str) -> str:
+    return (configured or '').strip() or socket.gethostname()
 
 
 class ApplicationContainer(containers.DeclarativeContainer):
@@ -71,11 +77,12 @@ class ApplicationContainer(containers.DeclarativeContainer):
         datasource_repository=datasource_repository,
         dynamic_query_repository=dynamic_query_repository,
         cloud_storage_manager=cloud_storage_manager,
-        bucket_name=config.floware.asset_storage_bucket,
+        bucket_name=config.storage.application_bucket,
         email_send_service=email_send_service,
         email_connection_service=email_connection_service,
         user_repository=user_repository,
         user_service=user_service,
         role_repository=role_repository,
         user_role_repository=user_role_repository,
+        worker_id=providers.Callable(_scheduler_worker_id, config.scheduler.worker_id),
     )

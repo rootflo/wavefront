@@ -14,8 +14,6 @@ from plugins_module.services.datasource_audit_service import DatasourceAuditServ
 from plugins_module.services.change_notification_service import (
     ChangeNotificationService,
 )
-from flo_cloud.cloud_storage import CloudStorageManager
-from flo_cloud.kms import FloKmsService
 
 
 class PluginsContainer(containers.DeclarativeContainer):
@@ -46,6 +44,10 @@ class PluginsContainer(containers.DeclarativeContainer):
 
     email_connection_repository = providers.Dependency()
 
+    cloud_storage_manager = providers.Dependency()
+
+    kms_cipher = providers.Dependency()
+
     datasource_repository = providers.Singleton(
         SQLAlchemyRepository[Datasource],
         model=Datasource,
@@ -64,18 +66,11 @@ class PluginsContainer(containers.DeclarativeContainer):
         db_client=db_client,
     )
 
-    # dynamic query service
-    cloud_provider = config.cloud_config.cloud_provider
-
-    cloud_storage_manager = providers.Singleton(
-        CloudStorageManager, provider=config.cloud_config.cloud_provider
-    )
-
     dynamic_query_service = providers.Singleton(
         DynamicQueryService,
         cloud_storage_manager=cloud_storage_manager,
         dynamic_query_repo=dynamic_query_repository,
-        bucket_name=config.floware.asset_storage_bucket,
+        bucket_name=config.storage.application_bucket,
     )
 
     configuration_service = providers.Singleton(
@@ -105,18 +100,14 @@ class PluginsContainer(containers.DeclarativeContainer):
         cloud_storage_manager=cloud_storage_manager,
         message_processor_repository=message_processor_repository,
         hermes_url=config.hermes.url,
-        bucket_name=config.floware.asset_storage_bucket,
+        bucket_name=config.storage.application_bucket,
     )
 
     # Email: OAuth apps hold client secrets and connections hold mailbox tokens.
-    kms_service = providers.Singleton(
-        FloKmsService, cloud_provider=config.cloud_config.cloud_provider
-    )
-
     oauth_app_service = providers.Singleton(
         OAuthAppService,
         oauth_app_repository=oauth_app_repository,
-        kms_service=kms_service,
+        kms_cipher=kms_cipher,
     )
 
     email_connection_service = providers.Singleton(
@@ -124,7 +115,7 @@ class PluginsContainer(containers.DeclarativeContainer):
         connection_repository=email_connection_repository,
         oauth_app_repository=oauth_app_repository,
         oauth_app_service=oauth_app_service,
-        kms_service=kms_service,
+        kms_cipher=kms_cipher,
         cache_manager=cache_manager,
     )
 

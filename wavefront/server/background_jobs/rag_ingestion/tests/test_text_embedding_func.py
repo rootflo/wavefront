@@ -15,6 +15,7 @@ from rag_ingestion.embeddings import embed, inference_http
 from rag_ingestion.embeddings.embed import EmbeddingFunc
 from rag_ingestion.service import kb_rag_storage
 from rag_ingestion.service.kb_rag_storage import KBRagStorage
+from common_module.runtime_settings import RuntimeSettings
 
 
 def vector_for(text: str):
@@ -168,7 +169,10 @@ def test_long_document_is_fully_embedded_through_process_document(service):
     paragraph = ' '.join(f'Sentence {i} about the knowledge base.' for i in range(30))
     text = '\n\n'.join(f'{paragraph} Paragraph {p}.' for p in range(50))
     with patch.object(kb_rag_storage, 'EmbeddingFunc', EmbeddingFunc):
-        storage = KBRagStorage(inference_service_url=INFERENCE_URL)
+        storage = KBRagStorage(
+            inference_service_url=INFERENCE_URL,
+            runtime_settings=RuntimeSettings(),
+        )
 
     docs = storage.process_document([text])
 

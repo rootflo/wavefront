@@ -90,10 +90,9 @@ async def main() -> None:
 
     cloud_storage_manager = CloudStorageManager(
         provider=os.environ['CLOUD_PROVIDER'],
-        account_url=os.environ.get('AZURE_STORAGE_ACCOUNT_URL') or None,
-        client_id=os.environ.get('AZURE_CLIENT_ID') or None,
-        client_secret=os.environ.get('AZURE_CLIENT_SECRET') or None,
-        tenant_id=os.environ.get('AZURE_TENANT_ID') or None,
+        account_url=os.environ.get('STORAGE_ACCOUNT_URL')
+        or os.environ.get('AZURE_STORAGE_ACCOUNT_URL')
+        or None,
         region_name=os.environ.get('CLOUD_REGION') or None,
     )
     bucket_name = (

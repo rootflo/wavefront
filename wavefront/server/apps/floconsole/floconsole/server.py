@@ -17,9 +17,8 @@ from floconsole.router.setup import include_routers
 load_dotenv()
 
 common_container = CommonContainer(cache_manager=None)
-config = common_container.config()
-environment = config['env_config']['app_env'] or 'production'
-web = config.get('web') or {}
+runtime = common_container.runtime_settings()
+environment = runtime.app_env
 
 # The interactive docs and the OpenAPI schema are off everywhere except dev,
 # so a new/unknown APP_ENV value stays closed rather than exposing the surface.
@@ -91,8 +90,9 @@ app = FastAPI(
 )
 
 # Middlewares & Routers
-origins = str(web.get('allowed_origins') or 'http://localhost:5173')
-add_middlewares(app, allowed_origins=origins.split(','))
+add_middlewares(
+    app, allowed_origins=runtime.allowed_origins, environment=runtime.app_env
+)
 include_routers(app)
 
 

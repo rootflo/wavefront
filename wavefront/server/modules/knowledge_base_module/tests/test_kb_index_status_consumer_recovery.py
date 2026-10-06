@@ -14,7 +14,7 @@ from knowledge_base_module.services.kb_index_status_consumer import (
 
 ME = module._CONSUMER
 OTHER = 'floware-dead-replica'
-IDLE = module._RECLAIM_MIN_IDLE_MS
+IDLE = 60000
 
 
 def _key(msg_id: str):
@@ -93,8 +93,10 @@ class FakeStream:
         return claimed[:count] if count else claimed
 
 
-def make_consumer(stream, failing=()):
-    consumer = KbIndexStatusConsumer(documents_repo=MagicMock(), cache_manager=stream)
+def make_consumer(stream, failing=(), **consumer_kwargs):
+    consumer = KbIndexStatusConsumer(
+        documents_repo=MagicMock(), cache_manager=stream, **consumer_kwargs
+    )
     consumer._running = True
 
     async def process(fields):
@@ -141,7 +143,7 @@ async def test_startup_replay_pages_through_many_entries(monkeypatch):
 
 async def test_startup_drops_own_entries_out_of_deliveries():
     stream = FakeStream()
-    stream.add_pending('1-0', ME, times=module._MAX_DELIVERIES)
+    stream.add_pending('1-0', ME, times=5)
     stream.add_pending('2-0', ME)
     consumer = make_consumer(stream)
 
@@ -195,7 +197,7 @@ async def test_entry_that_keeps_failing_is_dropped_after_max_deliveries():
     stream.add_pending('1-0', ME, idle=IDLE)
     consumer = make_consumer(stream, failing={'1-0'})
 
-    for _ in range(module._MAX_DELIVERIES + 2):
+    for _ in range(5 + 2):
         await consumer._reclaim_idle()
         if '1-0' in stream.pel:
             stream.pel['1-0']['idle'] = IDLE  # time passes
@@ -203,7 +205,7 @@ async def test_entry_that_keeps_failing_is_dropped_after_max_deliveries():
     assert '1-0' not in stream.pel
     assert stream.acked == ['1-0']
     # delivered once originally, then retried until the cap
-    assert consumer.process.await_count == module._MAX_DELIVERIES - 1
+    assert consumer.process.await_count == 5 - 1
 
 
 async def test_reclaim_errors_are_logged_not_raised():
@@ -219,13 +221,11 @@ async def test_reclaim_errors_are_logged_not_raised():
 # --- wired into the loop ------------------------------------------------------------
 
 
-async def test_loop_replays_pending_then_reclaims_on_schedule(monkeypatch):
-    monkeypatch.setattr(module, '_RECLAIM_INTERVAL_S', 0)
-    monkeypatch.setattr(module, '_POLL_INTERVAL_S', 0)
+async def test_loop_replays_pending_then_reclaims_on_schedule():
     stream = FakeStream()
     stream.add_pending('1-0', ME)  # from before a restart
     stream.add_pending('2-0', OTHER, idle=IDLE)  # stranded on a dead replica
-    consumer = make_consumer(stream)
+    consumer = make_consumer(stream, reclaim_interval_s=0, poll_interval_s=0)
     consumer._sleep = AsyncMock(side_effect=lambda _s: consumer.stop())
 
     await consumer.start()

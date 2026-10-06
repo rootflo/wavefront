@@ -1,4 +1,3 @@
-import os
 import time
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -304,8 +303,10 @@ class AgentInferenceService:
             )
         elif config.type == 'azure_openai':
             # The client will not build without one, so fall back to the env
-            api_version = llm_kwargs.get('api_version') or os.getenv(
-                'AZURE_OPENAI_API_VERSION'
+            from agents_module.runtime_config import get_azure_openai_api_version
+
+            api_version = (
+                llm_kwargs.get('api_version') or get_azure_openai_api_version()
             )
             if api_version:
                 llm_kwargs['api_version'] = api_version

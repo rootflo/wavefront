@@ -20,7 +20,7 @@ from llm_inference_config_module.container import LlmInferenceConfigContainer
 from agents_module.services.agent_inference_service import AgentInferenceService
 from agents_module.services.workflow_inference_service import WorkflowInferenceService
 from common_module.common_container import CommonContainer
-from common_module.runtime_settings import configure_runtime_settings
+from agents_module.runtime_config import configure_celery_broker
 from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.database.connection import DatabaseConfig, DatabaseClient
 from db_repo_module.db_repo_container import DatabaseModuleContainer
@@ -77,12 +77,8 @@ def get_services() -> WorkerServices:
 
         common_container = CommonContainer(cache_manager=providers.Object(None))
         common_container.config.from_dict(config)
-        env_config = config['env_config']
-        configure_runtime_settings(
-            floware_base_url=env_config['base_url'] or 'http://localhost:8001',
-            passthrough_secret=env_config['passthrough_secret'] or None,
-            app_env=env_config['app_env'],
-        )
+        runtime = common_container.runtime_settings()
+        configure_celery_broker(config['celery']['broker_url'])
 
         storage = config['storage']
 
@@ -122,19 +118,21 @@ def get_services() -> WorkerServices:
             api_services_manager=api_services_container.api_service_manager,
             cloud_storage_manager=common_container.cloud_storage_manager,
             message_processor_bucket_name=bucket_name,
-            floware_base_url=env_config['base_url'] or 'http://localhost:8001',
-            passthrough_secret=env_config['passthrough_secret'] or None,
+            floware_base_url=runtime.floware_base_url,
+            passthrough_secret=runtime.passthrough_secret,
         )
 
         llm_inference_config_container = LlmInferenceConfigContainer(
             db_client=db_repo_container.db_client,
             cache_manager=db_repo_container.cache_manager,
+            call_processing_cache_invalidator=common_container.call_processing_cache_invalidator,
         )
 
         guardrails_container = GuardrailsContainer(
             db_client=db_repo_container.db_client,
             cache_manager=db_repo_container.cache_manager,
         )
+        guardrails_container.config.from_dict(config)
 
         agents_container = AgentsContainer(
             db_client=db_repo_container.db_client,

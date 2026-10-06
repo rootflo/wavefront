@@ -21,8 +21,8 @@ class AzureKMS:
     """
 
     def __init__(self, settings: KmsKeySettings):
-        if not settings.vault_url:
-            raise ValueError('vault_url must be set for AzureKMS')
+        if not settings.key_vault_url:
+            raise ValueError('key_vault_url must be set for AzureKMS')
         if not settings.key:
             raise ValueError('key (Key Vault key name) must be set for AzureKMS')
 
@@ -47,7 +47,9 @@ class AzureKMS:
 
         self._key_name = settings.key
         self._key_version = settings.key_version
-        self.key_client = KeyClient(vault_url=settings.vault_url, credential=credential)
+        self.key_client = KeyClient(
+            vault_url=settings.key_vault_url, credential=credential
+        )
 
         key = self.key_client.get_key(settings.key, version=settings.key_version)
         self.crypto_client = CryptographyClient(key, credential=credential)

@@ -5,7 +5,7 @@ import time
 from flo_utils.utils.log import logger
 from datetime import datetime
 from dataclasses import dataclass
-from common_module import runtime_settings
+from common_module.runtime_settings import RuntimeSettings
 from rag_ingestion.constants.auth import RootfloHeaders
 from rag_ingestion.models.knowledge_base_embeddings import (
     KnowledgeBaseEmbeddingObject,
@@ -34,6 +34,7 @@ class KBRagStorage:
         self,
         *,
         inference_service_url: str,
+        runtime_settings: RuntimeSettings,
         text_embedding_batch_size: int | str = 16,
     ):
         self.max_token_size = 8500

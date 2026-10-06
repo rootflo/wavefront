@@ -26,8 +26,8 @@ config = application_container.config()
 common_container = CommonContainer(cache_manager=None)
 common_container.config.from_dict(config)
 
-environment = config['env_config']['app_env']
-web = config['web']
+runtime = common_container.runtime_settings()
+environment = runtime.app_env
 
 configure_models(
     application_container,
@@ -58,7 +58,9 @@ app = FastAPI(
 )
 
 # Middlewares & Routers
-add_middlewares(app, allowed_origins=web['allowed_origins'].split(','))
+add_middlewares(
+    app, allowed_origins=runtime.allowed_origins, environment=runtime.app_env
+)
 include_routers(app)
 
 

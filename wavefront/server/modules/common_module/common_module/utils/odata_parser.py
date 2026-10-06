@@ -1,15 +1,13 @@
 from datetime import datetime
-import os
 import re
 from typing import Any, Tuple
 
 from common_module.log.logger import logger
+from common_module.utils.odata_settings import odata_parameter_char
 
 
 def _dynamic_var_char(parameter: str | None = None) -> str:
-    if parameter:
-        return parameter
-    return '@' if os.environ.get('CLOUD_PROVIDER') == 'gcp' else ':'
+    return odata_parameter_char(parameter)
 
 
 def parse_value(value: str) -> Any:

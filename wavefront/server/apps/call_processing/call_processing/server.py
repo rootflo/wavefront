@@ -1,26 +1,31 @@
 import glob
 
-from call_processing.log.logger import logger
-from common_module.runtime_settings import configure_runtime_settings
 from dotenv import load_dotenv
+
+# ruff: noqa: E402
+load_dotenv()
+
+from call_processing.log.logger import configure_logging, logger
+from common_module.runtime_settings import RuntimeSettings
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 import uvicorn
 
 from call_processing.di.application_container import ApplicationContainer
+from call_processing.app_settings import (
+    CallProcessingAppSettings,
+    configure_call_processing,
+)
 from call_processing.middleware import add_middlewares
 from call_processing.router import include_routers
-
-load_dotenv()
 
 # Initialize containers
 application_container = ApplicationContainer()
 config = application_container.config()
-env_config = config.get('env_config') or {}
-web = config.get('web') or {}
-environment = env_config.get('app_env') or 'production'
-# Shared SecurityHeadersMiddleware still reads runtime_settings.app_env.
-configure_runtime_settings(app_env=environment)
+configure_call_processing(CallProcessingAppSettings.from_config(config))
+configure_logging(config['env_config'].get('log_level') or 'INFO')
+runtime = RuntimeSettings.from_config(config)
+environment = runtime.app_env
 
 # Wire containers
 application_container.wire(
@@ -45,8 +50,7 @@ app = FastAPI(
 )
 
 # Middlewares & Routers
-origins = str(web.get('allowed_origins') or 'http://localhost:8001')
-add_middlewares(app, origins.split(','))
+add_middlewares(app, runtime.allowed_origins, runtime.app_env)
 include_routers(app)
 
 

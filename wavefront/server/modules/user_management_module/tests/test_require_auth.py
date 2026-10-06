@@ -10,9 +10,12 @@ import pytest
 from starlette.datastructures import Headers
 
 from user_management_module.authorization.require_auth import (
+    DEFAULT_MTLS_ALLOWED_NAMESPACES,
+    RequireAuthMiddleware,
     is_request_hmac,
     matches_any_route,
     matches_dynamic_route,
+    mtls_principal_prefixes,
     optional_auth_apis,
     validate_hmac_signature,
     validate_mtls_auth,
@@ -102,12 +105,11 @@ async def test_validate_hmac_signature_rejects_missing_headers():
     assert await validate_hmac_signature(request, AsyncMock()) is False
 
 
+CLIENT_APPS_PREFIXES = mtls_principal_prefixes(['client-applications'])
+
+
 @pytest.mark.asyncio
-async def test_validate_mtls_auth_accepts_allowed_spiffe(monkeypatch):
-    monkeypatch.setattr(
-        'user_management_module.authorization.require_auth.mtls_allowed_principal_prefixes',
-        ('spiffe://cluster.local/ns/client-applications',),
-    )
+async def test_validate_mtls_auth_accepts_allowed_spiffe():
     request = MagicMock()
     request.headers = Headers(
         {
@@ -118,66 +120,109 @@ async def test_validate_mtls_auth_accepts_allowed_spiffe(monkeypatch):
     )
     request.state = SimpleNamespace()
 
-    assert await validate_mtls_auth(request) is True
+    assert await validate_mtls_auth(request, CLIENT_APPS_PREFIXES) is True
     assert request.state.session.role_id == SERVICE_AUTH_ROLE_ID
 
 
 @pytest.mark.asyncio
-async def test_validate_mtls_auth_rejects_disallowed_namespace(monkeypatch):
-    monkeypatch.setattr(
-        'user_management_module.authorization.require_auth.mtls_allowed_principal_prefixes',
-        ('spiffe://cluster.local/ns/client-applications',),
-    )
+async def test_validate_mtls_auth_rejects_disallowed_namespace():
     request = MagicMock()
     request.headers = Headers(
         {'X-Forwarded-Client-Cert': 'URI=spiffe://cluster.local/ns/evil/sa/app'}
     )
     request.state = SimpleNamespace()
 
-    assert await validate_mtls_auth(request) is False
+    assert await validate_mtls_auth(request, CLIENT_APPS_PREFIXES) is False
 
 
-def test_validate_passthrough_auth_success(monkeypatch):
-    monkeypatch.setattr(
-        'user_management_module.authorization.require_auth.passthrough_secret',
-        'shared-secret',
-    )
+def _passthrough_request(header_value):
     request = MagicMock()
-    request.headers = Headers({RootfloHeaders.PASSTHROUGH: 'shared-secret'})
+    request.headers = Headers({RootfloHeaders.PASSTHROUGH: header_value})
     request.state = SimpleNamespace()
+    return request
+
+
+def test_validate_passthrough_auth_success():
     formatter = MagicMock()
 
-    assert validate_passthrough_auth(request, formatter) is None
+    assert (
+        validate_passthrough_auth(
+            _passthrough_request('shared-secret'), formatter, 'shared-secret'
+        )
+        is None
+    )
+
+
+def test_validate_passthrough_auth_sets_service_session():
+    request = _passthrough_request('shared-secret')
+
+    validate_passthrough_auth(request, MagicMock(), 'shared-secret')
+
     assert request.state.session.user_id == 'passthrough'
 
 
-def test_validate_passthrough_auth_mismatch(monkeypatch):
-    monkeypatch.setattr(
-        'user_management_module.authorization.require_auth.passthrough_secret',
-        'shared-secret',
-    )
-    request = MagicMock()
-    request.headers = Headers({RootfloHeaders.PASSTHROUGH: 'wrong'})
-    request.state = SimpleNamespace()
+def test_validate_passthrough_auth_mismatch():
     formatter = MagicMock()
     formatter.buildErrorResponse.return_value = {'error': 'x'}
 
-    response = validate_passthrough_auth(request, formatter)
+    response = validate_passthrough_auth(
+        _passthrough_request('wrong'), formatter, 'shared-secret'
+    )
+
     assert response is not None
     assert response.status_code == 401
 
 
-def test_validate_passthrough_auth_unconfigured(monkeypatch):
-    monkeypatch.setattr(
-        'user_management_module.authorization.require_auth.passthrough_secret',
-        None,
-    )
-    request = MagicMock()
-    request.headers = Headers({RootfloHeaders.PASSTHROUGH: 'anything'})
-    request.state = SimpleNamespace()
+@pytest.mark.parametrize('secret', [None, ''])
+def test_validate_passthrough_auth_unconfigured(secret):
     formatter = MagicMock()
     formatter.buildErrorResponse.return_value = {'error': 'x'}
 
-    response = validate_passthrough_auth(request, formatter)
+    response = validate_passthrough_auth(
+        _passthrough_request('anything'), formatter, secret
+    )
+
     assert response is not None
     assert response.status_code == 500
+
+
+class TestRequireAuthMiddlewareConfig:
+    """Auth settings are constructor arguments, not module or environment state."""
+
+    def test_defaults_are_production_safe(self):
+        middleware = RequireAuthMiddleware(app=MagicMock())
+
+        assert middleware.app_env == 'production'
+        assert middleware.passthrough_secret is None
+        assert middleware.required_hmac_apis == ['/floware/v1/image/analyse']
+        assert middleware.mtls_allowed_principal_prefixes == mtls_principal_prefixes(
+            DEFAULT_MTLS_ALLOWED_NAMESPACES
+        )
+
+    def test_configured_routes_extend_the_builtin_hmac_route(self):
+        middleware = RequireAuthMiddleware(
+            app=MagicMock(), hmac_routes=['/floware/v1/webhooks/{id}']
+        )
+
+        assert middleware.required_hmac_apis == [
+            '/floware/v1/image/analyse',
+            '/floware/v1/webhooks/{id}',
+        ]
+
+    def test_namespaces_become_spiffe_prefixes(self):
+        middleware = RequireAuthMiddleware(
+            app=MagicMock(), mtls_allowed_namespaces=['team-a']
+        )
+
+        assert middleware.mtls_allowed_principal_prefixes == (
+            'spiffe://cluster.local/ns/team-a',
+        )
+
+    def test_instances_do_not_share_settings(self):
+        local = RequireAuthMiddleware(
+            app=MagicMock(), app_env='dev', passthrough_secret='abc'
+        )
+        prod = RequireAuthMiddleware(app=MagicMock())
+
+        assert (local.app_env, local.passthrough_secret) == ('dev', 'abc')
+        assert (prod.app_env, prod.passthrough_secret) == ('production', None)

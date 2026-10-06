@@ -22,7 +22,6 @@ COPY wavefront/server/modules/agents_module /app/modules/agents_module
 COPY wavefront/server/modules/plugins_module /app/modules/plugins_module
 COPY wavefront/server/modules/tools_module /app/modules/tools_module
 COPY wavefront/server/modules/api_services_module /app/modules/api_services_module
-COPY wavefront/server/modules/triggers_module /app/modules/triggers_module
 COPY wavefront/server/modules/user_management_module /app/modules/user_management_module
 
 COPY wavefront/server/packages/flo_cloud /app/packages/flo_cloud
