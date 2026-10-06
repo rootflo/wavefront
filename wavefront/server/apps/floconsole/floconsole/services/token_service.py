@@ -27,8 +27,8 @@ class TokenService:
         self,
         kms_signer: FloSigner,
         algorithm: TokenAlgorithms = TokenAlgorithms.PS256,
-        token_expiry: int = 4 * 60 * 60,  # 4 hours in seconds
-        temporary_token_expiry: int = 10 * 60,  # 10 minutes in seconds
+        token_expiry: int = 3600,
+        temporary_token_expiry: int = 300,
         app_env: str = 'production',
         token_prefix: str = 'fc_',
         issuer: str = 'https://console.rootflo.ai',

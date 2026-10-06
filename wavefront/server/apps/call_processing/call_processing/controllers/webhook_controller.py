@@ -38,7 +38,7 @@ webhook_router = APIRouter()
 
 def _media_stream_websocket_url(base_url: str | None) -> str:
     """Build the Twilio Media Stream wss URL from the call-processing base URL."""
-    resolved = base_url or 'http://localhost:8003'
+    resolved = base_url or 'http://localhost:8004'
     if resolved.startswith('https://'):
         websocket_url = resolved.replace('https://', 'wss://')
     elif resolved.startswith('http://'):

@@ -419,11 +419,11 @@ wait_for() {
 
 LOCALSTACK_URL="http://localhost:4566"
 LOCALSTACK_REGION="us-east-1"
-# S3 bucket names cannot contain '_'. Must match the .env samples.
+# S3 bucket names cannot contain '_'. Must match APPLICATION_BUCKET in the .env samples.
 S3_BUCKETS=(application-bucket)
 RAG_INGESTION_QUEUE_NAME="rag-ingestion-queue"
 
-# KMS keys use fixed IDs so the ARNs in the .env samples never change.
+# KMS keys use fixed IDs so the KMS_*_KEY ARNs in the .env samples never change.
 # LocalStack forgets keys on restart; the encryption key also gets fixed key
 # material so values floware encrypted into postgres stay decryptable. Signing
 # keys get fresh material, so existing JWTs stop verifying (log in again).
@@ -535,6 +535,39 @@ setup_localstack_resources() {
     --tags "TagKey=_custom_id_,TagValue=$KMS_SIGN_KEY_ID"
   ensure_kms_key "$KMS_CONSOLE_SIGN_KEY_ID" "floconsole signing" --key-usage SIGN_VERIFY --key-spec RSA_2048 \
     --tags "TagKey=_custom_id_,TagValue=$KMS_CONSOLE_SIGN_KEY_ID"
+}
+
+# Warn when an .env points at a LocalStack resource setup.sh did not create
+# (e.g. an older .env that predates a renamed variable).
+#   check_env_resource <env_file> <var> <expected suffix> <label>
+check_env_resource() {
+  local env_file="$1" var="$2" suffix="$3" label="$4" value
+  [[ -f "$env_file" ]] || return 0
+  value="$(env_get "$env_file" "$var")"
+  if [[ -z "$value" ]]; then
+    warn "$var is not set in ${env_file#"$ROOT_DIR"/} ($label)"
+  elif [[ "$value" != *"$suffix" ]]; then
+    warn "$var in ${env_file#"$ROOT_DIR"/} does not point at the $label setup.sh created ($suffix)"
+  fi
+}
+
+check_localstack_env() {
+  step "Checking .env files against the LocalStack resources"
+  local floware_env="$FLOWARE_DIR/.env"
+  local bucket="${S3_BUCKETS[0]}"
+
+  check_env_resource "$FLOCONSOLE_DIR/.env" KMS_SIGNING_KEY "$KMS_CONSOLE_SIGN_KEY_ID" "floconsole signing key"
+  check_env_resource "$floware_env" KMS_SIGNING_KEY "$KMS_SIGN_KEY_ID" "floware signing key"
+  check_env_resource "$floware_env" KMS_ENCRYPTION_KEY "$KMS_ENC_KEY_ID" "encryption key"
+  check_env_resource "$floware_env" APPLICATION_BUCKET "$bucket" "S3 bucket"
+  check_env_resource "$floware_env" RAG_QUEUE "/$RAG_INGESTION_QUEUE_NAME" "SQS queue"
+  if (( RUN_CELERY_WORKER )); then
+    check_env_resource "$CELERY_DIR/celery_worker/.env" APPLICATION_BUCKET "$bucket" "S3 bucket"
+  fi
+  if (( RUN_RAG_WORKER )); then
+    check_env_resource "$RAG_DIR/rag_ingestion/.env" RAG_QUEUE "/$RAG_INGESTION_QUEUE_NAME" "SQS queue"
+  fi
+  ok "Checked"
 }
 
 #   ensure_kms_key <key_id> <label> <create-key args...>
@@ -884,6 +917,7 @@ main() {
   setup_database floconsole "$FLOCONSOLE_DIR/.env" CONSOLE_DB_
   setup_database floware "$FLOWARE_DIR/.env" DB_ vector
   setup_localstack_resources
+  check_localstack_env
   install_python_deps
   start_floconsole
   start_floware

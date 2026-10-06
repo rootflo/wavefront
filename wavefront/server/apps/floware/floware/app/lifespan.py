@@ -99,18 +99,14 @@ async def lifespan(app: FastAPI):
 
         # Start Redis Stream consumer for async execution status updates
         streams = config['streams']
+        consumer_shutdown_timeout_s = float(streams['consumer_shutdown_timeout_s'])
         async_agentic_exec_consumer = AsyncAgenticExecutionResultConsumer(
             exec_repo=db_repo_container.async_agentic_execution_repository(),
             cache_manager=db_repo_container.cache_manager(),
             stream=streams['async_agentic_exec_results'],
-            group=streams.get('async_agentic_exec_consumer_group')
-            or 'floware-agentic-consumers',
-            poll_interval_s=float(
-                streams.get('async_agentic_exec_poll_interval_s') or 5
-            ),
-            heartbeat_interval_s=int(
-                streams.get('async_agentic_exec_heartbeat_s') or 60
-            ),
+            group=streams['async_agentic_exec_consumer_group'],
+            poll_interval_s=float(streams['async_agentic_exec_poll_interval_s']),
+            heartbeat_interval_s=int(streams['async_agentic_exec_heartbeat_s']),
         )
         async_agentic_exec_consumer_task = asyncio.create_task(
             async_agentic_exec_consumer.start()
@@ -120,17 +116,12 @@ async def lifespan(app: FastAPI):
         kb_index_status_consumer = KbIndexStatusConsumer(
             documents_repo=knowledge_base_container.knowledge_base_documents_repository(),
             cache_manager=db_repo_container.cache_manager(),
-            group=streams.get('kb_index_status_consumer_group')
-            or 'floware-kb-index-status',
-            poll_interval_s=float(streams.get('kb_index_status_poll_interval_s') or 5),
-            heartbeat_interval_s=int(streams.get('kb_index_status_heartbeat_s') or 60),
-            reclaim_interval_s=float(
-                streams.get('kb_index_status_reclaim_interval_s') or 60
-            ),
-            reclaim_min_idle_ms=int(
-                streams.get('kb_index_status_reclaim_min_idle_ms') or 60000
-            ),
-            max_deliveries=int(streams.get('kb_index_status_max_deliveries') or 5),
+            group=streams['kb_index_status_consumer_group'],
+            poll_interval_s=float(streams['kb_index_status_poll_interval_s']),
+            heartbeat_interval_s=int(streams['kb_index_status_heartbeat_s']),
+            reclaim_interval_s=float(streams['kb_index_status_reclaim_interval_s']),
+            reclaim_min_idle_ms=int(streams['kb_index_status_reclaim_min_idle_ms']),
+            max_deliveries=int(streams['kb_index_status_max_deliveries']),
         )
         kb_index_status_consumer_task = asyncio.create_task(
             kb_index_status_consumer.start()
@@ -147,18 +138,26 @@ async def lifespan(app: FastAPI):
         scheduler_manager.shutdown()
         async_agentic_exec_consumer.stop()
         try:
-            await asyncio.wait_for(async_agentic_exec_consumer_task, timeout=5)
+            await asyncio.wait_for(
+                async_agentic_exec_consumer_task, timeout=consumer_shutdown_timeout_s
+            )
         except asyncio.TimeoutError:
             async_agentic_exec_consumer_task.cancel()
             logger.warning(
-                'AsyncAgenticExecutionResultConsumer did not stop within 5s; cancelled'
+                'AsyncAgenticExecutionResultConsumer did not stop within '
+                f'{consumer_shutdown_timeout_s}s; cancelled'
             )
         kb_index_status_consumer.stop()
         try:
-            await asyncio.wait_for(kb_index_status_consumer_task, timeout=5)
+            await asyncio.wait_for(
+                kb_index_status_consumer_task, timeout=consumer_shutdown_timeout_s
+            )
         except asyncio.TimeoutError:
             kb_index_status_consumer_task.cancel()
-            logger.warning('KbIndexStatusConsumer did not stop within 5s; cancelled')
+            logger.warning(
+                'KbIndexStatusConsumer did not stop within '
+                f'{consumer_shutdown_timeout_s}s; cancelled'
+            )
         logger.info('Shutting down application...')
 
     except Exception as e:

@@ -20,9 +20,6 @@ from floware.di.containers import config, csv, runtime
 from floware.di.wiring import wire_containers
 from floware.middleware.setup import add_middlewares
 from floware.router import include_routers
-from user_management_module.authorization.require_auth import (
-    DEFAULT_MTLS_ALLOWED_NAMESPACES,
-)
 
 environment = runtime.app_env
 
@@ -51,22 +48,22 @@ add_middlewares(
     app,
     runtime=runtime,
     hmac_routes=csv(config['auth'].get('hmac_routes')),
-    mtls_allowed_namespaces=csv(
-        config['auth'].get('mtls_allowed_namespaces'),
-        DEFAULT_MTLS_ALLOWED_NAMESPACES,
-    ),
+    mtls_allowed_namespaces=csv(config['auth']['mtls_allowed_namespaces']),
 )
 include_routers(app)
 register_exception_handlers(app, is_dev=is_dev)
 wire_containers()
 
 if __name__ == '__main__':
+    server = config['server']
+    host = server['host']
+    port = int(server['port'])
     print(f'Starting application in environment: {environment}')
     if environment == 'production':
         uvicorn.run(
             'server:app',
-            host='0.0.0.0',
-            port=8001,
+            host=host,
+            port=port,
             workers=runtime.worker_count,
             log_level=runtime.uvicorn_log_level,
             forwarded_allow_ips='*',
@@ -79,11 +76,11 @@ if __name__ == '__main__':
 
         uvicorn.run(
             'server:app',
-            host='0.0.0.0',
-            port=8001,
+            host=host,
+            port=port,
             workers=1,
             reload=True,
             reload_includes=dirs,
-            log_level='info',
+            log_level=server['reload_log_level'],
             forwarded_allow_ips='*',
         )

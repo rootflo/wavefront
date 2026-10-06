@@ -96,20 +96,27 @@ application_container.wire(
 
 # Running with Uvicorn (for local development)
 if __name__ == '__main__':
+    server = config['server']
+    host = server['host']
+    port = int(server['port'])
     print(f'Starting application in environment: {environment}')
     if environment == 'production':
         uvicorn.run(
-            'server:app', host='0.0.0.0', port=8003, workers=1, log_level='critical'
+            'server:app',
+            host=host,
+            port=port,
+            workers=1,
+            log_level=server['uvicorn_log_level'],
         )
     else:
         dirs = glob.glob('apps/inference-app/inference_app/**/*.py', recursive=True)
 
         uvicorn.run(
             'server:app',
-            host='0.0.0.0',
-            port=8003,
+            host=host,
+            port=port,
             workers=1,
             reload=True,
             reload_includes=dirs,
-            log_level='info',
+            log_level=server['reload_log_level'],
         )
