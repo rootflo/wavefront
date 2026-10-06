@@ -7,13 +7,13 @@ class KmsKeySettings:
     key: str  # GCP crypto key | AWS key ARN | Azure key name
     key_version: str | None = None
     key_ring: str | None = None  # gcp
+    key_vault_url: str | None = None  # azure
     project_id: str | None = None  # gcp
     location: str | None = None  # gcp
     region: str | None = None  # aws
-    vault_url: str | None = None  # azure
-    client_id: str | None = None
-    client_secret: str | None = None
-    tenant_id: str | None = None
+    client_id: str | None = None  # azure
+    client_secret: str | None = None  # azure
+    tenant_id: str | None = None  # azure
 
 
 @dataclass(frozen=True)

@@ -1,6 +1,5 @@
 from datetime import datetime, timedelta, timezone
 import json
-import os
 from unittest.mock import Mock
 from uuid import uuid4
 
@@ -231,8 +230,8 @@ async def test_authenticate_multiple_failed_attempts_lockout(
     test_client, test_session: async_sessionmaker, test_user_id
 ):
     """Test that multiple failed login attempts result in account lockout"""
-    # Get max failed attempts from environment variable, default to 3
-    max_failed_attempts = int(os.getenv('MAX_FAILED_ATTEMPTS', 3))
+    # Matches flo_testing user_config auth.max_failed_attempts default.
+    max_failed_attempts = 3
 
     # Create test IDs
     role_id = str(uuid4())
@@ -299,8 +298,8 @@ async def test_authenticate_with_already_locked_account(
     test_client, test_session: async_sessionmaker, test_user_id
 ):
     """Test authentication attempt with an already locked account"""
-    # Get max failed attempts from environment variable, default to 3
-    max_failed_attempts = int(os.getenv('MAX_FAILED_ATTEMPTS', 3))
+    # Matches flo_testing user_config auth.max_failed_attempts default.
+    max_failed_attempts = 3
 
     hashed_password = hash_password('test_password')
     current_time = datetime.now(timezone.utc)
@@ -337,8 +336,8 @@ async def test_authenticate_resets_failed_attempts_on_success(
     test_client, test_session: async_sessionmaker, test_user_id
 ):
     """Test that successful login resets failed attempts counter"""
-    # Get max failed attempts from environment variable, default to 3
-    max_failed_attempts = int(os.getenv('MAX_FAILED_ATTEMPTS', 3))
+    # Matches flo_testing user_config auth.max_failed_attempts default.
+    max_failed_attempts = 3
 
     # Create test IDs
     role_id = str(uuid4())
@@ -865,8 +864,8 @@ async def test_authenticate_inactive_account_with_lockout(
         mock_is_feature_enabled,
     )
 
-    # Get max failed attempts from environment variable, default to 3
-    max_failed_attempts = int(os.getenv('MAX_FAILED_ATTEMPTS', 3))
+    # Matches flo_testing user_config auth.max_failed_attempts default.
+    max_failed_attempts = 3
 
     hashed_password = hash_password('test_password')
     current_time = datetime.now(timezone.utc)
@@ -1060,13 +1059,6 @@ async def test_successful_login_refreshes_user_cache_with_last_login(
     assert cached_login == updated_login
     assert latest['failed_attempts'] == 0
     assert latest['last_failed_attempt'] is None
-
-
-@pytest.mark.asyncio
-async def test_health_endpoint(test_client):
-    response = test_client.get('/floware/v1/health')
-    assert response.status_code == 200
-    assert response.json()['status'] == 'ok'
 
 
 @pytest.mark.asyncio

@@ -4,7 +4,7 @@ from uuid import UUID
 from common_module.log.logger import logger
 from db_repo_module.models.oauth_app import OAuthApp
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
-from flo_cloud.kms import FloKmsService
+from flo_cloud.kms import FloKmsCipher
 from mailer import EmailProviderABC, get_email_provider_factory
 
 from plugins_module.utils.email_helper import (
@@ -28,10 +28,10 @@ class OAuthAppService:
     def __init__(
         self,
         oauth_app_repository: SQLAlchemyRepository[OAuthApp],
-        kms_service: FloKmsService,
+        kms_cipher: FloKmsCipher,
     ):
         self._apps = oauth_app_repository
-        self._kms = kms_service
+        self._kms_cipher = kms_cipher
         self._factory = get_email_provider_factory()
 
     async def create_app(
@@ -51,7 +51,7 @@ class OAuthAppService:
         if existing:
             raise ValueError(f'An OAuth app named {name!r} already exists')
 
-        encrypted_secret = self._kms.encrypt_for_storage(client_secret)
+        encrypted_secret = self._kms_cipher.encrypt_for_storage(client_secret)
 
         app = await self._apps.create(
             name=name,
@@ -91,13 +91,13 @@ class OAuthAppService:
             # before validating so required-field checks see the whole config.
             candidate = dict(config)
             if not candidate.get('client_secret'):
-                candidate['client_secret'] = self._kms.decrypt_from_storage(
+                candidate['client_secret'] = self._kms_cipher.decrypt_from_storage(
                     app.encrypted_client_secret
                 )
             validate_oauth_app_config(app.provider, candidate)
             stored_config, client_secret = split_client_secret(candidate)
             updates['config'] = stored_config
-            updates['encrypted_client_secret'] = self._kms.encrypt_for_storage(
+            updates['encrypted_client_secret'] = self._kms_cipher.encrypt_for_storage(
                 client_secret
             )
             full_config = candidate
@@ -155,7 +155,7 @@ class OAuthAppService:
     async def get_provider_for_app(self, app: OAuthApp) -> EmailProviderABC:
         """Build (or reuse) the provider instance for an app row."""
         config = dict(app.config or {})
-        config['client_secret'] = self._kms.decrypt_from_storage(
+        config['client_secret'] = self._kms_cipher.decrypt_from_storage(
             app.encrypted_client_secret
         )
         return self._factory.get_provider(

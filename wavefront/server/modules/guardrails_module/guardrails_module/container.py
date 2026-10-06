@@ -65,4 +65,5 @@ class GuardrailsContainer(containers.DeclarativeContainer):
         policy_resolver=policy_resolver,
         audit_sink=audit_sink,
         cache_manager=cache_manager,
+        guardrails_config=config.guardrails,
     )

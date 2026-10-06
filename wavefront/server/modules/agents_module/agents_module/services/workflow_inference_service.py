@@ -34,7 +34,6 @@ from agents_module.services.agent_crud_service import AgentCrudService
 from agents_module.services.agent_inference_service import AgentInferenceService
 from agents_module.utils.trace_utils import serialize_memory_trace
 from tools_module.registry.tool_loader import ToolLoader
-from tools_module.registry.function_node_registry import FUNCTION_NODE_REGISTRY
 
 
 class WorkflowInferenceService:
@@ -375,7 +374,7 @@ class WorkflowInferenceService:
         workflow_builder = AriumBuilder.from_yaml(
             agents=agents_dict,
             yaml_str=yaml_content,
-            function_registry=FUNCTION_NODE_REGISTRY,
+            function_registry=self.tool_loader.function_node_registry,
             access_token=access_token,
             app_key=app_key,
             guardrail_provider=guardrail_llm_provider(

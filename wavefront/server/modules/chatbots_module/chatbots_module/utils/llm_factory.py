@@ -1,6 +1,5 @@
 """Build a flo_ai LLM from a stored LlmInferenceConfig."""
 
-import os
 from typing import Any, Optional
 
 from db_repo_module.models.llm_inference_config import LlmInferenceConfig
@@ -96,9 +95,9 @@ def build_llm(
         # Azure is not OpenAI-with-a-base_url: it needs a deployment endpoint
         # and an api_version, and the client will not build without one, so
         # fall back to the env.
-        api_version = llm_kwargs.get('api_version') or os.getenv(
-            'AZURE_OPENAI_API_VERSION'
-        )
+        from agents_module.runtime_config import get_azure_openai_api_version
+
+        api_version = llm_kwargs.get('api_version') or get_azure_openai_api_version()
         if api_version:
             llm_kwargs['api_version'] = api_version
 

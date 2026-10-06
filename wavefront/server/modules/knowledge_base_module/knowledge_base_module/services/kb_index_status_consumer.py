@@ -1,5 +1,4 @@
 import asyncio
-import os
 import socket
 import time
 from datetime import datetime, timezone
@@ -16,23 +15,8 @@ from db_repo_module.models.knowledge_base_documents import (
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from sqlalchemy import or_, update
 
-_GROUP = os.getenv('KB_INDEX_STATUS_CONSUMER_GROUP', 'floware-kb-index-status')
 _CONSUMER = f'floware-{socket.gethostname()}'
 _POLL_COUNT = 50
-# Seconds to wait after a poll that did not fill a batch. Each poll is a
-# non-blocking read, so the shared Redis pool connection is only borrowed for
-# one round trip; status updates can lag by up to this much.
-_POLL_INTERVAL_S = float(os.getenv('KB_INDEX_STATUS_POLL_INTERVAL_S', '5'))
-_HEARTBEAT_INTERVAL_S = int(os.getenv('KB_INDEX_STATUS_HEARTBEAT_S', '60'))
-
-# Recovery of events that were delivered but never acknowledged (processing
-# failed, or the replica holding them died): every _RECLAIM_INTERVAL_S, entries
-# idle for _RECLAIM_MIN_IDLE_MS are claimed from any consumer and applied
-# again. An entry delivered _MAX_DELIVERIES times is acknowledged and dropped,
-# so one that can never be applied doesn't stay pending forever.
-_RECLAIM_INTERVAL_S = float(os.getenv('KB_INDEX_STATUS_RECLAIM_INTERVAL_S', '60'))
-_RECLAIM_MIN_IDLE_MS = int(os.getenv('KB_INDEX_STATUS_RECLAIM_MIN_IDLE_MS', '60000'))
-_MAX_DELIVERIES = int(os.getenv('KB_INDEX_STATUS_MAX_DELIVERIES', '5'))
 
 _VALID_STATUSES = {status.value for status in IndexStatus}
 
@@ -47,7 +31,7 @@ class KbIndexStatusConsumer:
     is acknowledged only after it is applied, so none are lost while floware
     restarts (unlike Redis pub/sub). Events left unacknowledged -- processing
     failed, or the replica holding them died -- are replayed on startup and
-    reclaimed when idle, up to _MAX_DELIVERIES attempts.
+    reclaimed when idle, up to self._max_deliveries attempts.
 
     Events from different replicas or retries can be applied out of order, so
     each update only lands if its `at` is newer than the stored
@@ -65,9 +49,22 @@ class KbIndexStatusConsumer:
         self,
         documents_repo: SQLAlchemyRepository[KnowledgeBaseDocuments],
         cache_manager: CacheManager,
+        *,
+        group: str = 'floware-kb-index-status',
+        poll_interval_s: float = 5.0,
+        heartbeat_interval_s: int = 60,
+        reclaim_interval_s: float = 60.0,
+        reclaim_min_idle_ms: int = 60000,
+        max_deliveries: int = 5,
     ):
         self._repo = documents_repo
         self._cache = cache_manager
+        self._group = group
+        self._poll_interval_s = poll_interval_s
+        self._heartbeat_interval_s = heartbeat_interval_s
+        self._reclaim_interval_s = reclaim_interval_s
+        self._reclaim_min_idle_ms = reclaim_min_idle_ms
+        self._max_deliveries = max_deliveries
         self._running = False
         self._stop_requested = asyncio.Event()
 
@@ -94,14 +91,16 @@ class KbIndexStatusConsumer:
 
     async def _run_forever(self) -> None:
         self._running = True
-        self._cache.xgroup_create(KB_INDEX_STATUS_STREAM, _GROUP, id='0', mkstream=True)
+        self._cache.xgroup_create(
+            KB_INDEX_STATUS_STREAM, self._group, id='0', mkstream=True
+        )
 
         # Log the resolved key: CacheManager prepends its namespace, and the
         # worker must publish under the same one (its FLOWARE_APP_NAME).
         resolved_key = f'{self._cache.namespace}/{KB_INDEX_STATUS_STREAM}'
         logger.info(
             f'KbIndexStatusConsumer started — key={resolved_key}, '
-            f'group={_GROUP}, consumer={_CONSUMER}'
+            f'group={self._group}, consumer={_CONSUMER}'
         )
 
         # Events this consumer received before a restart but never acknowledged
@@ -115,13 +114,13 @@ class KbIndexStatusConsumer:
         while self._running:
             try:
                 now = time.monotonic()
-                if now - last_reclaim >= _RECLAIM_INTERVAL_S:
+                if now - last_reclaim >= self._reclaim_interval_s:
                     last_reclaim = now
                     await self._reclaim_idle()
 
                 messages = await asyncio.to_thread(
                     self._cache.xread_group,
-                    _GROUP,
+                    self._group,
                     _CONSUMER,
                     {KB_INDEX_STATUS_STREAM: '>'},
                     _POLL_COUNT,
@@ -131,7 +130,7 @@ class KbIndexStatusConsumer:
                 batch_size = sum(len(entries) for _stream, entries in messages)
                 received += batch_size
 
-                if now - last_heartbeat >= _HEARTBEAT_INTERVAL_S:
+                if now - last_heartbeat >= self._heartbeat_interval_s:
                     last_heartbeat = now
                     logger.info(
                         f'KbIndexStatusConsumer alive — key={resolved_key}, '
@@ -145,10 +144,10 @@ class KbIndexStatusConsumer:
                 # A full batch means more may be waiting: read again straight
                 # away. Otherwise the stream is drained, so wait.
                 if batch_size < _POLL_COUNT and self._running:
-                    await self._sleep(_POLL_INTERVAL_S)
+                    await self._sleep(self._poll_interval_s)
             except Exception as e:
                 logger.error(f'KbIndexStatusConsumer poll error: {e}')
-                await self._sleep(max(_POLL_INTERVAL_S, 2))
+                await self._sleep(max(self._poll_interval_s, 2))
 
     async def _apply_and_ack(self, msg_id: str, fields: Optional[dict]) -> None:
         """Apply one event and acknowledge it. On failure it stays pending and
@@ -168,30 +167,30 @@ class KbIndexStatusConsumer:
 
     async def _ack(self, *msg_ids: str) -> None:
         await asyncio.to_thread(
-            self._cache.xack, KB_INDEX_STATUS_STREAM, _GROUP, *msg_ids
+            self._cache.xack, KB_INDEX_STATUS_STREAM, self._group, *msg_ids
         )
 
     async def _pending(self, **filters) -> list:
         return await asyncio.to_thread(
             self._cache.xpending_range,
             KB_INDEX_STATUS_STREAM,
-            _GROUP,
+            self._group,
             _POLL_COUNT,
             **filters,
         )
 
     async def _drop_exhausted(self, pending: list) -> set:
-        """Acknowledge (drop) pending entries already delivered _MAX_DELIVERIES
+        """Acknowledge (drop) pending entries already delivered self._max_deliveries
         times. Returns their ids."""
         exhausted = {
             str(entry['message_id'])
             for entry in pending
-            if entry.get('times_delivered', 0) >= _MAX_DELIVERIES
+            if entry.get('times_delivered', 0) >= self._max_deliveries
         }
         if exhausted:
             logger.error(
                 f'Dropping {len(exhausted)} index status event(s) after '
-                f'{_MAX_DELIVERIES} failed deliveries: {sorted(exhausted)}'
+                f'{self._max_deliveries} failed deliveries: {sorted(exhausted)}'
             )
             await self._ack(*exhausted)
         return exhausted
@@ -208,7 +207,7 @@ class KbIndexStatusConsumer:
                 )
                 messages = await asyncio.to_thread(
                     self._cache.xread_group,
-                    _GROUP,
+                    self._group,
                     _CONSUMER,
                     {KB_INDEX_STATUS_STREAM: cursor},
                     _POLL_COUNT,
@@ -234,14 +233,14 @@ class KbIndexStatusConsumer:
         that died: drop those out of deliveries, claim the rest, apply them."""
         try:
             await self._drop_exhausted(
-                await self._pending(min_idle_ms=_RECLAIM_MIN_IDLE_MS)
+                await self._pending(min_idle_ms=self._reclaim_min_idle_ms)
             )
             claimed = await asyncio.to_thread(
                 self._cache.xautoclaim,
                 KB_INDEX_STATUS_STREAM,
-                _GROUP,
+                self._group,
                 _CONSUMER,
-                _RECLAIM_MIN_IDLE_MS,
+                self._reclaim_min_idle_ms,
                 '0-0',
                 _POLL_COUNT,
             )

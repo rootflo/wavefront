@@ -39,6 +39,7 @@ def test_get_services_requires_application_bucket():
             'passthrough_secret': '',
             'app_env': 'dev',
         },
+        'celery': {'broker_url': 'redis://localhost:6379/0'},
         'storage': {'application_bucket': '', 'account_url': ''},
         'cloud': {
             'provider': 'aws',
@@ -58,7 +59,6 @@ def test_get_services_requires_application_bucket():
         patch.object(services, '_build_db_client', return_value=MagicMock()),
         patch.object(services, 'DatabaseModuleContainer', return_value=db_repo),
         patch.object(services, 'CommonContainer', return_value=common),
-        patch.object(services, 'configure_runtime_settings'),
         patch.object(services, 'create_api_services_container'),
         patch.object(services, 'PluginsContainer'),
         pytest.raises(ValueError, match='APPLICATION_BUCKET'),

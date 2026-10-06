@@ -50,7 +50,7 @@ Usage:
 
     from common_module.middleware.security_headers import SecurityHeadersMiddleware
 
-    app.add_middleware(SecurityHeadersMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware, environment=runtime.app_env)
 
 Testing:
     Use the included test script to verify headers are properly set:
@@ -61,7 +61,6 @@ Testing:
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
-import os
 
 
 # This app only ever serves JSON, so every fetch directive can be denied
@@ -123,12 +122,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     - Expires: 0 - Prevents caching
     """
 
-    def __init__(self, app: ASGIApp):
+    def __init__(self, app: ASGIApp, environment: str):
         super().__init__(app)
 
-        # Get environment-specific configuration
-        self.environment = os.getenv('APP_ENV', 'production')
-
+        self.environment = environment
         # The docs are only mounted in dev, so only there can a request reach
         # HTML that needs the relaxed policy.
         self.docs_enabled = self.environment == 'dev'

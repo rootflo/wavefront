@@ -21,6 +21,7 @@ from rag_ingestion.processors.kb_storage_processor import (
     KbStorageInsights,
     KbStorageProcessor,
 )
+from common_module.runtime_settings import RuntimeSettings
 
 EMBEDDING = KnowledgeBaseEmbeddingObject(
     embedding_vector=[0.1],
@@ -50,6 +51,7 @@ def processor():
             kms_cipher=None,
             index_status_publisher=MagicMock(),
             inference_service_url='http://inference:8003',
+            runtime_settings=RuntimeSettings(),
         )
     processor.index_status_publisher.publish.return_value = True
     processor.image_embedding.embed_images.side_effect = fake_embed_images

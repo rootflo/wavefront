@@ -3,6 +3,7 @@ import uuid
 from typing import List, Optional, Tuple
 from uuid import UUID
 
+from common_module.call_processing_cache import CallProcessingCacheInvalidator
 from common_module.log.logger import logger
 from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.models.voice_agent import VoiceAgent
@@ -19,9 +20,6 @@ from voice_agents_module.utils.cache_utils import (
     get_voice_agent_cache_key,
     get_voice_agents_list_cache_key,
     get_welcome_message_url_cache_key,
-)
-from voice_agents_module.utils.cache_invalidation import (
-    invalidate_call_processing_cache,
 )
 from voice_agents_module.utils.storage_utils import generate_welcome_message_key
 from voice_agents_module.utils.language_validation import (
@@ -46,6 +44,7 @@ class VoiceAgentService:
         tts_generator_service: TTSGeneratorService,
         cloud_storage_manager: CloudStorageManager,
         voice_agent_bucket: str,
+        cache_invalidator: CallProcessingCacheInvalidator,
     ):
         """
         Initialize the voice agent service
@@ -60,6 +59,7 @@ class VoiceAgentService:
             tts_generator_service: Service for generating TTS audio
             cloud_storage_manager: Cloud storage manager for uploading audio
             voice_agent_bucket: Bucket name for storing voice agent audio files
+            cache_invalidator: Invalidates call_processing's cached configs
         """
         self.voice_agent_repository = voice_agent_repository
         self.telephony_config_service = telephony_config_service
@@ -70,6 +70,7 @@ class VoiceAgentService:
         self.tts_generator_service = tts_generator_service
         self.cloud_storage_manager = cloud_storage_manager
         self.voice_agent_bucket = voice_agent_bucket
+        self.cache_invalidator = cache_invalidator
         self.voice_agent_cache_time = 3600 * 24
 
     async def _validate_foreign_keys(
@@ -480,7 +481,7 @@ class VoiceAgentService:
         self.cache_manager.remove(list_cache_key)
 
         # Invalidate cache in call_processing
-        await invalidate_call_processing_cache('voice_agent', agent.id, 'create')
+        await self.cache_invalidator.invalidate('voice_agent', agent.id, 'create')
 
         # Invalidate inbound number cache for each number
         for number in inbound_numbers:
@@ -761,7 +762,7 @@ class VoiceAgentService:
         self.cache_manager.remove(list_cache_key)
 
         # Invalidate cache in call_processing
-        await invalidate_call_processing_cache('voice_agent', agent_id, 'update')
+        await self.cache_invalidator.invalidate('voice_agent', agent_id, 'update')
 
         # Invalidate inbound number cache if numbers changed
         if old_inbound_numbers != new_inbound_numbers:
@@ -851,7 +852,7 @@ class VoiceAgentService:
         self.cache_manager.remove(list_cache_key)
 
         # Invalidate cache in call_processing
-        await invalidate_call_processing_cache('voice_agent', agent_id, 'delete')
+        await self.cache_invalidator.invalidate('voice_agent', agent_id, 'delete')
 
         logger.info(f'Successfully deleted voice agent: {agent_id}')
         return True
@@ -863,7 +864,9 @@ class VoiceAgentService:
         self.cache_manager.remove(cache_key)
 
         # Also invalidate in call_processing
-        await invalidate_call_processing_cache('inbound_number', phone_number, 'update')
+        await self.cache_invalidator.invalidate(
+            'inbound_number', phone_number, 'update'
+        )
 
     async def get_agent_by_inbound_number(self, phone_number: str) -> Optional[dict]:
         """

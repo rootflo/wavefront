@@ -16,5 +16,5 @@ class InferenceContainer(containers.DeclarativeContainer):
     )
 
     cloud_storage_manager = providers.Singleton(
-        CloudStorageManager, provider=config.cloud_config.cloud_provider
+        CloudStorageManager, provider=config.cloud.provider
     )

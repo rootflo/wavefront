@@ -1,13 +1,13 @@
 import json
-import os
 
 import aiohttp
 from common_module.log.logger import logger
 
 
 class ExotelService:
-    def __init__(self, call_processing_base_url: str):
+    def __init__(self, call_processing_base_url: str, exotel_app_id: str | None = None):
         self.call_processing_base_url = call_processing_base_url
+        self.exotel_app_id = (exotel_app_id or '').strip() or None
 
         if not self.call_processing_base_url:
             raise ValueError(
@@ -49,9 +49,11 @@ class ExotelService:
             auth = aiohttp.BasicAuth(api_key, api_token)
             timeout = aiohttp.ClientTimeout(total=15)
 
-            app_id = os.getenv('EXOTEL_APP_ID')
+            app_id = self.exotel_app_id
             if not app_id:
-                raise ValueError('EXOTEL_APP_ID environment variable is not set')
+                raise ValueError(
+                    'exotel_app_id is not configured in [voice_agents] config.ini'
+                )
 
             exotel_url = (
                 f'http://my.exotel.com/{account_sid}/exoml/start_voice/{app_id}'

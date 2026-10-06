@@ -65,11 +65,6 @@ class AuthRequest(BaseModel):
         return normalize_email(v)
 
 
-@auth_router.get('/health')
-def health_check():
-    return {'status': 'ok'}
-
-
 @auth_router.post('/authenticate')
 @inject
 async def authenticate(

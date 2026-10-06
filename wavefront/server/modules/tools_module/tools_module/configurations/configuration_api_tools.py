@@ -1,13 +1,14 @@
 import json
-import os
 from urllib.parse import quote
 
 import httpx
 
-FLOWARE_BASE_URL = os.getenv('FLOWARE_BASE_URL', 'http://localhost:8001').rstrip('/')
+from tools_module.floware_api import FlowareApiClient
 
 
-async def fetch_configuration(namespace: str, key: str) -> str:
+async def fetch_configuration(
+    api: FlowareApiClient, /, namespace: str, key: str
+) -> str:
     """Fetch a stored configuration document via wavefront's own REST API
     (GET /v1/configurations/{namespace}/{key}).
 
@@ -38,7 +39,7 @@ async def fetch_configuration(namespace: str, key: str) -> str:
     value would be dropped or would fail the consuming node outright.
     """
     url = (
-        f'{FLOWARE_BASE_URL}/floware/v1/configurations/'
+        f'{api.base_url}/floware/v1/configurations/'
         f'{quote(namespace, safe="")}/{quote(key, safe="")}'
     )
     async with httpx.AsyncClient() as client:

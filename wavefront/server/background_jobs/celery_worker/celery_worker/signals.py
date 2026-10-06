@@ -16,9 +16,14 @@ def setup_telemetry(**kwargs):
     doesn't go through `get_services()` — was untraced. Doing it here, at
     process start, covers the whole worker lifetime.
     """
-    from common_module.telemetry import configure_telemetry_providers
+    from common_module.telemetry import TelemetrySettings, configure_telemetry_providers
+    from celery_worker.settings import CONFIG
 
-    configure_telemetry_providers(default_service_name='wavefront-celery-worker')
+    configure_telemetry_providers(
+        TelemetrySettings.from_config(
+            CONFIG, default_service_name='wavefront-celery-worker'
+        )
+    )
 
 
 def teardown_event_loop(**kwargs):

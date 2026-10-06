@@ -1,5 +1,3 @@
-import os
-
 ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG = 'ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG'
 AZURE_FLAG = 'AZURE_FLAG'
 AZURE_OPENAI_FLAG = 'AZURE_OPENAI_FLAG'
@@ -14,29 +12,30 @@ SLACK_FLAG = 'SLACK_FLAG'
 SUPERSET_FLAG = 'SUPERSET_FLAG'
 VECTOR_DB_FLAG = 'VECTOR_DB_FLAG'
 
-feature_flag_config = {
-    ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG: os.environ.get(
-        ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG, 'false'
-    ),
-    AZURE_FLAG: os.environ.get(AZURE_FLAG, 'false'),
-    AZURE_OPENAI_FLAG: os.environ.get(AZURE_OPENAI_FLAG, 'false'),
-    CELERY_FLAG: os.environ.get(CELERY_FLAG, 'false'),
-    DATASOURCE_AUDIT_ENABLED_FLAG: os.environ.get(
-        DATASOURCE_AUDIT_ENABLED_FLAG, 'false'
-    ),
-    DATASOURCE_CHANGE_NOTIFICATION_FLAG: os.environ.get(
-        DATASOURCE_CHANGE_NOTIFICATION_FLAG, 'false'
-    ),
-    EMAIL_SYNC_FLAG: os.environ.get(EMAIL_SYNC_FLAG, 'false'),
-    GOOGLE_FLAG: os.environ.get(GOOGLE_FLAG, 'false'),
-    INACTIVE_ACCOUNT_DISABLE_FLAG: os.environ.get(
-        INACTIVE_ACCOUNT_DISABLE_FLAG, 'false'
-    ),
-    SAML_FLAG: os.environ.get(SAML_FLAG, 'false'),
-    SLACK_FLAG: os.environ.get(SLACK_FLAG, 'false'),
-    SUPERSET_FLAG: os.environ.get(SUPERSET_FLAG, 'false'),
-    VECTOR_DB_FLAG: os.environ.get(VECTOR_DB_FLAG, 'false'),
-}
+_ALL_FLAGS = (
+    ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG,
+    AZURE_FLAG,
+    AZURE_OPENAI_FLAG,
+    CELERY_FLAG,
+    DATASOURCE_AUDIT_ENABLED_FLAG,
+    DATASOURCE_CHANGE_NOTIFICATION_FLAG,
+    EMAIL_SYNC_FLAG,
+    GOOGLE_FLAG,
+    INACTIVE_ACCOUNT_DISABLE_FLAG,
+    SAML_FLAG,
+    SLACK_FLAG,
+    SUPERSET_FLAG,
+    VECTOR_DB_FLAG,
+)
+
+feature_flag_config = {name: 'false' for name in _ALL_FLAGS}
+
+
+def configure_feature_flags(**values: str) -> None:
+    """Apply ``[feature_flags]`` from an app's config.ini at startup."""
+    for name, value in values.items():
+        if name in feature_flag_config and value is not None and value != '':
+            feature_flag_config[name] = value
 
 
 def is_feature_enabled(feature: str):

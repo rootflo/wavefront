@@ -2,6 +2,7 @@ import json
 from typing import List, Optional
 from uuid import UUID
 
+from common_module.call_processing_cache import CallProcessingCacheInvalidator
 from common_module.log.logger import logger
 from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.models.llm_inference_config import LlmInferenceConfig
@@ -9,9 +10,6 @@ from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyReposit
 from llm_inference_config_module.utils.cache_utils import (
     get_llm_inference_config_cache_key,
     get_llm_inference_configs_list_cache_key,
-)
-from llm_inference_config_module.utils.cache_invalidation import (
-    invalidate_call_processing_cache,
 )
 
 
@@ -22,6 +20,7 @@ class LlmInferenceConfigService:
         self,
         llm_inference_config_repository: SQLAlchemyRepository[LlmInferenceConfig],
         cache_manager: CacheManager,
+        cache_invalidator: CallProcessingCacheInvalidator,
     ):
         """
         Initialize the LLM inference config service
@@ -29,9 +28,11 @@ class LlmInferenceConfigService:
         Args:
             llm_inference_config_repository: Repository for LLM inference configs
             cache_manager: Cache manager instance
+            cache_invalidator: Invalidates call_processing's cached configs
         """
         self.llm_inference_config_repository = llm_inference_config_repository
         self.cache_manager = cache_manager
+        self.cache_invalidator = cache_invalidator
         self.llm_inference_config_cache_time = 3600 * 24
 
     async def create_config(
@@ -89,7 +90,7 @@ class LlmInferenceConfigService:
         self.cache_manager.remove(list_cache_key)
 
         # Invalidate cache in call_processing
-        await invalidate_call_processing_cache(
+        await self.cache_invalidator.invalidate(
             'llm_inference_config', config.id, 'create'
         )
 
@@ -192,7 +193,7 @@ class LlmInferenceConfigService:
         self.cache_manager.remove(list_cache_key)
 
         # Invalidate cache in call_processing
-        await invalidate_call_processing_cache(
+        await self.cache_invalidator.invalidate(
             'llm_inference_config', config_id, 'update'
         )
 
@@ -229,7 +230,7 @@ class LlmInferenceConfigService:
         self.cache_manager.remove(list_cache_key)
 
         # Invalidate cache in call_processing
-        await invalidate_call_processing_cache(
+        await self.cache_invalidator.invalidate(
             'llm_inference_config', config_id, 'delete'
         )
 

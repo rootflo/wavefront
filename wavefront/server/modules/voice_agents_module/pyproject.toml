@@ -20,6 +20,12 @@ common-module = { workspace = true }
 db-repo-module = { workspace = true }
 flo-cloud = { workspace = true }
 
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3,<10.0.0",
+    "pytest-asyncio>=1.0.0,<2.0.0",
+]
+
 [tool.uv]
 package = true
 # Inert here: uv reads resolver settings only from the workspace root

@@ -11,7 +11,17 @@ class ApplicationContainer(containers.DeclarativeContainer):
 
     # Cache
     cache_manager = providers.Singleton(
-        CacheManager, namespace=config.env_config.app_name
+        CacheManager,
+        namespace=config.env_config.app_name,
+        redis_host=config.redis.host,
+        redis_port=config.redis.port,
+        redis_protocol=config.redis.protocol,
+        redis_password=config.redis.password,
+        redis_db=config.redis.db,
+        redis_username=config.redis.username,
+        cloud_provider=config.cloud.provider,
+        pool_size=config.redis.pool_size,
+        pool_timeout=config.redis.pool_timeout,
     )
 
     # HTTP Client for floware

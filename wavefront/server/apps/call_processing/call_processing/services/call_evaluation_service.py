@@ -16,7 +16,6 @@ Required env vars for LLM analysis (all must be set to enable):
 """
 
 import json
-import os
 from typing import Any, Dict, List, Optional
 
 import aiohttp
@@ -164,21 +163,10 @@ class CallEvaluationService:
 
     @staticmethod
     def _get_azure_eval_config() -> Optional[Dict[str, str]]:
-        """Read Azure OpenAI eval config from env vars. Returns None if incomplete."""
-        endpoint = os.getenv('CALL_EVAL_AZURE_ENDPOINT', '').rstrip('/')
-        api_key = os.getenv('CALL_EVAL_AZURE_API_KEY', '')
-        llm_model = os.getenv('CALL_EVAL_AZURE_LLM_MODEL', 'gpt-4.1')
-        api_version = os.getenv('CALL_EVAL_AZURE_API_VERSION', '2025-01-01-preview')
+        """Read Azure OpenAI eval config from app settings. Returns None if incomplete."""
+        from call_processing.app_settings import get_call_processing_settings
 
-        if not all([endpoint, api_key]):
-            return None
-
-        return {
-            'endpoint': endpoint,
-            'api_key': api_key,
-            'llm_model': llm_model,
-            'api_version': api_version,
-        }
+        return get_call_processing_settings().call_eval.as_azure_dict()
 
     @staticmethod
     def _build_eval_prompt(
