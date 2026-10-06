@@ -156,7 +156,10 @@ knowledge_base_container = KnowledgeBaseContainer(
     rag_queue=common_container.rag_queue,
 )
 
-gold_container = GoldContainer(gold_queue=common_container.gold_queue)
+gold_container = GoldContainer(
+    cloud_storage_manager=common_container.cloud_storage_manager,
+    gold_queue=common_container.gold_queue,
+)
 
 product_analysis_container = ProductAnalysisContainer()
 product_analysis_container.config.from_dict(config)
