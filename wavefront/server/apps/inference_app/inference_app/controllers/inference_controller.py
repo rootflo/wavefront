@@ -8,9 +8,8 @@ from common_module.response_formatter import ResponseFormatter
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
-from inference_app.env import MAX_EMBEDDING_BATCH_SIZE, MAX_TEXT_EMBEDDING_BATCH_SIZE
-from inference_app.inference_app_container import InferenceAppContainer
-from inference_app.rate_limiter import SlidingWindowRateLimiter
+from inference_app.di.application_container import ApplicationContainer
+from inference_app.middleware.rate_limiter import SlidingWindowRateLimiter
 from inference_app.service.text_embedding_provider import (
     TextEmbeddingProvider,
     TextEmbeddingUnavailable,
@@ -39,7 +38,7 @@ class TextEmbeddingPayload(BaseModel):
 @inject
 async def enforce_rate_limit(
     rate_limiter: SlidingWindowRateLimiter = Depends(
-        Provide[InferenceAppContainer.rate_limiter]
+        Provide[ApplicationContainer.rate_limiter]
     ),
 ):
     # async so it runs on the event loop: an over-limit request is rejected
@@ -53,7 +52,7 @@ async def enforce_rate_limit(
         )
 
 
-# Health checks live on the app, not this router, so they are never limited.
+# Health checks live on health_router (no rate limit), not this router.
 inference_app_router = APIRouter(dependencies=[Depends(enforce_rate_limit)])
 
 
@@ -69,7 +68,7 @@ def image_embedding(
         Provide[CommonContainer.response_formatter]
     ),
     image_embedding_service: 'ImageEmbedding' = Depends(
-        Provide[InferenceAppContainer.image_embedding]
+        Provide[ApplicationContainer.image_embedding]
     ),
 ):
     try:
@@ -108,21 +107,24 @@ def image_embedding_batch(
         Provide[CommonContainer.response_formatter]
     ),
     image_embedding_service: 'ImageEmbedding' = Depends(
-        Provide[InferenceAppContainer.image_embedding]
+        Provide[ApplicationContainer.image_embedding]
+    ),
+    max_embedding_batch_size: str = Depends(
+        Provide[ApplicationContainer.config.inference.max_embedding_batch_size]
     ),
 ):
     batch_size = len(payload.image_batch)
+    max_batch = int(max_embedding_batch_size)
     if batch_size == 0:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content=response_formatter.buildErrorResponse('image_batch is empty'),
         )
-    if batch_size > MAX_EMBEDDING_BATCH_SIZE:
+    if batch_size > max_batch:
         return JSONResponse(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             content=response_formatter.buildErrorResponse(
-                f'Batch of {batch_size} images exceeds the maximum of '
-                f'{MAX_EMBEDDING_BATCH_SIZE}'
+                f'Batch of {batch_size} images exceeds the maximum of {max_batch}'
             ),
         )
     try:
@@ -169,27 +171,30 @@ def text_embedding(
         Provide[CommonContainer.response_formatter]
     ),
     text_embedding_provider: TextEmbeddingProvider = Depends(
-        Provide[InferenceAppContainer.text_embedding_provider]
+        Provide[ApplicationContainer.text_embedding_provider]
+    ),
+    max_text_embedding_batch_size: str = Depends(
+        Provide[ApplicationContainer.config.inference.max_text_embedding_batch_size]
     ),
 ):
     """BGE-M3 dense and/or sparse embeddings, one result per text, in order.
 
     sparse is {indices, values}: token ids and their lexical weights, over a
     vocabulary of `sparse_dim` (e.g. for a pgvector sparsevec). Texts longer
-    than MAX_TEXT_EMBEDDING_TOKENS are truncated.
+    than max_text_embedding_tokens are truncated.
     """
     batch_size = len(payload.texts)
+    max_batch = int(max_text_embedding_batch_size)
     if batch_size == 0:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content=response_formatter.buildErrorResponse('texts is empty'),
         )
-    if batch_size > MAX_TEXT_EMBEDDING_BATCH_SIZE:
+    if batch_size > max_batch:
         return JSONResponse(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             content=response_formatter.buildErrorResponse(
-                f'Batch of {batch_size} texts exceeds the maximum of '
-                f'{MAX_TEXT_EMBEDDING_BATCH_SIZE}'
+                f'Batch of {batch_size} texts exceeds the maximum of {max_batch}'
             ),
         )
     if not (payload.return_dense or payload.return_sparse):

@@ -1,7 +1,7 @@
 """Resolve and sync model directories for CLIP and DINOv3.
 
-Each model source (CLIP_VIT_BASE_PATCH32_MODEL_URI, DINOV3_VITL16_HF_MODEL_URI) can be:
-- A cloud URI (gs://, s3://, azure://) — synced to MODEL_CACHE_DIR on startup.
+Each model source (clip / dino / bge-m3 URI) can be:
+- A cloud URI (gs://, s3://, azure://) — synced to cache_dir on startup.
 - A local directory path — used directly with no download.
 
 Cloud sync is skipped when a .sync_complete marker exists in the cache dir.
@@ -15,14 +15,6 @@ from pathlib import Path
 
 from flo_cloud.cloud_storage import CloudStorageManager
 from common_module.log.logger import logger
-
-from inference_app.env import (
-    BGE_M3_MODEL_URI,
-    CLOUD_PROVIDER,
-    CLIP_VIT_BASE_PATCH32_MODEL_URI,
-    DINOV3_VITL16_HF_MODEL_URI,
-    MODEL_CACHE_DIR,
-)
 
 _CLOUD_URI_PATTERN = re.compile(
     r'^(?:gs://|s3://|azure://).+',
@@ -121,7 +113,13 @@ def sync_cloud_model(uri: str, *, provider: str, cache_root: Path) -> Path:
     return dest_dir
 
 
-def resolve_model_dir(name: str, uri: str, cache_root: Path) -> Path:
+def resolve_model_dir(
+    name: str,
+    uri: str,
+    cache_root: Path,
+    *,
+    cloud_provider: str,
+) -> Path:
     """
     Resolve a model source to a local directory.
 
@@ -131,9 +129,10 @@ def resolve_model_dir(name: str, uri: str, cache_root: Path) -> Path:
     - Local directory path — returned directly with no download.
 
     Args:
-        name: Env var name, used in error messages.
+        name: Config key name, used in error messages.
         uri: Cloud URI or local path string.
         cache_root: Parent directory for synced model folders (used for cloud only).
+        cloud_provider: Required when *uri* is a cloud URI.
 
     Returns:
         Path to a local directory ready for from_pretrained().
@@ -142,14 +141,12 @@ def resolve_model_dir(name: str, uri: str, cache_root: Path) -> Path:
         ValueError: If uri is empty, not a cloud URI, and not an existing local dir.
     """
     if not uri:
-        raise ValueError(f'{name} env var is required but not set')
+        raise ValueError(f'{name} is required but not set')
 
     if is_cloud_uri(uri):
-        if not CLOUD_PROVIDER:
-            raise ValueError(
-                'CLOUD_PROVIDER env var is required when using a cloud URI'
-            )
-        return sync_cloud_model(uri, provider=CLOUD_PROVIDER, cache_root=cache_root)
+        if not cloud_provider:
+            raise ValueError('cloud.provider is required when using a cloud model URI')
+        return sync_cloud_model(uri, provider=cloud_provider, cache_root=cache_root)
 
     local = Path(uri)
     if local.is_dir():
@@ -162,43 +159,65 @@ def resolve_model_dir(name: str, uri: str, cache_root: Path) -> Path:
     )
 
 
-def _ensure_cache_dir() -> Path:
-    cache_root = Path(MODEL_CACHE_DIR)
+def _ensure_cache_dir(cache_dir: str) -> Path:
+    cache_root = Path(cache_dir)
     cache_root.mkdir(parents=True, exist_ok=True)
     return cache_root
 
 
-def sync_embedding_models() -> tuple[Path, Path]:
+def sync_embedding_models(
+    *,
+    clip_uri: str,
+    dino_uri: str,
+    cache_dir: str,
+    cloud_provider: str,
+) -> tuple[Path, Path]:
     """
-    Resolve CLIP and DINO model directories from env vars.
+    Resolve CLIP and DINO model directories from config.
 
     Each URI can be a cloud URI (gs://, s3://, azure://) or a local directory path.
-    Cloud sources are synced to MODEL_CACHE_DIR; local paths are used directly.
+    Cloud sources are synced to cache_dir; local paths are used directly.
 
     Returns:
         (clip_model_dir, dino_model_dir) — local directories ready for from_pretrained().
 
     Raises:
-        ValueError: If required env vars are missing or point to invalid sources.
+        ValueError: If required URIs are missing or point to invalid sources.
     """
-    cache_root = _ensure_cache_dir()
+    cache_root = _ensure_cache_dir(cache_dir)
     clip_dir = resolve_model_dir(
-        'CLIP_VIT_BASE_PATCH32_MODEL_URI', CLIP_VIT_BASE_PATCH32_MODEL_URI, cache_root
+        'models.clip_vit_base_patch32_uri',
+        clip_uri,
+        cache_root,
+        cloud_provider=cloud_provider,
     )
     dino_dir = resolve_model_dir(
-        'DINOV3_VITL16_HF_MODEL_URI', DINOV3_VITL16_HF_MODEL_URI, cache_root
+        'models.dinov3_vitl16_uri',
+        dino_uri,
+        cache_root,
+        cloud_provider=cloud_provider,
     )
     return clip_dir, dino_dir
 
 
-def sync_text_embedding_model() -> Path:
+def sync_text_embedding_model(
+    *,
+    bge_m3_uri: str,
+    cache_dir: str,
+    cloud_provider: str,
+) -> Path:
     """
-    Resolve the BGE-M3 model directory from BGE_M3_MODEL_URI (cloud URI or
+    Resolve the BGE-M3 model directory from models.bge_m3_uri (cloud URI or
     local directory, as for the image models).
 
-    Callers should check BGE_M3_MODEL_URI first: the model is optional.
+    Callers should check bge_m3_uri first: the model is optional.
 
     Raises:
-        ValueError: If BGE_M3_MODEL_URI is unset or points to an invalid source.
+        ValueError: If bge_m3_uri is unset or points to an invalid source.
     """
-    return resolve_model_dir('BGE_M3_MODEL_URI', BGE_M3_MODEL_URI, _ensure_cache_dir())
+    return resolve_model_dir(
+        'models.bge_m3_uri',
+        bge_m3_uri,
+        _ensure_cache_dir(cache_dir),
+        cloud_provider=cloud_provider,
+    )

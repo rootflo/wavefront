@@ -13,8 +13,8 @@ from dependency_injector import providers
 from fastapi.testclient import TestClient
 from PIL import Image, ImageDraw
 
-from inference_app import mock
-from inference_app.rate_limiter import SlidingWindowRateLimiter
+from inference_app.models import mock
+from inference_app.middleware.rate_limiter import SlidingWindowRateLimiter
 from inference_app.service.mock_embeddings import (
     CLIP_DIM,
     DINO_DIM,
@@ -173,9 +173,10 @@ def test_long_text_stays_within_the_sparse_index_limit():
 @pytest.fixture
 def mock_app(monkeypatch):
     from inference_app import server
+    from inference_app.models import setup as models_setup
 
-    monkeypatch.setattr(server, 'MOCK_MODELS', True)
-    container = server.inference_app_container
+    monkeypatch.setattr(models_setup, 'MOCK_MODELS', True)
+    container = server.application_container
     with container.rate_limiter.override(
         providers.Object(SlidingWindowRateLimiter([]))
     ):

@@ -14,7 +14,7 @@ class ImageEmbedding:
     Loads CLIP and DINOv3 models from local synced directories.
 
     Both model dirs must be full Hugging Face snapshots (from_pretrained-compatible).
-    Use model_sync.sync_embedding_models() to sync from cloud storage before
+    Use models.model_sync.sync_embedding_models() to sync from cloud storage before
     constructing this class.
     """
 
