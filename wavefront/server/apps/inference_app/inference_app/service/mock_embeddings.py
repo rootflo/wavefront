@@ -1,7 +1,7 @@
 """Stand-in embedding models for machines that can't run the real ones.
 
 PyTorch has no build at the supported version (>= 2.6) for Intel Macs, so
-there the inference app serves these instead (see inference_app.mock). They
+there the inference app serves these instead (see models.mock). They
 return what the real models return -- same shapes, same formats, same errors
 for undecodable images -- but the vectors are synthetic, for integration
 testing only:

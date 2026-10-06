@@ -50,14 +50,6 @@ add_middlewares(app, origins.split(','))
 include_routers(app)
 
 
-@app.get('/health')
-async def health_check():
-    """Health check endpoint"""
-    return JSONResponse(
-        content={'status': 'healthy', 'service': 'call-processing'}, status_code=200
-    )
-
-
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     # Skip HTTPExceptions (they're handled by FastAPI)

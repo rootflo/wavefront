@@ -4,7 +4,7 @@ import threading
 
 import pytest
 
-from inference_app.rate_limiter import SlidingWindowRateLimiter
+from inference_app.middleware.rate_limiter import SlidingWindowRateLimiter
 
 
 class FakeClock:

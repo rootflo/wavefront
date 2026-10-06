@@ -11,8 +11,7 @@ import pytest
 from dependency_injector import providers  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from inference_app.controllers import inference_controller  # noqa: E402
-from inference_app.rate_limiter import SlidingWindowRateLimiter  # noqa: E402
+from inference_app.middleware.rate_limiter import SlidingWindowRateLimiter  # noqa: E402
 
 BATCH_URL = '/inference/v1/query/embeddings/batch'
 SINGLE_URL = '/inference/v1/query/embeddings'
@@ -42,22 +41,26 @@ class FakeEmbedding:
         ]
 
 
-def make_client(rate_limiter: SlidingWindowRateLimiter):
+def make_client(
+    rate_limiter: SlidingWindowRateLimiter, *, max_embedding_batch_size: str = '8'
+):
     from inference_app import server
 
     fake = FakeEmbedding()
-    container = server.inference_app_container
+    container = server.application_container
     with (
         container.image_embedding.override(providers.Object(fake)),
         container.rate_limiter.override(providers.Object(rate_limiter)),
+        container.config.inference.max_embedding_batch_size.override(
+            max_embedding_batch_size
+        ),
     ):
         yield TestClient(server.app), fake
 
 
 @pytest.fixture
-def client_and_service(monkeypatch):
-    monkeypatch.setattr(inference_controller, 'MAX_EMBEDDING_BATCH_SIZE', 3)
-    yield from make_client(SlidingWindowRateLimiter([]))
+def client_and_service():
+    yield from make_client(SlidingWindowRateLimiter([]), max_embedding_batch_size='3')
 
 
 @pytest.fixture
