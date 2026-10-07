@@ -31,7 +31,7 @@ config = common_container.config()
 runtime = common_container.runtime_settings()
 
 configure_feature_flags(**(config.get('feature_flags') or {}))
-configure_odata_cloud_provider(config['cloud']['provider'])
+configure_odata_cloud_provider(config['cloud']['platform'])
 configure_celery_broker(config['celery']['broker_url'])
 configure_azure_openai_api_version(
     (config.get('model') or {}).get('azure_openai_api_version')

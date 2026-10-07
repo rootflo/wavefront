@@ -397,8 +397,8 @@ class AsyncAgenticExecutionService:
                 output_url = self.cloud_storage.generate_presigned_url(
                     bucket_name=record_dict['input_bucket'],
                     key=record_dict['output_file'],
-                    type='get',
-                    expiresIn=900,
+                    operation='get',
+                    expires_in=900,
                 )
             except Exception as e:
                 logger.warning(f'Failed to generate output presigned URL: {e}')
@@ -412,8 +412,8 @@ class AsyncAgenticExecutionService:
                 history_url = self.cloud_storage.generate_presigned_url(
                     bucket_name=record_dict['input_bucket'],
                     key=record_dict['history_file'],
-                    type='get',
-                    expiresIn=900,
+                    operation='get',
+                    expires_in=900,
                 )
             except Exception as e:
                 logger.warning(f'Failed to generate history presigned URL: {e}')
@@ -433,8 +433,8 @@ class AsyncAgenticExecutionService:
                     input_file['url'] = self.cloud_storage.generate_presigned_url(
                         bucket_name=record_dict['input_bucket'],
                         key=input_file['key'],
-                        type='get',
-                        expiresIn=900,
+                        operation='get',
+                        expires_in=900,
                     )
                 except Exception as e:
                     logger.warning(f'Failed to generate input presigned URL: {e}')

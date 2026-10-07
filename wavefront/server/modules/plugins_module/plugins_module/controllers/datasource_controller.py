@@ -1348,7 +1348,7 @@ async def export_dynamic_query_csv(
         )
         if existing_keys and existing_keys[0] == file_key:
             signed_url = cloud_storage_manager.generate_presigned_url(
-                bucket_name=bucket_name, key=file_key, type='GET'
+                bucket_name=bucket_name, key=file_key, operation='GET'
             )
             return JSONResponse(
                 status_code=status.HTTP_200_OK,
@@ -1420,7 +1420,7 @@ async def export_dynamic_query_csv(
                 writer.writerow({k: _cell_value(row.get(k)) for k in fieldnames})
 
     signed_url = cloud_storage_manager.generate_presigned_url(
-        bucket_name=bucket_name, key=file_key, type='GET'
+        bucket_name=bucket_name, key=file_key, operation='GET'
     )
 
     return JSONResponse(

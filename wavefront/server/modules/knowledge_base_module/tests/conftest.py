@@ -21,7 +21,7 @@ from llm_inference_config_module.container import LlmInferenceConfigContainer
 
 KB_CONFIG = {
     'model': {'inference_service_url': 'http://mock-inference-url.com'},
-    'cloud': {'provider': 'gcp'},
+    'cloud': {'platform': 'gcp'},
     'storage': {'application_bucket': 'test_bucket'},
 }
 

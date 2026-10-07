@@ -1,4 +1,4 @@
-"""Cloud-specific OData parameter style, wired from ``[cloud] provider``."""
+"""Cloud-specific OData parameter style, wired from ``[cloud] platform``."""
 
 _cloud_provider: str = ''
 

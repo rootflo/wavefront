@@ -42,7 +42,7 @@ def test_get_services_requires_application_bucket():
         'celery': {'broker_url': 'redis://localhost:6379/0'},
         'storage': {'application_bucket': '', 'account_url': ''},
         'cloud': {
-            'provider': 'aws',
+            'platform': 'aws',
             'region': '',
             'project_id': '',
             'location': '',

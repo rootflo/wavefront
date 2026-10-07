@@ -806,8 +806,8 @@ class VoiceAgentService:
             presigned_url = self.cloud_storage_manager.generate_presigned_url(
                 bucket_name=self.voice_agent_bucket,
                 key=storage_key,
-                type='get',
-                expiresIn=7200,  # 2 hours in seconds
+                operation='get',
+                expires_in=7200,  # 2 hours in seconds
             )
 
             # Cache the URL with expiry just under 2 hours (100 second buffer)

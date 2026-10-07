@@ -77,7 +77,7 @@ def _knowledge_base_container(core_containers):
 
     container.config.from_dict(
         {
-            'cloud': {'provider': 'gcp'},
+            'cloud': {'platform': 'gcp'},
             'storage': {'application_bucket': 'test_bucket'},
         }
     )
