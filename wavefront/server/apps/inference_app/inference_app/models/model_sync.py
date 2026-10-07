@@ -145,7 +145,7 @@ def resolve_model_dir(
 
     if is_cloud_uri(uri):
         if not cloud_provider:
-            raise ValueError('cloud.provider is required when using a cloud model URI')
+            raise ValueError('cloud.platform is required when using a cloud model URI')
         return sync_cloud_model(uri, provider=cloud_provider, cache_root=cache_root)
 
     local = Path(uri)

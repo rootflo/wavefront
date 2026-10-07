@@ -1,146 +1,44 @@
-from typing import Union, List, Tuple, Optional, IO, ContextManager
+from typing import Union, List, Tuple, Optional, IO, ContextManager, Mapping, Iterable
+
 from .aws.s3 import S3Storage
 from .gcp.gcs import GCSStorage
 from .azure.blob_storage import AzureBlobStorage
-from ._types import CloudStorageHandler, CloudProvider
-
-
-class CloudStorageFactory:
-    """Factory class to create appropriate cloud storage handler"""
-
-    @staticmethod
-    def get_handler(
-        provider: Union[str, CloudProvider], **credentials
-    ) -> CloudStorageHandler:
-        """
-        Create and return appropriate cloud storage handler based on provider
-
-        Args:
-            provider: Cloud provider (either string or CloudProvider enum)
-            **credentials: Keyword arguments for provider-specific credentials
-
-        Returns:
-            CloudStorageHandler: Appropriate handler instance
-
-        Raises:
-            ValueError: If provider is not supported
-        """
-        if isinstance(provider, str):
-            provider = CloudProvider(provider.lower())
-
-        if provider == CloudProvider.AWS:
-            return S3Storage(
-                **{
-                    k: v
-                    for k, v in credentials.items()
-                    if k
-                    in ('aws_access_key_id', 'aws_secret_access_key', 'region_name')
-                    and v not in (None, '')
-                }
-            )
-        elif provider == CloudProvider.GCP:
-            return GCSStorage()
-        elif provider == CloudProvider.AZURE:
-            return AzureBlobStorage(
-                **{
-                    k: v
-                    for k, v in credentials.items()
-                    if k in ('account_url', 'client_id', 'client_secret', 'tenant_id')
-                    and v not in (None, '')
-                }
-            )
-        else:
-            raise ValueError(f'Unsupported cloud provider: {provider}')
+from ._types import CloudProvider
 
 
 class CloudStorageManager:
-    """Manager class to handle cloud storage operations"""
+    """Facade over S3 / GCS / Azure blob storage."""
 
     def __init__(self, provider: Union[str, CloudProvider], **credentials):
-        """
-        Initialize storage manager with specified provider
-
-        Args:
-            provider: Cloud provider (either string or CloudProvider enum)
-            **credentials: Provider-specific credentials
-        """
-        self.handler = CloudStorageFactory.get_handler(provider, **credentials)
+        """Build a manager for ``provider`` (enum or name string)."""
         if isinstance(provider, str):
             provider = CloudProvider(provider.lower())
         self.provider = provider
 
-    def _convert_to_valid_type(self, type: str) -> str:
-        """
-        Convert a generic type (get, put, post) to the provider-specific operation string.
+        if provider == CloudProvider.AWS:
+            self.handler = S3Storage(**_filter_creds(credentials, _AWS_CREDENTIAL_KEYS))
+        elif provider == CloudProvider.GCP:
+            self.handler = GCSStorage()
+        elif provider == CloudProvider.AZURE:
+            self.handler = AzureBlobStorage(
+                **_filter_creds(credentials, _AZURE_CREDENTIAL_KEYS)
+            )
+        else:
+            raise ValueError(f'Unsupported cloud provider: {provider}')
 
-        Args:
-            type: The generic operation type ('get', 'put', 'post')
-            provider: The cloud provider (CloudProvider.AWS or CloudProvider.GCP)
-
-        Returns:
-            str: The provider-specific operation string
-
-        Raises:
-            ValueError: If the type or provider is not supported
-        """
-        type = type.lower()
-        if self.provider == CloudProvider.AWS:
-            if type == 'get' or type == 'get_object':
-                return 'get_object'
-            elif type == 'put' or type == 'put_object':
-                return 'put_object'
-            elif type == 'post' or type == 'post_object':
-                return 'post_object'
-        elif self.provider == CloudProvider.GCP:
-            if type == 'get_object' or type == 'get':
-                return 'GET'
-            elif type == 'put_object' or type == 'put':
-                return 'PUT'
-            elif type == 'post_object' or type == 'post':
-                return 'POST'
-        elif self.provider == CloudProvider.AZURE:
-            if type == 'get' or type == 'get_object':
-                return 'GET'
-            elif type == 'put' or type == 'put_object':
-                return 'PUT'
-            elif type == 'post' or type == 'post_object':
-                return 'POST'
-        raise ValueError(f"Unsupported type '{type}' for provider '{self.provider}'")
+    # --- Read / list ---
 
     def read_file(self, bucket_name: str, file_path: str) -> bytes:
-        """
-        Read file from cloud storage
-
-        Args:
-            bucket_name: Name of the bucket
-            file_path: Path to the file in bucket
-
-        Returns:
-            BytesIO: File contents as a buffer
-        """
+        """Return object bytes from ``bucket_name`` / ``file_path``."""
         return self.handler.get_file(bucket_name, file_path)
 
-    def save_large_file(
-        self,
-        data: bytes,
-        bucket_name: str,
-        key: str,
-        content_type: Optional[str] = None,
-    ) -> None:
-        """
-        Save large file to cloud storage using streaming/multipart upload.
+    def list_files(
+        self, bucket_name: str, prefix: str, page_size: int = 50, page_number: int = 1
+    ) -> Tuple[List[str], bool]:
+        """Return ``(keys, has_next_page)`` for ``prefix`` (1-based pages)."""
+        return self.handler.list_files(bucket_name, prefix, page_size, page_number)
 
-        Args:
-            data: File data in bytes
-            bucket_name: Name of the storage bucket
-            key: Object key/path for the file in the bucket
-            content_type: MIME type of the file (e.g., 'image/jpeg', 'application/pdf').
-                         If None, the cloud provider will use its default.
-
-        Returns:
-            None
-        """
-        self.handler.save_large_file(data, bucket_name, key, content_type)
+    # --- Write ---
 
     def save_small_file(
         self,
@@ -150,84 +48,122 @@ class CloudStorageManager:
         content_type: Optional[str] = None,
         disable_cache: bool = False,
     ) -> None:
-        """
-        Save small file to cloud storage using direct upload.
-
-        Args:
-            file_content: File content in bytes
-            bucket_name: Name of the storage bucket
-            key: Object key/path for the file in the bucket
-            content_type: MIME type of the file (e.g., 'image/jpeg', 'application/pdf').
-                         If None, the cloud provider will use its default.
-            disable_cache: If True, mark the object as non-cacheable so an
-                         overwrite at the same key is read back immediately.
-
-        Returns:
-            None
-        """
+        """Upload via a single put. ``disable_cache`` forces fresh reads after overwrite."""
         self.handler.save_small_file(
             file_content, bucket_name, key, content_type, disable_cache
         )
 
-    def file_protocol(self) -> Optional[str]:
-        if self.provider == CloudProvider.AWS:
-            return 's3'
-        elif self.provider == CloudProvider.GCP:
-            return 'gs'
-        elif self.provider == CloudProvider.AZURE:
-            return 'azure'
-        return None
-
-    def get_bucket_key(self, value) -> str:
-        return self.handler.get_bucket_key(value)
-
-    def generate_presigned_url(
-        self, bucket_name: str, key: str, type: str, expiresIn: int = 300
-    ) -> str:
-        try:
-            valid_type = self._convert_to_valid_type(type)
-            return self.handler.generate_presigned_url(
-                bucket_name, key, valid_type, expiresIn
-            )
-        except Exception as e:
-            raise e
-
-    def list_files(
-        self, bucket_name: str, prefix: str, page_size: int = 50, page_number: int = 1
-    ) -> Tuple[List[str], bool]:
-        """
-        List files in cloud storage bucket with prefix filtering and pagination.
-
-        Args:
-            bucket_name (str): Name of the bucket
-            prefix (str): Prefix to filter files
-            page_size (int): Number of files per page (default: 50)
-            page_number (int): Which page to retrieve, 1-based (default: 1)
-
-        Returns:
-            Tuple[List[str], bool]: (list of file keys/paths, has_next_page)
-
-        Raises:
-            Exception: If listing fails
-        """
-        return self.handler.list_files(bucket_name, prefix, page_size, page_number)
-
-    def delete_file(self, bucket_name: str, file_path: str) -> None:
-        """
-        Delete file from cloud storage
-        Args:
-            bucket_name: Name of the bucket
-            file_path: Path to the file in bucket
-        """
-        return self.handler.delete_file(bucket_name, file_path)
+    def save_large_file(
+        self,
+        data: bytes,
+        bucket_name: str,
+        key: str,
+        content_type: Optional[str] = None,
+    ) -> None:
+        """Upload via streaming / multipart."""
+        self.handler.save_large_file(data, bucket_name, key, content_type)
 
     def open_text_writer(
         self, bucket_name: str, key: str, content_type: Optional[str] = None
     ) -> ContextManager[IO[str]]:
-        """
-        Open a text-mode writer to cloud storage for incremental writes.
-
-        For GCS, this uses the native streaming blob.open API.
-        For S3, this buffers content in memory and uploads on close.
-        """
+        """Context manager for incremental text writes (streamed on GCS, buffered on S3)."""
         return self.handler.open_text_writer(bucket_name, key, content_type)
+
+    # --- Delete ---
+
+    def delete_file(self, bucket_name: str, file_path: str) -> None:
+        """Delete ``file_path`` from ``bucket_name``."""
+        return self.handler.delete_file(bucket_name, file_path)
+
+    # --- URLs / metadata ---
+
+    def generate_presigned_url(
+        self,
+        bucket_name: str,
+        key: str,
+        operation: str,
+        expires_in: int = 300,
+    ) -> str:
+        """Presigned URL for ``operation`` (get/put/post); expires in ``expires_in`` seconds."""
+        valid_operation = self._convert_to_valid_type(operation)
+        return self.handler.generate_presigned_url(
+            bucket_name, key, valid_operation, expires_in
+        )
+
+    def file_protocol(self) -> Optional[str]:
+        """URI scheme for this provider (``s3``, ``gs``, or ``azure``)."""
+        return _FILE_PROTOCOLS.get(self.provider)
+
+    def get_bucket_key(self, value) -> str:
+        """Normalize a path/URI to the provider's object key."""
+        return self.handler.get_bucket_key(value)
+
+    # --- Private ---
+
+    def _convert_to_valid_type(self, operation: str) -> str:
+        """Map a generic get/put/post name to the provider's API operation string."""
+        ops = _OPERATION_MAP.get(self.provider)
+        if ops is None:
+            raise ValueError(
+                f"Unsupported operation '{operation}' for provider '{self.provider}'"
+            )
+        key = operation.lower()
+        try:
+            return ops[key]
+        except KeyError:
+            raise ValueError(
+                f"Unsupported operation '{operation}' for provider '{self.provider}'"
+            ) from None
+
+
+# --- Module private ---
+
+_AWS_CREDENTIAL_KEYS = (
+    'aws_access_key_id',
+    'aws_secret_access_key',
+    'region_name',
+)
+_AZURE_CREDENTIAL_KEYS = (
+    'account_url',
+    'client_id',
+    'client_secret',
+    'tenant_id',
+)
+
+_FILE_PROTOCOLS: Mapping[CloudProvider, str] = {
+    CloudProvider.AWS: 's3',
+    CloudProvider.GCP: 'gs',
+    CloudProvider.AZURE: 'azure',
+}
+
+_HTTP_OPS = {
+    'get': 'GET',
+    'get_object': 'GET',
+    'put': 'PUT',
+    'put_object': 'PUT',
+    'post': 'POST',
+    'post_object': 'POST',
+}
+
+_OPERATION_MAP: Mapping[CloudProvider, Mapping[str, str]] = {
+    CloudProvider.AWS: {
+        'get': 'get_object',
+        'get_object': 'get_object',
+        'put': 'put_object',
+        'put_object': 'put_object',
+        'post': 'post_object',
+        'post_object': 'post_object',
+    },
+    CloudProvider.GCP: _HTTP_OPS,
+    CloudProvider.AZURE: _HTTP_OPS,
+}
+
+
+def _filter_creds(
+    credentials: Mapping[str, object], allowed_keys: Iterable[str]
+) -> dict:
+    return {
+        k: v
+        for k, v in credentials.items()
+        if k in allowed_keys and v not in (None, '')
+    }

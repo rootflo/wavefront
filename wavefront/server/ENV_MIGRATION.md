@@ -7,7 +7,7 @@ Prefer the new names.
 
 | Old | New |
 | --- | --- |
-| `CLOUD_PROVIDER` | `CLOUD_PROVIDER` (unchanged; ini key is now `[cloud] provider`) |
+| `CLOUD_PROVIDER` | `CLOUD_PROVIDER` (unchanged; ini key is `[cloud] platform`) |
 | `AWS_REGION` / `GCP_LOCATION` (split) | `CLOUD_REGION`, `CLOUD_LOCATION` |
 | `GCP_PROJECT_ID` | `CLOUD_PROJECT_ID` |
 

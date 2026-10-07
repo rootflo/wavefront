@@ -33,14 +33,14 @@ class CommonContainer(containers.DeclarativeContainer):
 
     cloud_storage_manager = providers.Singleton(
         CloudStorageManager,
-        provider=config.cloud.provider,
+        provider=config.cloud.platform,
         region_name=config.cloud.region,
         account_url=config.storage.account_url,
     )
 
     kms_signing_settings = providers.Factory(
         KmsKeySettings,
-        provider=config.cloud.provider,
+        provider=config.cloud.platform,
         key=config.kms_signing.key,
         key_version=config.kms_signing.key_version,
         key_ring=config.kms_signing.key_ring,
@@ -52,7 +52,7 @@ class CommonContainer(containers.DeclarativeContainer):
 
     kms_encryption_settings = providers.Factory(
         KmsKeySettings,
-        provider=config.cloud.provider,
+        provider=config.cloud.platform,
         key=config.kms_encryption.key,
         key_version=config.kms_encryption.key_version,
         key_ring=config.kms_encryption.key_ring,
@@ -67,7 +67,7 @@ class CommonContainer(containers.DeclarativeContainer):
 
     rag_queue_settings = providers.Factory(
         QueueSettings,
-        provider=config.cloud.provider,
+        provider=config.cloud.platform,
         target=config.queues.rag,
         subscription=config.queues.rag_subscription,
         project_id=config.cloud.project_id,
@@ -78,7 +78,7 @@ class CommonContainer(containers.DeclarativeContainer):
 
     gold_queue_settings = providers.Factory(
         QueueSettings,
-        provider=config.cloud.provider,
+        provider=config.cloud.platform,
         target=config.queues.gold,
         subscription=None,
         project_id=config.cloud.project_id,

@@ -1044,8 +1044,8 @@ class ScheduledJobService:
         return self.cloud_storage_manager.generate_presigned_url(
             bucket_name=self.bucket_name,
             key=report_key,
-            type='GET',
-            expiresIn=SIGNED_URL_EXPIRY_SECONDS,
+            operation='GET',
+            expires_in=SIGNED_URL_EXPIRY_SECONDS,
         )
 
     @staticmethod

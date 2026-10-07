@@ -40,7 +40,7 @@ def configure(
     CLIP_VIT_BASE_PATCH32_MODEL_URI = models['clip_vit_base_patch32_uri']
     DINOV3_VITL16_HF_MODEL_URI = models['dinov3_vitl16_uri']
     MODEL_CACHE_DIR = models['cache_dir']
-    CLOUD_PROVIDER = cloud['provider']
+    CLOUD_PROVIDER = cloud['platform']
     # Mock embeddings where the real models can't run (no torch: Intel Macs),
     # or when models.mock_models=true. Decided once, at configure time.
     MOCK_MODELS = use_mock_models(models['mock_models'])
