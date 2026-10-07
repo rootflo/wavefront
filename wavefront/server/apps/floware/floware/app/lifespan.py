@@ -49,8 +49,10 @@ async def lifespan(app: FastAPI):
         # them. Presidio builds a spaCy model on first use, which takes longer
         # than the per-check timeout the policy sets — so without this the
         # first checked request times out and, under a FAIL_CLOSED policy, is
-        # rejected. Paid here, where nothing is waiting on it.
-        await guardrails_container.guardrails_engine().warmup()
+        # rejected. Paid here, where nothing is waiting on it. No-op when the
+        # container was not constructed ([guardrails] enabled=false).
+        if guardrails_container is not None:
+            await guardrails_container.guardrails_engine().warmup()
 
         scheduled_job_service = application_container.scheduled_job_service()
 

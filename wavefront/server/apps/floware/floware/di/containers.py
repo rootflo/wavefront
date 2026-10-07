@@ -60,7 +60,7 @@ from api_services_module.api_services_container import create_api_services_conta
 from auth_module.auth_container import AuthContainer
 from chatbots_module.chatbots_container import ChatbotsContainer
 from gold_module.gold_container import GoldContainer
-from guardrails_module.container import GuardrailsContainer
+from guardrails_module.bootstrap import create_guardrails_container_if_enabled
 from knowledge_base_module.knowledge_base_container import KnowledgeBaseContainer
 from llm_inference_config_module.container import LlmInferenceConfigContainer
 from plugins_module.plugins_container import PluginsContainer
@@ -162,11 +162,13 @@ llm_inference_config_container = LlmInferenceConfigContainer(
     call_processing_cache_invalidator=common_container.call_processing_cache_invalidator,
 )
 
-guardrails_container = GuardrailsContainer(
+# Built only when [guardrails] enabled=true — keeps the engine out of the
+# process when the feature is off.
+guardrails_container = create_guardrails_container_if_enabled(
+    config,
     db_client=db_repo_container.db_client,
     cache_manager=db_repo_container.cache_manager,
 )
-guardrails_container.config.from_dict(config)
 
 agents_container = AgentsContainer(
     db_client=db_repo_container.db_client,
@@ -184,7 +186,9 @@ agents_container = AgentsContainer(
     async_agentic_execution_repository=db_repo_container.async_agentic_execution_repository,
     executions_bucket=config['storage']['application_bucket'],
     llm_inference_config_service=llm_inference_config_container.llm_inference_config_service,
-    guardrails_engine=guardrails_container.guardrails_engine,
+    guardrails_engine=(
+        guardrails_container.guardrails_engine if guardrails_container else None
+    ),
 )
 
 voice_agents_container = VoiceAgentsContainer(
