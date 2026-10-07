@@ -98,6 +98,18 @@ class CloudStorageManager:
         """Parse a provider URI into ``(bucket, key)``."""
         return self.handler.get_bucket_key(value)
 
+    @classmethod
+    def protocol_for(cls, provider: Union[str, CloudProvider]) -> Optional[str]:
+        """URI scheme for ``provider`` without constructing a storage client."""
+        if isinstance(provider, str):
+            if not provider.strip():
+                return None
+            try:
+                provider = CloudProvider(provider.lower())
+            except ValueError:
+                return None
+        return _FILE_PROTOCOLS.get(provider)
+
     # --- Private ---
 
     def _convert_to_valid_type(self, operation: str) -> str:

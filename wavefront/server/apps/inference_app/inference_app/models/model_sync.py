@@ -1,7 +1,8 @@
 """Resolve and sync model directories for CLIP and DINOv3.
 
 Each model source (clip / dino / bge-m3 URI) can be:
-- A cloud URI (gs://, s3://, azure://) — synced to cache_dir on startup.
+- A cloud URI for the configured platform (``gs://``, ``s3://``, or ``azure://``)
+  — synced to cache_dir on startup.
 - A local directory path — used directly with no download.
 
 Cloud sync is skipped when a .sync_complete marker exists in the cache dir.
@@ -10,21 +11,18 @@ Cloud sync is skipped when a .sync_complete marker exists in the cache dir.
 from __future__ import annotations
 
 import hashlib
-import re
 from pathlib import Path
 
 from flo_cloud.cloud_storage import CloudStorageManager
 from common_module.log.logger import logger
 
-_CLOUD_URI_PATTERN = re.compile(
-    r'^(?:gs://|s3://|azure://).+',
-    re.IGNORECASE,
-)
 
-
-def is_cloud_uri(uri: str) -> bool:
-    """Return True if *uri* is a supported cloud storage URI (gs://, s3://, azure://)."""
-    return bool(_CLOUD_URI_PATTERN.match(uri.strip()))
+def is_cloud_uri(uri: str, *, provider: str) -> bool:
+    """True if *uri* uses the scheme for the configured cloud *provider*."""
+    protocol = CloudStorageManager.protocol_for(provider)
+    if not protocol:
+        return False
+    return uri.strip().lower().startswith(f'{protocol}://')
 
 
 def _cache_key(uri: str) -> str:
@@ -58,21 +56,21 @@ def sync_cloud_model(uri: str, *, provider: str, cache_root: Path) -> Path:
     Skips download if a .sync_complete marker already exists (cache hit).
 
     Args:
-        uri: Cloud URI (gs://, s3://, or azure://container/prefix/).
-        provider: Cloud provider string passed to CloudStorageManager (gcp, aws, azure).
+        uri: Cloud URI for *provider* (e.g. ``gs://bucket/prefix/`` on GCP).
+        provider: Cloud platform passed to CloudStorageManager (gcp, aws, azure).
         cache_root: Parent directory for cached model folders.
 
     Returns:
         Path to the local directory containing the synced model files.
 
     Raises:
-        ValueError: If *uri* is not a cloud URI or the prefix lists no objects.
+        ValueError: If *uri* is not a cloud URI for *provider*, or lists no objects.
     """
     uri = uri.strip()
-    if not is_cloud_uri(uri):
-        raise ValueError(
-            f'Model URI must be a cloud URI (gs://, s3://, or azure://); got {uri!r}'
-        )
+    protocol = CloudStorageManager.protocol_for(provider)
+    if not protocol or not is_cloud_uri(uri, provider=provider):
+        expected = f'{protocol}://' if protocol else 'the configured cloud platform'
+        raise ValueError(f'Model URI must use {expected}; got {uri!r}')
 
     storage = CloudStorageManager(provider)
     bucket_name, prefix = storage.get_bucket_key(uri)
@@ -124,7 +122,7 @@ def resolve_model_dir(
     Resolve a model source to a local directory.
 
     Accepts:
-    - Cloud URI (gs://, s3://, azure://) — downloads to cache_root and returns
+    - Cloud URI for *cloud_provider* — downloads to cache_root and returns
       the local dir. Skips download if .sync_complete already exists.
     - Local directory path — returned directly with no download.
 
@@ -132,20 +130,19 @@ def resolve_model_dir(
         name: Config key name, used in error messages.
         uri: Cloud URI or local path string.
         cache_root: Parent directory for synced model folders (used for cloud only).
-        cloud_provider: Required when *uri* is a cloud URI.
+        cloud_provider: Required when *uri* is a cloud URI (``config.cloud.platform``).
 
     Returns:
         Path to a local directory ready for from_pretrained().
 
     Raises:
-        ValueError: If uri is empty, not a cloud URI, and not an existing local dir.
+        ValueError: If uri is empty, not a cloud URI for the platform, and not
+            an existing local dir.
     """
     if not uri:
         raise ValueError(f'{name} is required but not set')
 
-    if is_cloud_uri(uri):
-        if not cloud_provider:
-            raise ValueError('cloud.platform is required when using a cloud model URI')
+    if is_cloud_uri(uri, provider=cloud_provider):
         return sync_cloud_model(uri, provider=cloud_provider, cache_root=cache_root)
 
     local = Path(uri)
@@ -153,9 +150,12 @@ def resolve_model_dir(
         logger.info('Using local model dir for %s: %s', name, local)
         return local
 
+    protocol = CloudStorageManager.protocol_for(cloud_provider)
+    cloud_hint = (
+        f'a {protocol}:// cloud URI' if protocol else 'a cloud URI for cloud.platform'
+    )
     raise ValueError(
-        f'{name}={uri!r} is neither a cloud URI (gs://, s3://, azure://)'
-        f' nor an existing local directory'
+        f'{name}={uri!r} is neither {cloud_hint} nor an existing local directory'
     )
 
 
@@ -175,7 +175,7 @@ def sync_embedding_models(
     """
     Resolve CLIP and DINO model directories from config.
 
-    Each URI can be a cloud URI (gs://, s3://, azure://) or a local directory path.
+    Each URI can be a cloud URI for *cloud_provider* or a local directory path.
     Cloud sources are synced to cache_dir; local paths are used directly.
 
     Returns:
