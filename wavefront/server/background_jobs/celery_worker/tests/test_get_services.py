@@ -45,7 +45,6 @@ def test_get_services_requires_application_bucket():
             'platform': 'aws',
             'region': '',
             'project_id': '',
-            'location': '',
         },
         'hermes': {'url': ''},
     }

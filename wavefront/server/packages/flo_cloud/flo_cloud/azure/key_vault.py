@@ -12,47 +12,45 @@ from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicNumbers
 from .._types import KmsKeySettings
 
 
-class AzureKMS:
-    """Azure Key Vault client bound to a single key from ``KmsKeySettings``.
+def _azure_clients(settings: KmsKeySettings):
+    """Build Key Vault KeyClient + CryptographyClient for the configured key."""
+    if not settings.key_vault_url:
+        raise ValueError('key_vault_url must be set for AzureKMS')
+    if not settings.key:
+        raise ValueError('key (Key Vault key name) must be set for AzureKMS')
 
-    Authentication modes:
-    1. Service Principal — provide client_id, client_secret, tenant_id in settings.
-    2. DefaultAzureCredential — when those three are omitted.
-    """
+    client_id = settings.client_id
+    client_secret = settings.client_secret
+    tenant_id = settings.tenant_id
+
+    creds_provided = [client_id, client_secret, tenant_id]
+    if all(creds_provided):
+        credential = ClientSecretCredential(
+            tenant_id=tenant_id,
+            client_id=client_id,
+            client_secret=client_secret,
+        )
+    elif any(creds_provided):
+        raise ValueError(
+            'Partial credentials provided. Supply all of client_id, '
+            'client_secret, and tenant_id, or none to use DefaultAzureCredential.'
+        )
+    else:
+        credential = DefaultAzureCredential()
+
+    key_client = KeyClient(vault_url=settings.key_vault_url, credential=credential)
+    key = key_client.get_key(settings.key, version=settings.key_version)
+    crypto_client = CryptographyClient(key, credential=credential)
+    return key_client, crypto_client, settings.key, settings.key_version
+
+
+class AzureKmsCipher:
+    """Azure Key Vault encrypt/decrypt bound to a single key."""
 
     def __init__(self, settings: KmsKeySettings):
-        if not settings.key_vault_url:
-            raise ValueError('key_vault_url must be set for AzureKMS')
-        if not settings.key:
-            raise ValueError('key (Key Vault key name) must be set for AzureKMS')
-
-        client_id = settings.client_id
-        client_secret = settings.client_secret
-        tenant_id = settings.tenant_id
-
-        creds_provided = [client_id, client_secret, tenant_id]
-        if all(creds_provided):
-            credential = ClientSecretCredential(
-                tenant_id=tenant_id,
-                client_id=client_id,
-                client_secret=client_secret,
-            )
-        elif any(creds_provided):
-            raise ValueError(
-                'Partial credentials provided. Supply all of client_id, '
-                'client_secret, and tenant_id, or none to use DefaultAzureCredential.'
-            )
-        else:
-            credential = DefaultAzureCredential()
-
-        self._key_name = settings.key
-        self._key_version = settings.key_version
-        self.key_client = KeyClient(
-            vault_url=settings.key_vault_url, credential=credential
+        _, self.crypto_client, self._key_name, self._key_version = _azure_clients(
+            settings
         )
-
-        key = self.key_client.get_key(settings.key, version=settings.key_version)
-        self.crypto_client = CryptographyClient(key, credential=credential)
 
     def encrypt(self, plaintext: str | bytes) -> bytes:
         if isinstance(plaintext, str):
@@ -65,6 +63,15 @@ class AzureKMS:
             EncryptionAlgorithm.rsa_oaep_256, ciphertext
         )
         return result.plaintext
+
+
+class AzureKmsSigner:
+    """Azure Key Vault sign/verify bound to a single key."""
+
+    def __init__(self, settings: KmsKeySettings):
+        self.key_client, self.crypto_client, self._key_name, self._key_version = (
+            _azure_clients(settings)
+        )
 
     def sign(self, message: bytes, **kwargs) -> bytes:
         algorithm = kwargs.get('signing_algorithm', SignatureAlgorithm.ps256)
