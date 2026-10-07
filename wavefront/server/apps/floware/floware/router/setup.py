@@ -13,7 +13,6 @@ from floware.controllers.health_controller import health_router
 from floware.controllers.notification_controller import notification_router
 from floware.controllers.scheduled_job_controller import scheduled_job_router
 from gold_module.controllers.router import gold_router
-from guardrails_module.controllers.guardrails_controller import guardrails_router
 from knowledge_base_module.controllers.knowledge_base_controller import (
     knowledge_base_router,
 )
@@ -58,6 +57,8 @@ from voice_agents_module.controllers.tool_controller import tool_router
 from voice_agents_module.controllers.tts_config_controller import tts_config_router
 from voice_agents_module.controllers.voice_agent_controller import voice_agent_router
 
+from floware.di.containers import guardrails_container
+
 FLOWARE_PREFIX = '/floware'
 
 FLOWARE_ROUTERS = [
@@ -75,7 +76,6 @@ FLOWARE_ROUTERS = [
     email_connection_router,
     oauth_app_router,
     gold_router,
-    guardrails_router,
     hmac_router,
     inference_proxy_router,
     kb_document_router,
@@ -100,5 +100,12 @@ FLOWARE_ROUTERS = [
 
 
 def include_routers(app: FastAPI) -> None:
-    for router in FLOWARE_ROUTERS:
+    routers = list(FLOWARE_ROUTERS)
+    if guardrails_container is not None:
+        from guardrails_module.controllers.guardrails_controller import (
+            guardrails_router,
+        )
+
+        routers.append(guardrails_router)
+    for router in routers:
         app.include_router(router, prefix=FLOWARE_PREFIX)

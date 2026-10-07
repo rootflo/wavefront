@@ -71,7 +71,7 @@ Removed (were never consumed): `TRANSCRIPT_BUCKET_NAME`, `AUDIO_BUCKET_NAME`,
 | `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_SERVICE_NAME` / `APP_VERSION` / `HOSTNAME` | `[telemetry] otlp_endpoint`, `service_name`, `app_version`, `instance_id` |
 | `LOG_LEVEL` | `[env_config] log_level` (floware, call_processing) |
 | `ASYNC_AGENTIC_EXEC_*` / `KB_INDEX_STATUS_*` stream tuning | `[streams]` keys in floware `config.ini` |
-| `GUARDRAILS_*` / `AZURE_CONTENT_SAFETY_*` | `[guardrails]` in floware / celery `config.ini` |
+| `GUARDRAILS_ENABLED` / `GUARDRAILS_*` / `AZURE_CONTENT_SAFETY_*` | `[guardrails]` in floware / celery `config.ini` (`enabled` gates container load) |
 | `*_FLAG` feature toggles | `[feature_flags]` in floware `config.ini` |
 | `PRODUCT_ANALYTICS_EXCLUDED_EMAILS` | `[product_analysis] excluded_emails` |
 | `EXOTEL_APP_ID` | `[voice_agents] exotel_app_id` |

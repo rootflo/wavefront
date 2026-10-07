@@ -24,7 +24,8 @@ def _cfg_int(cfg: Mapping[str, Any], key: str, default: int) -> int:
         return default
 
 
-def _cfg_bool(cfg: Mapping[str, Any], key: str, default: bool) -> bool:
+def cfg_bool(cfg: Mapping[str, Any], key: str, default: bool) -> bool:
+    """Parse a config.ini-style boolean; empty/missing uses ``default``."""
     raw = cfg.get(key)
     if raw is None or str(raw).strip() == '':
         return default
@@ -35,6 +36,10 @@ def _cfg_bool(cfg: Mapping[str, Any], key: str, default: bool) -> bool:
         return False
     logger.warning(f'Guardrails: {key}={raw!r} is not a boolean, using {default}')
     return default
+
+
+# Backward-compatible alias for existing tests/callers.
+_cfg_bool = cfg_bool
 
 
 def build_guardrails_engine(
@@ -116,7 +121,7 @@ def _build_verdict_cache(
         )
         return None
 
-    if not _cfg_bool(cfg, 'verdict_cache_shared', True):
+    if not cfg_bool(cfg, 'verdict_cache_shared', True):
         logger.info(
             'Guardrails: shared verdict cache disabled in config, '
             'verdicts stay per-process'

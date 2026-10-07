@@ -64,26 +64,26 @@ def wire_containers() -> None:
         packages=['gold_module.controllers'],
     )
 
-    common_container.wire(
-        packages=[
-            'auth_module.controllers',
-            'user_management_module.controllers',
-            'user_management_module.authorization',
-            'chatbots_module.controllers',
-            'floware.controllers',
-            'knowledge_base_module.controllers',
-            'gold_module.controllers',
-            'plugins_module.controllers',
-            'plugins_module.services',
-            'product_analysis_module.controllers',
-            'agents_module.controllers',
-            'agents_module.services',
-            'llm_inference_config_module.controllers',
-            'guardrails_module.controllers',
-            'tools_module.controllers',
-            'voice_agents_module.controllers',
-        ],
-    )
+    common_packages = [
+        'auth_module.controllers',
+        'user_management_module.controllers',
+        'user_management_module.authorization',
+        'chatbots_module.controllers',
+        'floware.controllers',
+        'knowledge_base_module.controllers',
+        'gold_module.controllers',
+        'plugins_module.controllers',
+        'plugins_module.services',
+        'product_analysis_module.controllers',
+        'agents_module.controllers',
+        'agents_module.services',
+        'llm_inference_config_module.controllers',
+        'tools_module.controllers',
+        'voice_agents_module.controllers',
+    ]
+    if guardrails_container is not None:
+        common_packages.append('guardrails_module.controllers')
+    common_container.wire(packages=common_packages)
 
     knowledge_base_container.wire(
         packages=[
@@ -118,13 +118,14 @@ def wire_containers() -> None:
         ],
     )
 
-    guardrails_container.wire(
-        packages=[
-            'guardrails_module.controllers',
-            # Agent inference resolves policy when constructing a guarded LLM.
-            'agents_module.controllers',
-        ],
-    )
+    if guardrails_container is not None:
+        guardrails_container.wire(
+            packages=[
+                'guardrails_module.controllers',
+                # Agent inference resolves policy when constructing a guarded LLM.
+                'agents_module.controllers',
+            ],
+        )
 
     tools_container.wire(
         packages=[

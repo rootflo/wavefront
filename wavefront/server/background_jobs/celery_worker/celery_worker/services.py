@@ -15,7 +15,6 @@ from api_services_module.api_services_container import (
     create_api_services_container,
 )
 from agents_module.agents_container import AgentsContainer
-from guardrails_module.container import GuardrailsContainer
 from llm_inference_config_module.container import LlmInferenceConfigContainer
 from agents_module.services.agent_inference_service import AgentInferenceService
 from agents_module.services.workflow_inference_service import WorkflowInferenceService
@@ -25,6 +24,7 @@ from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.database.connection import DatabaseConfig, DatabaseClient
 from db_repo_module.db_repo_container import DatabaseModuleContainer
 from flo_cloud.cloud_storage import CloudStorageManager
+from guardrails_module.bootstrap import create_guardrails_container_if_enabled
 from plugins_module.plugins_container import PluginsContainer
 from tools_module.tools_container import ToolsContainer
 
@@ -128,11 +128,14 @@ def get_services() -> WorkerServices:
             call_processing_cache_invalidator=common_container.call_processing_cache_invalidator,
         )
 
-        guardrails_container = GuardrailsContainer(
+        guardrails_container = create_guardrails_container_if_enabled(
+            config,
             db_client=db_repo_container.db_client,
             cache_manager=db_repo_container.cache_manager,
         )
-        guardrails_container.config.from_dict(config)
+        guardrails_engine = (
+            guardrails_container.guardrails_engine if guardrails_container else None
+        )
 
         agents_container = AgentsContainer(
             db_client=db_repo_container.db_client,
@@ -150,7 +153,7 @@ def get_services() -> WorkerServices:
             async_agentic_execution_repository=db_repo_container.async_agentic_execution_repository,
             executions_bucket=executions_bucket,
             llm_inference_config_service=llm_inference_config_container.llm_inference_config_service,
-            guardrails_engine=guardrails_container.guardrails_engine,
+            guardrails_engine=guardrails_engine,
         )
         agents_container.config.from_dict(config)
 
