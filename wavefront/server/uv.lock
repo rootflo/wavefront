@@ -21,11 +21,11 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-09-30T08:56:05.274134Z"
+exclude-newer = "2026-09-30T14:47:48.5881Z"
 exclude-newer-span = "P7D"
 
 [options.exclude-newer-package]
-flo-ai = { timestamp = "2026-10-07T08:56:05.27415Z", span = "PT0S" }
+flo-ai = { timestamp = "2026-10-07T14:47:48.588524Z", span = "PT0S" }
 
 [manifest]
 members = [
@@ -2024,22 +2024,18 @@ name = "flo-utils"
 version = "0.1.0"
 source = { editable = "packages/flo_utils" }
 dependencies = [
-    { name = "boto3" },
     { name = "common-module" },
     { name = "db-repo-module" },
-    { name = "google-cloud-kms" },
-    { name = "pyyaml" },
-    { name = "tenacity" },
+    { name = "flo-cloud" },
+    { name = "tiktoken" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "boto3", specifier = ">=1.42.22,<2.0.0" },
     { name = "common-module", editable = "modules/common_module" },
     { name = "db-repo-module", editable = "modules/db_repo_module" },
-    { name = "google-cloud-kms", specifier = ">=3.5.1" },
-    { name = "pyyaml", specifier = ">=6.0.3,<7" },
-    { name = "tenacity", specifier = ">=8.4.1" },
+    { name = "flo-cloud", editable = "packages/flo_cloud" },
+    { name = "tiktoken", specifier = ">=0.9.0" },
 ]
 
 [[package]]
