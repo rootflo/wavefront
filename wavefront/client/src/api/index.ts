@@ -8,7 +8,6 @@ import { AuthenticatorService } from './authenticator-service';
 import { ChatbotService } from './chatbot-service';
 import { ConfigurationService } from './configuration-service';
 import { ConsoleAuthService } from './console-auth-service';
-import { DataPipelineService } from './data-pipeline-service';
 import { DatasourcesService } from './datasources-service';
 import { GuardrailsService } from './guardrails-service';
 import { EmailConnectionService } from './email-service';
@@ -16,7 +15,6 @@ import { OAuthAppService } from './oauth-app-service';
 import { KnowledgeBaseService } from './knowledge-base-service';
 import { LLMInferenceService } from './llm-inference-service';
 import { MessageProcessorService } from './message-processor-service';
-import { ModelInferenceService } from './model-inference-service';
 import { NamespaceService } from './namespace-service';
 import { ScheduledJobService } from './scheduled-job-service';
 import { SttConfigService } from './stt-config-service';
@@ -67,10 +65,6 @@ class FloConsoleService {
     return new ConsoleAuthService(this.http);
   }
 
-  get dataPipelineService() {
-    return new DataPipelineService(this.http);
-  }
-
   get datasourcesService() {
     return new DatasourcesService(this.http);
   }
@@ -97,10 +91,6 @@ class FloConsoleService {
 
   get messageProcessorService() {
     return new MessageProcessorService(this.http);
-  }
-
-  get modelInferenceService() {
-    return new ModelInferenceService(this.http);
   }
 
   get namespaceService() {

@@ -61,7 +61,6 @@ from auth_module.auth_container import AuthContainer
 from chatbots_module.chatbots_container import ChatbotsContainer
 from gold_module.gold_container import GoldContainer
 from guardrails_module.container import GuardrailsContainer
-from inference_module.inference_container import InferenceContainer
 from knowledge_base_module.knowledge_base_container import KnowledgeBaseContainer
 from llm_inference_config_module.container import LlmInferenceConfigContainer
 from plugins_module.plugins_container import PluginsContainer
@@ -155,11 +154,6 @@ tools_container = ToolsContainer(
     message_processor_bucket_name=bucket_name,
     floware_base_url=runtime.floware_base_url,
     passthrough_secret=runtime.passthrough_secret,
-)
-
-inference_container = InferenceContainer(
-    db_client=db_repo_container.db_client,
-    cache_manager=db_repo_container.cache_manager,
 )
 
 llm_inference_config_container = LlmInferenceConfigContainer(

@@ -21,11 +21,11 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-09-29T18:02:39.07626Z"
+exclude-newer = "2026-09-30T08:56:05.274134Z"
 exclude-newer-span = "P7D"
 
 [options.exclude-newer-package]
-flo-ai = { timestamp = "2026-10-06T18:02:39.07678Z", span = "PT0S" }
+flo-ai = { timestamp = "2026-10-07T08:56:05.27415Z", span = "PT0S" }
 
 [manifest]
 members = [
@@ -47,7 +47,6 @@ members = [
     "gold-module",
     "guardrails-module",
     "inference-app",
-    "inference-module",
     "knowledge-base-module",
     "llm-inference-config-module",
     "mailer",
@@ -2097,7 +2096,6 @@ dependencies = [
     { name = "fastapi" },
     { name = "gold-module" },
     { name = "guardrails-module" },
-    { name = "inference-module" },
     { name = "knowledge-base-module" },
     { name = "llm-inference-config-module" },
     { name = "openpyxl" },
@@ -2130,7 +2128,6 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115.2,<1.0.0" },
     { name = "gold-module", editable = "modules/gold_module" },
     { name = "guardrails-module", editable = "modules/guardrails_module" },
-    { name = "inference-module", editable = "modules/inference_module" },
     { name = "knowledge-base-module", editable = "modules/knowledge_base_module" },
     { name = "llm-inference-config-module", editable = "modules/llm_inference_config_module" },
     { name = "openpyxl", specifier = ">=3.1.5,<4.0.0" },
@@ -3133,39 +3130,6 @@ requires-dist = [
     { name = "torchvision", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'", index = "https://download.pytorch.org/whl/cpu" },
     { name = "transformers", specifier = ">=4.56.0" },
     { name = "uvicorn", specifier = ">=0.30.1,<1.0.0" },
-]
-
-[[package]]
-name = "inference-module"
-version = "0.1.0"
-source = { editable = "modules/inference_module" }
-dependencies = [
-    { name = "common-module" },
-    { name = "db-repo-module" },
-    { name = "flo-cloud" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "asyncpg" },
-    { name = "flo-testing" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "common-module", editable = "modules/common_module" },
-    { name = "db-repo-module", editable = "modules/db_repo_module" },
-    { name = "flo-cloud", editable = "packages/flo_cloud" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "asyncpg", specifier = ">=0.30.0,<1.0.0" },
-    { name = "flo-testing", editable = "packages/flo_testing" },
-    { name = "pytest", specifier = ">=9.0.3,<10.0.0" },
-    { name = "pytest-asyncio", specifier = ">=1.0.0,<2.0.0" },
 ]
 
 [[package]]

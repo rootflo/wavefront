@@ -36,7 +36,6 @@ COPY wavefront/server/modules/llm_inference_config_module /app/modules/llm_infer
 COPY wavefront/server/modules/agents_module /app/modules/agents_module
 COPY wavefront/server/modules/plugins_module/ /app/modules/plugins_module
 COPY wavefront/server/modules/product_analysis_module /app/modules/product_analysis_module
-COPY wavefront/server/modules/inference_module /app/modules/inference_module
 COPY wavefront/server/modules/tools_module /app/modules/tools_module
 COPY wavefront/server/modules/voice_agents_module /app/modules/voice_agents_module
 COPY wavefront/server/modules/api_services_module /app/modules/api_services_module

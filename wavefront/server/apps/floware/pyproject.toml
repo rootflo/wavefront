@@ -17,7 +17,6 @@ dependencies = [
     "plugins-module",
     "product-analysis-module",
     "agents-module",
-    "inference-module",
     "llm-inference-config-module",
     "guardrails-module",
     "tools-module",
@@ -52,7 +51,6 @@ user-management-module = { workspace = true }
 plugins-module = {workspace = true}
 product-analysis-module = {workspace = true }
 agents-module = {workspace = true}
-inference-module = {workspace = true}
 llm-inference-config-module = {workspace = true}
 guardrails-module = {workspace = true}
 tools-module = {workspace = true}

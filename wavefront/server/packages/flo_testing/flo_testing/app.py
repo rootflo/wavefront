@@ -1,8 +1,7 @@
 """Building the FastAPI app under test.
 
-Every module mounted the same two middlewares in the same order, except
-inference_module which silently omitted RequestIdMiddleware. Going through one
-builder keeps the app under test the same shape as the real one.
+Every module mounted the same two middlewares in the same order. Going through
+one builder keeps the app under test the same shape as the real one.
 """
 
 from __future__ import annotations
