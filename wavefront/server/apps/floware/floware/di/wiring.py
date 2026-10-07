@@ -10,7 +10,6 @@ from floware.di.containers import (
     db_repo_container,
     gold_container,
     guardrails_container,
-    inference_container,
     knowledge_base_container,
     llm_inference_config_container,
     plugins_container,
@@ -79,7 +78,6 @@ def wire_containers() -> None:
             'product_analysis_module.controllers',
             'agents_module.controllers',
             'agents_module.services',
-            'inference_module.controllers',
             'llm_inference_config_module.controllers',
             'guardrails_module.controllers',
             'tools_module.controllers',
@@ -91,7 +89,6 @@ def wire_containers() -> None:
         packages=[
             'knowledge_base_module.controllers',
             'auth_module.controllers',
-            'inference_module.controllers',
         ],
     )
 
@@ -111,10 +108,6 @@ def wire_containers() -> None:
             'agents_module.controllers',
             'agents_module.services',
         ],
-    )
-
-    inference_container.wire(
-        packages=['inference_module.controllers'],
     )
 
     llm_inference_config_container.wire(
