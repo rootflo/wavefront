@@ -411,7 +411,7 @@ class QueryGenerator:
         self,
         query_embeddings: list,
         kb_id: str,
-        filter1: str,
+        filter1: Optional[str],
         document_date_start,
         document_date_end,
         max_candidates: int,
@@ -424,12 +424,11 @@ class QueryGenerator:
         created_at_end: Optional[Any] = None,
     ) -> Tuple[str, Dict[str, Any]]:
         """
-        Exact (brute-force) DINO similarity search restricted to documents on
-        `knowledge_base_documents` matching `filter1` and a `document_date`
-        window, further narrowed by an equality match on any of
-        `filter2`..`filter6` that are provided. All `filterN` columns are
-        generic, caller-defined columns -- see `KnowledgeBaseDocuments` --
-        this query has no notion of what they mean semantically.
+        Exact (brute-force) DINO similarity search over documents in a KB,
+        optionally narrowed by `filter1`..`filter6` and a `document_date` /
+        `created_at` window. All `filterN` columns are generic, caller-defined
+        columns -- see `KnowledgeBaseDocuments` -- this query has no notion of
+        what they mean semantically.
 
         Candidates are capped via `ORDER BY d.id LIMIT :fetch_limit`, where
         `fetch_limit` is computed here as `max_candidates + 1`. Ordering by

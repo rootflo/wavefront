@@ -94,8 +94,8 @@ class CloudStorageManager:
         """URI scheme for this provider (``s3``, ``gs``, or ``azure``)."""
         return _FILE_PROTOCOLS.get(self.provider)
 
-    def get_bucket_key(self, value) -> str:
-        """Normalize a path/URI to the provider's object key."""
+    def get_bucket_key(self, value: str) -> Tuple[str, str]:
+        """Parse a provider URI into ``(bucket, key)``."""
         return self.handler.get_bucket_key(value)
 
     # --- Private ---
