@@ -3,20 +3,40 @@
 Old names continue to work only where apps still read them as aliases.
 Prefer the new names.
 
-## Cloud identity
+## flo_cloud
+
+Apps pass cloud settings through DI (`CommonContainer` → `flo_cloud`). Values come
+from each app's `config.ini` (`[cloud]`, `[storage]`, `[queues]`, `[kms_*]`), which
+interpolate env vars. flo_cloud treats many of those as **overrides**: when empty,
+the cloud SDK uses the usual container / ADC environment.
+
+### Cloud identity
 
 | Old | New |
 | --- | --- |
-| `CLOUD_PROVIDER` | `CLOUD_PROVIDER` (unchanged; ini key is `[cloud] platform`) |
-| `AWS_REGION` / `GCP_LOCATION` (split) | `CLOUD_REGION`, `CLOUD_LOCATION` |
-| `GCP_PROJECT_ID` | `CLOUD_PROJECT_ID` |
+| `CLOUD_PROVIDER` | `CLOUD_PROVIDER` → `[cloud] platform` (renamed from `provider`; DI attribute `ConfigurationOption.provider` collided) |
+| `AWS_REGION` / `GCP_LOCATION` | `CLOUD_REGION` → `[cloud] region` (AWS region or GCP KMS location) |
+| `GCP_PROJECT_ID` | `CLOUD_PROJECT_ID` → `[cloud] project_id` |
 
 Azure service-principal env vars (`AZURE_CLIENT_ID` / `AZURE_TENANT_ID` /
 `AZURE_CLIENT_SECRET`) are no longer read by apps. Workloads authenticate via
 the attached identity (`DefaultAzureCredential`); flo_cloud still accepts
 optional explicit credentials for local/tests.
 
-## Storage buckets
+### Optional vs required (SDK / container defaults)
+
+| Setting | Used by | When empty / omitted |
+| --- | --- | --- |
+| `[cloud] region` (`CLOUD_REGION`) | AWS S3 / AWS KMS; GCP KMS location | AWS: optional (boto3 / `AWS_REGION`). GCP KMS: **required** in the key path |
+| `[cloud] project_id` (`CLOUD_PROJECT_ID`) | GCS (ADC), Pub/Sub | `google.auth.default()` / `GOOGLE_CLOUD_PROJECT` |
+| `[cloud] project_id` + `region` + `key_ring` + `key` | GCP KMS | **Required** (signer also needs `key_version`) |
+| `[storage] account_url` | Azure blob / storage queue | **Required** for Azure |
+
+SQS already builds `boto3.client('sqs')` with no region arg (env defaults).
+GCP KMS cipher vs signer are separate classes; only the signer requires
+`key_version`.
+
+### Storage buckets
 
 | Old | New |
 | --- | --- |
@@ -27,7 +47,7 @@ optional explicit credentials for local/tests.
 Removed (were never consumed): `TRANSCRIPT_BUCKET_NAME`, `AUDIO_BUCKET_NAME`,
 `GCP_STORAGE_BUCKET_NAME`, `GCP_SERVICE_ACCOUNT_JSON`.
 
-## Queues
+### Queues
 
 | Old | New |
 | --- | --- |
@@ -36,7 +56,7 @@ Removed (were never consumed): `TRANSCRIPT_BUCKET_NAME`, `AUDIO_BUCKET_NAME`,
 | `GCP_GOLD_TOPIC_ID` / `AWS_QUEUE_URL` / gold azure queue name | `GOLD_QUEUE` |
 | `QUEUE_URL` (flo_cloud SQS module-level; never matched `AWS_QUEUE_URL`) | removed — use `QueueSettings.target` |
 
-## KMS
+### KMS
 
 | Old | New |
 | --- | --- |
@@ -47,7 +67,11 @@ Removed (were never consumed): `TRANSCRIPT_BUCKET_NAME`, `AUDIO_BUCKET_NAME`,
 | `AZURE_KEY_VAULT_ENC_KEY_VERSION` | `KMS_ENCRYPTION_KEY_VERSION` |
 | `AZURE_KEY_VAULT_URL` | `KMS_KEY_VAULT_URL` → `[kms_signing]` / `[kms_encryption] key_vault_url` |
 
-## JWT / Redis / runtime URLs (now via app config, not direct env reads)
+Provider implementations are split into cipher vs signer classes
+(`AwsKmsCipher` / `AwsKmsSigner`, and the GCP / Azure equivalents), wired through
+`FloKmsCipher` / `FloKmsSigner`.
+
+## App config (not flo_cloud direct reads)
 
 | Old env read site | Config key |
 | --- | --- |

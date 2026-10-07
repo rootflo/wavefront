@@ -45,7 +45,6 @@ class CommonContainer(containers.DeclarativeContainer):
         key_version=config.kms_signing.key_version,
         key_ring=config.kms_signing.key_ring,
         project_id=config.cloud.project_id,
-        location=config.cloud.location,
         region=config.cloud.region,
         key_vault_url=config.kms_signing.key_vault_url,
     )
@@ -57,7 +56,6 @@ class CommonContainer(containers.DeclarativeContainer):
         key_version=config.kms_encryption.key_version,
         key_ring=config.kms_encryption.key_ring,
         project_id=config.cloud.project_id,
-        location=config.cloud.location,
         region=config.cloud.region,
         key_vault_url=config.kms_encryption.key_vault_url,
     )

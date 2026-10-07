@@ -5,18 +5,22 @@ from cryptography.hazmat.backends import default_backend
 from .._types import KmsKeySettings
 
 
-class AwsKMS:
-    """AWS KMS client bound to a single key ARN from ``KmsKeySettings``."""
+def _kms_client(settings: KmsKeySettings):
+    """Build a boto3 KMS client; region is optional (falls back to AWS env/defaults)."""
+    if not settings.key:
+        raise ValueError('key (KMS ARN) must be set for AwsKMS')
+    region = (settings.region or '').strip() or None
+    client_kwargs = {}
+    if region is not None:
+        client_kwargs['region_name'] = region
+    return boto3.client('kms', **client_kwargs), settings.key, region
+
+
+class AwsKmsCipher:
+    """AWS KMS encrypt/decrypt bound to a single key ARN."""
 
     def __init__(self, settings: KmsKeySettings):
-        if not settings.region:
-            raise ValueError('region must be set for AwsKMS')
-        if not settings.key:
-            raise ValueError('key (KMS ARN) must be set for AwsKMS')
-
-        self.aws_kms_arn = settings.key
-        self.aws_region = settings.region
-        self.kms_client = boto3.client('kms', region_name=settings.region)
+        self.kms_client, self.aws_kms_arn, self.aws_region = _kms_client(settings)
 
     def encrypt(self, plaintext: str | bytes) -> bytes:
         if isinstance(plaintext, str):
@@ -29,6 +33,13 @@ class AwsKMS:
         return self.kms_client.decrypt(
             KeyId=self.aws_kms_arn, CiphertextBlob=ciphertext
         )['Plaintext']
+
+
+class AwsKmsSigner:
+    """AWS KMS sign/verify bound to a single key ARN."""
+
+    def __init__(self, settings: KmsKeySettings):
+        self.kms_client, self.aws_kms_arn, self.aws_region = _kms_client(settings)
 
     def sign(self, message: bytes, **kwargs) -> bytes:
         signing_algorithm = kwargs.get('signing_algorithm', 'RSASSA_PSS_SHA_256')

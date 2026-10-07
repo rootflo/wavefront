@@ -10,45 +10,30 @@ from cryptography.hazmat.primitives.asymmetric import utils
 from .._types import KmsKeySettings
 
 
-class GcpKMS:
-    """GCP KMS client bound to a single key from ``KmsKeySettings``."""
+def _require_key_path(settings: KmsKeySettings) -> tuple[str, str, str, str]:
+    project_id = settings.project_id
+    region = settings.region
+    key_ring = settings.key_ring
+    key = settings.key
+    if not (project_id and region and key_ring and key):
+        raise ValueError(
+            'project_id, region (GCP KMS location), key_ring, and key must be set '
+            'for GcpKMS'
+        )
+    return project_id, region, key_ring, key
+
+
+class GcpKmsCipher:
+    """GCP KMS encrypt/decrypt bound to a crypto key."""
 
     def __init__(self, settings: KmsKeySettings):
-        required = [
-            settings.project_id,
-            settings.location,
-            settings.key_ring,
-            settings.key,
-        ]
-        if not all(required):
-            raise ValueError(
-                'project_id, location, key_ring, and key must be set for GcpKMS'
-            )
-
+        project_id, region, key_ring, key = _require_key_path(settings)
         self.kms_client = kms.KeyManagementServiceClient()
-        self._key = settings.key
-        self._key_version = settings.key_version
-        self._project_id = settings.project_id
-        self._location = settings.location
-        self._key_ring = settings.key_ring
-
-        # Versioned path for asymmetric signing; crypto-key path for encrypt/decrypt.
-        self.key_name = (
-            self.kms_client.crypto_key_version_path(
-                project=settings.project_id,
-                location=settings.location,
-                key_ring=settings.key_ring,
-                crypto_key=settings.key,
-                crypto_key_version=settings.key_version,
-            )
-            if settings.key_version
-            else None
-        )
         self.enc_key_name = self.kms_client.crypto_key_path(
-            project=settings.project_id,
-            location=settings.location,
-            key_ring=settings.key_ring,
-            crypto_key=settings.key,
+            project=project_id,
+            location=region,
+            key_ring=key_ring,
+            crypto_key=key,
         )
 
     def encrypt(self, plaintext: bytes | str) -> bytes:
@@ -69,16 +54,32 @@ class GcpKMS:
         response = self.kms_client.decrypt(request=request)
         return response.plaintext
 
+
+class GcpKmsSigner:
+    """GCP KMS asymmetric sign/verify bound to a crypto key version."""
+
+    def __init__(self, settings: KmsKeySettings):
+        project_id, region, key_ring, key = _require_key_path(settings)
+        key_version = settings.key_version
+        if not key_version:
+            raise ValueError('key_version must be set for GcpKmsSigner')
+
+        self.kms_client = kms.KeyManagementServiceClient()
+        self.key_name = self.kms_client.crypto_key_version_path(
+            project=project_id,
+            location=region,
+            key_ring=key_ring,
+            crypto_key=key,
+            crypto_key_version=key_version,
+        )
+
     def sign(self, message: bytes, **kwargs) -> bytes:
-        if not self.key_name:
-            raise ValueError('key_version must be set to use signing')
         request = kms_v1.AsymmetricSignRequest(
             name=self.key_name,
             digest=kms_v1.Digest(
                 sha256=message,
             ),
         )
-
         response = self.kms_client.asymmetric_sign(request=request)
         return response.signature
 
@@ -103,10 +104,7 @@ class GcpKMS:
             return False
 
     def get_public_key_pem(self, **kwargs) -> bytes | str:
-        if not self.key_name:
-            raise ValueError('key_version must be set to use get_public_key_pem')
         encode = kwargs.get('encode', False)
-
         request = kms_v1.GetPublicKeyRequest(
             name=self.key_name,
         )
