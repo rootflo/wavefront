@@ -1,7 +1,7 @@
 import base64
 import dataclasses
 import math
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, cast
 import uuid
 
 from common_module.common_container import CommonContainer
@@ -15,10 +15,7 @@ from db_repo_module.models.knowledge_bases import KnowledgeBase, KnowledgeBaseTy
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from dependency_injector.wiring import inject
 from dependency_injector.wiring import Provide
-from fastapi import APIRouter
-from fastapi import Query
-from fastapi import status
-from fastapi.params import Depends
+from fastapi import APIRouter, Body, Depends, Query, status
 from fastapi.responses import JSONResponse
 from knowledge_base_module.knowledge_base_container import KnowledgeBaseContainer
 from knowledge_base_module.embeddings.embed import TextEmbeddingError
@@ -69,19 +66,12 @@ class DocWiseEmbeddingSchema(BaseModel):
     embeddings: List[EmbeddingSchema]
 
 
-class ImagePayload(BaseModel):
-    """Payload for Image embedding. Use image_data (base64) or image_url (gs:// or s3://); image_url has priority if both are set."""
+class RetrievePayload(BaseModel):
+    """Retrieve body: text ``query`` and/or image (``image_url`` wins over ``image_data``)."""
 
+    query: Optional[str] = None
     image_data: Optional[str] = None
     image_url: Optional[str] = None
-
-
-class DocumentPayload(BaseModel):
-    """Payload for Document embedding."""
-
-    inference_id: uuid.UUID
-    query: Optional[str] = None
-    model: Optional[str] = None
 
 
 def convert_uuids_to_str(data):
@@ -99,108 +89,55 @@ def convert_uuids_to_str(data):
         return data
 
 
-def _parse_cloud_image_url(url: str) -> Tuple[str, str, str]:
-    """
-    Parse gs:// or s3:// URL into (scheme, bucket, key).
-    Returns (scheme, bucket, key) or raises ValueError.
-    """
-    url = (url or '').strip()
-    if url.startswith('gs://'):
-        rest = url[5:]
-        if '/' not in rest:
-            raise ValueError('Invalid gs:// URL: missing path after bucket')
-        bucket, _, key = rest.partition('/')
-        return ('gs', bucket, key)
-    if url.startswith('s3://'):
-        rest = url[5:]
-        if '/' not in rest:
-            raise ValueError('Invalid s3:// URL: missing path after bucket')
-        bucket, _, key = rest.partition('/')
-        return ('s3', bucket, key)
-    raise ValueError('image_url must be in gs:// or s3:// format')
+def _bad_request(response_formatter: ResponseFormatter, message: str) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content=response_formatter.buildErrorResponse(message),
+    )
 
 
 async def _resolve_image_data(
-    payload: ImagePayload,
+    payload: RetrievePayload,
     cloud_storage: CloudStorageManager,
-    config: dict,
     response_formatter: ResponseFormatter,
 ) -> Tuple[Optional[str], Optional[JSONResponse]]:
-    """
-    Resolve image payload to a single image_data string (base64) for the inference API.
-    When both are provided, image_url has priority; otherwise uses image_data or fetches from image_url (gs:// or s3://).
-    Returns (image_data, None) on success, or (None, error_json_response) on validation/fetch error.
-    """
-    if payload.image_url:
-        pass
-    elif payload.image_data:
-        return (payload.image_data, None)
-    else:
+    """Resolve to base64 image bytes. ``image_url`` wins over ``image_data``."""
+    if not payload.image_url:
+        if payload.image_data:
+            return (payload.image_data, None)
         return (
             None,
-            JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content=response_formatter.buildErrorResponse(
-                    'Query or Image data should not be empty'
-                ),
+            _bad_request(response_formatter, 'Image data should not be empty'),
+        )
+
+    url = payload.image_url.strip()
+    protocol = cloud_storage.file_protocol()
+    if not protocol or not url.startswith(f'{protocol}://'):
+        return (
+            None,
+            _bad_request(
+                response_formatter,
+                f'image_url must use {protocol}:// for the configured cloud platform'
+                if protocol
+                else 'Cloud storage is not configured for image_url',
             ),
         )
+
     try:
-        scheme, bucket, key = _parse_cloud_image_url(payload.image_url)
-    except ValueError as e:
-        return (
-            None,
-            JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content=response_formatter.buildErrorResponse(str(e)),
-            ),
-        )
-    cloud_provider = (config.get('cloud') or {}).get('platform', '').lower()
-    if scheme == 'gs' and cloud_provider != 'gcp':
-        return (
-            None,
-            JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content=response_formatter.buildErrorResponse(
-                    'image_url gs:// is only supported when cloud provider is GCP'
-                ),
-            ),
-        )
-    if scheme == 's3' and cloud_provider != 'aws':
-        return (
-            None,
-            JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content=response_formatter.buildErrorResponse(
-                    'image_url s3:// is only supported when cloud provider is AWS'
-                ),
-            ),
-        )
-    try:
-        content = cloud_storage.read_file(bucket, key)
+        bucket, key = cloud_storage.get_bucket_key(url)
+        image_bytes = cloud_storage.read_file(bucket, key)
     except Exception as e:
         return (
             None,
-            JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content=response_formatter.buildErrorResponse(
-                    f'Failed to fetch image from storage: {e!s}'
-                ),
+            _bad_request(
+                response_formatter, f'Failed to fetch image from storage: {e!s}'
             ),
         )
-    image_bytes = content.read() if hasattr(content, 'read') else content
+
     if not image_bytes:
-        return (
-            None,
-            JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content=response_formatter.buildErrorResponse(
-                    'Image from URL is empty'
-                ),
-            ),
-        )
-    image_data_b64 = base64.b64encode(image_bytes).decode('utf-8')
-    return (image_data_b64, None)
+        return (None, _bad_request(response_formatter, 'Image from URL is empty'))
+
+    return (base64.b64encode(image_bytes).decode('utf-8'), None)
 
 
 def _resolve_exact_match_candidate_cap(config: dict) -> int:
@@ -249,8 +186,7 @@ def _result_limit(top_k: Optional[int], limit: Optional[int]) -> int:
 @inject
 async def retrieve_query(
     kb_id: uuid.UUID,
-    query: Optional[str] = None,
-    payload: Optional[ImagePayload] = None,
+    payload: RetrievePayload = Body(..., description='Retrieve payload'),
     threshold: Optional[float] = Query(None, description='Cosine similarity threshold'),
     top_k: Optional[int] = Query(
         None,
@@ -279,10 +215,9 @@ async def retrieve_query(
         description=(
             'If true, run an exact (non-ANN) DINO match instead of the '
             'default top_k ANN/hybrid search. Requires image input, '
-            'threshold, filter1, document_date_start, and document_date_end '
-            '(filter1/document_date are optional narrowing filters on the '
-            'other search modes, but required for exact_match). The '
-            'underlying query never touches the HNSW index (see '
+            'threshold, and either a document_date or created_at window. '
+            'filter1..filter6 are optional narrowing filters. The underlying '
+            'query never touches the HNSW index (see '
             'QueryGenerator.get_image_embedding_dino_exact_match) so results '
             'are exact, not approximate.'
         ),
@@ -293,7 +228,8 @@ async def retrieve_query(
             'Start of the document_date window (inclusive), applied on '
             'knowledge_base_documents.document_date. Works with any search '
             'mode (text query, image ANN, or exact_match); must be provided '
-            'together with document_date_end. Required when exact_match=true.'
+            'together with document_date_end. One of document_date or '
+            'created_at window is required when exact_match=true.'
         ),
     ),
     document_date_end: Optional[datetime] = Query(
@@ -301,7 +237,8 @@ async def retrieve_query(
         description=(
             'End of the document_date window (inclusive). Works with any '
             'search mode; must be provided together with document_date_start. '
-            'Required when exact_match=true.'
+            'One of document_date or created_at window is required when '
+            'exact_match=true.'
         ),
     ),
     created_at_start: Optional[datetime] = Query(
@@ -324,8 +261,7 @@ async def retrieve_query(
         None,
         description=(
             'Equality filter on knowledge_base_documents.filter1. Works with '
-            'any search mode (text query, image ANN, or exact_match). '
-            'Required when exact_match=true.'
+            'any search mode (text query, image ANN, or exact_match).'
         ),
     ),
     filter2: Optional[str] = Query(
@@ -380,93 +316,109 @@ async def retrieve_query(
         Provide[KnowledgeBaseContainer.cloud_storage]
     ),
 ):
-    if not query and not payload:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(
-                'Query or Image data should not be empty'
-            ),
-        )
-    if exact_match and not payload:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(
-                'Image data is required when exact_match=true'
-            ),
-        )
+    query = (payload.query or '').strip() if payload else ''
+    has_image = bool(payload and (payload.image_url or payload.image_data))
     has_document_date_window = (
         document_date_start is not None and document_date_end is not None
     )
     has_created_at_window = created_at_start is not None and created_at_end is not None
+
+    if (document_date_start is None) != (document_date_end is None):
+        return _bad_request(
+            response_formatter,
+            'document_date_start and document_date_end must be provided together',
+        )
+    if (created_at_start is None) != (created_at_end is None):
+        return _bad_request(
+            response_formatter,
+            'created_at_start and created_at_end must be provided together',
+        )
+
+    existing_kb = await knowledge_base_repository.find_one(id=kb_id)
+    if not existing_kb:
+        return _bad_request(
+            response_formatter, 'Knowledge Base with the mentioned id doesnt exist'
+        )
+
+    is_image_kb = existing_kb.type == KnowledgeBaseType.IMAGE.value
+    if exact_match and not is_image_kb:
+        return _bad_request(
+            response_formatter,
+            'exact_match is only supported for image knowledge bases',
+        )
+    if is_image_kb and not has_image:
+        return _bad_request(
+            response_formatter, 'Image data is required for an image knowledge base'
+        )
+    if not is_image_kb and not query:
+        return _bad_request(
+            response_formatter, 'Query is required for a text knowledge base'
+        )
     if exact_match and (
         threshold is None or not (has_document_date_window or has_created_at_window)
     ):
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(
-                'threshold and either a document_date window '
-                '(document_date_start + document_date_end) or a created_at '
-                'window (created_at_start + created_at_end) are required '
-                'when exact_match=true'
-            ),
-        )
-    if (document_date_start is None) != (document_date_end is None):
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(
-                'document_date_start and document_date_end must be provided together'
-            ),
-        )
-    if (created_at_start is None) != (created_at_end is None):
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(
-                'created_at_start and created_at_end must be provided together'
-            ),
-        )
-    existing_kb = await knowledge_base_repository.find_one(id=kb_id)
-    if not existing_kb:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=response_formatter.buildErrorResponse(
-                'Knowledge Base with the mentioned id doesnt exist'
-            ),
+        return _bad_request(
+            response_formatter,
+            'threshold and either a document_date window '
+            '(document_date_start + document_date_end) or a created_at '
+            'window (created_at_start + created_at_end) are required '
+            'when exact_match=true',
         )
 
     match_count = None
     # One result count for every search mode: limit overrides top_k, and both
-    # fall back to DEFAULT_TOP_K. (Text search used to read only limit and
-    # image search only top_k; image search also crashed on a missing top_k.)
+    # fall back to DEFAULT_TOP_K.
     result_limit = _result_limit(top_k, limit)
 
-    if exact_match:
+    if is_image_kb:
         image_data, error_response = await _resolve_image_data(
-            payload, cloud_storage, config, response_formatter
+            payload, cloud_storage, response_formatter
         )
         if error_response is not None:
             return error_response
+        if not image_data:
+            return _bad_request(response_formatter, 'Image data should not be empty')
         inference_url = config['model']['inference_service_url']
-        exact_match_max_candidates = _resolve_exact_match_candidate_cap(config)
-        retrieved_docs = await image_rag_retrieval.exact_match_dino(
-            image_data,
-            inference_url,
-            kb_id,
-            filter1,
-            document_date_start,
-            document_date_end,
-            threshold,
-            filter2,
-            filter3,
-            filter4,
-            filter5,
-            filter6,
-            created_at_start,
-            created_at_end,
-            max_candidates=exact_match_max_candidates,
-        )
+
+        if exact_match:
+            retrieved_docs = await image_rag_retrieval.exact_match_dino(
+                image_data,
+                inference_url,
+                kb_id,
+                filter1,
+                document_date_start,
+                document_date_end,
+                cast(float, threshold),
+                filter2,
+                filter3,
+                filter4,
+                filter5,
+                filter6,
+                created_at_start,
+                created_at_end,
+                max_candidates=_resolve_exact_match_candidate_cap(config),
+            )
+            match_count = len(retrieved_docs)
+        else:
+            retrieved_docs = await image_rag_retrieval.retrieve_images(
+                image_data,
+                inference_url,
+                kb_id,
+                result_limit,
+                query_filter,
+                filter1,
+                filter2,
+                filter3,
+                filter4,
+                filter5,
+                filter6,
+                document_date_start,
+                document_date_end,
+                created_at_start,
+                created_at_end,
+            )
         retrieved_docs = convert_uuids_to_str(retrieved_docs)
-        match_count = len(retrieved_docs)
-    elif query:
+    else:
         try:
             retrieved_docs = await rag_retrieval.retrieve_documents(
                 query,
@@ -490,31 +442,6 @@ async def retrieve_query(
             )
         except TextEmbeddingError as err:
             return _embedding_error_response(err, response_formatter)
-    else:
-        image_data, error_response = await _resolve_image_data(
-            payload, cloud_storage, config, response_formatter
-        )
-        if error_response is not None:
-            return error_response
-        inference_url = config['model']['inference_service_url']
-        retrieved_docs = await image_rag_retrieval.retrieve_images(
-            image_data,
-            inference_url,
-            kb_id,
-            result_limit,
-            query_filter,
-            filter1,
-            filter2,
-            filter3,
-            filter4,
-            filter5,
-            filter6,
-            document_date_start,
-            document_date_end,
-            created_at_start,
-            created_at_end,
-        )
-        retrieved_docs = convert_uuids_to_str(retrieved_docs)
     if not retrieved_docs:
         empty_data = {'documents': []}
         if match_count is not None:
