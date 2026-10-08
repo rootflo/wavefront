@@ -1,5 +1,6 @@
 """Constructs the guardrails engine, its safety providers and its caches."""
 
+import os
 from typing import Any, List, Mapping, Optional
 
 from common_module.log.logger import logger
@@ -11,6 +12,8 @@ from guardrails_module.services.verdict_cache import (
 
 _TRUTHY = {'1', 'true', 'yes', 'on'}
 _FALSY = {'0', 'false', 'no', 'off'}
+
+DEFAULT_REGEX_TIMEOUT_SECONDS = 2
 
 
 def _cfg_int(cfg: Mapping[str, Any], key: str, default: int) -> int:
@@ -42,6 +45,18 @@ def cfg_bool(cfg: Mapping[str, Any], key: str, default: bool) -> bool:
 _cfg_bool = cfg_bool
 
 
+def _apply_presidio_regex_timeout(cfg: Mapping[str, Any]) -> None:
+    """Set REGEX_TIMEOUT_SECONDS before Presidio import (read at module load)."""
+    timeout = _cfg_int(cfg, 'regex_timeout_seconds', DEFAULT_REGEX_TIMEOUT_SECONDS)
+    if timeout < 1:
+        logger.warning(
+            f'Guardrails: regex_timeout_seconds={timeout} is too low, '
+            f'using {DEFAULT_REGEX_TIMEOUT_SECONDS}'
+        )
+        timeout = DEFAULT_REGEX_TIMEOUT_SECONDS
+    os.environ['REGEX_TIMEOUT_SECONDS'] = str(timeout)
+
+
 def build_guardrails_engine(
     policy_resolver: Any,
     audit_sink: Any = None,
@@ -55,6 +70,7 @@ def build_guardrails_engine(
     adapters: List[Any] = []
 
     try:
+        _apply_presidio_regex_timeout(cfg)
         import presidio_analyzer  # noqa: F401
         import presidio_anonymizer  # noqa: F401
 
