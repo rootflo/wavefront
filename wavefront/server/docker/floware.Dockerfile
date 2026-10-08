@@ -66,18 +66,6 @@ RUN uv sync --package floware --frozen --no-dev
 RUN uv pip install pip && \
     /app/.venv/bin/python -m spacy download en_core_web_lg
 
-# Bound how long any single regex may run. Presidio's default is 60s and it
-# reads this at import time, so it can only be set from the environment.
-#
-# The default is dangerous here rather than merely slow: the adapter analyses in
-# a two-thread pool, and a pattern that backtracks pins a thread for the whole
-# timeout. The policy's own timeout fires on the awaiting coroutine but cannot
-# cancel a running thread, so requests queue behind it and time out -- and
-# since the PII provider defaults to FAIL_CLOSED, that is a namespace-wide
-# outage. At 2s the pool recovers and the worst case is one pattern finding
-# nothing on one request.
-ENV REGEX_TIMEOUT_SECONDS=2
-
 # Create a non-root user and change ownership of the /app directory
 RUN useradd -m -u 1000 floware && \
     chown -R floware:floware /app
