@@ -32,27 +32,20 @@ _SHOW_ERROR_DESCRIPTION = (
     'admin callers only; everyone else gets the generic message regardless.'
 )
 
-# Query params starting with this filter on the execution's stored `variables`
-# rather than on a column of the table. The prefix is not decoration: variable
-# names are the caller's own, so one may well collide with a real filter
-# (`status`, `entity_id`), and a bare `?status=` could mean either.
+# Params under this prefix filter the stored `variables`, not a column. The
+# prefix is not decoration: variable names are the caller's own, so one may
+# collide with a real filter and a bare `?status=` could mean either.
 VARIABLE_FILTER_PREFIX = 'variable.'
 
 
 def _extract_variable_filters(request: Request) -> Dict[str, str]:
     """Pull `variable.<key>=<value>` pairs out of the query string.
 
-    Read off the raw query string because the variable names are the caller's
-    data, not a fixed set FastAPI could declare as arguments.
-
-    A repeated key collapses to its last value. Under the AND semantics below
-    the alternative is dead weight: a JSON object holds one value per key, so
-    `variable.x=a&variable.x=b` could never match anything.
-
-    A bare `?variable.=x` is kept, as the empty key it strips to, rather than
-    skipped. The validator rejects it and the caller gets the same 400 as any
-    other unusable key; dropping it here would instead answer a filtered
-    request with an unfiltered list.
+    Read off the raw query string because the names are the caller's data, not
+    a fixed set FastAPI could declare as arguments. A repeated key collapses to
+    its last value, which under AND semantics is the only reading that can
+    match. A bare `?variable.=x` is kept as the empty key it strips to, so the
+    validator 400s it rather than answering a filtered request unfiltered.
     """
     return {
         key[len(VARIABLE_FILTER_PREFIX) :]: value
@@ -300,20 +293,15 @@ async def list_executions(
 ):
     """List executions, newest first.
 
-    The run's stored `variables` are filtered with a `variable.` prefix, and
-    several AND together: `?variable.<key>=<value>`. An execution qualifies only
-    if it carries every pair given, so `?variable.x=abc` returns every run made
-    with that value of `x` whatever its other variables, while adding
-    `&variable.y=def` narrows that to the subset carrying both.
-
-    These params are the caller's own variable names rather than a fixed set, so
-    they are read off the raw query string and do not appear in the OpenAPI
-    schema.
+    The run's stored `variables` are filtered with `?variable.<key>=<value>`,
+    and several AND together: an execution qualifies only if it carries every
+    pair given. Being the caller's own names rather than a fixed set, these are
+    read off the raw query string and do not appear in the OpenAPI schema.
     """
     include_error = await _may_see_error(request, show_error)
 
-    # Before the query: a filter that could never have been stored is a 400, not
-    # an empty page that reads like a real answer.
+    # Rejected before the query: an unusable filter is a 400, not an empty page
+    # that reads like a real answer.
     try:
         variable_filters = validate_variable_filters(_extract_variable_filters(request))
     except ValueError as e:

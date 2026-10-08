@@ -155,18 +155,11 @@ def validate_inference_variables(
 
 
 def validate_variable_filters(filters: Dict[str, str]) -> Dict[str, str]:
-    """Hold variable *filter* keys and values to the rules the stored ones obey.
+    """Hold variable *filter* keys and values to the rules stored ones obey.
 
-    Symmetry with validate_inference_variables is the point: a filter that could
-    never have been stored can never match either, so rejecting it outright is
-    clearer to the caller than an empty page that looks like a real answer.
-
-    MAX_VARIABLE_COUNT does double duty here. On the write side it bounds prompt
-    size; on the read side it bounds how many AND terms one request can put into
-    the query.
-
-    Values always arrive as strings, having come off the query string, so only
-    the string branch of the value check is ever exercised.
+    A filter that could never have been stored can never match, so rejecting it
+    beats an empty page that looks like a real answer. MAX_VARIABLE_COUNT also
+    bounds how many AND terms one request can put into the query.
     """
     if not filters:
         return filters
