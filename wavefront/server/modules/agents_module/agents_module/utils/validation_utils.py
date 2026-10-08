@@ -154,6 +154,32 @@ def validate_inference_variables(
     return variables
 
 
+def validate_variable_filters(filters: Dict[str, str]) -> Dict[str, str]:
+    """Hold variable *filter* keys and values to the rules the stored ones obey.
+
+    Symmetry with validate_inference_variables is the point: a filter that could
+    never have been stored can never match either, so rejecting it outright is
+    clearer to the caller than an empty page that looks like a real answer.
+
+    MAX_VARIABLE_COUNT does double duty here. On the write side it bounds prompt
+    size; on the read side it bounds how many AND terms one request can put into
+    the query.
+
+    Values always arrive as strings, having come off the query string, so only
+    the string branch of the value check is ever exercised.
+    """
+    if not filters:
+        return filters
+
+    _check_count(len(filters), 'variable filters')
+
+    for key, value in filters.items():
+        _validate_variable_key(key)
+        _validate_variable_value(value, key)
+
+    return filters
+
+
 # Allowlist of keys an input item and its `content` object may carry; anything
 # not enumerated here is refused at the boundary. The content set is the union of
 # the media keys the backend reads (is_image_message / is_doc_message) and the

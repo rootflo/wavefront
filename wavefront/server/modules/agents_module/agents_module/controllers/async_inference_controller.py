@@ -1,5 +1,5 @@
 from uuid import UUID
-from typing import Optional
+from typing import Dict, Optional
 
 from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import JSONResponse
@@ -18,6 +18,7 @@ from agents_module.models.agent_schemas import AgentInferenceRequest
 from agents_module.models.workflow_schemas import WorkflowInferenceRequest
 from agents_module.utils.auth_utils import extract_auth_credentials
 from agents_module.utils.input_processing_utils import validate_inference_inputs_media
+from agents_module.utils.validation_utils import validate_variable_filters
 from user_management_module.utils.user_utils import check_is_admin
 from llm_inference_config_module.container import LlmInferenceConfigContainer
 from llm_inference_config_module.services.llm_inference_config_service import (
@@ -30,6 +31,29 @@ _SHOW_ERROR_DESCRIPTION = (
     'Return the stored error text instead of a generic message. Honoured for '
     'admin callers only; everyone else gets the generic message regardless.'
 )
+
+# Query params starting with this filter on the execution's stored `variables`
+# rather than on a column of the table. The prefix is not decoration: variable
+# names are the caller's own, so one may well collide with a real filter
+# (`status`, `entity_id`), and a bare `?status=` could mean either.
+VARIABLE_FILTER_PREFIX = 'variable.'
+
+
+def _extract_variable_filters(request: Request) -> Dict[str, str]:
+    """Pull `variable.<key>=<value>` pairs out of the query string.
+
+    Read off the raw query string because the variable names are the caller's
+    data, not a fixed set FastAPI could declare as arguments.
+
+    A repeated key collapses to its last value. Under the AND semantics below
+    the alternative is dead weight: a JSON object holds one value per key, so
+    `variable.x=a&variable.x=b` could never match anything.
+    """
+    return {
+        key[len(VARIABLE_FILTER_PREFIX) :]: value
+        for key, value in request.query_params.items()
+        if key.startswith(VARIABLE_FILTER_PREFIX) and key != VARIABLE_FILTER_PREFIX
+    }
 
 
 async def _may_see_error(request: Request, show_error: bool) -> bool:
@@ -269,12 +293,35 @@ async def list_executions(
         Provide[CommonContainer.response_formatter]
     ),
 ):
+    """List executions, newest first.
+
+    The run's stored `variables` are filtered with a `variable.` prefix, and
+    several AND together: `?variable.<key>=<value>`. An execution qualifies only
+    if it carries every pair given, so `?variable.x=abc` returns every run made
+    with that value of `x` whatever its other variables, while adding
+    `&variable.y=def` narrows that to the subset carrying both.
+
+    These params are the caller's own variable names rather than a fixed set, so
+    they are read off the raw query string and do not appear in the OpenAPI
+    schema.
+    """
     include_error = await _may_see_error(request, show_error)
+
+    # Before the query: a filter that could never have been stored is a 400, not
+    # an empty page that reads like a real answer.
+    try:
+        variable_filters = validate_variable_filters(_extract_variable_filters(request))
+    except ValueError as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
 
     results, total = await async_agentic_execution_service.list_executions(
         entity_id=entity_id,
         entity_type=entity_type,
         status=execution_status,
+        variables=variable_filters or None,
         offset=offset,
         limit=limit,
         include_error=include_error,
