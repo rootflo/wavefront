@@ -48,11 +48,16 @@ def _extract_variable_filters(request: Request) -> Dict[str, str]:
     A repeated key collapses to its last value. Under the AND semantics below
     the alternative is dead weight: a JSON object holds one value per key, so
     `variable.x=a&variable.x=b` could never match anything.
+
+    A bare `?variable.=x` is kept, as the empty key it strips to, rather than
+    skipped. The validator rejects it and the caller gets the same 400 as any
+    other unusable key; dropping it here would instead answer a filtered
+    request with an unfiltered list.
     """
     return {
         key[len(VARIABLE_FILTER_PREFIX) :]: value
         for key, value in request.query_params.items()
-        if key.startswith(VARIABLE_FILTER_PREFIX) and key != VARIABLE_FILTER_PREFIX
+        if key.startswith(VARIABLE_FILTER_PREFIX)
     }
 
 
