@@ -116,9 +116,20 @@ export const RouterNode = React.memo(({ data, selected }: NodeProps) => {
         selected={selected}
         badge={
           <div className="flex items-center gap-1">
-            <Badge variant="outline" className="border-orange-500/20 bg-orange-500/10 py-0 text-[10px] text-orange-500">
-              {typeLabels[routerType] || routerType}
-            </Badge>
+            {data.isStartNode && (
+              <Badge className="bg-emerald-500 px-1.5 py-0 text-[9px] font-medium text-white shadow-xs">🚀 Start</Badge>
+            )}
+            {data.isEndNode && (
+              <Badge className="bg-purple-600 px-1.5 py-0 text-[9px] font-medium text-white shadow-xs">🏁 End</Badge>
+            )}
+            {!data.isStartNode && !data.isEndNode && (
+              <Badge
+                variant="outline"
+                className="border-orange-500/20 bg-orange-500/10 py-0 text-[10px] text-orange-500"
+              >
+                {typeLabels[routerType] || routerType}
+              </Badge>
+            )}
             {Boolean(data.isLoopTarget) && (
               <Badge
                 variant="outline"
@@ -296,6 +307,30 @@ export const AgentNode = React.memo(({ data, selected }: NodeProps) => {
           </div>
         )}
 
+        {/* Parser Payload Preview */}
+        {hasParser &&
+          typeof data.parser === 'object' &&
+          Array.isArray((data.parser as Record<string, unknown>).fields) && (
+            <div className="border-border/60 text-muted-foreground flex flex-col gap-1 border-t pt-2 text-[10px]">
+              <span className="font-semibold text-purple-600 dark:text-purple-400">Schema Output:</span>
+              <div className="flex flex-wrap gap-1">
+                {(data.parser as { fields: { name: string }[] }).fields.slice(0, 4).map((f) => (
+                  <span
+                    key={f.name}
+                    className="text-foreground rounded border border-purple-500/20 bg-purple-500/10 px-1 py-0.5 text-[9px]"
+                  >
+                    {f.name}
+                  </span>
+                ))}
+                {(data.parser as { fields: { name: string }[] }).fields.length > 4 && (
+                  <span className="text-foreground rounded border border-purple-500/20 bg-purple-500/10 px-1 py-0.5 text-[9px]">
+                    + {(data.parser as { fields: { name: string }[] }).fields.length - 4} more
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
         {/* Model Footer */}
         <div className="border-border/60 text-muted-foreground flex items-center justify-between border-t pt-2 text-[10px]">
           <span className="flex max-w-[170px] items-center gap-1 truncate">
@@ -336,9 +371,17 @@ export const FunctionNode = React.memo(({ data, selected }: NodeProps) => {
         selected={selected}
         badge={
           <div className="flex items-center gap-1">
-            <Badge variant="outline" className="border-blue-500/20 bg-blue-500/10 py-0 text-[10px] text-blue-500">
-              Function
-            </Badge>
+            {data.isStartNode && (
+              <Badge className="bg-emerald-500 px-1.5 py-0 text-[9px] font-medium text-white shadow-xs">🚀 Start</Badge>
+            )}
+            {data.isEndNode && (
+              <Badge className="bg-purple-600 px-1.5 py-0 text-[9px] font-medium text-white shadow-xs">🏁 End</Badge>
+            )}
+            {!data.isStartNode && !data.isEndNode && (
+              <Badge variant="outline" className="border-blue-500/20 bg-blue-500/10 py-0 text-[10px] text-blue-500">
+                Function
+              </Badge>
+            )}
             {Boolean(data.isLoopTarget) && (
               <Badge
                 variant="outline"
@@ -396,13 +439,21 @@ export const IteratorNode = React.memo(({ data, selected }: NodeProps) => {
         selected={selected}
         badge={
           <div className="flex items-center gap-1">
-            <Badge
-              variant="outline"
-              className="flex items-center gap-1 border-indigo-500/30 bg-indigo-500/10 py-0 text-[10px] font-semibold text-indigo-500"
-            >
-              <Repeat size={10} className="animate-[spin_4s_linear_infinite]" />
-              ForEach Loop
-            </Badge>
+            {data.isStartNode && (
+              <Badge className="bg-emerald-500 px-1.5 py-0 text-[9px] font-medium text-white shadow-xs">🚀 Start</Badge>
+            )}
+            {data.isEndNode && (
+              <Badge className="bg-purple-600 px-1.5 py-0 text-[9px] font-medium text-white shadow-xs">🏁 End</Badge>
+            )}
+            {!data.isStartNode && !data.isEndNode && (
+              <Badge
+                variant="outline"
+                className="flex items-center gap-1 border-indigo-500/30 bg-indigo-500/10 py-0 text-[10px] font-semibold text-indigo-500"
+              >
+                <Repeat size={10} className="animate-[spin_4s_linear_infinite]" />
+                ForEach Loop
+              </Badge>
+            )}
             {Boolean(data.isLoopTarget) && (
               <Badge
                 variant="outline"
@@ -502,9 +553,17 @@ export const SubworkflowNode = React.memo(({ data, selected }: NodeProps) => {
         selected={selected}
         badge={
           <div className="flex items-center gap-1">
-            <Badge variant="outline" className="border-teal-500/20 bg-teal-500/10 py-0 text-[10px] text-teal-500">
-              Arium
-            </Badge>
+            {data.isStartNode && (
+              <Badge className="bg-emerald-500 px-1.5 py-0 text-[9px] font-medium text-white shadow-xs">🚀 Start</Badge>
+            )}
+            {data.isEndNode && (
+              <Badge className="bg-purple-600 px-1.5 py-0 text-[9px] font-medium text-white shadow-xs">🏁 End</Badge>
+            )}
+            {!data.isStartNode && !data.isEndNode && (
+              <Badge variant="outline" className="border-teal-500/20 bg-teal-500/10 py-0 text-[10px] text-teal-500">
+                Arium
+              </Badge>
+            )}
             {Boolean(data.isLoopTarget) && (
               <Badge
                 variant="outline"

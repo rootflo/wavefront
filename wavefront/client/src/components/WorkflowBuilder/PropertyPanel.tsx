@@ -7,6 +7,7 @@ import { Button } from '@app/components/ui/button';
 import { useParams } from 'react-router';
 import { useGetLLMConfigs, useGetWorkflows, useGetTools, useGetAgents } from '@app/hooks/data/fetch-hooks';
 import MultiSelect from '@app/components/MultiSelect';
+import { ParserBuilder } from './ParserBuilder';
 
 interface PropertyPanelProps {
   selectedNode: Node | null;
@@ -34,6 +35,7 @@ export const PropertyPanel = ({
   const { data: agents = [] } = useGetAgents(appId || '');
 
   const [nameInput, setNameInput] = React.useState((selectedNode?.data?.label as string) || selectedNode?.id || '');
+  const [parserMode, setParserMode] = React.useState<'builder' | 'raw'>('builder');
 
   React.useEffect(() => {
     if (selectedNode) {
@@ -299,25 +301,45 @@ export const PropertyPanel = ({
 
               {/* Output Parser (JSON Schema) */}
               <div>
-                <Label className="mb-1 block text-xs">Output Parser Schema (JSON / YAML)</Label>
-                <textarea
-                  className="bg-background border-border focus:border-primary text-foreground h-24 w-full resize-none rounded-md border px-3 py-2 font-mono text-xs focus:outline-none"
-                  value={
-                    typeof selectedNode.data.parser === 'object'
-                      ? JSON.stringify(selectedNode.data.parser, null, 2)
-                      : (selectedNode.data.parser as string) || ''
-                  }
-                  onChange={(e) => {
-                    try {
-                      const parsed = JSON.parse(e.target.value);
-                      handleChange('parser', parsed);
-                    } catch {
-                      handleChange('parser', e.target.value);
+                <div className="mb-1 flex items-center justify-between">
+                  <Label className="block text-xs">Output Parser Schema (JSON / YAML)</Label>
+                  <div className="bg-muted border-border flex overflow-hidden rounded border">
+                    <button
+                      className={`px-2 py-0.5 text-[10px] ${parserMode === 'builder' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/80'}`}
+                      onClick={() => setParserMode('builder')}
+                    >
+                      Builder
+                    </button>
+                    <button
+                      className={`px-2 py-0.5 text-[10px] ${parserMode === 'raw' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/80'}`}
+                      onClick={() => setParserMode('raw')}
+                    >
+                      Raw JSON
+                    </button>
+                  </div>
+                </div>
+                {parserMode === 'builder' ? (
+                  <ParserBuilder value={selectedNode.data.parser} onChange={(val) => handleChange('parser', val)} />
+                ) : (
+                  <textarea
+                    className="bg-background border-border focus:border-primary text-foreground h-48 w-full resize-none rounded-md border px-3 py-2 font-mono text-xs focus:outline-none"
+                    value={
+                      typeof selectedNode.data.parser === 'object'
+                        ? JSON.stringify(selectedNode.data.parser, null, 2)
+                        : (selectedNode.data.parser as string) || ''
                     }
-                  }}
-                  placeholder='{\n  "type": "object",\n  "properties": {\n    "decision": { "type": "string" }\n  }\n}'
-                />
-                <p className="text-muted-foreground mt-0.5 text-[10px]">
+                    onChange={(e) => {
+                      try {
+                        const parsed = JSON.parse(e.target.value);
+                        handleChange('parser', parsed);
+                      } catch {
+                        handleChange('parser', e.target.value);
+                      }
+                    }}
+                    placeholder='{\n  "name": "MySchema",\n  "fields": []\n}'
+                  />
+                )}
+                <p className="text-muted-foreground mt-1 text-[10px]">
                   Forces the agent to produce validated structured schema output.
                 </p>
               </div>
