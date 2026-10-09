@@ -6,7 +6,7 @@ import { Button } from '@app/components/ui/button';
 import { Label } from '@app/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Switch } from '@app/components/ui/switch';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@app/components/ui/dialog';
+import { Dialog, DialogContent } from '@app/components/ui/dialog';
 import { appEnv } from '@app/config/env';
 import {
   documentMimeTypeFor,
@@ -21,9 +21,11 @@ import { ChatMessage, ChatMessageContent } from '@app/types/chat-message';
 import { Workflow, WorkflowEvent } from '@app/types/workflow';
 import { scrollToBottom } from '@app/utils/scroll';
 import { useQueryClient } from '@tanstack/react-query';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@app/components/ui/tabs';
 import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
 import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeMirror from '@uiw/react-codemirror';
+import { WorkflowVisualEditor } from '@app/components/WorkflowBuilder/WorkflowVisualEditor';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useParams } from 'react-router';
@@ -812,52 +814,102 @@ const WorkflowDetail: React.FC = () => {
       </div>
 
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="max-h-[90vh] min-w-0 overflow-y-auto lg:max-w-4xl">
-          <DialogHeader>
-            <DialogTitle>Edit Workflow Configuration</DialogTitle>
-          </DialogHeader>
-          <div className="flex min-w-0 flex-col gap-3 overflow-y-auto py-4">
-            <CodeMirror
-              value={yamlContent}
-              editable={true}
-              onChange={(value: string) => setYamlContent(value)}
-              theme="dark"
-              height="500px"
-              width="100%"
-              maxWidth="100%"
-              className="w-full min-w-0"
-              extensions={[langs.yaml(), ...popupCodeMirrorExtensions]}
-            />
-            <p className="text-sm leading-normal font-normal text-[#878787]">
-              Define your workflow configuration in YAML format.
-            </p>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={handleEditDialogClose} disabled={saving}>
-              Cancel
-            </Button>
-            <Button
-              variant="outline"
-              disabled={saving}
-              loading={saving && editSubmitAction === 'save'}
-              onClick={() => {
-                setEditSubmitAction('save');
-                handleSave(false);
-              }}
+        <DialogContent
+          showCloseButton={false}
+          className="bg-background !fixed !inset-0 !top-0 !left-0 z-50 flex !h-screen !max-h-none !w-screen !max-w-none min-w-0 !translate-x-0 !translate-y-0 flex-col !gap-0 overflow-hidden !rounded-none !border-0 !p-0"
+        >
+          <Tabs defaultValue="visual" className="flex h-full min-h-0 w-full flex-col">
+            {/* TOP COMMAND BAR */}
+            <div className="border-border bg-card/95 z-30 flex h-14 shrink-0 items-center justify-between gap-4 border-b px-4 backdrop-blur-md">
+              <div className="flex items-center gap-2">
+                <div className="bg-primary/10 text-primary flex h-7 w-7 items-center justify-center rounded-lg text-xs font-bold shadow-xs">
+                  WF
+                </div>
+                <div>
+                  <h2 className="text-foreground text-xs leading-none font-semibold">Edit Workflow Configuration</h2>
+                  <span className="text-muted-foreground text-[10px]">
+                    {workflow?.name || workflowId} ({workflow?.namespace || namespace})
+                  </span>
+                </div>
+              </div>
+
+              {/* Center: Tabs Switcher */}
+              <TabsList className="bg-muted/60 h-8 p-0.5">
+                <TabsTrigger value="visual" className="h-7 px-3 text-xs">
+                  Visual Builder
+                </TabsTrigger>
+                <TabsTrigger value="yaml" className="h-7 px-3 text-xs">
+                  YAML Code
+                </TabsTrigger>
+              </TabsList>
+
+              {/* Right: Actions */}
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground hover:text-foreground h-8 text-xs"
+                  onClick={handleEditDialogClose}
+                  disabled={saving}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  disabled={saving}
+                  loading={saving && editSubmitAction === 'save'}
+                  onClick={() => {
+                    setEditSubmitAction('save');
+                    handleSave(false);
+                  }}
+                >
+                  Save
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-8 text-xs shadow-xs"
+                  disabled={saving}
+                  loading={saving && editSubmitAction === 'new'}
+                  onClick={() => {
+                    setEditSubmitAction('new');
+                    handleSave(true);
+                  }}
+                >
+                  Save as new version
+                </Button>
+              </div>
+            </div>
+
+            {/* TABS CONTENT: 100% REMAINING REAL ESTATE */}
+            <TabsContent
+              value="visual"
+              className="m-0 h-[calc(100vh-56px)] min-h-0 w-full flex-1 overflow-hidden outline-none"
             >
-              Save
-            </Button>
-            <Button
-              disabled={saving}
-              loading={saving && editSubmitAction === 'new'}
-              onClick={() => {
-                setEditSubmitAction('new');
-                handleSave(true);
-              }}
+              <WorkflowVisualEditor yamlContent={yamlContent} onChange={(val) => setYamlContent(val)} />
+            </TabsContent>
+
+            <TabsContent
+              value="yaml"
+              className="m-0 flex h-[calc(100vh-56px)] min-h-0 w-full flex-1 flex-col gap-2 p-4 outline-none"
             >
-              Save as new version
-            </Button>
-          </DialogFooter>
+              <CodeMirror
+                value={yamlContent}
+                editable={true}
+                onChange={(value: string) => setYamlContent(value)}
+                theme="dark"
+                height="100%"
+                width="100%"
+                maxWidth="100%"
+                className="border-border w-full min-w-0 flex-1 overflow-auto rounded-xl border"
+                extensions={[langs.yaml(), ...popupCodeMirrorExtensions]}
+              />
+              <p className="text-muted-foreground shrink-0 text-xs">
+                Define your workflow configuration in YAML format.
+              </p>
+            </TabsContent>
+          </Tabs>
         </DialogContent>
       </Dialog>
 
