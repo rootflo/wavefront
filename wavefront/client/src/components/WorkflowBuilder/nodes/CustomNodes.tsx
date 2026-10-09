@@ -116,10 +116,10 @@ export const RouterNode = React.memo(({ data, selected }: NodeProps) => {
         selected={selected}
         badge={
           <div className="flex items-center gap-1">
-            {data.isStartNode && (
+            {Boolean(data.isStartNode) && (
               <Badge className="bg-emerald-500 px-1.5 py-0 text-[9px] font-medium text-white shadow-xs">🚀 Start</Badge>
             )}
-            {data.isEndNode && (
+            {Boolean(data.isEndNode) && (
               <Badge className="bg-purple-600 px-1.5 py-0 text-[9px] font-medium text-white shadow-xs">🏁 End</Badge>
             )}
             {!data.isStartNode && !data.isEndNode && (
@@ -140,7 +140,7 @@ export const RouterNode = React.memo(({ data, selected }: NodeProps) => {
             )}
           </div>
         }
-        onDelete={data.onDelete}
+        onDelete={data.onDelete as (() => void) | undefined}
       >
         {/* Router Specific Details */}
         {isFieldMatch && (
@@ -242,10 +242,10 @@ export const AgentNode = React.memo(({ data, selected }: NodeProps) => {
         selected={selected}
         badge={
           <div className="flex items-center gap-1">
-            {data.isStartNode && (
+            {Boolean(data.isStartNode) && (
               <Badge className="bg-emerald-500 px-1.5 py-0 text-[9px] font-medium text-white shadow-xs">🚀 Start</Badge>
             )}
-            {data.isEndNode && (
+            {Boolean(data.isEndNode) && (
               <Badge className="bg-purple-600 px-1.5 py-0 text-[9px] font-medium text-white shadow-xs">🏁 End</Badge>
             )}
             {!data.isStartNode && !data.isEndNode && (
@@ -371,10 +371,10 @@ export const FunctionNode = React.memo(({ data, selected }: NodeProps) => {
         selected={selected}
         badge={
           <div className="flex items-center gap-1">
-            {data.isStartNode && (
+            {Boolean(data.isStartNode) && (
               <Badge className="bg-emerald-500 px-1.5 py-0 text-[9px] font-medium text-white shadow-xs">🚀 Start</Badge>
             )}
-            {data.isEndNode && (
+            {Boolean(data.isEndNode) && (
               <Badge className="bg-purple-600 px-1.5 py-0 text-[9px] font-medium text-white shadow-xs">🏁 End</Badge>
             )}
             {!data.isStartNode && !data.isEndNode && (
@@ -439,10 +439,10 @@ export const IteratorNode = React.memo(({ data, selected }: NodeProps) => {
         selected={selected}
         badge={
           <div className="flex items-center gap-1">
-            {data.isStartNode && (
+            {Boolean(data.isStartNode) && (
               <Badge className="bg-emerald-500 px-1.5 py-0 text-[9px] font-medium text-white shadow-xs">🚀 Start</Badge>
             )}
-            {data.isEndNode && (
+            {Boolean(data.isEndNode) && (
               <Badge className="bg-purple-600 px-1.5 py-0 text-[9px] font-medium text-white shadow-xs">🏁 End</Badge>
             )}
             {!data.isStartNode && !data.isEndNode && (
@@ -553,10 +553,10 @@ export const SubworkflowNode = React.memo(({ data, selected }: NodeProps) => {
         selected={selected}
         badge={
           <div className="flex items-center gap-1">
-            {data.isStartNode && (
+            {Boolean(data.isStartNode) && (
               <Badge className="bg-emerald-500 px-1.5 py-0 text-[9px] font-medium text-white shadow-xs">🚀 Start</Badge>
             )}
-            {data.isEndNode && (
+            {Boolean(data.isEndNode) && (
               <Badge className="bg-purple-600 px-1.5 py-0 text-[9px] font-medium text-white shadow-xs">🏁 End</Badge>
             )}
             {!data.isStartNode && !data.isEndNode && (

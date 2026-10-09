@@ -476,7 +476,13 @@ export const parseYamlToGraph = (yamlString: string): { nodes: Node[]; edges: Ed
           const routerOpts = (routerData?.data?.routing_options as Record<string, string>) || {};
 
           toList.forEach((toItem: string) => {
-            const intentText = routerOpts[toItem] || `to ${toItem}`;
+            if (!routerOpts[toItem]) {
+              routerOpts[toItem] = `Route to ${toItem}`;
+              if (routerData && routerData.data) {
+                routerData.data.routing_options = routerOpts;
+              }
+            }
+            const intentText = routerOpts[toItem];
             const shortLabel = intentText.length > 25 ? intentText.substring(0, 25) + '...' : intentText;
 
             edges.push({
@@ -563,12 +569,18 @@ export const serializeGraphToYaml = (nodes: Node[], edges: Edge[], currentYaml: 
     const doc = (yaml.load(currentYaml) as AriumDoc) || {};
     if (!doc.arium) doc.arium = {};
 
+    const toTemperature = (v: unknown, fallback: number) => {
+      const n = Number(v);
+      return v === '' || v === undefined || v === null || Number.isNaN(n) ? fallback : n;
+    };
+
     // 1. Reconstruct Agents
     const existingAgents = doc.arium.agents || [];
     const newAgents = nodes
       .filter((n) => n.type === 'agentNode')
       .map((n) => {
-        const existing = existingAgents.find((a: AriumAgentConfig) => a.name === n.id) || {};
+        const existing = (existingAgents.find((a: AriumAgentConfig) => a.name === n.id) ||
+          {}) as Partial<AriumAgentConfig>;
 
         const agentObj: Record<string, unknown> = {
           ...existing,
@@ -584,7 +596,7 @@ export const serializeGraphToYaml = (nodes: Node[], edges: Edge[], currentYaml: 
           },
           settings: {
             ...existing.settings,
-            temperature: Number(n.data.temperature) || 0.7,
+            temperature: toTemperature(n.data.temperature, 0.7),
           },
         };
 
@@ -616,7 +628,8 @@ export const serializeGraphToYaml = (nodes: Node[], edges: Edge[], currentYaml: 
     const newFunctions = nodes
       .filter((n) => n.type === 'functionNode')
       .map((n) => {
-        const existing = existingFunctions.find((fn: AriumFunctionNodeConfig) => fn.name === n.id) || {};
+        const existing = (existingFunctions.find((fn: AriumFunctionNodeConfig) => fn.name === n.id) ||
+          {}) as Partial<AriumFunctionNodeConfig>;
         const fnObj: Record<string, unknown> = {
           ...existing,
           name: n.data.label || n.id,
@@ -644,7 +657,8 @@ export const serializeGraphToYaml = (nodes: Node[], edges: Edge[], currentYaml: 
     const newIterators = nodes
       .filter((n) => n.type === 'iteratorNode')
       .map((n) => {
-        const existing = existingIterators.find((it: AriumIteratorConfig) => it.name === n.id) || {};
+        const existing = (existingIterators.find((it: AriumIteratorConfig) => it.name === n.id) ||
+          {}) as Partial<AriumIteratorConfig>;
         const itObj: Record<string, unknown> = {
           ...existing,
           name: n.data.label || n.id,
@@ -669,15 +683,21 @@ export const serializeGraphToYaml = (nodes: Node[], edges: Edge[], currentYaml: 
       .filter((n) => n.type === 'subworkflowNode')
       .map((n) => {
         const fullRef = (n.data.yaml_file || n.data.ref || n.data.label || n.id) as string;
-        const localName = fullRef.split('/').pop() || fullRef;
-        const existing =
-          existingAriums.find((a: AriumSubworkflowConfig) => a.name === fullRef || a.name === localName) || {};
+        const existing = (existingAriums.find(
+          (a: AriumSubworkflowConfig) => a.name === n.id || a.yaml_file === fullRef
+        ) || {}) as Partial<AriumSubworkflowConfig>;
 
         const ariumObj: Record<string, unknown> = {
           ...existing,
-          name: fullRef,
+          name: n.id,
           inherit_variables: n.data.inherit_variables !== false,
         };
+
+        if (fullRef && fullRef !== n.id) {
+          ariumObj.yaml_file = fullRef;
+        } else {
+          delete ariumObj.yaml_file;
+        }
 
         if (n.data.input_filter && Array.isArray(n.data.input_filter) && n.data.input_filter.length > 0) {
           ariumObj.input_filter = n.data.input_filter;
@@ -685,7 +705,6 @@ export const serializeGraphToYaml = (nodes: Node[], edges: Edge[], currentYaml: 
           delete ariumObj.input_filter;
         }
 
-        delete ariumObj.yaml_file; // Omit if name holds the path
         return ariumObj;
       });
     doc.arium.ariums = newAriums.length > 0 ? (newAriums as AriumSubworkflowConfig[]) : undefined;
@@ -695,7 +714,8 @@ export const serializeGraphToYaml = (nodes: Node[], edges: Edge[], currentYaml: 
     const newRouters = nodes
       .filter((n) => n.type === 'routerNode')
       .map((n) => {
-        const existing = existingRouters.find((r: AriumRouterConfig) => r.name === n.id) || {};
+        const existing = (existingRouters.find((r: AriumRouterConfig) => r.name === n.id) ||
+          {}) as Partial<AriumRouterConfig>;
         const strategy = (n.data.strategy || n.data.type || 'smart') as string;
         const isFieldMatch = strategy === 'field_match';
         const isReflection = strategy === 'reflection';
@@ -744,7 +764,7 @@ export const serializeGraphToYaml = (nodes: Node[], edges: Edge[], currentYaml: 
           };
           routerObj.settings = {
             ...existing.settings,
-            temperature: Number(n.data.temperature) || 0.3,
+            temperature: toTemperature(n.data.temperature, 0.3),
             allow_early_exit: !!n.data.allow_early_exit,
           };
           delete routerObj.field;
@@ -757,7 +777,7 @@ export const serializeGraphToYaml = (nodes: Node[], edges: Edge[], currentYaml: 
           };
           routerObj.settings = {
             ...existing.settings,
-            temperature: Number(n.data.temperature) || 0.3,
+            temperature: toTemperature(n.data.temperature, 0.3),
             context_description: n.data.context_description || undefined,
             fallback_strategy: n.data.fallback_strategy || 'first',
           };

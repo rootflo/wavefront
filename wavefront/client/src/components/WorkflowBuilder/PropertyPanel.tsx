@@ -231,7 +231,7 @@ export const PropertyPanel = ({
                     step="0.1"
                     min="0"
                     max="1"
-                    value={(selectedNode.data.temperature as string) || '0.7'}
+                    value={(selectedNode.data.temperature as string) ?? '0.7'}
                     onChange={(e) => handleChange('temperature', e.target.value)}
                     className="bg-background h-8 text-xs"
                   />
@@ -487,7 +487,7 @@ export const PropertyPanel = ({
                       step="0.1"
                       min="0"
                       max="1"
-                      value={(selectedNode.data.temperature as string) || '0.3'}
+                      value={(selectedNode.data.temperature as string) ?? '0.3'}
                       onChange={(e) => handleChange('temperature', e.target.value)}
                       className="bg-background h-8 text-xs"
                     />

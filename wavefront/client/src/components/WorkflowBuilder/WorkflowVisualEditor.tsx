@@ -40,6 +40,13 @@ interface WorkflowVisualEditorProps {
   onChange?: (newYaml: string) => void;
 }
 
+const nextUniqueId = (prefix: string, existing: Node[]) => {
+  const ids = new Set(existing.map((n) => n.id));
+  let i = 1;
+  while (ids.has(`${prefix}_${i}`)) i++;
+  return `${prefix}_${i}`;
+};
+
 export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVisualEditorProps) => {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
@@ -337,8 +344,7 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
 
   // Add an Agent
   const handleAddAgent = useCallback(() => {
-    const count = nodes.filter((n) => n.type === 'agentNode').length + 1;
-    const newId = `agent_${count}`;
+    const newId = nextUniqueId('agent', nodes);
     const isFirstAgent = nodes.filter((n) => n.type === 'agentNode').length === 0;
 
     const lastNode = nodes[nodes.length - 1];
@@ -366,8 +372,7 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
 
   // Add a Router
   const handleAddRouter = useCallback(() => {
-    const count = nodes.filter((n) => n.type === 'routerNode').length + 1;
-    const newId = `router_${count}`;
+    const newId = nextUniqueId('router', nodes);
 
     const lastNode = nodes[nodes.length - 1];
     const position = lastNode ? { x: lastNode.position.x + 360, y: lastNode.position.y } : { x: 300, y: 150 };
@@ -392,8 +397,7 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
 
   // Add a Function Node
   const handleAddFunction = useCallback(() => {
-    const count = nodes.filter((n) => n.type === 'functionNode').length + 1;
-    const newId = `function_${count}`;
+    const newId = nextUniqueId('function', nodes);
 
     const lastNode = nodes[nodes.length - 1];
     const position = lastNode ? { x: lastNode.position.x + 360, y: lastNode.position.y } : { x: 300, y: 150 };
@@ -413,8 +417,7 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
 
   // Add an Iterator Node
   const handleAddIterator = useCallback(() => {
-    const count = nodes.filter((n) => n.type === 'iteratorNode').length + 1;
-    const newId = `iterator_${count}`;
+    const newId = nextUniqueId('iterator', nodes);
 
     const lastNode = nodes[nodes.length - 1];
     const position = lastNode ? { x: lastNode.position.x + 360, y: lastNode.position.y } : { x: 300, y: 150 };
@@ -434,8 +437,7 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
 
   // Add a Sub-Workflow Node
   const handleAddSubworkflow = useCallback(() => {
-    const count = nodes.filter((n) => n.type === 'subworkflowNode').length + 1;
-    const newId = `subworkflow_${count}`;
+    const newId = nextUniqueId('subworkflow', nodes);
 
     const lastNode = nodes[nodes.length - 1];
     const position = lastNode ? { x: lastNode.position.x + 360, y: lastNode.position.y } : { x: 300, y: 150 };
@@ -610,6 +612,22 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
       }
 
       const isFromIterator = sourceNode?.type === 'iteratorNode';
+
+      let currentNodes = nodes;
+      if (isRouter && params.source && params.target) {
+        currentNodes = nodes.map((n) => {
+          if (n.id === params.source) {
+            const opts = (n.data.routing_options as Record<string, string>) || {};
+            return {
+              ...n,
+              data: { ...n.data, routing_options: { ...opts, [params.target!]: `Route to ${params.target}` } },
+            };
+          }
+          return n;
+        });
+        setNodes(currentNodes);
+      }
+
       setEdges((eds) => {
         const newEdges = addEdge(
           {
@@ -629,7 +647,7 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
           },
           eds
         );
-        updateYaml(nodes, newEdges);
+        updateYaml(currentNodes, newEdges);
         return newEdges;
       });
 
@@ -656,13 +674,13 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
     if (!addNodeMenu || !reactFlowInstance) return;
     const position = reactFlowInstance.screenToFlowPosition({ x: addNodeMenu.x, y: addNodeMenu.y });
 
-    const count = nodes.filter((n) => n.type === type).length + 1;
-    let newNodeId = `step_${count}`;
-    if (type === 'agentNode') newNodeId = `agent_${count}`;
-    else if (type === 'routerNode') newNodeId = `router_${count}`;
-    else if (type === 'functionNode') newNodeId = `function_${count}`;
-    else if (type === 'iteratorNode') newNodeId = `iterator_${count}`;
-    else if (type === 'subworkflowNode') newNodeId = `subworkflow_${count}`;
+    let prefix = 'step';
+    if (type === 'agentNode') prefix = 'agent';
+    else if (type === 'routerNode') prefix = 'router';
+    else if (type === 'functionNode') prefix = 'function';
+    else if (type === 'iteratorNode') prefix = 'iterator';
+    else if (type === 'subworkflowNode') prefix = 'subworkflow';
+    const newNodeId = nextUniqueId(prefix, nodes);
 
     const newNode: Node = {
       id: newNodeId,
@@ -694,9 +712,23 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
       },
     };
 
-    const newNodes = [...nodes, newNode];
+    let currentNodes = [...nodes, newNode];
+    const sourceNode = nodes.find((n) => n.id === addNodeMenu.sourceId);
+    if (sourceNode?.type === 'routerNode') {
+      currentNodes = currentNodes.map((n) => {
+        if (n.id === addNodeMenu.sourceId) {
+          const opts = (n.data.routing_options as Record<string, string>) || {};
+          return {
+            ...n,
+            data: { ...n.data, routing_options: { ...opts, [newNodeId]: `Route to ${newNodeId}` } },
+          };
+        }
+        return n;
+      });
+    }
+
     const newEdges = [...edges, newEdge];
-    const layouted = getLayoutedElements(newNodes, newEdges, 'LR');
+    const layouted = getLayoutedElements(currentNodes, newEdges, 'LR');
     setNodes(layouted.nodes);
     setEdges(layouted.edges);
     updateYaml(layouted.nodes, layouted.edges);
@@ -752,13 +784,13 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
         y: event.clientY,
       });
 
-      const count = nodes.filter((n) => n.type === type).length + 1;
-      let newId = `node_${count}`;
-      if (type === 'agentNode') newId = `agent_${count}`;
-      else if (type === 'routerNode') newId = `router_${count}`;
-      else if (type === 'functionNode') newId = `function_${count}`;
-      else if (type === 'iteratorNode') newId = `iterator_${count}`;
-      else if (type === 'subworkflowNode') newId = `subworkflow_${count}`;
+      let prefix = 'node';
+      if (type === 'agentNode') prefix = 'agent';
+      else if (type === 'routerNode') prefix = 'router';
+      else if (type === 'functionNode') prefix = 'function';
+      else if (type === 'iteratorNode') prefix = 'iterator';
+      else if (type === 'subworkflowNode') prefix = 'subworkflow';
+      const newId = nextUniqueId(prefix, nodes);
 
       const isFirstAgent = type === 'agentNode' && nodes.filter((n) => n.type === 'agentNode').length === 0;
 
