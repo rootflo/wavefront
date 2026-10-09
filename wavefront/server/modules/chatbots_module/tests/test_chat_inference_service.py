@@ -66,6 +66,16 @@ class TestResolveLlm:
                 'history',
             ], f'{method.__name__} must receive an already-resolved llm'
 
+    def test_resolve_llm_takes_the_chatbot_and_the_caller(self):
+        # Guards the other half: resolve_llm is where guardrails attach, so it
+        # needs the chatbot (for the namespace policy applies to) and the user
+        # (for the audit trail). Losing either argument silently downgrades
+        # what gets enforced or what gets attributed.
+        import inspect
+
+        params = list(inspect.signature(ChatInferenceService.resolve_llm).parameters)
+        assert params == ['self', 'chatbot', 'user_id']
+
     async def test_soft_deleted_llm_config_is_reported_not_crashed(self):
         # get_config filters is_deleted, so a config removed after the chatbot
         # was saved comes back as None. Reachable in normal operation.

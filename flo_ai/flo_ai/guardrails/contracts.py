@@ -77,6 +77,48 @@ class AssessmentStatus(str, Enum):
     ERROR = 'ERROR'
 
 
+class StreamCapability(str, Enum):
+    """Whether a provider's verdict survives being asked about a prefix.
+
+    Streaming and output checks are in tension: a chunk already delivered
+    cannot be recalled. Whether that tension can be resolved at all depends on
+    the shape of the provider's verdict, which is why this is declared per
+    adapter rather than configured globally.
+
+    ``INCREMENTAL`` says findings are *span-local* — each one is a property of
+    a bounded run of characters, so a scan of a prefix says something true and
+    permanent about that prefix. ``BUFFERED`` says the verdict is a property of
+    the whole passage: toxicity read from half a paragraph is not a partial
+    answer, it is a different question.
+
+    Doubles as the policy's own preference (``ResolvedPolicy.stream``) so that
+    folding "what the adapters can do" together with "what the tenant asked
+    for" is a fold over one type, strictest wins.
+    """
+
+    BUFFERED = 'BUFFERED'
+    INCREMENTAL = 'INCREMENTAL'
+
+
+class StreamMode(str, Enum):
+    """How a guarded stream releases chunks. Resolved per principal and stage.
+
+    Lives here rather than in ``stream_guard`` because both the engine (which
+    decides it) and ``GuardedLLM`` (which acts on it) need it, and neither
+    should have to import the other.
+    """
+
+    #: No checks configured at this stage. No guard is constructed at all.
+    PASSTHROUGH = 'PASSTHROUGH'
+    #: Monitor mode. Nothing is withheld, so nothing needs a margin: release
+    #: immediately and evaluate once at the end for the record.
+    OBSERVE = 'OBSERVE'
+    #: Release behind a margin wide enough that a finding cannot straddle it.
+    INCREMENTAL = 'INCREMENTAL'
+    #: Release nothing until the whole response has been vetted.
+    BUFFERED = 'BUFFERED'
+
+
 @dataclass(frozen=True)
 class Principal:
     """Identity a ``GuardedLLM`` is bound to when it is constructed.
@@ -114,6 +156,19 @@ class ResolvedPolicy:
     mode: EnforcementMode = EnforcementMode.MONITOR
     adapters: Tuple[AdapterSpec, ...] = ()
     version: Optional[str] = None
+
+    #: The tenant's streaming preference, which can only ever *weaken*
+    #: streaming: the engine consults it after the adapters have had their
+    #: say, so it cannot override an adapter that declared itself BUFFERED.
+    #:
+    #: Defaults to BUFFERED because incremental release trades an absolute
+    #: guarantee for a weaker one. Under BUFFERED no character reaches the
+    #: consumer before the final verdict. Under INCREMENTAL a character
+    #: reaches the consumer once a scan has seen it plus a margin of following
+    #: text and found it clean — equivalent to BUFFERED for every entity type
+    #: the allowlist admits, but it is still a different promise, and a policy
+    #: that predates this field never agreed to it.
+    stream: StreamCapability = StreamCapability.BUFFERED
 
     #: A policy that is off, or that configures nothing, has no work to do.
     def adapters_for(self, stage: WorkflowStage) -> Tuple[AdapterSpec, ...]:

@@ -18,6 +18,10 @@ class ChatbotsContainer(containers.DeclarativeContainer):
     db_client = providers.Dependency()
     cache_manager = providers.Dependency()
     llm_inference_config_service = providers.Dependency()
+    # Optional: chat runs unguarded when no engine is supplied, so this
+    # container stays usable from entry points that do not build the
+    # guardrails stack.
+    guardrails_engine = providers.Dependency(default=None)
 
     # Repositories
     chatbot_repository = providers.Singleton(
@@ -61,5 +65,6 @@ class ChatbotsContainer(containers.DeclarativeContainer):
     chat_inference_service = providers.Singleton(
         ChatInferenceService,
         llm_inference_config_service=llm_inference_config_service,
+        guardrails_engine=guardrails_engine,
         azure_openai_api_version=config.model.azure_openai_api_version,
     )

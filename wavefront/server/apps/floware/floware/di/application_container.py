@@ -196,6 +196,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
         db_client=db.db_client,
         cache_manager=db.cache_manager,
         llm_inference_config_service=llm_inference_config.llm_inference_config_service,
+        guardrails_engine=providers.Callable(guardrails_engine, guardrails),
     )
 
     scheduler_manager = providers.Singleton(SchedulerManager)

@@ -40,6 +40,31 @@ async def _require_admin(request: Request, response_formatter: ResponseFormatter
     return None
 
 
+async def _effective_stream_mode(guardrails_engine, namespace: str) -> str:
+    """The stream mode this namespace's saved policy actually produces.
+
+    Asked of the engine rather than derived from the payload, because the
+    answer depends on which adapters are loaded and what their own options
+    make them capable of -- neither of which the request knows.
+
+    Never fatal. This is an informational field on a save that has already
+    succeeded, so an engine that cannot answer costs the caller a hint, not
+    the write it just made.
+    """
+    from flo_ai.guardrails import Principal, WorkflowStage
+
+    try:
+        mode = await guardrails_engine.stream_mode(
+            Principal(namespace=namespace), WorkflowStage.AFTER_MODEL
+        )
+        return mode.value
+    except Exception as exc:  # pragma: no cover - informational only
+        logger.warning(
+            f'Could not determine effective stream mode for {namespace}: {exc}'
+        )
+        return 'UNKNOWN'
+
+
 @guardrails_router.get('/v1/guardrails/adapters')
 @inject
 async def list_supported_adapters(
@@ -295,6 +320,7 @@ async def preview_guardrail_policy(
                     for adapter in payload.adapters
                 ],
                 describe='policy preview',
+                stream=payload.stream.value,
             )
         else:
             # Master switch off is a real outcome to preview, not an error:
@@ -474,13 +500,23 @@ async def update_guardrail_policy(
                 }
                 for adapter in payload.adapters
             ],
+            stream=payload.stream.value,
         )
+
+        # What was asked for and what will happen are not always the same: a
+        # single adapter whose verdict is not meaningful on a prefix forces
+        # the whole stream to buffer. Reporting the effective mode is how an
+        # admin learns that, instead of setting INCREMENTAL and wondering why
+        # responses still arrive all at once.
+        effective = await _effective_stream_mode(guardrails_engine, namespace)
+
         return JSONResponse(
             status_code=status.HTTP_200_OK,
             content=response_formatter.buildSuccessResponse(
                 {
                     'message': 'Guardrail policy updated successfully',
                     'policy': guardrails_service.to_response(policy),
+                    'effective_stream_mode': effective,
                 }
             ),
         )
