@@ -21,7 +21,9 @@ def make_record():
 
 @pytest.fixture
 def invalidator():
-    return Mock(invalidate=AsyncMock(return_value=True))
+    inv = Mock()
+    inv.invalidate = AsyncMock(return_value=True)
+    return inv
 
 
 @pytest.fixture
