@@ -11,8 +11,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from flo_utils.streaming.message_processor import MessageProcessor, ProcessingResult
-from flo_utils.streaming.stream_listner import StreamListener
+from flo_stream.message_processor import MessageProcessor, ProcessingResult
+from flo_stream.stream_listener import StreamListener
 
 
 class _StopLoop(BaseException):

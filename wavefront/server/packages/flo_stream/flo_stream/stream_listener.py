@@ -1,22 +1,22 @@
 import asyncio
 import concurrent.futures
-from typing import List, Optional, Tuple
-from flo_cloud._types import MessageQueueDict
-from common_module.log.logger import logger
-from db_repo_module.cache.cache_manager import CacheManager
-from flo_cloud._types import MessageQueue
-
+import logging
+from typing import List, Optional, Sequence, Tuple
 from abc import ABC, abstractmethod
-from flo_utils.streaming.event_message import BaseEventMessage
-from flo_utils.streaming.message_processor import MessageProcessor, ProcessingResult
+
+from flo_stream.event_message import BaseEventMessage
+from flo_stream.message_processor import MessageProcessor, ProcessingResult
+from flo_stream.protocols import CacheLike, MessageQueueLike, RawQueueMessage
+
+logger = logging.getLogger(__name__)
 
 
 class StreamListener(ABC):
     def __init__(
         self,
-        event_manager: MessageQueue,
+        event_manager: MessageQueueLike,
         processor: MessageProcessor,
-        cache_manager: CacheManager,
+        cache_manager: CacheLike,
         retry_count: int,
         streaming_batch_size: int = 5,
         wait_time_sec: int = 20,
@@ -100,7 +100,7 @@ class StreamListener(ABC):
 
     @abstractmethod
     def get_event_messages(
-        self, messages: List[MessageQueueDict]
+        self, messages: Sequence[RawQueueMessage]
     ) -> List[BaseEventMessage]:
         pass
 
