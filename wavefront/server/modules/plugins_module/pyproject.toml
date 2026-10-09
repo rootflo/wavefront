@@ -15,6 +15,7 @@ dependencies = [
     "datasource",
     "mailer",
     "flo-cloud",
+    "flo-lib",
     "user-management-module",
 
     "dependency-injector>=4.42.0,<5.0.0",
@@ -28,6 +29,7 @@ db-repo-module = { workspace = true }
 datasource = { workspace = true }
 mailer = { workspace = true }
 flo-cloud = { workspace = true }
+flo-lib = { workspace = true }
 user-management-module = { workspace = true}
 
 [dependency-groups]

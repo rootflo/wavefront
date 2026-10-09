@@ -16,7 +16,7 @@ dependencies = [
     "textract>=1.6.5",
     "transformers>=4.45.0",
     "asyncpg>=0.30.0",
-    "httpx>=0.28.1",
+    "flo-lib",
     # Detects the encoding of uploaded text files that aren't UTF-8
     "charset-normalizer>=3.4.0",
     "python-dotenv>=1.1.0,<2.0.0",
@@ -27,6 +27,7 @@ dependencies = [
 flo-cloud = { workspace = true }
 flo-stream = { workspace = true }
 flo-utils = { workspace = true }
+flo-lib = { workspace = true }
 db-repo-module = { workspace = true }
 
 [build-system]

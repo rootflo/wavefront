@@ -10,7 +10,7 @@ requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.104.0",
     "uvicorn[standard]>=0.24.0",
-    "httpx>=0.25.0",
+    "flo-lib",
     "pyyaml>=6.0.1",
     "pydantic>=2.0.0",
     "dependency-injector>=4.41.0",
@@ -28,6 +28,7 @@ exclude-newer = "7 days"
 [tool.uv.sources]
 common-module = { workspace = true }
 db-repo-module = { workspace = true }
+flo-lib = { workspace = true }
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

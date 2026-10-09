@@ -3,7 +3,7 @@
 import time
 from typing import Any
 
-import httpx
+import flo_lib.http as httpx
 from flo_utils.utils.log import logger
 
 # Status codes that mean "try again shortly" rather than "this request is bad":

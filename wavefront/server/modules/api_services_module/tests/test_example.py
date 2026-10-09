@@ -7,7 +7,7 @@ using the fixtures defined in conftest.py.
 
 import pytest
 from unittest.mock import patch
-import httpx
+import flo_lib.http as httpx
 
 from api_services_module.models.service import AuthType, HttpMethod
 
@@ -249,7 +249,7 @@ class TestHttpMocking:
             response = client.request('GET', 'http://test.com')
             assert response == mock_httpx_response
 
-    @patch('httpx.Client')
+    @patch('flo_lib.http.Client')
     def test_api_proxy_with_mocked_http(
         self, mock_client_class, api_proxy, mock_httpx_response
     ):

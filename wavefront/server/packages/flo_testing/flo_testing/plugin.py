@@ -7,6 +7,11 @@ never ask for a database never start one.
 
 from __future__ import annotations
 
+from flo_lib.http import alias_httpx
+
+alias_httpx()
+
+# ruff: noqa: E402
 from db_repo_module.embedding_column_mode import enable_pgvector_test_standins
 
 # Before any ``db_repo_module.models`` import: Text stand-ins instead of pgvector.

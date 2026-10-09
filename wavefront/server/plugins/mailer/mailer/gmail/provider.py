@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import urlencode
 
-import requests
+import flo_lib.http as http
 from bs4 import BeautifulSoup
 from google.api_core import exceptions as google_exceptions
 from google.auth.transport import requests as google_requests
@@ -84,81 +84,81 @@ class GmailProvider(EmailProviderABC):
         return f'{GOOGLE_AUTH_URL}?{urlencode(params)}'
 
     async def exchange_code(self, code: str) -> TokenBundle:
-        return await asyncio.to_thread(self._exchange_code_sync, code)
-
-    def _exchange_code_sync(self, code: str) -> TokenBundle:
-        response = requests.post(
-            GOOGLE_TOKEN_URL,
-            data={
-                'code': code,
-                'client_id': self.config.client_id,
-                'client_secret': self.config.client_secret,
-                'redirect_uri': self.config.redirect_uri,
-                'grant_type': 'authorization_code',
-            },
-            timeout=20,
-        )
-        if not response.ok:
-            logger.error(
-                'Google token exchange failed: status=%s body=%s redirect_uri=%r',
-                response.status_code,
-                response.text,
-                self.config.redirect_uri,
+        async with http.AsyncClient(timeout=20.0) as client:
+            response = await client.post(
+                GOOGLE_TOKEN_URL,
+                data={
+                    'code': code,
+                    'client_id': self.config.client_id,
+                    'client_secret': self.config.client_secret,
+                    'redirect_uri': self.config.redirect_uri,
+                    'grant_type': 'authorization_code',
+                },
             )
-            response.raise_for_status()
-        payload = response.json()
+            if not response.is_success:
+                logger.error(
+                    'Google token exchange failed: status=%s body=%s redirect_uri=%r',
+                    response.status_code,
+                    response.text,
+                    self.config.redirect_uri,
+                )
+                response.raise_for_status()
+            payload = response.json()
 
-        refresh_token = payload.get('refresh_token')
-        if not refresh_token:
-            raise EmailProviderError(
-                'Google did not return a refresh_token. Ensure the consent URL '
-                'requests access_type=offline and prompt=consent.'
+            refresh_token = payload.get('refresh_token')
+            if not refresh_token:
+                raise EmailProviderError(
+                    'Google did not return a refresh_token. Ensure the consent URL '
+                    'requests access_type=offline and prompt=consent.'
+                )
+            access_token = payload.get('access_token')
+            email = (
+                await self._fetch_user_email(client, access_token)
+                if access_token
+                else None
             )
-        access_token = payload.get('access_token')
-        email = self._fetch_user_email(access_token) if access_token else None
-        if not email:
-            raise EmailProviderError('Failed to resolve Google account email.')
+            if not email:
+                raise EmailProviderError('Failed to resolve Google account email.')
 
-        return TokenBundle(
-            refresh_token=refresh_token,
-            access_token=access_token,
-            expires_at=self._expires_at(payload.get('expires_in')),
-            scopes=payload.get('scope'),
-            external_account_id=email,
-        )
+            return TokenBundle(
+                refresh_token=refresh_token,
+                access_token=access_token,
+                expires_at=self._expires_at(payload.get('expires_in')),
+                scopes=payload.get('scope'),
+                external_account_id=email,
+            )
 
     async def refresh_access_token(self, refresh_token: str) -> TokenBundle:
-        return await asyncio.to_thread(self._refresh_access_token_sync, refresh_token)
-
-    def _refresh_access_token_sync(self, refresh_token: str) -> TokenBundle:
-        response = requests.post(
-            GOOGLE_TOKEN_URL,
-            data={
-                'refresh_token': refresh_token,
-                'client_id': self.config.client_id,
-                'client_secret': self.config.client_secret,
-                'grant_type': 'refresh_token',
-            },
-            timeout=20,
-        )
-        response.raise_for_status()
-        payload = response.json()
-        return TokenBundle(
-            refresh_token=refresh_token,
-            access_token=payload['access_token'],
-            expires_at=self._expires_at(payload.get('expires_in')),
-            scopes=payload.get('scope'),
-            external_account_id='',
-        )
+        async with http.AsyncClient(timeout=20.0) as client:
+            response = await client.post(
+                GOOGLE_TOKEN_URL,
+                data={
+                    'refresh_token': refresh_token,
+                    'client_id': self.config.client_id,
+                    'client_secret': self.config.client_secret,
+                    'grant_type': 'refresh_token',
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+            return TokenBundle(
+                refresh_token=refresh_token,
+                access_token=payload['access_token'],
+                expires_at=self._expires_at(payload.get('expires_in')),
+                scopes=payload.get('scope'),
+                external_account_id='',
+            )
 
     async def get_account_email(self, access_token: str) -> Optional[str]:
-        return await asyncio.to_thread(self._fetch_user_email, access_token)
+        async with http.AsyncClient(timeout=20.0) as client:
+            return await self._fetch_user_email(client, access_token)
 
-    def _fetch_user_email(self, access_token: str) -> Optional[str]:
-        response = requests.get(
+    async def _fetch_user_email(
+        self, client: http.AsyncClient, access_token: str
+    ) -> Optional[str]:
+        response = await client.get(
             GOOGLE_USERINFO_URL,
             headers={'Authorization': f'Bearer {access_token}'},
-            timeout=20,
         )
         response.raise_for_status()
         return response.json().get('email')

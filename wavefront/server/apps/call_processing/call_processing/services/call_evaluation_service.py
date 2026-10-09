@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-import aiohttp
+import flo_lib.http as http
 from call_processing.log.logger import logger
 from opentelemetry import context as otel_context, trace
 
@@ -263,17 +263,17 @@ Respond ONLY with a valid JSON object in this exact structure:
             'response_format': {'type': 'json_object'},
         }
 
-        timeout = aiohttp.ClientTimeout(total=40, connect=8, sock_read=32)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(url, headers=headers, json=payload) as resp:
-                if resp.status != 200:
-                    body = await resp.text()
-                    raise RuntimeError(
-                        f'Azure LLM returned {resp.status}: {body[:200]}'
-                    )
-                data = await resp.json()
-                content = data['choices'][0]['message']['content']
-                return json.loads(content)
+        timeout = http.Timeout(40.0, connect=8.0, read=32.0)
+        async with http.AsyncClient(timeout=timeout) as client:
+            response = await client.post(url, headers=headers, json=payload)
+            if response.status_code != 200:
+                body = response.text
+                raise RuntimeError(
+                    f'Azure LLM returned {response.status_code}: {body[:200]}'
+                )
+            data = response.json()
+            content = data['choices'][0]['message']['content']
+            return json.loads(content)
 
     @staticmethod
     def _apply_analysis_to_span(span: Any, analysis: Dict[str, Any]) -> None:

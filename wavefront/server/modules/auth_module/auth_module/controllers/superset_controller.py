@@ -73,7 +73,7 @@ async def superset_authenticator(
                 ),
             )
 
-    guest_token = superset_service.generate_guest_token(
+    guest_token = await superset_service.generate_guest_token(
         user_id, dashboards, data_filters, filter
     )
 

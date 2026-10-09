@@ -13,12 +13,13 @@ dependencies = [
     "fastapi>=0.100.0",
     "pydantic>=2.0.0",
     "dependency-injector>=4.40.0",
-    "httpx>=0.25.0",
+    "flo-lib",
 ]
 
 [tool.uv.sources]
 common-module = { workspace = true }
 db-repo-module = { workspace = true }
+flo-lib = { workspace = true }
 
 [dependency-groups]
 dev = [

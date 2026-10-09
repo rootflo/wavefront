@@ -22,12 +22,14 @@ dependencies = [
     "boto3>=1.42.22,<2.0.0",
     "pyyaml>=6.0.3,<7",
     "flo-cloud",
+    "flo-lib",
     "python-multipart",
 ]
 
 [tool.uv.sources]
 flo-testing = { workspace = true }
 flo-cloud = { workspace = true }
+flo-lib = { workspace = true }
 auth-module = { workspace = true }
 common-module = { workspace = true }
 db-repo-module = { workspace = true }

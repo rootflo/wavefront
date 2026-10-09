@@ -15,7 +15,7 @@ dependencies = [
     "uvicorn>=0.30.5,<1.0.0",
     "bcrypt>=4.2.1,<5.0.0",
     "alembic>=1.15.2,<2.0.0",
-    "httpx>=0.28.1,<1.0.0",
+    "flo-lib",
     "sqlalchemy>=2.0.40,<3.0.0",
     "python-dotenv>=1.1.0,<2.0.0",
     "dependency-injector>=4.46.0,<5.0.0",
@@ -27,6 +27,7 @@ dependencies = [
 [tool.uv.sources]
 common-module = { workspace = true }
 flo-cloud = { workspace = true }
+flo-lib = { workspace = true }
 
 
 [build-system]

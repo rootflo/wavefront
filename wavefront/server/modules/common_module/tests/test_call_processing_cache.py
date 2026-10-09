@@ -3,7 +3,7 @@
 import json
 from uuid import UUID
 
-import httpx
+import flo_lib.http as httpx
 import pytest
 
 from common_module.call_processing_cache import CallProcessingCacheInvalidator

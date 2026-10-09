@@ -8,7 +8,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
-import httpx
+import flo_lib.http as httpx
 import pytest
 from knowledge_base_module.embeddings import embed
 from knowledge_base_module.embeddings.embed import EmbeddingFunc, TextEmbeddingError

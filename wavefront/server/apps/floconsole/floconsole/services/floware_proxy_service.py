@@ -3,7 +3,7 @@ from uuid import UUID
 
 # from floconsole.constants.app import AppDeploymentType
 from floconsole.constants.auth import RootfloHeaders
-import httpx
+import flo_lib.http as httpx
 from fastapi import Request
 from fastapi.responses import Response, StreamingResponse
 

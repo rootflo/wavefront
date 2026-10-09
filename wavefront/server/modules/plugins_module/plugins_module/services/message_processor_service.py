@@ -6,8 +6,7 @@ YAML files are stored directly in buckets, and only the file URL is stored in th
 import yaml
 from typing import Dict, Any, Optional, List
 from uuid import uuid4
-import requests
-import asyncio
+import flo_lib.http as http
 
 from db_repo_module.models.message_processors import MessageProcessors
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
@@ -56,23 +55,19 @@ class HermesClient:
     async def execute_code(
         self, code: str, type: str, input: Dict[str, Any]
     ) -> Dict[str, Any]:
-        def _do_request():
-            resp = requests.post(
+        async with http.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
                 f'{self.hermes_url}/execute',
                 json={
                     'code': code,
                     'type': type,
                     'input': input,
                 },
-                timeout=10,
             )
-            resp_json = resp.json()
-            if resp.status_code != 200:
-                raise Exception(resp_json['details'])
-            return resp_json
-
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, _do_request)
+        resp_json = resp.json()
+        if resp.status_code != 200:
+            raise Exception(resp_json['details'])
+        return resp_json
 
 
 class MessageProcessorService:
