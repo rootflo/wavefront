@@ -8,7 +8,7 @@ instances without affecting each other.
 import json
 from types import MethodType
 
-import httpx
+import flo_lib.http as httpx
 import pytest
 from flo_ai.models import UserMessage
 

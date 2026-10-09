@@ -8,7 +8,7 @@ MockTransport, so no network calls are made.
 import json
 from unittest.mock import patch
 
-import httpx
+import flo_lib.http as httpx
 import pytest
 
 from rag_ingestion.embeddings import embed, inference_http

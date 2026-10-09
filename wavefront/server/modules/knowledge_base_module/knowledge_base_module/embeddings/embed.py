@@ -1,6 +1,6 @@
 from typing import Any, Dict, Optional
 
-import httpx
+import flo_lib.http as httpx
 
 TEXT_EMBEDDINGS_PATH = '/inference/v1/query/text-embeddings'
 

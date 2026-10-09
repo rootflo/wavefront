@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-import httpx
+import flo_lib.http as httpx
 
 from common_module.log.logger import logger
 

@@ -17,8 +17,7 @@ dependencies = [
     "python-dotenv>=1.1.0,<2.0.0",
     "pydantic>=2.0.0",
     "dependency-injector>=4.46.0,<5.0.0",
-    # HTTP client
-    "httpx>=0.27.0",
+    "flo-lib",
     # Redis and caching
     "redis>=5.0.0",
     "azure-identity>=1.17.0,<2.0.0",
@@ -33,6 +32,7 @@ dependencies = [
 
 [tool.uv.sources]
 common-module = { workspace = true }
+flo-lib = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

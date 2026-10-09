@@ -127,7 +127,7 @@ def core_containers(db_client, test_user_id, test_session_id, user_config):
     )
     auth_container.token_service.override(token_service)
     superset_service = Mock()
-    superset_service.generate_guest_token.return_value = 'mock_guest_token'
+    superset_service.generate_guest_token = AsyncMock(return_value='mock_guest_token')
     auth_container.superset_service.override(superset_service)
 
     # plugins_module's EmailSendService is handed in by the app rather than

@@ -2,7 +2,7 @@ import base64
 from dataclasses import dataclass
 from typing import Any, List, Optional
 
-import httpx
+import flo_lib.http as httpx
 from flo_utils.utils.log import logger
 
 from rag_ingestion.embeddings.inference_http import post_with_retry

@@ -15,7 +15,7 @@ import pytest
 
 torch = pytest.importorskip('torch')
 
-import httpx  # noqa: E402
+import flo_lib.http as httpx  # noqa: E402
 from dependency_injector import providers  # noqa: E402
 from PIL import Image  # noqa: E402
 

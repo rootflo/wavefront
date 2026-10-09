@@ -5,7 +5,7 @@ time.sleep are patched, so no network calls or real waits happen.
 
 from unittest.mock import MagicMock, patch
 
-import httpx
+import flo_lib.http as httpx
 import pytest
 
 from rag_ingestion.service import kb_rag_storage
