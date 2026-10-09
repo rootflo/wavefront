@@ -169,6 +169,13 @@ def _instrument_clients() -> None:
     except Exception as exc:
         logger.warning(f'HTTPX instrumentation unavailable: {exc}')
 
+    try:
+        from opentelemetry.instrumentation.httpx import HTTPX2ClientInstrumentor
+
+        HTTPX2ClientInstrumentor().instrument()
+    except Exception as exc:
+        logger.warning(f'HTTPX2 instrumentation unavailable: {exc}')
+
 
 def instrument_fastapi(app: Any) -> None:
     """Attach the OpenTelemetry ASGI middleware to a FastAPI app.

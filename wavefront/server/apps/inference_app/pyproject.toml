@@ -31,12 +31,14 @@ dependencies = [
     "numpy>=1.26.4,<2.0.0",
     "accelerate>=0.33.0,<1.0.0 ; sys_platform != 'darwin' or platform_machine != 'x86_64'",
     # >=4.56 for built-in DINOv3 support, so it loads without trust_remote_code
-    "transformers>=4.56.0"
+    "transformers>=4.56.0",
+    "flo-lib",
 ]
 
 [tool.uv.sources]
 common-module = { workspace = true }
 flo-cloud = { workspace = true }
+flo-lib = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

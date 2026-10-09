@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from db_repo_module.models.knowledge_base_documents import IndexStatus
-from flo_utils.streaming.message_processor import ProcessingResult
+from flo_stream.message_processor import ProcessingResult
 from rag_ingestion.embeddings.image_embed import ImageEmbeddingResult
 from rag_ingestion.models.doc_content import DocContent
 from rag_ingestion.models.knowledge_base_embeddings import (

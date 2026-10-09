@@ -1,6 +1,9 @@
+from flo_lib.http import alias_httpx
+
+alias_httpx()
+# ruff: noqa: E402
 from dotenv import load_dotenv
 
-# ruff: noqa: E402
 load_dotenv()
 
 from pathlib import Path

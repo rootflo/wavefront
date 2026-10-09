@@ -1,6 +1,6 @@
 import json
 
-import httpx
+import flo_lib.http as httpx
 
 from tools_module.floware_api import FlowareApiClient
 

@@ -1,7 +1,9 @@
-"""Celery application instance for the async executor worker."""
+from flo_lib.http import alias_httpx
 
+alias_httpx()
+
+# ruff: noqa: E402
 from celery import Celery
-
 from celery_worker.settings import CELERY_BROKER_URL, CELERY_RESULT_BACKEND
 
 # Connect worker_process_init / shutdown handlers (telemetry + event loop).

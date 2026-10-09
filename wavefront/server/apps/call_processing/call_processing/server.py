@@ -1,5 +1,7 @@
-import glob
+from flo_lib.http import alias_httpx
 
+alias_httpx()
+import glob
 from dotenv import load_dotenv
 
 # ruff: noqa: E402

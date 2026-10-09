@@ -1,4 +1,4 @@
-from flo_utils.streaming.event_message import BaseEventMessage
+from flo_stream.event_message import BaseEventMessage
 from dataclasses import dataclass
 from typing import Optional
 

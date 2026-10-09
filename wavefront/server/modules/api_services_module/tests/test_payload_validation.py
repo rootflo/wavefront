@@ -813,7 +813,7 @@ async def test_proxy_successful_with_valid_payload(validation_service_registry):
         'email': 'john@test.com',
     }
 
-    with patch('httpx.AsyncClient') as mock_client_class:
+    with patch('flo_lib.http.AsyncClient') as mock_client_class:
         mock_client = AsyncMock()
         mock_client.request = AsyncMock(return_value=mock_response)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)

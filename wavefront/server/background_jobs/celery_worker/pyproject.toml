@@ -12,6 +12,7 @@ dependencies = [
     "db-repo-module",
     "flo-cloud",
     "flo-utils",
+    "flo-lib",
     "tools-module",
     "api-services-module",
     "common-module",
@@ -26,6 +27,7 @@ agents-module       = { workspace = true }
 db-repo-module      = { workspace = true }
 flo-cloud           = { workspace = true }
 flo-utils           = { workspace = true }
+flo-lib             = { workspace = true }
 tools-module        = { workspace = true }
 api-services-module = { workspace = true }
 common-module       = { workspace = true }

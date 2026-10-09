@@ -33,6 +33,7 @@ dependencies = [
     "pottery>=3.0.1,<4.0.0",
     "psycopg2-binary>=2.9.10,<3.0.0",
     "openpyxl>=3.1.5,<4.0.0",
+    "flo-lib",
 ]
 
 [dependency-groups]
@@ -57,6 +58,7 @@ tools-module = {workspace = true}
 api-services-module = {workspace = true}
 voice-agents-module = {workspace = true}
 chatbots-module = {workspace = true}
+flo-lib = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

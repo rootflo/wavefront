@@ -1,3 +1,8 @@
+from flo_lib.http import alias_httpx
+
+alias_httpx()
+
+# ruff: noqa: E402
 from contextlib import asynccontextmanager
 import glob
 

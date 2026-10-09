@@ -8,7 +8,7 @@ from rag_ingestion.service.kb_rag_storage import KBRagStorage
 from rag_ingestion.models.doc_content import DocContent
 from rag_ingestion.stream.queue_message import QueueMessage
 from flo_cloud.kms import FloKmsCipher
-from flo_utils.streaming.message_processor import MessageProcessor, ProcessingResult
+from flo_stream.message_processor import MessageProcessor, ProcessingResult
 from rag_ingestion.processors.file_processor import FileProcessor, DocumentType
 from rag_ingestion.embeddings.image_embed import ImageEmbedding
 from rag_ingestion.models.knowledge_base_embeddings import KnowledgeBaseEmbeddingObject

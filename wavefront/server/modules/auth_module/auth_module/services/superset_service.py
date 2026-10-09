@@ -6,7 +6,7 @@ from common_module.utils.odata_parser import fill_odata_query
 from common_module.utils.odata_parser import parameter_char_for_provider
 from common_module.utils.odata_parser import prepare_odata_filter
 from fastapi import HTTPException
-import requests
+import flo_lib.http as http
 
 
 @dataclass
@@ -73,7 +73,7 @@ class SupersetService:
         self.cache_manager = cache_manager
         self.odata_parameter = parameter_char_for_provider(cloud_provider)
 
-    def generate_guest_token(
+    async def generate_guest_token(
         self,
         user_id: str,
         dashboards: List[Resource],
@@ -86,57 +86,57 @@ class SupersetService:
         cached_access_token = self.cache_manager.get_str(cache_key)
 
         logger.info('Fetching superset token from cache')
-        if cached_access_token:
-            access_token = cached_access_token
-        else:
-            login_body = {
-                'password': self.password,
-                'provider': 'db',
-                'refresh': True,
-                'username': self.username,
-            }
+        async with http.AsyncClient() as client:
+            if cached_access_token:
+                access_token = cached_access_token
+            else:
+                login_body = {
+                    'password': self.password,
+                    'provider': 'db',
+                    'refresh': True,
+                    'username': self.username,
+                }
 
-            login_response = requests.post(
-                f'{self.url}/api/v1/security/login', json=login_body
-            )
-            if login_response.status_code != 200:
-                logger.error(f'error during superset login {login_response.text}')
-                raise HTTPException(
-                    status_code=login_response.status_code, detail='Login failed'
+                login_response = await client.post(
+                    f'{self.url}/api/v1/security/login', json=login_body
                 )
-            access_token = login_response.json().get('access_token')
-            logger.info('Saving superset token into cache')
-            self.cache_manager.add(cache_key, access_token, 900)
+                if login_response.status_code != 200:
+                    logger.error(f'error during superset login {login_response.text}')
+                    raise HTTPException(
+                        status_code=login_response.status_code, detail='Login failed'
+                    )
+                access_token = login_response.json().get('access_token')
+                logger.info('Saving superset token into cache')
+                self.cache_manager.add(cache_key, access_token, 900)
 
-        resources = [{'type': 'dashboard', 'id': id} for id in dashboard_ids]
-        rls_policy = generate_rls_policy(
-            filters, query_filter, parameter=self.odata_parameter
-        )
-        guest_token_body = {
-            'resources': resources,
-            'rls': rls_policy,
-            'user': {
-                'username': '',
-                'first_name': '',
-                'last_name': '',
-            },
-        }
-        headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {access_token}',
-        }
-        guest_token_response = requests.post(
-            f'{self.url}/api/v1/security/guest_token/',
-            json=guest_token_body,
-            headers=headers,
-        )
-        if guest_token_response.status_code != 200:
-            logger.error(
-                f'Error getting superset guest token {guest_token_response.text}'
+            resources = [{'type': 'dashboard', 'id': id} for id in dashboard_ids]
+            rls_policy = generate_rls_policy(
+                filters, query_filter, parameter=self.odata_parameter
             )
-            raise HTTPException(
-                status_code=guest_token_response.status_code,
-                detail='Guest token generation failed',
+            guest_token_body = {
+                'resources': resources,
+                'rls': rls_policy,
+                'user': {
+                    'username': '',
+                    'first_name': '',
+                    'last_name': '',
+                },
+            }
+            headers = {
+                'Content-Type': 'application/json',
+                'Authorization': f'Bearer {access_token}',
+            }
+            guest_token_response = await client.post(
+                f'{self.url}/api/v1/security/guest_token/',
+                json=guest_token_body,
+                headers=headers,
             )
-        guest_token = guest_token_response.json().get('token')
-        return guest_token
+            if guest_token_response.status_code != 200:
+                logger.error(
+                    f'Error getting superset guest token {guest_token_response.text}'
+                )
+                raise HTTPException(
+                    status_code=guest_token_response.status_code,
+                    detail='Guest token generation failed',
+                )
+            return guest_token_response.json().get('token')

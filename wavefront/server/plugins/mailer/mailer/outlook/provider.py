@@ -1,11 +1,10 @@
-import asyncio
 import base64
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Sequence
 from urllib.parse import quote, urlencode
 
-import requests
+import flo_lib.http as http
 
 from ..helper import build_graph_message, capabilities_from_scopes, resolve_scopes
 from ..types import (
@@ -78,65 +77,69 @@ class OutlookProvider(EmailProviderABC):
         return f'{self.config.authority}/oauth2/v2.0/authorize?{urlencode(params)}'
 
     async def exchange_code(self, code: str) -> TokenBundle:
-        return await asyncio.to_thread(self._exchange_code_sync, code)
-
-    def _exchange_code_sync(self, code: str) -> TokenBundle:
-        payload = self._token_request(
-            {
-                'code': code,
-                'redirect_uri': self.config.redirect_uri,
-                'grant_type': 'authorization_code',
-            }
-        )
-
-        refresh_token = payload.get('refresh_token')
-        if not refresh_token:
-            raise EmailProviderError(
-                'Microsoft did not return a refresh_token. Ensure the consent '
-                'URL requests the offline_access scope.'
+        async with http.AsyncClient(timeout=20.0) as client:
+            payload = await self._token_request(
+                client,
+                {
+                    'code': code,
+                    'redirect_uri': self.config.redirect_uri,
+                    'grant_type': 'authorization_code',
+                },
             )
-        access_token = payload.get('access_token')
-        email = self._fetch_user_email(access_token) if access_token else None
-        if not email:
-            raise EmailProviderError('Failed to resolve Microsoft account email.')
 
-        return TokenBundle(
-            refresh_token=refresh_token,
-            access_token=access_token,
-            expires_at=self._expires_at(payload.get('expires_in')),
-            scopes=payload.get('scope'),
-            external_account_id=email,
-        )
+            refresh_token = payload.get('refresh_token')
+            if not refresh_token:
+                raise EmailProviderError(
+                    'Microsoft did not return a refresh_token. Ensure the consent '
+                    'URL requests the offline_access scope.'
+                )
+            access_token = payload.get('access_token')
+            email = (
+                await self._fetch_user_email(client, access_token)
+                if access_token
+                else None
+            )
+            if not email:
+                raise EmailProviderError('Failed to resolve Microsoft account email.')
+
+            return TokenBundle(
+                refresh_token=refresh_token,
+                access_token=access_token,
+                expires_at=self._expires_at(payload.get('expires_in')),
+                scopes=payload.get('scope'),
+                external_account_id=email,
+            )
 
     async def refresh_access_token(self, refresh_token: str) -> TokenBundle:
-        return await asyncio.to_thread(self._refresh_access_token_sync, refresh_token)
+        async with http.AsyncClient(timeout=20.0) as client:
+            payload = await self._token_request(
+                client,
+                {
+                    'refresh_token': refresh_token,
+                    'grant_type': 'refresh_token',
+                },
+            )
+            # Microsoft rotates refresh tokens, so keep whichever one came back.
+            return TokenBundle(
+                refresh_token=payload.get('refresh_token') or refresh_token,
+                access_token=payload['access_token'],
+                expires_at=self._expires_at(payload.get('expires_in')),
+                scopes=payload.get('scope'),
+                external_account_id='',
+            )
 
-    def _refresh_access_token_sync(self, refresh_token: str) -> TokenBundle:
-        payload = self._token_request(
-            {
-                'refresh_token': refresh_token,
-                'grant_type': 'refresh_token',
-            }
-        )
-        # Microsoft rotates refresh tokens, so keep whichever one came back.
-        return TokenBundle(
-            refresh_token=payload.get('refresh_token') or refresh_token,
-            access_token=payload['access_token'],
-            expires_at=self._expires_at(payload.get('expires_in')),
-            scopes=payload.get('scope'),
-            external_account_id='',
-        )
-
-    def _token_request(self, extra: Dict[str, str]) -> Dict[str, Any]:
+    async def _token_request(
+        self, client: http.AsyncClient, extra: Dict[str, str]
+    ) -> Dict[str, Any]:
         data = {
             'client_id': self.config.client_id,
             'client_secret': self.config.client_secret,
             **extra,
         }
-        response = requests.post(
-            f'{self.config.authority}/oauth2/v2.0/token', data=data, timeout=20
+        response = await client.post(
+            f'{self.config.authority}/oauth2/v2.0/token', data=data
         )
-        if not response.ok:
+        if not response.is_success:
             logger.error(
                 'Microsoft token request failed: status=%s body=%s',
                 response.status_code,
@@ -146,13 +149,15 @@ class OutlookProvider(EmailProviderABC):
         return response.json()
 
     async def get_account_email(self, access_token: str) -> Optional[str]:
-        return await asyncio.to_thread(self._fetch_user_email, access_token)
+        async with http.AsyncClient(timeout=20.0) as client:
+            return await self._fetch_user_email(client, access_token)
 
-    def _fetch_user_email(self, access_token: str) -> Optional[str]:
-        response = requests.get(
+    async def _fetch_user_email(
+        self, client: http.AsyncClient, access_token: str
+    ) -> Optional[str]:
+        response = await client.get(
             f'{GRAPH_BASE_URL}/me',
             headers=self._headers(access_token),
-            timeout=20,
         )
         response.raise_for_status()
         profile = response.json()
@@ -179,17 +184,12 @@ class OutlookProvider(EmailProviderABC):
         mailbox: str,
         message: OutboundMessage,
     ) -> Optional[str]:
-        return await asyncio.to_thread(self._send_message_sync, access_token, message)
-
-    def _send_message_sync(
-        self, access_token: str, message: OutboundMessage
-    ) -> Optional[str]:
-        response = requests.post(
-            f'{GRAPH_BASE_URL}/me/sendMail',
-            headers=self._headers(access_token),
-            json={'message': build_graph_message(message)},
-            timeout=30,
-        )
+        async with http.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f'{GRAPH_BASE_URL}/me/sendMail',
+                headers=self._headers(access_token),
+                json={'message': build_graph_message(message)},
+            )
         if response.status_code != 202:
             raise EmailProviderError(
                 f'Graph sendMail failed: status={response.status_code} '
@@ -204,51 +204,50 @@ class OutlookProvider(EmailProviderABC):
         mailbox: str,
         message_id: str,
     ) -> NormalizedEmail:
-        return await asyncio.to_thread(self._get_message_sync, access_token, message_id)
-
-    def _get_message_sync(self, access_token: str, message_id: str) -> NormalizedEmail:
         encoded_id = quote(message_id, safe='')
-        response = requests.get(
-            f'{GRAPH_BASE_URL}/me/messages/{encoded_id}',
-            headers=self._headers(access_token),
-            params={'$select': 'subject,from,body,bodyPreview,hasAttachments'},
-            timeout=30,
-        )
-        response.raise_for_status()
-        msg = response.json()
+        async with http.AsyncClient(timeout=30.0) as client:
+            response = await client.get(
+                f'{GRAPH_BASE_URL}/me/messages/{encoded_id}',
+                headers=self._headers(access_token),
+                params={'$select': 'subject,from,body,bodyPreview,hasAttachments'},
+            )
+            response.raise_for_status()
+            msg = response.json()
 
-        body = msg.get('body') or {}
-        content = body.get('content') or ''
-        if (body.get('contentType') or '').lower() == 'html':
-            from ..helper import html_to_text
+            body = msg.get('body') or {}
+            content = body.get('content') or ''
+            if (body.get('contentType') or '').lower() == 'html':
+                from ..helper import html_to_text
 
-            body_text = html_to_text(content)
-        else:
-            body_text = content.strip()
+                body_text = html_to_text(content)
+            else:
+                body_text = content.strip()
 
-        sender = ((msg.get('from') or {}).get('emailAddress') or {}).get('address')
-        attachments = (
-            self._fetch_attachments(access_token, message_id)
-            if msg.get('hasAttachments')
-            else []
-        )
+            sender = ((msg.get('from') or {}).get('emailAddress') or {}).get('address')
+            attachments = (
+                await self._fetch_attachments(client, access_token, message_id)
+                if msg.get('hasAttachments')
+                else []
+            )
 
-        return NormalizedEmail(
-            provider_event_id=message_id,
-            subject=msg.get('subject') or '',
-            sender=sender,
-            body_text=body_text,
-            attachments=attachments,
-        )
+            return NormalizedEmail(
+                provider_event_id=message_id,
+                subject=msg.get('subject') or '',
+                sender=sender,
+                body_text=body_text,
+                attachments=attachments,
+            )
 
-    def _fetch_attachments(
-        self, access_token: str, message_id: str
+    async def _fetch_attachments(
+        self,
+        client: http.AsyncClient,
+        access_token: str,
+        message_id: str,
     ) -> List[Attachment]:
         encoded_id = quote(message_id, safe='')
-        response = requests.get(
+        response = await client.get(
             f'{GRAPH_BASE_URL}/me/messages/{encoded_id}/attachments',
             headers=self._headers(access_token),
-            timeout=30,
         )
         response.raise_for_status()
         attachments: List[Attachment] = []

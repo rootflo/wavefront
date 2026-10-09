@@ -8,9 +8,6 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "common-module",
-    "db-repo-module",
-    "flo-cloud",
     "tiktoken>=0.9.0",
 ]
 
@@ -20,11 +17,6 @@ package = true
 # (wavefront/server/pyproject.toml), which is where the real cooldown lives.
 # Kept so the setting survives if this package is ever split out.
 exclude-newer = "7 days"
-
-[tool.uv.sources]
-common-module = { workspace = true }
-db-repo-module = { workspace = true }
-flo-cloud = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

@@ -8,7 +8,7 @@ import base64
 import json
 from typing import Callable, List
 
-import httpx
+import flo_lib.http as httpx
 import pytest
 
 from rag_ingestion.embeddings import inference_http

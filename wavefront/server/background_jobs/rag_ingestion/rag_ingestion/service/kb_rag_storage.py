@@ -1,6 +1,6 @@
 import logging
 import tiktoken
-import httpx
+import flo_lib.http as httpx
 import time
 from flo_utils.utils.log import logger
 from datetime import datetime

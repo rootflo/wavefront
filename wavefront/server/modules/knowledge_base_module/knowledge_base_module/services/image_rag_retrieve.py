@@ -1,6 +1,6 @@
 import asyncio
 from dataclasses import dataclass, field
-import httpx
+import flo_lib.http as httpx
 from typing import Any, Optional
 import uuid
 from fastapi import HTTPException, status
