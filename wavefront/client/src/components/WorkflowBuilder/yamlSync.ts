@@ -1,5 +1,5 @@
 import yaml from 'js-yaml';
-import { Node, Edge } from '@xyflow/react';
+import { Node, Edge, MarkerType } from '@xyflow/react';
 import dagre from 'dagre';
 
 const nodeWidth = 320;
@@ -23,10 +23,10 @@ export const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'L
     dagreGraph.setNode(node.id, { width: nodeWidth, height: nodeHeight });
   });
 
-  // Only layout primary execution edges, NOT memory filters or reflection back-loops.
-  // Including data-dependency edges destroys the linear sequential pipeline.
+  // Only layout primary execution edges, NOT memory filters, reflection back-loops, or iterator loop returns.
+  // Including data-dependency or cyclic return edges destroys the linear sequential pipeline.
   edges.forEach((edge) => {
-    if (edge.id.startsWith('e-filter-') || edge.id.startsWith('e-reflect-')) {
+    if (edge.id.startsWith('e-filter-') || edge.id.startsWith('e-reflect-') || edge.id.startsWith('e-loop-return-')) {
       return;
     }
     if (nodeIds.has(edge.source) && nodeIds.has(edge.target)) {
@@ -48,6 +48,42 @@ export const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'L
 
   return { nodes, edges };
 };
+
+export const createIteratorLoopEdges = (iteratorName: string, executeNode: string): Edge[] => [
+  {
+    id: `e-loop-exec-${iteratorName}-${executeNode}`,
+    source: iteratorName,
+    sourceHandle: 'loop-out',
+    target: executeNode,
+    type: 'smoothstep',
+    pathOptions: { borderRadius: 16 },
+    animated: true,
+    style: { stroke: '#6366f1', strokeWidth: 2 },
+    label: 'Iterate (1..N) ➔',
+    labelStyle: { fill: '#6366f1', fontSize: 9, fontWeight: 700 },
+    labelBgStyle: { fill: 'hsl(var(--card))', stroke: '#6366f1', strokeWidth: 1 },
+    labelBgPadding: [6, 3] as [number, number],
+    labelBgBorderRadius: 4,
+    markerEnd: { type: MarkerType.ArrowClosed, color: '#6366f1', width: 14, height: 14 },
+  },
+  {
+    id: `e-loop-return-${executeNode}-${iteratorName}`,
+    source: executeNode,
+    sourceHandle: 'loop-back',
+    target: iteratorName,
+    targetHandle: 'loop-return',
+    type: 'smoothstep',
+    pathOptions: { borderRadius: 24 },
+    animated: true,
+    style: { stroke: '#818cf8', strokeWidth: 2, strokeDasharray: '5,5' },
+    label: '↺ Next Item (Repeat)',
+    labelStyle: { fill: '#818cf8', fontSize: 9, fontWeight: 700 },
+    labelBgStyle: { fill: 'hsl(var(--card))', stroke: '#818cf8', strokeWidth: 1 },
+    labelBgPadding: [6, 3] as [number, number],
+    labelBgBorderRadius: 4,
+    markerEnd: { type: MarkerType.ArrowClosed, color: '#818cf8', width: 14, height: 14 },
+  },
+];
 
 interface AriumModelConfig {
   provider?: string;
@@ -257,19 +293,6 @@ export const parseYamlToGraph = (yamlString: string): { nodes: Node[]; edges: Ed
         },
       });
 
-      if (it.execute_node) {
-        edges.push({
-          id: `e-exec-${it.name}-${it.execute_node}`,
-          source: it.name,
-          target: it.execute_node,
-          type: 'smoothstep',
-          pathOptions: { borderRadius: 16 },
-          style: { stroke: '#6366f1', strokeWidth: 2 },
-          label: 'Executes Item',
-          labelStyle: { fill: '#6366f1', fontSize: 10, fontWeight: 600 },
-        });
-      }
-
       if (it.input_filter && Array.isArray(it.input_filter)) {
         it.input_filter.forEach((dep: string) => {
           if (dep !== 'input') {
@@ -385,7 +408,23 @@ export const parseYamlToGraph = (yamlString: string): { nodes: Node[]; edges: Ed
       }
     });
 
-    // 6. Add Start Trigger
+    // 6. Connect ForEach Iterator Loops (Forward Item & Return Cycle)
+    iterators.forEach((it: AriumIteratorConfig) => {
+      if (it.execute_node) {
+        const targetNode = nodes.find((n: Node) => n.id === it.execute_node);
+        if (targetNode) {
+          targetNode.data = {
+            ...targetNode.data,
+            isLoopTarget: true,
+            loopedBy: it.name,
+          };
+        }
+
+        edges.push(...createIteratorLoopEdges(it.name, it.execute_node));
+      }
+    });
+
+    // 7. Add Start Trigger
     if (workflow.start) {
       nodes.push({
         id: 'trigger-start',
@@ -453,6 +492,7 @@ export const parseYamlToGraph = (yamlString: string): { nodes: Node[]; edges: Ed
         } else {
           // Direct connect
           toList.forEach((toItem: string) => {
+            const isFromIterator = iterators.some((it: AriumIteratorConfig) => it.name === from);
             edges.push({
               id: `e-${from}-${toItem}`,
               source: from,
@@ -460,7 +500,20 @@ export const parseYamlToGraph = (yamlString: string): { nodes: Node[]; edges: Ed
               type: 'smoothstep',
               pathOptions: { borderRadius: 16 },
               animated: true,
-              style: { stroke: '#64748b', strokeWidth: 2 },
+              style: { stroke: isFromIterator ? '#6366f1' : '#64748b', strokeWidth: 2 },
+              label: isFromIterator ? 'On Complete [All]' : undefined,
+              labelStyle: isFromIterator ? { fill: '#6366f1', fontSize: 9, fontWeight: 600 } : undefined,
+              labelBgStyle: isFromIterator
+                ? { fill: 'hsl(var(--card))', stroke: '#6366f1', strokeWidth: 1 }
+                : undefined,
+              labelBgPadding: isFromIterator ? ([6, 3] as [number, number]) : undefined,
+              labelBgBorderRadius: isFromIterator ? 4 : undefined,
+              markerEnd: {
+                type: MarkerType.ArrowClosed,
+                color: isFromIterator ? '#6366f1' : '#64748b',
+                width: 14,
+                height: 14,
+              },
             });
           });
         }
@@ -738,6 +791,7 @@ export const serializeGraphToYaml = (nodes: Node[], edges: Edge[], currentYaml: 
             e.source === sourceId &&
             !e.id.startsWith('e-filter-') &&
             !e.id.startsWith('e-exec-') &&
+            !e.id.startsWith('e-loop-') &&
             !e.id.startsWith('e-reflect-') &&
             validExecutableNodes.some((n) => n.id === e.target && n.type !== 'routerNode')
         )

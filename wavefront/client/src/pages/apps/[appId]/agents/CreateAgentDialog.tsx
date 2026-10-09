@@ -121,77 +121,125 @@ const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
             .filter(Boolean)
         : [];
 
-      const agentYamlObj: Record<string, unknown> = {
-        apiVersion: 'flo/alpha-v1',
-        metadata: {
-          name: `${watchAllFields.agentId || 'my'}-agent`,
-          version: watchAllFields.version || '1.0.0',
-        },
-        agent: {
-          name: watchAllFields.agentName || watchAllFields.agentId || 'my-agent',
-          model: {
-            provider: watchAllFields.provider || 'gemini',
-          },
-          settings: {},
-        },
-      };
+      let agentYamlObj: Record<string, unknown> = {};
+      try {
+        agentYamlObj = (yaml.load(watchAllFields.yamlContent) as Record<string, unknown>) || {};
+      } catch {
+        return; // Ignore if unparseable
+      }
 
-      // Optional Metadata
-      if (watchAllFields.description) agentYamlObj.metadata.description = watchAllFields.description;
-      if (watchAllFields.author) agentYamlObj.metadata.author = watchAllFields.author;
-      if (tagsArray.length > 0) agentYamlObj.metadata.tags = tagsArray;
+      agentYamlObj.apiVersion = agentYamlObj.apiVersion || 'flo/alpha-v1';
 
-      // Optional Identity
-      if (watchAllFields.role) agentYamlObj.agent.role = watchAllFields.role;
-      if (watchAllFields.job) agentYamlObj.agent.job = watchAllFields.job;
-      if (watchAllFields.actAs) agentYamlObj.agent.act_as = watchAllFields.actAs;
+      const metadata: Record<string, unknown> = (agentYamlObj.metadata as Record<string, unknown>) || {};
+      agentYamlObj.metadata = metadata;
+
+      metadata.name = metadata.name || `${watchAllFields.agentId || 'my'}-agent`;
+      metadata.version = watchAllFields.version || '1.0.0';
+
+      const agent: Record<string, unknown> = (agentYamlObj.agent as Record<string, unknown>) || {};
+      agentYamlObj.agent = agent;
+
+      const model: Record<string, unknown> = (agent.model as Record<string, unknown>) || {};
+      agent.model = model;
+
+      const settings: Record<string, unknown> = (agent.settings as Record<string, unknown>) || {};
+      agent.settings = settings;
+
+      // Metadata
+      if (watchAllFields.description) metadata.description = watchAllFields.description;
+      else delete metadata.description;
+
+      if (watchAllFields.author) metadata.author = watchAllFields.author;
+      else delete metadata.author;
+
+      if (tagsArray.length > 0) metadata.tags = tagsArray;
+      else delete metadata.tags;
+
+      // Identity
+      agent.name = watchAllFields.agentName || watchAllFields.agentId || 'my-agent';
+
+      if (watchAllFields.role) agent.role = watchAllFields.role;
+      else delete agent.role;
+
+      if (watchAllFields.job) agent.job = watchAllFields.job;
+      else delete agent.job;
+
+      if (watchAllFields.actAs) agent.act_as = watchAllFields.actAs;
+      else delete agent.act_as;
 
       // Provider specifics
+      model.provider = watchAllFields.provider || 'gemini';
+
+      // Clear all modeled fields first to prevent leak when switching provider
+      delete model.model_id;
+      delete model.name;
+      delete model.project;
+      delete model.location;
+      delete model.base_url;
+      delete model.azure_endpoint;
+      delete model.azure_api_version;
+      delete model.api_key;
+      delete model.timeout;
+
       if (watchAllFields.provider === 'rootflo') {
-        agentYamlObj.agent.model.model_id = watchAllFields.modelId || '';
+        model.model_id = watchAllFields.modelId || '';
       } else {
-        agentYamlObj.agent.model.name = watchAllFields.modelName || 'gemini-2.5-flash';
+        model.name = watchAllFields.modelName || 'gemini-2.5-flash';
       }
 
       if (watchAllFields.provider === 'vertexai') {
-        if (watchAllFields.project) agentYamlObj.agent.model.project = watchAllFields.project;
-        if (watchAllFields.location) agentYamlObj.agent.model.location = watchAllFields.location;
-        if (watchAllFields.baseUrl) agentYamlObj.agent.model.base_url = watchAllFields.baseUrl;
+        if (watchAllFields.project) model.project = watchAllFields.project;
+        if (watchAllFields.location) model.location = watchAllFields.location;
+        if (watchAllFields.baseUrl) model.base_url = watchAllFields.baseUrl;
       }
 
       if (watchAllFields.provider === 'azure_openai') {
-        if (watchAllFields.azureEndpoint) agentYamlObj.agent.model.azure_endpoint = watchAllFields.azureEndpoint;
-        if (watchAllFields.azureApiVersion) agentYamlObj.agent.model.azure_api_version = watchAllFields.azureApiVersion;
+        if (watchAllFields.azureEndpoint) model.azure_endpoint = watchAllFields.azureEndpoint;
+        if (watchAllFields.azureApiVersion) model.azure_api_version = watchAllFields.azureApiVersion;
       }
 
       if (watchAllFields.provider === 'openai_vllm') {
-        if (watchAllFields.apiKey) agentYamlObj.agent.model.api_key = watchAllFields.apiKey;
+        if (watchAllFields.apiKey) model.api_key = watchAllFields.apiKey;
       }
 
       if (watchAllFields.baseUrl && watchAllFields.provider !== 'vertexai') {
-        agentYamlObj.agent.model.base_url = watchAllFields.baseUrl;
+        model.base_url = watchAllFields.baseUrl;
       }
-      if (watchAllFields.timeout) agentYamlObj.agent.model.timeout = watchAllFields.timeout;
+      if (watchAllFields.timeout) model.timeout = watchAllFields.timeout;
 
       // Settings
-      if (watchAllFields.temperature !== undefined)
-        agentYamlObj.agent.settings.temperature = watchAllFields.temperature;
-      if (watchAllFields.maxTokens) agentYamlObj.agent.settings.max_tokens = watchAllFields.maxTokens;
-      if (watchAllFields.maxRetries) agentYamlObj.agent.settings.max_retries = watchAllFields.maxRetries;
-      if (watchAllFields.reasoningPattern)
-        agentYamlObj.agent.settings.reasoning_pattern = watchAllFields.reasoningPattern;
-      if (watchAllFields.topP !== undefined && watchAllFields.topP !== null)
-        agentYamlObj.agent.settings.top_p = watchAllFields.topP;
-      if (watchAllFields.topK) agentYamlObj.agent.settings.top_k = watchAllFields.topK;
+      if (watchAllFields.temperature !== undefined) settings.temperature = watchAllFields.temperature;
+      else delete settings.temperature;
+
+      if (watchAllFields.maxTokens) settings.max_tokens = watchAllFields.maxTokens;
+      else delete settings.max_tokens;
+
+      if (watchAllFields.maxRetries) settings.max_retries = watchAllFields.maxRetries;
+      else delete settings.max_retries;
+
+      if (watchAllFields.reasoningPattern) settings.reasoning_pattern = watchAllFields.reasoningPattern;
+      else delete settings.reasoning_pattern;
+
+      if (watchAllFields.topP !== undefined && watchAllFields.topP !== null) settings.top_p = watchAllFields.topP;
+      else delete settings.top_p;
+
+      if (watchAllFields.topK) settings.top_k = watchAllFields.topK;
+      else delete settings.top_k;
+
       if (watchAllFields.frequencyPenalty !== undefined && watchAllFields.frequencyPenalty !== null)
-        agentYamlObj.agent.settings.frequency_penalty = watchAllFields.frequencyPenalty;
+        settings.frequency_penalty = watchAllFields.frequencyPenalty;
+      else delete settings.frequency_penalty;
+
       if (watchAllFields.presencePenalty !== undefined && watchAllFields.presencePenalty !== null)
-        agentYamlObj.agent.settings.presence_penalty = watchAllFields.presencePenalty;
-      if (watchAllFields.seed) agentYamlObj.agent.settings.seed = watchAllFields.seed;
+        settings.presence_penalty = watchAllFields.presencePenalty;
+      else delete settings.presence_penalty;
+
+      if (watchAllFields.seed) settings.seed = watchAllFields.seed;
+      else delete settings.seed;
 
       // Cleanup empty settings
-      if (Object.keys(agentYamlObj.agent.settings).length === 0) {
-        delete agentYamlObj.agent.settings;
+      if (Object.keys(settings).length === 0) {
+        delete agent.settings;
       }
 
       try {
@@ -209,7 +257,15 @@ const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
     if (value === 'visual') {
       try {
         const parsed = yaml.load(form.getValues('yamlContent')) as Record<string, Record<string, unknown>> | null;
-        if (parsed?.agent) {
+        if (!parsed) {
+          notifyError('Cannot switch to visual tab: YAML is empty or invalid.');
+          return;
+        }
+        if (!parsed.agent) {
+          notifyError('Cannot switch to visual tab: "agent" key is missing.');
+          return;
+        }
+        if (parsed.agent) {
           form.setValue('agentName', (parsed.agent.name as string) || '');
           form.setValue('role', (parsed.agent.role as string) || '');
           form.setValue('job', (parsed.agent.job as string) || (parsed.agent.prompt as string) || '');
@@ -249,7 +305,8 @@ const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
           form.setValue('tags', Array.isArray(metadata.tags) ? metadata.tags.join(', ') : '');
         }
       } catch {
-        // Ignored
+        notifyError('Cannot switch to visual tab: YAML parsing failed.');
+        return;
       }
     }
     setActiveTab(value);

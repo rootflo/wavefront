@@ -828,7 +828,7 @@ const WorkflowDetail: React.FC = () => {
                 <div>
                   <h2 className="text-foreground text-xs leading-none font-semibold">Edit Workflow Configuration</h2>
                   <span className="text-muted-foreground text-[10px]">
-                    {workflow?.name || workflowId} ({workflow?.namespace || namespace})
+                    {workflow?.name || id} {workflow?.namespace && `(${workflow.namespace})`}
                   </span>
                 </div>
               </div>

@@ -23,7 +23,7 @@ import { Badge } from '@app/components/ui/badge';
 import { Sidebar } from './Sidebar';
 import { PropertyPanel } from './PropertyPanel';
 import { AgentNode, RouterNode, TriggerNode, FunctionNode, IteratorNode, SubworkflowNode } from './nodes/CustomNodes';
-import { parseYamlToGraph, serializeGraphToYaml, getLayoutedElements } from './yamlSync';
+import { parseYamlToGraph, serializeGraphToYaml, getLayoutedElements, createIteratorLoopEdges } from './yamlSync';
 
 // Setup custom nodes mapping
 const nodeTypes = {
@@ -120,7 +120,12 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
   const onUpdateNode = useCallback(
     (id: string, data: Record<string, unknown>) => {
       setNodes((nds) => {
-        const newNodes = nds.map((node) => {
+        const targetNode = nds.find((n) => n.id === id);
+        const isIterator = targetNode?.type === 'iteratorNode';
+        const oldExecuteNode = isIterator ? (targetNode.data?.execute_node as string) : undefined;
+        const newExecuteNode = isIterator ? (data.execute_node as string) : undefined;
+
+        let updatedNodes = nds.map((node) => {
           if (node.id === id) {
             const updated = { ...node, data };
             if (selectedNode?.id === id) {
@@ -130,11 +135,46 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
           }
           return node;
         });
-        updateYaml(newNodes, edges);
-        return newNodes;
+
+        // If iterator execute_node changed, update target node flags and loop edges
+        if (isIterator && oldExecuteNode !== newExecuteNode) {
+          updatedNodes = updatedNodes.map((node) => {
+            if (oldExecuteNode && node.id === oldExecuteNode) {
+              const stillLooped = updatedNodes.some(
+                (other) =>
+                  other.id !== id && other.type === 'iteratorNode' && other.data?.execute_node === oldExecuteNode
+              );
+              if (!stillLooped) {
+                return { ...node, data: { ...node.data, isLoopTarget: false, loopedBy: undefined } };
+              }
+            }
+            if (newExecuteNode && node.id === newExecuteNode) {
+              return { ...node, data: { ...node.data, isLoopTarget: true, loopedBy: id } };
+            }
+            return node;
+          });
+
+          setEdges((eds) => {
+            const filteredEdges = eds.filter(
+              (e) =>
+                !(
+                  e.id.startsWith(`e-loop-exec-${id}-`) ||
+                  (e.id.endsWith(`-${id}`) && e.id.startsWith('e-loop-return-'))
+                )
+            );
+            const loopEdges = newExecuteNode ? createIteratorLoopEdges(id, newExecuteNode) : [];
+            const newEdges = [...filteredEdges, ...loopEdges];
+            updateYaml(updatedNodes, newEdges);
+            return newEdges;
+          });
+        } else {
+          updateYaml(updatedNodes, edges);
+        }
+
+        return updatedNodes;
       });
     },
-    [selectedNode, setNodes, updateYaml, edges]
+    [selectedNode, setNodes, setEdges, updateYaml, edges]
   );
 
   // Rename a node and propagate new ID across edges and router routing_options
@@ -219,7 +259,7 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
         setEdges((eds) => {
           const remainingEdges = eds.filter((e) => e.source !== nodeId && e.target !== nodeId);
 
-          // Clean up routing options in any router targeting the deleted node
+          // Clean up routing options in any router targeting the deleted node, and clean up iterators
           remainingNodes.forEach((node) => {
             if (node.type === 'routerNode' && node.data?.routing_options) {
               const opts = { ...(node.data.routing_options as Record<string, string>) };
@@ -227,6 +267,13 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
                 delete opts[nodeId];
                 node.data.routing_options = opts;
               }
+            }
+            if (node.type === 'iteratorNode' && node.data?.execute_node === nodeId) {
+              node.data.execute_node = undefined;
+            }
+            if (node.data?.loopedBy === nodeId) {
+              node.data.isLoopTarget = false;
+              node.data.loopedBy = undefined;
             }
           });
 
@@ -529,7 +576,40 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
     (params: Connection | Edge) => {
       const sourceNode = nodes.find((n) => n.id === params.source);
       const isRouter = sourceNode?.type === 'routerNode';
+      const isIteratorLoop = sourceNode?.type === 'iteratorNode' && params.sourceHandle === 'loop-out';
 
+      if (isIteratorLoop && params.source && params.target) {
+        const iteratorId = params.source;
+        const targetId = params.target;
+        setNodes((nds) => {
+          const updatedNodes = nds.map((node) => {
+            if (node.id === iteratorId) {
+              return { ...node, data: { ...node.data, execute_node: targetId } };
+            }
+            if (node.id === targetId) {
+              return { ...node, data: { ...node.data, isLoopTarget: true, loopedBy: iteratorId } };
+            }
+            return node;
+          });
+          setEdges((eds) => {
+            const filteredEdges = eds.filter(
+              (e) =>
+                !(
+                  e.id.startsWith(`e-loop-exec-${iteratorId}-`) ||
+                  (e.id.endsWith(`-${iteratorId}`) && e.id.startsWith('e-loop-return-'))
+                )
+            );
+            const loopEdges = createIteratorLoopEdges(iteratorId, targetId);
+            const newEdges = [...filteredEdges, ...loopEdges];
+            updateYaml(updatedNodes, newEdges);
+            return newEdges;
+          });
+          return updatedNodes;
+        });
+        return;
+      }
+
+      const isFromIterator = sourceNode?.type === 'iteratorNode';
       setEdges((eds) => {
         const newEdges = addEdge(
           {
@@ -537,10 +617,15 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
             type: 'smoothstep',
             pathOptions: { borderRadius: 16 },
             style: {
-              stroke: isRouter ? '#f97316' : '#64748b',
+              stroke: isRouter ? '#f97316' : isFromIterator ? '#6366f1' : '#64748b',
               strokeWidth: 2,
             },
-            animated: !isRouter,
+            animated: true,
+            label: isFromIterator ? 'On Complete [All]' : undefined,
+            labelStyle: isFromIterator ? { fill: '#6366f1', fontSize: 9, fontWeight: 600 } : undefined,
+            labelBgStyle: isFromIterator ? { fill: 'hsl(var(--card))', stroke: '#6366f1', strokeWidth: 1 } : undefined,
+            labelBgPadding: isFromIterator ? ([6, 3] as [number, number]) : undefined,
+            labelBgBorderRadius: isFromIterator ? 4 : undefined,
           },
           eds
         );
@@ -556,7 +641,7 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
         });
       }
     },
-    [nodes, setEdges, updateYaml]
+    [nodes, setNodes, setEdges, updateYaml]
   );
 
   const onConnectEnd: OnConnectEnd = useCallback((event, connectionState) => {
@@ -1072,7 +1157,11 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
               </div>
               <div className="text-muted-foreground flex items-center gap-2 text-[10px]">
                 <div className="h-0.5 w-3.5 bg-indigo-500"></div>
-                <span>ForEach Loop Target</span>
+                <span>ForEach Item (1..N)</span>
+              </div>
+              <div className="text-muted-foreground flex items-center gap-2 text-[10px]">
+                <div className="h-0.5 w-3.5 border-t border-dashed border-indigo-400"></div>
+                <span>ForEach Loop Return</span>
               </div>
             </Panel>
           </ReactFlow>
