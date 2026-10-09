@@ -14,7 +14,9 @@ import {
   Repeat,
 } from 'lucide-react';
 import React from 'react';
+import { useParams } from 'react-router';
 import { Badge } from '@app/components/ui/badge';
+import { useGetLLMConfigs } from '@app/hooks/data/fetch-hooks';
 
 interface NodeCardProps {
   title: string;
@@ -96,6 +98,21 @@ export const RouterNode = React.memo(({ data, selected }: NodeProps) => {
   const branches = Object.entries((data.routing_options as Record<string, string>) || {});
   const isFieldMatch = routerType === 'field_match';
   const isReflection = routerType === 'reflection';
+
+  const { app: appId } = useParams<{ app: string }>();
+  const { data: rootfloConfigs = [] } = useGetLLMConfigs(appId || '');
+
+  let resolvedModel = data.model as string;
+  if (!resolvedModel && data.model_id) {
+    const config = rootfloConfigs.find(
+      (c: { id: string; display_name?: string; llm_model?: string }) => c.id === data.model_id
+    );
+    if (config) {
+      resolvedModel = config.display_name || config.llm_model || config.id;
+    }
+  }
+
+  const modelStr = resolvedModel || 'No LLM Selected';
 
   const typeLabels: Record<string, string> = {
     smart: 'Smart (LLM)',
@@ -197,8 +214,8 @@ export const RouterNode = React.memo(({ data, selected }: NodeProps) => {
             <span>Fast</span>
           </div>
         ) : (
-          <div className="border-border/60 text-muted-foreground flex items-center justify-between border-t pt-2 text-[10px]">
-            <span>Model: {(data.model as string) || 'gpt-4o-mini'}</span>
+          <div className="border-border/60 text-muted-foreground flex flex-col items-start gap-1 border-t pt-2 text-[10px]">
+            <span className="truncate">Model: {modelStr}</span>
             <span>
               Fallback: <strong className="text-foreground">{(data.fallback_strategy as string) || 'first'}</strong>
             </span>
@@ -227,6 +244,22 @@ export const AgentNode = React.memo(({ data, selected }: NodeProps) => {
   const tools = Array.isArray(data.tools) ? data.tools : [];
   const inputFilters = Array.isArray(data.input_filter) ? data.input_filter : [];
   const hasParser = Boolean(data.parser);
+
+  const { app: appId } = useParams<{ app: string }>();
+  const { data: rootfloConfigs = [] } = useGetLLMConfigs(appId || '');
+
+  let resolvedModel = data.model as string;
+  if (!resolvedModel && data.model_id) {
+    const config = rootfloConfigs.find(
+      (c: { id: string; display_name?: string; llm_model?: string }) => c.id === data.model_id
+    );
+    if (config) {
+      resolvedModel = config.display_name || config.llm_model || config.id;
+    }
+  }
+
+  const modelStr = resolvedModel || 'No LLM Selected';
+  const providerStr = (data.provider as string) || ((data.model_id as string) ? 'rootflo' : 'openai');
 
   return (
     <>
@@ -334,8 +367,7 @@ export const AgentNode = React.memo(({ data, selected }: NodeProps) => {
         {/* Model Footer */}
         <div className="border-border/60 text-muted-foreground flex items-center justify-between border-t pt-2 text-[10px]">
           <span className="flex max-w-[170px] items-center gap-1 truncate">
-            <Cpu size={11} className="shrink-0" /> {(data.model as string) || 'gpt-4o-mini'} (
-            {(data.provider as string) || 'openai'})
+            <Cpu size={11} className="shrink-0" /> {modelStr} ({providerStr})
           </span>
           <span>Temp: {(data.temperature as number) ?? 0.7}</span>
         </div>
