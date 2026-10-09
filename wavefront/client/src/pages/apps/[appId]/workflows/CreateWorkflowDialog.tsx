@@ -1,14 +1,8 @@
 import floConsoleService from '@app/api';
 import { Button } from '@app/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@app/components/ui/dialog';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
+import { Dialog, DialogContent } from '@app/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@app/components/ui/tabs';
+import { Form, FormControl, FormField, FormItem, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
 import { extractErrorMessage } from '@app/lib/utils';
@@ -16,6 +10,7 @@ import { useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeMirror from '@uiw/react-codemirror';
+import { WorkflowVisualEditor } from '@app/components/WorkflowBuilder/WorkflowVisualEditor';
 import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
@@ -161,77 +156,131 @@ const CreateWorkflowDialog: React.FC<CreateWorkflowDialogProps> = ({ isOpen, onO
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto lg:max-w-4xl">
-        <DialogHeader>
-          <DialogTitle>Create New Workflow</DialogTitle>
-          <DialogDescription>Create a new AI workflow for voice-intelligence</DialogDescription>
-        </DialogHeader>
-
+      <DialogContent
+        showCloseButton={false}
+        className="bg-background !fixed !inset-0 !top-0 !left-0 z-50 flex !h-screen !max-h-none !w-screen !max-w-none min-w-0 !translate-x-0 !translate-y-0 flex-col !gap-0 overflow-hidden !rounded-none !border-0 !p-0"
+      >
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="w-full space-y-6">
-            <div className="grid w-full grid-cols-2 gap-6">
-              <FormField
-                control={form.control}
-                name="workflow_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Workflow ID</FormLabel>
-                    <FormControl>
-                      <Input placeholder="my-workflow" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="namespace"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Namespace</FormLabel>
-                    <FormControl>
-                      <Input placeholder="default" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <FormField
-              control={form.control}
-              name="yaml_content"
-              render={({ field }) => (
-                <FormItem className="col-span-2 w-full min-w-0">
-                  <FormLabel>Workflow Configuration (YAML)</FormLabel>
-                  <FormControl>
-                    <div className="border-frost-border w-full min-w-0 rounded-lg border">
-                      <CodeMirror
-                        value={field.value}
-                        onChange={field.onChange}
-                        theme="dark"
-                        height="400px"
-                        width="100%"
-                        maxWidth="100%"
-                        extensions={[langs.yaml(), ...popupCodeMirrorExtensions]}
-                        className="w-full min-w-0"
-                      />
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex h-full min-h-0 w-full flex-col">
+            <Tabs defaultValue="visual" className="flex h-full min-h-0 w-full flex-col">
+              {/* TOP COMMAND BAR */}
+              <div className="border-border bg-card/95 z-30 flex h-14 shrink-0 items-center justify-between gap-4 border-b px-4 backdrop-blur-md">
+                {/* Left: Branding & Core Workflow Metadata */}
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <div className="bg-primary/10 text-primary flex h-7 w-7 items-center justify-center rounded-lg text-xs font-bold shadow-xs">
+                      WF
                     </div>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                    <div>
+                      <h2 className="text-foreground text-xs leading-none font-semibold">Create Workflow</h2>
+                      <span className="text-muted-foreground text-[10px]">Studio Builder</span>
+                    </div>
+                  </div>
 
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
-                Cancel
-              </Button>
-              <Button type="submit" loading={loading}>
-                Create Workflow
-              </Button>
-            </DialogFooter>
+                  <div className="bg-border mx-1 h-4 w-[1px]" />
+
+                  <FormField
+                    control={form.control}
+                    name="workflow_id"
+                    render={({ field }) => (
+                      <FormItem className="flex items-center gap-1.5 space-y-0">
+                        <span className="text-muted-foreground text-[11px] font-medium">ID:</span>
+                        <FormControl>
+                          <Input
+                            placeholder="workflow-id"
+                            {...field}
+                            className="bg-background h-7 w-44 font-mono text-xs"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="namespace"
+                    render={({ field }) => (
+                      <FormItem className="flex items-center gap-1.5 space-y-0">
+                        <span className="text-muted-foreground text-[11px] font-medium">Namespace:</span>
+                        <FormControl>
+                          <Input
+                            placeholder="default"
+                            {...field}
+                            className="bg-background h-7 w-32 font-mono text-xs"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                {/* Center: Tabs Switcher */}
+                <TabsList className="bg-muted/60 h-8 p-0.5">
+                  <TabsTrigger value="visual" className="h-7 px-3 text-xs">
+                    Visual Builder
+                  </TabsTrigger>
+                  <TabsTrigger value="yaml" className="h-7 px-3 text-xs">
+                    YAML Code
+                  </TabsTrigger>
+                </TabsList>
+
+                {/* Right: Actions */}
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground hover:text-foreground h-8 text-xs"
+                    onClick={() => onOpenChange(false)}
+                    disabled={loading}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" size="sm" className="h-8 text-xs shadow-xs" loading={loading}>
+                    Create Workflow
+                  </Button>
+                </div>
+              </div>
+
+              {/* TABS CONTENT: 100% REMAINING REAL ESTATE */}
+              <TabsContent
+                value="visual"
+                className="m-0 h-[calc(100vh-56px)] min-h-0 w-full flex-1 overflow-hidden outline-none"
+              >
+                <WorkflowVisualEditor
+                  yamlContent={form.watch('yaml_content')}
+                  onChange={(val) => form.setValue('yaml_content', val, { shouldValidate: true })}
+                />
+              </TabsContent>
+
+              <TabsContent value="yaml" className="m-0 h-[calc(100vh-56px)] min-h-0 w-full flex-1 p-4 outline-none">
+                <FormField
+                  control={form.control}
+                  name="yaml_content"
+                  render={({ field }) => (
+                    <FormItem className="flex h-full min-w-0 flex-col">
+                      <FormControl>
+                        <div className="border-border w-full min-w-0 flex-1 overflow-hidden rounded-xl border">
+                          <CodeMirror
+                            value={field.value}
+                            onChange={field.onChange}
+                            theme="dark"
+                            height="100%"
+                            width="100%"
+                            maxWidth="100%"
+                            extensions={[langs.yaml(), ...popupCodeMirrorExtensions]}
+                            className="h-full w-full min-w-0"
+                          />
+                        </div>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </TabsContent>
+            </Tabs>
           </form>
         </Form>
       </DialogContent>
