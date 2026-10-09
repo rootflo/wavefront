@@ -56,17 +56,6 @@ interface CreateAgentDialogProps {
   namespaces: NamespaceItem[];
 }
 
-const PROVIDERS = [
-  { value: 'gemini', label: 'Google (Gemini)' },
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'anthropic', label: 'Anthropic' },
-  { value: 'ollama', label: 'Ollama' },
-  { value: 'rootflo', label: 'RootFlo' },
-  { value: 'vertexai', label: 'Vertex AI' },
-  { value: 'azure_openai', label: 'Azure OpenAI' },
-  { value: 'openai_vllm', label: 'OpenAI vLLM' },
-];
-
 const REASONING_PATTERNS = [
   { value: 'DIRECT', label: 'Direct' },
   { value: 'REACT', label: 'ReAct' },
@@ -97,8 +86,8 @@ const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
       agentName: 'translator',
       role: 'Professional Translator',
       job: 'You are a translator. Use this tone <tone>',
-      provider: 'gemini',
-      modelName: 'gemini-2.5-flash',
+      provider: 'rootflo',
+      modelName: '',
       temperature: 0.7,
       description: 'Agent for translating text with specified tone',
       version: '1.0.0',
@@ -168,10 +157,9 @@ const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
       else delete agent.act_as;
 
       // Provider specifics
-      model.provider = watchAllFields.provider || 'gemini';
+      model.provider = 'rootflo';
 
       // Clear all modeled fields first to prevent leak when switching provider
-      delete model.model_id;
       delete model.name;
       delete model.project;
       delete model.location;
@@ -181,22 +169,7 @@ const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
       delete model.api_key;
       delete model.timeout;
 
-      if (watchAllFields.provider === 'rootflo') {
-        model.model_id = watchAllFields.modelId || '';
-      } else {
-        model.name = watchAllFields.modelName || 'gemini-2.5-flash';
-      }
-
-      if (watchAllFields.provider === 'vertexai') {
-        if (watchAllFields.project) model.project = watchAllFields.project;
-        if (watchAllFields.location) model.location = watchAllFields.location;
-        if (watchAllFields.baseUrl) model.base_url = watchAllFields.baseUrl;
-      }
-
-      if (watchAllFields.provider === 'azure_openai') {
-        if (watchAllFields.azureEndpoint) model.azure_endpoint = watchAllFields.azureEndpoint;
-        if (watchAllFields.azureApiVersion) model.azure_api_version = watchAllFields.azureApiVersion;
-      }
+      model.model_id = watchAllFields.modelId || '';
 
       if (watchAllFields.provider === 'openai_vllm') {
         if (watchAllFields.apiKey) model.api_key = watchAllFields.apiKey;
@@ -321,8 +294,8 @@ const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
         agentName: 'translator',
         role: 'Professional Translator',
         job: 'You are a translator. Use this tone <tone>',
-        provider: 'gemini',
-        modelName: 'gemini-2.5-flash',
+        provider: 'rootflo',
+        modelName: '',
         temperature: 0.7,
         description: 'Agent for translating text with specified tone',
         version: '1.0.0',
@@ -536,162 +509,33 @@ const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
                       <div className="grid grid-cols-2 gap-6">
                         <FormField
                           control={form.control}
-                          name="provider"
+                          name="modelId"
                           render={({ field }) => (
-                            <FormItem>
+                            <FormItem className="col-span-2">
                               <FormLabel className="frost-text">
-                                Provider <span className="text-red-500">*</span>
+                                LLM Model <span className="text-red-500">*</span>
                               </FormLabel>
                               <Select onValueChange={field.onChange} value={field.value}>
                                 <FormControl>
                                   <SelectTrigger className="frost-control">
-                                    <SelectValue placeholder="Select provider" />
+                                    <SelectValue placeholder="Select a RootFlo LLM model" />
                                   </SelectTrigger>
                                 </FormControl>
                                 <SelectContent>
-                                  {PROVIDERS.map((p) => (
-                                    <SelectItem key={p.value} value={p.value}>
-                                      {p.label}
-                                    </SelectItem>
-                                  ))}
+                                  {rootfloModels.map(
+                                    (model: { id: string; display_name?: string; llm_model?: string }) => (
+                                      <SelectItem key={model.id} value={model.id}>
+                                        {model.display_name || model.llm_model || model.id}
+                                      </SelectItem>
+                                    )
+                                  )}
                                 </SelectContent>
                               </Select>
                               <FormMessage />
                             </FormItem>
                           )}
                         />
-
-                        {watchAllFields.provider === 'rootflo' ? (
-                          <FormField
-                            control={form.control}
-                            name="modelId"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel className="frost-text">
-                                  RootFlo Model <span className="text-red-500">*</span>
-                                </FormLabel>
-                                <Select onValueChange={field.onChange} value={field.value}>
-                                  <FormControl>
-                                    <SelectTrigger className="frost-control">
-                                      <SelectValue placeholder="Select a RootFlo model" />
-                                    </SelectTrigger>
-                                  </FormControl>
-                                  <SelectContent>
-                                    {rootfloModels.map(
-                                      (model: { id: string; display_name?: string; llm_model?: string }) => (
-                                        <SelectItem key={model.id} value={model.id}>
-                                          {model.display_name || model.llm_model || model.id}
-                                        </SelectItem>
-                                      )
-                                    )}
-                                  </SelectContent>
-                                </Select>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        ) : (
-                          <FormField
-                            control={form.control}
-                            name="modelName"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel className="frost-text">
-                                  Model Name <span className="text-red-500">*</span>
-                                </FormLabel>
-                                <FormControl>
-                                  <Input placeholder="e.g. gemini-2.5-flash" className="frost-control" {...field} />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        )}
                       </div>
-
-                      {watchAllFields.provider === 'vertexai' && (
-                        <div className="grid grid-cols-2 gap-6">
-                          <FormField
-                            control={form.control}
-                            name="project"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel className="frost-text">GCP Project ID</FormLabel>
-                                <FormControl>
-                                  <Input placeholder="my-gcp-project" className="frost-control" {...field} />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                          <FormField
-                            control={form.control}
-                            name="location"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel className="frost-text">GCP Location</FormLabel>
-                                <FormControl>
-                                  <Input placeholder="us-central1" className="frost-control" {...field} />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </div>
-                      )}
-
-                      {watchAllFields.provider === 'azure_openai' && (
-                        <div className="grid grid-cols-2 gap-6">
-                          <FormField
-                            control={form.control}
-                            name="azureEndpoint"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel className="frost-text">Azure Endpoint</FormLabel>
-                                <FormControl>
-                                  <Input
-                                    placeholder="https://my-resource.openai.azure.com"
-                                    className="frost-control"
-                                    {...field}
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                          <FormField
-                            control={form.control}
-                            name="azureApiVersion"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel className="frost-text">Azure API Version</FormLabel>
-                                <FormControl>
-                                  <Input placeholder="2024-02-15-preview" className="frost-control" {...field} />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </div>
-                      )}
-
-                      {watchAllFields.provider === 'openai_vllm' && (
-                        <div className="grid grid-cols-1 gap-6">
-                          <FormField
-                            control={form.control}
-                            name="apiKey"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel className="frost-text">API Key</FormLabel>
-                                <FormControl>
-                                  <Input type="password" placeholder="sk-..." className="frost-control" {...field} />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </div>
-                      )}
 
                       <div className="grid grid-cols-2 gap-6">
                         <FormField

@@ -321,7 +321,6 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
           source: 'trigger-start',
           target: newNode.id,
           type: 'smoothstep',
-          pathOptions: { borderRadius: 16 },
           animated: true,
           style: { stroke: '#a855f7', strokeWidth: 2 },
         });
@@ -633,7 +632,6 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
           {
             ...params,
             type: 'smoothstep',
-            pathOptions: { borderRadius: 16 },
             style: {
               stroke: isRouter ? '#f97316' : isFromIterator ? '#6366f1' : '#64748b',
               strokeWidth: 2,
@@ -644,7 +642,7 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
             labelBgStyle: isFromIterator ? { fill: 'hsl(var(--card))', stroke: '#6366f1', strokeWidth: 1 } : undefined,
             labelBgPadding: isFromIterator ? ([6, 3] as [number, number]) : undefined,
             labelBgBorderRadius: isFromIterator ? 4 : undefined,
-          },
+          } as unknown as Edge,
           eds
         );
         updateYaml(currentNodes, newEdges);
@@ -705,7 +703,6 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
       source: addNodeMenu.sourceId,
       target: newNodeId,
       type: 'smoothstep',
-      pathOptions: { borderRadius: 16 },
       style: {
         stroke: nodes.find((n) => n.id === addNodeMenu.sourceId)?.type === 'routerNode' ? '#f97316' : '#64748b',
         strokeWidth: 2,
@@ -741,7 +738,6 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
       }, 50);
     }
 
-    const sourceNode = nodes.find((n) => n.id === addNodeMenu.sourceId);
     if (sourceNode?.type === 'routerNode') {
       setTimeout(() => {
         setIntentPrompt({
@@ -1135,7 +1131,6 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
             maxZoom={2}
             defaultEdgeOptions={{
               type: 'smoothstep',
-              pathOptions: { borderRadius: 16 },
             }}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}

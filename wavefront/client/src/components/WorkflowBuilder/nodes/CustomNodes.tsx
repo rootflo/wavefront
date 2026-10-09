@@ -273,7 +273,7 @@ export const AgentNode = React.memo(({ data, selected }: NodeProps) => {
           <span className="text-foreground block text-[11px] font-semibold">
             {(data.role as string) || 'General Assistant'}
           </span>
-          {data.job && (
+          {(data.job as string) && (
             <p className="text-muted-foreground bg-muted/20 border-border/40 mt-1 line-clamp-2 rounded border p-1.5 text-[10px] italic">
               &ldquo;{data.job as string}&rdquo;
             </p>
@@ -337,7 +337,7 @@ export const AgentNode = React.memo(({ data, selected }: NodeProps) => {
             <Cpu size={11} className="shrink-0" /> {(data.model as string) || 'gpt-4o-mini'} (
             {(data.provider as string) || 'openai'})
           </span>
-          <span>Temp: {data.temperature ?? 0.7}</span>
+          <span>Temp: {(data.temperature as number) ?? 0.7}</span>
         </div>
       </NodeCard>
       <Handle

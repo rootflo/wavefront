@@ -56,7 +56,6 @@ export const createIteratorLoopEdges = (iteratorName: string, executeNode: strin
     sourceHandle: 'loop-out',
     target: executeNode,
     type: 'smoothstep',
-    pathOptions: { borderRadius: 16 },
     animated: true,
     style: { stroke: '#6366f1', strokeWidth: 2 },
     label: 'Iterate (1..N) ➔',
@@ -73,7 +72,6 @@ export const createIteratorLoopEdges = (iteratorName: string, executeNode: strin
     target: iteratorName,
     targetHandle: 'loop-return',
     type: 'smoothstep',
-    pathOptions: { borderRadius: 24 },
     animated: true,
     style: { stroke: '#818cf8', strokeWidth: 2, strokeDasharray: '5,5' },
     label: '↺ Next Item (Repeat)',
@@ -208,8 +206,9 @@ export const parseYamlToGraph = (yamlString: string): { nodes: Node[]; edges: Ed
           job: agent.job || agent.prompt || '',
           act_as: agent.act_as,
           yaml_file: agent.yaml_file,
-          provider: agent.model?.provider || '',
+          provider: agent.model?.provider || 'rootflo',
           model: agent.model?.name || '',
+          model_id: (agent.model as Record<string, unknown>)?.model_id || '',
           temperature: agent.settings?.temperature ?? 0.7,
           max_tokens: agent.settings?.max_tokens,
           tools: agent.tools || [],
@@ -230,7 +229,6 @@ export const parseYamlToGraph = (yamlString: string): { nodes: Node[]; edges: Ed
               source: dep,
               target: agent.name,
               type: 'smoothstep',
-              pathOptions: { borderRadius: 16 },
               animated: false,
               style: { stroke: '#3b82f6', strokeWidth: 1.2, strokeDasharray: '4,4', opacity: 0.35 },
               label: 'Filter',
@@ -267,7 +265,6 @@ export const parseYamlToGraph = (yamlString: string): { nodes: Node[]; edges: Ed
               source: dep,
               target: fn.name,
               type: 'smoothstep',
-              pathOptions: { borderRadius: 16 },
               animated: false,
               style: { stroke: '#3b82f6', strokeWidth: 1.2, strokeDasharray: '4,4', opacity: 0.35 },
               label: 'Filter',
@@ -303,7 +300,6 @@ export const parseYamlToGraph = (yamlString: string): { nodes: Node[]; edges: Ed
               source: dep,
               target: it.name,
               type: 'smoothstep',
-              pathOptions: { borderRadius: 16 },
               animated: false,
               style: { stroke: '#3b82f6', strokeWidth: 1.2, strokeDasharray: '4,4', opacity: 0.35 },
               label: 'Filter',
@@ -342,7 +338,6 @@ export const parseYamlToGraph = (yamlString: string): { nodes: Node[]; edges: Ed
               source: dep,
               target: localName,
               type: 'smoothstep',
-              pathOptions: { borderRadius: 16 },
               animated: false,
               style: { stroke: '#3b82f6', strokeWidth: 1.2, strokeDasharray: '4,4', opacity: 0.35 },
               label: 'Filter',
@@ -382,6 +377,7 @@ export const parseYamlToGraph = (yamlString: string): { nodes: Node[]; edges: Ed
           allow_early_exit: router.settings?.allow_early_exit,
           provider: router.model?.provider || '',
           model: router.model?.name || '',
+          model_id: (router.model as Record<string, unknown>)?.model_id || '',
           temperature: router.settings?.temperature ?? 0.3,
           context_description: router.settings?.context_description || '',
           fallback_strategy: router.settings?.fallback_strategy || 'first',
@@ -402,7 +398,6 @@ export const parseYamlToGraph = (yamlString: string): { nodes: Node[]; edges: Ed
             source: from,
             target: to,
             type: 'smoothstep',
-            pathOptions: { borderRadius: 16 },
             animated: true,
             style: { stroke: '#f43f5e', strokeWidth: 1.5, strokeDasharray: '5,5' },
             label: `Loop #${i + 1}`,
@@ -446,7 +441,6 @@ export const parseYamlToGraph = (yamlString: string): { nodes: Node[]; edges: Ed
         source: 'trigger-start',
         target: workflow.start,
         type: 'smoothstep',
-        pathOptions: { borderRadius: 16 },
         animated: true,
         style: { stroke: '#a855f7', strokeWidth: 2 },
       });
@@ -466,7 +460,6 @@ export const parseYamlToGraph = (yamlString: string): { nodes: Node[]; edges: Ed
             source: from,
             target: router,
             type: 'smoothstep',
-            pathOptions: { borderRadius: 16 },
             animated: true,
             style: { stroke: '#64748b', strokeWidth: 2 },
           });
@@ -490,7 +483,6 @@ export const parseYamlToGraph = (yamlString: string): { nodes: Node[]; edges: Ed
               source: router,
               target: toItem,
               type: 'smoothstep',
-              pathOptions: { borderRadius: 16 },
               label: shortLabel,
               labelStyle: { fill: '#ea580c', fontWeight: 600, fontSize: 10, fontFamily: 'inherit' },
               labelBgPadding: [6, 4] as [number, number],
@@ -508,7 +500,6 @@ export const parseYamlToGraph = (yamlString: string): { nodes: Node[]; edges: Ed
               source: from,
               target: toItem,
               type: 'smoothstep',
-              pathOptions: { borderRadius: 16 },
               animated: true,
               style: { stroke: isFromIterator ? '#6366f1' : '#64748b', strokeWidth: 2 },
               label: isFromIterator ? 'On Complete [All]' : undefined,
@@ -545,7 +536,6 @@ export const parseYamlToGraph = (yamlString: string): { nodes: Node[]; edges: Ed
             source: router.name,
             target: targetName,
             type: 'smoothstep',
-            pathOptions: { borderRadius: 16 },
             label: shortLabel,
             labelStyle: { fill: '#ea580c', fontWeight: 600, fontSize: 10, fontFamily: 'inherit' },
             labelBgPadding: [6, 4] as [number, number],
@@ -585,14 +575,14 @@ export const serializeGraphToYaml = (nodes: Node[], edges: Edge[], currentYaml: 
         const agentObj: Record<string, unknown> = {
           ...existing,
           name: n.data.label || n.id,
-          yaml_file: n.data.yaml_file || undefined,
           role: n.data.role || undefined,
           job: n.data.job || undefined,
           act_as: n.data.act_as || undefined,
           model: {
             ...existing.model,
-            provider: n.data.provider || 'openai',
-            name: n.data.model || 'gpt-4o-mini',
+            name: undefined,
+            provider: 'rootflo',
+            model_id: n.data.model_id || n.data.model || '',
           },
           settings: {
             ...existing.settings,
@@ -618,6 +608,8 @@ export const serializeGraphToYaml = (nodes: Node[], edges: Edge[], currentYaml: 
         } else {
           delete agentObj.parser;
         }
+
+        delete agentObj.yaml_file; // Force inline configuration for the builder
 
         return agentObj;
       });
@@ -757,11 +749,16 @@ export const serializeGraphToYaml = (nodes: Node[], edges: Edge[], currentYaml: 
             : n.data.flow_pattern
               ? [n.data.flow_pattern]
               : [];
-          routerObj.model = {
-            ...existing.model,
-            provider: n.data.provider || 'openai',
-            name: n.data.model || 'gpt-4o-mini',
-          };
+          const newModel: Record<string, unknown> = { ...existing.model };
+          delete newModel.name;
+          delete newModel.model_id;
+          newModel.provider = n.data.provider || 'openai';
+          if (n.data.provider === 'rootflo') {
+            newModel.model_id = n.data.model_id || n.data.model || '';
+          } else {
+            newModel.name = n.data.model || 'gpt-4o-mini';
+          }
+          routerObj.model = newModel;
           routerObj.settings = {
             ...existing.settings,
             temperature: toTemperature(n.data.temperature, 0.3),
@@ -770,11 +767,16 @@ export const serializeGraphToYaml = (nodes: Node[], edges: Edge[], currentYaml: 
           delete routerObj.field;
         } else {
           // Smart or general LLM router
-          routerObj.model = {
-            ...existing.model,
-            provider: n.data.provider || 'openai',
-            name: n.data.model || 'gpt-4o-mini',
-          };
+          const newModel: Record<string, unknown> = { ...existing.model };
+          delete newModel.name;
+          delete newModel.model_id;
+          newModel.provider = n.data.provider || 'openai';
+          if (n.data.provider === 'rootflo') {
+            newModel.model_id = n.data.model_id || n.data.model || '';
+          } else {
+            newModel.name = n.data.model || 'gpt-4o-mini';
+          }
+          routerObj.model = newModel;
           routerObj.settings = {
             ...existing.settings,
             temperature: toTemperature(n.data.temperature, 0.3),
@@ -832,7 +834,7 @@ export const serializeGraphToYaml = (nodes: Node[], edges: Edge[], currentYaml: 
       if (directTargets.length > 0 && sourceId !== 'trigger-start') {
         workflowEdges.push({
           from: sourceId,
-          to: directTargets.length === 1 ? directTargets[0] : directTargets,
+          to: directTargets,
         });
       }
 
@@ -849,7 +851,7 @@ export const serializeGraphToYaml = (nodes: Node[], edges: Edge[], currentYaml: 
           workflowEdges.push({
             from: sourceId,
             router: routerId,
-            to: routerTargets.length === 1 ? routerTargets[0] : routerTargets,
+            to: routerTargets,
           });
         }
       });
@@ -863,8 +865,8 @@ export const serializeGraphToYaml = (nodes: Node[], edges: Edge[], currentYaml: 
     const executableNodeIds = validExecutableNodes.map((n) => n.id);
     const nodesWithOutgoing = new Set<string>();
     workflowEdges.forEach((edgeObj) => {
-      if (edgeObj.from) nodesWithOutgoing.add(edgeObj.from);
-      if (edgeObj.router) nodesWithOutgoing.add(edgeObj.router);
+      if (edgeObj.from) nodesWithOutgoing.add(edgeObj.from as string);
+      if (edgeObj.router) nodesWithOutgoing.add(edgeObj.router as string);
     });
 
     const computedTerminals = executableNodeIds.filter((id) => !nodesWithOutgoing.has(id));

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Plus, Trash2, ChevronRight, ChevronDown } from 'lucide-react';
 import { Input } from '@app/components/ui/input';
 import { Label } from '@app/components/ui/label';

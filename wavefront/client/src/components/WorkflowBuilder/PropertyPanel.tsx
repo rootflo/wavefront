@@ -5,7 +5,7 @@ import { Input } from '@app/components/ui/input';
 import { Label } from '@app/components/ui/label';
 import { Button } from '@app/components/ui/button';
 import { useParams } from 'react-router';
-import { useGetLLMConfigs, useGetWorkflows, useGetTools, useGetAgents } from '@app/hooks/data/fetch-hooks';
+import { useGetLLMConfigs, useGetWorkflows, useGetTools } from '@app/hooks/data/fetch-hooks';
 import MultiSelect from '@app/components/MultiSelect';
 import { ParserBuilder } from './ParserBuilder';
 
@@ -32,7 +32,6 @@ export const PropertyPanel = ({
   const { data: rootfloConfigs = [] } = useGetLLMConfigs(appId || '');
   const { data: workflows = [] } = useGetWorkflows(appId || '');
   const { data: tools = [] } = useGetTools(appId || '');
-  const { data: agents = [] } = useGetAgents(appId || '');
 
   const [nameInput, setNameInput] = React.useState((selectedNode?.data?.label as string) || selectedNode?.id || '');
   const [parserMode, setParserMode] = React.useState<'builder' | 'raw'>('builder');
@@ -138,26 +137,7 @@ export const PropertyPanel = ({
         {/* ========================================================================= */}
         {selectedNode.type === 'agentNode' && (
           <>
-            <div>
-              <Label className="text-primary mb-1 block text-xs font-semibold">Import Pre-built Agent (Optional)</Label>
-              <Input
-                list="agents-list"
-                className="bg-background border-border focus:border-primary text-foreground w-full rounded-md border px-2 py-1.5 text-xs focus:outline-none"
-                value={(selectedNode.data.yaml_file as string) || ''}
-                onChange={(e) => handleChange('yaml_file', e.target.value || undefined)}
-                placeholder="Type or select a pre-built agent..."
-              />
-              <datalist id="agents-list">
-                {agents.map((agent: { namespace?: string; name: string }) => (
-                  <option key={`${agent.namespace}/${agent.name}`} value={`${agent.namespace}/${agent.name}`}>
-                    {agent.name} ({agent.namespace})
-                  </option>
-                ))}
-              </datalist>
-              <p className="text-muted-foreground mt-0.5 text-[10px]">Overrides inline config if selected.</p>
-            </div>
-
-            <div className={selectedNode.data.yaml_file ? 'pointer-events-none space-y-4 opacity-50' : 'space-y-4'}>
+            <div className="space-y-4">
               <div>
                 <Label className="mb-1 block text-xs">Role</Label>
                 <Input
@@ -181,45 +161,22 @@ export const PropertyPanel = ({
 
               <div className="flex gap-2">
                 <div className="flex-1">
-                  <Label className="mb-1 block text-xs">Provider</Label>
+                  <Label className="mb-1 block text-xs">LLM Model</Label>
                   <select
                     className="bg-background border-border focus:border-primary text-foreground w-full rounded-md border px-2 py-1.5 text-xs focus:outline-none"
-                    value={(selectedNode.data.provider as string) || 'openai'}
-                    onChange={(e) => handleChange('provider', e.target.value)}
+                    value={(selectedNode.data.model_id as string) || ''}
+                    onChange={(e) => {
+                      handleChange('provider', 'rootflo');
+                      handleChange('model_id', e.target.value);
+                    }}
                   >
-                    <option value="openai">OpenAI</option>
-                    <option value="gemini">Google (Gemini)</option>
-                    <option value="anthropic">Anthropic</option>
-                    <option value="rootflo">RootFlo Models</option>
-                    <option value="vertexai">Vertex AI</option>
-                    <option value="azure_openai">Azure OpenAI</option>
-                  </select>
-                </div>
-                <div className="flex-1">
-                  <Label className="mb-1 block text-xs">Model</Label>
-                  {selectedNode.data.provider === 'rootflo' ? (
-                    <select
-                      className="bg-background border-border focus:border-primary text-foreground w-full rounded-md border px-2 py-1.5 text-xs focus:outline-none"
-                      value={(selectedNode.data.model as string) || ''}
-                      onChange={(e) => handleChange('model', e.target.value)}
-                    >
-                      <option value="" disabled>
-                        Select Model
+                    <option value="">Select LLM Model</option>
+                    {rootfloConfigs.map((model: { id: string; display_name?: string; llm_model?: string }) => (
+                      <option key={model.id} value={model.id}>
+                        {model.display_name || model.llm_model || model.id}
                       </option>
-                      {rootfloConfigs.map((model: { id: string; display_name?: string; llm_model?: string }) => (
-                        <option key={model.id} value={model.id}>
-                          {model.display_name || model.llm_model || model.id}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <Input
-                      value={(selectedNode.data.model as string) || ''}
-                      onChange={(e) => handleChange('model', e.target.value)}
-                      className="bg-background h-8 text-xs"
-                      placeholder="e.g. gpt-4o-mini"
-                    />
-                  )}
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -452,16 +409,14 @@ export const PropertyPanel = ({
                     </select>
                   </div>
                   <div className="flex-1">
-                    <Label className="mb-1 block text-xs">Model</Label>
+                    <Label className="mb-1 block text-xs">LLM Model</Label>
                     {selectedNode.data.provider === 'rootflo' ? (
                       <select
                         className="bg-background border-border focus:border-primary text-foreground w-full rounded-md border px-2 py-1.5 text-xs focus:outline-none"
-                        value={(selectedNode.data.model as string) || ''}
-                        onChange={(e) => handleChange('model', e.target.value)}
+                        value={(selectedNode.data.model_id as string) || ''}
+                        onChange={(e) => handleChange('model_id', e.target.value)}
                       >
-                        <option value="" disabled>
-                          Select Model
-                        </option>
+                        <option value="">Select LLM Model</option>
                         {rootfloConfigs.map((model: { id: string; display_name?: string; llm_model?: string }) => (
                           <option key={model.id} value={model.id}>
                             {model.display_name || model.llm_model || model.id}
