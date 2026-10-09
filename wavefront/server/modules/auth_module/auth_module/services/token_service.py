@@ -7,7 +7,7 @@ import hashlib
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any
-from flo_cloud._types import FloKMS
+from flo_cloud._types import FloSigner
 
 
 class TokenAlgorithms(str, Enum):
@@ -25,25 +25,26 @@ class TokenAlgorithms(str, Enum):
 class TokenService:
     def __init__(
         self,
-        kms_service: FloKMS,
+        kms_signer: FloSigner,
+        *,
+        token_expiry: int,
+        temporary_token_expiry: int,
+        app_env: str,
+        issuer: str,
+        audience: str,
+        validation_issuers: list[str],
+        token_prefix: str,
         algorithm: TokenAlgorithms = TokenAlgorithms.PS256,
-        token_expiry: int = 4 * 60 * 60,  # 4 hours in seconds
-        temporary_token_expiry: int = 10 * 60,  # 10 minutes in seconds
-        app_env: str = 'production',
-        issuer: str = 'https://floware.rootflo.ai',
-        audience: str = 'https://floware.rootflo.ai',
     ):
         self.algorithm = algorithm.value
         self.token_expiry = int(token_expiry)
         self.temporary_token_expiry = int(temporary_token_expiry)
-        self.kms_service = kms_service
+        self.kms_signer = kms_signer
+        self.app_env = app_env
         self.issuer = issuer
         self.audience = audience
-
-    def _load_key(self, key: str):
-        if not key:
-            return None
-        return base64.b64decode(key).decode('ascii')
+        self.validation_issuers = validation_issuers
+        self.token_prefix = token_prefix
 
     def create_token(
         self,
@@ -86,7 +87,7 @@ class TokenService:
 
         digest = hashlib.sha256(message.encode()).digest()
 
-        signature = self.kms_service.sign(message=digest)
+        signature = self.kms_signer.sign(message=digest)
         signature = self._base64url_encode(signature)
 
         return f'{message}.{signature}'
@@ -105,7 +106,7 @@ class TokenService:
             raise jwt.InvalidTokenError('Invalid token format') from e
 
         try:
-            is_valid = self.kms_service.verify(message=digest, signature=signature)
+            is_valid = self.kms_signer.verify(message=digest, signature=signature)
         except (binascii.Error, ValueError, TypeError, json.JSONDecodeError) as e:
             raise jwt.InvalidTokenError('Invalid token signature') from e
         except Exception as e:
@@ -115,7 +116,7 @@ class TokenService:
             return {}
 
         try:
-            public_key_pem = self.kms_service.get_public_key_pem()
+            public_key_pem = self.kms_signer.get_public_key_pem()
         except Exception as e:
             raise jwt.InvalidTokenError('Invalid token') from e
 

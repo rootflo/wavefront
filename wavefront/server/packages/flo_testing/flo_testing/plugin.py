@@ -7,38 +7,33 @@ never ask for a database never start one.
 
 from __future__ import annotations
 
-import os
+from db_repo_module.embedding_column_mode import enable_pgvector_test_standins
 
-# Both of these are read at import time -- APP_ENV decides whether the embedding
-# columns map to pgvector's Vector or to Text (tests use Text so the cluster
-# needs no extension), and SUPERSET_FLAG decides whether AuthContainer even
-# defines superset_service. They therefore have to be set before any module
-# import, which is earlier than any fixture or hook can run; plugin import is
-# the first point available. setdefault, so an explicit value still wins.
-os.environ.setdefault('APP_ENV', 'test')
-os.environ.setdefault('SUPERSET_FLAG', 'true')
+# Before any ``db_repo_module.models`` import: Text stand-ins instead of pgvector.
+enable_pgvector_test_standins()
 
-from flo_testing.app import build_app  # noqa: E402
-from flo_testing.app import make_test_client  # noqa: E402
-from flo_testing.auth import patch_auth  # noqa: E402,F401
-from flo_testing.auth import patch_current_user  # noqa: E402,F401
-from flo_testing.auth import patch_feature_flag  # noqa: E402,F401
-from flo_testing.auth import patch_is_admin  # noqa: E402,F401
-from flo_testing.containers import CoreContainers  # noqa: E402
-from flo_testing.containers import core_containers  # noqa: E402,F401
-from flo_testing.containers import user_config  # noqa: E402,F401
-from flo_testing.db import StubDbClient  # noqa: E402
-from flo_testing.db import db_client  # noqa: E402,F401
-from flo_testing.db import postgres_cluster  # noqa: E402,F401
-from flo_testing.db import postgres_template  # noqa: E402,F401
-from flo_testing.db import test_engine  # noqa: E402,F401
-from flo_testing.db import test_session  # noqa: E402,F401
-from flo_testing.factories import seed_session  # noqa: E402,F401
-from flo_testing.factories import seed_user_session  # noqa: E402
-from flo_testing.identity import auth_headers  # noqa: E402,F401
-from flo_testing.identity import auth_token  # noqa: E402,F401
-from flo_testing.identity import test_session_id  # noqa: E402,F401
-from flo_testing.identity import test_user_id  # noqa: E402,F401
+# ruff: noqa: E402
+from flo_testing.app import build_app
+from flo_testing.app import make_test_client
+from flo_testing.auth import patch_auth  # noqa: F401
+from flo_testing.auth import patch_current_user  # noqa: F401
+from flo_testing.auth import patch_feature_flag  # noqa: F401
+from flo_testing.auth import patch_is_admin  # noqa: F401
+from flo_testing.containers import CoreContainers
+from flo_testing.containers import core_containers  # noqa: F401
+from flo_testing.containers import user_config  # noqa: F401
+from flo_testing.db import StubDbClient
+from flo_testing.db import db_client  # noqa: F401
+from flo_testing.db import postgres_cluster  # noqa: F401
+from flo_testing.db import postgres_template  # noqa: F401
+from flo_testing.db import test_engine  # noqa: F401
+from flo_testing.db import test_session  # noqa: F401
+from flo_testing.factories import seed_session  # noqa: F401
+from flo_testing.factories import seed_user_session
+from flo_testing.identity import auth_headers  # noqa: F401
+from flo_testing.identity import auth_token  # noqa: F401
+from flo_testing.identity import test_session_id  # noqa: F401
+from flo_testing.identity import test_user_id  # noqa: F401
 
 __all__ = [
     'CoreContainers',

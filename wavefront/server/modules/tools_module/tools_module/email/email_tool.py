@@ -1,24 +1,18 @@
 import json
-import os
 from urllib.parse import quote
 
 import httpx
 
-FLOWARE_BASE_URL = os.getenv('FLOWARE_BASE_URL', 'http://localhost:8001').rstrip('/')
-
-
-def _headers() -> dict:
-    headers = {'Content-Type': 'application/json'}
-    # Same internal-call convention as the other cross-service callers: the
-    # passthrough secret outside production, service mesh identity within it.
-    passthrough_secret = os.getenv('PASSTHROUGH_SECRET')
-    if passthrough_secret:
-        headers['X-Passthrough'] = passthrough_secret
-    return headers
+from tools_module.floware_api import FlowareApiClient
 
 
 async def send_email(
-    connection_id: str, email_id: str, email_subject: str, email_body: str
+    api: FlowareApiClient,
+    /,
+    connection_id: str,
+    email_id: str,
+    email_subject: str,
+    email_body: str,
 ) -> str:
     """Send an email from a connected mailbox via wavefront's own REST API
     (POST /v1/email-connections/{connection_id}/send), so the tool never touches
@@ -28,7 +22,7 @@ async def send_email(
     supplies the recipient, subject and body.
     """
     url = (
-        f'{FLOWARE_BASE_URL}/floware/v1/email-connections/'
+        f'{api.base_url}/floware/v1/email-connections/'
         f'{quote(connection_id, safe="")}/send'
     )
     async with httpx.AsyncClient() as client:
@@ -40,7 +34,7 @@ async def send_email(
                     'subject': email_subject,
                     'body': email_body,
                 },
-                headers=_headers(),
+                headers=api.headers(),
                 timeout=30.0,
             )
         except httpx.RequestError as e:

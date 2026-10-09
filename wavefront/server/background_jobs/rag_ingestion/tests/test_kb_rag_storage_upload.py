@@ -10,6 +10,7 @@ import pytest
 
 from rag_ingestion.service import kb_rag_storage
 from rag_ingestion.service.kb_rag_storage import EmbeddingsRejectedError, KBRagStorage
+from common_module.runtime_settings import RuntimeSettings
 
 
 def response(status_code: int) -> MagicMock:
@@ -22,7 +23,16 @@ def response(status_code: int) -> MagicMock:
 @pytest.fixture
 def storage():
     with patch.object(kb_rag_storage, 'EmbeddingFunc'):
-        return KBRagStorage()
+        return KBRagStorage(
+            inference_service_url='http://inference:8003',
+            runtime_settings=RuntimeSettings(
+                app_env='production',
+                floware_base_url='http://localhost:8001',
+                allowed_origins=('http://localhost:5173',),
+                worker_count=1,
+                uvicorn_log_level='critical',
+            ),
+        )
 
 
 def upload_with_responses(storage, *responses):

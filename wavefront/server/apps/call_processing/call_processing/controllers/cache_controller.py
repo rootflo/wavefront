@@ -1,6 +1,5 @@
 """Cache management endpoints for voice agent configurations"""
 
-import os
 from uuid import UUID
 from fastapi import APIRouter, HTTPException, Header, Depends, status
 from fastapi.responses import JSONResponse
@@ -31,7 +30,14 @@ class InvalidateCacheRequest(BaseModel):
     config_id: str  # Can be UUID string or phone number for inbound_number type
 
 
-def verify_passthrough_auth(x_passthrough: Optional[str] = Header(None)) -> None:
+@inject
+def verify_passthrough_auth(
+    x_passthrough: Optional[str] = Header(None),
+    app_env: str = Depends(Provide[ApplicationContainer.config.env_config.app_env]),
+    passthrough_secret: Optional[str] = Depends(
+        Provide[ApplicationContainer.config.env_config.passthrough_secret]
+    ),
+) -> None:
     """
     Verify passthrough authentication header.
     In non-production, validates the passthrough header.
@@ -43,14 +49,12 @@ def verify_passthrough_auth(x_passthrough: Optional[str] = Header(None)) -> None
     Raises:
         HTTPException: If authentication fails in non-production
     """
-    app_env = os.getenv('APP_ENV', 'dev')
-
     # In production, skip passthrough validation (use service mesh instead)
-    if app_env == 'production':
+    if (app_env or 'production') == 'production':
         return
 
     # Non-production: Strict passthrough validation
-    expected_secret = os.getenv('PASSTHROUGH_SECRET')
+    expected_secret = passthrough_secret or None
 
     if not expected_secret:
         logger.warning('Passthrough not configured')

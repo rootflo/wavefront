@@ -123,13 +123,12 @@ def core_containers(db_client, test_user_id, test_session_id, user_config):
     auth_container = AuthContainer(
         db_client=db_client,
         cache_manager=cache_manager,
+        kms_signer=None,
     )
     auth_container.token_service.override(token_service)
-    # Only defined when SUPERSET_FLAG is on, which the plugin defaults to true.
-    if hasattr(auth_container, 'superset_service'):
-        superset_service = Mock()
-        superset_service.generate_guest_token.return_value = 'mock_guest_token'
-        auth_container.superset_service.override(superset_service)
+    superset_service = Mock()
+    superset_service.generate_guest_token.return_value = 'mock_guest_token'
+    auth_container.superset_service.override(superset_service)
 
     # plugins_module's EmailSendService is handed in by the app rather than
     # constructed by the container, so tests supply the stand-in.

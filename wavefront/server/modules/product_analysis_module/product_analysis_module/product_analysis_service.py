@@ -7,7 +7,6 @@ from dependency_injector.wiring import inject
 from dependency_injector.wiring import Provide
 from fastapi import Depends
 from datetime import date, datetime, time
-import os
 from product_analysis_module.models.product_analysis import ProductAnalysis
 from sqlalchemy import Date, String, cast, false, func, select
 
@@ -19,8 +18,10 @@ class ProductAnalysisService:
         product_analysis_repository: SQLAlchemyRepository[ProductAnalytics] = Depends(
             Provide[DatabaseModuleContainer.product_analytics_repository]
         ),
+        excluded_emails: tuple[str, ...] = (),
     ):
         self.product_analysis_repository = product_analysis_repository
+        self._excluded_emails = excluded_emails
 
     async def create_product_analysis(self, payload: ProductAnalysis):
         await self.product_analysis_repository.create(
@@ -51,16 +52,9 @@ class ProductAnalysisService:
         the distinction is what keeps a caller scoped to zero groups from seeing
         the whole directory.
         """
-        excluded_emails_raw = os.getenv(
-            'PRODUCT_ANALYTICS_EXCLUDED_EMAILS',
-            '',
-        )
-        excluded_emails = [
-            e.strip() for e in excluded_emails_raw.split(',') if e.strip()
-        ]
         user_filters = [User.deleted.is_(False)]
-        if excluded_emails:
-            user_filters.append(User.email.notin_(excluded_emails))
+        if self._excluded_emails:
+            user_filters.append(User.email.notin_(self._excluded_emails))
         if group_ids is not None:
             user_filters.append(
                 User.id.in_(

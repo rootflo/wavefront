@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 
 from common_module.feature.feature_flag import (
     DATASOURCE_CHANGE_NOTIFICATION_FLAG,
-    is_feature_enabled,
+    FeatureFlags,
 )
 from common_module.log.logger import logger
 from db_repo_module.models.datasource_audit_log import DatasourceAuditLog
@@ -74,9 +74,11 @@ class ChangeNotificationService:
         self,
         notification_repository: 'SQLAlchemyRepository[Notification]',
         max_payload_bytes: Optional[int] = NOTIFICATION_MAX_PAYLOAD_BYTES,
+        feature_flags: FeatureFlags | None = None,
     ) -> None:
         self.notification_repository = notification_repository
         self.max_payload_bytes = max_payload_bytes
+        self.feature_flags = feature_flags or FeatureFlags()
 
     def build_payload(
         self,
@@ -101,7 +103,7 @@ class ChangeNotificationService:
         Returns None when the flag is off or there is nothing to report, which
         the caller reads as "do not publish".
         """
-        if not is_feature_enabled(DATASOURCE_CHANGE_NOTIFICATION_FLAG):
+        if not self.feature_flags.enabled(DATASOURCE_CHANGE_NOTIFICATION_FLAG):
             return None
 
         if not records:

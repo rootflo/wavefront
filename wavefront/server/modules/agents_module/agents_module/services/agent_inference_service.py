@@ -1,4 +1,3 @@
-import os
 import time
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -49,6 +48,7 @@ class AgentInferenceService:
         api_services_manager: Optional[ApiServicesManager] = None,
         llm_inference_config_service: Optional[LlmInferenceConfigService] = None,
         guardrails_engine: Optional[Any] = None,
+        azure_openai_api_version: Optional[str] = None,
     ):
         """
         Initialize the agent inference service
@@ -73,6 +73,7 @@ class AgentInferenceService:
         self.message_processor_bucket_name = message_processor_bucket_name
         self.llm_inference_config_service = llm_inference_config_service
         self.guardrails_engine = guardrails_engine
+        self.azure_openai_api_version = azure_openai_api_version or None
 
     def _guardrail_provider(self, namespace: Optional[str], principal_agent_id: str):
         """Build the decorator AgentBuilder applies at construction.
@@ -303,10 +304,9 @@ class AgentInferenceService:
                 **llm_kwargs,
             )
         elif config.type == 'azure_openai':
-            # The client will not build without one, so fall back to the env
-            api_version = llm_kwargs.get('api_version') or os.getenv(
-                'AZURE_OPENAI_API_VERSION'
-            )
+            # The client will not build without one. A per-config api_version
+            # wins; otherwise use the version from config.ini.
+            api_version = llm_kwargs.get('api_version') or self.azure_openai_api_version
             if api_version:
                 llm_kwargs['api_version'] = api_version
 

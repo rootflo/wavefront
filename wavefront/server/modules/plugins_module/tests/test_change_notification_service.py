@@ -16,7 +16,7 @@ import pytest
 from common_module.feature.feature_flag import (
     DATASOURCE_AUDIT_ENABLED_FLAG,
     DATASOURCE_CHANGE_NOTIFICATION_FLAG,
-    feature_flag_config,
+    FeatureFlags,
 )
 from plugins_module.services.change_notification_service import (
     NOTIFICATION_TYPE,
@@ -33,30 +33,32 @@ ACTOR = AuditActor(user_id='actor-user', role_id='actor-role', request_id='req-1
 OCCURRED_AT = datetime(2026, 9, 8, 12, 0, 0)
 
 
-@pytest.fixture(autouse=True)
-def audit_flag_on():
-    """Audit must be on: notifications only fan out after an audit write.
+def _flags_enabled(self, feature: str, *, notify: bool) -> bool:
+    if feature == DATASOURCE_AUDIT_ENABLED_FLAG:
+        return True
+    if feature == DATASOURCE_CHANGE_NOTIFICATION_FLAG:
+        return notify
+    return False
 
-    Patches the dict rather than os.environ: feature_flag_config is populated at
-    import time, so setting the environment variable here would have no effect.
-    """
-    previous = feature_flag_config[DATASOURCE_AUDIT_ENABLED_FLAG]
-    feature_flag_config[DATASOURCE_AUDIT_ENABLED_FLAG] = 'true'
-    yield
-    feature_flag_config[DATASOURCE_AUDIT_ENABLED_FLAG] = previous
+
+@pytest.fixture(autouse=True)
+def audit_flag_on(monkeypatch):
+    """Audit must be on: notifications only fan out after an audit write."""
+    monkeypatch.setattr(
+        FeatureFlags,
+        'enabled',
+        lambda self, feature: _flags_enabled(self, feature, notify=False),
+    )
 
 
 @pytest.fixture
-def flag_on():
-    """Enable the notification feed for one test.
-
-    Patches the dict rather than os.environ: feature_flag_config is populated at
-    import time, so setting the environment variable here would have no effect.
-    """
-    previous = feature_flag_config[DATASOURCE_CHANGE_NOTIFICATION_FLAG]
-    feature_flag_config[DATASOURCE_CHANGE_NOTIFICATION_FLAG] = 'true'
-    yield
-    feature_flag_config[DATASOURCE_CHANGE_NOTIFICATION_FLAG] = previous
+def flag_on(monkeypatch):
+    """Enable the notification feed for one test."""
+    monkeypatch.setattr(
+        FeatureFlags,
+        'enabled',
+        lambda self, feature: _flags_enabled(self, feature, notify=True),
+    )
 
 
 @pytest.fixture

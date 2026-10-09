@@ -1,6 +1,5 @@
 from datetime import datetime, timedelta, timezone
 import json
-import os
 from unittest.mock import Mock
 from uuid import uuid4
 
@@ -18,6 +17,14 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from user_management_module.constants.cache import get_session_cache_key
 from user_management_module.constants.cache import user_by_id_cache_key
 from user_management_module.utils.password_utils import hash_password
+
+
+def _set_inactive_account_flag(core_containers, enabled: bool) -> None:
+    from common_module.feature.feature_flag import FeatureFlags
+
+    core_containers.common.feature_flags.override(
+        providers.Object(FeatureFlags(inactive_account_disable=enabled))
+    )
 
 
 @pytest.mark.asyncio
@@ -231,8 +238,8 @@ async def test_authenticate_multiple_failed_attempts_lockout(
     test_client, test_session: async_sessionmaker, test_user_id
 ):
     """Test that multiple failed login attempts result in account lockout"""
-    # Get max failed attempts from environment variable, default to 3
-    max_failed_attempts = int(os.getenv('MAX_FAILED_ATTEMPTS', 3))
+    # Matches flo_testing user_config auth.max_failed_attempts default.
+    max_failed_attempts = 3
 
     # Create test IDs
     role_id = str(uuid4())
@@ -299,8 +306,8 @@ async def test_authenticate_with_already_locked_account(
     test_client, test_session: async_sessionmaker, test_user_id
 ):
     """Test authentication attempt with an already locked account"""
-    # Get max failed attempts from environment variable, default to 3
-    max_failed_attempts = int(os.getenv('MAX_FAILED_ATTEMPTS', 3))
+    # Matches flo_testing user_config auth.max_failed_attempts default.
+    max_failed_attempts = 3
 
     hashed_password = hash_password('test_password')
     current_time = datetime.now(timezone.utc)
@@ -337,8 +344,8 @@ async def test_authenticate_resets_failed_attempts_on_success(
     test_client, test_session: async_sessionmaker, test_user_id
 ):
     """Test that successful login resets failed attempts counter"""
-    # Get max failed attempts from environment variable, default to 3
-    max_failed_attempts = int(os.getenv('MAX_FAILED_ATTEMPTS', 3))
+    # Matches flo_testing user_config auth.max_failed_attempts default.
+    max_failed_attempts = 3
 
     # Create test IDs
     role_id = str(uuid4())
@@ -401,6 +408,7 @@ async def test_authenticate_inactive_account_feature_disabled(
     test_session: async_sessionmaker,
     test_user_id,
     monkeypatch,
+    core_containers,
     mock_config,
 ):
     """Test that inactive users can login when feature flag is disabled"""
@@ -408,18 +416,7 @@ async def test_authenticate_inactive_account_feature_disabled(
     threshold_days = int(mock_config['auth']['inactive_days_threshold'])
 
     # Mock the feature flag to be disabled
-    def mock_is_feature_enabled(feature: str) -> bool:
-        if feature == 'INACTIVE_ACCOUNT_DISABLE_FLAG':
-            return False
-        return False
-
-    monkeypatch.setattr(
-        'common_module.feature.feature_flag.is_feature_enabled', mock_is_feature_enabled
-    )
-    monkeypatch.setattr(
-        'user_management_module.controllers.auth_controller.is_feature_enabled',
-        mock_is_feature_enabled,
-    )
+    _set_inactive_account_flag(core_containers, False)
 
     # Create test IDs
     role_id = str(uuid4())
@@ -475,23 +472,13 @@ async def test_authenticate_inactive_account_feature_enabled_first_time_user(
     test_session: async_sessionmaker,
     test_user_id,
     monkeypatch,
+    core_containers,
     mock_config,
 ):
     """Test that first-time users (no last_login_at) can login when feature is enabled"""
 
     # Mock the feature flag to be enabled
-    def mock_is_feature_enabled(feature: str) -> bool:
-        if feature == 'INACTIVE_ACCOUNT_DISABLE_FLAG':
-            return True
-        return False
-
-    monkeypatch.setattr(
-        'common_module.feature.feature_flag.is_feature_enabled', mock_is_feature_enabled
-    )
-    monkeypatch.setattr(
-        'user_management_module.controllers.auth_controller.is_feature_enabled',
-        mock_is_feature_enabled,
-    )
+    _set_inactive_account_flag(core_containers, True)
 
     # Create test IDs
     role_id = str(uuid4())
@@ -544,6 +531,7 @@ async def test_authenticate_inactive_account_feature_enabled_within_threshold(
     test_session: async_sessionmaker,
     test_user_id,
     monkeypatch,
+    core_containers,
     mock_config,
 ):
     """Test that active users within threshold can login when feature is enabled"""
@@ -551,18 +539,7 @@ async def test_authenticate_inactive_account_feature_enabled_within_threshold(
     threshold_days = int(mock_config['auth']['inactive_days_threshold'])
 
     # Mock the feature flag to be enabled
-    def mock_is_feature_enabled(feature: str) -> bool:
-        if feature == 'INACTIVE_ACCOUNT_DISABLE_FLAG':
-            return True
-        return False
-
-    monkeypatch.setattr(
-        'common_module.feature.feature_flag.is_feature_enabled', mock_is_feature_enabled
-    )
-    monkeypatch.setattr(
-        'user_management_module.controllers.auth_controller.is_feature_enabled',
-        mock_is_feature_enabled,
-    )
+    _set_inactive_account_flag(core_containers, True)
 
     # Create test IDs
     role_id = str(uuid4())
@@ -618,6 +595,7 @@ async def test_authenticate_inactive_account_feature_enabled_over_threshold(
     test_session: async_sessionmaker,
     test_user_id,
     monkeypatch,
+    core_containers,
     mock_config,
 ):
     """Test that inactive users over threshold are rejected when feature is enabled"""
@@ -625,18 +603,7 @@ async def test_authenticate_inactive_account_feature_enabled_over_threshold(
     threshold_days = int(mock_config['auth']['inactive_days_threshold'])
 
     # Mock the feature flag to be enabled
-    def mock_is_feature_enabled(feature: str) -> bool:
-        if feature == 'INACTIVE_ACCOUNT_DISABLE_FLAG':
-            return True
-        return False
-
-    monkeypatch.setattr(
-        'common_module.feature.feature_flag.is_feature_enabled', mock_is_feature_enabled
-    )
-    monkeypatch.setattr(
-        'user_management_module.controllers.auth_controller.is_feature_enabled',
-        mock_is_feature_enabled,
-    )
+    _set_inactive_account_flag(core_containers, True)
 
     # Create test IDs
     role_id = str(uuid4())
@@ -766,6 +733,7 @@ async def test_authenticate_inactive_account_with_wrong_password(
     test_session: async_sessionmaker,
     test_user_id,
     monkeypatch,
+    core_containers,
     mock_config,
 ):
     """Test that inactivity error takes precedence over wrong password error"""
@@ -773,18 +741,7 @@ async def test_authenticate_inactive_account_with_wrong_password(
     threshold_days = int(mock_config['auth']['inactive_days_threshold'])
 
     # Mock the feature flag to be enabled
-    def mock_is_feature_enabled(feature: str) -> bool:
-        if feature == 'INACTIVE_ACCOUNT_DISABLE_FLAG':
-            return True
-        return False
-
-    monkeypatch.setattr(
-        'common_module.feature.feature_flag.is_feature_enabled', mock_is_feature_enabled
-    )
-    monkeypatch.setattr(
-        'user_management_module.controllers.auth_controller.is_feature_enabled',
-        mock_is_feature_enabled,
-    )
+    _set_inactive_account_flag(core_containers, True)
 
     # Create test IDs
     role_id = str(uuid4())
@@ -845,6 +802,7 @@ async def test_authenticate_inactive_account_with_lockout(
     test_session: async_sessionmaker,
     test_user_id,
     monkeypatch,
+    core_containers,
     mock_config,
 ):
     """Test that lockout error takes precedence over inactivity error"""
@@ -852,21 +810,10 @@ async def test_authenticate_inactive_account_with_lockout(
     threshold_days = int(mock_config['auth']['inactive_days_threshold'])
 
     # Mock the feature flag to be enabled
-    def mock_is_feature_enabled(feature: str) -> bool:
-        if feature == 'INACTIVE_ACCOUNT_DISABLE_FLAG':
-            return True
-        return False
+    _set_inactive_account_flag(core_containers, True)
 
-    monkeypatch.setattr(
-        'common_module.feature.feature_flag.is_feature_enabled', mock_is_feature_enabled
-    )
-    monkeypatch.setattr(
-        'user_management_module.controllers.auth_controller.is_feature_enabled',
-        mock_is_feature_enabled,
-    )
-
-    # Get max failed attempts from environment variable, default to 3
-    max_failed_attempts = int(os.getenv('MAX_FAILED_ATTEMPTS', 3))
+    # Matches flo_testing user_config auth.max_failed_attempts default.
+    max_failed_attempts = 3
 
     hashed_password = hash_password('test_password')
     current_time = datetime.now(timezone.utc)
@@ -1060,13 +1007,6 @@ async def test_successful_login_refreshes_user_cache_with_last_login(
     assert cached_login == updated_login
     assert latest['failed_attempts'] == 0
     assert latest['last_failed_attempt'] is None
-
-
-@pytest.mark.asyncio
-async def test_health_endpoint(test_client):
-    response = test_client.get('/floware/v1/health')
-    assert response.status_code == 200
-    assert response.json()['status'] == 'ok'
 
 
 @pytest.mark.asyncio

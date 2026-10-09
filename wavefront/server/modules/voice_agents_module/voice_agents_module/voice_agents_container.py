@@ -20,12 +20,13 @@ from voice_agents_module.services.tool_service import ToolService
 
 
 class VoiceAgentsContainer(containers.DeclarativeContainer):
-    config = providers.Configuration(ini_files=['config.ini'])
+    config = providers.Configuration()
 
     # External dependencies
     db_client = providers.Dependency()
     cache_manager = providers.Dependency()
     cloud_storage_manager = providers.Dependency()
+    call_processing_cache_invalidator = providers.Dependency()
 
     # Repositories
     telephony_config_repository = providers.Singleton(
@@ -75,18 +76,21 @@ class VoiceAgentsContainer(containers.DeclarativeContainer):
         TelephonyConfigService,
         telephony_config_repository=telephony_config_repository,
         cache_manager=cache_manager,
+        cache_invalidator=call_processing_cache_invalidator,
     )
 
     tts_config_service = providers.Singleton(
         TtsConfigService,
         tts_config_repository=tts_config_repository,
         cache_manager=cache_manager,
+        cache_invalidator=call_processing_cache_invalidator,
     )
 
     stt_config_service = providers.Singleton(
         SttConfigService,
         stt_config_repository=stt_config_repository,
         cache_manager=cache_manager,
+        cache_invalidator=call_processing_cache_invalidator,
     )
 
     tts_generator_service = providers.Singleton(
@@ -103,7 +107,8 @@ class VoiceAgentsContainer(containers.DeclarativeContainer):
         cache_manager=cache_manager,
         tts_generator_service=tts_generator_service,
         cloud_storage_manager=cloud_storage_manager,
-        voice_agent_bucket=config.voice_agents.voice_agent_bucket,
+        voice_agent_bucket=config.storage.application_bucket,
+        cache_invalidator=call_processing_cache_invalidator,
     )
 
     twilio_service = providers.Singleton(
@@ -114,6 +119,7 @@ class VoiceAgentsContainer(containers.DeclarativeContainer):
     exotel_service = providers.Singleton(
         ExotelService,
         call_processing_base_url=config.voice_agents.call_processing_base_url,
+        exotel_app_id=config.voice_agents.exotel_app_id,
     )
 
     smartflo_service = providers.Singleton(
@@ -126,4 +132,5 @@ class VoiceAgentsContainer(containers.DeclarativeContainer):
         tool_repository=tool_repository,
         tool_association_repository=tool_association_repository,
         cache_manager=cache_manager,
+        cache_invalidator=call_processing_cache_invalidator,
     )

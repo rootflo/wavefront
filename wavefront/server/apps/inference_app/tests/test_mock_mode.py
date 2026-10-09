@@ -13,8 +13,8 @@ from dependency_injector import providers
 from fastapi.testclient import TestClient
 from PIL import Image, ImageDraw
 
-from inference_app import mock
-from inference_app.rate_limiter import SlidingWindowRateLimiter
+from inference_app.models import mock
+from inference_app.middleware.rate_limiter import SlidingWindowRateLimiter
 from inference_app.service.mock_embeddings import (
     CLIP_DIM,
     DINO_DIM,
@@ -171,13 +171,13 @@ def test_long_text_stays_within_the_sparse_index_limit():
 
 
 @pytest.fixture
-def mock_app(monkeypatch):
+def mock_app():
     from inference_app import server
 
-    monkeypatch.setattr(server, 'MOCK_MODELS', True)
-    container = server.inference_app_container
-    with container.rate_limiter.override(
-        providers.Object(SlidingWindowRateLimiter([]))
+    container = server.application_container
+    with (
+        container.config.models.mock_models.override('true'),
+        container.rate_limiter.override(providers.Object(SlidingWindowRateLimiter([]))),
     ):
         with TestClient(server.app) as client:  # runs the lifespan
             yield client

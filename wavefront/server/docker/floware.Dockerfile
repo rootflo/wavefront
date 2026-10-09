@@ -36,11 +36,9 @@ COPY wavefront/server/modules/llm_inference_config_module /app/modules/llm_infer
 COPY wavefront/server/modules/agents_module /app/modules/agents_module
 COPY wavefront/server/modules/plugins_module/ /app/modules/plugins_module
 COPY wavefront/server/modules/product_analysis_module /app/modules/product_analysis_module
-COPY wavefront/server/modules/inference_module /app/modules/inference_module
 COPY wavefront/server/modules/tools_module /app/modules/tools_module
 COPY wavefront/server/modules/voice_agents_module /app/modules/voice_agents_module
 COPY wavefront/server/modules/api_services_module /app/modules/api_services_module
-COPY wavefront/server/modules/triggers_module /app/modules/triggers_module
 COPY wavefront/server/modules/chatbots_module /app/modules/chatbots_module
 
 COPY wavefront/server/packages/flo_cloud /app/packages/flo_cloud
@@ -67,18 +65,6 @@ RUN uv sync --package floware --frozen --no-dev
 # pip, so the download fails without it.
 RUN uv pip install pip && \
     /app/.venv/bin/python -m spacy download en_core_web_lg
-
-# Bound how long any single regex may run. Presidio's default is 60s and it
-# reads this at import time, so it can only be set from the environment.
-#
-# The default is dangerous here rather than merely slow: the adapter analyses in
-# a two-thread pool, and a pattern that backtracks pins a thread for the whole
-# timeout. The policy's own timeout fires on the awaiting coroutine but cannot
-# cancel a running thread, so requests queue behind it and time out -- and
-# since the PII provider defaults to FAIL_CLOSED, that is a namespace-wide
-# outage. At 2s the pool recovers and the worst case is one pattern finding
-# nothing on one request.
-ENV REGEX_TIMEOUT_SECONDS=2
 
 # Create a non-root user and change ownership of the /app directory
 RUN useradd -m -u 1000 floware && \

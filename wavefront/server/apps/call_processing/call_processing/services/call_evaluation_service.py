@@ -15,13 +15,17 @@ Required env vars for LLM analysis (all must be set to enable):
   CALL_EVAL_AZURE_API_VERSION (optional, default: 2024-02-01)
 """
 
+from __future__ import annotations
+
 import json
-import os
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import aiohttp
 from call_processing.log.logger import logger
 from opentelemetry import context as otel_context, trace
+
+if TYPE_CHECKING:
+    from call_processing.app_settings import CallProcessingAppSettings
 
 tracer = trace.get_tracer(__name__)
 
@@ -53,6 +57,7 @@ class CallEvaluationService:
         transcript_log: List[Dict[str, Any]],
         stats: Dict[str, Any],
         parent_context: Optional[otel_context.Context] = None,
+        settings: Optional[CallProcessingAppSettings] = None,
     ) -> None:
         """
         Record call evaluation metrics as an OTel span.
@@ -126,7 +131,9 @@ class CallEvaluationService:
                     )
 
                 # --- LLM qualitative analysis (best-effort) ---
-                azure_config = CallEvaluationService._get_azure_eval_config()
+                azure_config = (
+                    settings.call_eval.as_azure_dict() if settings is not None else None
+                )
                 if azure_config and transcript_log:
                     try:
                         prompt = CallEvaluationService._build_eval_prompt(
@@ -161,24 +168,6 @@ class CallEvaluationService:
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
-
-    @staticmethod
-    def _get_azure_eval_config() -> Optional[Dict[str, str]]:
-        """Read Azure OpenAI eval config from env vars. Returns None if incomplete."""
-        endpoint = os.getenv('CALL_EVAL_AZURE_ENDPOINT', '').rstrip('/')
-        api_key = os.getenv('CALL_EVAL_AZURE_API_KEY', '')
-        llm_model = os.getenv('CALL_EVAL_AZURE_LLM_MODEL', 'gpt-4.1')
-        api_version = os.getenv('CALL_EVAL_AZURE_API_VERSION', '2025-01-01-preview')
-
-        if not all([endpoint, api_key]):
-            return None
-
-        return {
-            'endpoint': endpoint,
-            'api_key': api_key,
-            'llm_model': llm_model,
-            'api_version': api_version,
-        }
 
     @staticmethod
     def _build_eval_prompt(

@@ -352,23 +352,18 @@ def create_function_node_adapter(
 
 def get_function_node_adapter(
     function_name: str,
-    function_registry: Optional[Dict[str, FunctionType]] = None,
+    function_registry: Dict[str, FunctionType],
 ) -> Optional[Callable]:
     """
     Get a function node adapter for a function from the registry.
 
     Args:
         function_name: Name of the function in the registry
-        function_registry: Optional custom registry dict. If None, uses FUNCTION_REGISTRY
+        function_registry: Registry dict to look the function up in
 
     Returns:
         Adapted function with function node signature, or None if function not found
     """
-    if function_registry is None:
-        from tools_module.registry.function_registry import FUNCTION_REGISTRY
-
-        function_registry = FUNCTION_REGISTRY
-
     original_function = function_registry.get(function_name)
     if original_function is None:
         logger.warning(f"Function '{function_name}' not found in registry")

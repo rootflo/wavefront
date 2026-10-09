@@ -7,7 +7,6 @@ Creates and runs the voice conversation pipeline using configured STT/LLM/TTS se
 from typing import Dict, Any, List
 from copy import deepcopy
 import asyncio
-import os
 import random
 from call_processing.log.logger import logger
 from call_processing.services.call_evaluation_service import CallEvaluationService
@@ -68,35 +67,39 @@ from call_processing.services.llm_service import LLMServiceFactory
 # from call_processing.services.conversation_completion_tool import (
 #     ConversationCompletionToolFactory,
 # )
+from call_processing.app_settings import CallProcessingAppSettings
 from call_processing.constants.language_config import (
     LANGUAGE_INSTRUCTIONS,
     LANGUAGE_DISPLAY_NAMES,
 )
 from call_processing.constants.filler_phrases import FILLER_PHRASES
 
-ENABLE_TRACING = os.getenv('CALL_PROCESSING_ENABLE_TRACING', 'true').lower() == 'true'
-ENABLE_TURN_TRACKING = (
-    os.getenv('CALL_PROCESSING_ENABLE_TURN_TRACKING', 'true').lower() == 'true'
-)
+_pipecat_tracing_initialized = False
 
-OTLP_ENDPOINT = os.getenv('CALL_PROCESSING_OTLP_ENDPOINT')
 
-if ENABLE_TRACING and OTLP_ENDPOINT:
-    exporter = OTLPSpanExporter(
-        endpoint=OTLP_ENDPOINT,
-        insecure=True,
-    )
-    setup_tracing(
-        service_name=os.getenv(
-            'CALL_PROCESSING_TRACING_SERVICE_NAME', 'call-processing'
-        ),
-        exporter=exporter,
-        console_export=False,
-    )
+def _ensure_pipecat_tracing(settings: CallProcessingAppSettings) -> None:
+    global _pipecat_tracing_initialized
+    if _pipecat_tracing_initialized:
+        return
+    settings = settings.pipecat
+    if settings.enable_tracing and settings.otlp_endpoint:
+        exporter = OTLPSpanExporter(
+            endpoint=settings.otlp_endpoint,
+            insecure=True,
+        )
+        setup_tracing(
+            service_name=settings.tracing_service_name,
+            exporter=exporter,
+            console_export=False,
+        )
+    _pipecat_tracing_initialized = True
 
 
 class PipecatService:
     """Service for creating and running Pipecat pipelines"""
+
+    def __init__(self, settings: CallProcessingAppSettings):
+        self.settings = settings
 
     async def run_conversation(
         self,
@@ -112,8 +115,7 @@ class PipecatService:
         provider: str,
         call_direction: str,
     ):
-        """
-        Create and run the Pipecat pipeline for a voice conversation
+        """Create and run the Pipecat pipeline for a voice conversation.
 
         Args:
             transport: Pipecat transport (e.g., WebSocket transport from Twilio)
@@ -124,6 +126,9 @@ class PipecatService:
             stt_config: STT provider configuration (credentials only)
             tools: List of tool dicts with association details
         """
+        _ensure_pipecat_tracing(self.settings)
+        pipecat_settings = self.settings.pipecat
+
         # Extract language configuration from agent_config
         supported_languages = agent_config.get('supported_languages', ['en'])
         default_language = agent_config.get('default_language', 'en')
@@ -507,8 +512,8 @@ class PipecatService:
                 UserStartedSpeakingFrame,
             ),
             idle_timeout_secs=300,
-            enable_tracing=ENABLE_TRACING,
-            enable_turn_tracking=ENABLE_TURN_TRACKING,
+            enable_tracing=pipecat_settings.enable_tracing,
+            enable_turn_tracking=pipecat_settings.enable_turn_tracking,
             conversation_id=None,
             additional_span_attributes={
                 'customer.phone_number': masked_customer_number,
@@ -527,10 +532,7 @@ class PipecatService:
         # Register event handlers
         @llm.event_handler('on_function_calls_started')
         async def on_function_calls_started(service, function_calls):
-            if (
-                os.getenv('ENABLE_FILLER_PHRASES_BEFORE_TOOL_CALL', '').lower()
-                != 'true'
-            ):
+            if not pipecat_settings.enable_filler_phrases_before_tool_call:
                 return
             # Skip filler phrase when language is switching — the TTS service's language
             # may change before the queued frame is processed, causing a language mismatch error.
@@ -560,7 +562,7 @@ class PipecatService:
                 outcome = 'unknown'
             # Pull language switch count from language_state (already tracked there)
             call_stats['language_switch_count'] = language_state.get('switch_count', 0)
-            if ENABLE_TRACING and OTLP_ENDPOINT:
+            if pipecat_settings.enable_tracing and pipecat_settings.otlp_endpoint:
                 # Capture the current OTel context now, while the pipecat span is still
                 # active. The background task will use this as the parent so call.evaluation
                 # appears under the same trace rather than as a new root trace.
@@ -573,6 +575,7 @@ class PipecatService:
                         transcript_log=transcript_log,
                         stats=call_stats,
                         parent_context=parent_ctx,
+                        settings=self.settings,
                     )
                 )
                 call_evaluation_tasks.append(t)

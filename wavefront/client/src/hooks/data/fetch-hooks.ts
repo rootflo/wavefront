@@ -1,6 +1,5 @@
 import { GuardrailAdapterListData, GuardrailPolicy, PiiEntityListData } from '@app/api/guardrails-service';
 import { DocumentData, KbData, KnowledgeBaseIndexStatusData } from '@app/api/knowledge-base-service';
-import { ModelData } from '@app/api/model-inference-service';
 import { NamespaceItem } from '@app/api/namespace-service';
 import { useQueryInit } from '@app/lib/react-query';
 import { AgentApi, AgentListItem } from '@app/types/agent';
@@ -14,7 +13,6 @@ import { OAuthApp } from '@app/types/oauth-app';
 import { LLMInferenceConfig } from '@app/types/llm-inference-config';
 import { ConfigurationListItem, ConfigurationValue } from '@app/types/configuration';
 import { MessageProcessor, MessageProcessorListItem } from '@app/types/message-processor';
-import { Pipeline, PipelineFile, PipelineStatus } from '@app/types/pipeline';
 import { SttConfig } from '@app/types/stt-config';
 import { TelephonyConfig } from '@app/types/telephony-config';
 import { ToolDetails, VoiceAgentTool, VoiceAgentToolWithAssociation } from '@app/types/tool';
@@ -22,7 +20,7 @@ import { TtsConfig } from '@app/types/tts-config';
 import { VoiceAgent } from '@app/types/voice-agent';
 import { ScheduledJob } from '@app/types/scheduled-job';
 import { Trigger } from '@app/types/trigger';
-import { WorkflowListItem, WorkflowPipelineListItem, WorkflowRunListData } from '@app/types/workflow';
+import { WorkflowListItem } from '@app/types/workflow';
 import { EntityVersion } from '@app/types/version';
 import { UseQueryResult, useQuery } from '@tanstack/react-query';
 
@@ -63,12 +61,7 @@ import {
   getConfigurationsQueryFn,
   getMessageProcessorQueryFn,
   getMessageProcessorsQueryFn,
-  getModelQueryFn,
-  getModelsQueryFn,
   getNamespacesQueryFn,
-  getPipelineFilesQueryFn,
-  getPipelineQueryFn,
-  getPipelinesQueryFn,
   getSttConfigQueryFn,
   getSttConfigsQueryFn,
   getTelephonyConfigQueryFn,
@@ -82,8 +75,6 @@ import {
   getVoiceAgentToolsQueryFn,
   getAgentToolsQueryFn,
   getVoiceAgentsQueryFn,
-  getWorkflowPipelinesQueryFn,
-  getWorkflowRunsQueryFn,
   getWorkflowsQueryFn,
   readDynamicQueryQueryFn,
   getScheduledJobsQueryFn,
@@ -125,12 +116,7 @@ import {
   getConfigurationsKey,
   getMessageProcessorKey,
   getMessageProcessorsKey,
-  getModelKey,
-  getModelsKey,
   getNamespacesKey,
-  getPipelineFilesKey,
-  getPipelineKey,
-  getPipelinesKey,
   getSttConfigKey,
   getSttConfigsKey,
   getTelephonyConfigKey,
@@ -144,8 +130,6 @@ import {
   getVoiceAgentToolsKey,
   getAgentToolsKey,
   getVoiceAgentsKey,
-  getWorkflowPipelinesKey,
-  getWorkflowRunsKey,
   getWorkflowsKey,
   readDynamicQueryKey,
   getScheduledJobsKey,
@@ -315,17 +299,6 @@ export const useGetLLMConfig = (
   );
 };
 
-export const useGetModels = (appId: string | undefined): UseQueryResult<ModelData[], Error> => {
-  return useQueryInit(getModelsKey(appId || ''), getModelsQueryFn, !!appId);
-};
-
-export const useGetModel = (
-  appId: string | undefined,
-  modelId: string | undefined
-): UseQueryResult<ModelData | null, Error> => {
-  return useQueryInit(getModelKey(appId || '', modelId || ''), () => getModelQueryFn(modelId!), !!appId && !!modelId);
-};
-
 export const useGetKnowledgeBases = (appId: string | undefined): UseQueryResult<KbData[], Error> => {
   return useQueryInit(getKnowledgeBasesKey(appId || ''), getKnowledgeBasesQueryFn, !!appId);
 };
@@ -378,25 +351,6 @@ export const useGetWorkflows = (
   namespace?: string
 ): UseQueryResult<WorkflowListItem[], Error> => {
   return useQueryInit(getWorkflowsKey(appId || '', namespace), () => getWorkflowsQueryFn(namespace), !!appId);
-};
-
-export const useGetWorkflowPipelines = (
-  appId: string | undefined
-): UseQueryResult<WorkflowPipelineListItem[], Error> => {
-  return useQueryInit(getWorkflowPipelinesKey(appId || ''), getWorkflowPipelinesQueryFn, !!appId);
-};
-
-export const useGetWorkflowRuns = (
-  appId: string | undefined,
-  workflowPipelineId: string | undefined,
-  offset: number = 0,
-  limit: number = 10
-): UseQueryResult<WorkflowRunListData, Error> => {
-  return useQueryInit(
-    getWorkflowRunsKey(appId || '', workflowPipelineId || '', offset, limit),
-    () => getWorkflowRunsQueryFn(workflowPipelineId!, offset, limit),
-    !!appId && !!workflowPipelineId
-  );
 };
 
 export const useGetVoiceAgents = (appId: string | undefined): UseQueryResult<VoiceAgent[], Error> => {
@@ -541,35 +495,6 @@ export const useGetMessageProcessor = (
     getMessageProcessorKey(appId || '', processorId || ''),
     () => getMessageProcessorQueryFn(processorId!),
     !!appId && !!processorId
-  );
-};
-
-export const useGetPipelines = (
-  appId: string | undefined,
-  statusFilter?: PipelineStatus | 'all'
-): UseQueryResult<Pipeline[], Error> => {
-  return useQueryInit(getPipelinesKey(appId || '', statusFilter), () => getPipelinesQueryFn(statusFilter), !!appId);
-};
-
-export const useGetPipeline = (
-  appId: string | undefined,
-  pipelineId: string | undefined
-): UseQueryResult<Pipeline | null, Error> => {
-  return useQueryInit(
-    getPipelineKey(appId || '', pipelineId || ''),
-    () => getPipelineQueryFn(pipelineId!),
-    !!appId && !!pipelineId
-  );
-};
-
-export const useGetPipelineFiles = (
-  appId: string | undefined,
-  pipelineId: string | undefined
-): UseQueryResult<PipelineFile[], Error> => {
-  return useQueryInit(
-    getPipelineFilesKey(appId || '', pipelineId || ''),
-    () => getPipelineFilesQueryFn(pipelineId!),
-    !!appId && !!pipelineId
   );
 };
 

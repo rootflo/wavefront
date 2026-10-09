@@ -19,7 +19,7 @@ import httpx  # noqa: E402
 from dependency_injector import providers  # noqa: E402
 from PIL import Image  # noqa: E402
 
-from inference_app.rate_limiter import SlidingWindowRateLimiter  # noqa: E402
+from inference_app.middleware.rate_limiter import SlidingWindowRateLimiter  # noqa: E402
 from inference_app.service import image_embedding  # noqa: E402
 from inference_app.service.image_embedding import ImageEmbedding  # noqa: E402
 
@@ -52,7 +52,7 @@ def app_with_blocking_embedding():
     from inference_app import server
 
     fake = BlockingEmbedding()
-    container = server.inference_app_container
+    container = server.application_container
     with (
         container.image_embedding.override(providers.Object(fake)),
         container.rate_limiter.override(providers.Object(SlidingWindowRateLimiter([]))),

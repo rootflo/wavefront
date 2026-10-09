@@ -4,14 +4,18 @@ from db_repo_module.models.knowledge_bases import KnowledgeBase
 from db_repo_module.models.knowledge_base_documents import KnowledgeBaseDocuments
 from dependency_injector import providers
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from fastapi import status
 from flo_testing import seed_user_session as create_session
 
 
 @pytest.mark.asyncio
 async def test_retrieve_query_success(
-    test_client, auth_token, test_session: AsyncSession, test_user_id, test_session_id
+    test_client,
+    auth_token,
+    test_session: async_sessionmaker[AsyncSession],
+    test_user_id,
+    test_session_id,
 ):
     await create_session(test_session, test_user_id, test_session_id)
 
@@ -30,8 +34,9 @@ async def test_retrieve_query_success(
 
     query = 'test query'
     response = test_client.post(
-        f'/floware/v1/knowledge-base/{kb_id}/retrieve?query={query}',
+        f'/floware/v1/knowledge-base/{kb_id}/retrieve',
         headers={'Authorization': f'Bearer {auth_token}'},
+        json={'query': query},
     )
 
     assert response.status_code == status.HTTP_200_OK
@@ -41,26 +46,45 @@ async def test_retrieve_query_success(
 
 @pytest.mark.asyncio
 async def test_retrieve_query_empty_query(
-    test_client, auth_token, test_session: AsyncSession, test_user_id, test_session_id
+    test_client,
+    auth_token,
+    test_session: async_sessionmaker[AsyncSession],
+    test_user_id,
+    test_session_id,
 ):
     await create_session(test_session, test_user_id, test_session_id)
 
     kb_id = uuid4()
+    async with test_session() as session:
+        session.add(
+            KnowledgeBase(
+                id=kb_id,
+                name='Test KB Empty Query',
+                description='Test Description',
+                type='text',
+                vector_size=1024,
+            )
+        )
+        await session.commit()
+
     response = test_client.post(
-        f'/floware/v1/knowledge-base/{kb_id}/retrieve?query=',
+        f'/floware/v1/knowledge-base/{kb_id}/retrieve',
         headers={'Authorization': f'Bearer {auth_token}'},
+        json={'query': ''},
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     response_data = response.json()
-    assert response_data['meta']['error'] == 'Query or Image data should not be empty'
+    assert (
+        response_data['meta']['error'] == 'Query is required for a text knowledge base'
+    )
 
 
 @pytest.mark.asyncio
 async def test_retrieve_image_success(
     test_client,
     auth_token,
-    test_session: AsyncSession,
+    test_session: async_sessionmaker[AsyncSession],
     test_user_id,
     test_session_id,
     setup_containers,
@@ -111,7 +135,7 @@ async def test_retrieve_image_success(
 async def test_retrieve_image_exact_match_returns_document_date(
     test_client,
     auth_token,
-    test_session: AsyncSession,
+    test_session: async_sessionmaker[AsyncSession],
     test_user_id,
     test_session_id,
     setup_containers,
@@ -174,7 +198,11 @@ async def test_retrieve_image_exact_match_returns_document_date(
 
 @pytest.mark.asyncio
 async def test_retrieve_image_kb_not_found(
-    test_client, auth_token, test_session: AsyncSession, test_user_id, test_session_id
+    test_client,
+    auth_token,
+    test_session: async_sessionmaker[AsyncSession],
+    test_user_id,
+    test_session_id,
 ):
     await create_session(test_session, test_user_id, test_session_id)
 
@@ -195,15 +223,20 @@ async def test_retrieve_image_kb_not_found(
 
 @pytest.mark.asyncio
 async def test_retrieve_query_kb_not_found(
-    test_client, auth_token, test_session: AsyncSession, test_user_id, test_session_id
+    test_client,
+    auth_token,
+    test_session: async_sessionmaker[AsyncSession],
+    test_user_id,
+    test_session_id,
 ):
     await create_session(test_session, test_user_id, test_session_id)
 
     non_existent_kb_id = uuid4()
     query = 'test query'
     response = test_client.post(
-        f'/floware/v1/knowledge-base/{non_existent_kb_id}/retrieve?query={query}',
+        f'/floware/v1/knowledge-base/{non_existent_kb_id}/retrieve',
         headers={'Authorization': f'Bearer {auth_token}'},
+        json={'query': query},
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
@@ -218,7 +251,7 @@ async def test_retrieve_query_kb_not_found(
 async def test_retrieve_query_no_matching_documents(
     test_client,
     auth_token,
-    test_session: AsyncSession,
+    test_session: async_sessionmaker[AsyncSession],
     test_user_id,
     test_session_id,
     setup_containers,
@@ -249,8 +282,9 @@ async def test_retrieve_query_no_matching_documents(
 
     query = 'query with no matches'
     response = test_client.post(
-        f'/floware/v1/knowledge-base/{kb_id}/retrieve?query={query}',
+        f'/floware/v1/knowledge-base/{kb_id}/retrieve',
         headers={'Authorization': f'Bearer {auth_token}'},
+        json={'query': query},
     )
 
     assert response.status_code == status.HTTP_200_OK
@@ -258,24 +292,49 @@ async def test_retrieve_query_no_matching_documents(
 
 @pytest.mark.asyncio
 async def test_retrieve_image_data_empty(
-    test_client, auth_token, test_session: AsyncSession, test_user_id, test_session_id
+    test_client,
+    auth_token,
+    test_session: async_sessionmaker[AsyncSession],
+    test_user_id,
+    test_session_id,
 ):
     await create_session(test_session, test_user_id, test_session_id)
 
     kb_id = uuid4()
+    async with test_session() as session:
+        session.add(
+            KnowledgeBase(
+                id=kb_id,
+                name='Test KB Empty Image',
+                description='Test Description',
+                type='image',
+                vector_size=512,
+                vector_size_1=1024,
+            )
+        )
+        await session.commit()
+
     response = test_client.post(
         f'/floware/v1/knowledge-base/{kb_id}/retrieve',
         headers={'Authorization': f'Bearer {auth_token}'},
+        json={},
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     response_data = response.json()
-    assert response_data['meta']['error'] == 'Query or Image data should not be empty'
+    assert (
+        response_data['meta']['error']
+        == 'Image data is required for an image knowledge base'
+    )
 
 
 @pytest.mark.asyncio
 async def test_store_embeddings_success(
-    test_client, auth_token, test_session: AsyncSession, test_user_id, test_session_id
+    test_client,
+    auth_token,
+    test_session: async_sessionmaker[AsyncSession],
+    test_user_id,
+    test_session_id,
 ):
     await create_session(test_session, test_user_id, test_session_id)
 
@@ -333,7 +392,11 @@ async def test_store_embeddings_success(
 
 @pytest.mark.asyncio
 async def test_store_embeddings_kb_not_found(
-    test_client, auth_token, test_session: AsyncSession, test_user_id, test_session_id
+    test_client,
+    auth_token,
+    test_session: async_sessionmaker[AsyncSession],
+    test_user_id,
+    test_session_id,
 ):
     await create_session(test_session, test_user_id, test_session_id)
 
@@ -364,7 +427,11 @@ async def test_store_embeddings_kb_not_found(
 
 @pytest.mark.asyncio
 async def test_store_embeddings_vector_size_mismatch(
-    test_client, auth_token, test_session: AsyncSession, test_user_id, test_session_id
+    test_client,
+    auth_token,
+    test_session: async_sessionmaker[AsyncSession],
+    test_user_id,
+    test_session_id,
 ):
     await create_session(test_session, test_user_id, test_session_id)
 
@@ -420,7 +487,7 @@ def test_legacy_retrieve_endpoint_is_removed(test_client, auth_token):
 # --- result count: limit overrides top_k, default 10, for every mode ---------
 
 
-async def _seed_kb(test_session, test_user_id, test_session_id):
+async def _seed_kb(test_session, test_user_id, test_session_id, *, kb_type='text'):
     await create_session(test_session, test_user_id, test_session_id)
     kb_id = uuid4()
     async with test_session() as session:
@@ -429,8 +496,9 @@ async def _seed_kb(test_session, test_user_id, test_session_id):
                 id=kb_id,
                 name='Result count KB',
                 description='',
-                type='text',
+                type=kb_type,
                 vector_size=1024,
+                **({'vector_size_1': 1024} if kb_type == 'image' else {}),
             )
         )
         await session.commit()
@@ -470,7 +538,8 @@ async def test_text_search_result_count(
     response = test_client.post(
         f'/floware/v1/knowledge-base/{kb_id}/retrieve',
         headers={'Authorization': f'Bearer {auth_token}'},
-        params={'query': 'hello', **params},
+        params=params,
+        json={'query': 'hello'},
     )
 
     assert response.status_code == status.HTTP_200_OK
@@ -494,7 +563,7 @@ async def test_image_search_result_count(
     params,
     expected,
 ):
-    kb_id = await _seed_kb(test_session, test_user_id, test_session_id)
+    kb_id = await _seed_kb(test_session, test_user_id, test_session_id, kb_type='image')
     _, image = _mock_retrieval(setup_containers[3])
 
     response = test_client.post(
@@ -537,7 +606,8 @@ async def test_out_of_range_paging_is_rejected(
     response = test_client.post(
         f'/floware/v1/knowledge-base/{kb_id}/retrieve',
         headers={'Authorization': f'Bearer {auth_token}'},
-        params={'query': 'hello', **params},
+        params=params,
+        json={'query': 'hello'},
     )
 
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
@@ -587,7 +657,7 @@ async def test_retrieve_maps_embedding_failures(
     response = test_client.post(
         f'/floware/v1/knowledge-base/{kb_id}/retrieve',
         headers={'Authorization': f'Bearer {auth_token}'},
-        params={'query': 'hello'},
+        json={'query': 'hello'},
     )
 
     assert response.status_code == expected_status
@@ -632,7 +702,8 @@ async def test_paging_at_its_bounds_is_accepted(
     response = test_client.post(
         f'/floware/v1/knowledge-base/{kb_id}/retrieve',
         headers={'Authorization': f'Bearer {auth_token}'},
-        params={'query': 'hello', 'top_k': 100, 'limit': 100, 'offset': 900},
+        params={'top_k': 100, 'limit': 100, 'offset': 900},
+        json={'query': 'hello'},
     )
 
     assert response.status_code == status.HTTP_200_OK

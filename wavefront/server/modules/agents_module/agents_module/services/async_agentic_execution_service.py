@@ -20,7 +20,7 @@ from agents_module.models.async_agentic_execution_schemas import (
     AsyncInferenceResponse,
     AgenticExecutionStatusResponse,
 )
-from agents_module.utils.celery_client import get_celery_client
+from celery import Celery
 from agents_module.utils.execution_variable_utils import with_execution_variables
 from agents_module.utils.mime_type_utils import (
     SUPPORTED_DOCUMENT_MIME_TYPES,
@@ -187,11 +187,13 @@ class AsyncAgenticExecutionService:
         cloud_storage_manager: CloudStorageManager,
         cache_manager: CacheManager,
         executions_bucket: str,
+        celery_client: Celery,
     ):
         self.repo = async_agentic_execution_repository
         self.cloud_storage = cloud_storage_manager
         self.cache = cache_manager
         self.bucket = executions_bucket
+        self.celery = celery_client
 
     def pre_save_binary_inputs(
         self,
@@ -353,7 +355,7 @@ class AsyncAgenticExecutionService:
         }
 
         try:
-            result = get_celery_client().send_task(
+            result = self.celery.send_task(
                 _AGENT_TASK_NAME,
                 kwargs={'payload': payload},
             )
@@ -426,7 +428,7 @@ class AsyncAgenticExecutionService:
         }
 
         try:
-            result = get_celery_client().send_task(
+            result = self.celery.send_task(
                 _WORKFLOW_TASK_NAME,
                 kwargs={'payload': payload},
             )
@@ -471,8 +473,8 @@ class AsyncAgenticExecutionService:
                 output_url = self.cloud_storage.generate_presigned_url(
                     bucket_name=record_dict['input_bucket'],
                     key=record_dict['output_file'],
-                    type='get',
-                    expiresIn=900,
+                    operation='get',
+                    expires_in=900,
                 )
             except Exception as e:
                 logger.warning(f'Failed to generate output presigned URL: {e}')
@@ -486,8 +488,8 @@ class AsyncAgenticExecutionService:
                 history_url = self.cloud_storage.generate_presigned_url(
                     bucket_name=record_dict['input_bucket'],
                     key=record_dict['history_file'],
-                    type='get',
-                    expiresIn=900,
+                    operation='get',
+                    expires_in=900,
                 )
             except Exception as e:
                 logger.warning(f'Failed to generate history presigned URL: {e}')
@@ -507,8 +509,8 @@ class AsyncAgenticExecutionService:
                     input_file['url'] = self.cloud_storage.generate_presigned_url(
                         bucket_name=record_dict['input_bucket'],
                         key=input_file['key'],
-                        type='get',
-                        expiresIn=900,
+                        operation='get',
+                        expires_in=900,
                     )
                 except Exception as e:
                     logger.warning(f'Failed to generate input presigned URL: {e}')

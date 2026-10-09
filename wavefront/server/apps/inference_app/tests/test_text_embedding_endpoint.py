@@ -10,8 +10,7 @@ import pytest
 from dependency_injector import providers  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from inference_app.controllers import inference_controller  # noqa: E402
-from inference_app.rate_limiter import SlidingWindowRateLimiter  # noqa: E402
+from inference_app.middleware.rate_limiter import SlidingWindowRateLimiter  # noqa: E402
 from inference_app.service.text_embedding_provider import TextEmbeddingProvider  # noqa: E402
 
 URL = '/inference/v1/query/text-embeddings'
@@ -43,14 +42,19 @@ def ready_provider(model):
     return provider
 
 
-def make_client(provider, rate_limiter=None):
+def make_client(
+    provider, rate_limiter=None, *, max_text_embedding_batch_size: str = '16'
+):
     from inference_app import server
 
-    container = server.inference_app_container
+    container = server.application_container
     with (
         container.text_embedding_provider.override(providers.Object(provider)),
         container.rate_limiter.override(
             providers.Object(rate_limiter or SlidingWindowRateLimiter([]))
+        ),
+        container.config.inference.max_text_embedding_batch_size.override(
+            max_text_embedding_batch_size
         ),
     ):
         yield TestClient(server.app)
@@ -62,9 +66,10 @@ def fake_model():
 
 
 @pytest.fixture
-def client(fake_model, monkeypatch):
-    monkeypatch.setattr(inference_controller, 'MAX_TEXT_EMBEDDING_BATCH_SIZE', 3)
-    yield from make_client(ready_provider(fake_model))
+def client(fake_model):
+    yield from make_client(
+        ready_provider(fake_model), max_text_embedding_batch_size='3'
+    )
 
 
 def test_returns_dense_and_sparse_per_text(client, fake_model):
@@ -149,42 +154,44 @@ class TestStartup:
     @pytest.fixture
     def fresh_provider(self):
         from inference_app import server
+        from inference_app.models import setup as models_setup
 
         provider = TextEmbeddingProvider()
-        with server.inference_app_container.text_embedding_provider.override(
-            providers.Object(provider)
-        ):
-            yield server, provider
+        container = server.application_container
+        with container.text_embedding_provider.override(providers.Object(provider)):
+            yield models_setup, provider, container
 
     def test_unset_uri_leaves_text_embeddings_disabled(
         self, fresh_provider, monkeypatch
     ):
-        server, provider = fresh_provider
-        monkeypatch.setattr(server, 'BGE_M3_MODEL_URI', '')
+        models_setup, provider, container = fresh_provider
         loader_called = []
         monkeypatch.setattr(
-            server, 'load_text_embedding_model', lambda: loader_called.append(1)
+            models_setup,
+            'load_text_embedding_model',
+            lambda _container: loader_called.append(1),
         )
 
-        server.start_text_embedding_model()
+        with container.config.models.bge_m3_uri.override(''):
+            models_setup.start_text_embedding_model(container)
 
         assert provider.status == 'disabled'
         assert loader_called == []
 
     def test_failed_load_does_not_stop_startup(self, fresh_provider, monkeypatch):
-        server, provider = fresh_provider
-        monkeypatch.setattr(server, 'BGE_M3_MODEL_URI', 's3://bucket/bge-m3')
+        models_setup, provider, container = fresh_provider
         done = threading.Event()
 
-        def broken_loader():
+        def broken_loader(_container):
             try:
                 raise ValueError('No objects found at cloud URI')
             finally:
                 done.set()
 
-        monkeypatch.setattr(server, 'load_text_embedding_model', broken_loader)
+        monkeypatch.setattr(models_setup, 'load_text_embedding_model', broken_loader)
 
-        server.start_text_embedding_model()  # must not raise
+        with container.config.models.bge_m3_uri.override('s3://bucket/bge-m3'):
+            models_setup.start_text_embedding_model(container)  # must not raise
 
         assert done.wait(timeout=5)
         for _ in range(50):

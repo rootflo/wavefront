@@ -3,10 +3,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 from flo_utils.utils.log import logger
+from common_module.runtime_settings import RuntimeSettings
 from rag_ingestion.service.kb_rag_storage import KBRagStorage
 from rag_ingestion.models.doc_content import DocContent
 from rag_ingestion.stream.queue_message import QueueMessage
-from flo_cloud.kms import FloKmsService
+from flo_cloud.kms import FloKmsCipher
 from flo_utils.streaming.message_processor import MessageProcessor, ProcessingResult
 from rag_ingestion.processors.file_processor import FileProcessor, DocumentType
 from rag_ingestion.embeddings.image_embed import ImageEmbedding
@@ -30,15 +31,27 @@ class KbStorageProcessor(MessageProcessor):
     def __init__(
         self,
         storage_manager: CloudStorageManager,
-        encryption_service: FloKmsService,
+        kms_cipher: FloKmsCipher | None,
         index_status_publisher: Optional[IndexStatusPublisher] = None,
+        *,
+        inference_service_url: str,
+        runtime_settings: RuntimeSettings,
+        text_embedding_batch_size: int | str = 16,
+        image_embedding_batch_size: int | str = 8,
     ):
         self.storage_manager = storage_manager
-        self.encryption_service = encryption_service
+        self.kms_cipher = kms_cipher
         self.index_status_publisher = index_status_publisher
-        self.kb_rag_storage = KBRagStorage()
+        self.kb_rag_storage = KBRagStorage(
+            inference_service_url=inference_service_url,
+            runtime_settings=runtime_settings,
+            text_embedding_batch_size=text_embedding_batch_size,
+        )
         self.file_processor = FileProcessor()
-        self.image_embedding = ImageEmbedding()
+        self.image_embedding = ImageEmbedding(
+            inference_service_url=inference_service_url,
+            batch_size=image_embedding_batch_size,
+        )
 
     async def _extract_content(
         self, message: QueueMessage, file_content: bytes
@@ -244,8 +257,8 @@ class KbStorageProcessor(MessageProcessor):
                 message.bucket_name, message.bucket_key
             )
             file_content = (
-                self.encryption_service.decrypt(file_content_encrypt)
-                if self.encryption_service
+                self.kms_cipher.decrypt(file_content_encrypt)
+                if self.kms_cipher
                 else file_content_encrypt
             )
             doc_content = await self._extract_content(message, file_content)

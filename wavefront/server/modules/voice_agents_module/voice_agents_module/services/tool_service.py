@@ -3,6 +3,7 @@ import uuid
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 
+from common_module.call_processing_cache import CallProcessingCacheInvalidator
 from common_module.log.logger import logger
 from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.models.voice_agent_tool import VoiceAgentTool
@@ -18,9 +19,6 @@ from voice_agents_module.models.tool_schemas import (
     PythonToolConfig,
     UNSET,
 )
-from voice_agents_module.utils.cache_invalidation import (
-    invalidate_call_processing_cache,
-)
 
 
 class ToolService:
@@ -31,6 +29,7 @@ class ToolService:
         tool_repository: SQLAlchemyRepository[VoiceAgentTool],
         tool_association_repository: SQLAlchemyRepository[VoiceAgentToolAssociation],
         cache_manager: CacheManager,
+        cache_invalidator: CallProcessingCacheInvalidator,
     ):
         """
         Initialize the tool service
@@ -39,10 +38,12 @@ class ToolService:
             tool_repository: Repository for voice agent tools
             tool_association_repository: Repository for voice agent tool associations
             cache_manager: Cache manager instance
+            cache_invalidator: Invalidates call_processing's cached configs
         """
         self.tool_repository = tool_repository
         self.tool_association_repository = tool_association_repository
         self.cache_manager = cache_manager
+        self.cache_invalidator = cache_invalidator
         self.tool_cache_time = 3600 * 24  # 24 hours matching voice agent pattern
 
     def _get_tool_cache_key(self, tool_id: UUID) -> str:
@@ -318,7 +319,7 @@ class ToolService:
                     self._get_agent_tools_cache_key(assoc.voice_agent_id)
                 )
                 # Invalidate call processing cache
-                await invalidate_call_processing_cache(
+                await self.cache_invalidator.invalidate(
                     'voice_agent', assoc.voice_agent_id, 'update'
                 )
 
@@ -364,7 +365,7 @@ class ToolService:
                     self._get_agent_tools_cache_key(assoc.voice_agent_id)
                 )
                 # Invalidate call processing cache
-                await invalidate_call_processing_cache(
+                await self.cache_invalidator.invalidate(
                     'voice_agent', assoc.voice_agent_id, 'update'
                 )
 
@@ -423,7 +424,7 @@ class ToolService:
             # Invalidate agent tools cache
             self.cache_manager.remove(self._get_agent_tools_cache_key(agent_id))
             # Invalidate call processing cache
-            await invalidate_call_processing_cache('voice_agent', agent_id, 'update')
+            await self.cache_invalidator.invalidate('voice_agent', agent_id, 'update')
 
             logger.info(
                 f'Attached tool {payload.tool_id} to agent {agent_id} (priority: {payload.priority})'
@@ -462,7 +463,7 @@ class ToolService:
             # Invalidate agent tools cache
             self.cache_manager.remove(self._get_agent_tools_cache_key(agent_id))
             # Invalidate call processing cache
-            await invalidate_call_processing_cache('voice_agent', agent_id, 'update')
+            await self.cache_invalidator.invalidate('voice_agent', agent_id, 'update')
 
             logger.info(f'Detached tool {tool_id} from agent {agent_id}')
             return True
@@ -564,7 +565,7 @@ class ToolService:
             # Invalidate agent tools cache
             self.cache_manager.remove(self._get_agent_tools_cache_key(agent_id))
             # Invalidate call processing cache
-            await invalidate_call_processing_cache('voice_agent', agent_id, 'update')
+            await self.cache_invalidator.invalidate('voice_agent', agent_id, 'update')
 
             logger.info(f'Updated tool {tool_id} association for agent {agent_id}')
             return updated

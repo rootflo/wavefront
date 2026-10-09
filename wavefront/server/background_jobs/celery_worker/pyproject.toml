@@ -15,7 +15,6 @@ dependencies = [
     "tools-module",
     "api-services-module",
     "common-module",
-    "triggers-module",
     "llm-inference-config-module",
     "guardrails-module",
     "celery[redis]>=5.5.3,<6.0.0",
@@ -30,9 +29,14 @@ flo-utils           = { workspace = true }
 tools-module        = { workspace = true }
 api-services-module = { workspace = true }
 common-module       = { workspace = true }
-triggers-module               = { workspace = true }
 llm-inference-config-module   = { workspace = true }
 guardrails-module             = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3,<10.0.0",
+    "pytest-asyncio>=1.0.0,<2.0.0",
+]
 
 [tool.uv]
 package = true

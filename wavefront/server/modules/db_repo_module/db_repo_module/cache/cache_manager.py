@@ -1,9 +1,9 @@
-import os
 import time
 from typing import Any, List, Optional, Union
 
 from common_module.common_cache import CommonCache
 from common_module.log.logger import logger
+from db_repo_module.cache.redis_settings import RedisSettings
 from redis import Connection
 from redis import ConnectionError
 from redis import BlockingConnectionPool
@@ -18,51 +18,38 @@ from tenacity import stop_after_attempt
 from tenacity import wait_exponential
 
 
-# Per-process cap on pooled Redis connections. Each process (every floware
-# worker, celery worker, background job) has its own pool, so the Redis server
-# may see up to this times the number of processes.
-DEFAULT_POOL_SIZE = int(os.getenv('REDIS_POOL_SIZE', '20'))
-# Seconds a caller waits for a free pooled connection before
-# ConnectionError('No connection available.'). Most CacheManager calls are
-# synchronous and many run on an asyncio event loop, where this wait stalls
-# the whole process, so keep it short; methods with @retry may wait up to 3x.
-DEFAULT_POOL_TIMEOUT = float(os.getenv('REDIS_POOL_TIMEOUT', '2'))
-
-
 class CacheManager(CommonCache):
     def __init__(
         self,
         namespace: str = '',
-        max_retries: int = 3,
-        initial_backoff: int = 1,
-        max_backoff: int = 10,
-        connection_timeout: int = 60,
-        socket_timeout: int = 60,
-        socket_keepalive: bool = True,
-        pool_size: Optional[int] = None,
+        settings: RedisSettings | None = None,
     ):
         """
         Args:
-            pool_size: Max Redis connections this process may open. Defaults to
-                REDIS_POOL_SIZE (20). Connections are opened on demand, so the
-                cap only costs anything under concurrency. When all are in use,
-                a caller waits up to REDIS_POOL_TIMEOUT (2s) for one to be
-                released, then gets ConnectionError('No connection available.').
+            settings: Redis connection, pool, and retry settings. Defaults match
+                [redis] ini defaults (localhost, pool_size 20, pool_timeout 2s).
+                pool_size is a per-process cap; when every connection is busy,
+                callers wait up to pool_timeout then get
+                ConnectionError('No connection available.').
         """
-        if pool_size is None:
-            pool_size = DEFAULT_POOL_SIZE
+        redis = settings or RedisSettings()
         self.namespace = namespace
-        self.max_retries = max_retries
-        self.initial_backoff = initial_backoff
-        self.max_backoff = max_backoff
+        self.max_retries = int(redis.max_retries)
+        self.initial_backoff = int(redis.initial_backoff)
+        self.max_backoff = int(redis.max_backoff)
+        self._redis_host = redis.host
+        self._redis_port = int(redis.port)
+        self._redis_protocol = redis.protocol
+        self._redis_password = redis.password
+        self._redis_db = int(redis.db)
+        self._pool_timeout = float(redis.pool_timeout)
 
         self.pool = self._create_connection_pool(
-            connection_timeout=connection_timeout,
-            socket_timeout=socket_timeout,
-            socket_keepalive=socket_keepalive,
-            pool_size=pool_size,
+            connection_timeout=int(redis.connection_timeout),
+            socket_timeout=int(redis.socket_timeout),
+            socket_keepalive=bool(redis.socket_keepalive),
+            pool_size=int(redis.pool_size),
         )
-
         self.redis = self._create_redis_connection()
 
         # Test the connection immediately - fail fast if Redis is unreachable
@@ -82,10 +69,10 @@ class CacheManager(CommonCache):
         pool_size: int,
     ) -> ConnectionPool:
         try:
-            host = os.getenv('REDIS_HOST', 'localhost')
-            port = int(os.getenv('REDIS_PORT', 6379))
-            protocol = os.getenv('REDIS_PROTOCOL', 'redis')
-            password = os.getenv('REDIS_PASSWORD')
+            host = self._redis_host
+            port = self._redis_port
+            protocol = self._redis_protocol
+            password = self._redis_password
 
             connection_class = Connection
             if protocol == 'rediss' or port == 10000:
@@ -96,7 +83,7 @@ class CacheManager(CommonCache):
                 'connection_class': connection_class,
                 'host': host,
                 'port': port,
-                'db': int(os.getenv('REDIS_DB', 0)),
+                'db': self._redis_db,
                 'max_connections': pool_size,
                 'socket_timeout': socket_timeout,
                 'socket_keepalive': socket_keepalive,
@@ -118,7 +105,7 @@ class CacheManager(CommonCache):
 
             # Blocking: when every connection is busy, wait briefly for one to
             # be released instead of failing at once with 'Too many connections'.
-            return BlockingConnectionPool(timeout=DEFAULT_POOL_TIMEOUT, **pool_kwargs)
+            return BlockingConnectionPool(timeout=self._pool_timeout, **pool_kwargs)
         except Exception as e:
             logger.error(f'Failed to create connection pool: {e}s')
             raise

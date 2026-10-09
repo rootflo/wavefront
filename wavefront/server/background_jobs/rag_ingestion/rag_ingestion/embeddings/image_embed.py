@@ -6,7 +6,6 @@ import httpx
 from flo_utils.utils.log import logger
 
 from rag_ingestion.embeddings.inference_http import post_with_retry
-from rag_ingestion.env import IMAGE_EMBEDDING_BATCH_SIZE, INFERENCE_SERVICE_URL
 from rag_ingestion.models.knowledge_base_embeddings import KnowledgeBaseEmbeddingObject
 
 # Statuses that mean "this batch is bad", so retrying image by image isolates
@@ -29,18 +28,19 @@ class ImageEmbedding:
 
     def __init__(
         self,
-        batch_size: int = IMAGE_EMBEDDING_BATCH_SIZE,
+        inference_service_url: str,
+        batch_size: int | str = 8,
         max_retries: int = 3,
         initial_delay: float = 1.0,
     ):
-        if not INFERENCE_SERVICE_URL:
+        if not inference_service_url:
             raise ValueError(
-                'INFERENCE_SERVICE_URL must be set for image embedding API calls'
+                'model.inference_service_url must be set for image embedding API calls'
             )
-        base = INFERENCE_SERVICE_URL.rstrip('/')
+        base = inference_service_url.rstrip('/')
         self._embed_url = f'{base}/inference/v1/query/embeddings'
         self._embed_batch_url = f'{base}/inference/v1/query/embeddings/batch'
-        self.batch_size = max(1, batch_size)
+        self.batch_size = max(1, int(batch_size))
         self.max_retries = max_retries
         self.initial_delay = initial_delay
         # Inference runs on CPU and serialises requests, so a batch can wait

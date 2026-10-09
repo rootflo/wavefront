@@ -1,24 +1,23 @@
 import glob
-import os
+
+from dotenv import load_dotenv
+
+# ruff: noqa: E402
+load_dotenv()
 
 from call_processing.log.logger import logger
-from common_module.middleware.security_headers import SecurityHeadersMiddleware
-from dotenv import load_dotenv
+from common_module.runtime_settings import RuntimeSettings
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
 
-from call_processing.di.application_container import ApplicationContainer
-from call_processing.controllers.webhook_controller import webhook_router
-from call_processing.controllers.cache_controller import cache_router
+from call_processing.di import application_container
+from call_processing.middleware import add_middlewares
+from call_processing.router import include_routers
 
-load_dotenv()
-
-environment = os.getenv('APP_ENV', 'production')
-
-# Initialize containers
-application_container = ApplicationContainer()
+config = application_container.config()
+runtime = RuntimeSettings.from_config(config)
+environment = runtime.app_env
 
 # Wire containers
 application_container.wire(
@@ -42,44 +41,9 @@ app = FastAPI(
     redoc_url='/redoc' if is_dev else None,
 )
 
-origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:8001')
-allowed_origins = origins.split(',')
-
-# Strict default-src 'none' CSP plus the rest of the security headers; /docs and
-# /redoc get their own relaxed policy when APP_ENV=dev.
-app.add_middleware(SecurityHeadersMiddleware)
-
-# Configure CORS with proper security settings
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True,
-    allow_methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allow_headers=['*'],
-    expose_headers=[
-        'X-Content-Type-Options',
-        'X-XSS-Protection',
-        'X-Frame-Options',
-        'Referrer-Policy',
-        'Content-Security-Policy',
-        'Pragma',
-        'Expires',
-        'Strict-Transport-Security',
-        'Cache-Control',
-    ],
-)
-
-# Include routers
-app.include_router(webhook_router, prefix='/webhooks')
-app.include_router(cache_router, prefix='/api')
-
-
-@app.get('/health')
-async def health_check():
-    """Health check endpoint"""
-    return JSONResponse(
-        content={'status': 'healthy', 'service': 'call-processing'}, status_code=200
-    )
+# Middlewares & Routers
+add_middlewares(app, runtime.allowed_origins, runtime.app_env)
+include_routers(app)
 
 
 @app.exception_handler(Exception)
@@ -102,10 +66,17 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # Running with Uvicorn (for local development)
 if __name__ == '__main__':
+    server = config['server']
+    host = server['host']
+    port = int(server['port'])
     print(f'Starting application in environment: {environment}')
     if environment == 'production':
         uvicorn.run(
-            'server:app', host='0.0.0.0', port=8004, workers=1, log_level='critical'
+            'server:app',
+            host=host,
+            port=port,
+            workers=1,
+            log_level=server['uvicorn_log_level'],
         )
         print(f'Started application in environment: {environment}')
 
@@ -117,11 +88,11 @@ if __name__ == '__main__':
 
         uvicorn.run(
             'server:app',
-            host='0.0.0.0',
-            port=8004,
+            host=host,
+            port=port,
             workers=1,
             reload=True,
             reload_includes=dirs,
-            log_level='info',
+            log_level=server['reload_log_level'],
         )
         print(f'Started application in environment: {environment}')

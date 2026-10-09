@@ -11,11 +11,12 @@ from llm_inference_config_module.services.llm_inference_config_service import (
 
 
 class LlmInferenceConfigContainer(containers.DeclarativeContainer):
-    config = providers.Configuration(ini_files=['config.ini'])
+    config = providers.Configuration()
 
     # External dependencies
     db_client = providers.Dependency()
     cache_manager = providers.Dependency()
+    call_processing_cache_invalidator = providers.Dependency()
 
     # Repository
     llm_inference_config_repository = providers.Singleton(
@@ -29,6 +30,7 @@ class LlmInferenceConfigContainer(containers.DeclarativeContainer):
         LlmInferenceConfigService,
         llm_inference_config_repository=llm_inference_config_repository,
         cache_manager=cache_manager,
+        cache_invalidator=call_processing_cache_invalidator,
     )
 
     inference_proxy_service = providers.Singleton(
