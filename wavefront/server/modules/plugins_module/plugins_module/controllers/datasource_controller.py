@@ -17,7 +17,7 @@ from fastapi.routing import APIRouter
 from common_module.common_container import CommonContainer
 from common_module.feature.feature_flag import (
     ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG,
-    is_feature_enabled,
+    FeatureFlags,
 )
 from common_module.response_formatter import ResponseFormatter
 from common_module.utils.serializer import serialize_values
@@ -1167,6 +1167,7 @@ async def execute_dynamic_query(
     ),
     user_service: UserService = Depends(Provide[UserContainer.user_service]),
     cache_manager: CacheManager = Depends(Provide[PluginsContainer.cache_manager]),
+    feature_flags: FeatureFlags = Depends(Provide[CommonContainer.feature_flags]),
     force_fetch: int = Query(0),
 ):
     role_id, user_id, _ = get_current_user(request)
@@ -1204,7 +1205,7 @@ async def execute_dynamic_query(
     # With ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG on, non-admins are not narrowed
     # down to their DATA resources: the row-level filter stays unset, so the
     # query runs over the whole datasource exactly as it does for an admin.
-    if not is_admin and not is_feature_enabled(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG):
+    if not is_admin and not feature_flags.enabled(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG):
         rls_filters = await user_service.get_user_resources(
             user_id=user_id, scope=ResourceScope.DATA
         )

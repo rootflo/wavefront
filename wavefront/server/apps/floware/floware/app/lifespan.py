@@ -11,15 +11,7 @@ from common_module.telemetry import instrument_sqlalchemy, shutdown_telemetry
 from db_repo_module.database.connection import DatabaseClient
 from fastapi import FastAPI
 from floware.app.channels import start_redis_listener
-from floware.di.containers import (
-    api_services_container,
-    application_container,
-    config,
-    db_repo_container,
-    guardrails_container,
-    knowledge_base_container,
-    scheduler_manager,
-)
+from floware.di import application_container
 from knowledge_base_module.services.kb_index_status_consumer import (
     KbIndexStatusConsumer,
 )
@@ -31,7 +23,9 @@ async def lifespan(app: FastAPI):
     logger.info('Starting application...')
 
     try:
-        db_client: DatabaseClient = db_repo_container.db_client()
+        config = application_container.config()
+        db = application_container.db
+        db_client: DatabaseClient = db.db_client()
 
         if isinstance(db_client, DatabaseClient):
             logger.info('========== Establishing db connection ...')
@@ -51,14 +45,16 @@ async def lifespan(app: FastAPI):
         # first checked request times out and, under a FAIL_CLOSED policy, is
         # rejected. Paid here, where nothing is waiting on it. No-op when the
         # container was not constructed ([guardrails] enabled=false).
-        if guardrails_container is not None:
-            await guardrails_container.guardrails_engine().warmup()
+        guardrails = application_container.guardrails()
+        if guardrails is not None:
+            await guardrails.guardrails_engine().warmup()
 
         scheduled_job_service = application_container.scheduled_job_service()
 
         # Run stale lock recovery once on startup before the scheduler ticks.
         await scheduled_job_service.recover_stale_locks()
 
+        scheduler_manager = application_container.scheduler_manager()
         scheduler_manager.start()
         scheduler_manager.register_due_jobs_poller(
             callback=scheduled_job_service.process_due_jobs_sync
@@ -69,33 +65,34 @@ async def lifespan(app: FastAPI):
         logger.info('Database connection established.')
 
         # Load API services from database into registry
-        service_registry = api_services_container.initialized_service_registry()
+        api_services = application_container.api_services
+        service_registry = api_services.initialized_service_registry()
         if getattr(service_registry, 'api_service_manager', None):
             try:
                 await service_registry.load_from_db()
                 logger.info('API services loaded from database')
 
                 # Reload routes to include newly loaded services
-                proxy_router = api_services_container.proxy_router()
+                proxy_router = api_services.proxy_router()
                 proxy_router.reload_routes()
                 logger.info('API service routes reloaded')
             except Exception as e:
                 logger.warning(f'Failed to load API services from database: {e}')
 
-        api_services_container.initialized_proxy()
+        api_services.initialized_proxy()
 
         # Include API services router AFTER services are loaded so routes are registered
         # This ensures FastAPI's route table includes the dynamic routes
         app.include_router(
-            api_services_container.router(), tags=['API Services'], prefix='/floware'
+            api_services.router(), tags=['API Services'], prefix='/floware'
         )
         logger.info('API services router included in app')
 
         # Start background Redis listener for updates
         asyncio.create_task(
             start_redis_listener(
-                cache_manager=db_repo_container.cache_manager(),
-                api_change_processor=api_services_container.api_change_processor(),
+                cache_manager=db.cache_manager(),
+                api_change_processor=api_services.api_change_processor(),
             )
         )
 
@@ -103,8 +100,8 @@ async def lifespan(app: FastAPI):
         streams = config['streams']
         consumer_shutdown_timeout_s = float(streams['consumer_shutdown_timeout_s'])
         async_agentic_exec_consumer = AsyncAgenticExecutionResultConsumer(
-            exec_repo=db_repo_container.async_agentic_execution_repository(),
-            cache_manager=db_repo_container.cache_manager(),
+            exec_repo=db.async_agentic_execution_repository(),
+            cache_manager=db.cache_manager(),
             stream=streams['async_agentic_exec_results'],
             group=streams['async_agentic_exec_consumer_group'],
             poll_interval_s=float(streams['async_agentic_exec_poll_interval_s']),
@@ -116,8 +113,8 @@ async def lifespan(app: FastAPI):
 
         # Start Redis Stream consumer for knowledge base document index statuses
         kb_index_status_consumer = KbIndexStatusConsumer(
-            documents_repo=knowledge_base_container.knowledge_base_documents_repository(),
-            cache_manager=db_repo_container.cache_manager(),
+            documents_repo=application_container.knowledge_base.knowledge_base_documents_repository(),
+            cache_manager=db.cache_manager(),
             group=streams['kb_index_status_consumer_group'],
             poll_interval_s=float(streams['kb_index_status_poll_interval_s']),
             heartbeat_interval_s=int(streams['kb_index_status_heartbeat_s']),
@@ -130,7 +127,7 @@ async def lifespan(app: FastAPI):
         )
 
         # Set app reference in proxy router so new routes can be added dynamically
-        proxy_router = api_services_container.proxy_router()
+        proxy_router = api_services.proxy_router()
         proxy_router.set_app(app, prefix='/floware')
         logger.info('App reference set in proxy router for dynamic route registration')
 

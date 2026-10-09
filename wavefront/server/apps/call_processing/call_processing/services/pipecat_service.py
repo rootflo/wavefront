@@ -67,6 +67,7 @@ from call_processing.services.llm_service import LLMServiceFactory
 # from call_processing.services.conversation_completion_tool import (
 #     ConversationCompletionToolFactory,
 # )
+from call_processing.app_settings import CallProcessingAppSettings
 from call_processing.constants.language_config import (
     LANGUAGE_INSTRUCTIONS,
     LANGUAGE_DISPLAY_NAMES,
@@ -76,13 +77,11 @@ from call_processing.constants.filler_phrases import FILLER_PHRASES
 _pipecat_tracing_initialized = False
 
 
-def _ensure_pipecat_tracing() -> None:
+def _ensure_pipecat_tracing(settings: CallProcessingAppSettings) -> None:
     global _pipecat_tracing_initialized
     if _pipecat_tracing_initialized:
         return
-    from call_processing.app_settings import get_call_processing_settings
-
-    settings = get_call_processing_settings().pipecat
+    settings = settings.pipecat
     if settings.enable_tracing and settings.otlp_endpoint:
         exporter = OTLPSpanExporter(
             endpoint=settings.otlp_endpoint,
@@ -98,6 +97,9 @@ def _ensure_pipecat_tracing() -> None:
 
 class PipecatService:
     """Service for creating and running Pipecat pipelines"""
+
+    def __init__(self, settings: CallProcessingAppSettings):
+        self.settings = settings
 
     async def run_conversation(
         self,
@@ -124,10 +126,8 @@ class PipecatService:
             stt_config: STT provider configuration (credentials only)
             tools: List of tool dicts with association details
         """
-        _ensure_pipecat_tracing()
-        from call_processing.app_settings import get_call_processing_settings
-
-        pipecat_settings = get_call_processing_settings().pipecat
+        _ensure_pipecat_tracing(self.settings)
+        pipecat_settings = self.settings.pipecat
 
         # Extract language configuration from agent_config
         supported_languages = agent_config.get('supported_languages', ['en'])
@@ -532,9 +532,7 @@ class PipecatService:
         # Register event handlers
         @llm.event_handler('on_function_calls_started')
         async def on_function_calls_started(service, function_calls):
-            from call_processing.app_settings import get_call_processing_settings
-
-            if not get_call_processing_settings().pipecat.enable_filler_phrases_before_tool_call:
+            if not pipecat_settings.enable_filler_phrases_before_tool_call:
                 return
             # Skip filler phrase when language is switching — the TTS service's language
             # may change before the queued frame is processed, causing a language mismatch error.
@@ -577,6 +575,7 @@ class PipecatService:
                         transcript_log=transcript_log,
                         stats=call_stats,
                         parent_context=parent_ctx,
+                        settings=self.settings,
                     )
                 )
                 call_evaluation_tasks.append(t)

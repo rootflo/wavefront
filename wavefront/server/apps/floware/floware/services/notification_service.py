@@ -61,3 +61,17 @@ class NotificationService:
             params={'user_id': user_id},
         )
         return rows[0]['total'] if rows else 0
+
+    async def mark_seen(self, notification_id: str, user_id) -> bool:
+        """Mark one notification seen for ``user_id``.
+
+        Returns False when no notification row exists: notification_user's
+        notification_id is a foreign key, so upserting a missing id would
+        violate it and surface as a 500 instead of a 404.
+        """
+        if not await self.notification_repository.find_one(id=notification_id):
+            return False
+        await self.notification_user_repository.upsert(
+            {'notification_id': notification_id, 'user_id': user_id}, seen=True
+        )
+        return True

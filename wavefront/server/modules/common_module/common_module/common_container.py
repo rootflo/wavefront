@@ -1,4 +1,5 @@
 from common_module.call_processing_cache import CallProcessingCacheInvalidator
+from common_module.feature.feature_flag import FeatureFlags
 from common_module.response_formatter import ResponseFormatter
 from common_module.runtime_settings import RuntimeSettings
 from dependency_injector import containers
@@ -17,11 +18,13 @@ def _azure_queue_account_url(account_url: str | None) -> str | None:
 
 
 class CommonContainer(containers.DeclarativeContainer):
-    config = providers.Configuration(ini_files=['./config.ini'])
+    config = providers.Configuration()
 
     response_formatter = providers.Singleton(ResponseFormatter)
 
     runtime_settings = providers.Singleton(RuntimeSettings.from_config, config=config)
+
+    feature_flags = providers.Singleton(FeatureFlags.from_config, config)
 
     call_processing_cache_invalidator = providers.Singleton(
         CallProcessingCacheInvalidator,

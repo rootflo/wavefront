@@ -8,27 +8,28 @@ import threading
 from dataclasses import dataclass
 from typing import Optional
 
+from dependency_injector import containers
 from dependency_injector import providers
 
-from api_services_module.api_services_container import (
-    ApiServicesContainer,
-    create_api_services_container,
-)
+from api_services_module.api_services_container import ApiServicesContainer
 from agents_module.agents_container import AgentsContainer
-from llm_inference_config_module.container import LlmInferenceConfigContainer
 from agents_module.services.agent_inference_service import AgentInferenceService
-from agents_module.services.workflow_inference_service import WorkflowInferenceService
+from agents_module.services.workflow_inference_service import (
+    WorkflowInferenceService,
+)
 from common_module.common_container import CommonContainer
-from agents_module.runtime_config import configure_celery_broker
+from common_module.config_loader import is_truthy
 from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.database.connection import DatabaseConfig, DatabaseClient
 from db_repo_module.db_repo_container import DatabaseModuleContainer
 from flo_cloud.cloud_storage import CloudStorageManager
-from guardrails_module.bootstrap import create_guardrails_container_if_enabled
+from guardrails_module.bootstrap import start_presidio_regex_timeout
+from guardrails_module.container import GuardrailsContainer
+from llm_inference_config_module.container import LlmInferenceConfigContainer
 from plugins_module.plugins_container import PluginsContainer
 from tools_module.tools_container import ToolsContainer
 
-from celery_worker.settings import CONFIG, CONFIG_INI
+from celery_worker.settings import CONFIG
 
 
 @dataclass
@@ -60,6 +61,117 @@ def _build_db_client(database: dict) -> DatabaseClient:
     )
 
 
+def _guardrails_mode(enabled) -> str:
+    return 'on' if is_truthy(enabled) else 'off'
+
+
+def _guardrails_engine(selected):
+    if selected is None:
+        return None
+    return selected.guardrails_engine()
+
+
+class ApplicationContainer(containers.DeclarativeContainer):
+    """Parent of the module containers the worker actually uses.
+
+    Email OAuth and KMS are not used here (no trigger tasks). Those
+    dependencies are stubbed so PluginsContainer still builds the message
+    processor repository that agents and tools need.
+    """
+
+    config = providers.Configuration()
+
+    presidio_regex_timeout = providers.Resource(
+        start_presidio_regex_timeout,
+        timeout=config.guardrails.regex_timeout_seconds,
+    )
+
+    db_client = providers.Singleton(_build_db_client, config.database)
+    db = providers.Container(
+        DatabaseModuleContainer,
+        config=config,
+        db_client=db_client,
+    )
+    common = providers.Container(
+        CommonContainer,
+        config=config,
+        cache_manager=db.cache_manager,
+    )
+    guardrails = providers.Selector(
+        providers.Callable(_guardrails_mode, config.guardrails.enabled),
+        on=providers.Container(
+            GuardrailsContainer,
+            config=config,
+            db_client=db.db_client,
+            cache_manager=db.cache_manager,
+        ),
+        off=providers.Object(None),
+    )
+    plugins = providers.Container(
+        PluginsContainer,
+        config=config,
+        db_client=db.db_client,
+        cloud_storage_manager=common.cloud_storage_manager,
+        kms_cipher=providers.Object(None),
+        dynamic_query_repository=db.dynamic_query_repository,
+        cache_manager=db.cache_manager,
+        namespace_repository=db.namespace_repository,
+        agentic_configuration_repository=db.agentic_configuration_repository,
+        datasource_audit_log_repository=db.datasource_audit_log_repository,
+        notification_repository=db.notification_repository,
+        oauth_app_repository=providers.Object(None),
+        email_connection_repository=db.email_connection_repository,
+        feature_flags=common.feature_flags,
+    )
+    api_services = providers.Container(
+        ApiServicesContainer,
+        config=config,
+        api_services_repository=db.api_services_repository,
+        cloud_storage_manager=common.cloud_storage_manager,
+        db_client=db.db_client,
+        cache_manager=db.cache_manager,
+        response_formatter=providers.Object(None),
+    )
+    tools = providers.Container(
+        ToolsContainer,
+        datasource_repository=db.datasource_repository,
+        email_connection_repository=db.email_connection_repository,
+        message_processor_repository=plugins.message_processor_repository,
+        api_services_manager=api_services.api_service_manager,
+        cloud_storage_manager=common.cloud_storage_manager,
+        message_processor_bucket_name=config.storage.application_bucket,
+        floware_base_url=config.env_config.base_url,
+        passthrough_secret=config.env_config.passthrough_secret,
+    )
+    llm_inference_config = providers.Container(
+        LlmInferenceConfigContainer,
+        config=config,
+        db_client=db.db_client,
+        cache_manager=db.cache_manager,
+        call_processing_cache_invalidator=common.call_processing_cache_invalidator,
+    )
+    agents = providers.Container(
+        AgentsContainer,
+        config=config,
+        db_client=db.db_client,
+        cloud_storage_manager=common.cloud_storage_manager,
+        cache_manager=db.cache_manager,
+        tool_loader=tools.tool_loader,
+        namespace_repository=db.namespace_repository,
+        agent_repository=db.agent_repository,
+        agent_version_repository=db.agent_version_repository,
+        workflow_repository=db.workflow_repository,
+        workflow_version_repository=db.workflow_version_repository,
+        message_processor_repository=plugins.message_processor_repository,
+        message_processor_bucket_name=config.storage.application_bucket,
+        api_services_manager=api_services.api_service_manager,
+        async_agentic_execution_repository=db.async_agentic_execution_repository,
+        executions_bucket=config.storage.application_bucket,
+        llm_inference_config_service=llm_inference_config.llm_inference_config_service,
+        guardrails_engine=providers.Callable(_guardrails_engine, guardrails),
+    )
+
+
 def get_services() -> WorkerServices:
     global _services
     if _services is not None:
@@ -69,100 +181,22 @@ def get_services() -> WorkerServices:
         if _services is not None:
             return _services
 
-        config = CONFIG
-        db_client = _build_db_client(config['database'])
-        db_repo_container = DatabaseModuleContainer()
-        db_repo_container.config.from_ini(CONFIG_INI)
-        db_repo_container.db_client.override(providers.Object(db_client))
-
-        common_container = CommonContainer(cache_manager=providers.Object(None))
-        common_container.config.from_dict(config)
-        runtime = common_container.runtime_settings()
-        configure_celery_broker(config['celery']['broker_url'])
-
-        storage = config['storage']
-
-        api_services_container: ApiServicesContainer = create_api_services_container(
-            api_service_repository=db_repo_container.api_services_repository,
-            cloud_storage_manager=common_container.cloud_storage_manager,
-            db_client=db_repo_container.db_client,
-            cache_manager=db_repo_container.cache_manager,
-            response_formatter=providers.Object(None),
-        )
-
-        # Email OAuth/KMS services are not used by this worker (no trigger
-        # tasks). Stub kms/oauth so PluginsContainer still constructs for the
-        # message-processor repository that agents/tools need.
-        plugins_container = PluginsContainer(
-            db_client=db_repo_container.db_client,
-            cloud_storage_manager=common_container.cloud_storage_manager,
-            kms_cipher=providers.Object(None),
-            dynamic_query_repository=db_repo_container.dynamic_query_repository,
-            cache_manager=db_repo_container.cache_manager,
-            oauth_app_repository=providers.Object(None),
-            email_connection_repository=db_repo_container.email_connection_repository,
-        )
-        plugins_container.config.from_dict(config)
-
-        bucket_name = storage['application_bucket']
+        bucket_name = CONFIG['storage']['application_bucket']
         if not bucket_name:
             raise ValueError(
                 'storage.application_bucket (APPLICATION_BUCKET) must be set in config.ini'
             )
-        executions_bucket = bucket_name
 
-        tools_container = ToolsContainer(
-            datasource_repository=db_repo_container.datasource_repository,
-            email_connection_repository=db_repo_container.email_connection_repository,
-            message_processor_repository=plugins_container.message_processor_repository,
-            api_services_manager=api_services_container.api_service_manager,
-            cloud_storage_manager=common_container.cloud_storage_manager,
-            message_processor_bucket_name=bucket_name,
-            floware_base_url=runtime.floware_base_url,
-            passthrough_secret=runtime.passthrough_secret,
-        )
-
-        llm_inference_config_container = LlmInferenceConfigContainer(
-            db_client=db_repo_container.db_client,
-            cache_manager=db_repo_container.cache_manager,
-            call_processing_cache_invalidator=common_container.call_processing_cache_invalidator,
-        )
-
-        guardrails_container = create_guardrails_container_if_enabled(
-            config,
-            db_client=db_repo_container.db_client,
-            cache_manager=db_repo_container.cache_manager,
-        )
-        guardrails_engine = (
-            guardrails_container.guardrails_engine if guardrails_container else None
-        )
-
-        agents_container = AgentsContainer(
-            db_client=db_repo_container.db_client,
-            cloud_storage_manager=common_container.cloud_storage_manager,
-            cache_manager=db_repo_container.cache_manager,
-            tool_loader=tools_container.tool_loader,
-            namespace_repository=db_repo_container.namespace_repository,
-            agent_repository=db_repo_container.agent_repository,
-            agent_version_repository=db_repo_container.agent_version_repository,
-            workflow_repository=db_repo_container.workflow_repository,
-            workflow_version_repository=db_repo_container.workflow_version_repository,
-            message_processor_repository=plugins_container.message_processor_repository,
-            message_processor_bucket_name=bucket_name,
-            api_services_manager=api_services_container.api_service_manager,
-            async_agentic_execution_repository=db_repo_container.async_agentic_execution_repository,
-            executions_bucket=executions_bucket,
-            llm_inference_config_service=llm_inference_config_container.llm_inference_config_service,
-            guardrails_engine=guardrails_engine,
-        )
-        agents_container.config.from_dict(config)
+        container = ApplicationContainer()
+        container.config.from_dict(CONFIG)
+        container.init_resources()
 
         _services = WorkerServices(
-            agent_inference=agents_container.agent_inference_service(),
-            workflow_inference=agents_container.workflow_inference_service(),
-            cloud_storage=common_container.cloud_storage_manager(),
-            cache=db_repo_container.cache_manager(),
-            execution_bucket=executions_bucket,
+            agent_inference=container.agents.agent_inference_service(),
+            workflow_inference=container.agents.workflow_inference_service(),
+            cloud_storage=container.common.cloud_storage_manager(),
+            cache=container.db.cache_manager(),
+            execution_bucket=bucket_name,
         )
 
     return _services

@@ -1,3 +1,4 @@
+from common_module.feature.feature_flag import FeatureFlags
 from dependency_injector import containers
 from dependency_injector import providers
 from db_repo_module.models.datasource import Datasource
@@ -17,7 +18,7 @@ from plugins_module.services.change_notification_service import (
 
 
 class PluginsContainer(containers.DeclarativeContainer):
-    config = providers.Configuration(ini_files=['config.ini'])
+    config = providers.Configuration()
 
     db_client = providers.Dependency()
 
@@ -47,6 +48,8 @@ class PluginsContainer(containers.DeclarativeContainer):
     cloud_storage_manager = providers.Dependency()
 
     kms_cipher = providers.Dependency()
+
+    feature_flags = providers.Dependency(default=FeatureFlags())
 
     datasource_repository = providers.Singleton(
         SQLAlchemyRepository[Datasource],
@@ -83,6 +86,7 @@ class PluginsContainer(containers.DeclarativeContainer):
     change_notification_service = providers.Singleton(
         ChangeNotificationService,
         notification_repository=notification_repository,
+        feature_flags=feature_flags,
     )
 
     # Wired unconditionally; DATASOURCE_CHANGE_NOTIFICATION_FLAG decides at call
@@ -93,6 +97,7 @@ class PluginsContainer(containers.DeclarativeContainer):
         DatasourceAuditService,
         audit_log_repository=datasource_audit_log_repository,
         change_notification_service=change_notification_service,
+        feature_flags=feature_flags,
     )
 
     message_processor_service = providers.Singleton(

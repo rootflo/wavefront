@@ -1,5 +1,4 @@
-from collections.abc import Mapping
-from typing import Any
+"""Load embedding models into the application container at process startup."""
 
 from dependency_injector import providers
 
@@ -11,49 +10,17 @@ from inference_app.models.model_sync import (
     sync_text_embedding_model,
 )
 
-# Set by configure(); used by startup helpers and tests that monkeypatch them.
-_container: ApplicationContainer | None = None
-BGE_M3_MODEL_URI = ''
-MAX_TEXT_EMBEDDING_TOKENS = 512
-CLIP_VIT_BASE_PATCH32_MODEL_URI = ''
-DINOV3_VITL16_HF_MODEL_URI = ''
-MODEL_CACHE_DIR = '/tmp/model-cache'
-CLOUD_PROVIDER = ''
-MOCK_MODELS = False
 
-
-def configure(
-    container: ApplicationContainer,
-    *,
-    models: Mapping[str, Any],
-    inference: Mapping[str, Any],
-    cloud: Mapping[str, Any],
-) -> None:
-    global _container
-    global BGE_M3_MODEL_URI, MAX_TEXT_EMBEDDING_TOKENS
-    global CLIP_VIT_BASE_PATCH32_MODEL_URI, DINOV3_VITL16_HF_MODEL_URI
-    global MODEL_CACHE_DIR, CLOUD_PROVIDER, MOCK_MODELS
-
-    _container = container
-    BGE_M3_MODEL_URI = models['bge_m3_uri']
-    MAX_TEXT_EMBEDDING_TOKENS = int(inference['max_text_embedding_tokens'])
-    CLIP_VIT_BASE_PATCH32_MODEL_URI = models['clip_vit_base_patch32_uri']
-    DINOV3_VITL16_HF_MODEL_URI = models['dinov3_vitl16_uri']
-    MODEL_CACHE_DIR = models['cache_dir']
-    CLOUD_PROVIDER = cloud['platform']
-    # Mock embeddings where the real models can't run (no torch: Intel Macs),
-    # or when models.mock_models=true. Decided once, at configure time.
-    MOCK_MODELS = use_mock_models(models['mock_models'])
-
-
-def start_models() -> None:
-    if MOCK_MODELS:
-        start_mock_models()
+def start_models(container: ApplicationContainer) -> None:
+    """Sync/preload embeddings (or mocks) using ``container.config``."""
+    config = container.config()
+    if use_mock_models(config['models']['mock_models']):
+        start_mock_models(container)
     else:
-        start_real_models()
+        start_real_models(container)
 
 
-def start_mock_models() -> None:
+def start_mock_models(container: ApplicationContainer) -> None:
     from inference_app.service.mock_embeddings import (
         MockImageEmbedding,
         MockTextEmbedding,
@@ -64,24 +31,25 @@ def start_mock_models() -> None:
         'models.mock_models=true). For integration testing only; search '
         'results are not meaningful.'
     )
-    container = _require_container()
     container.image_embedding.override(providers.Singleton(MockImageEmbedding))
     container.text_embedding_provider().load(MockTextEmbedding)
 
 
-def start_real_models() -> None:
+def start_real_models(container: ApplicationContainer) -> None:
     # Imported here: these need torch, which mock mode runs without
     from inference_app.service.image_embedding import ImageEmbedding
 
+    models = container.config()['models']
+    cloud_provider = container.config()['cloud']['platform']
+
     logger.info('Syncing embedding models from cloud storage...')
     clip_dir, dino_dir = sync_embedding_models(
-        clip_uri=CLIP_VIT_BASE_PATCH32_MODEL_URI,
-        dino_uri=DINOV3_VITL16_HF_MODEL_URI,
-        cache_dir=MODEL_CACHE_DIR,
-        cloud_provider=CLOUD_PROVIDER,
+        clip_uri=models['clip_vit_base_patch32_uri'],
+        dino_uri=models['dinov3_vitl16_uri'],
+        cache_dir=models['cache_dir'],
+        cloud_provider=cloud_provider,
     )
     logger.info('Cloud sync complete. Preloading ML models...')
-    container = _require_container()
     container.image_embedding.override(
         providers.Singleton(
             ImageEmbedding, clip_model_dir=clip_dir, dino_model_dir=dino_dir
@@ -89,35 +57,32 @@ def start_real_models() -> None:
     )
     container.image_embedding()
     logger.info('ML models loaded and ready.')
-    start_text_embedding_model()
+    start_text_embedding_model(container)
 
 
-def load_text_embedding_model():
+def load_text_embedding_model(container: ApplicationContainer):
     from inference_app.service.text_embedding import TextEmbedding
 
+    config = container.config()
+    models = config['models']
     return TextEmbedding(
         sync_text_embedding_model(
-            bge_m3_uri=BGE_M3_MODEL_URI,
-            cache_dir=MODEL_CACHE_DIR,
-            cloud_provider=CLOUD_PROVIDER,
+            bge_m3_uri=models['bge_m3_uri'],
+            cache_dir=models['cache_dir'],
+            cloud_provider=config['cloud']['platform'],
         ),
-        max_length=MAX_TEXT_EMBEDDING_TOKENS,
+        max_length=int(config['inference']['max_text_embedding_tokens']),
     )
 
 
-def start_text_embedding_model() -> None:
+def start_text_embedding_model(container: ApplicationContainer) -> None:
     """BGE-M3 is optional: start it loading in the background if configured,
     without holding up startup or failing it."""
-    if not BGE_M3_MODEL_URI:
+    bge_m3_uri = container.config()['models']['bge_m3_uri']
+    if not bge_m3_uri:
         logger.info('models.bge_m3_uri not set; text embeddings disabled.')
         return
     logger.info('Loading BGE-M3 text embedding model in the background...')
-    _require_container().text_embedding_provider().start_loading(
-        load_text_embedding_model
+    container.text_embedding_provider().start_loading(
+        lambda: load_text_embedding_model(container)
     )
-
-
-def _require_container() -> ApplicationContainer:
-    if _container is None:
-        raise RuntimeError('models.setup.configure() must be called before startup')
-    return _container

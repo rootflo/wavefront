@@ -2,15 +2,17 @@
 
 from pathlib import Path
 
+from common_module.config_loader import load_ini
 from dependency_injector import providers
 from dotenv import load_dotenv
 
-load_dotenv()
+_PACKAGE = Path(__file__).resolve().parent
+load_dotenv(_PACKAGE / '.env')
 
-CONFIG_INI = str(Path(__file__).resolve().parent / 'config.ini')
+CONFIG_INI = _PACKAGE / 'config.ini'
 
-_configuration = providers.Configuration()
-_configuration.from_ini(CONFIG_INI)
+_configuration = providers.Configuration(strict=True)
+load_ini(_configuration, CONFIG_INI)
 CONFIG = _configuration()
 
 CELERY_BROKER_URL = CONFIG['celery']['broker_url']

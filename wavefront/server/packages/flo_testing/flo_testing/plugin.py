@@ -7,12 +7,10 @@ never ask for a database never start one.
 
 from __future__ import annotations
 
-from common_module.feature.feature_flag import SUPERSET_FLAG, configure_feature_flags
 from db_repo_module.embedding_column_mode import enable_pgvector_test_standins
 
 # Before any ``db_repo_module.models`` import: Text stand-ins instead of pgvector.
 enable_pgvector_test_standins()
-configure_feature_flags(**{SUPERSET_FLAG: 'true'})
 
 # ruff: noqa: E402
 from flo_testing.app import build_app

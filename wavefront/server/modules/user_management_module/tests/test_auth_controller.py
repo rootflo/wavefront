@@ -19,6 +19,14 @@ from user_management_module.constants.cache import user_by_id_cache_key
 from user_management_module.utils.password_utils import hash_password
 
 
+def _set_inactive_account_flag(core_containers, enabled: bool) -> None:
+    from common_module.feature.feature_flag import FeatureFlags
+
+    core_containers.common.feature_flags.override(
+        providers.Object(FeatureFlags(inactive_account_disable=enabled))
+    )
+
+
 @pytest.mark.asyncio
 async def test_authenticate(
     test_client, test_session: async_sessionmaker, test_user_id
@@ -400,6 +408,7 @@ async def test_authenticate_inactive_account_feature_disabled(
     test_session: async_sessionmaker,
     test_user_id,
     monkeypatch,
+    core_containers,
     mock_config,
 ):
     """Test that inactive users can login when feature flag is disabled"""
@@ -407,18 +416,7 @@ async def test_authenticate_inactive_account_feature_disabled(
     threshold_days = int(mock_config['auth']['inactive_days_threshold'])
 
     # Mock the feature flag to be disabled
-    def mock_is_feature_enabled(feature: str) -> bool:
-        if feature == 'INACTIVE_ACCOUNT_DISABLE_FLAG':
-            return False
-        return False
-
-    monkeypatch.setattr(
-        'common_module.feature.feature_flag.is_feature_enabled', mock_is_feature_enabled
-    )
-    monkeypatch.setattr(
-        'user_management_module.controllers.auth_controller.is_feature_enabled',
-        mock_is_feature_enabled,
-    )
+    _set_inactive_account_flag(core_containers, False)
 
     # Create test IDs
     role_id = str(uuid4())
@@ -474,23 +472,13 @@ async def test_authenticate_inactive_account_feature_enabled_first_time_user(
     test_session: async_sessionmaker,
     test_user_id,
     monkeypatch,
+    core_containers,
     mock_config,
 ):
     """Test that first-time users (no last_login_at) can login when feature is enabled"""
 
     # Mock the feature flag to be enabled
-    def mock_is_feature_enabled(feature: str) -> bool:
-        if feature == 'INACTIVE_ACCOUNT_DISABLE_FLAG':
-            return True
-        return False
-
-    monkeypatch.setattr(
-        'common_module.feature.feature_flag.is_feature_enabled', mock_is_feature_enabled
-    )
-    monkeypatch.setattr(
-        'user_management_module.controllers.auth_controller.is_feature_enabled',
-        mock_is_feature_enabled,
-    )
+    _set_inactive_account_flag(core_containers, True)
 
     # Create test IDs
     role_id = str(uuid4())
@@ -543,6 +531,7 @@ async def test_authenticate_inactive_account_feature_enabled_within_threshold(
     test_session: async_sessionmaker,
     test_user_id,
     monkeypatch,
+    core_containers,
     mock_config,
 ):
     """Test that active users within threshold can login when feature is enabled"""
@@ -550,18 +539,7 @@ async def test_authenticate_inactive_account_feature_enabled_within_threshold(
     threshold_days = int(mock_config['auth']['inactive_days_threshold'])
 
     # Mock the feature flag to be enabled
-    def mock_is_feature_enabled(feature: str) -> bool:
-        if feature == 'INACTIVE_ACCOUNT_DISABLE_FLAG':
-            return True
-        return False
-
-    monkeypatch.setattr(
-        'common_module.feature.feature_flag.is_feature_enabled', mock_is_feature_enabled
-    )
-    monkeypatch.setattr(
-        'user_management_module.controllers.auth_controller.is_feature_enabled',
-        mock_is_feature_enabled,
-    )
+    _set_inactive_account_flag(core_containers, True)
 
     # Create test IDs
     role_id = str(uuid4())
@@ -617,6 +595,7 @@ async def test_authenticate_inactive_account_feature_enabled_over_threshold(
     test_session: async_sessionmaker,
     test_user_id,
     monkeypatch,
+    core_containers,
     mock_config,
 ):
     """Test that inactive users over threshold are rejected when feature is enabled"""
@@ -624,18 +603,7 @@ async def test_authenticate_inactive_account_feature_enabled_over_threshold(
     threshold_days = int(mock_config['auth']['inactive_days_threshold'])
 
     # Mock the feature flag to be enabled
-    def mock_is_feature_enabled(feature: str) -> bool:
-        if feature == 'INACTIVE_ACCOUNT_DISABLE_FLAG':
-            return True
-        return False
-
-    monkeypatch.setattr(
-        'common_module.feature.feature_flag.is_feature_enabled', mock_is_feature_enabled
-    )
-    monkeypatch.setattr(
-        'user_management_module.controllers.auth_controller.is_feature_enabled',
-        mock_is_feature_enabled,
-    )
+    _set_inactive_account_flag(core_containers, True)
 
     # Create test IDs
     role_id = str(uuid4())
@@ -765,6 +733,7 @@ async def test_authenticate_inactive_account_with_wrong_password(
     test_session: async_sessionmaker,
     test_user_id,
     monkeypatch,
+    core_containers,
     mock_config,
 ):
     """Test that inactivity error takes precedence over wrong password error"""
@@ -772,18 +741,7 @@ async def test_authenticate_inactive_account_with_wrong_password(
     threshold_days = int(mock_config['auth']['inactive_days_threshold'])
 
     # Mock the feature flag to be enabled
-    def mock_is_feature_enabled(feature: str) -> bool:
-        if feature == 'INACTIVE_ACCOUNT_DISABLE_FLAG':
-            return True
-        return False
-
-    monkeypatch.setattr(
-        'common_module.feature.feature_flag.is_feature_enabled', mock_is_feature_enabled
-    )
-    monkeypatch.setattr(
-        'user_management_module.controllers.auth_controller.is_feature_enabled',
-        mock_is_feature_enabled,
-    )
+    _set_inactive_account_flag(core_containers, True)
 
     # Create test IDs
     role_id = str(uuid4())
@@ -844,6 +802,7 @@ async def test_authenticate_inactive_account_with_lockout(
     test_session: async_sessionmaker,
     test_user_id,
     monkeypatch,
+    core_containers,
     mock_config,
 ):
     """Test that lockout error takes precedence over inactivity error"""
@@ -851,18 +810,7 @@ async def test_authenticate_inactive_account_with_lockout(
     threshold_days = int(mock_config['auth']['inactive_days_threshold'])
 
     # Mock the feature flag to be enabled
-    def mock_is_feature_enabled(feature: str) -> bool:
-        if feature == 'INACTIVE_ACCOUNT_DISABLE_FLAG':
-            return True
-        return False
-
-    monkeypatch.setattr(
-        'common_module.feature.feature_flag.is_feature_enabled', mock_is_feature_enabled
-    )
-    monkeypatch.setattr(
-        'user_management_module.controllers.auth_controller.is_feature_enabled',
-        mock_is_feature_enabled,
-    )
+    _set_inactive_account_flag(core_containers, True)
 
     # Matches flo_testing user_config auth.max_failed_attempts default.
     max_failed_attempts = 3

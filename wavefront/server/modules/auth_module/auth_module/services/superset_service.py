@@ -3,6 +3,7 @@ from typing import Dict, List
 
 from common_module.log.logger import logger
 from common_module.utils.odata_parser import fill_odata_query
+from common_module.utils.odata_parser import parameter_char_for_provider
 from common_module.utils.odata_parser import prepare_odata_filter
 from fastapi import HTTPException
 import requests
@@ -15,7 +16,9 @@ class Resource:
 
 
 def generate_rls_policy(
-    filters: List[Resource], odata_query_filter: str
+    filters: List[Resource],
+    odata_query_filter: str,
+    parameter: str = ':',
 ) -> Dict[str, str]:
     """
     Generate RLS policy from a list of filters.
@@ -48,8 +51,12 @@ def generate_rls_policy(
 
     if odata_query_filter:
         # If an OData filter is provided, parse it and add to conditions
-        odata_condition, params = prepare_odata_filter(odata_query_filter)
-        odata_query_condition = fill_odata_query(odata_condition, params)
+        odata_condition, params = prepare_odata_filter(
+            odata_query_filter, parameter=parameter
+        )
+        odata_query_condition = fill_odata_query(
+            odata_condition, params, parameter=parameter
+        )
         conditions.append(odata_query_condition)
 
     # Combine all conditions with AND
@@ -59,11 +66,12 @@ def generate_rls_policy(
 
 
 class SupersetService:
-    def __init__(self, url, username, password, cache_manager):
+    def __init__(self, url, username, password, cache_manager, cloud_provider: str):
         self.url = url
         self.username = username
         self.password = password
         self.cache_manager = cache_manager
+        self.odata_parameter = parameter_char_for_provider(cloud_provider)
 
     def generate_guest_token(
         self,
@@ -101,7 +109,9 @@ class SupersetService:
             self.cache_manager.add(cache_key, access_token, 900)
 
         resources = [{'type': 'dashboard', 'id': id} for id in dashboard_ids]
-        rls_policy = generate_rls_policy(filters, query_filter)
+        rls_policy = generate_rls_policy(
+            filters, query_filter, parameter=self.odata_parameter
+        )
         guest_token_body = {
             'resources': resources,
             'rls': rls_policy,

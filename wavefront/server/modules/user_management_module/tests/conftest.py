@@ -21,6 +21,7 @@ def setup_containers(core_containers):
         core_containers.common,
         packages=[
             'user_management_module.controllers',
+            'user_management_module.utils',
             'auth_module.controllers',
             'user_management_module.authorization',
         ],

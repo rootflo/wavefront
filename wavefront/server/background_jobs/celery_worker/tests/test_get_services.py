@@ -49,17 +49,8 @@ def test_get_services_requires_application_bucket():
         'hermes': {'url': ''},
     }
 
-    db_repo = MagicMock()
-    common = MagicMock()
-    common.config.from_dict = MagicMock()
-
     with (
         patch.object(services, 'CONFIG', config),
-        patch.object(services, '_build_db_client', return_value=MagicMock()),
-        patch.object(services, 'DatabaseModuleContainer', return_value=db_repo),
-        patch.object(services, 'CommonContainer', return_value=common),
-        patch.object(services, 'create_api_services_container'),
-        patch.object(services, 'PluginsContainer'),
         pytest.raises(ValueError, match='APPLICATION_BUCKET'),
     ):
         services.get_services()

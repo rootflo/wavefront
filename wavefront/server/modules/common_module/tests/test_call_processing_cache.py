@@ -133,7 +133,14 @@ class TestContainerWiring:
         container = CommonContainer()
         container.config.from_dict(
             {
-                'env_config': {'passthrough_secret': 'abc'},
+                'env_config': {
+                    'app_env': 'test',
+                    'base_url': 'http://localhost:8001',
+                    'passthrough_secret': 'abc',
+                    'worker_count': '1',
+                    'uvicorn_log_level': 'critical',
+                },
+                'web': {'allowed_origins': 'http://localhost:5173'},
                 'voice_agents': {'call_processing_base_url': 'http://cp:9000'},
             }
         )

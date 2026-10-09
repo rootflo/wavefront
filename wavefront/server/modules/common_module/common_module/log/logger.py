@@ -29,7 +29,12 @@ logging.setLoggerClass(RequestAwareLogger)
 
 
 def configure_logging(app_name: str = 'floware', log_level: str = 'INFO') -> None:
-    """Apply logging settings from the app's config.ini at startup."""
+    """Apply logging settings from the app's config.ini at startup.
+
+    Configures the root logger and the named app logger. Callers keep the
+    ``logger`` object they imported; rebinding this module global would not
+    reach them.
+    """
     logging.getLogger('uvicorn').setLevel(log_level)
     logging.basicConfig(
         level=log_level,
@@ -40,10 +45,7 @@ def configure_logging(app_name: str = 'floware', log_level: str = 'INFO') -> Non
     root_logger = logging.getLogger()
     for handler in root_logger.handlers:
         handler.setFormatter(formatter)
-    global logger
-    logger = logging.getLogger(app_name)
+    logging.getLogger(app_name).setLevel(log_level)
 
-
-configure_logging()
 
 logger = logging.getLogger('floware')

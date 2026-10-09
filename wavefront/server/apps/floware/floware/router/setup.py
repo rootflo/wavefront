@@ -57,7 +57,7 @@ from voice_agents_module.controllers.tool_controller import tool_router
 from voice_agents_module.controllers.tts_config_controller import tts_config_router
 from voice_agents_module.controllers.voice_agent_controller import voice_agent_router
 
-from floware.di.containers import guardrails_container
+from floware.di import application_container
 
 FLOWARE_PREFIX = '/floware'
 
@@ -101,7 +101,7 @@ FLOWARE_ROUTERS = [
 
 def include_routers(app: FastAPI) -> None:
     routers = list(FLOWARE_ROUTERS)
-    if guardrails_container is not None:
+    if application_container.guardrails() is not None:
         from guardrails_module.controllers.guardrails_controller import (
             guardrails_router,
         )

@@ -9,7 +9,7 @@ def _excluded_emails(raw: str | None) -> tuple[str, ...]:
 
 
 class ProductAnalysisContainer(containers.DeclarativeContainer):
-    config = providers.Configuration(ini_files=['config.ini'])
+    config = providers.Configuration()
 
     product_analysis_service = providers.Singleton(
         ProductAnalysisService,

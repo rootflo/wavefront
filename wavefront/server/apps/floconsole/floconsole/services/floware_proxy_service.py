@@ -25,10 +25,11 @@ class FlowareProxyService:
         token_service: TokenService,
         app_service: AppService,
         user_service: UserService,
-        service_issuer: str = 'https://console.rootflo.ai',
-        app_env: str = 'production',
-        token_prefix: str = 'fc_',
-        temporary_token_expiry: int = 300,
+        *,
+        service_issuer: str,
+        app_env: str,
+        token_prefix: str,
+        temporary_token_expiry: int,
         passthrough_secret: str | None = None,
     ):
         self.token_service = token_service

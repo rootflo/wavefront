@@ -4,6 +4,8 @@ from unittest.mock import Mock
 
 import pytest
 from auth_module.controllers.superset_controller import superset_controller
+from common_module.feature.feature_flag import FeatureFlags
+from dependency_injector import providers
 from flo_testing import make_test_client
 
 SUPERSET_CONTROLLER = 'auth_module.controllers.superset_controller'
@@ -16,6 +18,9 @@ def setup_containers(core_containers):
     cache_miss = Mock()
     cache_miss.get_str.return_value = None
     core_containers.user.cache_manager.override(cache_miss)
+    core_containers.common.feature_flags.override(
+        providers.Object(FeatureFlags(superset=True))
+    )
 
     core_containers.wire(
         core_containers.common,

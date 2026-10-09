@@ -157,32 +157,32 @@ class TestStartup:
         from inference_app.models import setup as models_setup
 
         provider = TextEmbeddingProvider()
-        with server.application_container.text_embedding_provider.override(
-            providers.Object(provider)
-        ):
-            yield models_setup, provider
+        container = server.application_container
+        with container.text_embedding_provider.override(providers.Object(provider)):
+            yield models_setup, provider, container
 
     def test_unset_uri_leaves_text_embeddings_disabled(
         self, fresh_provider, monkeypatch
     ):
-        models_setup, provider = fresh_provider
-        monkeypatch.setattr(models_setup, 'BGE_M3_MODEL_URI', '')
+        models_setup, provider, container = fresh_provider
         loader_called = []
         monkeypatch.setattr(
-            models_setup, 'load_text_embedding_model', lambda: loader_called.append(1)
+            models_setup,
+            'load_text_embedding_model',
+            lambda _container: loader_called.append(1),
         )
 
-        models_setup.start_text_embedding_model()
+        with container.config.models.bge_m3_uri.override(''):
+            models_setup.start_text_embedding_model(container)
 
         assert provider.status == 'disabled'
         assert loader_called == []
 
     def test_failed_load_does_not_stop_startup(self, fresh_provider, monkeypatch):
-        models_setup, provider = fresh_provider
-        monkeypatch.setattr(models_setup, 'BGE_M3_MODEL_URI', 's3://bucket/bge-m3')
+        models_setup, provider, container = fresh_provider
         done = threading.Event()
 
-        def broken_loader():
+        def broken_loader(_container):
             try:
                 raise ValueError('No objects found at cloud URI')
             finally:
@@ -190,7 +190,8 @@ class TestStartup:
 
         monkeypatch.setattr(models_setup, 'load_text_embedding_model', broken_loader)
 
-        models_setup.start_text_embedding_model()  # must not raise
+        with container.config.models.bge_m3_uri.override('s3://bucket/bge-m3'):
+            models_setup.start_text_embedding_model(container)  # must not raise
 
         assert done.wait(timeout=5)
         for _ in range(50):

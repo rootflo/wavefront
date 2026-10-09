@@ -16,6 +16,8 @@ class SQSQueue(MessageQueue):
     def receive_messages(
         self, max_messages=10, wait_time_sec=20, **kwargs
     ) -> List[MessageQueueDict]:
+        # SQS allows 1–10 only;
+        max_messages = max(1, min(int(max_messages), 10))
         try:
             response = self.sqs_client.receive_message(
                 QueueUrl=self.queue_url,

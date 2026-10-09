@@ -5,21 +5,27 @@ load_dotenv()
 
 from pathlib import Path
 
-from dependency_injector import containers
-from dependency_injector import providers
-
 from common_module.common_container import CommonContainer
+from common_module.config_loader import load_ini
 from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.cache.redis_settings import RedisSettings
+from dependency_injector import containers
+from dependency_injector import providers
 from rag_ingestion.service.index_status_publisher import IndexStatusPublisher
 from rag_ingestion.processors.kb_storage_processor import KbStorageProcessor
 from rag_ingestion.stream.rag_streamer import RagStreamListener
 
-_CONFIG_INI = str(Path(__file__).resolve().parent / 'config.ini')
+CONFIG_INI = Path(__file__).resolve().parent / 'config.ini'
 
 
-class RagIngestionContainer(containers.DeclarativeContainer):
-    config = providers.Configuration(ini_files=[_CONFIG_INI])
+class ApplicationContainer(containers.DeclarativeContainer):
+    config = providers.Configuration(strict=True)
+
+    common = providers.Container(
+        CommonContainer,
+        config=config,
+        cache_manager=providers.Object(None),
+    )
 
     redis_settings = providers.Factory(
         RedisSettings,
@@ -47,13 +53,16 @@ class RagIngestionContainer(containers.DeclarativeContainer):
     )
 
 
-def main():
-    container = RagIngestionContainer()
-    config = container.config()
+def create_container() -> ApplicationContainer:
+    container = ApplicationContainer()
+    load_ini(container.config, CONFIG_INI)
+    return container
 
-    common_container = CommonContainer(cache_manager=providers.Object(None))
-    common_container.config.from_ini(_CONFIG_INI)
-    runtime = common_container.runtime_settings()
+
+def main():
+    container = create_container()
+    config = container.config()
+    runtime = container.common.runtime_settings()
 
     app_config = config['app_config']
     model = config['model']
@@ -64,13 +73,13 @@ def main():
     # Only build the cipher when a key is configured; floware may upload
     # documents unencrypted (localstack / some deploys).
     encryption_key = config['kms_encryption']['key']
-    kms_cipher = common_container.kms_cipher() if encryption_key else None
+    kms_cipher = container.common.kms_cipher() if encryption_key else None
 
     listener = RagStreamListener(
         streaming_batch_size=int(app_config['streaming_batch_size']),
-        event_manager=common_container.rag_queue(),
+        event_manager=container.common.rag_queue(),
         processor=KbStorageProcessor(
-            storage_manager=common_container.cloud_storage_manager(),
+            storage_manager=container.common.cloud_storage_manager(),
             kms_cipher=kms_cipher,
             index_status_publisher=IndexStatusPublisher(
                 cache_manager=container.floware_cache_manager()

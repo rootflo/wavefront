@@ -68,19 +68,3 @@ class CallProcessingAppSettings:
                 ),
             ),
         )
-
-
-_settings: CallProcessingAppSettings | None = None
-
-
-def configure_call_processing(settings: CallProcessingAppSettings) -> None:
-    global _settings
-    _settings = settings
-
-
-def get_call_processing_settings() -> CallProcessingAppSettings:
-    if _settings is None:
-        raise RuntimeError(
-            'Call-processing settings not configured; call configure_call_processing first'
-        )
-    return _settings

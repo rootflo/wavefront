@@ -1,34 +1,33 @@
-"""Construct GuardrailsContainer only when [guardrails] enabled is true.
+"""Process-wide guardrails startup (before Presidio is imported anywhere)."""
 
-Keeps the DI container (and the engine it builds) out of the process when the
-feature is off. spaCy/Presidio still only load when the engine is built/warmed.
-"""
+from __future__ import annotations
 
-from typing import Any, Mapping, Optional
-
-from common_module.log.logger import logger
-from guardrails_module.services.engine_factory import cfg_bool
+import os
+from typing import Any
+from typing import Mapping
 
 
-def create_guardrails_container_if_enabled(
-    config: Mapping[str, Any],
-    *,
-    db_client: Any,
-    cache_manager: Any,
-) -> Optional[Any]:
-    """Return a wired GuardrailsContainer, or None when guardrails are disabled."""
-    if not cfg_bool(config.get('guardrails') or {}, 'enabled', False):
-        logger.info(
-            'Guardrails disabled ([guardrails] enabled=false); '
-            'skipping container construction'
+def apply_presidio_regex_timeout(cfg: Mapping[str, Any]) -> None:
+    """Set REGEX_TIMEOUT_SECONDS before Presidio import (read at module load).
+
+    The value comes from ``[guardrails] regex_timeout_seconds`` in config.ini.
+    """
+    raw = cfg.get('regex_timeout_seconds')
+    if raw is None or str(raw).strip() == '':
+        raise ValueError('guardrails.regex_timeout_seconds is required in config.ini')
+    try:
+        timeout = int(raw)
+    except ValueError as exc:
+        raise ValueError(
+            f'guardrails.regex_timeout_seconds={raw!r} is not an integer'
+        ) from exc
+    if timeout < 1:
+        raise ValueError(
+            f'guardrails.regex_timeout_seconds={timeout} must be at least 1'
         )
-        return None
+    os.environ['REGEX_TIMEOUT_SECONDS'] = str(timeout)
 
-    from guardrails_module.container import GuardrailsContainer
 
-    container = GuardrailsContainer(
-        db_client=db_client,
-        cache_manager=cache_manager,
-    )
-    container.config.from_dict(config)
-    return container
+def start_presidio_regex_timeout(timeout: str | None) -> None:
+    """DI ``Resource`` hook: apply timeout from ``config.guardrails.regex_timeout_seconds``."""
+    apply_presidio_regex_timeout({'regex_timeout_seconds': timeout})

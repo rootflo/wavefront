@@ -27,6 +27,7 @@ from pipecat.transports.websocket.fastapi import (
 
 from call_processing.services.voice_agent_cache_service import VoiceAgentCacheService
 from call_processing.services.pipecat_service import PipecatService
+from call_processing.app_settings import CallProcessingAppSettings
 from call_processing.di.application_container import ApplicationContainer
 from call_processing.helper.telephony_websocket import (
     parse_telephony_websocket,
@@ -173,6 +174,9 @@ async def websocket_endpoint(
     voice_agent_cache_service: VoiceAgentCacheService = Depends(
         Provide[ApplicationContainer.voice_agent_cache_service]
     ),
+    app_settings: CallProcessingAppSettings = Depends(
+        Provide[ApplicationContainer.app_settings]
+    ),
 ):
     """
     Twilio Media Stream WebSocket endpoint
@@ -310,7 +314,7 @@ async def websocket_endpoint(
         )
 
         # Run conversation pipeline
-        pipecat_service = PipecatService()
+        pipecat_service = PipecatService(app_settings)
         await pipecat_service.run_conversation(
             transport=transport,
             agent_config=configs['agent'],
@@ -337,6 +341,9 @@ async def exotel_inbound_websocket(
     websocket: WebSocket,
     voice_agent_cache_service: VoiceAgentCacheService = Depends(
         Provide[ApplicationContainer.voice_agent_cache_service]
+    ),
+    app_settings: CallProcessingAppSettings = Depends(
+        Provide[ApplicationContainer.app_settings]
     ),
 ):
     """
@@ -460,7 +467,7 @@ async def exotel_inbound_websocket(
         logger.info(f'Starting Pipecat pipeline for Exotel call {call_sid}')
 
         # Run conversation pipeline
-        pipecat_service = PipecatService()
+        pipecat_service = PipecatService(app_settings)
         await pipecat_service.run_conversation(
             transport=transport,
             agent_config=configs['agent'],

@@ -51,7 +51,13 @@ def processor():
             kms_cipher=None,
             index_status_publisher=MagicMock(),
             inference_service_url='http://inference:8003',
-            runtime_settings=RuntimeSettings(),
+            runtime_settings=RuntimeSettings(
+                app_env='production',
+                floware_base_url='http://localhost:8001',
+                allowed_origins=('http://localhost:5173',),
+                worker_count=1,
+                uvicorn_log_level='critical',
+            ),
         )
     processor.index_status_publisher.publish.return_value = True
     processor.image_embedding.embed_images.side_effect = fake_embed_images

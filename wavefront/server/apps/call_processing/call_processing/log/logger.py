@@ -37,6 +37,4 @@ def configure_logging(log_level: str = 'INFO') -> None:
         handler.setFormatter(formatter)
 
 
-configure_logging()
-
 logger = logging.getLogger('call_processing')

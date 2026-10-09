@@ -27,6 +27,7 @@ def service():
         cloud_storage_manager=MagicMock(),
         cache_manager=MagicMock(),
         executions_bucket='test-bucket',
+        celery_client=MagicMock(),
     )
 
 

@@ -1,7 +1,6 @@
 """Constructs the guardrails engine, its safety providers and its caches."""
 
-import os
-from typing import Any, List, Mapping, Optional
+from typing import Any, List, Optional
 
 from common_module.log.logger import logger
 
@@ -13,23 +12,19 @@ from guardrails_module.services.verdict_cache import (
 _TRUTHY = {'1', 'true', 'yes', 'on'}
 _FALSY = {'0', 'false', 'no', 'off'}
 
-DEFAULT_REGEX_TIMEOUT_SECONDS = 2
 
-
-def _cfg_int(cfg: Mapping[str, Any], key: str, default: int) -> int:
-    raw = cfg.get(key)
+def _optional_int(raw: Any, default: int) -> int:
     if raw is None or str(raw).strip() == '':
         return default
     try:
         return int(raw)
     except ValueError:
-        logger.warning(f'Guardrails: {key}={raw!r} is not an integer, using {default}')
+        logger.warning(f'Guardrails: {raw!r} is not an integer, using {default}')
         return default
 
 
-def cfg_bool(cfg: Mapping[str, Any], key: str, default: bool) -> bool:
+def cfg_bool(raw: Any, default: bool) -> bool:
     """Parse a config.ini-style boolean; empty/missing uses ``default``."""
-    raw = cfg.get(key)
     if raw is None or str(raw).strip() == '':
         return default
     value = str(raw).strip().lower()
@@ -37,40 +32,28 @@ def cfg_bool(cfg: Mapping[str, Any], key: str, default: bool) -> bool:
         return True
     if value in _FALSY:
         return False
-    logger.warning(f'Guardrails: {key}={raw!r} is not a boolean, using {default}')
+    logger.warning(f'Guardrails: {raw!r} is not a boolean, using {default}')
     return default
-
-
-# Backward-compatible alias for existing tests/callers.
-_cfg_bool = cfg_bool
-
-
-def _apply_presidio_regex_timeout(cfg: Mapping[str, Any]) -> None:
-    """Set REGEX_TIMEOUT_SECONDS before Presidio import (read at module load)."""
-    timeout = _cfg_int(cfg, 'regex_timeout_seconds', DEFAULT_REGEX_TIMEOUT_SECONDS)
-    if timeout < 1:
-        logger.warning(
-            f'Guardrails: regex_timeout_seconds={timeout} is too low, '
-            f'using {DEFAULT_REGEX_TIMEOUT_SECONDS}'
-        )
-        timeout = DEFAULT_REGEX_TIMEOUT_SECONDS
-    os.environ['REGEX_TIMEOUT_SECONDS'] = str(timeout)
 
 
 def build_guardrails_engine(
     policy_resolver: Any,
     audit_sink: Any = None,
     cache_manager: Any = None,
-    guardrails_config: Mapping[str, Any] | None = None,
+    *,
+    azure_content_safety_endpoint: str | None = None,
+    azure_content_safety_key: str | None = None,
+    verdict_cache_chars: str | int | None = None,
+    verdict_cache_secret: str | None = None,
+    verdict_cache_shared: str | bool | None = None,
+    verdict_cache_ttl: str | int | None = None,
 ):
     """Build a process-wide engine with whatever providers are available."""
     from flo_ai.guardrails import VERDICT_CACHE_CHAR_BUDGET, GuardrailsEngine
 
-    cfg = guardrails_config or {}
     adapters: List[Any] = []
 
     try:
-        _apply_presidio_regex_timeout(cfg)
         import presidio_analyzer  # noqa: F401
         import presidio_anonymizer  # noqa: F401
 
@@ -85,8 +68,8 @@ def build_guardrails_engine(
             'and python -m spacy download en_core_web_lg'
         )
 
-    endpoint = (cfg.get('azure_content_safety_endpoint') or '').strip()
-    api_key = (cfg.get('azure_content_safety_key') or '').strip()
+    endpoint = (azure_content_safety_endpoint or '').strip()
+    api_key = (azure_content_safety_key or '').strip()
     if endpoint and api_key:
         try:
             import azure.ai.contentsafety  # noqa: F401
@@ -109,9 +92,15 @@ def build_guardrails_engine(
             'azure_content_safety_key)'
         )
 
-    cache_chars = _cfg_int(cfg, 'verdict_cache_chars', VERDICT_CACHE_CHAR_BUDGET)
-    verdict_cache = _build_verdict_cache(cache_manager, cache_chars, cfg)
-    cache_secret = (cfg.get('verdict_cache_secret') or '').strip() or None
+    cache_chars = _optional_int(verdict_cache_chars, VERDICT_CACHE_CHAR_BUDGET)
+    verdict_cache = _build_verdict_cache(
+        cache_manager=cache_manager,
+        cache_chars=cache_chars,
+        verdict_cache_shared=verdict_cache_shared,
+        verdict_cache_secret=verdict_cache_secret,
+        verdict_cache_ttl=verdict_cache_ttl,
+    )
+    cache_secret = (verdict_cache_secret or '').strip() or None
 
     engine = GuardrailsEngine(
         resolver=policy_resolver,
@@ -126,7 +115,11 @@ def build_guardrails_engine(
 
 
 def _build_verdict_cache(
-    cache_manager: Any, cache_chars: int, cfg: Mapping[str, Any]
+    cache_manager: Any,
+    cache_chars: int,
+    verdict_cache_shared: Any,
+    verdict_cache_secret: str | None,
+    verdict_cache_ttl: Any,
 ) -> Optional[Any]:
     from flo_ai.guardrails import TieredVerdictCache, build_local_cache
 
@@ -137,14 +130,14 @@ def _build_verdict_cache(
         )
         return None
 
-    if not cfg_bool(cfg, 'verdict_cache_shared', True):
+    if not cfg_bool(verdict_cache_shared, True):
         logger.info(
             'Guardrails: shared verdict cache disabled in config, '
             'verdicts stay per-process'
         )
         return None
 
-    cache_secret = (cfg.get('verdict_cache_secret') or '').strip()
+    cache_secret = (verdict_cache_secret or '').strip()
     if not cache_secret:
         logger.warning(
             'Guardrails: shared verdict cache disabled because '
@@ -152,7 +145,7 @@ def _build_verdict_cache(
         )
         return None
 
-    ttl = _cfg_int(cfg, 'verdict_cache_ttl', DEFAULT_TTL_SECONDS)
+    ttl = _optional_int(verdict_cache_ttl, DEFAULT_TTL_SECONDS)
 
     try:
         shared = RedisVerdictCache(cache_manager, ttl_seconds=ttl)

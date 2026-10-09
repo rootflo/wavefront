@@ -171,7 +171,13 @@ def test_long_document_is_fully_embedded_through_process_document(service):
     with patch.object(kb_rag_storage, 'EmbeddingFunc', EmbeddingFunc):
         storage = KBRagStorage(
             inference_service_url=INFERENCE_URL,
-            runtime_settings=RuntimeSettings(),
+            runtime_settings=RuntimeSettings(
+                app_env='production',
+                floware_base_url='http://localhost:8001',
+                allowed_origins=('http://localhost:5173',),
+                worker_count=1,
+                uvicorn_log_level='critical',
+            ),
         )
 
     docs = storage.process_document([text])
