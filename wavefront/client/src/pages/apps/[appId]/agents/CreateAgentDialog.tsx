@@ -21,7 +21,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
 import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeMirror from '@uiw/react-codemirror';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
 import yaml from 'js-yaml';
@@ -73,6 +73,7 @@ const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
   const { notifySuccess, notifyError } = useNotifyStore();
   const { selectedApp } = useDashboardStore();
   const [activeTab, setActiveTab] = useState<string>('visual');
+  const isSyncingFromYaml = useRef(false);
 
   const { data: rootfloConfigs = [] } = useGetLLMConfigs(appId);
   const rootfloModels = rootfloConfigs;
@@ -102,7 +103,7 @@ const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
 
   // Sync Visual -> YAML when in visual mode
   useEffect(() => {
-    if (activeTab === 'visual') {
+    if (activeTab === 'visual' && !isSyncingFromYaml.current) {
       const tagsArray = watchAllFields.tags
         ? watchAllFields.tags
             .split(',')
@@ -228,6 +229,7 @@ const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
 
   const handleTabChange = (value: string) => {
     if (value === 'visual') {
+      isSyncingFromYaml.current = true;
       try {
         const parsed = yaml.load(form.getValues('yamlContent')) as Record<string, Record<string, unknown>> | null;
         if (!parsed) {
@@ -280,6 +282,10 @@ const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
       } catch {
         notifyError('Cannot switch to visual tab: YAML parsing failed.');
         return;
+      } finally {
+        setTimeout(() => {
+          isSyncingFromYaml.current = false;
+        }, 0);
       }
     }
     setActiveTab(value);
