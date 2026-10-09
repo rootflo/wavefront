@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
+    "test": "node --test",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

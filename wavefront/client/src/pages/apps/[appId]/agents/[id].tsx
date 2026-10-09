@@ -30,7 +30,8 @@ import yaml from 'js-yaml';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import EditAgentDialog from './EditAgentDialog';
-import { formatAppName } from '@app/lib/utils';
+import { extractErrorMessage, formatAppName } from '@app/lib/utils';
+import { recoverFailedInference, runInferenceWithRecovery } from '@app/lib/inference-error-recovery.js';
 
 const AgentDetail: React.FC = () => {
   const { app: appId, id } = useParams<{ app: string; id: string }>();
@@ -55,6 +56,7 @@ const AgentDetail: React.FC = () => {
   const [inferenceInput, setInferenceInput] = useState('');
   const [inferenceVariables, setInferenceVariables] = useState('{}');
   const [runningInference, setRunningInference] = useState(false);
+  const inferenceInFlightRef = useRef(false);
 
   // LLM Config selection state
   const [selectedLLMConfigId, setSelectedLLMConfigId] = useState<string>('');
@@ -136,7 +138,8 @@ const AgentDetail: React.FC = () => {
 
   const handleQuestionEntered = () => {
     if (inferenceInput.trim().length > 0) {
-      handleRunInference();
+      const submittedInput = inferenceInput;
+      handleRunInference(submittedInput);
       setInferenceInput('');
       requestAnimationFrame(() => {
         setTimeout(() => scrollToBottom('message-container', 'smooth'), 150);
@@ -395,12 +398,13 @@ const AgentDetail: React.FC = () => {
     });
   };
 
-  const handleRunInference = async () => {
+  const handleRunInference = async (inputBeforeRequest = inferenceInput) => {
+    if (inferenceInFlightRef.current) return;
     // Validate input: require either text input, uploaded image, uploaded document(s), or selected tools
     if (
       !appId ||
       !id ||
-      (!inferenceInput.trim() &&
+      (!inputBeforeRequest.trim() &&
         uploadedImages.length === 0 &&
         uploadedDocuments.length === 0 &&
         selectedTools.length === 0)
@@ -409,6 +413,8 @@ const AgentDetail: React.FC = () => {
       return;
     }
 
+    inferenceInFlightRef.current = true;
+    const historyBeforeRequest = chatHistory;
     setRunningInference(true);
     try {
       let variables: Record<string, unknown> = {};
@@ -417,6 +423,7 @@ const AgentDetail: React.FC = () => {
           variables = JSON.parse(inferenceVariables);
         } catch {
           notifyError('Invalid JSON in variables field');
+          inferenceInFlightRef.current = false;
           setRunningInference(false);
           return;
         }
@@ -425,7 +432,7 @@ const AgentDetail: React.FC = () => {
       // Prepare inputs based on what's provided
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let inputs: string | any[];
-      const finalTextInput = inferenceInput.trim();
+      const finalTextInput = inputBeforeRequest.trim();
       // Handle different input combinations
       const conversationInputs: Array<{ role: string; content: ChatMessageContent }> = [];
 
@@ -495,14 +502,32 @@ const AgentDetail: React.FC = () => {
           },
         ];
       }
-      const result = await floConsoleService.agentService.runInference(
-        id,
-        inputs,
-        variables,
-        selectedLLMConfigId || undefined,
-        selectedTools.length > 0 ? selectedTools.map((tool) => tool.value) : undefined,
-        selectedVersion
+      const inferenceResult = await runInferenceWithRecovery(
+        () =>
+          floConsoleService.agentService.runInference(
+            id,
+            inputs,
+            variables,
+            selectedLLMConfigId || undefined,
+            selectedTools.length > 0 ? selectedTools.map((tool) => tool.value) : undefined,
+            selectedVersion
+          ),
+        {
+          historyBeforeRequest,
+          inputBeforeRequest,
+          getErrorMessage: extractErrorMessage,
+          setChatHistory,
+          setInferenceInput,
+          clearUploadedImages: () => setUploadedImages([]),
+          clearUploadedDocuments: () => setUploadedDocuments([]),
+          notifyError,
+        }
       );
+      if (!inferenceResult.success) {
+        console.error('Error running inference:', inferenceResult.error);
+        return;
+      }
+      const result = inferenceResult.value;
       const responseData = (result as { data?: { data?: { data?: { result?: string | object } } } }).data?.data?.data;
       const agentResponse =
         typeof responseData?.result === 'string' ? responseData.result : JSON.stringify(responseData?.result, null, 2);
@@ -516,7 +541,17 @@ const AgentDetail: React.FC = () => {
       setUploadedImages([]);
     } catch (error) {
       console.error('Error running inference:', error);
+      const errorMessage = extractErrorMessage(error);
+      const recovery = recoverFailedInference(historyBeforeRequest, errorMessage, inputBeforeRequest);
+      setChatHistory(recovery.history);
+      setInferenceInput(recovery.input);
+      if (recovery.clearAttachments) {
+        setUploadedImages([]);
+        setUploadedDocuments([]);
+      }
+      if (errorMessage) notifyError(errorMessage);
     } finally {
+      inferenceInFlightRef.current = false;
       setRunningInference(false);
     }
   };
