@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, TypeVar, Generic
 from dataclasses import dataclass
 from typing import List
-from flo_utils.streaming.event_message import BaseEventMessage
+from flo_stream.event_message import BaseEventMessage
 
 T = TypeVar('T')  # Type for insight
 

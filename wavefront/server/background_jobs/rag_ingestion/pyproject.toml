@@ -8,6 +8,7 @@ authors = [
 requires-python = ">=3.11"
 dependencies = [
     "flo-cloud",
+    "flo-stream",
     "flo-utils",
     "db-repo-module",
     "tiktoken>=0.9.0",
@@ -24,6 +25,7 @@ dependencies = [
 
 [tool.uv.sources]
 flo-cloud = { workspace = true }
+flo-stream = { workspace = true }
 flo-utils = { workspace = true }
 db-repo-module = { workspace = true }
 
