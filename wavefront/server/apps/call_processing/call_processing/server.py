@@ -5,25 +5,17 @@ from dotenv import load_dotenv
 # ruff: noqa: E402
 load_dotenv()
 
-from call_processing.log.logger import configure_logging, logger
+from call_processing.log.logger import logger
 from common_module.runtime_settings import RuntimeSettings
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 import uvicorn
 
-from call_processing.di.application_container import ApplicationContainer
-from call_processing.app_settings import (
-    CallProcessingAppSettings,
-    configure_call_processing,
-)
+from call_processing.di import application_container
 from call_processing.middleware import add_middlewares
 from call_processing.router import include_routers
 
-# Initialize containers
-application_container = ApplicationContainer()
 config = application_container.config()
-configure_call_processing(CallProcessingAppSettings.from_config(config))
-configure_logging(config['env_config']['log_level'])
 runtime = RuntimeSettings.from_config(config)
 environment = runtime.app_env
 

@@ -1,6 +1,7 @@
 from dependency_injector import containers
 from dependency_injector import providers
 from agents_module.services.agent_inference_service import AgentInferenceService
+from agents_module.utils.celery_client import build_celery_client
 from agents_module.services.agent_crud_service import AgentCrudService
 from agents_module.services.async_agentic_execution_service import (
     AsyncAgenticExecutionService,
@@ -11,7 +12,7 @@ from agents_module.services.workflow_inference_service import WorkflowInferenceS
 
 
 class AgentsContainer(containers.DeclarativeContainer):
-    config = providers.Configuration(ini_files=['config.ini'])
+    config = providers.Configuration()
 
     db_client = providers.Dependency()
 
@@ -77,6 +78,7 @@ class AgentsContainer(containers.DeclarativeContainer):
         api_services_manager=api_services_manager,
         llm_inference_config_service=llm_inference_config_service,
         guardrails_engine=guardrails_engine,
+        azure_openai_api_version=config.model.azure_openai_api_version,
     )
 
     workflow_crud_service = providers.Singleton(
@@ -105,10 +107,16 @@ class AgentsContainer(containers.DeclarativeContainer):
         agent_inference_service=agent_inference_service,
     )
 
+    celery_client = providers.Singleton(
+        build_celery_client,
+        broker_url=config.celery.broker_url,
+    )
+
     async_agentic_execution_service = providers.Singleton(
         AsyncAgenticExecutionService,
         async_agentic_execution_repository=async_agentic_execution_repository,
         cloud_storage_manager=cloud_storage_manager,
         cache_manager=cache_manager,
         executions_bucket=executions_bucket,
+        celery_client=celery_client,
     )

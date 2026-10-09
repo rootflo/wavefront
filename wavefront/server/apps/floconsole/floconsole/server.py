@@ -1,44 +1,44 @@
 from contextlib import asynccontextmanager
 import glob
 
-from common_module.common_container import CommonContainer
-from common_module.log.logger import logger
-from common_module.response_formatter import ResponseFormatter
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 import uvicorn
 
-from floconsole.di.application_container import ApplicationContainer
+# ruff: noqa: E402
+load_dotenv()  # Before di: create_container() reads config.ini with envs_required
+
+from common_module.log.logger import logger
+from common_module.response_formatter import ResponseFormatter
 from floconsole.db import DatabaseClient
+from floconsole.di import application_container
 from floconsole.middleware.setup import add_middlewares
 from floconsole.router.setup import include_routers
 
-load_dotenv()
-
-common_container = CommonContainer(cache_manager=None)
-runtime = common_container.runtime_settings()
+runtime = application_container.common.runtime_settings()
 environment = runtime.app_env
 
 # The interactive docs and the OpenAPI schema are off everywhere except dev,
 # so a new/unknown APP_ENV value stays closed rather than exposing the surface.
 is_dev = environment == 'dev'
 
-application_container = ApplicationContainer(
-    common_container=common_container,
-    kms_signer=common_container.kms_signer,
-)
-
 # Wire containers
 application_container.wire(
-    modules=[__name__],
+    modules=[
+        __name__,
+        'floconsole.authorization.require_auth',
+    ],
     packages=[
         'floconsole.controllers',
     ],
 )
 
-common_container.wire(
-    modules=[__name__],
+application_container.common.wire(
+    modules=[
+        __name__,
+        'floconsole.authorization.require_auth',
+    ],
     packages=[
         'floconsole.controllers',
     ],

@@ -171,14 +171,13 @@ def test_long_text_stays_within_the_sparse_index_limit():
 
 
 @pytest.fixture
-def mock_app(monkeypatch):
+def mock_app():
     from inference_app import server
-    from inference_app.models import setup as models_setup
 
-    monkeypatch.setattr(models_setup, 'MOCK_MODELS', True)
     container = server.application_container
-    with container.rate_limiter.override(
-        providers.Object(SlidingWindowRateLimiter([]))
+    with (
+        container.config.models.mock_models.override('true'),
+        container.rate_limiter.override(providers.Object(SlidingWindowRateLimiter([]))),
     ):
         with TestClient(server.app) as client:  # runs the lifespan
             yield client

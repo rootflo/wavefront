@@ -41,7 +41,10 @@ def resolve_temperature(
 
 
 def build_llm(
-    config: LlmInferenceConfig, temperature: Optional[float] = None
+    config: LlmInferenceConfig,
+    temperature: Optional[float] = None,
+    *,
+    azure_openai_api_version: Optional[str] = None,
 ) -> BaseLLM:
     """Instantiate the flo_ai LLM described by `config`.
 
@@ -93,11 +96,8 @@ def build_llm(
         )
     elif config.type == 'azure_openai':
         # Azure is not OpenAI-with-a-base_url: it needs a deployment endpoint
-        # and an api_version, and the client will not build without one, so
-        # fall back to the env.
-        from agents_module.runtime_config import get_azure_openai_api_version
-
-        api_version = llm_kwargs.get('api_version') or get_azure_openai_api_version()
+        # and an api_version, and the client will not build without one.
+        api_version = llm_kwargs.get('api_version') or azure_openai_api_version
         if api_version:
             llm_kwargs['api_version'] = api_version
 

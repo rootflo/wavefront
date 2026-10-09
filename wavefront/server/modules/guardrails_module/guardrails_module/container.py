@@ -12,7 +12,7 @@ from guardrails_module.services.guardrails_service import (
 
 
 class GuardrailsContainer(containers.DeclarativeContainer):
-    config = providers.Configuration(ini_files=['config.ini'])
+    config = providers.Configuration()
 
     # External dependencies
     db_client = providers.Dependency()
@@ -65,5 +65,10 @@ class GuardrailsContainer(containers.DeclarativeContainer):
         policy_resolver=policy_resolver,
         audit_sink=audit_sink,
         cache_manager=cache_manager,
-        guardrails_config=config.guardrails,
+        azure_content_safety_endpoint=config.guardrails.azure_content_safety_endpoint,
+        azure_content_safety_key=config.guardrails.azure_content_safety_key,
+        verdict_cache_chars=config.guardrails.verdict_cache_chars,
+        verdict_cache_secret=config.guardrails.verdict_cache_secret,
+        verdict_cache_shared=config.guardrails.verdict_cache_shared,
+        verdict_cache_ttl=config.guardrails.verdict_cache_ttl,
     )

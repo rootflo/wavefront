@@ -25,7 +25,13 @@ def storage():
     with patch.object(kb_rag_storage, 'EmbeddingFunc'):
         return KBRagStorage(
             inference_service_url='http://inference:8003',
-            runtime_settings=RuntimeSettings(),
+            runtime_settings=RuntimeSettings(
+                app_env='production',
+                floware_base_url='http://localhost:8001',
+                allowed_origins=('http://localhost:5173',),
+                worker_count=1,
+                uvicorn_log_level='critical',
+            ),
         )
 
 

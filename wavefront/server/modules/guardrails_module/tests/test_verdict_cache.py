@@ -272,12 +272,9 @@ class TestEnvConfiguration:
     ):
         """A typo in a tuning knob must not crash a server nor silently
         disable the cache in some third way."""
-        from guardrails_module.services.engine_factory import _cfg_int
+        from guardrails_module.services.engine_factory import _optional_int
 
-        assert (
-            _cfg_int({'verdict_cache_chars': value}, 'verdict_cache_chars', 1_000_000)
-            == expected
-        )
+        assert _optional_int(value, 1_000_000) == expected
 
     @pytest.mark.parametrize(
         'value,expected',
@@ -292,9 +289,6 @@ class TestEnvConfiguration:
         ],
     )
     def test_the_shared_tier_can_be_switched_off(self, monkeypatch, value, expected):
-        from guardrails_module.services.engine_factory import _cfg_bool
+        from guardrails_module.services.engine_factory import cfg_bool
 
-        assert (
-            _cfg_bool({'verdict_cache_shared': value}, 'verdict_cache_shared', True)
-            is expected
-        )
+        assert cfg_bool(value, True) is expected

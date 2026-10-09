@@ -9,7 +9,7 @@ from knowledge_base_module.services.image_rag_retrieve import ImageRagRetrieve
 
 
 class KnowledgeBaseContainer(containers.DeclarativeContainer):
-    config = providers.Configuration(ini_files=['config.ini'])
+    config = providers.Configuration()
     db_client = providers.Dependency()
     ingestion_db_client = providers.Dependency()
     cache_manager = providers.Dependency()

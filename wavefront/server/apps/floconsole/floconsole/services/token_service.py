@@ -26,19 +26,20 @@ class TokenService:
     def __init__(
         self,
         kms_signer: FloSigner,
+        *,
+        token_expiry: int,
+        temporary_token_expiry: int,
+        app_env: str,
+        token_prefix: str,
+        issuer: str,
+        audience: str,
         algorithm: TokenAlgorithms = TokenAlgorithms.PS256,
-        token_expiry: int = 3600,
-        temporary_token_expiry: int = 300,
-        app_env: str = 'production',
-        token_prefix: str = 'fc_',
-        issuer: str = 'https://console.rootflo.ai',
-        audience: str = 'https://console.rootflo.ai',
     ):
         self.algorithm = algorithm.value
         self.token_expiry = int(token_expiry)
         self.temporary_token_expiry = int(temporary_token_expiry)
         self.kms_signer = kms_signer
-        self.token_prefix = token_prefix or 'fc_'
+        self.token_prefix = token_prefix
         self.issuer = issuer
         self.audience = audience
 

@@ -1,3 +1,3 @@
-from .setup import MOCK_MODELS, configure, start_models
+from .setup import start_models
 
-__all__ = ['MOCK_MODELS', 'configure', 'start_models']
+__all__ = ['start_models']

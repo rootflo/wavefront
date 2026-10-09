@@ -7,20 +7,19 @@ import uvicorn
 # ruff: noqa: E402
 load_dotenv()  # Loading env values before importing modules to fix late read problem
 
-from common_module.telemetry import (
-    TelemetrySettings,
-    configure_telemetry_providers,
-)
 from floware.app import (
     lifespan,
     register_exception_handlers,
     setup_openapi,
 )
-from floware.di.containers import config, csv, runtime
+from floware.di import application_container
+from floware.utils.config import csv
 from floware.di.wiring import wire_containers
 from floware.middleware.setup import add_middlewares
 from floware.router import include_routers
 
+config = application_container.config()
+runtime = application_container.common.runtime_settings()
 environment = runtime.app_env
 
 # The interactive docs and the OpenAPI schema are off everywhere except dev,
@@ -34,14 +33,8 @@ app = FastAPI(
     redoc_url='/redoc' if is_dev else None,
 )
 
-# Providers must exist before any instrumentation is attached. The FastAPI app
-# itself is instrumented further down, after all other middleware is registered.
-configure_telemetry_providers(
-    TelemetrySettings.from_config(
-        config, default_service_name=config['env_config']['app_name']
-    )
-)
-
+# Telemetry providers are an ApplicationContainer resource, initialised with the
+# container, so they exist before instrumentation is attached below.
 setup_openapi(app, floware_base_url=runtime.floware_base_url)
 
 add_middlewares(

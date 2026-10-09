@@ -3,11 +3,15 @@ import re
 from typing import Any, Tuple
 
 from common_module.log.logger import logger
-from common_module.utils.odata_settings import odata_parameter_char
+
+
+def parameter_char_for_provider(provider: str | None) -> str:
+    """GCP OData uses ``@`` placeholders; every other platform uses ``:``."""
+    return '@' if (provider or '').lower() == 'gcp' else ':'
 
 
 def _dynamic_var_char(parameter: str | None = None) -> str:
-    return odata_parameter_char(parameter)
+    return parameter or ':'
 
 
 def parse_value(value: str) -> Any:
@@ -99,9 +103,12 @@ def prepare_odata_filter(
     return sql_expr, params
 
 
-def fill_odata_query(sql_expr: str, parameters: dict = {}) -> str:
+def fill_odata_query(
+    sql_expr: str, parameters: dict | None = None, parameter: str | None = None
+) -> str:
     output_sql = sql_expr
-    dynamic_var_char = _dynamic_var_char()
+    parameters = parameters or {}
+    dynamic_var_char = _dynamic_var_char(parameter)
     param_names = sorted(parameters.keys(), key=len, reverse=True)
     for parameter in param_names:
         if isinstance(parameters[parameter], str):

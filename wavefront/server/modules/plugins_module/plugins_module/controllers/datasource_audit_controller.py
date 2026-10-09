@@ -20,7 +20,7 @@ from fastapi.routing import APIRouter
 from common_module.common_container import CommonContainer
 from common_module.feature.feature_flag import (
     ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG,
-    is_feature_enabled,
+    FeatureFlags,
 )
 from common_module.response_formatter import ResponseFormatter
 from common_module.utils.serializer import serialize_values
@@ -55,7 +55,11 @@ def _extract_filter_params(request: Request) -> Dict[str, str]:
     }
 
 
-async def _can_read_audit_logs(request: Request) -> bool:
+@inject
+async def _can_read_audit_logs(
+    request: Request,
+    feature_flags: FeatureFlags = Depends(Provide[CommonContainer.feature_flags]),
+) -> bool:
     """Read access to the audit trail: admin only, by default.
 
     ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG lifts the same gate off the datasource
@@ -63,7 +67,7 @@ async def _can_read_audit_logs(request: Request) -> bool:
     a deployment that lets every authenticated user read the data has no reason
     to hide what was done to it.
     """
-    if is_feature_enabled(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG):
+    if feature_flags.enabled(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG):
         return True
 
     role_id, _, _ = get_current_user(request)

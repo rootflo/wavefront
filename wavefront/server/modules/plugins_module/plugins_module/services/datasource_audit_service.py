@@ -24,7 +24,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from common_module.feature.feature_flag import (
     DATASOURCE_AUDIT_ENABLED_FLAG,
-    is_feature_enabled,
+    FeatureFlags,
 )
 from common_module.log.logger import logger
 from common_module.middleware.request_id_middleware import get_current_request_id
@@ -122,10 +122,12 @@ class DatasourceAuditService:
         max_rows: Optional[int] = AUDIT_MAX_ROWS,
         max_payload_bytes: Optional[int] = AUDIT_MAX_PAYLOAD_BYTES,
         change_notification_service=None,
+        feature_flags: FeatureFlags | None = None,
     ) -> None:
         self.audit_log_repository = audit_log_repository
         self.max_rows = max_rows
         self.max_payload_bytes = max_payload_bytes
+        self.feature_flags = feature_flags or FeatureFlags()
         # Optional, and typed loosely, to keep the dependency one-way: the
         # notification service imports from this module, so naming its type here
         # would be a cycle. None means "audit only", which is what every caller
@@ -159,7 +161,7 @@ class DatasourceAuditService:
 
         Does not raise, so callers can put it on a success path unwrapped.
         """
-        if not is_feature_enabled(DATASOURCE_AUDIT_ENABLED_FLAG):
+        if not self.feature_flags.enabled(DATASOURCE_AUDIT_ENABLED_FLAG):
             return
 
         try:
@@ -204,7 +206,7 @@ class DatasourceAuditService:
         batch_id: Optional[uuid.UUID] = None,
     ) -> None:
         """Write the audit rows. Awaitable, for tests and any blocking caller."""
-        if not is_feature_enabled(DATASOURCE_AUDIT_ENABLED_FLAG):
+        if not self.feature_flags.enabled(DATASOURCE_AUDIT_ENABLED_FLAG):
             return
 
         try:

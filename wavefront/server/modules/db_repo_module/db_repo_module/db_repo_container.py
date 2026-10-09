@@ -48,7 +48,7 @@ from dependency_injector import providers
 
 
 class DatabaseModuleContainer(containers.DeclarativeContainer):
-    config = providers.Configuration(ini_files=['config.ini'])
+    config = providers.Configuration()
 
     db_config = providers.Factory(
         DatabaseConfig,

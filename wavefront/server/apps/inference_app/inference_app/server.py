@@ -9,37 +9,22 @@ import uvicorn
 # ruff: noqa: E402
 load_dotenv()
 
-from common_module.common_container import CommonContainer
 from common_module.log.logger import logger
 from common_module.response_formatter import ResponseFormatter
 
-from inference_app.di.application_container import ApplicationContainer
+from inference_app.di import application_container
 from inference_app.middleware.setup import add_middlewares
-from inference_app.models.setup import configure as configure_models
 from inference_app.models.setup import start_models
 from inference_app.router.setup import include_routers
 
-# ApplicationContainer loads package config.ini (CWD-independent). Share that
-# snapshot into CommonContainer so both see the same settings under pytest.
-application_container = ApplicationContainer()
 config = application_container.config()
-common_container = CommonContainer(cache_manager=None)
-common_container.config.from_dict(config)
-
-runtime = common_container.runtime_settings()
+runtime = application_container.common.runtime_settings()
 environment = runtime.app_env
-
-configure_models(
-    application_container,
-    models=config['models'],
-    inference=config['inference'],
-    cloud=config['cloud'],
-)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    start_models()
+    start_models(application_container)
     yield
 
 
@@ -83,7 +68,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-common_container.wire(
+application_container.common.wire(
     modules=[__name__],
     packages=['inference_app.controllers'],
 )

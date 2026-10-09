@@ -1,11 +1,18 @@
 from datetime import datetime
 
 import pytest
-from common_module.utils.odata_parser import fill_odata_query
-from common_module.utils.odata_parser import prepare_odata_filter
-from common_module.utils.odata_settings import configure_odata_cloud_provider
+from common_module.utils.odata_parser import fill_odata_query as _fill_odata_query
+from common_module.utils.odata_parser import (
+    prepare_odata_filter as _prepare_odata_filter,
+)
 
-configure_odata_cloud_provider('gcp')
+
+def prepare_odata_filter(filter_expr, parameter='@', prefix=''):
+    return _prepare_odata_filter(filter_expr, parameter=parameter, prefix=prefix)
+
+
+def fill_odata_query(sql_expr, parameters, parameter='@'):
+    return _fill_odata_query(sql_expr, parameters, parameter=parameter)
 
 
 def test_basic_equality_filter():

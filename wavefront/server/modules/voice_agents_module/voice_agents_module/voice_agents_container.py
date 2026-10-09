@@ -20,7 +20,7 @@ from voice_agents_module.services.tool_service import ToolService
 
 
 class VoiceAgentsContainer(containers.DeclarativeContainer):
-    config = providers.Configuration(ini_files=['config.ini'])
+    config = providers.Configuration()
 
     # External dependencies
     db_client = providers.Dependency()

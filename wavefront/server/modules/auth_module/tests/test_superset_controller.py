@@ -303,3 +303,36 @@ async def test_superset_authenticator_not_admin_and_data_filter_empty(
         '/v1/superset/authenticate', headers={'Authorization': f'Bearer {auth_token}'}
     )
     assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_superset_authenticator_returns_404_when_flag_off(
+    test_client,
+    auth_token,
+    test_session: AsyncSession,
+    test_user_id,
+    test_session_id,
+    mock_auth_functions,
+    patch_feature_flag,
+):
+    patch_feature_flag('unused', False)
+
+    async with test_session() as session:
+        session.add(
+            User(
+                id=test_user_id,
+                email='test@example.com',
+                password='hashed_password',
+                first_name='Test',
+                last_name='User',
+            )
+        )
+        session.add(
+            Session(id=test_session_id, user_id=test_user_id, device_info='test')
+        )
+        await session.commit()
+
+    response = test_client.get(
+        '/v1/superset/authenticate', headers={'Authorization': f'Bearer {auth_token}'}
+    )
+    assert response.status_code == 404

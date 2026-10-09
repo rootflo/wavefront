@@ -11,7 +11,7 @@ from llm_inference_config_module.services.llm_inference_config_service import (
 
 
 class LlmInferenceConfigContainer(containers.DeclarativeContainer):
-    config = providers.Configuration(ini_files=['config.ini'])
+    config = providers.Configuration()
 
     # External dependencies
     db_client = providers.Dependency()

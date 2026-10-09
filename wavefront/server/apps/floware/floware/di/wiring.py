@@ -1,23 +1,10 @@
-"""Wire all floware DI containers into controller/service packages."""
+"""Wire all floware DI containers into controller/service packages.
 
-from floware.di.containers import (
-    agents_container,
-    api_services_container,
-    application_container,
-    auth_container,
-    chatbots_container,
-    common_container,
-    db_repo_container,
-    gold_container,
-    guardrails_container,
-    knowledge_base_container,
-    llm_inference_config_container,
-    plugins_container,
-    product_analysis_container,
-    tools_container,
-    user_module_container,
-    voice_agents_container,
-)
+``Provide[SomeContainer.x]`` markers match the child container class, so each
+child is wired itself. Wiring only the application container resolves ``Provide[ApplicationContainer.x]``.
+"""
+
+from floware.di import application_container
 
 
 def wire_containers() -> None:
@@ -25,17 +12,17 @@ def wire_containers() -> None:
     # server importing this module.
     application_container.wire(packages=['floware.controllers'])
 
-    db_repo_container.wire(
+    application_container.db.wire(
         packages=[
             'product_analysis_module.product_analysis_service',
         ],
     )
 
-    product_analysis_container.wire(
+    application_container.product_analysis.wire(
         packages=['product_analysis_module.controllers'],
     )
 
-    user_module_container.wire(
+    application_container.user.wire(
         packages=[
             'auth_module.controllers',
             'plugins_module.controllers',
@@ -49,7 +36,7 @@ def wire_containers() -> None:
         ],
     )
 
-    auth_container.wire(
+    application_container.auth.wire(
         packages=[
             'auth_module.controllers',
             'user_management_module.authorization',
@@ -60,7 +47,7 @@ def wire_containers() -> None:
         ],
     )
 
-    gold_container.wire(
+    application_container.gold.wire(
         packages=['gold_module.controllers'],
     )
 
@@ -68,6 +55,7 @@ def wire_containers() -> None:
         'auth_module.controllers',
         'user_management_module.controllers',
         'user_management_module.authorization',
+        'user_management_module.utils',
         'chatbots_module.controllers',
         'floware.controllers',
         'knowledge_base_module.controllers',
@@ -81,18 +69,19 @@ def wire_containers() -> None:
         'tools_module.controllers',
         'voice_agents_module.controllers',
     ]
-    if guardrails_container is not None:
+    guardrails = application_container.guardrails()
+    if guardrails is not None:
         common_packages.append('guardrails_module.controllers')
-    common_container.wire(packages=common_packages)
+    application_container.common.wire(packages=common_packages)
 
-    knowledge_base_container.wire(
+    application_container.knowledge_base.wire(
         packages=[
             'knowledge_base_module.controllers',
             'auth_module.controllers',
         ],
     )
 
-    plugins_container.wire(
+    application_container.plugins.wire(
         packages=[
             'plugins_module.controllers',
             'plugins_module.services',
@@ -103,14 +92,14 @@ def wire_containers() -> None:
         ],
     )
 
-    agents_container.wire(
+    application_container.agents.wire(
         packages=[
             'agents_module.controllers',
             'agents_module.services',
         ],
     )
 
-    llm_inference_config_container.wire(
+    application_container.llm_inference_config.wire(
         packages=[
             'llm_inference_config_module.controllers',
             'agents_module.controllers',
@@ -118,8 +107,8 @@ def wire_containers() -> None:
         ],
     )
 
-    if guardrails_container is not None:
-        guardrails_container.wire(
+    if guardrails is not None:
+        guardrails.wire(
             packages=[
                 'guardrails_module.controllers',
                 # Agent inference resolves policy when constructing a guarded LLM.
@@ -127,24 +116,28 @@ def wire_containers() -> None:
             ],
         )
 
-    tools_container.wire(
+    application_container.tools.wire(
         packages=[
             'tools_module.controllers',
         ],
     )
 
-    api_services_container.wire(
-        packages=['api_services_module.core'],
+    application_container.api_services.wire(
+        modules=['api_services_module.api_services_container'],
+        packages=[
+            'api_services_module.core',
+            'api_services_module.execution',
+        ],
     )
 
-    voice_agents_container.wire(
+    application_container.voice_agents.wire(
         packages=[
             'voice_agents_module.controllers',
             'voice_agents_module.services',
         ],
     )
 
-    chatbots_container.wire(
+    application_container.chatbots.wire(
         packages=[
             'chatbots_module.controllers',
         ],

@@ -4,7 +4,7 @@ from gold_module.services.image_service import ImageService
 
 
 class GoldContainer(containers.DeclarativeContainer):
-    config = providers.Configuration(ini_files=['config.ini'])
+    config = providers.Configuration()
 
     cloud_storage_manager = providers.Dependency()
     gold_queue = providers.Dependency()

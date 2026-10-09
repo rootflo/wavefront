@@ -10,7 +10,6 @@ import pytest
 from starlette.datastructures import Headers
 
 from user_management_module.authorization.require_auth import (
-    DEFAULT_MTLS_ALLOWED_NAMESPACES,
     RequireAuthMiddleware,
     is_request_hmac,
     matches_any_route,
@@ -186,22 +185,29 @@ def test_validate_passthrough_auth_unconfigured(secret):
     assert response.status_code == 500
 
 
+_MTLS_NAMESPACES = ('client-applications', 'gpu-processing')
+
+
 class TestRequireAuthMiddlewareConfig:
     """Auth settings are constructor arguments, not module or environment state."""
 
     def test_defaults_are_production_safe(self):
-        middleware = RequireAuthMiddleware(app=MagicMock())
+        middleware = RequireAuthMiddleware(
+            app=MagicMock(), mtls_allowed_namespaces=_MTLS_NAMESPACES
+        )
 
         assert middleware.app_env == 'production'
         assert middleware.passthrough_secret is None
         assert middleware.required_hmac_apis == ['/floware/v1/image/analyse']
         assert middleware.mtls_allowed_principal_prefixes == mtls_principal_prefixes(
-            DEFAULT_MTLS_ALLOWED_NAMESPACES
+            _MTLS_NAMESPACES
         )
 
     def test_configured_routes_extend_the_builtin_hmac_route(self):
         middleware = RequireAuthMiddleware(
-            app=MagicMock(), hmac_routes=['/floware/v1/webhooks/{id}']
+            app=MagicMock(),
+            hmac_routes=['/floware/v1/webhooks/{id}'],
+            mtls_allowed_namespaces=_MTLS_NAMESPACES,
         )
 
         assert middleware.required_hmac_apis == [
@@ -220,9 +226,14 @@ class TestRequireAuthMiddlewareConfig:
 
     def test_instances_do_not_share_settings(self):
         local = RequireAuthMiddleware(
-            app=MagicMock(), app_env='dev', passthrough_secret='abc'
+            app=MagicMock(),
+            app_env='dev',
+            passthrough_secret='abc',
+            mtls_allowed_namespaces=_MTLS_NAMESPACES,
         )
-        prod = RequireAuthMiddleware(app=MagicMock())
+        prod = RequireAuthMiddleware(
+            app=MagicMock(), mtls_allowed_namespaces=_MTLS_NAMESPACES
+        )
 
         assert (local.app_env, local.passthrough_secret) == ('dev', 'abc')
         assert (prod.app_env, prod.passthrough_secret) == ('production', None)

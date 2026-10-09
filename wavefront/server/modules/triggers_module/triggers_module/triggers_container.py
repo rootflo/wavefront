@@ -2,6 +2,7 @@ from dependency_injector import containers, providers
 
 from triggers_module.services.trigger_crud_service import TriggerCrudService
 from triggers_module.services.trigger_event_processor import TriggerEventProcessor
+from agents_module.utils.celery_client import build_celery_client
 from triggers_module.services.trigger_push_receiver import TriggerPushReceiver
 from triggers_module.services.trigger_subscription_renewer import (
     TriggerSubscriptionRenewer,
@@ -10,7 +11,7 @@ from triggers_module.utils.gmail_watch_config import build_gmail_watch_config
 
 
 class TriggersContainer(containers.DeclarativeContainer):
-    config = providers.Configuration(ini_files=['config.ini'])
+    config = providers.Configuration()
 
     trigger_repository = providers.Dependency()
     event_repository = providers.Dependency()
@@ -23,6 +24,9 @@ class TriggersContainer(containers.DeclarativeContainer):
 
     async_agentic_execution_service = providers.Dependency()
     cache_manager = providers.Dependency()
+    celery_client = providers.Singleton(
+        build_celery_client, broker_url=config.celery.broker_url
+    )
 
     gmail_watch_config = providers.Singleton(
         build_gmail_watch_config,
@@ -45,6 +49,7 @@ class TriggersContainer(containers.DeclarativeContainer):
         TriggerPushReceiver,
         trigger_repository=trigger_repository,
         email_connection_service=email_connection_service,
+        celery_client=celery_client,
     )
 
     trigger_event_processor = providers.Singleton(
