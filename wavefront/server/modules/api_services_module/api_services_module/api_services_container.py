@@ -23,7 +23,6 @@ def _initialize_service_registry(service_registry: ServiceRegistry) -> ServiceRe
 class ApiServicesContainer(containers.DeclarativeContainer):
     """Dependency injection container for API services module."""
 
-    # Configuration
     config = providers.Configuration()
 
     # External dependencies (can be injected from parent containers)

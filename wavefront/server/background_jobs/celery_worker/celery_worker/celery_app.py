@@ -1,53 +1,13 @@
+from flo_lib.http import alias_httpx
+
+alias_httpx()
+
+# ruff: noqa: E402
 from celery import Celery
-from celery.signals import (
-    worker_process_init,
-    worker_process_shutdown,
-    worker_shutdown,
-)
+from celery_worker.settings import CELERY_BROKER_URL, CELERY_RESULT_BACKEND
 
-from celery_worker.env import CELERY_BROKER_URL, CELERY_RESULT_BACKEND
-
-
-@worker_process_init.connect
-def setup_telemetry(**kwargs):
-    """Configure OpenTelemetry once per worker process, before any task runs.
-
-    Previously this lived inside `get_services()` and only ran when the first
-    task built services, so anything before that — and any code path that
-    doesn't go through `get_services()` — was untraced. Doing it here, at
-    process start, covers the whole worker lifetime.
-    """
-    from common_module.telemetry import configure_telemetry_providers
-
-    configure_telemetry_providers(default_service_name='wavefront-celery-worker')
-
-
-def teardown_event_loop(**kwargs):
-    from celery_worker.worker_setup import close_event_loop
-
-    close_event_loop()
-
-
-def teardown_telemetry(**kwargs):
-    from common_module.telemetry import shutdown_telemetry
-
-    shutdown_telemetry()
-
-
-# Only the prefork pool dispatches worker_process_shutdown (celery/concurrency/
-# prefork.py) — under solo it never fires, and solo is where the loop lives in
-# the main process. Hook the worker-level signal too, which fires for every
-# pool. close_event_loop() is idempotent, so a double-fire is harmless.
-worker_process_shutdown.connect(teardown_event_loop, weak=False)
-worker_shutdown.connect(teardown_event_loop, weak=False)
-
-# Same prefork-vs-solo split as above, connected after the event-loop teardown
-# so any pending async work has already wound down. shutdown_telemetry() is
-# safe to call unconditionally (a no-op if telemetry was never configured), so
-# a double-fire across both signals is harmless.
-worker_process_shutdown.connect(teardown_telemetry, weak=False)
-worker_shutdown.connect(teardown_telemetry, weak=False)
-
+# Connect worker_process_init / shutdown handlers (telemetry + event loop).
+import celery_worker.signals  # noqa: F401
 
 app = Celery('async_executor')
 app.conf.update(
@@ -56,7 +16,6 @@ app.conf.update(
     include=[
         'celery_worker.tasks.agent_task',
         'celery_worker.tasks.workflow_task',
-        'celery_worker.tasks.trigger_event_task',
     ],
     task_serializer='json',
     accept_content=['json'],

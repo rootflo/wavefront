@@ -1,6 +1,6 @@
 import asyncio
 from dataclasses import dataclass, field
-import httpx
+import flo_lib.http as httpx
 from typing import Any, Optional
 import uuid
 from fastapi import HTTPException, status
@@ -113,7 +113,7 @@ class ImageRagRetrieve:
         image_data: str,
         inference_url: str,
         kb_id: uuid.UUID,
-        filter1: str,
+        filter1: Optional[str],
         document_date_start,
         document_date_end,
         threshold: float,
@@ -127,13 +127,11 @@ class ImageRagRetrieve:
         max_candidates: Optional[int] = None,
     ) -> list[dict]:
         """
-        Exact (non-ANN) DINO similarity match, restricted to documents in
-        `kb_id` whose real `filter1`/`document_date` columns fall within the
-        given window. `filter1` and `document_date` are required; `filter2`
-        through `filter6` are optional additional equality filters. All
-        `filterN` columns are generic, caller-defined columns -- see
-        `KnowledgeBaseDocuments` -- this service has no notion of what they
-        mean semantically.
+        Exact (non-ANN) DINO similarity match over documents in `kb_id`,
+        optionally narrowed by `filter1`..`filter6` and a required
+        `document_date` (or `created_at`) window. All `filterN` columns are
+        generic, caller-defined columns -- see `KnowledgeBaseDocuments` --
+        this service has no notion of what they mean semantically.
 
         Only the DINO embedding is fetched/compared -- this check is purely
         about near-duplicate/visual-similarity matching (the same use case
@@ -194,7 +192,7 @@ class ImageRagRetrieve:
             sql_query, query_params = (
                 self.query_generator.get_image_embedding_dino_exact_match(
                     dino_embedding,
-                    kb_id,
+                    str(kb_id),
                     filter1,
                     document_date_start,
                     document_date_end,

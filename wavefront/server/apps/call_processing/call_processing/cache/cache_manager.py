@@ -1,5 +1,4 @@
 import json
-import os
 import time
 from typing import Any, Dict, Optional, Union
 
@@ -9,6 +8,7 @@ from call_processing.log.logger import logger
 
 from redis import Connection
 from redis import ConnectionError
+from redis import BlockingConnectionPool
 from redis import ConnectionPool
 from redis import Redis
 from redis import RedisError
@@ -28,10 +28,10 @@ class AzureManagedRedisProvider(CredentialProvider):
     Entra ID access token as the password.
     """
 
-    def __init__(self):
+    def __init__(self, username: str = 'default'):
         self.credential = DefaultAzureCredential()
         self.scope = 'https://redis.azure.com/.default'
-        self.username = os.getenv('REDIS_USERNAME', 'default')
+        self.username = username
 
     def get_credentials(self):
         try:
@@ -52,9 +52,36 @@ class CacheManager:
         connection_timeout: int = 60,
         socket_timeout: int = 60,
         socket_keepalive: bool = True,
-        pool_size: int = 10,
+        pool_size: Optional[int] = None,
+        *,
+        redis_host: str = 'localhost',
+        redis_port: int = 6379,
+        redis_protocol: str = 'redis',
+        redis_password: str | None = None,
+        redis_db: int = 0,
+        redis_username: str = 'default',
+        cloud_provider: str = '',
+        pool_timeout: float = 2.0,
     ):
+        """
+        Args:
+            pool_size: Max Redis connections this process may open. Defaults to
+                REDIS_POOL_SIZE (10). Connections are opened on demand, so the
+                cap only costs anything under concurrency. When all are in use,
+                a caller waits up to REDIS_POOL_TIMEOUT (2s) for one to be
+                released, then gets ConnectionError('No connection available.').
+        """
+        if pool_size is None:
+            pool_size = 10
         self.namespace = namespace
+        self.redis_host = redis_host
+        self.redis_port = int(redis_port)
+        self.redis_protocol = redis_protocol
+        self.redis_password = redis_password or None
+        self.redis_db = int(redis_db)
+        self.redis_username = redis_username
+        self.cloud_provider = (cloud_provider or '').lower()
+        self.pool_timeout = float(pool_timeout)
         self.max_retries = max_retries
         self.initial_backoff = initial_backoff
         self.max_backoff = max_backoff
@@ -77,11 +104,11 @@ class CacheManager:
         pool_size: int,
     ) -> ConnectionPool:
         try:
-            host = os.getenv('REDIS_HOST', 'localhost')
-            port = int(os.getenv('REDIS_PORT', 6379))
-            protocol = os.getenv('REDIS_PROTOCOL', 'redis')
-            password = os.getenv('REDIS_PASSWORD')
-            cloud_provider = os.getenv('CLOUD_PROVIDER', '').lower()
+            host = self.redis_host
+            port = self.redis_port
+            protocol = self.redis_protocol
+            password = self.redis_password
+            cloud_provider = self.cloud_provider
 
             connection_class = Connection
             if protocol == 'rediss' or port == 10000:
@@ -92,7 +119,7 @@ class CacheManager:
                 'connection_class': connection_class,
                 'host': host,
                 'port': port,
-                'db': int(os.getenv('REDIS_DB', 0)),
+                'db': self.redis_db,
                 'max_connections': pool_size,
                 'socket_timeout': socket_timeout,
                 'socket_keepalive': socket_keepalive,
@@ -107,11 +134,15 @@ class CacheManager:
                 logger.info(
                     'Configuring Azure Entra ID (Workload Identity) authentication'
                 )
-                pool_kwargs['credential_provider'] = AzureManagedRedisProvider()
+                pool_kwargs['credential_provider'] = AzureManagedRedisProvider(
+                    username=self.redis_username
+                )
             elif password:
                 pool_kwargs['password'] = password
 
-            return ConnectionPool(**pool_kwargs)
+            # Blocking: when every connection is busy, wait briefly for one to
+            # be released instead of failing at once with 'Too many connections'.
+            return BlockingConnectionPool(timeout=self.pool_timeout, **pool_kwargs)
         except Exception as e:
             logger.error(f'Failed to create connection pool: {e}s')
             raise
@@ -242,7 +273,7 @@ class CacheManager:
         while retries < self.max_retries:
             try:
                 return func(*args, **kwargs)
-            except (RedisError, ConnectionPool, TimeoutError) as e:
+            except (RedisError, ConnectionError, TimeoutError) as e:
                 retries += 1
                 if retries >= self.max_retries:
                     logger.error(f'Max retries reached for {func.__name__}: {e}')

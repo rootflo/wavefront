@@ -1,13 +1,13 @@
 import json
-import os
 
-import aiohttp
+import flo_lib.http as http
 from common_module.log.logger import logger
 
 
 class ExotelService:
-    def __init__(self, call_processing_base_url: str):
+    def __init__(self, call_processing_base_url: str, exotel_app_id: str | None = None):
         self.call_processing_base_url = call_processing_base_url
+        self.exotel_app_id = (exotel_app_id or '').strip() or None
 
         if not self.call_processing_base_url:
             raise ValueError(
@@ -46,12 +46,14 @@ class ExotelService:
             endpoint = (
                 f'https://{subdomain}/v1/Accounts/{account_sid}/Calls/connect.json'
             )
-            auth = aiohttp.BasicAuth(api_key, api_token)
-            timeout = aiohttp.ClientTimeout(total=15)
+            auth = http.BasicAuth(api_key, api_token)
+            timeout = http.Timeout(15.0)
 
-            app_id = os.getenv('EXOTEL_APP_ID')
+            app_id = self.exotel_app_id
             if not app_id:
-                raise ValueError('EXOTEL_APP_ID environment variable is not set')
+                raise ValueError(
+                    'exotel_app_id is not configured in [voice_agents] config.ini'
+                )
 
             exotel_url = (
                 f'http://my.exotel.com/{account_sid}/exoml/start_voice/{app_id}'
@@ -77,33 +79,28 @@ class ExotelService:
             )
 
             # Make async API request
-            async with aiohttp.ClientSession(timeout=timeout, auth=auth) as session:
-                async with session.post(
-                    endpoint,
-                    data=payload,
-                ) as response:
-                    if response.status != 200:
-                        error_text = await response.text()
-                        raise ValueError(
-                            f'Exotel API error: {response.status} - {error_text}'
-                        )
-
-                    response_data = await response.json()
-
-                    call_details = response_data.get('Call', {})
-                    call_sid = call_details.get('Sid')
-                    status = call_details.get('Status')
-
-                    logger.info(
-                        f'Exotel call created successfully. Call SID: {call_sid}'
+            async with http.AsyncClient(timeout=timeout, auth=auth) as client:
+                response = await client.post(endpoint, data=payload)
+                if response.status_code != 200:
+                    error_text = response.text
+                    raise ValueError(
+                        f'Exotel API error: {response.status_code} - {error_text}'
                     )
 
-                    return {
-                        'call_sid': call_sid,
-                        'status': status,
-                        'to_number': to_number,
-                        'from_number': from_number,
-                    }
+                response_data = response.json()
+
+                call_details = response_data.get('Call', {})
+                call_sid = call_details.get('Sid')
+                status = call_details.get('Status')
+
+                logger.info(f'Exotel call created successfully. Call SID: {call_sid}')
+
+                return {
+                    'call_sid': call_sid,
+                    'status': status,
+                    'to_number': to_number,
+                    'from_number': from_number,
+                }
 
         except Exception as e:
             logger.error(f'Failed to initiate Exotel call: {str(e)}')

@@ -7,7 +7,7 @@ functions that can be registered with the LLM for function calling.
 
 import base64
 from typing import Dict, Any, List, Tuple, Callable, Optional
-import httpx
+import flo_lib.http as httpx
 
 from call_processing.log.logger import logger
 from pipecat.adapters.schemas.function_schema import FunctionSchema

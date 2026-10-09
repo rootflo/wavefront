@@ -1,3 +1,4 @@
+from common_module.feature.feature_flag import FeatureFlags
 from dependency_injector import containers
 from dependency_injector import providers
 from db_repo_module.models.datasource import Datasource
@@ -14,12 +15,10 @@ from plugins_module.services.datasource_audit_service import DatasourceAuditServ
 from plugins_module.services.change_notification_service import (
     ChangeNotificationService,
 )
-from flo_cloud.cloud_storage import CloudStorageManager
-from flo_cloud.kms import FloKmsService
 
 
 class PluginsContainer(containers.DeclarativeContainer):
-    config = providers.Configuration(ini_files=['config.ini'])
+    config = providers.Configuration()
 
     db_client = providers.Dependency()
 
@@ -46,6 +45,12 @@ class PluginsContainer(containers.DeclarativeContainer):
 
     email_connection_repository = providers.Dependency()
 
+    cloud_storage_manager = providers.Dependency()
+
+    kms_cipher = providers.Dependency()
+
+    feature_flags = providers.Dependency(default=FeatureFlags())
+
     datasource_repository = providers.Singleton(
         SQLAlchemyRepository[Datasource],
         model=Datasource,
@@ -64,18 +69,11 @@ class PluginsContainer(containers.DeclarativeContainer):
         db_client=db_client,
     )
 
-    # dynamic query service
-    cloud_provider = config.cloud_config.cloud_provider
-
-    cloud_storage_manager = providers.Singleton(
-        CloudStorageManager, provider=config.cloud_config.cloud_provider
-    )
-
     dynamic_query_service = providers.Singleton(
         DynamicQueryService,
         cloud_storage_manager=cloud_storage_manager,
         dynamic_query_repo=dynamic_query_repository,
-        bucket_name=config.floware.asset_storage_bucket,
+        bucket_name=config.storage.application_bucket,
     )
 
     configuration_service = providers.Singleton(
@@ -88,6 +86,7 @@ class PluginsContainer(containers.DeclarativeContainer):
     change_notification_service = providers.Singleton(
         ChangeNotificationService,
         notification_repository=notification_repository,
+        feature_flags=feature_flags,
     )
 
     # Wired unconditionally; DATASOURCE_CHANGE_NOTIFICATION_FLAG decides at call
@@ -98,6 +97,7 @@ class PluginsContainer(containers.DeclarativeContainer):
         DatasourceAuditService,
         audit_log_repository=datasource_audit_log_repository,
         change_notification_service=change_notification_service,
+        feature_flags=feature_flags,
     )
 
     message_processor_service = providers.Singleton(
@@ -105,18 +105,14 @@ class PluginsContainer(containers.DeclarativeContainer):
         cloud_storage_manager=cloud_storage_manager,
         message_processor_repository=message_processor_repository,
         hermes_url=config.hermes.url,
-        bucket_name=config.floware.asset_storage_bucket,
+        bucket_name=config.storage.application_bucket,
     )
 
     # Email: OAuth apps hold client secrets and connections hold mailbox tokens.
-    kms_service = providers.Singleton(
-        FloKmsService, cloud_provider=config.cloud_config.cloud_provider
-    )
-
     oauth_app_service = providers.Singleton(
         OAuthAppService,
         oauth_app_repository=oauth_app_repository,
-        kms_service=kms_service,
+        kms_cipher=kms_cipher,
     )
 
     email_connection_service = providers.Singleton(
@@ -124,7 +120,7 @@ class PluginsContainer(containers.DeclarativeContainer):
         connection_repository=email_connection_repository,
         oauth_app_repository=oauth_app_repository,
         oauth_app_service=oauth_app_service,
-        kms_service=kms_service,
+        kms_cipher=kms_cipher,
         cache_manager=cache_manager,
     )
 

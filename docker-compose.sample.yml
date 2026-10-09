@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # PostgreSQL for Floware with pgvector extension
   postgres-floware:
-    image: ankane/pgvector
+    image: pgvector/pgvector:pg15
     container_name: postgres-floware
     restart: unless-stopped
     security_opt:
@@ -274,7 +274,6 @@ services:
       # External Services
       # ============================================
       - INFERENCE_SERVICE_URL=<YOUR_INFERENCE_SERVICE_URL>
-      - EMBEDDING_SERVICE_URL=<YOUR_EMBEDDING_SERVICE_URL>
       - CALL_PROCESSING_BASE_URL=<YOUR_CALL_PROCESSING_BASE_URL>
       - HERMES_URL=<YOUR_HERMES_URL>
 

@@ -3,6 +3,7 @@ from pathlib import Path
 from transformers import CLIPProcessor, CLIPModel, AutoImageProcessor, AutoModel
 from PIL import Image
 import io
+import threading
 from typing import List, Dict, Any, Union
 from common_module.log.logger import logger
 from common_module.utils.image_formats import SUPPORTED_PILLOW_FORMATS
@@ -13,7 +14,7 @@ class ImageEmbedding:
     Loads CLIP and DINOv3 models from local synced directories.
 
     Both model dirs must be full Hugging Face snapshots (from_pretrained-compatible).
-    Use model_sync.sync_embedding_models() to sync from cloud storage before
+    Use models.model_sync.sync_embedding_models() to sync from cloud storage before
     constructing this class.
     """
 
@@ -23,6 +24,9 @@ class ImageEmbedding:
         dino_model_dir: Union[str, Path],
     ):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        # Requests run on FastAPI's threadpool; serialise the forward passes so
+        # concurrent requests don't oversubscribe CPU threads or GPU memory.
+        self._model_lock = threading.Lock()
         logger.info(f'Using device: {self.device}')
 
         clip_path = str(Path(clip_model_dir))
@@ -35,9 +39,10 @@ class ImageEmbedding:
 
         logger.info('Loading DINOv3 model from %s', dino_path)
         self.dino_processor = AutoImageProcessor.from_pretrained(dino_path)
-        self.dino_model = AutoModel.from_pretrained(
-            dino_path, trust_remote_code=True
-        ).to(self.device)
+        # DINOv3 is built into transformers (>=4.56), so the model directory's
+        # own Python is never executed: no trust_remote_code. Anyone able to
+        # write to the model bucket must not be able to run code here.
+        self.dino_model = AutoModel.from_pretrained(dino_path).to(self.device)
         self.dino_model.eval()
 
         self.embedders: Dict[str, Dict[str, Any]] = {
@@ -67,22 +72,25 @@ class ImageEmbedding:
                 io.BytesIO(image_content), formats=SUPPORTED_PILLOW_FORMATS
             ).convert('RGB')
         except Exception as e:
-            print(f'Error opening image: {e}')
-            return []
+            logger.error(f'Error opening image: {e}', exc_info=True)
+            raise ValueError(f'Failed to decode image: {e}') from e
 
         results = []
 
-        for name, embedder in self.embedders.items():
-            inputs = embedder['processor'](images=image, return_tensors='pt')
+        with self._model_lock:
+            for name, embedder in self.embedders.items():
+                inputs = embedder['processor'](images=image, return_tensors='pt')
 
-            inputs = {k: v.to(self.device) for k, v in inputs.items()}
+                inputs = {k: v.to(self.device) for k, v in inputs.items()}
 
-            image_features = embedder['extractor'](inputs)
+                image_features = embedder['extractor'](inputs)
 
-            image_features = image_features / image_features.norm(dim=-1, keepdim=True)
-            embedding = image_features.squeeze().cpu().numpy().tolist()
+                image_features = image_features / image_features.norm(
+                    dim=-1, keepdim=True
+                )
+                embedding = image_features.squeeze().cpu().numpy().tolist()
 
-            results.append({name: embedding})
+                results.append({name: embedding})
 
         return results
 
@@ -121,17 +129,20 @@ class ImageEmbedding:
 
         results: List[Dict[str, List[List[float]]]] = []
 
-        for name, embedder in self.embedders.items():
-            inputs = embedder['processor'](images=images, return_tensors='pt')
-            inputs = {k: v.to(self.device) for k, v in inputs.items()}
+        with self._model_lock:
+            for name, embedder in self.embedders.items():
+                inputs = embedder['processor'](images=images, return_tensors='pt')
+                inputs = {k: v.to(self.device) for k, v in inputs.items()}
 
-            # Batched forward pass.
-            image_features = embedder['extractor'](inputs)  # (batch, dim)
+                # Batched forward pass.
+                image_features = embedder['extractor'](inputs)  # (batch, dim)
 
-            # L2-normalize per-vector.
-            image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+                # L2-normalize per-vector.
+                image_features = image_features / image_features.norm(
+                    dim=-1, keepdim=True
+                )
 
-            embeddings = image_features.cpu().numpy().tolist()  # batch x dim
-            results.append({name: embeddings})
+                embeddings = image_features.cpu().numpy().tolist()  # batch x dim
+                results.append({name: embeddings})
 
         return results

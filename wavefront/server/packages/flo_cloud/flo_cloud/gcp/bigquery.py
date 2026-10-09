@@ -1,4 +1,3 @@
-import os
 import string
 import logging
 import asyncio
@@ -62,15 +61,13 @@ class BigQueryClient:
             timeout: Query timeout in seconds
             **kwargs: Additional client parameters
         """
-        self.project_id = project_id or os.getenv('GOOGLE_CLOUD_PROJECT')
-        self.location = location or os.getenv('BIGQUERY_LOCATION', 'asia-south1')
+        self.project_id = project_id
+        self.location = location or 'asia-south1'
         self.timeout = timeout
         self.client_params = kwargs
 
         if not self.project_id:
-            raise ValueError(
-                'Project ID must be provided via parameter or GOOGLE_CLOUD_PROJECT environment variable'
-            )
+            raise ValueError('Project ID must be provided')
 
         # Initialize credentials
         credentials = None

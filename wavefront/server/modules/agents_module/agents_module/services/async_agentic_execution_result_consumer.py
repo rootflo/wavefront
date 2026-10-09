@@ -1,6 +1,5 @@
 import asyncio
 import json
-import os
 import socket
 import time
 from datetime import datetime
@@ -12,15 +11,8 @@ from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from db_repo_module.models.async_agentic_execution import AsyncAgenticExecution
 
-_STREAM = os.getenv('ASYNC_AGENTIC_EXEC_RESULTS_STREAM', 'async_agentic_exec:results')
-_GROUP = os.getenv('ASYNC_AGENTIC_EXEC_CONSUMER_GROUP', 'floware-agentic-consumers')
 _CONSUMER = f'floware-{socket.gethostname()}'
 _POLL_COUNT = 10
-_BLOCK_MS = 1000
-
-# Proof-of-life cadence. Silence from this loop is otherwise ambiguous: it looks
-# identical whether the task died or is polling a key that never has anything.
-_HEARTBEAT_INTERVAL_S = int(os.getenv('ASYNC_AGENTIC_EXEC_HEARTBEAT_S', '60'))
 
 _STATUS_CACHE_TTL_TERMINAL = 3600
 _STATUS_CACHE_KEY_PREFIX = 'async_agentic_exec:status'
@@ -45,10 +37,20 @@ class AsyncAgenticExecutionResultConsumer:
         self,
         exec_repo: SQLAlchemyRepository[AsyncAgenticExecution],
         cache_manager: CacheManager,
+        *,
+        stream: str = 'async_agentic_exec:results',
+        group: str = 'floware-agentic-consumers',
+        poll_interval_s: float = 5.0,
+        heartbeat_interval_s: int = 60,
     ):
         self._repo = exec_repo
         self._cache = cache_manager
+        self._stream = stream
+        self._group = group
+        self._poll_interval_s = poll_interval_s
+        self._heartbeat_interval_s = heartbeat_interval_s
         self._running = False
+        self._stop_requested = asyncio.Event()
 
     async def start(self) -> None:
         """Entry point — call as asyncio.create_task(consumer.start())."""
@@ -73,16 +75,16 @@ class AsyncAgenticExecutionResultConsumer:
         # when the group is first created; subsequent calls are no-ops (BUSYGROUP
         # silently ignored). PEL entries from a previous run are NOT auto-redelivered
         # by this call — a separate XAUTOCLAIM/XCLAIM pass would be needed for that.
-        self._cache.xgroup_create(_STREAM, _GROUP, id='0', mkstream=True)
+        self._cache.xgroup_create(self._stream, self._group, id='0', mkstream=True)
 
-        # Log the RESOLVED key, not _STREAM. CacheManager prepends its namespace
+        # Log the RESOLVED key, not self._stream. CacheManager prepends its namespace
         # inside xadd/xreadgroup, so a publisher and consumer configured with
         # different APP_NAMEs use different Redis keys while logging the same
         # stream name — a mismatch that is otherwise invisible in the logs.
-        resolved_key = f'{self._cache.namespace}/{_STREAM}'
+        resolved_key = f'{self._cache.namespace}/{self._stream}'
         logger.info(
             f'AsyncAgenticExecutionResultConsumer started — key={resolved_key}, '
-            f'group={_GROUP}, consumer={_CONSUMER}'
+            f'group={self._group}, consumer={_CONSUMER}'
         )
 
         polls = 0
@@ -93,19 +95,20 @@ class AsyncAgenticExecutionResultConsumer:
             try:
                 messages = await asyncio.to_thread(
                     self._cache.xread_group,
-                    _GROUP,
+                    self._group,
                     _CONSUMER,
-                    {_STREAM: '>'},
+                    {self._stream: '>'},
                     _POLL_COUNT,
-                    _BLOCK_MS,
+                    None,  # don't block: hold the pooled connection for one round trip
                 )
                 polls += 1
-                received += sum(len(entries) for _stream, entries in messages)
+                batch_size = sum(len(entries) for _stream, entries in messages)
+                received += batch_size
 
                 # Heartbeat distinguishes "loop is dead" from "loop is alive but
                 # this key never yields anything".
                 now = time.monotonic()
-                if now - last_heartbeat >= _HEARTBEAT_INTERVAL_S:
+                if now - last_heartbeat >= self._heartbeat_interval_s:
                     last_heartbeat = now
                     logger.info(
                         f'Consumer alive — consumer={_CONSUMER}, '
@@ -127,7 +130,7 @@ class AsyncAgenticExecutionResultConsumer:
                         try:
                             await self._process(fields)
                             await asyncio.to_thread(
-                                self._cache.xack, _STREAM, _GROUP, msg_id
+                                self._cache.xack, self._stream, self._group, msg_id
                             )
                         except Exception as e:
                             logger.error(
@@ -135,12 +138,27 @@ class AsyncAgenticExecutionResultConsumer:
                                 'Message remains in PEL until a claim/drain runs.'
                             )
 
+                # A full batch means more may be waiting: read again straight
+                # away. Otherwise the stream is drained, so wait.
+                if batch_size < _POLL_COUNT and self._running:
+                    await self._sleep(self._poll_interval_s)
+
             except Exception as e:
                 logger.error(f'AsyncAgenticExecutionResultConsumer poll error: {e}')
-                await asyncio.sleep(2)  # brief back-off before retrying
+                await self._sleep(
+                    max(self._poll_interval_s, 2)
+                )  # back off before retrying
+
+    async def _sleep(self, seconds: float) -> None:
+        """Sleep, returning early if stop() is called."""
+        try:
+            await asyncio.wait_for(self._stop_requested.wait(), timeout=seconds)
+        except asyncio.TimeoutError:
+            pass
 
     def stop(self) -> None:
         self._running = False
+        self._stop_requested.set()  # wake the loop if it is sleeping between polls
         logger.info('AsyncAgenticExecutionResultConsumer stopping')
 
     async def _process(self, fields: dict) -> None:

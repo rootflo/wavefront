@@ -163,7 +163,7 @@ The script:
 | Celery worker *(optional)* | Redis queue | No, restart it |
 | RAG ingestion worker *(optional)* | LocalStack SQS queue | No, restart it |
 
-The script asks whether to run each optional service. The inference app downloads its models (several GB) from Hugging Face on first run, and needs a Hugging Face token with access to the gated DINOv3 model. It is skipped on Intel Macs, which have no supported PyTorch build.
+The script asks whether to run each optional service. The inference app downloads its models (several GB) from Hugging Face on first run, and needs a Hugging Face token with access to the gated DINOv3 model. It runs on CPU on Linux and Apple Silicon Macs; with all three models loaded (CLIP, DINOv3 and BGE-M3) it needs roughly 4–5 GB of free memory. Intel Macs have no PyTorch build at the supported version (2.6 or later), so there it runs in mock mode: the same API returning synthetic embeddings, for integration testing, with no models to download. Set `INFERENCE_MOCK_MODELS=true` to use mock mode anywhere.
 
 When the script finishes:
 1. Open the web client at http://localhost:5173 and log in with the seed user from `server/apps/floconsole/floconsole/.env` (`CONSOLE_EMAIL` / `CONSOLE_PASSWORD`).

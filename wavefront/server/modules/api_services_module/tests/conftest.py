@@ -501,7 +501,7 @@ def api_services_container(
         response_formatter=mock_response_formatter,
     )
     container.api_service_manager.override(providers.Object(mock_api_services_manager))
-    container.config.from_dict({'api_service': {'application_bucket': 'test-bucket'}})
+    container.config.from_dict({'storage': {'application_bucket': 'test-bucket'}})
     return container
 
 
@@ -709,7 +709,7 @@ def override_config():
 @pytest.fixture
 def mock_network_error():
     """Mock network error for testing error handling."""
-    import httpx
+    import flo_lib.http as httpx
 
     return httpx.RequestError('Network error')
 
@@ -717,7 +717,7 @@ def mock_network_error():
 @pytest.fixture
 def mock_http_error():
     """Mock HTTP error for testing error handling."""
-    import httpx
+    import flo_lib.http as httpx
 
     mock_response = Mock()
     mock_response.status_code = 500

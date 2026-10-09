@@ -1,8 +1,5 @@
-import os
-from .._types import FloKMS
 from google.cloud import kms
 from google.cloud import kms_v1
-
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
@@ -10,53 +7,36 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.asymmetric import utils
 
-gcp_project_id = os.getenv('GCP_PROJECT_ID')
-gcp_location = os.getenv('GCP_LOCATION')
-gcp_key_ring = os.getenv('GCP_KMS_KEY_RING')
-gcp_crypto_key = os.getenv('GCP_KMS_CRYPTO_KEY')
-gcp_crypto_key_version = os.getenv('GCP_KMS_CRYPTO_KEY_VERSION')
-
-gcp_enc_crypto_key = os.getenv('GCP_KMS_ENC_CRYPTO_KEY')
+from .._types import KmsKeySettings
 
 
-class GcpKMS(FloKMS):
-    def __init__(self):
-        if not all(
-            [
-                gcp_project_id,
-                gcp_location,
-                gcp_key_ring,
-                gcp_crypto_key,
-                gcp_crypto_key_version,
-            ]
-        ):
-            raise ValueError(
-                'PROJECT_ID, LOCATION, KEY_RING, CRYPTO_KEY, CRYPTO_KEY_VERSION must be set'
-            )
-
-        self.kms_client = kms.KeyManagementServiceClient()
-        self.key_name = self.kms_client.crypto_key_version_path(
-            project=gcp_project_id,
-            location=gcp_location,
-            key_ring=gcp_key_ring,
-            crypto_key=gcp_crypto_key,
-            crypto_key_version=gcp_crypto_key_version,
+def _require_key_path(settings: KmsKeySettings) -> tuple[str, str, str, str]:
+    project_id = settings.project_id
+    region = settings.region
+    key_ring = settings.key_ring
+    key = settings.key
+    if not (project_id and region and key_ring and key):
+        raise ValueError(
+            'project_id, region (GCP KMS location), key_ring, and key must be set '
+            'for GcpKMS'
         )
+    return project_id, region, key_ring, key
 
-        self.enc_key_name = (
-            self.kms_client.crypto_key_path(
-                project=gcp_project_id,
-                location=gcp_location,
-                key_ring=gcp_key_ring,
-                crypto_key=gcp_enc_crypto_key,
-            )
-            if gcp_enc_crypto_key
-            else None
+
+class GcpKmsCipher:
+    """GCP KMS encrypt/decrypt bound to a crypto key."""
+
+    def __init__(self, settings: KmsKeySettings):
+        project_id, region, key_ring, key = _require_key_path(settings)
+        self.kms_client = kms.KeyManagementServiceClient()
+        self.enc_key_name = self.kms_client.crypto_key_path(
+            project=project_id,
+            location=region,
+            key_ring=key_ring,
+            crypto_key=key,
         )
 
     def encrypt(self, plaintext: bytes | str) -> bytes:
-        if not self.enc_key_name:
-            raise ValueError('GCP_KMS_ENC_CRYPTO_KEY must be set to use encryption')
         if isinstance(plaintext, str):
             plaintext = plaintext.encode('utf-8')
         request = kms_v1.EncryptRequest(
@@ -67,14 +47,31 @@ class GcpKMS(FloKMS):
         return response.ciphertext
 
     def decrypt(self, ciphertext: bytes) -> bytes:
-        if not self.enc_key_name:
-            raise ValueError('GCP_KMS_ENC_CRYPTO_KEY must be set to use decryption')
         request = kms_v1.DecryptRequest(
             name=self.enc_key_name,
             ciphertext=ciphertext,
         )
         response = self.kms_client.decrypt(request=request)
         return response.plaintext
+
+
+class GcpKmsSigner:
+    """GCP KMS asymmetric sign/verify bound to a crypto key version."""
+
+    def __init__(self, settings: KmsKeySettings):
+        project_id, region, key_ring, key = _require_key_path(settings)
+        key_version = settings.key_version
+        if not key_version:
+            raise ValueError('key_version must be set for GcpKmsSigner')
+
+        self.kms_client = kms.KeyManagementServiceClient()
+        self.key_name = self.kms_client.crypto_key_version_path(
+            project=project_id,
+            location=region,
+            key_ring=key_ring,
+            crypto_key=key,
+            crypto_key_version=key_version,
+        )
 
     def sign(self, message: bytes, **kwargs) -> bytes:
         request = kms_v1.AsymmetricSignRequest(
@@ -83,7 +80,6 @@ class GcpKMS(FloKMS):
                 sha256=message,
             ),
         )
-
         response = self.kms_client.asymmetric_sign(request=request)
         return response.signature
 
@@ -109,7 +105,6 @@ class GcpKMS(FloKMS):
 
     def get_public_key_pem(self, **kwargs) -> bytes | str:
         encode = kwargs.get('encode', False)
-
         request = kms_v1.GetPublicKeyRequest(
             name=self.key_name,
         )

@@ -1,11 +1,12 @@
-import os
 import time
 from typing import Any, List, Optional, Union
 
 from common_module.common_cache import CommonCache
 from common_module.log.logger import logger
+from db_repo_module.cache.redis_settings import RedisSettings
 from redis import Connection
 from redis import ConnectionError
+from redis import BlockingConnectionPool
 from redis import ConnectionPool
 from redis import Redis
 from redis import RedisError
@@ -21,26 +22,34 @@ class CacheManager(CommonCache):
     def __init__(
         self,
         namespace: str = '',
-        max_retries: int = 3,
-        initial_backoff: int = 1,
-        max_backoff: int = 10,
-        connection_timeout: int = 60,
-        socket_timeout: int = 60,
-        socket_keepalive: bool = True,
-        pool_size: int = 5,
+        settings: RedisSettings | None = None,
     ):
+        """
+        Args:
+            settings: Redis connection, pool, and retry settings. Defaults match
+                [redis] ini defaults (localhost, pool_size 20, pool_timeout 2s).
+                pool_size is a per-process cap; when every connection is busy,
+                callers wait up to pool_timeout then get
+                ConnectionError('No connection available.').
+        """
+        redis = settings or RedisSettings()
         self.namespace = namespace
-        self.max_retries = max_retries
-        self.initial_backoff = initial_backoff
-        self.max_backoff = max_backoff
+        self.max_retries = int(redis.max_retries)
+        self.initial_backoff = int(redis.initial_backoff)
+        self.max_backoff = int(redis.max_backoff)
+        self._redis_host = redis.host
+        self._redis_port = int(redis.port)
+        self._redis_protocol = redis.protocol
+        self._redis_password = redis.password
+        self._redis_db = int(redis.db)
+        self._pool_timeout = float(redis.pool_timeout)
 
         self.pool = self._create_connection_pool(
-            connection_timeout=connection_timeout,
-            socket_timeout=socket_timeout,
-            socket_keepalive=socket_keepalive,
-            pool_size=pool_size,
+            connection_timeout=int(redis.connection_timeout),
+            socket_timeout=int(redis.socket_timeout),
+            socket_keepalive=bool(redis.socket_keepalive),
+            pool_size=int(redis.pool_size),
         )
-
         self.redis = self._create_redis_connection()
 
         # Test the connection immediately - fail fast if Redis is unreachable
@@ -60,10 +69,10 @@ class CacheManager(CommonCache):
         pool_size: int,
     ) -> ConnectionPool:
         try:
-            host = os.getenv('REDIS_HOST', 'localhost')
-            port = int(os.getenv('REDIS_PORT', 6379))
-            protocol = os.getenv('REDIS_PROTOCOL', 'redis')
-            password = os.getenv('REDIS_PASSWORD')
+            host = self._redis_host
+            port = self._redis_port
+            protocol = self._redis_protocol
+            password = self._redis_password
 
             connection_class = Connection
             if protocol == 'rediss' or port == 10000:
@@ -74,7 +83,7 @@ class CacheManager(CommonCache):
                 'connection_class': connection_class,
                 'host': host,
                 'port': port,
-                'db': int(os.getenv('REDIS_DB', 0)),
+                'db': self._redis_db,
                 'max_connections': pool_size,
                 'socket_timeout': socket_timeout,
                 'socket_keepalive': socket_keepalive,
@@ -94,7 +103,9 @@ class CacheManager(CommonCache):
             if password:
                 pool_kwargs['password'] = password
 
-            return ConnectionPool(**pool_kwargs)
+            # Blocking: when every connection is busy, wait briefly for one to
+            # be released instead of failing at once with 'Too many connections'.
+            return BlockingConnectionPool(timeout=self._pool_timeout, **pool_kwargs)
         except Exception as e:
             logger.error(f'Failed to create connection pool: {e}s')
             raise
@@ -343,12 +354,16 @@ class CacheManager(CommonCache):
         consumer: str,
         streams: dict,
         count: int = 10,
-        block_ms: int = 1000,
+        block_ms: Optional[int] = 1000,
     ) -> list:
         """Read messages from stream(s) via consumer group.
 
         Args:
             streams: mapping of stream_name → '>' (undelivered) or message ID (pending)
+            block_ms: how long Redis may hold the call open waiting for
+                messages. The pooled connection is busy for that whole time,
+                so long-running pollers should pass None (return at once) and
+                sleep between polls instead. Note 0 means block forever.
         """
         try:
             namespaced = {f'{self.namespace}/{k}': v for k, v in streams.items()}
@@ -375,6 +390,70 @@ class CacheManager(CommonCache):
             logger.error(f'Error acknowledging messages on stream {stream}: {e}')
             raise
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        retry=retry_if_exception_type((RedisError, ConnectionError, TimeoutError)),
+    )
+    def xpending_range(
+        self,
+        stream: str,
+        group: str,
+        count: int,
+        min_idle_ms: Optional[int] = None,
+        consumer: Optional[str] = None,
+        start: str = '-',
+        end: str = '+',
+    ) -> list:
+        """Pending (delivered, unacknowledged) entries of a consumer group:
+        dicts with message_id, consumer, time_since_delivered (ms) and
+        times_delivered. min_idle_ms / consumer narrow the result."""
+        try:
+            return self.redis.xpending_range(
+                f'{self.namespace}/{stream}',
+                group,
+                min=start,
+                max=end,
+                count=count,
+                consumername=consumer,
+                idle=min_idle_ms,
+            )
+        except (RedisError, ConnectionError, TimeoutError) as e:
+            logger.error(f'Error listing pending entries on stream {stream}: {e}')
+            raise
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        retry=retry_if_exception_type((RedisError, ConnectionError, TimeoutError)),
+    )
+    def xautoclaim(
+        self,
+        stream: str,
+        group: str,
+        consumer: str,
+        min_idle_ms: int,
+        start_id: str = '0-0',
+        count: Optional[int] = None,
+    ) -> list:
+        """Claim entries pending longer than min_idle_ms (from any consumer)
+        for `consumer`. Returns [(message_id, fields), ...]; entries deleted
+        from the stream meanwhile are dropped from the pending list by Redis."""
+        try:
+            result = self.redis.xautoclaim(
+                f'{self.namespace}/{stream}',
+                group,
+                consumer,
+                min_idle_ms,
+                start_id=start_id,
+                count=count,
+            )
+        except (RedisError, ConnectionError, TimeoutError) as e:
+            logger.error(f'Error claiming idle entries on stream {stream}: {e}')
+            raise
+        # [next_start_id, claimed, deleted_ids] (Redis 7) or the first two (6.2)
+        return result[1] if result and len(result) > 1 else []
+
     def close(self):
         try:
             self.pool.disconnect()
@@ -387,7 +466,7 @@ class CacheManager(CommonCache):
         while retries < self.max_retries:
             try:
                 return func(*args, **kwargs)
-            except (RedisError, ConnectionPool, TimeoutError) as e:
+            except (RedisError, ConnectionError, TimeoutError) as e:
                 retries += 1
                 if retries >= self.max_retries:
                     logger.error(f'Max retries reached for {func.__name__}: {e}')

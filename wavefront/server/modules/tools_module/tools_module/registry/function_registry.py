@@ -5,27 +5,28 @@ Aggregates all function registries from different categories into a single regis
 for use by the ToolLoader.
 """
 
-from tools_module.registry.registries.datasource_registry import DATASOURCE_REGISTRY
-from tools_module.registry.registries.knowledge_base_registry import (
-    KNOWLEDGE_BASE_REGISTRY,
-)
-from tools_module.registry.registries.email_registry import EMAIL_REGISTRY
-from tools_module.registry.registries.util_function_registry import (
-    UTIL_FUNCTION_REGISTRY,
-)
-from tools_module.registry.registries.message_processor_registry import (
-    MESSAGE_PROCESSOR_REGISTRY,
-)
+from typing import Callable, Dict
+
+from tools_module.floware_api import FlowareApiClient
 from tools_module.registry.registries.api_service_registry import (
     API_SERVICE_REGISTRY,
 )
 from tools_module.registry.registries.configuration_registry import (
-    CONFIGURATION_REGISTRY,
+    build_configuration_registry,
+)
+from tools_module.registry.registries.datasource_registry import (
+    build_datasource_registry,
+)
+from tools_module.registry.registries.email_registry import build_email_registry
+from tools_module.registry.registries.message_processor_registry import (
+    build_message_processor_registry,
+)
+from tools_module.registry.registries.util_function_registry import (
+    build_util_function_registry,
 )
 
 
 # TODO: Import other category registries as they are implemented
-# Master registry combining all function categories
 
 
 def _merge_registries(*registries):
@@ -41,18 +42,13 @@ def _merge_registries(*registries):
     return merged
 
 
-FUNCTION_REGISTRY = _merge_registries(
-    DATASOURCE_REGISTRY,
-    KNOWLEDGE_BASE_REGISTRY,
-    EMAIL_REGISTRY,
-    UTIL_FUNCTION_REGISTRY,
-    MESSAGE_PROCESSOR_REGISTRY,
-    API_SERVICE_REGISTRY,
-    CONFIGURATION_REGISTRY,
-)
-
-
-# Helper function to get all available function names
-def get_available_function_names():
-    """Get list of all available function names"""
-    return list(FUNCTION_REGISTRY.keys())
+def build_function_registry(api: FlowareApiClient) -> Dict[str, Callable]:
+    """Build the master registry, binding every floware-calling tool to ``api``."""
+    return _merge_registries(
+        build_datasource_registry(api),
+        build_email_registry(api),
+        build_util_function_registry(api),
+        build_message_processor_registry(api),
+        API_SERVICE_REGISTRY,
+        build_configuration_registry(api),
+    )

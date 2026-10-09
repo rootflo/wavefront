@@ -8,7 +8,7 @@ from authlib.integrations.starlette_client import OAuth
 from common_module.common_container import CommonContainer
 from common_module.feature.feature_flag import (
     INACTIVE_ACCOUNT_DISABLE_FLAG,
-    is_feature_enabled,
+    FeatureFlags,
 )
 from common_module.response_formatter import ResponseFormatter
 from db_repo_module.cache.cache_manager import CacheManager
@@ -65,11 +65,6 @@ class AuthRequest(BaseModel):
         return normalize_email(v)
 
 
-@auth_router.get('/health')
-def health_check():
-    return {'status': 'ok'}
-
-
 @auth_router.post('/authenticate')
 @inject
 async def authenticate(
@@ -96,6 +91,7 @@ async def authenticate(
     recaptcha_service: RecaptchaService = Depends(
         Provide[UserContainer.recaptcha_service]
     ),
+    feature_flags: FeatureFlags = Depends(Provide[CommonContainer.feature_flags]),
 ):
     is_recaptcha_valid, recaptcha_error = await recaptcha_service.verify(
         auth_data.recaptcha_token, action=RECAPTCHA_ACTION_LOGIN
@@ -122,7 +118,7 @@ async def authenticate(
             )
 
     # Check for account inactivity if feature is enabled and user exists
-    if user and is_feature_enabled(INACTIVE_ACCOUNT_DISABLE_FLAG):
+    if user and feature_flags.enabled(INACTIVE_ACCOUNT_DISABLE_FLAG):
         (
             is_inactive,
             days_since_login,

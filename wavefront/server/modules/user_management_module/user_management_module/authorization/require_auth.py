@@ -3,8 +3,8 @@ import json
 import hashlib
 import hmac
 import time
-import os
 import re
+from collections.abc import Sequence
 
 from auth_module.auth_container import AuthContainer
 from auth_module.services.token_service import TokenService
@@ -53,35 +53,13 @@ optional_auth_apis = [
     '/floware/v1/triggers/{trigger_id}/{agentic_id}/invoke',
 ]
 
-hmac_routes = [
-    route.strip()
-    for route in os.getenv('HMAC_AUTH_ROUTES', '').split(',')
-    if route.strip()
-]
+# Always HMAC-authenticated, on top of any routes the app configures.
+BASE_HMAC_APIS = ('/floware/v1/image/analyse',)
 
-floware_jwt_audience = os.getenv('FLOWARE_JWT_AUDIENCE', '')
 
-floware_jwt_validation_issuer = os.getenv('FLOWARE_JWT_VALIDATION_ISSUER', '').split(
-    ','
-)
-
-console_token_prefix = os.getenv('CONSOLE_TOKEN_PREFIX', 'fc_')
-passthrough_secret = os.getenv('PASSTHROUGH_SECRET')
-environment = os.getenv('APP_ENV', 'production')
-
-mtls_allowed_namespaces = [
-    namespace.strip()
-    for namespace in os.getenv(
-        'MTLS_ALLOWED_NAMESPACES', 'client-applications,gpu-processing'
-    ).split(',')
-    if namespace.strip()
-]
-
-mtls_allowed_principal_prefixes = tuple(
-    f'spiffe://cluster.local/ns/{namespace}' for namespace in mtls_allowed_namespaces
-)
-
-required_hmac_apis = ['/floware/v1/image/analyse', *hmac_routes]
+def mtls_principal_prefixes(namespaces: Sequence[str]) -> tuple[str, ...]:
+    """SPIFFE ID prefixes a caller in one of ``namespaces`` presents."""
+    return tuple(f'spiffe://cluster.local/ns/{namespace}' for namespace in namespaces)
 
 
 admin_apis = [
@@ -167,9 +145,9 @@ async def validate_service_auth(
             logger.warning(f'Invalid client_key for service auth: {client_key}')
             return False
 
-        # Remove console prefix if present (fc_)
-        if token.startswith(console_token_prefix):
-            token = token[len(console_token_prefix) :]
+        token_prefix = token_service.token_prefix
+        if token_prefix and token.startswith(token_prefix):
+            token = token[len(token_prefix) :]
 
         # Validate JWT using client secret (HS256 algorithm for service tokens)
         try:
@@ -177,8 +155,8 @@ async def validate_service_auth(
                 token,
                 auth_secret.client_secret,
                 algorithms=['HS256'],
-                issuer=floware_jwt_validation_issuer or '',
-                audience=floware_jwt_audience,
+                issuer=token_service.validation_issuers or '',
+                audience=token_service.audience,
             )
 
             # For service tokens, we skip session validation
@@ -308,7 +286,9 @@ async def validate_hmac_signature(
         return False
 
 
-async def validate_mtls_auth(request: Request) -> bool:
+async def validate_mtls_auth(
+    request: Request, allowed_principal_prefixes: tuple[str, ...]
+) -> bool:
     """Validate mTLS authentication using X-Forwarded-Client-Cert header"""
     try:
         xfcc = request.headers.get('X-Forwarded-Client-Cert')
@@ -324,7 +304,7 @@ async def validate_mtls_auth(request: Request) -> bool:
             principal = xfcc
 
         if principal:
-            if not principal.startswith(mtls_allowed_principal_prefixes):
+            if not principal.startswith(allowed_principal_prefixes):
                 logger.error(f'Invalid mTLS authentication. Principal: {principal}')
                 return False
 
@@ -358,6 +338,7 @@ async def validate_mtls_auth(request: Request) -> bool:
 def validate_passthrough_auth(
     request: Request,
     response_formatter: ResponseFormatter,
+    passthrough_secret: str | None,
 ) -> JSONResponse | None:
     """Validate the passthrough secret and attach a service session.
 
@@ -369,9 +350,7 @@ def validate_passthrough_auth(
 
     if not passthrough_secret:
         request_id = getattr(request.state, 'request_id', get_current_request_id())
-        logger.error(
-            f'PASSTHROUGH_SECRET environment variable not set [Request ID: {request_id}]'
-        )
+        logger.error(f'passthrough secret is not configured [Request ID: {request_id}]')
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content=response_formatter.buildErrorResponse(
@@ -406,6 +385,33 @@ class UserSession:
 
 
 class RequireAuthMiddleware(BaseHTTPMiddleware):
+    def __init__(
+        self,
+        app,
+        *,
+        app_env: str = 'production',
+        passthrough_secret: str | None = None,
+        hmac_routes: Sequence[str] = (),
+        mtls_allowed_namespaces: Sequence[str],
+    ):
+        """
+        Args:
+            app_env: Passthrough auth is only honoured when this is not
+                ``production``.
+            passthrough_secret: Shared secret for passthrough auth (local use);
+                optional.
+            hmac_routes: Extra routes authenticated by HMAC signature.
+            mtls_allowed_namespaces: Namespaces whose SPIFFE identities are
+                accepted for mTLS auth.
+        """
+        super().__init__(app)
+        self.app_env = app_env
+        self.passthrough_secret = passthrough_secret
+        self.required_hmac_apis = [*BASE_HMAC_APIS, *hmac_routes]
+        self.mtls_allowed_principal_prefixes = mtls_principal_prefixes(
+            mtls_allowed_namespaces
+        )
+
     @inject
     async def dispatch(
         self,
@@ -437,10 +443,12 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
                 return await call_next(request)
 
             # For non-production environments: Check passthrough authentication globally
-            if environment != 'production' and request.headers.get(
+            if self.app_env != 'production' and request.headers.get(
                 RootfloHeaders.PASSTHROUGH
             ):
-                error_response = validate_passthrough_auth(request, response_formatter)
+                error_response = validate_passthrough_auth(
+                    request, response_formatter, self.passthrough_secret
+                )
                 if error_response:
                     return error_response
                 return await call_next(request)
@@ -450,7 +458,9 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
             mtls_header = request.headers.get('X-Forwarded-Client-Cert')
             if mtls_header and not token and not is_request_hmac(request.headers):
                 logger.info(f'mTLS authentication by {mtls_header}')
-                if await validate_mtls_auth(request):
+                if await validate_mtls_auth(
+                    request, self.mtls_allowed_principal_prefixes
+                ):
                     return await call_next(request)
                 else:
                     logger.error(f'Invalid mTLS authentication for {request.url.path}')
@@ -463,7 +473,7 @@ class RequireAuthMiddleware(BaseHTTPMiddleware):
 
             # Check if this endpoint requires HMAC validation (skip JWT validation then)
             if not authorization and matches_any_route(
-                request.url.path, required_hmac_apis
+                request.url.path, self.required_hmac_apis
             ):
                 if not await validate_hmac_signature(request, auth_secrets_repository):
                     request_id = getattr(

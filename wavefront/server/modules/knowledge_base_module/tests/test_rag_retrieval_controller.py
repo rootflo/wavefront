@@ -1,19 +1,21 @@
 from unittest.mock import AsyncMock
 from uuid import uuid4
 from db_repo_module.models.knowledge_bases import KnowledgeBase
-from db_repo_module.models.kb_inferences import KnowledgeBaseInferences
 from db_repo_module.models.knowledge_base_documents import KnowledgeBaseDocuments
-from db_repo_module.models.llm_inference_config import LlmInferenceConfig
 from dependency_injector import providers
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from fastapi import status
 from flo_testing import seed_user_session as create_session
 
 
 @pytest.mark.asyncio
 async def test_retrieve_query_success(
-    test_client, auth_token, test_session: AsyncSession, test_user_id, test_session_id
+    test_client,
+    auth_token,
+    test_session: async_sessionmaker[AsyncSession],
+    test_user_id,
+    test_session_id,
 ):
     await create_session(test_session, test_user_id, test_session_id)
 
@@ -24,7 +26,7 @@ async def test_retrieve_query_success(
             id=kb_id,
             name='Test KB for Retrieve',
             description='Test Description',
-            type='document',
+            type='text',
             vector_size=1536,
         )
         session.add(new_kb)
@@ -32,8 +34,9 @@ async def test_retrieve_query_success(
 
     query = 'test query'
     response = test_client.post(
-        f'/floware/v1/knowledge-base/{kb_id}/retrieve?query={query}',
+        f'/floware/v1/knowledge-base/{kb_id}/retrieve',
         headers={'Authorization': f'Bearer {auth_token}'},
+        json={'query': query},
     )
 
     assert response.status_code == status.HTTP_200_OK
@@ -43,26 +46,45 @@ async def test_retrieve_query_success(
 
 @pytest.mark.asyncio
 async def test_retrieve_query_empty_query(
-    test_client, auth_token, test_session: AsyncSession, test_user_id, test_session_id
+    test_client,
+    auth_token,
+    test_session: async_sessionmaker[AsyncSession],
+    test_user_id,
+    test_session_id,
 ):
     await create_session(test_session, test_user_id, test_session_id)
 
     kb_id = uuid4()
+    async with test_session() as session:
+        session.add(
+            KnowledgeBase(
+                id=kb_id,
+                name='Test KB Empty Query',
+                description='Test Description',
+                type='text',
+                vector_size=1024,
+            )
+        )
+        await session.commit()
+
     response = test_client.post(
-        f'/floware/v1/knowledge-base/{kb_id}/retrieve?query=',
+        f'/floware/v1/knowledge-base/{kb_id}/retrieve',
         headers={'Authorization': f'Bearer {auth_token}'},
+        json={'query': ''},
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     response_data = response.json()
-    assert response_data['meta']['error'] == 'Query or Image data should not be empty'
+    assert (
+        response_data['meta']['error'] == 'Query is required for a text knowledge base'
+    )
 
 
 @pytest.mark.asyncio
 async def test_retrieve_image_success(
     test_client,
     auth_token,
-    test_session: AsyncSession,
+    test_session: async_sessionmaker[AsyncSession],
     test_user_id,
     test_session_id,
     setup_containers,
@@ -113,7 +135,7 @@ async def test_retrieve_image_success(
 async def test_retrieve_image_exact_match_returns_document_date(
     test_client,
     auth_token,
-    test_session: AsyncSession,
+    test_session: async_sessionmaker[AsyncSession],
     test_user_id,
     test_session_id,
     setup_containers,
@@ -176,7 +198,11 @@ async def test_retrieve_image_exact_match_returns_document_date(
 
 @pytest.mark.asyncio
 async def test_retrieve_image_kb_not_found(
-    test_client, auth_token, test_session: AsyncSession, test_user_id, test_session_id
+    test_client,
+    auth_token,
+    test_session: async_sessionmaker[AsyncSession],
+    test_user_id,
+    test_session_id,
 ):
     await create_session(test_session, test_user_id, test_session_id)
 
@@ -197,15 +223,20 @@ async def test_retrieve_image_kb_not_found(
 
 @pytest.mark.asyncio
 async def test_retrieve_query_kb_not_found(
-    test_client, auth_token, test_session: AsyncSession, test_user_id, test_session_id
+    test_client,
+    auth_token,
+    test_session: async_sessionmaker[AsyncSession],
+    test_user_id,
+    test_session_id,
 ):
     await create_session(test_session, test_user_id, test_session_id)
 
     non_existent_kb_id = uuid4()
     query = 'test query'
     response = test_client.post(
-        f'/floware/v1/knowledge-base/{non_existent_kb_id}/retrieve?query={query}',
+        f'/floware/v1/knowledge-base/{non_existent_kb_id}/retrieve',
         headers={'Authorization': f'Bearer {auth_token}'},
+        json={'query': query},
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
@@ -220,7 +251,7 @@ async def test_retrieve_query_kb_not_found(
 async def test_retrieve_query_no_matching_documents(
     test_client,
     auth_token,
-    test_session: AsyncSession,
+    test_session: async_sessionmaker[AsyncSession],
     test_user_id,
     test_session_id,
     setup_containers,
@@ -236,7 +267,7 @@ async def test_retrieve_query_no_matching_documents(
             id=kb_id,
             name='Test KB for No Docs',
             description='Test Description',
-            type='document',
+            type='text',
             vector_size=1536,
         )
         session.add(new_kb)
@@ -251,8 +282,9 @@ async def test_retrieve_query_no_matching_documents(
 
     query = 'query with no matches'
     response = test_client.post(
-        f'/floware/v1/knowledge-base/{kb_id}/retrieve?query={query}',
+        f'/floware/v1/knowledge-base/{kb_id}/retrieve',
         headers={'Authorization': f'Bearer {auth_token}'},
+        json={'query': query},
     )
 
     assert response.status_code == status.HTTP_200_OK
@@ -260,304 +292,49 @@ async def test_retrieve_query_no_matching_documents(
 
 @pytest.mark.asyncio
 async def test_retrieve_image_data_empty(
-    test_client, auth_token, test_session: AsyncSession, test_user_id, test_session_id
+    test_client,
+    auth_token,
+    test_session: async_sessionmaker[AsyncSession],
+    test_user_id,
+    test_session_id,
 ):
     await create_session(test_session, test_user_id, test_session_id)
 
     kb_id = uuid4()
+    async with test_session() as session:
+        session.add(
+            KnowledgeBase(
+                id=kb_id,
+                name='Test KB Empty Image',
+                description='Test Description',
+                type='image',
+                vector_size=512,
+                vector_size_1=1024,
+            )
+        )
+        await session.commit()
+
     response = test_client.post(
         f'/floware/v1/knowledge-base/{kb_id}/retrieve',
         headers={'Authorization': f'Bearer {auth_token}'},
-    )
-
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-    response_data = response.json()
-    assert response_data['meta']['error'] == 'Query or Image data should not be empty'
-
-
-@pytest.mark.asyncio
-async def test_rag_response_with_query_success(
-    test_client, auth_token, test_session: AsyncSession, test_user_id, test_session_id
-):
-    await create_session(test_session, test_user_id, test_session_id)
-
-    # Create a knowledge base and an inference
-    kb_id = uuid4()
-    inference_id = uuid4()
-    config_id = uuid4()
-    async with test_session() as session:
-        new_kb = KnowledgeBase(
-            id=kb_id,
-            name='Test KB RAG Query',
-            description='Test Description',
-            type='document',
-            vector_size=1536,
-        )
-        llm_config = LlmInferenceConfig(
-            id=config_id,
-            llm_model='gemini-2.5-flash',
-            display_name='test_root_gemini',
-            api_key='test-api-key-placeholder',
-            type='gemini',
-            base_url='https://generativelanguage.googleapis.com/',
-        )
-        new_inference = KnowledgeBaseInferences(
-            inference_id=inference_id,
-            knowledge_base_id=kb_id,
-            inference_content={'prompt': 'System prompt'},
-            config_id=config_id,
-        )
-        session.add(new_kb)
-        await session.commit()
-        session.add(llm_config)
-        await session.commit()
-        session.add(new_inference)
-        await session.commit()
-
-    query = 'user query'
-    model = 'gemini-2.5-pro'
-    response = test_client.post(
-        f'/floware/v1/knowledge-base/{kb_id}/augment/{inference_id}?query={query}&model={model}',
-        headers={'Authorization': f'Bearer {auth_token}'},
-    )
-    assert response.status_code == status.HTTP_200_OK
-    response_data = response.json()
-    assert response_data['data']['response'] == {'response': 'test response'}
-
-
-@pytest.mark.asyncio
-async def test_rag_response_empty_query(
-    test_client, auth_token, test_session: AsyncSession, test_user_id, test_session_id
-):
-    await create_session(test_session, test_user_id, test_session_id)
-
-    kb_id = uuid4()
-    inference_id = uuid4()
-    config_id = uuid4()
-    async with test_session() as session:
-        new_kb = KnowledgeBase(
-            id=kb_id,
-            name='Test KB RAG Query',
-            description='Test Description',
-            type='document',
-            vector_size=1536,
-        )
-        llm_config = LlmInferenceConfig(
-            id=config_id,
-            llm_model='gemini-2.5-flash',
-            display_name='test_root_gemini',
-            api_key='test-api-key-placeholder',
-            type='gemini',
-            base_url='https://generativelanguage.googleapis.com/',
-        )
-        new_inference = KnowledgeBaseInferences(
-            inference_id=inference_id,
-            knowledge_base_id=kb_id,
-            inference_content={'prompt': 'System prompt'},
-            config_id=config_id,
-        )
-        session.add(new_kb)
-        await session.commit()
-        session.add(llm_config)
-        await session.commit()
-        session.add(new_inference)
-        await session.commit()
-    response = test_client.post(
-        f'/floware/v1/knowledge-base/{kb_id}/augment/{inference_id}',
-        headers={'Authorization': f'Bearer {auth_token}'},
+        json={},
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     response_data = response.json()
     assert (
         response_data['meta']['error']
-        == 'Query must be provided either in request body or as query parameter'
+        == 'Image data is required for an image knowledge base'
     )
-
-
-@pytest.mark.asyncio
-async def test_rag_response_kb_not_found(
-    test_client, auth_token, test_session: AsyncSession, test_user_id, test_session_id
-):
-    await create_session(test_session, test_user_id, test_session_id)
-
-    non_existent_kb_id = uuid4()
-    inference_id = uuid4()
-    query = 'test query'
-    model = 'gemini-2.5-pro'
-    response = test_client.post(
-        f'/floware/v1/knowledge-base/{non_existent_kb_id}/augment/{inference_id}?query={query}&model={model}',
-        headers={'Authorization': f'Bearer {auth_token}'},
-    )
-
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-    response_data = response.json()
-    assert (
-        response_data['meta']['error']
-        == 'Knowledge Base with the mentioned id doesnt exist'
-    )
-
-
-@pytest.mark.asyncio
-async def test_rag_response_inference_not_found(
-    test_client, auth_token, test_session: AsyncSession, test_user_id, test_session_id
-):
-    await create_session(test_session, test_user_id, test_session_id)
-
-    # Create a knowledge base
-    kb_id = uuid4()
-    async with test_session() as session:
-        new_kb = KnowledgeBase(
-            id=kb_id,
-            name='Test KB RAG No Inference',
-            description='Test Description',
-            type='document',
-            vector_size=1536,
-        )
-        session.add(new_kb)
-        await session.commit()
-
-    non_existent_inference_id = uuid4()
-    query = 'test query'
-    model = 'gemini-2.5-pro'
-    response = test_client.post(
-        f'/floware/v1/knowledge-base/{kb_id}/augment/{non_existent_inference_id}?query={query}&model={model}',
-        headers={'Authorization': f'Bearer {auth_token}'},
-    )
-
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-    response_data = response.json()
-    assert (
-        response_data['meta']['error']
-        == 'Knowledge Base inference with the mentioned knowledge_base_id and inference_id doesnt exist'
-    )
-
-
-@pytest.mark.asyncio
-async def test_create_system_prompt_success(
-    test_client, auth_token, test_session: AsyncSession, test_user_id, test_session_id
-):
-    await create_session(test_session, test_user_id, test_session_id)
-
-    # Create a knowledge base
-    kb_id = uuid4()
-    inference_id = uuid4()
-    config_id = uuid4()
-    async with test_session() as session:
-        new_kb = KnowledgeBase(
-            id=kb_id,
-            name='Test KB RAG Query',
-            description='Test Description',
-            type='document',
-            vector_size=1536,
-        )
-        llm_config = LlmInferenceConfig(
-            id=config_id,
-            llm_model='gemini-2.5-flash',
-            display_name='test_root_gemini',
-            api_key='test-api-key-placeholder',
-            type='gemini',
-            base_url='https://generativelanguage.googleapis.com/',
-        )
-        new_inference = KnowledgeBaseInferences(
-            inference_id=inference_id,
-            knowledge_base_id=kb_id,
-            inference_content={'prompt': 'System prompt'},
-            config_id=config_id,
-        )
-        session.add(new_kb)
-        await session.commit()
-        session.add(llm_config)
-        await session.commit()
-        session.add(new_inference)
-        await session.commit()
-
-    prompt_payload = {'prompt': 'This is a test system prompt.'}
-    response = test_client.post(
-        f'/floware/v1/knowledge-base/{kb_id}/llm_config/{config_id}/inference',
-        headers={'Authorization': f'Bearer {auth_token}'},
-        json=prompt_payload,
-    )
-
-    assert response.status_code == status.HTTP_200_OK
-    response_data = response.json()
-    assert (
-        response_data['data']['message']
-        == 'Created the knowledge base inference table successfully'
-    )
-    assert 'inference_id' in response_data['data']
-
-
-@pytest.mark.asyncio
-async def test_get_system_prompt_success(
-    test_client, auth_token, test_session: AsyncSession, test_user_id, test_session_id
-):
-    await create_session(test_session, test_user_id, test_session_id)
-
-    # Create a knowledge base and a system prompt
-    kb_id = uuid4()
-    async with test_session() as session:
-        new_kb = KnowledgeBase(
-            id=kb_id,
-            name='Test KB Get Prompt',
-            description='Test Description',
-            type='document',
-            vector_size=1536,
-        )
-        session.add(new_kb)
-        await session.commit()
-        new_inference = KnowledgeBaseInferences(
-            knowledge_base_id=kb_id,
-            inference_content={'message': 'Existing system prompt'},
-        )
-        session.add(new_inference)
-        await session.commit()
-
-    response = test_client.get(
-        f'/floware/v1/knowledge-base/{kb_id}/inference',
-        headers={'Authorization': f'Bearer {auth_token}'},
-    )
-
-    assert response.status_code == status.HTTP_200_OK
-    response_data = response.json()
-    assert len(response_data['data']['resources']) == 1
-    assert response_data['data']['resources'][0]['inference_content'] == {
-        'message': 'Existing system prompt'
-    }
-
-
-@pytest.mark.asyncio
-async def test_get_system_prompt_no_prompt_found(
-    test_client, auth_token, test_session: AsyncSession, test_user_id, test_session_id
-):
-    await create_session(test_session, test_user_id, test_session_id)
-
-    # Create a knowledge base but no system prompt
-    kb_id = uuid4()
-    async with test_session() as session:
-        new_kb = KnowledgeBase(
-            id=kb_id,
-            name='Test KB Get No Prompt',
-            description='Test Description',
-            type='document',
-            vector_size=1536,
-        )
-        session.add(new_kb)
-        await session.commit()
-
-    response = test_client.get(
-        f'/floware/v1/knowledge-base/{kb_id}/inference',
-        headers={'Authorization': f'Bearer {auth_token}'},
-    )
-
-    assert response.status_code == status.HTTP_200_OK
-    response_data = response.json()
-    assert len(response_data['data']['resources']) == 0
 
 
 @pytest.mark.asyncio
 async def test_store_embeddings_success(
-    test_client, auth_token, test_session: AsyncSession, test_user_id, test_session_id
+    test_client,
+    auth_token,
+    test_session: async_sessionmaker[AsyncSession],
+    test_user_id,
+    test_session_id,
 ):
     await create_session(test_session, test_user_id, test_session_id)
 
@@ -569,9 +346,8 @@ async def test_store_embeddings_success(
             id=kb_id,
             name='Test KB Embeddings',
             description='Test Description',
-            type='document',
-            vector_size=3,
-            vector_size_1=0,
+            type='text',
+            vector_size=1024,
         )
         session.add(new_kb)
         await session.commit()
@@ -587,7 +363,7 @@ async def test_store_embeddings_success(
         await session.commit()
 
     embedding_payload = {
-        'embedding_vector': [[0.1, 0.2, 0.3]],
+        'text_embedding': [[0.1] * 1024],  # BGE-M3 dense
         'document_id': str(doc_id),
         'kb_id': str(kb_id),
         'chunk_text': ['chunk 1'],
@@ -616,7 +392,11 @@ async def test_store_embeddings_success(
 
 @pytest.mark.asyncio
 async def test_store_embeddings_kb_not_found(
-    test_client, auth_token, test_session: AsyncSession, test_user_id, test_session_id
+    test_client,
+    auth_token,
+    test_session: async_sessionmaker[AsyncSession],
+    test_user_id,
+    test_session_id,
 ):
     await create_session(test_session, test_user_id, test_session_id)
 
@@ -647,7 +427,11 @@ async def test_store_embeddings_kb_not_found(
 
 @pytest.mark.asyncio
 async def test_store_embeddings_vector_size_mismatch(
-    test_client, auth_token, test_session: AsyncSession, test_user_id, test_session_id
+    test_client,
+    auth_token,
+    test_session: async_sessionmaker[AsyncSession],
+    test_user_id,
+    test_session_id,
 ):
     await create_session(test_session, test_user_id, test_session_id)
 
@@ -659,15 +443,14 @@ async def test_store_embeddings_vector_size_mismatch(
             id=kb_id,
             name='Test KB Vector Size Mismatch',
             description='Test Description',
-            type='document',
-            vector_size=10,
-            vector_size_1=0,
+            type='text',
+            vector_size=1024,
         )
         session.add(new_kb)
         await session.commit()
 
     embedding_payload = {
-        'embedding_vector': [[0.1, 0.2, 0.3]],  # Incorrect size
+        'text_embedding': [[0.1, 0.2, 0.3]],  # Incorrect size (BGE-M3 is 1024)
         'document_id': str(doc_id),
         'kb_id': str(kb_id),
         'chunk_text': ['chunk 1'],
@@ -688,3 +471,241 @@ async def test_store_embeddings_vector_size_mismatch(
         response_data['meta']['error']
         == "The vector size on the embedding doesn't match the required embedding vector size"
     )
+
+
+def test_legacy_retrieve_endpoint_is_removed(test_client, auth_token):
+    # Replaced by /v1/knowledge-base/{kb_id}/retrieve
+    response = test_client.post(
+        '/floware/v1/retrieve',
+        headers={'Authorization': f'Bearer {auth_token}'},
+        json={'query': 'q', 'kb_id': str(uuid4())},
+    )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+# --- result count: limit overrides top_k, default 10, for every mode ---------
+
+
+async def _seed_kb(test_session, test_user_id, test_session_id, *, kb_type='text'):
+    await create_session(test_session, test_user_id, test_session_id)
+    kb_id = uuid4()
+    async with test_session() as session:
+        session.add(
+            KnowledgeBase(
+                id=kb_id,
+                name='Result count KB',
+                description='',
+                type=kb_type,
+                vector_size=1024,
+                **({'vector_size_1': 1024} if kb_type == 'image' else {}),
+            )
+        )
+        await session.commit()
+    return kb_id
+
+
+def _mock_retrieval(kb_container):
+    text = AsyncMock()
+    text.retrieve_documents.return_value = [{'doc': 'text doc'}]
+    image = AsyncMock()
+    image.retrieve_images.return_value = [{'doc': 'image doc'}]
+    kb_container.knowledge_base_retrieve.override(providers.Singleton(lambda: text))
+    kb_container.image_knowledge_base_retrieve.override(
+        providers.Singleton(lambda: image)
+    )
+    return text, image
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ('params', 'expected'),
+    [({'top_k': 3}, 3), ({'limit': 4}, 4), ({'top_k': 3, 'limit': 7}, 7), ({}, 10)],
+)
+async def test_text_search_result_count(
+    test_client,
+    auth_token,
+    test_session,
+    test_user_id,
+    test_session_id,
+    setup_containers,
+    params,
+    expected,
+):
+    kb_id = await _seed_kb(test_session, test_user_id, test_session_id)
+    text, _ = _mock_retrieval(setup_containers[3])
+
+    response = test_client.post(
+        f'/floware/v1/knowledge-base/{kb_id}/retrieve',
+        headers={'Authorization': f'Bearer {auth_token}'},
+        params=params,
+        json={'query': 'hello'},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    # retrieve_documents(query, kb_id, threshold, vector_weight,
+    #                    keyword_weight, query_filter, offset, limit, ...)
+    assert text.retrieve_documents.await_args.args[7] == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ('params', 'expected'),
+    [({'top_k': 3}, 3), ({'limit': 4}, 4), ({'top_k': 3, 'limit': 7}, 7), ({}, 10)],
+)
+async def test_image_search_result_count(
+    test_client,
+    auth_token,
+    test_session,
+    test_user_id,
+    test_session_id,
+    setup_containers,
+    params,
+    expected,
+):
+    kb_id = await _seed_kb(test_session, test_user_id, test_session_id, kb_type='image')
+    _, image = _mock_retrieval(setup_containers[3])
+
+    response = test_client.post(
+        f'/floware/v1/knowledge-base/{kb_id}/retrieve',
+        headers={'Authorization': f'Bearer {auth_token}'},
+        params=params,
+        json={'image_data': 'base64-image-data'},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    # retrieve_images(image_data, inference_url, kb_id, top_k, ...)
+    assert image.retrieve_images.await_args.args[3] == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'params',
+    [
+        {'top_k': 0},
+        {'limit': 0},
+        {'top_k': -5},
+        {'top_k': 101},
+        {'limit': 101},
+        {'offset': -1},
+        {'offset': 901},
+    ],
+)
+async def test_out_of_range_paging_is_rejected(
+    test_client,
+    auth_token,
+    test_session,
+    test_user_id,
+    test_session_id,
+    setup_containers,
+    params,
+):
+    kb_id = await _seed_kb(test_session, test_user_id, test_session_id)
+    text, _ = _mock_retrieval(setup_containers[3])
+
+    response = test_client.post(
+        f'/floware/v1/knowledge-base/{kb_id}/retrieve',
+        headers={'Authorization': f'Bearer {auth_token}'},
+        params=params,
+        json={'query': 'hello'},
+    )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    text.retrieve_documents.assert_not_awaited()
+
+
+def test_image_queries_no_longer_receive_a_missing_top_k():
+    # The CLIP-only/DINO-only image queries did int(params.get('top_k', 10)),
+    # which crashed on top_k=None; the controller now always passes a number.
+    from knowledge_base_module.controllers.rag_retreival_controller import (
+        _result_limit,
+    )
+
+    assert _result_limit(None, None) == 10
+    assert _result_limit(5, None) == 5
+    assert _result_limit(5, 2) == 2
+
+
+# --- query embedding failures map to 503 / 502 --------------------------------
+
+from knowledge_base_module.embeddings.embed import TextEmbeddingError  # noqa: E402
+
+EMBEDDING_FAILURES = [
+    (TextEmbeddingError('model still loading', status_code=503), 503),
+    (TextEmbeddingError('rate limited', status_code=429), 503),
+    (TextEmbeddingError('inference crashed', status_code=500), 502),
+    (TextEmbeddingError('connection refused'), 502),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(('error', 'expected_status'), EMBEDDING_FAILURES)
+async def test_retrieve_maps_embedding_failures(
+    test_client,
+    auth_token,
+    test_session,
+    test_user_id,
+    test_session_id,
+    setup_containers,
+    error,
+    expected_status,
+):
+    kb_id = await _seed_kb(test_session, test_user_id, test_session_id)
+    text, _ = _mock_retrieval(setup_containers[3])
+    text.retrieve_documents.side_effect = error
+
+    response = test_client.post(
+        f'/floware/v1/knowledge-base/{kb_id}/retrieve',
+        headers={'Authorization': f'Bearer {auth_token}'},
+        json={'query': 'hello'},
+    )
+
+    assert response.status_code == expected_status
+    assert 'Could not embed the query' in response.json()['meta']['error']
+
+
+@pytest.mark.parametrize(
+    ('method', 'path'),
+    [
+        ('post', 'augment/{inference_id}'),
+        ('post', 'inference'),
+        ('get', 'inference'),
+        ('delete', 'inference/{inference_id}'),
+    ],
+)
+def test_kb_inference_endpoints_are_removed(test_client, auth_token, method, path):
+    # RAG over a knowledge base now goes through the chatbot feature
+    url = f'/floware/v1/knowledge-base/{uuid4()}/' + path.format(inference_id=uuid4())
+
+    response = getattr(test_client, method)(
+        url, headers={'Authorization': f'Bearer {auth_token}'}
+    )
+
+    assert response.status_code in (
+        status.HTTP_404_NOT_FOUND,
+        status.HTTP_405_METHOD_NOT_ALLOWED,
+    )
+
+
+@pytest.mark.asyncio
+async def test_paging_at_its_bounds_is_accepted(
+    test_client,
+    auth_token,
+    test_session,
+    test_user_id,
+    test_session_id,
+    setup_containers,
+):
+    kb_id = await _seed_kb(test_session, test_user_id, test_session_id)
+    text, _ = _mock_retrieval(setup_containers[3])
+
+    response = test_client.post(
+        f'/floware/v1/knowledge-base/{kb_id}/retrieve',
+        headers={'Authorization': f'Bearer {auth_token}'},
+        params={'top_k': 100, 'limit': 100, 'offset': 900},
+        json={'query': 'hello'},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    # retrieve_documents(..., query_filter, offset, limit, ...)
+    assert text.retrieve_documents.await_args.args[6:8] == (900, 100)

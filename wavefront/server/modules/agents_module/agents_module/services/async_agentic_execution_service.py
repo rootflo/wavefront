@@ -2,6 +2,7 @@ import asyncio
 import base64
 import binascii
 import json
+import math
 import re
 import uuid
 from datetime import datetime
@@ -13,12 +14,13 @@ from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.models.async_agentic_execution import AsyncAgenticExecution
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from flo_cloud.cloud_storage import CloudStorageManager
+from sqlalchemy import func, or_, select
 
 from agents_module.models.async_agentic_execution_schemas import (
     AsyncInferenceResponse,
     AgenticExecutionStatusResponse,
 )
-from agents_module.utils.celery_client import get_celery_client
+from celery import Celery
 from agents_module.utils.execution_variable_utils import with_execution_variables
 from agents_module.utils.mime_type_utils import (
     SUPPORTED_DOCUMENT_MIME_TYPES,
@@ -106,6 +108,78 @@ def _safe_filename(idx: int, file_name: Optional[str], mime_type: Optional[str])
     return f'{idx}_{stem}{ext}' if stem else f'{idx}_file{ext}'
 
 
+def _coerce_json_scalar(value: str) -> Any:
+    """The same text as a JSON number or bool, or None if it is neither.
+
+    None also covers the literal `null`: a filter cannot usefully ask for a
+    null-valued variable.
+    """
+    lowered = value.lower()
+    if lowered in ('true', 'false'):
+        return lowered == 'true'
+
+    try:
+        parsed = json.loads(value)
+    except ValueError:
+        return None
+
+    if not isinstance(parsed, (int, float)):
+        return None
+
+    # json takes `Infinity`/`-Infinity`/`NaN` and overflows a big exponent to
+    # inf, then writes them back under those same spellings -- which Postgres
+    # rejects as invalid json. Not coercing leaves the text term, so
+    # `?variable.x=NaN` matches the string instead of 500ing.
+    if isinstance(parsed, float) and not math.isfinite(parsed):
+        return None
+
+    return parsed
+
+
+def _variable_containment(key: str, value: str):
+    """One containment term for a filtered variable, tolerant of stored type.
+
+    `@>` matches by JSON type but a filter value is always text, so the
+    number/bool reading is OR'd in to keep `?variable.n=5` finding {"n": 5}.
+    Both halves stay `@>` rather than `->>`, which a jsonb_ops GIN index cannot
+    serve; the key travels as a bound JSONB param, never as SQL text.
+    """
+    column = AsyncAgenticExecution.variables
+    term = column.contains({key: value})
+
+    coerced = _coerce_json_scalar(value)
+    if coerced is None:
+        return term
+
+    return or_(term, column.contains({key: coerced}))
+
+
+def _build_execution_filters(
+    entity_id: Optional[UUID],
+    entity_type: Optional[str],
+    status: Optional[str],
+    variables: Optional[Dict[str, str]],
+) -> List[Any]:
+    """Predicates for a listing, shared by the page query and the COUNT.
+
+    One builder for both, so they cannot disagree about what is counted.
+    """
+    predicates: List[Any] = []
+
+    if entity_id:
+        predicates.append(AsyncAgenticExecution.entity_id == entity_id)
+    if entity_type:
+        predicates.append(AsyncAgenticExecution.entity_type == entity_type)
+    if status:
+        predicates.append(AsyncAgenticExecution.status == status)
+
+    # Sorted so the SQL shape does not depend on query-string order.
+    for key, value in sorted((variables or {}).items()):
+        predicates.append(_variable_containment(key, value))
+
+    return predicates
+
+
 class AsyncAgenticExecutionService:
     def __init__(
         self,
@@ -113,11 +187,13 @@ class AsyncAgenticExecutionService:
         cloud_storage_manager: CloudStorageManager,
         cache_manager: CacheManager,
         executions_bucket: str,
+        celery_client: Celery,
     ):
         self.repo = async_agentic_execution_repository
         self.cloud_storage = cloud_storage_manager
         self.cache = cache_manager
         self.bucket = executions_bucket
+        self.celery = celery_client
 
     def pre_save_binary_inputs(
         self,
@@ -279,7 +355,7 @@ class AsyncAgenticExecutionService:
         }
 
         try:
-            result = get_celery_client().send_task(
+            result = self.celery.send_task(
                 _AGENT_TASK_NAME,
                 kwargs={'payload': payload},
             )
@@ -352,7 +428,7 @@ class AsyncAgenticExecutionService:
         }
 
         try:
-            result = get_celery_client().send_task(
+            result = self.celery.send_task(
                 _WORKFLOW_TASK_NAME,
                 kwargs={'payload': payload},
             )
@@ -397,8 +473,8 @@ class AsyncAgenticExecutionService:
                 output_url = self.cloud_storage.generate_presigned_url(
                     bucket_name=record_dict['input_bucket'],
                     key=record_dict['output_file'],
-                    type='get',
-                    expiresIn=900,
+                    operation='get',
+                    expires_in=900,
                 )
             except Exception as e:
                 logger.warning(f'Failed to generate output presigned URL: {e}')
@@ -412,8 +488,8 @@ class AsyncAgenticExecutionService:
                 history_url = self.cloud_storage.generate_presigned_url(
                     bucket_name=record_dict['input_bucket'],
                     key=record_dict['history_file'],
-                    type='get',
-                    expiresIn=900,
+                    operation='get',
+                    expires_in=900,
                 )
             except Exception as e:
                 logger.warning(f'Failed to generate history presigned URL: {e}')
@@ -433,8 +509,8 @@ class AsyncAgenticExecutionService:
                     input_file['url'] = self.cloud_storage.generate_presigned_url(
                         bucket_name=record_dict['input_bucket'],
                         key=input_file['key'],
-                        type='get',
-                        expiresIn=900,
+                        operation='get',
+                        expires_in=900,
                     )
                 except Exception as e:
                     logger.warning(f'Failed to generate input presigned URL: {e}')
@@ -510,26 +586,36 @@ class AsyncAgenticExecutionService:
         entity_id: Optional[UUID] = None,
         entity_type: Optional[str] = None,
         status: Optional[str] = None,
+        variables: Optional[Dict[str, str]] = None,
         offset: int = 0,
         limit: int = 50,
         include_error: bool = False,
     ) -> Tuple[List[AgenticExecutionStatusResponse], int]:
-        filters: Dict[str, Any] = {}
-        if entity_id:
-            filters['entity_id'] = entity_id
-        if entity_type:
-            filters['entity_type'] = entity_type
-        if status:
-            filters['status'] = status
+        """List executions newest first, optionally narrowed by stored variables.
 
-        total = await self.repo.count(**filters)
+        `variables` is a subset match: a row qualifies only if it carries every
+        pair. Queried through the session, not the generic repository, whose
+        `find`/`count` only express column equality -- which also buys a real
+        SQL OFFSET instead of over-fetching and slicing in Python.
+        """
+        predicates = _build_execution_filters(entity_id, entity_type, status, variables)
 
-        records = await self.repo.find(
-            **filters,
-            limit=offset + limit,
-            order_by=('created_at', 'desc'),
-        )
-        records = records[offset:]
+        async with self.repo.session() as session:
+            total = await session.scalar(
+                select(func.count())
+                .select_from(AsyncAgenticExecution)
+                .where(*predicates)
+            )
+
+            records = (
+                await session.scalars(
+                    select(AsyncAgenticExecution)
+                    .where(*predicates)
+                    .order_by(AsyncAgenticExecution.created_at.desc())
+                    .offset(offset)
+                    .limit(limit)
+                )
+            ).all()
 
         results = [
             self._build_status_response(

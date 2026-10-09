@@ -1,5 +1,4 @@
 import floConsoleService from '@app/api';
-import { NewInferencePayload } from '@app/api/knowledge-base-service';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import {
   Breadcrumb,
@@ -20,60 +19,46 @@ import {
 } from '@app/components/ui/dialog';
 import { Input } from '@app/components/ui/input';
 import { Label } from '@app/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
-import { Textarea } from '@app/components/ui/textarea';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@app/components/ui/tooltip';
 import {
   getKnowledgeBaseDocumentsKey,
-  getKnowledgeBaseInferencesKey,
+  getKnowledgeBaseIndexStatusKey,
   useGetKnowledgeBase,
   useGetKnowledgeBaseDocuments,
-  useGetKnowledgeBaseInferences,
-  useGetLLMConfigs,
+  useGetKnowledgeBaseIndexStatus,
 } from '@app/hooks';
 import { useNotifyStore } from '@app/store';
 import { useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { PlayIcon, Send, TrashIcon } from 'lucide-react';
-import React, { useState } from 'react';
+import { TrashIcon } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { formatAppName } from '@app/lib/utils';
+import IndexStatusSummary from './IndexStatusSummary';
+import IndexStatusPill from './IndexStatusPill';
 
 const KnowledgeBaseDetailPage: React.FC = () => {
   const { kbId, app: appId } = useParams<{ kbId: string; app: string }>();
 
-  const [showDeleteInferenceModal, setShowDeleteInferenceModal] = useState<boolean>(false);
-  const [inferenceToDelete, setInferenceToDelete] = useState<string | null>(null);
   const [uploading, setUploading] = useState<boolean>(false);
   const [showUploadModal, setShowUploadModal] = useState<boolean>(false);
   const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
   const [documentToDelete, setDocumentToDelete] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
 
-  // Create System Prompt Dialog state
-  const [showCreatePromptModal, setShowCreatePromptModal] = useState<boolean>(false);
-  const [systemPrompt, setSystemPrompt] = useState<string>('');
-  const [selectedConfigId, setSelectedConfigId] = useState<string | null>(null);
-  const [creatingPrompt, setCreatingPrompt] = useState<boolean>(false);
-
-  // Test Inference Dialog state
-  const [showTestInferenceModal, setShowTestInferenceModal] = useState<boolean>(false);
-  const [testInferenceId, setTestInferenceId] = useState<string | null>(null);
-  const [testQuery, setTestQuery] = useState<string>('');
-  const [chatMessages, setChatMessages] = useState<
-    Array<{ role: 'user' | 'assistant'; content: string; sources?: unknown[] }>
-  >([]);
-  const [loadingRag, setLoadingRag] = useState<boolean>(false);
-  const [messagesContainerRef, setMessagesContainerRef] = useState<HTMLDivElement | null>(null);
-
   const { data: knowledgeBase } = useGetKnowledgeBase(appId, kbId);
   const { data: documents = [], isLoading: loadingDocs } = useGetKnowledgeBaseDocuments(appId, kbId);
-  const { data: inferences = [], isLoading: loadingInferences } = useGetKnowledgeBaseInferences(appId, kbId);
-  const { data: llmConfigs = [] } = useGetLLMConfigs(appId);
+  const { data: indexStatus, isLoading: loadingIndexStatus } = useGetKnowledgeBaseIndexStatus(appId, kbId);
 
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  // The counts poll while documents are indexing; when they change, refresh
+  // the document list too so each row's status follows.
+  const indexStatusCounts = JSON.stringify(indexStatus?.counts ?? null);
+  useEffect(() => {
+    queryClient.invalidateQueries({ queryKey: getKnowledgeBaseDocumentsKey(appId || '', kbId || '') });
+  }, [indexStatusCounts, queryClient, appId, kbId]);
   const { notifySuccess, notifyError } = useNotifyStore();
 
   const handleFileUpload = async () => {
@@ -86,6 +71,7 @@ const KnowledgeBaseDetailPage: React.FC = () => {
       await floConsoleService.knowledgeBaseService.uploadDocument(kbId, file);
       notifySuccess(`${file.name} uploaded successfully.`);
       queryClient.invalidateQueries({ queryKey: getKnowledgeBaseDocumentsKey(appId || '', kbId || '') });
+      queryClient.invalidateQueries({ queryKey: getKnowledgeBaseIndexStatusKey(appId || '', kbId || '') });
       setShowUploadModal(false);
     } catch (error) {
       console.error('File upload failed:', error);
@@ -106,131 +92,10 @@ const KnowledgeBaseDetailPage: React.FC = () => {
       notifySuccess('Document deleted successfully.');
       // Invalidate queries to refresh document list
       queryClient.invalidateQueries({ queryKey: getKnowledgeBaseDocumentsKey(appId || '', kbId || '') });
+      queryClient.invalidateQueries({ queryKey: getKnowledgeBaseIndexStatusKey(appId || '', kbId || '') });
     } catch (error) {
       console.error('Document deletion failed:', error);
       notifyError('Failed to delete document.');
-    }
-  };
-
-  const handleDeleteInference = async (inferenceId: string) => {
-    if (!kbId || !appId) {
-      notifyError('Knowledge Base ID or Service not available.');
-      return;
-    }
-
-    try {
-      await floConsoleService.knowledgeBaseService.deleteSystemPrompt(kbId, inferenceId);
-      notifySuccess('Inference deleted successfully.');
-      // Invalidate queries to refresh inferences list
-      queryClient.invalidateQueries({ queryKey: getKnowledgeBaseInferencesKey(appId || '', kbId || '') });
-    } catch (error) {
-      console.error('Inference deletion failed:', error);
-      notifyError('Failed to delete inference.');
-    }
-  };
-
-  const handleCreateSystemPrompt = async () => {
-    if (!kbId || !appId || !systemPrompt) {
-      notifyError('Knowledge Base ID, Service, or System Prompt not available.');
-      return;
-    }
-    if (!selectedConfigId) {
-      notifyError('Please choose an LLM configuration before saving.');
-      return;
-    }
-    setCreatingPrompt(true);
-    try {
-      const payload: NewInferencePayload = { prompt: systemPrompt };
-      const response = await floConsoleService.knowledgeBaseService.createSystemPrompt(kbId, payload, selectedConfigId);
-      if (response.data && response.data.data) {
-        notifySuccess('System prompt created successfully.');
-        // Invalidate queries to refresh inferences list
-        queryClient.invalidateQueries({ queryKey: getKnowledgeBaseInferencesKey(appId || '', kbId || '') });
-        setShowCreatePromptModal(false);
-        setSystemPrompt('');
-        setSelectedConfigId(null);
-      } else {
-        notifyError('Failed to create system prompt.');
-      }
-    } catch (error) {
-      console.error('Failed to create system prompt:', error);
-      notifyError('Error creating system prompt.');
-    } finally {
-      setCreatingPrompt(false);
-    }
-  };
-
-  const handleCloseCreatePromptModal = () => {
-    setShowCreatePromptModal(false);
-    setSystemPrompt('');
-    setSelectedConfigId(null);
-  };
-
-  const handleOpenTestInference = (inferenceId: string) => {
-    setTestInferenceId(inferenceId);
-    setTestQuery('');
-    setChatMessages([]);
-    setShowTestInferenceModal(true);
-  };
-
-  const handleCloseTestInferenceModal = () => {
-    setShowTestInferenceModal(false);
-    setTestInferenceId(null);
-    setTestQuery('');
-    setChatMessages([]);
-  };
-
-  const scrollToBottom = () => {
-    if (messagesContainerRef) {
-      messagesContainerRef.scrollTop = messagesContainerRef.scrollHeight;
-    }
-  };
-
-  const handleTestRagQuery = async () => {
-    if (!kbId || !testInferenceId || !appId) {
-      notifyError('Knowledge Base ID, Inference ID, or Service not available.');
-      return;
-    }
-    if (!testQuery.trim()) {
-      notifyError('Please enter a query.');
-      return;
-    }
-
-    // Add user message to chat
-    const userMessage = testQuery.trim();
-    setChatMessages((prev) => [...prev, { role: 'user', content: userMessage }]);
-    setTestQuery('');
-    setLoadingRag(true);
-
-    // Scroll to bottom after user message is added
-    setTimeout(() => scrollToBottom(), 100);
-
-    try {
-      const response = await floConsoleService.knowledgeBaseService.ragQuery(kbId, testInferenceId, userMessage);
-
-      if (response.data?.data) {
-        const responseData = response.data.data;
-        // Add assistant response to chat
-        setChatMessages((prev) => [
-          ...prev,
-          {
-            role: 'assistant',
-            content: responseData.response || 'No response received.',
-            sources: responseData.sources,
-          },
-        ]);
-        // Scroll to bottom after response is added
-        setTimeout(() => scrollToBottom(), 100);
-      } else {
-        notifyError('Failed to get RAG response.');
-        setChatMessages((prev) => [...prev, { role: 'assistant', content: 'Failed to get response.' }]);
-      }
-    } catch (error) {
-      console.error('RAG query failed:', error);
-      notifyError('Failed to get RAG response.');
-      setChatMessages((prev) => [...prev, { role: 'assistant', content: 'Error: Failed to get response.' }]);
-    } finally {
-      setLoadingRag(false);
     }
   };
 
@@ -270,7 +135,7 @@ const KnowledgeBaseDetailPage: React.FC = () => {
             {formatAppName(knowledgeBase?.name) || 'N/A'}
           </p>
         </div>
-        <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-6">
           <div className="flex min-h-0 min-w-0 flex-col gap-3">
             <div className="flex shrink-0 items-center justify-between gap-3">
               <h3 className="frost-text text-lg font-semibold">Documents</h3>
@@ -278,6 +143,8 @@ const KnowledgeBaseDetailPage: React.FC = () => {
                 Upload Document
               </Button>
             </div>
+
+            <IndexStatusSummary status={indexStatus} loading={loadingIndexStatus} />
 
             {loadingDocs ? (
               <div className="frost-control ring-frost-border flex min-h-0 flex-1 flex-col items-start gap-4 rounded-lg border p-6 ring-1">
@@ -294,9 +161,10 @@ const KnowledgeBaseDetailPage: React.FC = () => {
                 <Table className="table-fixed">
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-[50%]">Document Name</TableHead>
-                      <TableHead className="w-[30%]">Uploaded Date</TableHead>
-                      <TableHead className="w-[20%] text-right">Actions</TableHead>
+                      <TableHead className="w-[40%]">Document Name</TableHead>
+                      <TableHead className="w-[20%]">Status</TableHead>
+                      <TableHead className="w-[25%]">Uploaded Date</TableHead>
+                      <TableHead className="w-[15%] text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -305,6 +173,9 @@ const KnowledgeBaseDetailPage: React.FC = () => {
                         <TableCell className="max-w-0 truncate font-medium" title={doc.file_name}>
                           {doc.file_name}
                           <span className="frost-text-muted ml-2 text-xs">({doc.file_type})</span>
+                        </TableCell>
+                        <TableCell>
+                          <IndexStatusPill status={doc.index_status} error={doc.index_error} />
                         </TableCell>
                         <TableCell className="whitespace-nowrap">
                           {dayjs(doc.updated_at).format('DD MMM YYYY')}
@@ -320,85 +191,6 @@ const KnowledgeBaseDetailPage: React.FC = () => {
                           >
                             <TrashIcon color="#E22F2F" className="h-4 w-4" />
                           </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </div>
-
-          <div className="flex min-h-0 min-w-0 flex-col gap-3">
-            <div className="flex shrink-0 items-center justify-between gap-3">
-              <h3 className="frost-text text-lg font-semibold">System Prompts</h3>
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setShowCreatePromptModal(true)}>
-                  Add System Prompt
-                </Button>
-              </div>
-            </div>
-
-            {loadingInferences ? (
-              <div className="frost-control ring-frost-border flex min-h-0 flex-1 flex-col items-start gap-4 rounded-lg border p-6 ring-1">
-                <p className="frost-text-muted text-sm font-medium">Loading</p>
-                <div className="frost-text text-sm">Loading inferences...</div>
-              </div>
-            ) : inferences.length === 0 ? (
-              <div className="frost-control ring-frost-border flex min-h-0 flex-1 flex-col items-start gap-4 rounded-lg border p-6 ring-1">
-                <p className="frost-text-muted text-sm font-medium">No Inferences</p>
-                <div className="frost-text text-sm">No inferences created yet.</div>
-              </div>
-            ) : (
-              <div className="frost-table-panel border-frost-border ring-frost-border min-h-0 min-w-0 flex-1 overflow-auto rounded-lg border ring-1">
-                <Table className="table-fixed">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[50%]">Prompt</TableHead>
-                      <TableHead className="w-[30%]">Created Date</TableHead>
-                      <TableHead className="w-[20%] text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {inferences.map((inference) => (
-                      <TableRow key={inference.inference_id}>
-                        <TableCell className="max-w-0 truncate font-medium">
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="block cursor-help truncate">{inference.inference_content}</span>
-                              </TooltipTrigger>
-                              <TooltipContent className="max-w-xs" side="left">
-                                <p className="max-w-xs">{inference.inference_content}</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap">
-                          {inference.created_at ? dayjs(inference.created_at).format('DD MMM YYYY') : 'N/A'}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setInferenceToDelete(inference.inference_id);
-                                setShowDeleteInferenceModal(true);
-                              }}
-                            >
-                              <TrashIcon color="#E22F2F" className="h-4 w-4" />
-                            </Button>
-
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleOpenTestInference(inference.inference_id)}
-                              title="Inference"
-                            >
-                              <PlayIcon className="h-4 w-4 text-green-600" />
-                            </Button>
-                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -425,7 +217,11 @@ const KnowledgeBaseDetailPage: React.FC = () => {
               <Input
                 type="file"
                 id="documentUpload"
-                accept=".pdf,.txt,application/pdf,text/plain"
+                accept={
+                  knowledgeBase?.type === 'image'
+                    ? 'image/png,image/jpeg,image/gif,image/webp,image/bmp,image/tiff'
+                    : '.pdf,.txt,application/pdf,text/plain'
+                }
                 onChange={(e) => setFile(e.target.files ? e.target.files[0] : null)}
                 disabled={uploading}
                 className="frost-control ring-frost-border frost-text file:text-brand w-full cursor-pointer border px-3 py-2 text-sm ring-1 outline-none file:cursor-pointer"
@@ -460,199 +256,6 @@ const KnowledgeBaseDetailPage: React.FC = () => {
           setDocumentToDelete(null);
         }}
       />
-
-      {/* Delete Inference Confirmation Dialog */}
-      <DeleteConfirmationDialog
-        isOpen={showDeleteInferenceModal}
-        title="Delete Inference"
-        message={`Are you sure you want to delete this system prompt? This action cannot be undone.`}
-        onConfirm={async () => {
-          if (inferenceToDelete) {
-            await handleDeleteInference(inferenceToDelete);
-            setShowDeleteInferenceModal(false);
-            setInferenceToDelete(null);
-          }
-        }}
-        onCancel={() => {
-          setShowDeleteInferenceModal(false);
-          setInferenceToDelete(null);
-        }}
-      />
-
-      {/* Create System Prompt Dialog */}
-      <Dialog open={showCreatePromptModal} onOpenChange={setShowCreatePromptModal}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Create System Prompt</DialogTitle>
-            <DialogDescription>
-              Enter the system prompt for your LLM. This will define the behavior of the RAG inference.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-4 py-4">
-            <div>
-              <Label htmlFor="llm-config" className="mb-2">
-                Select LLM Model <span className="text-red-500">*</span>
-              </Label>
-              <Select
-                value={selectedConfigId ?? undefined}
-                onValueChange={(value) => setSelectedConfigId(value ?? null)}
-                disabled={llmConfigs.length === 0}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select an LLM configuration" />
-                </SelectTrigger>
-                <SelectContent>
-                  {llmConfigs.length === 0 ? (
-                    <SelectItem value="" disabled>
-                      No configurations available
-                    </SelectItem>
-                  ) : (
-                    llmConfigs.map((config) => (
-                      <SelectItem key={config.id} value={config.id}>
-                        {config.display_name} ({config.type})
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-              <p className="frost-text-muted mt-1 text-xs">
-                {llmConfigs.length > 0
-                  ? 'Choose which LLM configuration to use for this system prompt.'
-                  : 'Add an LLM configuration to create system prompts.'}
-              </p>
-            </div>
-
-            <div>
-              <Label htmlFor="systemPrompt" className="mb-2">
-                System Prompt <span className="text-red-500">*</span>
-              </Label>
-              <Textarea
-                id="systemPrompt"
-                rows={10}
-                value={systemPrompt}
-                onChange={(e) => setSystemPrompt(e.target.value)}
-                placeholder="e.g., You are a helpful assistant that answers questions based on the provided context..."
-                className="font-mono"
-              />
-              <p className="frost-text-muted mt-1 text-xs">
-                Define the behavior and instructions for the LLM when processing RAG queries.
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={handleCloseCreatePromptModal} disabled={creatingPrompt}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleCreateSystemPrompt}
-              disabled={creatingPrompt || !systemPrompt.trim() || !selectedConfigId}
-              loading={creatingPrompt}
-            >
-              {creatingPrompt ? 'Creating...' : 'Create Prompt'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/*Inference Dialog */}
-      <Dialog
-        open={showTestInferenceModal}
-        onOpenChange={(open) => {
-          if (!open) {
-            handleCloseTestInferenceModal();
-          } else {
-            setShowTestInferenceModal(true);
-          }
-        }}
-      >
-        <DialogContent className="flex h-[90vh] max-h-[90vh] flex-col lg:max-w-4xl">
-          <DialogHeader>
-            <DialogTitle>RAG Inference</DialogTitle>
-            <DialogDescription>Chat with your Knowledge Base</DialogDescription>
-          </DialogHeader>
-
-          {/* Chat Messages Container */}
-          <div
-            ref={setMessagesContainerRef}
-            className="frost-control ring-frost-border flex-1 space-y-4 overflow-y-auto rounded-lg border p-4 ring-1"
-          >
-            {chatMessages.length === 0 ? (
-              <div className="frost-text-muted flex h-full items-center justify-center text-sm">
-                Start a conversation by asking a question...
-              </div>
-            ) : (
-              chatMessages.map((message, index) => (
-                <div key={index} className={`flex w-full ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div
-                    className={`flex max-w-[80%] flex-col rounded-lg p-3 ${
-                      message.role === 'user'
-                        ? 'bg-brand text-white'
-                        : 'frost-control frost-text ring-frost-border border ring-1'
-                    }`}
-                  >
-                    <div className="text-sm whitespace-pre-wrap">{message.content}</div>
-                    {message.sources && message.sources.length > 0 && message.role === 'assistant' && (
-                      <div className="border-frost-border mt-2 border-t pt-2">
-                        <p className="frost-text-muted text-xs font-medium">Sources:</p>
-                        <ul className="frost-text-muted mt-1 list-disc pl-4 text-xs">
-                          {message.sources.map((source, idx) => (
-                            <li key={idx} className="truncate">
-                              {typeof source === 'string' ? source : JSON.stringify(source)}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-
-            {/* Loading Indicator */}
-            {loadingRag && (
-              <div className="flex w-full justify-start">
-                <div className="frost-panel ring-frost-border flex max-w-[80%] flex-col rounded-lg border p-3 ring-1">
-                  <div className="frost-text-muted flex items-center gap-2 text-sm">
-                    <div className="border-frost-border border-t-brand h-4 w-4 animate-spin rounded-full border-2"></div>
-                    <span>Getting response...</span>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Input Area */}
-          <div className="border-frost-border mt-4 flex items-end gap-2 border-t pt-4">
-            <Textarea
-              id="testQuery"
-              value={testQuery}
-              onChange={(e) => setTestQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey && !loadingRag && testQuery.trim()) {
-                  e.preventDefault();
-                  handleTestRagQuery();
-                }
-              }}
-              placeholder="Type your message... (Press Enter to send, Shift+Enter for new line)"
-              className="min-h-[60px] resize-none"
-              rows={2}
-              disabled={loadingRag}
-            />
-            <Button
-              onClick={handleTestRagQuery}
-              disabled={loadingRag || !testQuery.trim()}
-              size="icon"
-              className="h-[60px] w-[60px] shrink-0"
-            >
-              {loadingRag ? (
-                <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
-              ) : (
-                <Send className="h-5 w-5" />
-              )}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };

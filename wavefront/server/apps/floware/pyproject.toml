@@ -17,13 +17,11 @@ dependencies = [
     "plugins-module",
     "product-analysis-module",
     "agents-module",
-    "inference-module",
     "llm-inference-config-module",
     "guardrails-module",
     "tools-module",
     "api-services-module",
     "voice-agents-module",
-    "triggers-module",
     "chatbots-module",
 
 
@@ -35,6 +33,7 @@ dependencies = [
     "pottery>=3.0.1,<4.0.0",
     "psycopg2-binary>=2.9.10,<3.0.0",
     "openpyxl>=3.1.5,<4.0.0",
+    "flo-lib",
 ]
 
 [dependency-groups]
@@ -53,14 +52,13 @@ user-management-module = { workspace = true }
 plugins-module = {workspace = true}
 product-analysis-module = {workspace = true }
 agents-module = {workspace = true}
-inference-module = {workspace = true}
 llm-inference-config-module = {workspace = true}
 guardrails-module = {workspace = true}
 tools-module = {workspace = true}
 api-services-module = {workspace = true}
 voice-agents-module = {workspace = true}
-triggers-module = {workspace = true}
 chatbots-module = {workspace = true}
+flo-lib = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

@@ -12,7 +12,7 @@ from chatbots_module.services.chatbot_service import ChatbotService
 
 
 class ChatbotsContainer(containers.DeclarativeContainer):
-    config = providers.Configuration(ini_files=['config.ini'])
+    config = providers.Configuration()
 
     # External dependencies
     db_client = providers.Dependency()
@@ -66,4 +66,5 @@ class ChatbotsContainer(containers.DeclarativeContainer):
         ChatInferenceService,
         llm_inference_config_service=llm_inference_config_service,
         guardrails_engine=guardrails_engine,
+        azure_openai_api_version=config.model.azure_openai_api_version,
     )

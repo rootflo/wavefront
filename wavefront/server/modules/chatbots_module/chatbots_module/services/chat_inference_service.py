@@ -28,9 +28,15 @@ class ChatInferenceService:
     messages already have the shape every flo_ai LLM expects.
     """
 
-    def __init__(self, llm_inference_config_service, guardrails_engine=None):
+    def __init__(
+        self,
+        llm_inference_config_service,
+        guardrails_engine=None,
+        azure_openai_api_version: Optional[str] = None,
+    ):
         self.llm_inference_config_service = llm_inference_config_service
         self.guardrails_engine = guardrails_engine
+        self.azure_openai_api_version = azure_openai_api_version or None
 
     async def resolve_llm(
         self, chatbot: Chatbot, user_id: Optional[str] = None
@@ -71,7 +77,11 @@ class ChatInferenceService:
         temperature = resolve_temperature(chatbot.config)
 
         try:
-            llm = build_llm(llm_config, temperature)
+            llm = build_llm(
+                llm_config,
+                temperature,
+                azure_openai_api_version=self.azure_openai_api_version,
+            )
         except ValueError as exc:
             raise ChatInferenceError(str(exc)) from exc
 

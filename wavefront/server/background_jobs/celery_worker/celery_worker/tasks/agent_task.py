@@ -1,156 +1,46 @@
+"""Celery task: async agent inference."""
+
 import asyncio
-import base64
-import json
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Dict
 from uuid import UUID
 
-from common_module.log.logger import logger
-from db_repo_module.models.llm_inference_config import LlmInferenceConfig
-from agents_module.utils.input_processing_utils import process_inference_inputs
 from agents_module.utils.trace_utils import serialize_conversation_trace
+from common_module.log.logger import logger
 
 from celery_worker.celery_app import app
-from celery_worker.env import MAX_RETRIES, RETRY_DELAY, STREAM_NAME
-from celery_worker.worker_setup import get_event_loop, get_services
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _build_llm_config(llm_config_dict: Optional[Dict]) -> Optional[LlmInferenceConfig]:
-    if not llm_config_dict:
-        return None
-    return LlmInferenceConfig(**llm_config_dict)
-
-
-def _reconstruct_inputs(payload: Dict, cloud_storage) -> Any:
-    """
-    Rebuild inputs from the clean JSON in the task payload.
-    Stored binary entries are fetched from cloud storage and re-encoded to base64
-    so that process_inference_inputs() can handle them normally.
-
-    Blocking: each stored file is read from cloud storage synchronously and
-    base64-encoded whole, so the tasks call it through `asyncio.to_thread` to
-    keep that off the event loop. (Document parsing no longer happens here --
-    flo_ai does it, off the loop, when it formats the message.)
-    """
-    raw_inputs = payload['inputs']
-
-    if isinstance(raw_inputs, str):
-        return process_inference_inputs(raw_inputs)
-
-    rebuilt: List[Dict] = []
-    for entry in raw_inputs:
-        if not isinstance(entry, dict) or not entry.get('stored'):
-            rebuilt.append(entry)
-            continue
-
-        file_bytes = cloud_storage.read_file(entry['bucket'], entry['key'])
-        b64 = base64.b64encode(file_bytes).decode('utf-8')
-        input_type = entry.get('input_type', 'document')
-        mime_type = entry.get('mime_type')
-        file_name = entry.get('file_name')
-
-        content: Dict = (
-            {'document_base64': b64}
-            if input_type == 'document'
-            else {'image_base64': b64}
-        )
-        if mime_type:
-            content['mime_type'] = mime_type
-        if file_name:
-            content['file_name'] = file_name
-
-        rebuilt.append({'role': 'user', 'content': content})
-
-    return process_inference_inputs(rebuilt)
-
-
-def _publish(cache, execution_id: str, fields: Dict) -> str:
-    """Publish a status transition to the results stream, observably.
-
-    Completion events have gone missing in production with no trace on either
-    side, so log the attempt and the outcome. The returned stream message id is
-    the important part: it proves the XADD reached Redis and gives an exact key
-    to look up with XRANGE when a row is stuck.
-    """
-    status = fields.get('status')
-    # Log the RESOLVED key. CacheManager prepends its namespace inside xadd, so
-    # a worker and a consumer configured with different APP_NAMEs write and read
-    # different Redis keys while logging the same stream name.
-    resolved_key = f'{cache.namespace}/{STREAM_NAME}'
-    logger.info(
-        f'Publishing result event: execution_id={execution_id}, '
-        f'status={status}, key={resolved_key}'
-    )
-    try:
-        message_id = cache.xadd(STREAM_NAME, fields)
-    except Exception:
-        # Per-attempt errors are logged inside CacheManager.xadd; this fires
-        # once, after tenacity has exhausted its retries.
-        logger.exception(
-            f'Publish FAILED: execution_id={execution_id}, status={status}, '
-            f'key={resolved_key}'
-        )
-        raise
-
-    logger.info(
-        f'Published result event: execution_id={execution_id}, '
-        f'status={status}, key={resolved_key}, message_id={message_id}'
-    )
-    return message_id
-
-
-def _save_json(cloud_storage, bucket: str, key: str, data: Any) -> None:
-    cloud_storage.save_small_file(
-        file_content=json.dumps(data, default=str).encode('utf-8'),
-        bucket_name=bucket,
-        key=key,
-        content_type='application/json',
-    )
-
-
-def _build_history(
-    payload: Dict,
-    result: Any,
-    exec_time: float,
-    trace: Optional[List[Dict[str, Any]]] = None,
-) -> Dict:
-    return {
-        'execution_id': payload['execution_id'],
-        'entity_type': payload['entity_type'],
-        'entity_id': payload['entity_id'],
-        'inputs': payload['inputs'],  # clean inputs with storage key refs
-        'variables': payload.get('variables') or {},
-        'output': result,
-        'execution_time_seconds': round(exec_time, 3),
-        'trace': trace or [],  # full per-node/turn memory, in execution order
-    }
+from celery_worker.event_loop import get_event_loop
+from celery_worker.services import get_services
+from celery_worker.settings import MAX_RETRIES, RETRY_DELAY
+from celery_worker.tasks.helpers import (
+    build_history,
+    build_llm_config,
+    now_iso,
+    publish_result,
+    reconstruct_inputs,
+    save_json,
+)
 
 
 async def _run(task, payload: Dict) -> None:
     services = get_services()
     execution_id = payload['execution_id']
 
-    # Signal in_progress — floware consumer updates DB
-    _publish(
+    publish_result(
         services.cache,
         execution_id,
         {
             'execution_id': execution_id,
             'status': 'in_progress',
-            'started_at': _now(),
+            'started_at': now_iso(),
             'error': '',
         },
     )
 
     try:
         inputs = await asyncio.to_thread(
-            _reconstruct_inputs, payload, services.cloud_storage
+            reconstruct_inputs, payload, services.cloud_storage
         )
-        llm_config = _build_llm_config(payload.get('llm_config'))
+        llm_config = build_llm_config(payload.get('llm_config'))
 
         (
             result,
@@ -178,7 +68,7 @@ async def _run(task, payload: Dict) -> None:
         history_key = f"{payload['output_prefix']}history.json"
         bucket = payload['execution_bucket']
 
-        _save_json(
+        save_json(
             services.cloud_storage,
             bucket,
             output_key,
@@ -187,15 +77,14 @@ async def _run(task, payload: Dict) -> None:
                 'execution_time_seconds': round(exec_time, 3),
             },
         )
-        _save_json(
+        save_json(
             services.cloud_storage,
             bucket,
             history_key,
-            _build_history(payload, final_result, exec_time, trace),
+            build_history(payload, final_result, exec_time, trace),
         )
 
-        # Signal completed — floware consumer updates DB
-        _publish(
+        publish_result(
             services.cache,
             execution_id,
             {
@@ -204,7 +93,7 @@ async def _run(task, payload: Dict) -> None:
                 'output_file': output_key,
                 'history_file': history_key,
                 'input_bucket': bucket,
-                'completed_at': _now(),
+                'completed_at': now_iso(),
                 'error': '',
             },
         )
@@ -214,15 +103,14 @@ async def _run(task, payload: Dict) -> None:
         error_msg = str(exc)
         logger.error(f'Agent execution failed: {execution_id} — {error_msg}')
 
-        # Signal failed — floware consumer updates DB
-        _publish(
+        publish_result(
             services.cache,
             execution_id,
             {
                 'execution_id': execution_id,
                 'status': 'failed',
                 'error': error_msg,
-                'completed_at': _now(),
+                'completed_at': now_iso(),
             },
         )
         raise  # triggers Celery retry if MAX_RETRIES > 0

@@ -1,13 +1,17 @@
 import json
-import os
 from urllib.parse import quote
-import httpx
+import flo_lib.http as httpx
 
-FLOWARE_BASE_URL = os.getenv('FLOWARE_BASE_URL', 'http://localhost:8001').rstrip('/')
+from tools_module.floware_api import FlowareApiClient
 
 
 async def datasource_insert_rows(
-    datasource_id: str, table_name: str, data, single_row: bool = False
+    api: FlowareApiClient,
+    /,
+    datasource_id: str,
+    table_name: str,
+    data,
+    single_row: bool = False,
 ) -> str:
     """Insert rows into a datasource table via wavefront's own REST API
     (POST /v1/datasources/{datasource_id}/resources/{resource_id}) — works
@@ -19,7 +23,7 @@ async def datasource_insert_rows(
     rows = [data] if single_row else data
 
     url = (
-        f'{FLOWARE_BASE_URL}/floware/v1/datasources/'
+        f'{api.base_url}/floware/v1/datasources/'
         f'{quote(datasource_id, safe="")}/resources/{quote(table_name, safe="")}'
     )
     async with httpx.AsyncClient() as client:
@@ -40,7 +44,9 @@ async def datasource_insert_rows(
     return f"Inserted {len(rows)} row(s) into '{table_name}' via datasource '{datasource_id}'"
 
 
-async def datasource_insert_multi(datasource_id: str, inserts) -> str:
+async def datasource_insert_multi(
+    api: FlowareApiClient, /, datasource_id: str, inserts
+) -> str:
     """Insert rows into MULTIPLE tables of one datasource atomically (a single
     transaction — all-or-nothing) via wavefront's own REST API
     (POST /v1/datasources/{datasource_id}/resources/insert).
@@ -53,7 +59,7 @@ async def datasource_insert_multi(datasource_id: str, inserts) -> str:
     table. Currently only Postgres datasources support this; others return 501.
     """
     url = (
-        f'{FLOWARE_BASE_URL}/floware/v1/datasources/'
+        f'{api.base_url}/floware/v1/datasources/'
         f'{quote(datasource_id, safe="")}/resources/insert'
     )
     async with httpx.AsyncClient() as client:
@@ -92,6 +98,8 @@ def _error_message(response) -> str:
 
 
 async def datasource_execute_query(
+    api: FlowareApiClient,
+    /,
     datasource_id: str,
     query_id: str,
     params=None,
@@ -119,7 +127,7 @@ async def datasource_execute_query(
     {"quotes": [{...}, {...}]}. An empty list means nothing matched.
     """
     url = (
-        f'{FLOWARE_BASE_URL}/floware/v1/'
+        f'{api.base_url}/floware/v1/'
         f'{quote(datasource_id, safe="")}/dynamic-queries/'
         f'{quote(query_id, safe="")}/execute'
     )

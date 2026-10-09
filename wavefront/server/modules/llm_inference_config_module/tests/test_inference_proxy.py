@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, Mock
 
 # from fastapi import Request
 # from fastapi.testclient import TestClient
-# from httpx import Response as HttpxResponse
+# from flo_lib.http import Response as HttpxResponse
 from llm_inference_config_module.services.inference_proxy_service import (
     InferenceProxyService,
 )

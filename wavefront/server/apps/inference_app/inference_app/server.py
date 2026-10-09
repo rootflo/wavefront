@@ -1,59 +1,45 @@
+from flo_lib.http import alias_httpx
+
+alias_httpx()
+
+# ruff: noqa: E402
 import glob
-import os
 from contextlib import asynccontextmanager
-from dependency_injector import providers
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 import uvicorn
 
 # ruff: noqa: E402
 load_dotenv()
 
-from common_module.common_container import CommonContainer
 from common_module.log.logger import logger
 from common_module.response_formatter import ResponseFormatter
-from common_module.middleware.request_id_middleware import RequestIdMiddleware
-from common_module.middleware.security_headers import SecurityHeadersMiddleware
-from fastapi import HTTPException
-from fastapi import Request
-from fastapi.responses import JSONResponse
 
-from inference_app.inference_app_container import InferenceAppContainer
-from inference_app.controllers.inference_controller import inference_app_router
-from inference_app.model_sync import sync_embedding_models
-from inference_app.service.image_embedding import ImageEmbedding
+from inference_app.di import application_container
+from inference_app.middleware.setup import add_middlewares
+from inference_app.models.setup import start_models
+from inference_app.router.setup import include_routers
 
-# Initialize dependency containers
-common_container = CommonContainer(cache_manager=None)
-inference_app_container = InferenceAppContainer()
+config = application_container.config()
+runtime = application_container.common.runtime_settings()
+environment = runtime.app_env
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info('Syncing embedding models from cloud storage...')
-    clip_dir, dino_dir = sync_embedding_models()
-    logger.info('Cloud sync complete. Preloading ML models...')
-    inference_app_container.image_embedding.override(
-        providers.Singleton(
-            ImageEmbedding, clip_model_dir=clip_dir, dino_model_dir=dino_dir
-        )
-    )
-    inference_app_container.image_embedding()
-    logger.info('ML models loaded and ready.')
+    start_models(application_container)
     yield
 
-
-environment = os.getenv('APP_ENV', 'production')
 
 # The interactive docs and the OpenAPI schema are off everywhere except dev,
 # so a new/unknown APP_ENV value stays closed rather than exposing the surface.
 is_dev = environment == 'dev'
 
 app = FastAPI(
-    title='FloConsole API',
-    description='Console application for RootFlo platform',
+    title='Inference API',
+    description='Embedding inference service for RootFlo platform',
     version='1.0.0',
     lifespan=lifespan,
     openapi_url='/openapi.json' if is_dev else None,
@@ -61,41 +47,11 @@ app = FastAPI(
     redoc_url='/redoc' if is_dev else None,
 )
 
-
-origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:5173')
-allowed_origins = origins.split(',')
-
-app.add_middleware(RequestIdMiddleware)
-# Strict default-src 'none' CSP plus the rest of the security headers; /docs and
-# /redoc get their own relaxed policy when APP_ENV=dev.
-app.add_middleware(SecurityHeadersMiddleware)
-# Configure CORS with proper security settings
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True,
-    allow_methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allow_headers=['*'],
-    expose_headers=[
-        'X-Content-Type-Options',
-        'X-XSS-Protection',
-        'X-Frame-Options',
-        'Referrer-Policy',
-        'Content-Security-Policy',
-        'Pragma',
-        'Expires',
-        'Strict-Transport-Security',
-        'Cache-Control',
-    ],
+# Middlewares & Routers
+add_middlewares(
+    app, allowed_origins=runtime.allowed_origins, environment=runtime.app_env
 )
-
-# Include routers
-app.include_router(inference_app_router, prefix='/inference')
-
-
-@app.get('/inference/v1/health')
-async def health_check():
-    return JSONResponse(content={'status': 'ok'}, status_code=200)
+include_routers(app)
 
 
 @app.exception_handler(Exception)
@@ -117,12 +73,12 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-common_container.wire(
+application_container.common.wire(
     modules=[__name__],
     packages=['inference_app.controllers'],
 )
 
-inference_app_container.wire(
+application_container.wire(
     modules=[__name__],
     packages=['inference_app.controllers'],
 )
@@ -130,20 +86,27 @@ inference_app_container.wire(
 
 # Running with Uvicorn (for local development)
 if __name__ == '__main__':
+    server = config['server']
+    host = server['host']
+    port = int(server['port'])
     print(f'Starting application in environment: {environment}')
     if environment == 'production':
         uvicorn.run(
-            'server:app', host='0.0.0.0', port=8003, workers=1, log_level='critical'
+            'server:app',
+            host=host,
+            port=port,
+            workers=1,
+            log_level=server['uvicorn_log_level'],
         )
     else:
         dirs = glob.glob('apps/inference-app/inference_app/**/*.py', recursive=True)
 
         uvicorn.run(
             'server:app',
-            host='0.0.0.0',
-            port=8003,
+            host=host,
+            port=port,
             workers=1,
             reload=True,
             reload_includes=dirs,
-            log_level='info',
+            log_level=server['reload_log_level'],
         )

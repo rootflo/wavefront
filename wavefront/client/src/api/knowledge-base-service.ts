@@ -1,26 +1,33 @@
 import { IApiResponse } from '@app/lib/axios';
 import { AxiosInstance } from 'axios';
 
+// A knowledge base's type decides its embedding models and the files it
+// accepts; the server sets the vector sizes from it and it can't be changed.
+export type KnowledgeBaseType = 'text' | 'image';
+
+export const KNOWLEDGE_BASE_TYPES: { value: KnowledgeBaseType; label: string; accepts: string }[] = [
+  { value: 'text', label: 'Text', accepts: 'Text (.txt) and PDF files' },
+  { value: 'image', label: 'Image', accepts: 'JPEG, PNG, GIF, WebP, BMP and TIFF images' },
+];
+
 // Interface for creating a new knowledge base
 export interface NewKnowledgeBasePayload {
   name: string;
   description: string;
-  type: string;
-  vector_size: number;
+  type: KnowledgeBaseType;
 }
 
-// Interface for partially updating a knowledge base
+// Interface for partially updating a knowledge base (type is fixed at creation)
 export interface UpdateKnowledgeBasePayload {
   name?: string;
   description?: string;
-  type?: string;
 }
 
 export interface KbData {
   id: string;
   name: string;
   description: string;
-  type: string;
+  type: KnowledgeBaseType;
   created_at: string;
   updated_at: string;
 }
@@ -37,6 +44,10 @@ export interface KnowledgeBaseListData {
 
 export type KnowledgeBaseListResponse = IApiResponse<KnowledgeBaseListData>;
 
+// Where a document is in RAG indexing; null for documents uploaded before
+// indexing status was tracked.
+export type IndexStatus = 'QUEUED' | 'IN_PROGRESS' | 'COMPLETE' | 'FAILED';
+
 // Interface for document data
 export interface DocumentData {
   id: string;
@@ -44,7 +55,26 @@ export interface DocumentData {
   file_type: string;
   file_size: number;
   updated_at: string;
+  index_status?: IndexStatus | null;
+  index_error?: string | null;
 }
+
+export interface FailedDocument {
+  id: string;
+  file_name: string;
+  index_error: string | null;
+  index_status_updated_at: string | null;
+}
+
+// Document counts per indexing status (NOT_TRACKED: uploaded before tracking)
+export interface KnowledgeBaseIndexStatusData {
+  knowledge_base_id: string;
+  total: number;
+  counts: Record<IndexStatus | 'NOT_TRACKED', number>;
+  failed_documents: FailedDocument[];
+}
+
+export type KnowledgeBaseIndexStatusResponse = IApiResponse<KnowledgeBaseIndexStatusData>;
 
 // Interface for listing documents in a knowledge base
 export interface KnowledgeBaseDocumentsListData {
@@ -53,25 +83,6 @@ export interface KnowledgeBaseDocumentsListData {
 
 export type KnowledgeBaseDocumentsListResponse = IApiResponse<KnowledgeBaseDocumentsListData>;
 
-// Interface for RAG inference response
-export interface RagInferenceResultData {
-  response: string;
-  sources: unknown[]; // Assuming sources can be any array for now
-}
-
-export type RagInferenceResponse = IApiResponse<RagInferenceResultData>;
-
-export interface NewInferencePayload {
-  prompt: string;
-}
-
-export interface InferenceData {
-  inference_id: string;
-  knowledge_base_id: string;
-  inference_content: string;
-  created_at: string;
-  updated_at: string;
-}
 export interface AllConfigsData {
   id: string;
   llm_model: string;
@@ -83,10 +94,6 @@ export interface AllConfigsData {
   created_at: string;
   updated_at: string;
 }
-export type InferenceListResponse = IApiResponse<{
-  resources: InferenceData[];
-}>;
-export type InferenceDetailResponse = IApiResponse<InferenceData>;
 export type AllConfigsResponse = IApiResponse<AllConfigsData[]>;
 // Knowledge Base Service Class
 export class KnowledgeBaseService {
@@ -150,70 +157,10 @@ export class KnowledgeBaseService {
     return response;
   }
 
-  async ragQuery(
-    kbId: string,
-    inferenceId: string,
-    query: string,
-    threshold?: number,
-    topK?: number,
-    vectorWeight?: number,
-    keywordWeight?: number,
-    imageData?: string
-  ): Promise<RagInferenceResponse> {
-    const params: Record<string, string | number> = { query };
-
-    if (threshold) params.threshold = threshold;
-    if (topK) params.top_k = topK;
-    if (vectorWeight) params.vector_weight = vectorWeight;
-    if (keywordWeight) params.keyword_weight = keywordWeight;
-
-    const data: { image_data?: string } = {};
-    if (imageData) {
-      data.image_data = imageData;
-    }
-
-    const response: RagInferenceResponse = await this.http.post(
-      `/v1/:appId/floware/v1/knowledge-base/${kbId}/augment/${inferenceId}`,
-      data,
-      { params }
-    );
-    return response;
-  }
-
-  async createSystemPrompt(
-    kbId: string,
-    payload: NewInferencePayload,
-    configId: string
-  ): Promise<InferenceDetailResponse> {
-    const response: InferenceDetailResponse = await this.http.post(
-      `/v1/:appId/floware/v1/knowledge-base/${kbId}/llm_config/${configId}/inference`,
-      payload
-    );
-    return response;
-  }
-
-  async updateSystemPrompt(
-    kbId: string,
-    inferenceId: string,
-    payload: NewInferencePayload
-  ): Promise<InferenceDetailResponse> {
-    const response: InferenceDetailResponse = await this.http.put(
-      `/v1/:appId/floware/v1/knowledge-base/${kbId}/inference/${inferenceId}`,
-      payload
-    );
-    return response;
-  }
-
-  async deleteSystemPrompt(kbId: string, inferenceId: string): Promise<IApiResponse<unknown>> {
-    const response: IApiResponse<unknown> = await this.http.delete(
-      `/v1/:appId/floware/v1/knowledge-base/${kbId}/inference/${inferenceId}`
-    );
-    return response;
-  }
-
-  async listInferencesForKnowledgeBase(kbId: string): Promise<InferenceListResponse> {
-    const response: InferenceListResponse = await this.http.get(
-      `/v1/:appId/floware/v1/knowledge-base/${kbId}/inference`
+  async getKnowledgeBaseIndexStatus(kbId: string, failedLimit: number = 20): Promise<KnowledgeBaseIndexStatusResponse> {
+    const response: KnowledgeBaseIndexStatusResponse = await this.http.get(
+      `/v1/:appId/floware/v1/knowledge-bases/${kbId}/index-status`,
+      { params: { failed_limit: failedLimit } }
     );
     return response;
   }

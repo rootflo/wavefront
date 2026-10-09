@@ -6,13 +6,16 @@ readme = "README.md"
 requires-python = ">=3.11"
 
 dependencies = [
-    "requests>=2.25.0",
+    "flo-lib",
     "msal>=1.28.0",
     "google-auth>=2.30.0",
     "google-api-python-client>=2.130.0",
     "google-cloud-pubsub>=2.21.0",
     "beautifulsoup4>=4.8.0,<4.9.dev0",
 ]
+
+[tool.uv.sources]
+flo-lib = { workspace = true }
 
 [tool.uv]
 package = true

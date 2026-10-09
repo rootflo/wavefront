@@ -292,9 +292,6 @@ setup_rag_env() {
       return
     fi
   fi
-  if is_intel_mac; then
-    warn "The inference app is skipped on Intel Macs, so embedding documents will fail"
-  fi
 }
 
 RUN_INFERENCE_APP=0
@@ -303,6 +300,7 @@ INFERENCE_MODELS_DIR="$INFERENCE_DIR/scripts/.mcache"
 INFERENCE_MODELS=(
   "CLIP_VIT_BASE_PATCH32_MODEL_URI:clip-vit-base-patch32-hf"
   "DINOV3_VITL16_HF_MODEL_URI:dinov3-vitl16-hf"
+  "BGE_M3_MODEL_URI:bge-m3-hf"
 )
 
 # True if any inference model folder is missing or empty.
@@ -310,31 +308,49 @@ inference_models_missing() {
   local entry dir
   for entry in "${INFERENCE_MODELS[@]}"; do
     dir="$INFERENCE_MODELS_DIR/${entry#*:}"
-    [[ -d "$dir" && -n "$(ls -A "$dir" 2>/dev/null)" ]] || return 0
+    # `ls` without -A: a failed download leaves only a hidden .cache/ behind
+    [[ -d "$dir" && -n "$(ls "$dir" 2>/dev/null)" ]] || return 0
   done
   return 1
 }
 
-# Intel Macs: PyTorch stopped shipping x86_64 macOS wheels after 2.2.2, below the
-# workspace's torch>=2.6 floor, so the inference app cannot run there natively.
-# Checks the hardware, not `uname -m`, which also says x86_64 under Rosetta.
+# Inference runs on CPU (CPU-only torch from the pytorch-cpu index) on Linux and
+# Apple Silicon. Intel Macs have no PyTorch build at the supported version
+# (>= 2.6), so torch isn't installed there and the inference app serves mock
+# embeddings instead: same API and shapes, synthetic vectors, no models to
+# download. Checks the hardware, not `uname -m`, which also says x86_64 under
+# Rosetta.
+INFERENCE_MOCK=0
 is_intel_mac() {
   [[ "$OSTYPE" == darwin* ]] && [[ "$(sysctl -in hw.optional.arm64 2>/dev/null)" != 1 ]]
 }
 
 setup_inference_env() {
-  step "Inference app (image embeddings, CLIP + DINOv3)"
+  step "Inference app (image embeddings, CLIP + DINOv3; text embeddings, BGE-M3)"
+  local env_file="$INFERENCE_DIR/.env" entry var
+
   if is_intel_mac; then
-    warn "Skipping: torch has no Intel Mac build at the required version (>= 2.6)"
+    echo "  Intel Mac: PyTorch has no build here at the supported version (>= 2.6), so"
+    echo "  the inference app runs in mock mode: the same API returning synthetic"
+    echo "  embeddings, for integration testing. Search results won't be meaningful."
+    echo "  Use Apple Silicon or Linux for real embeddings."
+    if ! confirm "Run the inference app in mock mode?"; then
+      ok "Skipping inference app"
+      return
+    fi
+    RUN_INFERENCE_APP=1
+    INFERENCE_MOCK=1
+    copy_env_file "$INFERENCE_DIR/.env.sample" "$env_file" || true
     return
   fi
+
+  echo "  All three models together need roughly 4-5 GB of free memory."
   if ! confirm "Run the inference app as well? (downloads several GB of models on first run)"; then
     ok "Skipping inference app"
     return
   fi
   RUN_INFERENCE_APP=1
 
-  local env_file="$INFERENCE_DIR/.env" entry var
   copy_env_file "$INFERENCE_DIR/.env.sample" "$env_file" || true
   # Point empty model URIs at the local download folders (machine-specific paths).
   for entry in "${INFERENCE_MODELS[@]}"; do
@@ -403,11 +419,11 @@ wait_for() {
 
 LOCALSTACK_URL="http://localhost:4566"
 LOCALSTACK_REGION="us-east-1"
-# S3 bucket names cannot contain '_'. Must match the .env samples.
+# S3 bucket names cannot contain '_'. Must match APPLICATION_BUCKET in the .env samples.
 S3_BUCKETS=(application-bucket)
 RAG_INGESTION_QUEUE_NAME="rag-ingestion-queue"
 
-# KMS keys use fixed IDs so the ARNs in the .env samples never change.
+# KMS keys use fixed IDs so the KMS_*_KEY ARNs in the .env samples never change.
 # LocalStack forgets keys on restart; the encryption key also gets fixed key
 # material so values floware encrypted into postgres stay decryptable. Signing
 # keys get fresh material, so existing JWTs stop verifying (log in again).
@@ -519,6 +535,39 @@ setup_localstack_resources() {
     --tags "TagKey=_custom_id_,TagValue=$KMS_SIGN_KEY_ID"
   ensure_kms_key "$KMS_CONSOLE_SIGN_KEY_ID" "floconsole signing" --key-usage SIGN_VERIFY --key-spec RSA_2048 \
     --tags "TagKey=_custom_id_,TagValue=$KMS_CONSOLE_SIGN_KEY_ID"
+}
+
+# Warn when an .env points at a LocalStack resource setup.sh did not create
+# (e.g. an older .env that predates a renamed variable).
+#   check_env_resource <env_file> <var> <expected suffix> <label>
+check_env_resource() {
+  local env_file="$1" var="$2" suffix="$3" label="$4" value
+  [[ -f "$env_file" ]] || return 0
+  value="$(env_get "$env_file" "$var")"
+  if [[ -z "$value" ]]; then
+    warn "$var is not set in ${env_file#"$ROOT_DIR"/} ($label)"
+  elif [[ "$value" != *"$suffix" ]]; then
+    warn "$var in ${env_file#"$ROOT_DIR"/} does not point at the $label setup.sh created ($suffix)"
+  fi
+}
+
+check_localstack_env() {
+  step "Checking .env files against the LocalStack resources"
+  local floware_env="$FLOWARE_DIR/.env"
+  local bucket="${S3_BUCKETS[0]}"
+
+  check_env_resource "$FLOCONSOLE_DIR/.env" KMS_SIGNING_KEY "$KMS_CONSOLE_SIGN_KEY_ID" "floconsole signing key"
+  check_env_resource "$floware_env" KMS_SIGNING_KEY "$KMS_SIGN_KEY_ID" "floware signing key"
+  check_env_resource "$floware_env" KMS_ENCRYPTION_KEY "$KMS_ENC_KEY_ID" "encryption key"
+  check_env_resource "$floware_env" APPLICATION_BUCKET "$bucket" "S3 bucket"
+  check_env_resource "$floware_env" RAG_QUEUE "/$RAG_INGESTION_QUEUE_NAME" "SQS queue"
+  if (( RUN_CELERY_WORKER )); then
+    check_env_resource "$CELERY_DIR/celery_worker/.env" APPLICATION_BUCKET "$bucket" "S3 bucket"
+  fi
+  if (( RUN_RAG_WORKER )); then
+    check_env_resource "$RAG_DIR/rag_ingestion/.env" RAG_QUEUE "/$RAG_INGESTION_QUEUE_NAME" "SQS queue"
+  fi
+  ok "Checked"
 }
 
 #   ensure_kms_key <key_id> <label> <create-key args...>
@@ -668,6 +717,10 @@ start_floware() {
 download_inference_models() {
   (( RUN_INFERENCE_APP )) || return 0
   step "Downloading inference models (scripts/download_models.py)"
+  if (( INFERENCE_MOCK )); then
+    ok "Mock mode: no models to download"
+    return
+  fi
 
   if ! inference_models_missing; then
     ok "Models already downloaded to ${INFERENCE_MODELS_DIR#"$ROOT_DIR"/}"
@@ -685,7 +738,8 @@ download_inference_models() {
 
 start_inference_app() {
   (( RUN_INFERENCE_APP )) || return 0
-  # Loading CLIP + DINOv3 into memory at startup takes a while.
+  # Loading CLIP + DINOv3 into memory at startup takes a while (BGE-M3 loads in
+  # the background after the app is up). Mock mode starts in seconds.
   start_python_service inference "$INFERENCE_DIR" "$INFERENCE_PORT" "$INFERENCE_HEALTH_URL" 300
 }
 
@@ -818,7 +872,13 @@ print_next_steps() {
   echo "    web client   $CLIENT_URL"
   echo "    floconsole   http://localhost:$FLOCONSOLE_PORT"
   echo "    floware      http://localhost:$FLOWARE_PORT"
-  (( RUN_INFERENCE_APP )) && echo "    inference    http://localhost:$INFERENCE_PORT"
+  if (( RUN_INFERENCE_APP )); then
+    if (( INFERENCE_MOCK )); then
+      echo "    inference    http://localhost:$INFERENCE_PORT  (mock embeddings)"
+    else
+      echo "    inference    http://localhost:$INFERENCE_PORT"
+    fi
+  fi
   (( RUN_CELERY_WORKER )) && echo "    celery       worker on redis://localhost:6379/0"
   (( RUN_RAG_WORKER )) && echo "    rag          worker on the rag-ingestion-queue (LocalStack SQS)"
   echo
@@ -857,6 +917,7 @@ main() {
   setup_database floconsole "$FLOCONSOLE_DIR/.env" CONSOLE_DB_
   setup_database floware "$FLOWARE_DIR/.env" DB_ vector
   setup_localstack_resources
+  check_localstack_env
   install_python_deps
   start_floconsole
   start_floware
