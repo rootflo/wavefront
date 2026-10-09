@@ -7,7 +7,7 @@ authors = [
 ]
 requires-python = ">=3.11"
 dependencies = [
-    "httpx2>=2.0.0",
+    "httpx2>=2.13.1",
 ]
 
 [tool.uv]

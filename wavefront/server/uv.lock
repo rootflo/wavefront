@@ -21,11 +21,11 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-10-02T10:46:03.383485Z"
+exclude-newer = "2026-10-02T12:35:51.845849Z"
 exclude-newer-span = "P7D"
 
 [options.exclude-newer-package]
-flo-ai = { timestamp = "2026-10-09T10:46:03.38374Z", span = "PT0S" }
+flo-ai = { timestamp = "2026-10-09T12:35:51.846023Z", span = "PT0S" }
 
 [manifest]
 members = [
@@ -2009,7 +2009,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "httpx2", specifier = ">=2.0.0" }]
+requires-dist = [{ name = "httpx2", specifier = ">=2.13.1" }]
 
 [[package]]
 name = "flo-stream"
