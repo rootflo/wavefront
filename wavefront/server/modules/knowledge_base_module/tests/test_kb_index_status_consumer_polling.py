@@ -64,7 +64,7 @@ def make_consumer(batches, *, poll_interval_s: float = 0.01):
     )
     cache.consumer = consumer
     consumer.process = AsyncMock(return_value=True)
-    consumer._sleep = AsyncMock(wraps=consumer._sleep)
+    consumer._sleep = AsyncMock()
     return consumer, cache
 
 
