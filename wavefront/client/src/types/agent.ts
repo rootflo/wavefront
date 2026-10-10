@@ -129,7 +129,7 @@ export interface Router {
   id?: string;
   name: string;
   description: string;
-  type?: 'smart' | 'task_classifier' | 'conversation_analysis' | 'reflection' | 'plan_execute' | 'custom';
+  type?: 'smart' | 'task_classifier' | 'conversation_analysis' | 'custom';
   code?: string;
   routing_options?: Record<string, string>;
   model?: LLMConfig;
@@ -137,7 +137,6 @@ export interface Router {
     temperature?: number;
     fallback_strategy?: 'first' | 'last' | 'random';
     analysis_depth?: number;
-    allow_early_exit?: boolean;
   };
   task_categories?: Record<
     string,
@@ -148,7 +147,6 @@ export interface Router {
     }
   >;
   routing_logic?: Record<string, string>;
-  flow_pattern?: string[];
 }
 
 export interface WorkflowEdge {

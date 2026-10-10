@@ -265,6 +265,21 @@ class BaseLLM(ABC):
         """
         return None
 
+    def format_tool_call_message(
+        self, content: str, tool_calls: List[Any]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Format a recorded tool call (an AssistantMessage with tool_calls) as
+        the message this provider expects to see before the tool's result.
+
+        Used to rebuild a request from stored history, where the provider's
+        raw response is no longer at hand.
+
+        Returns None where the provider's message format has no place for it.
+        The call is then left out of the request and only its result is sent.
+        """
+        return None
+
     def get_tool_use_id(self, function_call: Dict[str, Any]) -> Optional[str]:
         """
         Extract tool_use_id from function call if available.

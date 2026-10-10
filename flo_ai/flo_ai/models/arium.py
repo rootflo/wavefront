@@ -115,18 +115,6 @@ class RouterSettingsModel(BaseModel):
     fallback_strategy: Optional[Literal['first', 'random', 'all']] = Field(
         None, description='Fallback strategy for routing'
     )
-    allow_early_exit: Optional[bool] = Field(
-        None, description='Allow early exit (for reflection router)'
-    )
-    planner_agent: Optional[str] = Field(
-        None, description='Planner agent name (for plan_execute router)'
-    )
-    executor_agent: Optional[str] = Field(
-        None, description='Executor agent name (for plan_execute router)'
-    )
-    reviewer_agent: Optional[str] = Field(
-        None, description='Reviewer agent name (for plan_execute router)'
-    )
 
 
 class TaskCategoryModel(BaseModel):
@@ -151,8 +139,6 @@ class RouterConfigModel(BaseModel):
         'smart',
         'task_classifier',
         'conversation_analysis',
-        'reflection',
-        'plan_execute',
         'field_match',
     ] = Field(..., description='Router type')
     model: Optional[LLMConfigModel] = Field(
@@ -170,14 +156,6 @@ class RouterConfigModel(BaseModel):
     # Conversation analysis router fields
     routing_logic: Optional[Dict[str, str]] = Field(
         None, description='Routing logic for conversation_analysis router'
-    )
-    # Reflection router fields
-    flow_pattern: Optional[List[str]] = Field(
-        None, description='Flow pattern for reflection router (list of agent names)'
-    )
-    # Plan-execute router fields
-    agents: Optional[Dict[str, str]] = Field(
-        None, description='Agent descriptions for plan_execute router'
     )
     # Field-match (deterministic, no LLM) router fields
     field: Optional[str] = Field(
@@ -209,16 +187,6 @@ class RouterConfigModel(BaseModel):
             if not self.routing_logic:
                 raise ValueError(
                     f"Conversation analysis router '{self.name}' must specify 'routing_logic'"
-                )
-        elif self.type == 'reflection':
-            if not self.flow_pattern:
-                raise ValueError(
-                    f"Reflection router '{self.name}' must specify 'flow_pattern'"
-                )
-        elif self.type == 'plan_execute':
-            if not self.agents:
-                raise ValueError(
-                    f"Plan-Execute router '{self.name}' must specify 'agents'"
                 )
         elif self.type == 'field_match':
             if not self.field or not self.routes:

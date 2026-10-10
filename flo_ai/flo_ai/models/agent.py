@@ -196,8 +196,11 @@ class SettingsModel(BaseModel):
     max_retries: Optional[int] = Field(
         None, ge=0, description='Maximum number of retries'
     )
-    reasoning_pattern: Optional[Literal['DIRECT', 'REACT', 'COT']] = Field(
-        None, description='Reasoning pattern'
+    max_tool_calls: Optional[int] = Field(
+        None, gt=0, description='Maximum number of tool calls in one run'
+    )
+    reasoning_pattern: Optional[Literal['DIRECT', 'REACT', 'COT', 'PLAN_EXECUTE']] = (
+        Field(None, description='Reasoning pattern')
     )
     # Generation params, named canonically: each is translated to whatever the
     # agent's provider calls it (a token limit is max_completion_tokens to

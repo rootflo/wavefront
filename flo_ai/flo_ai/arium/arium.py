@@ -31,6 +31,11 @@ MIN_ALLOWED_ITERATIONS = 5
 MAX_ALLOWED_ITERATIONS = 60
 MAX_ITERATIONS_ENV_VAR = 'FLO_AI_MAX_ITERATIONS'
 
+# Loop prevention: cap on how many times one node may run in a single graph run.
+DEFAULT_MAX_NODE_VISITS = 3
+MIN_ALLOWED_NODE_VISITS = 1
+MAX_NODE_VISITS_ENV_VAR = 'FLO_AI_MAX_NODE_VISITS'
+
 
 def resolve_max_iterations() -> int:
     """Return the iteration cap for a graph run.
@@ -69,6 +74,37 @@ def resolve_max_iterations() -> int:
         return MAX_ALLOWED_ITERATIONS
 
     return max_iterations
+
+
+def resolve_max_node_visits(max_iterations: int) -> int:
+    """Return how many times a single node may run in one graph run.
+
+    ``FLO_AI_MAX_NODE_VISITS`` takes precedence over
+    :data:`DEFAULT_MAX_NODE_VISITS`. It cannot usefully exceed the iteration
+    cap, so it is held to ``max_iterations``; an unparseable or too-small
+    value is ignored (with a warning) rather than failing the run.
+    """
+    raw_value = os.environ.get(MAX_NODE_VISITS_ENV_VAR)
+    if raw_value is None or not raw_value.strip():
+        return DEFAULT_MAX_NODE_VISITS
+
+    try:
+        max_node_visits = int(raw_value.strip())
+    except ValueError:
+        logger.warning(
+            f'Invalid {MAX_NODE_VISITS_ENV_VAR}={raw_value!r}, '
+            f'falling back to {DEFAULT_MAX_NODE_VISITS}'
+        )
+        return DEFAULT_MAX_NODE_VISITS
+
+    if max_node_visits < MIN_ALLOWED_NODE_VISITS:
+        logger.warning(
+            f'{MAX_NODE_VISITS_ENV_VAR}={max_node_visits} is below the minimum '
+            f'allowed, using {DEFAULT_MAX_NODE_VISITS}'
+        )
+        return DEFAULT_MAX_NODE_VISITS
+
+    return min(max_node_visits, max_iterations)
 
 
 class Arium(BaseArium):
@@ -312,6 +348,7 @@ class Arium(BaseArium):
 
         # Loop prevention: track execution steps and node visits
         max_iterations = resolve_max_iterations()
+        max_node_visits = resolve_max_node_visits(max_iterations)
         iteration_count = 0
         node_visit_count = {}  # Track how many times each node is visited
         execution_path = []  # Track the path for debugging
@@ -335,7 +372,7 @@ class Arium(BaseArium):
             execution_path.append(current_node.name)
 
             # Check for excessive node visits (same node visited too many times)
-            if node_visit_count[current_node.name] > 3:
+            if node_visit_count[current_node.name] > max_node_visits:
                 logger.error(
                     f"Node '{current_node.name}' visited {node_visit_count[current_node.name]} times. Execution path: {' -> '.join(execution_path)}"
                 )
@@ -454,11 +491,10 @@ class Arium(BaseArium):
 
         # Extract variables from all agents in the workflow
         agents_variables = {}
-        for node in self.nodes.values():
-            if isinstance(node, Agent):
-                agent_vars = extract_agent_variables(node)
-                if agent_vars:
-                    agents_variables[node.name] = agent_vars
+        for agent in self._workflow_agents():
+            agent_vars = extract_agent_variables(agent)
+            if agent_vars:
+                agents_variables[agent.name] = agent_vars
 
         # Validate input variables separately with cleaner error message
         if input_variables:
@@ -473,6 +509,19 @@ class Arium(BaseArium):
         # Validate agent variables with detailed agent breakdown
         if agents_variables:
             validate_multi_agent_variables(agents_variables, variables)
+
+    def _workflow_agents(self) -> List[Agent]:
+        """The agent nodes, and the agents they delegate to through tools.
+
+        A delegate is not a node, but its prompt takes the same variables.
+        """
+        agents: List[Agent] = []
+        for node in self.nodes.values():
+            if isinstance(node, Agent):
+                for agent in [node, *node.all_delegate_agents()]:
+                    if agent not in agents:
+                        agents.append(agent)
+        return agents
 
     def _resolve_inputs(
         self,
@@ -510,10 +559,9 @@ class Arium(BaseArium):
         Args:
             variables: Dictionary of variable name to value mappings
         """
-        for node in self.nodes.values():
-            if isinstance(node, Agent):
-                node.system_prompt = resolve_variables(node.system_prompt, variables)
-                node.resolved_variables = True
+        for agent in self._workflow_agents():
+            agent.resolve_system_prompt(variables)
+            agent.resolved_variables = True
 
     async def _execute_node(
         self,
@@ -704,6 +752,11 @@ class Arium(BaseArium):
 
         async with aprofile(f'node.{node.name}[{node_type}]'):
             if isinstance(node, Agent):
+                # `inputs` is everything this node should see, taken from
+                # workflow memory. Whatever the agent kept from an earlier
+                # visit or an earlier run is already in there or does not
+                # belong, so adding to it would send those messages twice.
+                node.clear_history()
                 return await node.run(inputs, variables={})
             if isinstance(node, FunctionNode):
                 # Agents get {} because their prompts were already resolved against

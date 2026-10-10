@@ -271,6 +271,26 @@ class AWSBedrock(BaseLLM):  # Only openai compatible for now
             return response['raw_message']
         return None
 
+    def format_tool_call_message(
+        self, content: str, tool_calls: List[Any]
+    ) -> Optional[Dict[str, Any]]:
+        """An assistant message with tool_calls, as the API returns it"""
+        return {
+            'role': 'assistant',
+            'content': content or None,
+            'tool_calls': [
+                {
+                    'id': call.id or 'unknown',
+                    'type': 'function',
+                    'function': {
+                        'name': call.name,
+                        'arguments': json.dumps(call.arguments),
+                    },
+                }
+                for call in tool_calls
+            ],
+        }
+
     def get_tool_use_id(self, function_call: Dict[str, Any]) -> Optional[str]:
         return function_call.get('id')
 

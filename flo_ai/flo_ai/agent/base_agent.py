@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from flo_ai.llm.base_llm import BaseLLM
 from flo_ai.models.chat_message import (
+    AssistantMessage,
     BaseMessage,
     MediaMessageContent,
     TextMessageContent,
@@ -11,6 +12,15 @@ from flo_ai.models.chat_message import (
 )
 from flo_ai.utils.variable_extractor import resolve_variables
 from flo_ai.utils.profiler import aprofile
+
+
+# How an error analysis says that retrying will not help.
+NOT_RECOVERABLE_PHRASES = (
+    'not recoverable',
+    'non-recoverable',
+    'unrecoverable',
+    'cannot be recovered',
+)
 
 
 class AgentType(Enum):
@@ -22,6 +32,7 @@ class ReasoningPattern(Enum):
     DIRECT = 'direct'  # Direct response without explicit reasoning
     REACT = 'react'  # Thought-Action-Observation cycle
     COT = 'cot'  # Chain of Thought reasoning
+    PLAN_EXECUTE = 'plan_execute'  # Write a plan, then work through it
 
 
 class BaseAgent(ABC):
@@ -42,6 +53,25 @@ class BaseAgent(ABC):
         self.max_tool_calls = max_tool_calls
         self.resolved_variables = False
         self.conversation_history: List[BaseMessage] = []
+        # The prompt as written, kept so that a later run with other variables
+        # resolves from it and not from the text an earlier run filled in.
+        self._prompt_template = system_prompt
+        self._resolved_prompt = system_prompt
+        self._resolved_with: Dict[str, Any] = {}
+
+    def prompt_template(self) -> str:
+        """The system prompt as written, before variables were filled in"""
+        # A prompt assigned from outside since it was last resolved is a new
+        # template, not a stale resolution.
+        if self.system_prompt != self._resolved_prompt:
+            self._prompt_template = self.system_prompt
+            self._resolved_prompt = self.system_prompt
+        return self._prompt_template
+
+    def resolve_system_prompt(self, variables: Dict[str, Any]) -> None:
+        """Fill the prompt template's variables in, replacing any earlier values"""
+        self.system_prompt = resolve_variables(self.prompt_template(), variables)
+        self._resolved_prompt = self.system_prompt
 
     @abstractmethod
     async def run(self, input_text: str) -> List[BaseMessage]:
@@ -64,7 +94,7 @@ class BaseAgent(ABC):
             f'An error occurred while processing the request: {str(error)}\n'
             f'Context: {context}\n'
             'Please analyze the error and suggest a correction. '
-            'If the error is not recoverable, explain why.'
+            'If the error is not recoverable, say "not recoverable" and explain why.'
         )
 
         try:
@@ -79,7 +109,10 @@ class BaseAgent(ABC):
 
             response = await self.llm.generate(messages)
             analysis = self.llm.get_message_content(response)
-            should_retry = 'not recoverable' not in analysis.lower()
+            verdict = analysis.lower()
+            should_retry = not any(
+                phrase in verdict for phrase in NOT_RECOVERABLE_PHRASES
+            )
             return should_retry, analysis
 
         except Exception as e:
@@ -144,8 +177,29 @@ class BaseAgent(ABC):
         for idx, input in enumerate(self.conversation_history):
             if isinstance(input, FunctionMessage):
                 message_history.append(
-                    {'role': input.role, 'name': input.name, 'content': input.content}
+                    self.llm.format_function_result_message(
+                        input.name, input.content, input.tool_call_id
+                    )
                 )
+            elif isinstance(input, AssistantMessage) and input.tool_calls:
+                # A call is only sent with its result. One left unanswered (a
+                # run cut short after the call was stored) would make the
+                # provider reject the whole request, so only its text is kept.
+                following = (
+                    self.conversation_history[idx + 1]
+                    if idx + 1 < len(self.conversation_history)
+                    else None
+                )
+                text = str(input.content or '')
+                formatted = (
+                    self.llm.format_tool_call_message(text, input.tool_calls)
+                    if isinstance(following, FunctionMessage)
+                    else None
+                )
+                if formatted is not None:
+                    message_history.append(formatted)
+                elif text:
+                    message_history.append({'role': input.role, 'content': text})
             elif isinstance(input.content, TextMessageContent):
                 resolved_content = resolve_variables(input.content.text, variables)
                 message_history.append(

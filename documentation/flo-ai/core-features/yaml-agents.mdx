@@ -135,7 +135,7 @@ agent:
   settings:
     temperature: 0.3  # Can override model temperature
     max_retries: 5
-    reasoning_pattern: "REACT"  # DIRECT, REACT, or COT
+    reasoning_pattern: "REACT"  # DIRECT, REACT, COT, or PLAN_EXECUTE
 ```
 
 ### Agent with Examples
@@ -202,7 +202,8 @@ agent:
   settings: # Optional: Agent settings
     temperature: 0.7 # Optional: Override model temperature
     max_retries: 3 # Optional: Number of retry attempts
-    reasoning_pattern: "DIRECT" # Optional: DIRECT, REACT, or COT
+    max_tool_calls: 5 # Optional: Tool calls allowed in one run
+    reasoning_pattern: "DIRECT" # Optional: DIRECT, REACT, COT, or PLAN_EXECUTE
 
   tools: [] # Optional: List of tools (see tools section)
   parser: {} # Optional: Parser configuration for structured output (see parser section)

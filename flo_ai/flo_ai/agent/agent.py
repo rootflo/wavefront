@@ -1,3 +1,4 @@
+import inspect
 import json
 from typing import Dict, Any, List, Optional
 from flo_ai.agent.base_agent import BaseAgent, AgentType, ReasoningPattern
@@ -11,8 +12,11 @@ from flo_ai.models.chat_message import (
     TextMessageContent,
     FunctionMessage,
     SystemMessage,
+    ToolCall,
 )
+from flo_ai.agent.events import AgentEvent, AgentEventCallback, AgentEventType
 from flo_ai.tool.base_tool import Tool, ToolExecutionError
+from flo_ai.tool.plan_tool import PLAN_TOOL_NAME, Plan, create_plan_tool
 from flo_ai.models.agent_error import AgentError
 from flo_ai.utils.logger import logger
 from flo_ai.utils.variable_extractor import (
@@ -26,6 +30,10 @@ from flo_ai.telemetry.instrumentation import (
     agent_metrics,
 )
 from flo_ai.telemetry import get_tracer
+
+# How many times in one run an agent is told to keep going after replying with
+# text that is not a final answer, before that text is accepted as the answer.
+MAX_CONTINUATION_NUDGES = 3
 
 
 class Agent(BaseAgent):
@@ -43,6 +51,15 @@ class Agent(BaseAgent):
         act_as: Optional[str] = MessageType.ASSISTANT,
         input_filter: Optional[List[str]] = None,
     ):
+        tools = list(tools or [])
+
+        # A planning agent keeps its plan through a tool of its own, so it is
+        # tool-using even when it was given no other tools.
+        self.plan: Optional[Plan] = None
+        if reasoning_pattern == ReasoningPattern.PLAN_EXECUTE:
+            self.plan = Plan()
+            tools.append(create_plan_tool(self.plan))
+
         # Determine agent type based on tools
         agent_type = AgentType.TOOL_USING if tools else AgentType.CONVERSATIONAL
 
@@ -62,16 +79,61 @@ class Agent(BaseAgent):
             max_retries=max_retries,
             max_tool_calls=max_tool_calls,
         )
-        self.tools = tools or []
+        self.tools = tools
         self.tools_dict = {tool.name: tool for tool in self.tools}
         self.reasoning_pattern = reasoning_pattern
         self.output_schema = output_schema
         self.role = role
         self.act_as = act_as
         self.input_filter: Optional[List[str]] = input_filter
+        self._on_event: Optional[AgentEventCallback] = None
 
     @trace_agent_execution()
     async def run(
+        self,
+        inputs: List[BaseMessage] | str,
+        variables: Optional[Dict[str, Any]] = None,
+        on_event: Optional[AgentEventCallback] = None,
+    ) -> List[BaseMessage]:
+        """Run one turn.
+
+        Args:
+            inputs: The new message(s), or a whole stored conversation to
+                continue from, tool calls and results included.
+            variables: Values for the placeholders in the prompt and inputs.
+            on_event: Called, and awaited if it returns an awaitable, with an
+                AgentEvent for each message the run adds to the conversation:
+                tool calls, tool results, and the model's replies. It is for
+                observing; an exception it raises is logged and the run goes on.
+        """
+        self._on_event = on_event
+        try:
+            return await self._run(inputs, variables)
+        finally:
+            self._on_event = None
+
+    async def _record(
+        self, message: BaseMessage, event_type: str, is_final: bool = False
+    ) -> None:
+        """Add a message this run produced to the history, and report it"""
+        self.add_to_history(message)
+        if self._on_event is None:
+            return
+        try:
+            outcome = self._on_event(
+                AgentEvent(
+                    type=event_type,
+                    agent=self.name,
+                    message=message,
+                    is_final=is_final,
+                )
+            )
+            if inspect.isawaitable(outcome):
+                await outcome
+        except Exception:
+            logger.exception(f'Agent {self.name}: on_event callback failed')
+
+    async def _run(
         self,
         inputs: List[BaseMessage] | str,
         variables: Optional[Dict[str, Any]] = None,
@@ -93,21 +155,50 @@ class Agent(BaseAgent):
         history_before_turn = list(self.conversation_history)
         system_prompt_before_turn = self.system_prompt
         resolved_variables_before_turn = self.resolved_variables
+        prompt_state_before_turn = (
+            self._prompt_template,
+            self._resolved_prompt,
+            self._resolved_with,
+        )
 
-        # Perform runtime variable validation if not already resolved (single agent usage)
-        if not self.resolved_variables:
+        # A plan covers one request; the next one starts with none.
+        if self.plan is not None:
+            self.plan.reset()
+
+        # Perform runtime variable validation if not already resolved (single agent usage).
+        # Variables passed on a later run are applied too, on top of the ones
+        # already in use, so a reused agent picks up the new values. A workflow
+        # resolves the prompt itself and passes none here.
+        if not self.resolved_variables or variables:
+            variables = {**self._resolved_with, **variables}
+            self._resolved_with = variables
+
             # Extract variables from inputs and system prompt
             input_variables = extract_variables_from_inputs(inputs)
             agent_variables = extract_agent_variables(self)
             all_required_variables = input_variables.union(agent_variables)
 
+            # Agents this one delegates to are only ever given a task, so
+            # their prompts are filled in from this run's variables.
+            delegates = self.all_delegate_agents()
+            agents_variables = {
+                delegate.name: extract_agent_variables(delegate)
+                for delegate in delegates
+            }
+            agents_variables[self.name] = all_required_variables
+
             # Validate that all required variables are provided
-            if all_required_variables:
-                agents_variables = {self.name: all_required_variables}
+            agents_variables = {
+                name: needed for name, needed in agents_variables.items() if needed
+            }
+            if agents_variables:
                 validate_multi_agent_variables(agents_variables, variables)
 
             # Resolve variables and mark as resolved
-            self.system_prompt = resolve_variables(self.system_prompt, variables)
+            self.resolve_system_prompt(variables)
+            for delegate in delegates:
+                delegate.resolve_system_prompt(variables)
+                delegate.resolved_variables = True
 
             # Process inputs and resolve variables in string inputs
             for input in inputs:
@@ -159,29 +250,31 @@ class Agent(BaseAgent):
             self.conversation_history = history_before_turn
             self.system_prompt = system_prompt_before_turn
             self.resolved_variables = resolved_variables_before_turn
+            (
+                self._prompt_template,
+                self._resolved_prompt,
+                self._resolved_with,
+            ) = prompt_state_before_turn
             raise
 
     async def _handle_response_with_parser(
         self, assistant_message: Optional[str], role: str, response: Dict[str, Any]
     ) -> None:
         if assistant_message:
-            self.add_to_history(AssistantMessage(role=role, content=assistant_message))
+            reply = AssistantMessage(role=role, content=assistant_message)
         else:
             possible_tool_message = await self.llm.get_function_call(response)
             if possible_tool_message:
-                self.add_to_history(
-                    AssistantMessage(
-                        role=role, content=str(possible_tool_message['arguments'])
-                    )
+                reply = AssistantMessage(
+                    role=role, content=str(possible_tool_message['arguments'])
                 )
             else:
                 logger.debug('Warning: No message content found in response')
-                self.add_to_history(
-                    AssistantMessage(
-                        role=role,
-                        content='No message content found in response',
-                    )
+                reply = AssistantMessage(
+                    role=role,
+                    content='No message content found in response',
                 )
+        await self._record(reply, AgentEventType.MESSAGE, is_final=True)
 
     async def _run_conversational(
         self, retry_count: int, variables: Optional[Dict[str, Any]] = None
@@ -218,18 +311,19 @@ class Agent(BaseAgent):
                 raise
             except Exception as e:
                 retry_count += 1
-                context = {
-                    'conversation_history': self.conversation_history,
-                    'attempt': retry_count,
-                }
+                # The error is analysed on its own: the conversation is not
+                # needed to judge it, and sending it would repeat every message
+                # in a second request.
+                context = {'attempt': retry_count}
 
                 should_retry, analysis = await self.handle_error(e, context)
 
                 if should_retry and retry_count <= self.max_retries:
-                    self.add_to_history(
+                    await self._record(
                         AssistantMessage(
                             content=f'Error occurred. Analysis: {analysis}'
-                        )
+                        ),
+                        AgentEventType.NOTICE,
                     )
                     continue
                 else:
@@ -257,9 +351,18 @@ class Agent(BaseAgent):
 
                 # Keep executing tools until we get a final answer
                 tool_call_count = 0
+                # Plan bookkeeping is counted apart from real work, so keeping
+                # the plan current does not eat into max_tool_calls. It still
+                # needs a ceiling of its own.
+                plan_update_count = 0
+                max_plan_updates = 2 * self.max_tool_calls + 2
+                nudge_count = 0
                 function_response = None
-                function_name = None
-                while tool_call_count < self.max_tool_calls:
+                response = None
+                while (
+                    tool_call_count < self.max_tool_calls
+                    and plan_update_count < max_plan_updates
+                ):
                     formatted_tools = self.llm.format_tools_for_llm(self.tools)
                     response = await self.llm.generate(
                         messages,
@@ -275,9 +378,21 @@ class Agent(BaseAgent):
                         assistant_message = self.llm.get_message_content(response)
                         if assistant_message:
                             # Check if this is a final answer or just intermediate reasoning
-                            is_final = await self._is_final_answer(
-                                assistant_message, tool_call_count, messages
-                            )
+                            if self.plan is not None:
+                                # The plan says whether there is work left, so
+                                # no classifier call is needed.
+                                is_final = not self.plan.unfinished()
+                            else:
+                                is_final = await self._is_final_answer(
+                                    assistant_message, tool_call_count, messages
+                                )
+                            if not is_final and nudge_count >= MAX_CONTINUATION_NUDGES:
+                                logger.warning(
+                                    f'Agent {self.name} was asked to continue '
+                                    f'{nudge_count} times without calling a tool; '
+                                    'accepting its reply as the final answer.'
+                                )
+                                is_final = True
                             if is_final:
                                 # Ensure act_as is not None (default to 'assistant' if missing)
                                 role = (
@@ -285,10 +400,15 @@ class Agent(BaseAgent):
                                     if self.act_as is not None
                                     else MessageType.ASSISTANT
                                 )
-                                self.add_to_history(
+                                await self._record(
                                     AssistantMessage(
-                                        role=role, content=assistant_message
-                                    )
+                                        role=role,
+                                        content=self._strip_final_answer_token(
+                                            assistant_message
+                                        ),
+                                    ),
+                                    AgentEventType.MESSAGE,
+                                    is_final=True,
                                 )
                                 return self.conversation_history
                             else:
@@ -307,42 +427,92 @@ class Agent(BaseAgent):
                                     if self.act_as is not None
                                     else MessageType.ASSISTANT
                                 )
-                                self.add_to_history(
+                                await self._record(
                                     AssistantMessage(
                                         role=role, content=assistant_message
-                                    )
+                                    ),
+                                    AgentEventType.MESSAGE,
                                 )
-                                self.add_to_history(
-                                    UserMessage(
-                                        content='Based on your reasoning, please proceed with the necessary tool calls to complete the task.',
-                                    )
+                                nudge = self._continuation_nudge()
+                                await self._record(
+                                    UserMessage(content=nudge), AgentEventType.NOTICE
                                 )
+                                # The request being built has to carry both as
+                                # well, or the model is sent the same prompt
+                                # again and gives the same reply.
+                                messages.append(
+                                    {'role': role, 'content': assistant_message}
+                                )
+                                messages.append(
+                                    {'role': MessageType.USER, 'content': nudge}
+                                )
+                                nudge_count += 1
                                 continue
                         break
 
-                    # If there's a function call, add the assistant's response
-                    # LLM-specific implementations handle special formatting (e.g., Claude's raw_content)
+                    # The call is part of the conversation in its own right:
+                    # recorded before the tool runs, with its arguments, so a
+                    # later turn (or a session replayed from storage) sees what
+                    # was asked for and not only what came back.
+                    role = (
+                        self.act_as
+                        if self.act_as is not None
+                        else MessageType.ASSISTANT
+                    )
+                    function_name = function_call.get('name') or 'unknown'
+                    # Get tool_use_id if available (LLM-specific, e.g., Claude)
+                    tool_use_id = self.llm.get_tool_use_id(function_call)
+                    raw_arguments = function_call.get('arguments')
+                    arguments_error: Optional[Exception] = None
+                    try:
+                        function_args = (
+                            json.loads(raw_arguments)
+                            if isinstance(raw_arguments, str)
+                            else raw_arguments
+                        ) or {}
+                    except json.JSONDecodeError as e:
+                        # Still recorded, so the error below answers a call.
+                        function_args = {}
+                        arguments_error = e
+
+                    call_text = self.llm.get_message_content(response) or ''
+                    tool_calls = [
+                        ToolCall(
+                            name=function_name, arguments=function_args, id=tool_use_id
+                        )
+                    ]
+                    await self._record(
+                        AssistantMessage(
+                            role=role, content=call_text, tool_calls=tool_calls
+                        ),
+                        AgentEventType.TOOL_CALL,
+                    )
+
+                    # The same call, in the request being built. A provider
+                    # that hands back its own form of the message (Claude's
+                    # raw_content) gets that; otherwise it is formatted from
+                    # the record.
                     assistant_message_content = (
                         self.llm.get_assistant_message_for_tool_call(response)
                     )
                     if assistant_message_content:
-                        # LLM returned special formatting (e.g., Claude's raw_content)
                         messages.append(
                             {
                                 'role': self.act_as,
                                 'content': assistant_message_content,
                             }
                         )
+                    else:
+                        call_message = self.llm.format_tool_call_message(
+                            call_text, tool_calls
+                        )
+                        if call_message is not None:
+                            messages.append(call_message)
 
                     # Execute the tool
                     try:
-                        function_name = function_call['name']
-                        # Get tool_use_id if available (LLM-specific, e.g., Claude)
-                        tool_use_id = self.llm.get_tool_use_id(function_call)
-                        if isinstance(function_call['arguments'], str):
-                            function_args = json.loads(function_call['arguments'])
-                        else:
-                            function_args = function_call['arguments']
+                        if arguments_error is not None:
+                            raise arguments_error
 
                         tool = self.tools_dict[function_name]
 
@@ -372,18 +542,23 @@ class Agent(BaseAgent):
                             self.name, function_name, 'success'
                         )
 
-                        tool_call_count += 1
+                        if self.plan is not None and function_name == PLAN_TOOL_NAME:
+                            plan_update_count += 1
+                        else:
+                            tool_call_count += 1
 
                         # Add function call result to history using OpenAI's "function" role format
                         # According to OpenAI API: {"role": "function", "name": "<function-name>", "content": "<result>"}
-                        self.add_to_history(
+                        await self._record(
                             FunctionMessage(
                                 content=str(
                                     'Here is the result of the tool call: \n'
                                     + str(function_response)
                                 ),
                                 name=function_name,
-                            )
+                                tool_call_id=tool_use_id,
+                            ),
+                            AgentEventType.TOOL_RESULT,
                         )
 
                         # Add the function response to messages for context
@@ -395,12 +570,8 @@ class Agent(BaseAgent):
 
                     except (json.JSONDecodeError, KeyError, ToolExecutionError) as e:
                         # Record tool call failure
-                        # Safely extract function_name from function_call if available
-                        error_function_name: str = function_name or 'unknown'
-                        if error_function_name == 'unknown' and function_call:
-                            error_function_name = function_call.get('name') or 'unknown'
                         agent_metrics.record_tool_call(
-                            self.name, error_function_name, 'error'
+                            self.name, function_name, 'error'
                         )
 
                         retry_count += 1
@@ -409,15 +580,29 @@ class Agent(BaseAgent):
                             'attempt': retry_count,
                         }
                         should_retry, analysis = await self.handle_error(e, context)
+
+                        # Recorded as the result of the call either way. The
+                        # model needs to see what went wrong to correct it, and
+                        # a call left unanswered in the history would make the
+                        # provider reject every later request.
+                        error_text = f'Tool execution error: {analysis}'
+                        await self._record(
+                            FunctionMessage(
+                                content=error_text,
+                                name=function_name,
+                                tool_call_id=tool_use_id,
+                            ),
+                            AgentEventType.TOOL_RESULT,
+                        )
+
                         if should_retry and retry_count <= self.max_retries:
                             # Record retry
                             agent_metrics.record_retry(
                                 self.name, 'tool_execution_error'
                             )
-
-                            self.add_to_history(
-                                AssistantMessage(
-                                    content=f'Tool execution error: {analysis}'
+                            messages.append(
+                                self.llm.format_function_result_message(
+                                    function_name, error_text, tool_use_id
                                 )
                             )
                             continue
@@ -425,8 +610,20 @@ class Agent(BaseAgent):
                             f'Tool execution failed: {analysis}', original_error=e
                         )
 
-                # If no tools were called, return conversation history
-                if tool_call_count == 0:
+                # The model returned neither text nor a tool call. Record that
+                # as its reply, so the run does not end on someone else's
+                # message (a workflow takes the last one as this agent's output).
+                if (
+                    tool_call_count == 0
+                    and plan_update_count == 0
+                    and response is not None
+                ):
+                    role = (
+                        self.act_as
+                        if self.act_as is not None
+                        else MessageType.ASSISTANT
+                    )
+                    await self._handle_response_with_parser(None, role, response)
                     return self.conversation_history
 
                 # Generate final response if we've hit the tool call limit or exited the loop
@@ -453,20 +650,21 @@ class Agent(BaseAgent):
                 raise
             except Exception as e:
                 retry_count += 1
-                context = {
-                    'conversation_history': self.conversation_history,
-                    'attempt': retry_count,
-                }
+                # The error is analysed on its own: the conversation is not
+                # needed to judge it, and sending it would repeat every message
+                # in a second request.
+                context = {'attempt': retry_count}
 
                 should_retry, analysis = await self.handle_error(e, context)
                 if should_retry and retry_count <= self.max_retries:
                     # Record retry
                     agent_metrics.record_retry(self.name, 'execution_error')
 
-                    self.add_to_history(
+                    await self._record(
                         AssistantMessage(
                             content=f'Error occurred. Analysis: {analysis}'
-                        )
+                        ),
+                        AgentEventType.NOTICE,
                     )
                     continue
 
@@ -502,11 +700,14 @@ class Agent(BaseAgent):
             system_content = self._get_react_prompt(variables)
         elif self.reasoning_pattern == ReasoningPattern.COT:
             system_content = self._get_cot_prompt(variables)
+        elif self.reasoning_pattern == ReasoningPattern.PLAN_EXECUTE:
+            system_content = self._get_plan_execute_prompt(variables)
         else:
             system_content = resolve_variables(self.system_prompt, variables)
 
-        system_message = SystemMessage(content=system_content)
-        self.add_to_history(system_message)
+        # First, ahead of the inputs already in the history: providers expect
+        # the system message to open the conversation.
+        self.conversation_history.insert(0, SystemMessage(content=system_content))
 
     def _get_react_prompt(self, variables: Optional[Dict[str, Any]] = None) -> str:
         """Get system prompt modified for ReACT pattern"""
@@ -574,6 +775,84 @@ class Agent(BaseAgent):
             IMPORTANT: When you have gathered all necessary information and are ready to provide your complete answer, you MUST prefix your response with "Final Answer:" to indicate completion."""
 
         return cot_prompt
+
+    def _get_plan_execute_prompt(
+        self, variables: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """Get system prompt modified for the plan-and-execute pattern"""
+        variables = variables or {}
+
+        # Resolve variables in the base system prompt
+        resolved_system_prompt = resolve_variables(self.system_prompt, variables)
+
+        return f"""{resolved_system_prompt}
+
+You work by planning first and then carrying the plan out. The {PLAN_TOOL_NAME} tool holds your plan.
+
+1. If the request needs more than one step, start by calling {PLAN_TOOL_NAME} with every step, each "pending".
+2. Carry out the steps in order with your other tools. When a step is done, call {PLAN_TOOL_NAME} with the full list again, marking that step "completed" and the next one "in_progress".
+3. Change the plan when you learn something that changes it: add steps, or mark steps you no longer need as "skipped".
+4. Give your final answer only when every step is "completed" or "skipped".
+
+If the request can be answered directly, answer it without making a plan."""
+
+    def _strip_final_answer_token(self, message: str) -> str:
+        """Drop the "Final Answer:" marker the ReACT and CoT prompts ask for"""
+        if self.reasoning_pattern not in (ReasoningPattern.REACT, ReasoningPattern.COT):
+            return message
+        _, token, answer = message.partition('Final Answer:')
+        if not token:
+            index = message.lower().find('final answer:')
+            answer = message[index + len('final answer:') :] if index >= 0 else ''
+        return answer.strip() or message
+
+    def delegate_agents(self) -> List['Agent']:
+        """The agents this one can hand work to through its tools"""
+        found: List['Agent'] = []
+        for tool in self.tools:
+            # A tool given a custom name or description is wrapped; the agents
+            # are on the tool underneath.
+            base_tool = getattr(tool, 'base_tool', tool)
+            for agent in getattr(base_tool, 'agents', []):
+                if agent not in found:
+                    found.append(agent)
+        return found
+
+    def all_delegate_agents(self) -> List['Agent']:
+        """Every agent reachable through tools, at any depth"""
+        found: List['Agent'] = []
+        pending = self.delegate_agents()
+        while pending:
+            agent = pending.pop()
+            if agent is self or agent in found:
+                continue
+            found.append(agent)
+            pending.extend(agent.delegate_agents())
+        return found
+
+    def add_tool(self, tool: Tool) -> None:
+        """Give the agent another tool"""
+        self.tools.append(tool)
+        self.tools_dict[tool.name] = tool
+
+    def _continuation_nudge(self) -> str:
+        """What to tell the model after a reply that is not a final answer"""
+        if self.plan is not None:
+            return (
+                'Your plan still has unfinished steps:\n'
+                f'{self.plan.render()}\n'
+                f'Continue with the next step, or call {PLAN_TOOL_NAME} to mark '
+                'steps completed or skipped if the plan has changed.'
+            )
+        return 'Based on your reasoning, please proceed with the necessary tool calls to complete the task.'
+
+    def as_tool(
+        self, description: Optional[str] = None, name: Optional[str] = None
+    ) -> Tool:
+        """Expose this agent as a tool another agent can delegate to"""
+        from flo_ai.tool.agent_tool import agent_as_tool
+
+        return agent_as_tool(self, description=description, name=name)
 
     async def _is_final_answer(
         self, message: str, tool_call_count: int, messages: List[Dict[str, Any]]
@@ -658,7 +937,11 @@ Respond with EXACTLY one word: "FINAL" or "INTERMEDIATE"
             analysis_response = await self.llm.generate(analysis_messages)
             analysis = self.llm.get_message_content(analysis_response).strip().upper()
 
-            is_final = 'FINAL' in analysis
+            is_final = (
+                'FINAL' in analysis
+                and 'INTERMEDIATE' not in analysis
+                and 'NOT FINAL' not in analysis
+            )
             msg_preview = (
                 message_stripped[:80]
                 if len(message_stripped) > 80

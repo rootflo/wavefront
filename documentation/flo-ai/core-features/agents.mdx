@@ -19,8 +19,9 @@ The `AgentBuilder` class provides a fluent interface for configuring agents. All
 | `with_llm(llm: BaseLLM)` | Configure the LLM provider | `llm`: Instance of OpenAI, Anthropic, Gemini, etc. |
 | `with_tools(tools: List[Tool])` | Add tools to the agent | `tools`: List of Tool objects, ToolConfig, or tool dicts |
 | `add_tool(tool: Tool, **prefilled_params)` | Add a single tool with optional pre-filled parameters | `tool`: Tool object, `**prefilled_params`: Parameters to pre-fill |
-| `with_reasoning(pattern: ReasoningPattern)` | Set reasoning pattern | `pattern`: `REACT`, `COT`, or `DIRECT` |
+| `with_reasoning(pattern: ReasoningPattern)` | Set reasoning pattern | `pattern`: `REACT`, `COT`, `PLAN_EXECUTE`, or `DIRECT` |
 | `with_retries(max_retries: int)` | Set maximum retry attempts | `max_retries`: Number of retries on failure (default: 3) |
+| `with_max_tool_calls(max_tool_calls: int)` | Set how many tool calls one run may make | `max_tool_calls`: Tool call limit (default: 5) |
 | `with_output_schema(schema: Dict \| Type[BaseModel])` | Set structured output schema | `schema`: Pydantic model class or JSON schema dict |
 | `with_role(role: str)` | Set the agent's role | `role`: Internal role description |
 | `with_actas(act_as: str)` | Set how agent presents itself | `act_as`: Message role (e.g., 'assistant', 'user') |
@@ -392,7 +393,175 @@ direct_agent = (
     .with_reasoning(ReasoningPattern.DIRECT)
     .build()
 )
+
+# Plan-and-execute pattern - for multi-step tasks
+planning_agent = (
+    AgentBuilder()
+    .with_name('Planning Agent')
+    .with_prompt('You research questions thoroughly.')
+    .with_llm(OpenAI(model='gpt-4o'))
+    .with_tools([get_weather.tool])
+    .with_reasoning(ReasoningPattern.PLAN_EXECUTE)
+    .with_max_tool_calls(15)
+    .build()
+)
 ```
+
+### Plan-and-Execute
+
+With `ReasoningPattern.PLAN_EXECUTE` the agent writes a plan before it starts and keeps it up to date as it works. The agent is given an `update_plan` tool for this automatically; you do not add it yourself.
+
+- The plan is a list of steps, each `pending`, `in_progress`, `completed`, or `skipped`. The agent sends the whole list on every update.
+- The agent's reply is accepted as its final answer once every step is `completed` or `skipped`. If it replies while steps are unfinished, it is shown the plan and asked to continue.
+- A request that needs no steps is answered directly, without a plan.
+- Plan updates are not counted against `max_tool_calls`.
+- The plan lasts for one `run`. Read it afterwards from `agent.plan` (`agent.plan.steps`, `agent.plan.render()`).
+
+### Agents as Tools (Supervisor)
+
+Any agent can be handed to another agent as a tool with `as_tool()`. The calling agent delegates a task, the result comes back to it, and it decides what to do next. This is how to build a supervisor over a group of specialists, and it needs no workflow edges or routers.
+
+```python
+researcher = AgentBuilder().with_name('researcher').with_prompt('You find facts.').with_llm(llm).with_tools([search.tool]).build()
+analyst = AgentBuilder().with_name('analyst').with_prompt('You analyse data.').with_llm(llm).build()
+
+supervisor = (
+    AgentBuilder()
+    .with_name('supervisor')
+    .with_prompt('Delegate the work to your specialists and combine their results.')
+    .with_llm(llm)
+    .with_tools([
+        researcher.as_tool('Finds facts and figures'),
+        analyst.as_tool('Analyses figures you give it'),
+    ])
+    .with_reasoning(ReasoningPattern.PLAN_EXECUTE)
+    .with_max_tool_calls(20)
+    .build()
+)
+
+result = await supervisor.run('How did revenue change last quarter, and why?')
+```
+
+- Each delegation starts the worker from an empty conversation. It sees only the `task` text, so the supervisor must put all needed context in it.
+- The supervisor sees only the worker's final answer, not its intermediate tool calls.
+- If a worker fails, the supervisor receives the failure as the tool result and can work around it. A guardrail block stops the whole run.
+- If a worker's prompt uses `<variables>`, they are filled in from the variables passed to the supervisor's `run`.
+- The supervisor is a normal agent, so it can be a single node in an Arium workflow.
+- Raise `max_tool_calls` for supervisors; the default of 5 is low for delegated work.
+
+#### Delegating in parallel
+
+Add `parallel_agents_tool` to let the supervisor hand out several independent tasks in one call:
+
+```python
+from flo_ai.tool import parallel_agents_tool
+
+supervisor = (
+    AgentBuilder()
+    .with_name('supervisor')
+    .with_prompt('Delegate the work to your specialists and combine their results.')
+    .with_llm(llm)
+    .with_tools([
+        researcher.as_tool('Finds facts and figures'),
+        analyst.as_tool('Analyses figures you give it'),
+        parallel_agents_tool([researcher, analyst]),
+    ])
+    .build()
+)
+```
+
+The supervisor calls `delegate_parallel` with a list of `{agent, task}` pairs and gets all the answers back together. Tasks for different agents run at the same time; two tasks for the same agent in one call run one after the other.
+
+#### In a YAML workflow
+
+In an Arium YAML file, list other agents of the same workflow under an agent's `tools:`. They become its delegation tools, and with two or more of them `delegate_parallel` is added automatically:
+
+```yaml
+arium:
+  agents:
+    - name: supervisor
+      job: Delegate the work to your specialists and combine their results.
+      settings:
+        reasoning_pattern: PLAN_EXECUTE
+        max_tool_calls: 20
+      tools:
+        - researcher                      # described by the researcher's role
+        - name: analyst
+          description_override: Analyses figures you give it
+    - name: researcher
+      role: a researcher who finds facts and figures
+      job: Find the facts you are asked for.
+    - name: analyst
+      job: Analyse the figures you are given.
+  workflow:
+    start: supervisor
+    edges: []
+    end: [supervisor]
+```
+
+- An agent that is only delegated to is not a workflow node, so it needs no edges.
+- An agent can be both a delegate and a workflow step.
+- Agents may be listed in any order. Agents that delegate to each other in a cycle are rejected.
+- If a name is both an agent and an entry in the tool registry, the registered tool is used.
+
+### Tool Calls in History
+
+When an agent calls a tool, the conversation records both sides of it: an `AssistantMessage` whose `tool_calls` holds the tool name and arguments, followed by a `FunctionMessage` with the result.
+
+```python
+from flo_ai.models import AssistantMessage, FunctionMessage, ToolCall
+
+history = await agent.run('Create a workflow called onboarding')
+
+# history now contains, in order:
+#   AssistantMessage(content='', tool_calls=[ToolCall(name='create_workflow',
+#                                                     arguments={'name': 'onboarding'}, id='...')])
+#   FunctionMessage(name='create_workflow', content='...', tool_call_id='...')
+#   AssistantMessage(content='Done.')
+```
+
+A stored conversation can be passed back in as `inputs` to continue it, tool calls included:
+
+```python
+agent = build_agent()          # a fresh instance, e.g. on the next request
+await agent.run([*stored_messages, UserMessage(content='Now add a reviewer step')])
+```
+
+- `ToolCall.id` and `FunctionMessage.tool_call_id` carry the provider's id for the call where it issues one (Anthropic, Bedrock), and are `None` otherwise.
+- OpenAI, Azure OpenAI, vLLM, Anthropic and Bedrock are sent the recorded call. Gemini, Ollama and RootFlo have no slot for it in the way flo-ai formats their messages, so they are sent the result only, as before.
+- A call that has no result after it (a run that was cut short) is not sent; only its text is.
+
+### Agent Events
+
+Pass `on_event` to `run` to be told about each step as it happens, for streaming progress to a UI or saving a conversation as it grows:
+
+```python
+from flo_ai.agent import AgentEvent, AgentEventType
+
+async def on_event(event: AgentEvent) -> None:
+    if event.type == AgentEventType.TOOL_CALL:
+        call = event.message.tool_calls[0]
+        print(f'calling {call.name}({call.arguments})')
+    elif event.type == AgentEventType.TOOL_RESULT:
+        print(f'{event.message.name} returned')
+    elif event.type == AgentEventType.MESSAGE and event.is_final:
+        print(event.message.content)
+    await save(event.message)
+
+await agent.run('Create a workflow called onboarding', on_event=on_event)
+```
+
+| Event type | `event.message` | When |
+|---|---|---|
+| `tool_call` | `AssistantMessage` with `tool_calls` | The model asked for a tool, before it runs |
+| `tool_result` | `FunctionMessage` | The tool returned or failed |
+| `message` | `AssistantMessage` | The model replied; `is_final` marks the answer |
+| `notice` | `UserMessage` or `AssistantMessage` | The agent told the model to keep going, or recorded an error before a retry |
+
+- The events of a run, in order, are exactly the messages it added to the conversation after the caller's inputs. Saving each `event.message` saves the turn.
+- The callback may be sync or async. An exception it raises is logged and does not stop the run.
+- Events come from the agent you call. Agents it delegates to through tools do not report to this callback; their work appears as the `tool_result`.
+- If a guardrail blocks the turn, `run` raises and the agent's own history is rolled back; events already delivered for that turn should be discarded.
 
 ### Role and Act-As Configuration
 

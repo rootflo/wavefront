@@ -102,6 +102,13 @@ class ForEachNode:
         # Only ExecutableNode types have a run method
         if not isinstance(self.execute_node, ExecutableNode):
             raise TypeError(f'Node {self.execute_node.name} does not support execution')
+
+        # An agent keeps its conversation between runs. Each item is handled on
+        # its own, so start it clean instead of on top of the items before it.
+        clear_history = getattr(self.execute_node, 'clear_history', None)
+        if callable(clear_history):
+            clear_history()
+
         result = await self.execute_node.run(
             inputs=[item],
             variables=item_variables,

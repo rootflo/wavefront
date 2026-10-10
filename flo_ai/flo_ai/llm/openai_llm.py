@@ -1,3 +1,4 @@
+import json
 from typing import Dict, Any, List, AsyncIterator, Optional
 from openai import AsyncOpenAI
 from .base_llm import (
@@ -191,6 +192,22 @@ class OpenAI(BaseLLM):
                 content = getattr(delta, 'content', None)
                 if content:
                     yield {'content': content}
+
+    def format_tool_call_message(
+        self, content: str, tool_calls: List[Any]
+    ) -> Optional[Dict[str, Any]]:
+        """An assistant message carrying the function call, as the API returns it"""
+        # The functions API allows one call per message, which is also all
+        # the agent loop makes.
+        call = tool_calls[0]
+        return {
+            'role': 'assistant',
+            'content': content or None,
+            'function_call': {
+                'name': call.name,
+                'arguments': json.dumps(call.arguments),
+            },
+        }
 
     def get_message_content(self, response: Dict[str, Any]) -> str:
         if isinstance(response, str):

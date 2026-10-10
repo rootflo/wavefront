@@ -20,6 +20,9 @@ class Tool:
         self.name = name
         self.description = description
         self.function = function
+        # Agents this tool hands work to (see agent_tool). Lets the owner of
+        # the tool find them, to pass on the variables their prompts need.
+        self.agents: List[Any] = []
 
         # Ensure parameters have required field
         self.parameters = {}
@@ -37,6 +40,11 @@ class Tool:
             logger.info(f'Tool {self.name} returned: {tool_result}')
             return tool_result
         except Exception as e:
+            # An error that declares itself final (a guardrail block raised by
+            # an agent running as a tool) keeps its type, so the calling agent
+            # handles it as that and not as a tool failure to analyse and retry.
+            if getattr(e, 'retryable', True) is False:
+                raise
             logger.error(f'Error executing tool {self.name}: {str(e)}', exc_info=True)
             raise ToolExecutionError(
                 f'Error executing tool {self.name}: {str(e)}', original_error=e

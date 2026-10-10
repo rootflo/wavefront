@@ -301,6 +301,24 @@ class Anthropic(BaseLLM):
             return response['raw_content']
         return None
 
+    def format_tool_call_message(
+        self, content: str, tool_calls: List[Any]
+    ) -> Optional[Dict[str, Any]]:
+        """An assistant message with a tool_use block per call"""
+        blocks: List[Dict[str, Any]] = []
+        if content:
+            blocks.append({'type': 'text', 'text': content})
+        for call in tool_calls:
+            blocks.append(
+                {
+                    'type': 'tool_use',
+                    'id': call.id or 'unknown',
+                    'name': call.name,
+                    'input': call.arguments,
+                }
+            )
+        return {'role': 'assistant', 'content': blocks}
+
     def get_tool_use_id(self, function_call: Dict[str, Any]) -> Optional[str]:
         """
         Extract tool_use_id from function call if available.
