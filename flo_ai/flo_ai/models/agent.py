@@ -199,6 +199,11 @@ class SettingsModel(BaseModel):
     max_tool_calls: Optional[int] = Field(
         None, gt=0, description='Maximum number of tool calls in one run'
     )
+    interactive: Optional[bool] = Field(
+        None,
+        description='The agent talks to a person turn by turn: their messages '
+        'are taken as written, and a reply in words ends the turn',
+    )
     reasoning_pattern: Optional[Literal['DIRECT', 'REACT', 'COT', 'PLAN_EXECUTE']] = (
         Field(None, description='Reasoning pattern')
     )

@@ -50,6 +50,7 @@ class Agent(BaseAgent):
         role: Optional[str] = None,
         act_as: Optional[str] = MessageType.ASSISTANT,
         input_filter: Optional[List[str]] = None,
+        interactive: bool = False,
     ):
         tools = list(tools or [])
 
@@ -86,6 +87,10 @@ class Agent(BaseAgent):
         self.role = role
         self.act_as = act_as
         self.input_filter: Optional[List[str]] = input_filter
+        # A person is on the other end, turn by turn. What they type is taken
+        # as written, never as a template, and a reply in words ends the turn
+        # so that a question put to them reaches them.
+        self.interactive = interactive
         self._on_event: Optional[AgentEventCallback] = None
 
     @trace_agent_execution()
@@ -140,7 +145,13 @@ class Agent(BaseAgent):
     ) -> List[BaseMessage]:
         variables = variables or {}
         if isinstance(inputs, str):
-            inputs = [UserMessage(content=resolve_variables(inputs, variables))]
+            inputs = [
+                UserMessage(
+                    content=inputs
+                    if self.interactive
+                    else resolve_variables(inputs, variables)
+                )
+            ]
 
         # The conversation as it stood before this turn, so a turn the
         # guardrails refuse can be undone. Inputs are added to the history
@@ -174,7 +185,9 @@ class Agent(BaseAgent):
             self._resolved_with = variables
 
             # Extract variables from inputs and system prompt
-            input_variables = extract_variables_from_inputs(inputs)
+            input_variables = (
+                set() if self.interactive else extract_variables_from_inputs(inputs)
+            )
             agent_variables = extract_agent_variables(self)
             all_required_variables = input_variables.union(agent_variables)
 
@@ -200,14 +213,21 @@ class Agent(BaseAgent):
                 delegate.resolve_system_prompt(variables)
                 delegate.resolved_variables = True
 
-            # Process inputs and resolve variables in string inputs
+            # Process inputs and resolve variables in string inputs. This is
+            # the only place message text is treated as a template, and only
+            # for what the user side supplied: once a message is in the
+            # history it is sent as stored, and a reply or a tool result that
+            # is passed back in was never a template to begin with.
+            fill_in = bool(variables) and not self.interactive
             for input in inputs:
                 if isinstance(input, BaseMessage):
-                    # checking whether the TextMessageContent is resolved
-                    if isinstance(input.content, TextMessageContent) and variables:
-                        input.content.text = resolve_variables(
-                            input.content.text, variables
-                        )
+                    if fill_in and input.role == MessageType.USER:
+                        if isinstance(input.content, TextMessageContent):
+                            input.content.text = resolve_variables(
+                                input.content.text, variables
+                            )
+                        elif isinstance(input.content, str):
+                            input.content = resolve_variables(input.content, variables)
                     self.add_to_history(input)
                 else:
                     raise ValueError(f'Invalid input type: {type(input)}')
@@ -382,7 +402,12 @@ class Agent(BaseAgent):
                         assistant_message = self.llm.get_message_content(response)
                         if assistant_message:
                             # Check if this is a final answer or just intermediate reasoning
-                            if self.plan is not None:
+                            if self.interactive:
+                                # Words with no tool call are for the person:
+                                # an answer, or a question only they can
+                                # answer. Either way the turn is theirs now.
+                                is_final = True
+                            elif self.plan is not None:
                                 # The plan says whether there is work left, so
                                 # no classifier call is needed.
                                 is_final = not self.plan.unfinished()
@@ -709,11 +734,23 @@ class Agent(BaseAgent):
         elif self.reasoning_pattern == ReasoningPattern.PLAN_EXECUTE:
             system_content = self._get_plan_execute_prompt(variables)
         else:
-            system_content = resolve_variables(self.system_prompt, variables)
+            system_content = self._resolved_system_prompt(variables)
 
         # First, ahead of the inputs already in the history: providers expect
         # the system message to open the conversation.
         self.conversation_history.insert(0, SystemMessage(content=system_content))
+
+    def _resolved_system_prompt(
+        self, variables: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """The system prompt with its variables filled in.
+
+        A run fills them in before it gets here, and filling in twice would
+        take angle brackets in a variable's value for placeholders.
+        """
+        if self.resolved_variables:
+            return self.system_prompt
+        return resolve_variables(self.system_prompt, variables or {})
 
     def _get_react_prompt(self, variables: Optional[Dict[str, Any]] = None) -> str:
         """Get system prompt modified for ReACT pattern"""
@@ -724,7 +761,7 @@ class Agent(BaseAgent):
         )
 
         # Resolve variables in the base system prompt
-        resolved_system_prompt = resolve_variables(self.system_prompt, variables)
+        resolved_system_prompt = self._resolved_system_prompt(variables)
 
         react_prompt = f"""{resolved_system_prompt}
             When solving tasks, follow this format:
@@ -757,7 +794,7 @@ class Agent(BaseAgent):
         )
 
         # Resolve variables in the base system prompt
-        resolved_system_prompt = resolve_variables(self.system_prompt, variables)
+        resolved_system_prompt = self._resolved_system_prompt(variables)
 
         cot_prompt = f"""{resolved_system_prompt}
             When solving tasks, follow this Chain of Thought reasoning format:
@@ -789,7 +826,7 @@ class Agent(BaseAgent):
         variables = variables or {}
 
         # Resolve variables in the base system prompt
-        resolved_system_prompt = resolve_variables(self.system_prompt, variables)
+        resolved_system_prompt = self._resolved_system_prompt(variables)
 
         return f"""{resolved_system_prompt}
 

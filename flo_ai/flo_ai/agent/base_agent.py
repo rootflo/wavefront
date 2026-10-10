@@ -201,9 +201,12 @@ class BaseAgent(ABC):
                 elif text:
                     message_history.append({'role': input.role, 'content': text})
             elif isinstance(input.content, TextMessageContent):
-                resolved_content = resolve_variables(input.content.text, variables)
+                # Sent as stored. Placeholders in a run's inputs are filled in
+                # when the inputs are added; anything else in the history is
+                # what someone said (a reply, another agent's output, an
+                # earlier turn), and angle brackets in it are just text.
                 message_history.append(
-                    {'role': input.role, 'content': resolved_content}
+                    {'role': input.role, 'content': input.content.text}
                 )
             elif isinstance(input.content, MediaMessageContent):
                 if input.content.type == 'image':
@@ -223,10 +226,7 @@ class BaseAgent(ABC):
                         f'Invalid media message content type: {input.content.type}'
                     )
             elif isinstance(input.content, str):
-                resolved_content = resolve_variables(input.content, variables)
-                message_history.append(
-                    {'role': input.role, 'content': resolved_content}
-                )
+                message_history.append({'role': input.role, 'content': input.content})
             else:
                 raise ValueError(f'Invalid content type: {type(input.content)}')
         return message_history

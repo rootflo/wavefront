@@ -657,3 +657,53 @@ class TestAgentBehaviourReal:
         assert any('LIGHTHOUSE' in text.upper() for text in second_visit)
         assert len(second_visit) == 5  # system, task, draft, feedback, new draft
         assert str(result[-1].result.content).strip()
+
+
+@pytest.mark.integration
+class TestInteractiveAgentReal:
+    """An agent in a chat session with a person."""
+
+    @pytest.mark.asyncio
+    async def test_angle_brackets_survive_across_turns(self, llm):
+        agent = Agent(
+            name='helper',
+            system_prompt='You are a concise assistant.',
+            llm=llm,
+            interactive=True,
+        )
+
+        await agent.run(
+            'My template contains the placeholder <workflow_name>. Repeat that '
+            'placeholder back to me, angle brackets included.'
+        )
+        history = await agent.run(
+            'Thanks. Which placeholder was it? Write it with its angle brackets.'
+        )
+
+        assert '<workflow_name>' in answer(history)
+
+    @pytest.mark.asyncio
+    async def test_a_question_is_asked_and_the_next_turn_answers_it(self, llm):
+        lookups = []
+        agent = Agent(
+            name='support',
+            system_prompt=(
+                'You answer questions about orders using the get_order_status '
+                'tool. If you do not know the order id, ask the customer for '
+                'it; never guess one. Include any code from the result in '
+                'your answer.'
+            ),
+            llm=llm,
+            tools=[order_tool(lookups)],
+            interactive=True,
+        )
+
+        first = await agent.run('Hi, can you tell me where my order is?')
+
+        assert lookups == []
+        assert '?' in answer(first)
+
+        second = await agent.run('Sorry, it is order A-1001.')
+
+        assert lookups == ['A-1001']
+        assert 'ZX-4471' in answer(second)

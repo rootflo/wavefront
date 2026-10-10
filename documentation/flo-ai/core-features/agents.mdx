@@ -22,6 +22,7 @@ The `AgentBuilder` class provides a fluent interface for configuring agents. All
 | `with_reasoning(pattern: ReasoningPattern)` | Set reasoning pattern | `pattern`: `REACT`, `COT`, `PLAN_EXECUTE`, or `DIRECT` |
 | `with_retries(max_retries: int)` | Set maximum retry attempts | `max_retries`: Number of retries on failure (default: 3) |
 | `with_max_tool_calls(max_tool_calls: int)` | Set how many tool calls one run may make | `max_tool_calls`: Tool call limit (default: 5) |
+| `with_interactive(interactive: bool = True)` | Mark the agent as talking to a person turn by turn | `interactive`: see [Interactive Agents](#interactive-agents-chat-sessions) |
 | `with_output_schema(schema: Dict \| Type[BaseModel])` | Set structured output schema | `schema`: Pydantic model class or JSON schema dict |
 | `with_role(role: str)` | Set the agent's role | `role`: Internal role description |
 | `with_actas(act_as: str)` | Set how agent presents itself | `act_as`: Message role (e.g., 'assistant', 'user') |
@@ -149,6 +150,8 @@ response = await agent.run(
     variables=variables
 )
 ```
+
+Placeholders are filled in the system prompt and in the user-side inputs of the run that receives the variables. Text already in the conversation (earlier replies, tool calls, tool results, another agent's output) is sent as stored, so angle brackets in it are just text. For an agent that talks to a person, whose messages should never be read as templates, see [Interactive Agents](#interactive-agents-chat-sessions).
 
 ### Document Processing
 
@@ -562,6 +565,95 @@ await agent.run('Create a workflow called onboarding', on_event=on_event)
 - The callback may be sync or async. An exception it raises is logged and does not stop the run.
 - Events come from the agent you call. Agents it delegates to through tools do not report to this callback; their work appears as the `tool_result`.
 - If a guardrail blocks the turn, `run` raises and the agent's own history is rolled back; events already delivered for that turn should be discarded.
+
+### Interactive Agents (Chat Sessions)
+
+Set `interactive` when a person is on the other end of the agent, turn by turn: a chat UI, a support assistant, a session that sets things up for the user. Leave it off for agents that run a task and return a result, and for agents inside workflows.
+
+```python
+agent = (
+    AgentBuilder()
+    .with_name('assistant')
+    .with_prompt('You help users manage their orders.')
+    .with_llm(llm)
+    .with_tools([get_order_status.tool, cancel_order.tool])
+    .with_interactive()
+    .build()
+)
+```
+
+It can also be passed to the constructor (`Agent(..., interactive=True)`), set on a built agent (`agent.interactive = True`), or set in YAML:
+
+```yaml
+agent:
+  name: assistant
+  job: You help users manage their orders.
+  settings:
+    interactive: true
+```
+
+#### What it changes
+
+| | Default | Interactive |
+|---|---|---|
+| A text reply with no tool call, from an agent that has tools | Checked by a second LLM call. If judged unfinished, the agent is told to keep going (up to 3 times) | Ends the turn at once and is returned |
+| What the user typed | A template: `<name>` must have a matching variable, or the run fails | Taken as written. `How do I centre a <div>?` needs no variables |
+| The system prompt | A template | A template (unchanged) |
+| `PLAN_EXECUTE` with unfinished steps | A text reply is sent back with the plan and a request to continue | A text reply still ends the turn |
+
+The first row is the reason the option exists. When an interactive agent asks "Which order do you mean?", that question is its reply, and the person answers it in the next turn. Without the option, the question is treated as unfinished work.
+
+In every mode, text already in the conversation (earlier replies, tool calls, tool results) is sent as stored and is never treated as a template.
+
+#### A turn, from the calling application's side
+
+The agent does not store sessions. The application that calls it owns the conversation: it saves messages, passes them back on the next turn, and shows the reply.
+
+```python
+from flo_ai.models import UserMessage
+
+async def handle_turn(session_id: str, user_text: str) -> str:
+    stored = await load_messages(session_id)          # everything saved so far
+    new_message = UserMessage(content=user_text)
+    await save_message(session_id, new_message)
+
+    agent = build_agent()                             # a fresh instance per turn
+    agent.interactive = True
+
+    async def on_event(event):
+        await save_message(session_id, event.message) # tool calls, results, the reply
+        await push_to_ui(session_id, event)
+
+    history = await agent.run([*stored, new_message], on_event=on_event)
+    return history[-1].content
+```
+
+What the application should do:
+
+- **Pass the stored conversation back in, with the new message last.** Include the tool-call and tool-result messages, not only the text. See [Tool Calls in History](#tool-calls-in-history).
+- **Do not pass the user's text through `variables`,** and do not pre-escape angle brackets. Pass variables only for placeholders in the system prompt.
+- **Save from `on_event`.** Each event carries one message the turn added, in order. Save `tool_call`, `tool_result` and `message` events. A `notice` is the agent's own note to the model; with `interactive` there are none in the normal flow, but one can appear when a failed step is retried. Keep it out of what the user sees.
+- **Treat every final message the same way: show it and wait for the user.** The agent does not say whether its reply is an answer or a question, and the application does not need to know. Whatever the user sends next is passed in as the next turn.
+- **Show progress from events.** A turn with several tool calls can take a while. `tool_call` events arrive before each tool runs and are the natural "Looking up your order…" signal. The reply text arrives whole, not token by token.
+- **Start each turn from stored messages.** Build the agent per turn, or call `clear_history()` first, so the conversation comes from storage and nothing is duplicated.
+- **Keep a call and its result together when trimming.** If you send only the most recent messages, cut at a user message. A tool result without its call, or a call without its result, makes providers reject the request. (A call left unanswered at the very end, from a turn that was cut short, is handled for you: only its text is sent.)
+
+#### Errors to handle
+
+| Raised by `run` | Meaning | What to do |
+|---|---|---|
+| `GuardrailBlocked` | A guardrail policy blocked the turn. The agent's history is rolled back | Discard what `on_event` delivered for this turn, and show a policy message |
+| `ModelRefusedError` | The provider's safety system declined the request. Has `category` and `explanation` | Show a refusal message. Retrying the same request gives the same result |
+| `AgentError` | A tool or the model failed and retries ran out | Show a failure message; the user's message is already saved, so they can retry |
+
+A failed tool is always recorded as the result of its call before the error is raised, so a conversation saved up to that point is still valid to continue.
+
+#### Things to know
+
+- **Tool limit.** If a turn uses up `max_tool_calls`, the agent is asked for a final answer from what it has. Raise the limit for assistants that do multi-step work.
+- **Planning.** `interactive` can be combined with `PLAN_EXECUTE`. The plan guides the work, but it no longer holds the turn open, and it is reset at the start of each `run`. An agent built per turn starts with no plan; the earlier `update_plan` calls are in the history for the model to pick up from.
+- **Delegated agents.** Agents used as tools by an interactive agent are not interactive themselves. They cannot ask the user anything; they return a result to the agent that called them.
+- **Workflows.** Do not set `interactive` on agents that are nodes in an Arium workflow. A workflow passes each node's reply to the next node, not to a person.
 
 ### Role and Act-As Configuration
 
