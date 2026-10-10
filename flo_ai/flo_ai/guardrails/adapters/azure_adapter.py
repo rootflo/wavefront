@@ -79,6 +79,13 @@ class AzureContentSafetyAdapter(BaseAdapter):
     def name(self) -> str:
         return 'azure_content_safety'
 
+    async def warmup(self) -> None:
+        """Pre-warm Azure Content Safety clients and HTTP connection pools."""
+        if self._enable_moderation:
+            await self._safety_client()
+        if self._enable_prompt_shields:
+            await self._http_client()
+
     async def aclose(self) -> None:
         if self._client is not None:
             await self._client.close()

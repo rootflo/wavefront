@@ -61,18 +61,23 @@ async def list_supported_adapters(
     if denied:
         return denied
 
-    available = list(getattr(guardrails_engine, 'registered', ()) or ())
-    unavailable = [name for name in SUPPORTED_ADAPTERS if name not in available]
-    if unavailable:
-        logger.warning(
-            f'Guardrail adapters known but not available on this deployment: '
-            f'{", ".join(unavailable)}'
-        )
+    is_enabled = bool(getattr(guardrails_engine, 'enabled', True))
+    if not is_enabled:
+        available = []
+        unavailable = []
+    else:
+        available = list(getattr(guardrails_engine, 'registered', ()) or ())
+        unavailable = [name for name in SUPPORTED_ADAPTERS if name not in available]
+        if unavailable:
+            logger.warning(
+                f'Guardrail adapters known but not available on this deployment: '
+                f'{", ".join(unavailable)}'
+            )
 
     return JSONResponse(
         status_code=status.HTTP_200_OK,
         content=response_formatter.buildSuccessResponse(
-            {'adapters': available, 'unavailable': unavailable}
+            {'enabled': is_enabled, 'adapters': available, 'unavailable': unavailable}
         ),
     )
 
