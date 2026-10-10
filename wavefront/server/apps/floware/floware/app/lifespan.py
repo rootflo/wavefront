@@ -47,7 +47,23 @@ async def lifespan(app: FastAPI):
         # container was not constructed ([guardrails] enabled=false).
         guardrails = application_container.guardrails()
         if guardrails is not None:
-            await guardrails.guardrails_engine().warmup()
+            from common_module.config_loader import is_truthy
+
+            guardrails_enabled = is_truthy(
+                config.get('guardrails', {}).get('enabled', 'false')
+            )
+            warmup_enabled = is_truthy(
+                config.get('guardrails', {}).get('warmup_on_startup', 'true')
+            )
+            if guardrails_enabled and warmup_enabled:
+                logger.info('Warming up guardrails engines and models...')
+                await guardrails.guardrails_engine().warmup()
+            elif not guardrails_enabled:
+                logger.info('Guardrails subsystem disabled (GUARDRAILS_ENABLED=false)')
+            else:
+                logger.info(
+                    'Guardrails warmup on startup skipped (warmup_on_startup=false)'
+                )
 
         scheduled_job_service = application_container.scheduled_job_service()
 

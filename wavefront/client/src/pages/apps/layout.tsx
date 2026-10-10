@@ -20,9 +20,10 @@ import {
   Workflow,
 } from 'lucide-react';
 import { useDashboardStore } from '@app/store/dashboard-store';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { saveLastApp } from '@app/lib/last-app';
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router';
+import { useGetGuardrailAdapters } from '@app/hooks/data/fetch-hooks';
 
 interface NavItem {
   id: string;
@@ -134,7 +135,7 @@ const navItems: NavItem[] = [
   },
 ];
 
-const finalNavItems = [...navItems];
+const finalNavItems: NavItem[] = [...navItems];
 if (appEnv.isApiServicesEnabled) {
   finalNavItems.push({
     id: 'api-services',
@@ -190,6 +191,31 @@ const AppLayout: React.FC = () => {
   const [navHeight, setNavHeight] = useState(0);
   const [manualOpen, setManualOpen] = useState<Record<string, boolean>>({});
 
+  const { data: adapterInfo, isError: isAdapterError, isLoading: isAdapterLoading } = useGetGuardrailAdapters(app);
+  const isGuardrailsActive = useMemo(() => {
+    if (isAdapterError || !adapterInfo) {
+      return false;
+    }
+    return Boolean(adapterInfo?.enabled);
+  }, [isAdapterError, adapterInfo]);
+
+  const visibleGroupedNav = useMemo(
+    () =>
+      groupedNav
+        .map((group) => ({
+          ...group,
+          items: group.items.filter((item) => item.id !== 'guardrails' || isGuardrailsActive),
+        }))
+        .filter((group) => group.items.length > 0),
+    [isGuardrailsActive]
+  );
+
+  useEffect(() => {
+    if (!isAdapterLoading && !isGuardrailsActive && location.pathname.includes('/guardrails')) {
+      navigate(`/apps/${app}/agents`, { replace: true });
+    }
+  }, [isGuardrailsActive, isAdapterLoading, location.pathname, navigate, app]);
+
   useEffect(() => {
     const nav = navRef.current;
     if (!nav) return;
@@ -203,13 +229,13 @@ const AppLayout: React.FC = () => {
   const autoOpen = (() => {
     const open: Record<string, boolean> = {};
     // Until the height is known, show everything.
-    if (navHeight === 0) return Object.fromEntries(groupedNav.map((group) => [group.title, true]));
+    if (navHeight === 0) return Object.fromEntries(visibleGroupedNav.map((group) => [group.title, true]));
     let used = NAV_PADDING;
     let collapsing = false;
-    groupedNav.forEach((group, index) => {
+    visibleGroupedNav.forEach((group, index) => {
       const gap = index > 0 ? NAV_GROUP_GAP : 0;
       const containsActive = group.items.some((item) => item.id === activeSection);
-      const remainingTitles = groupedNav.length - index - 1;
+      const remainingTitles = visibleGroupedNav.length - index - 1;
       // Reserve room for the titles of the groups after this one, so they stay reachable.
       const reserve = remainingTitles * (NAV_GROUP_GAP + NAV_GROUP_TITLE_HEIGHT);
       const fits = used + gap + expandedGroupHeight(group.items.length) + reserve <= navHeight;
@@ -224,6 +250,7 @@ const AppLayout: React.FC = () => {
 
   const mobileNavOpen = useDashboardStore((state) => state.mobileNavOpen);
   const setMobileNavOpen = useDashboardStore((state) => state.setMobileNavOpen);
+
   return (
     <div className="relative isolate h-full overflow-hidden">
       <AppsBackdrop />
@@ -246,7 +273,7 @@ const AppLayout: React.FC = () => {
           )}
         >
           <nav ref={navRef} className="no-scrollbar flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-2.5 py-3">
-            {groupedNav.map((group) => (
+            {visibleGroupedNav.map((group) => (
               <div key={group.title} className="flex flex-col gap-0.5">
                 <button
                   type="button"

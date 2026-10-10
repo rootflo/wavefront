@@ -47,50 +47,86 @@ def build_guardrails_engine(
     verdict_cache_secret: str | None = None,
     verdict_cache_shared: str | bool | None = None,
     verdict_cache_ttl: str | int | None = None,
+    guardrails_enabled: str | bool | None = None,
+    spacy_model_url: str | None = None,
+    model_cache_dir: str | None = None,
 ):
     """Build a process-wide engine with whatever providers are available."""
+    import os
     from flo_ai.guardrails import VERDICT_CACHE_CHAR_BUDGET, GuardrailsEngine
 
     adapters: List[Any] = []
 
-    try:
-        import presidio_analyzer  # noqa: F401
-        import presidio_anonymizer  # noqa: F401
+    is_enabled = cfg_bool(
+        guardrails_enabled
+        if guardrails_enabled is not None
+        else os.getenv('GUARDRAILS_ENABLED'),
+        False,
+    )
 
-        from flo_ai.guardrails.adapters import PresidioAdapter
-
-        adapters.append(PresidioAdapter())
-        logger.info('Guardrails: Presidio PII adapter registered')
-    except Exception as exc:
-        logger.warning(
-            f'Guardrails: Presidio unavailable, PII checks cannot run ({exc}). '
-            "Install with: uv pip install 'presidio-analyzer' 'presidio-anonymizer' "
-            'and python -m spacy download en_core_web_lg'
-        )
-
-    endpoint = (azure_content_safety_endpoint or '').strip()
-    api_key = (azure_content_safety_key or '').strip()
-    if endpoint and api_key:
-        try:
-            import azure.ai.contentsafety  # noqa: F401
-
-            from flo_ai.guardrails.adapters import AzureContentSafetyAdapter
-
-            adapters.append(
-                AzureContentSafetyAdapter(endpoint=endpoint, api_key=api_key)
-            )
-            logger.info('Guardrails: Azure Content Safety adapter registered')
-        except Exception as exc:
-            logger.warning(
-                f'Guardrails: Azure Content Safety unavailable ({exc}). '
-                "Install with: uv pip install 'azure-ai-contentsafety'"
-            )
-    else:
+    if not is_enabled:
         logger.info(
-            'Guardrails: Azure Content Safety not configured '
-            '(set [guardrails] azure_content_safety_endpoint and '
-            'azure_content_safety_key)'
+            'Guardrails: Subsystem disabled (GUARDRAILS_ENABLED=false); no adapters registered'
         )
+    else:
+        effective_url = (
+            spacy_model_url or os.getenv('GUARDRAILS_SPACY_MODEL_URL') or ''
+        ).strip() or None
+        effective_cache_dir = (
+            model_cache_dir or os.getenv('GUARDRAILS_MODEL_CACHE_DIR') or ''
+        ).strip() or None
+
+        if effective_url:
+            try:
+                import presidio_analyzer  # noqa: F401
+                import presidio_anonymizer  # noqa: F401
+
+                from flo_ai.guardrails.adapters import PresidioAdapter
+
+                adapters.append(
+                    PresidioAdapter(
+                        model_url=effective_url,
+                        cache_dir=effective_cache_dir,
+                    )
+                )
+                logger.info(
+                    f'Guardrails: Presidio PII adapter registered (url={effective_url})'
+                )
+            except Exception as exc:
+                logger.warning(
+                    f'Guardrails: Presidio unavailable, PII checks cannot run ({exc}). '
+                    'Configure GUARDRAILS_SPACY_MODEL_URL or install with: '
+                    "uv pip install 'presidio-analyzer' 'presidio-anonymizer'"
+                )
+        else:
+            logger.info(
+                'Guardrails: Presidio PII not configured '
+                '(set [guardrails] spacy_model_url or GUARDRAILS_SPACY_MODEL_URL)'
+            )
+
+        endpoint = (azure_content_safety_endpoint or '').strip()
+        api_key = (azure_content_safety_key or '').strip()
+        if endpoint and api_key:
+            try:
+                import azure.ai.contentsafety  # noqa: F401
+
+                from flo_ai.guardrails.adapters import AzureContentSafetyAdapter
+
+                adapters.append(
+                    AzureContentSafetyAdapter(endpoint=endpoint, api_key=api_key)
+                )
+                logger.info('Guardrails: Azure Content Safety adapter registered')
+            except Exception as exc:
+                logger.warning(
+                    f'Guardrails: Azure Content Safety unavailable ({exc}). '
+                    "Install with: uv pip install 'azure-ai-contentsafety'"
+                )
+        else:
+            logger.info(
+                'Guardrails: Azure Content Safety not configured '
+                '(set [guardrails] azure_content_safety_endpoint and '
+                'azure_content_safety_key)'
+            )
 
     cache_chars = _optional_int(verdict_cache_chars, VERDICT_CACHE_CHAR_BUDGET)
     verdict_cache = _build_verdict_cache(
@@ -109,6 +145,7 @@ def build_guardrails_engine(
         verdict_cache_chars=cache_chars,
         verdict_cache=verdict_cache,
         cache_key_secret=cache_secret,
+        enabled=is_enabled,
     )
     logger.info(f'Guardrails engine ready with adapters: {engine.registered or "none"}')
     return engine

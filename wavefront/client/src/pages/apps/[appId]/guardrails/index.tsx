@@ -75,13 +75,16 @@ const GuardrailsManagement: React.FC = () => {
   const [testOpen, setTestOpen] = useState(false);
 
   const { data: namespaces = [] } = useGetNamespaces(appId);
-  const { data: adapterInfo } = useGetGuardrailAdapters(appId);
+  const { data: adapterInfo, isError: isAdapterError } = useGetGuardrailAdapters(appId);
+  const isGuardrailsActive = !isAdapterError && Boolean(adapterInfo?.enabled === true);
+
   // Memoised because `?? []` allocates a new array on every render, which
   // would invalidate the useMemo below each time.
   const supportedAdapters = useMemo(() => adapterInfo?.adapters ?? [], [adapterInfo]);
   const unavailableAdapters = adapterInfo?.unavailable ?? [];
-  const { data: policy, isLoading } = useGetGuardrailPolicy(appId, namespace);
-  const { data: piiEntities } = useGetGuardrailPiiEntities(appId);
+  const { data: policy, isLoading } = useGetGuardrailPolicy(isGuardrailsActive ? appId : undefined, namespace);
+  const hasPiiAdapter = supportedAdapters.includes('presidio_pii');
+  const { data: piiEntities } = useGetGuardrailPiiEntities(hasPiiAdapter ? appId : undefined);
 
   // Fingerprint of the policy as it stands on the server. Null until the
   // first load, so nothing is reported as unsaved before there is a baseline
