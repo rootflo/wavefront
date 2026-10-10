@@ -17,7 +17,7 @@ from flo_ai.models.chat_message import (
 from flo_ai.agent.events import AgentEvent, AgentEventCallback, AgentEventType
 from flo_ai.tool.base_tool import Tool, ToolExecutionError
 from flo_ai.tool.plan_tool import PLAN_TOOL_NAME, Plan, create_plan_tool
-from flo_ai.models.agent_error import AgentError
+from flo_ai.models.agent_error import AgentError, ModelRefusedError
 from flo_ai.utils.logger import logger
 from flo_ai.utils.variable_extractor import (
     extract_variables_from_inputs,
@@ -261,7 +261,9 @@ class Agent(BaseAgent):
         self, assistant_message: Optional[str], role: str, response: Dict[str, Any]
     ) -> None:
         if assistant_message:
-            reply = AssistantMessage(role=role, content=assistant_message)
+            reply = AssistantMessage(
+                role=role, content=self._strip_final_answer_token(assistant_message)
+            )
         else:
             possible_tool_message = await self.llm.get_function_call(response)
             if possible_tool_message:
@@ -307,7 +309,9 @@ class Agent(BaseAgent):
 
                 return self.conversation_history
 
-            except GuardrailBlocked:
+            except (GuardrailBlocked, ModelRefusedError):
+                # Neither is a failure to analyse and retry: the same request
+                # gets the same answer.
                 raise
             except Exception as e:
                 retry_count += 1
@@ -646,7 +650,9 @@ class Agent(BaseAgent):
 
                 return self.conversation_history
 
-            except GuardrailBlocked:
+            except (GuardrailBlocked, ModelRefusedError):
+                # Neither is a failure to analyse and retry: the same request
+                # gets the same answer.
                 raise
             except Exception as e:
                 retry_count += 1

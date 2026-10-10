@@ -1,9 +1,11 @@
 from typing import Dict, Any, List, Optional, AsyncIterator
 from anthropic import AsyncAnthropic
 import json
+import re
 
 import base64 as _base64
 
+from flo_ai.models.agent_error import ModelRefusedError
 from flo_ai.models.chat_message import DocumentMessageContent, ImageMessageContent
 from .base_llm import BaseLLM, split_client_kwargs
 from flo_ai.tool.base_tool import Tool
@@ -15,6 +17,29 @@ from flo_ai.telemetry.instrumentation import (
 )
 from flo_ai.telemetry import get_tracer
 from opentelemetry import trace
+
+
+_SAMPLING_PARAMS = ('temperature', 'top_p', 'top_k')
+
+# Model ids that reject sampling params: claude-opus-4-7, claude-opus-4-8,
+# claude-opus-5 and later, claude-sonnet-5 and later, and the Fable and Mythos
+# lines. Searched, not matched, so provider prefixes (`anthropic.claude-...`)
+# are covered.
+_NO_SAMPLING_PARAMS = re.compile(
+    r'claude-(?:opus-(?:4-[78]|[5-9])|sonnet-[5-9]|fable|mythos)'
+)
+
+_DEFAULT_MAX_TOKENS_WITH_THINKING = 16000
+
+# Model ids that reject a request ending on an assistant message (prefill):
+# claude-opus-4-6 and later, claude-sonnet-4-6 and later, Fable and Mythos.
+_NO_PREFILL = re.compile(
+    r'claude-(?:opus-(?:4-[6-8]|[5-9])|sonnet-(?:4-6|[5-9])|fable|mythos)'
+)
+
+# The agent loop runs one tool per model turn. Claude otherwise may ask for
+# several at once, and every tool_use it sends must be answered.
+_ONE_TOOL_CALL_PER_TURN = {'type': 'auto', 'disable_parallel_tool_use': True}
 
 
 class Anthropic(BaseLLM):
@@ -46,6 +71,55 @@ class Anthropic(BaseLLM):
             default_headers=custom_headers,
             **client_kwargs,
         )
+
+    def _takes_sampling_params(self) -> bool:
+        """Whether this model accepts temperature, top_p and top_k.
+
+        Claude Opus 4.7 and every Opus, Sonnet, Fable and Mythos model since
+        answer a request that carries any of them with a 400.
+        """
+        return not _NO_SAMPLING_PARAMS.search(self.model or '')
+
+    def _end_on_user_turn(
+        self, conversation: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Make a conversation that ends on an assistant turn end on a user one.
+
+        An agent in a workflow is handed the outputs of the agents before it,
+        and those are assistant messages. Models that reject prefill refuse a
+        request ending that way; what they are being asked is to respond to
+        that last message, so it is sent as the user's.
+        """
+        if (
+            not conversation
+            or conversation[-1]['role'] != 'assistant'
+            or not _NO_PREFILL.search(self.model or '')
+        ):
+            return conversation
+        return [*conversation[:-1], {**conversation[-1], 'role': 'user'}]
+
+    def _request_params(
+        self, conversation: List[Dict[str, Any]], overrides: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """The params for messages.create/stream, apart from system and tools"""
+        params: Dict[str, Any] = {
+            'model': self.model,
+            'messages': conversation,
+            'temperature': self.temperature,
+            'max_tokens': 1024,
+            **self.kwargs,
+            **overrides,
+        }
+
+        if not self._takes_sampling_params():
+            for name in _SAMPLING_PARAMS:
+                params.pop(name, None)
+            # Thinking is on for these models and counts toward max_tokens, so
+            # a limit sized for a reply alone cuts the reply off.
+            if 'max_tokens' not in self.kwargs and 'max_tokens' not in overrides:
+                params['max_tokens'] = _DEFAULT_MAX_TOKENS_WITH_THINKING
+
+        return params
 
     @trace_llm_call(provider='anthropic')
     async def generate(
@@ -97,20 +171,16 @@ class Anthropic(BaseLLM):
                     )
 
         try:
-            anthropic_kwargs = {
-                'model': self.model,
-                'messages': conversation,
-                'temperature': self.temperature,
-                'max_tokens': self.kwargs.get('max_tokens', 1024),
-                **self.kwargs,
-                **kwargs,
-            }
+            anthropic_kwargs = self._request_params(
+                self._end_on_user_turn(conversation), kwargs
+            )
 
             if system_message:
                 anthropic_kwargs['system'] = system_message
 
             if functions:
                 anthropic_kwargs['tools'] = functions
+                anthropic_kwargs.setdefault('tool_choice', _ONE_TOOL_CALL_PER_TURN)
 
             response = await self.client.messages.create(**anthropic_kwargs)
 
@@ -139,6 +209,20 @@ class Anthropic(BaseLLM):
                         },
                     )
 
+            # A refusal comes back as a normal response with no text. Left
+            # unreported it would read as an empty reply from the model.
+            if getattr(response, 'stop_reason', None) == 'refusal':
+                details = getattr(response, 'stop_details', None)
+                category = getattr(details, 'category', None)
+                explanation = getattr(details, 'explanation', None)
+                raise ModelRefusedError(
+                    f'{self.model} declined the request'
+                    + (f' (category: {category})' if category else '')
+                    + (f': {explanation}' if explanation else ''),
+                    category=category,
+                    explanation=explanation,
+                )
+
             # Extract text content from TextBlock objects
             text_content = ''
             for content_block in response.content:
@@ -151,7 +235,15 @@ class Anthropic(BaseLLM):
                 if content_block.type == 'tool_use':
                     return {
                         'content': text_content,
-                        'raw_content': response.content,  # Store raw content for Claude's tool flow
+                        # Raw content for Claude's tool flow. Only this call
+                        # is run and answered, so any further tool_use block
+                        # is left out: sent back unanswered, it would make the
+                        # next request invalid.
+                        'raw_content': [
+                            block
+                            for block in response.content
+                            if block.type != 'tool_use' or block is content_block
+                        ],
                         'function_call': {
                             'name': content_block.name,
                             'arguments': json.dumps(content_block.input),
@@ -162,6 +254,8 @@ class Anthropic(BaseLLM):
             # Handle regular text response
             return {'content': text_content}
 
+        except ModelRefusedError:
+            raise
         except Exception as e:
             raise Exception(f'Error in Claude API call: {str(e)}')
 
@@ -188,20 +282,16 @@ class Anthropic(BaseLLM):
                     }
                 )
 
-        anthropic_kwargs: Dict[str, Any] = {
-            'model': self.model,
-            'messages': conversation,
-            'temperature': self.temperature,
-            'max_tokens': self.kwargs.get('max_tokens', 1024),
-            **self.kwargs,
-            **kwargs,
-        }
+        anthropic_kwargs = self._request_params(
+            self._end_on_user_turn(conversation), kwargs
+        )
 
         if system_message:
             anthropic_kwargs['system'] = system_message
 
         if functions:
             anthropic_kwargs['tools'] = functions
+            anthropic_kwargs.setdefault('tool_choice', _ONE_TOOL_CALL_PER_TURN)
         # Use Anthropic SDK streaming API and yield text deltas
         async with self.client.messages.stream(**anthropic_kwargs) as stream:
             async for event in stream:

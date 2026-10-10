@@ -106,16 +106,15 @@ class Gemini(BaseLLM):
             config_kwargs['system_instruction'] = system_prompt
         return types.GenerateContentConfig(**config_kwargs)
 
-    @trace_llm_call(provider='gemini')
-    async def generate(
-        self,
-        messages: List[Dict[str, str]],
-        functions: Optional[List[types.FunctionDeclaration]] = None,
-        output_schema: Optional[Dict[str, Any]] = None,
-        **kwargs,
-    ) -> Dict[str, Any]:
-        # Convert messages to Gemini format
-        contents = []
+    def _to_contents(self, messages: List[Dict[str, Any]]) -> tuple:
+        """Split messages into Gemini `contents` and the system prompt.
+
+        Plain messages are passed through as they are. A tool call and its
+        result become a model turn and a user turn with function_call and
+        function_response parts: sent as bare text, the result reads like
+        another request, and the model calls the tool again.
+        """
+        contents: List[Any] = []
         system_prompt = ''
 
         for msg in messages:
@@ -124,8 +123,60 @@ class Gemini(BaseLLM):
 
             if role == 'system':
                 system_prompt += f'{message_content}\n'
+            elif msg.get('function_call'):
+                parts = [types.Part(text=message_content)] if message_content else []
+                parts.append(
+                    types.Part.from_function_call(
+                        name=msg['function_call']['name'],
+                        args=msg['function_call']['arguments'],
+                    )
+                )
+                contents.append(types.Content(role='model', parts=parts))
+            elif role == 'function':
+                contents.append(
+                    types.Content(
+                        role='user',
+                        parts=[
+                            types.Part.from_function_response(
+                                name=msg.get('name') or 'tool',
+                                response={'result': message_content},
+                            )
+                        ],
+                    )
+                )
             else:
                 contents.append(message_content)
+
+        return contents, system_prompt
+
+    def format_tool_call_message(
+        self, content: str, tool_calls: List[Any]
+    ) -> Optional[Dict[str, Any]]:
+        """A recorded tool call, for _to_contents to turn into a model turn"""
+        call = tool_calls[0]
+        return {
+            'role': 'assistant',
+            'content': content,
+            'function_call': {'name': call.name, 'arguments': call.arguments},
+        }
+
+    def get_assistant_message_for_tool_call(
+        self, response: Dict[str, Any]
+    ) -> Optional[Any]:
+        """The model's own turn for a tool call, as Gemini returned it"""
+        if isinstance(response, dict):
+            return response.get('raw_content')
+        return None
+
+    @trace_llm_call(provider='gemini')
+    async def generate(
+        self,
+        messages: List[Dict[str, str]],
+        functions: Optional[List[types.FunctionDeclaration]] = None,
+        output_schema: Optional[Dict[str, Any]] = None,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        contents, system_prompt = self._to_contents(messages)
 
         try:
             # Prepare generation config, merging instance and method kwargs
@@ -183,15 +234,37 @@ class Gemini(BaseLLM):
                 and response.candidates
                 and response.candidates[0].content.parts
             ):
-                part = response.candidates[0].content.parts[0]
-                if hasattr(part, 'function_call') and part.function_call:
-                    function_call = part.function_call
+                # A thinking model can put other parts ahead of the call, so
+                # look through all of them and not only the first.
+                parts = response.candidates[0].content.parts
+                call_part = next(
+                    (part for part in parts if getattr(part, 'function_call', None)),
+                    None,
+                )
+                if call_part is not None:
+                    function_call = call_part.function_call
+                    # The model's own turn, to send back before the result (it
+                    # carries the thought signature the call was made with).
+                    # Only this call is run and answered, so any further call
+                    # in the turn is left out: Gemini expects a response for
+                    # every call it is shown.
+                    kept = [
+                        part
+                        for part in parts
+                        if not getattr(part, 'function_call', None) or part is call_part
+                    ]
+                    raw_content = (
+                        response.candidates[0].content
+                        if len(kept) == len(parts)
+                        else types.Content(role='model', parts=kept)
+                    )
                     return {
                         'content': response.text,
                         'function_call': {
                             'name': function_call.name,
                             'arguments': function_call.args,
                         },
+                        'raw_content': raw_content,
                     }
 
             # Return regular text response
@@ -211,18 +284,7 @@ class Gemini(BaseLLM):
         **kwargs,
     ) -> AsyncIterator[Dict[str, Any]]:
         """Stream partial responses from Gemini as they are generated"""
-        # Convert messages to Gemini format
-        contents = []
-        system_prompt = ''
-
-        for msg in messages:
-            role = msg['role']
-            message_content = msg['content']
-
-            if role == 'system':
-                system_prompt += f'{message_content}\n'
-            else:
-                contents.append(message_content)
+        contents, system_prompt = self._to_contents(messages)
 
         # Prepare generation config, merging instance and method kwargs
         generation_config = self._generation_config(system_prompt, kwargs)

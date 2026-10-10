@@ -528,7 +528,7 @@ await agent.run([*stored_messages, UserMessage(content='Now add a reviewer step'
 ```
 
 - `ToolCall.id` and `FunctionMessage.tool_call_id` carry the provider's id for the call where it issues one (Anthropic, Bedrock), and are `None` otherwise.
-- OpenAI, Azure OpenAI, vLLM, Anthropic and Bedrock are sent the recorded call. Gemini, Ollama and RootFlo have no slot for it in the way flo-ai formats their messages, so they are sent the result only, as before.
+- OpenAI, Azure OpenAI, vLLM, Anthropic, Bedrock, Gemini and Vertex AI are sent the recorded call. Ollama and RootFlo have no slot for it in the way flo-ai formats their messages, so they are sent the result only.
 - A call that has no result after it (a run that was cut short) is not sent; only its text is.
 
 ### Agent Events
