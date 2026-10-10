@@ -27,7 +27,7 @@ export const ADAPTER_META: Record<string, AdapterMeta> = {
     description:
       'Detects personal identifiers and replaces them before the text is sent onward. Choose exactly which types to redact below. Runs inside your own deployment, so it keeps working when external services are unavailable.',
     unavailableHint:
-      'This check is missing a server-side dependency. Install it and restart the server to make it selectable here.',
+      'This check requires a model archive that is not configured on this server. Once required model detail is set and the server restarts, it becomes selectable here.',
     defaultStages: ['BEFORE_MODEL', 'AFTER_MODEL'],
     // Redaction failing means PII may already be on its way to a third party
     // or back to a user, and neither can be undone.

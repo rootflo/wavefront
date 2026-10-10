@@ -20,7 +20,6 @@ from dependency_injector import containers
 from dependency_injector import providers
 from floware.di.helpers import (
     guardrails_engine,
-    guardrails_mode,
     scheduler_worker_id,
     start_logging,
     start_presidio_timeout,
@@ -67,15 +66,11 @@ class ApplicationContainer(containers.DeclarativeContainer):
         cache_manager=db.cache_manager,
     )
 
-    guardrails = providers.Selector(
-        providers.Callable(guardrails_mode, config.guardrails.enabled),
-        on=providers.Container(
-            GuardrailsContainer,
-            config=config,
-            db_client=db.db_client,
-            cache_manager=db.cache_manager,
-        ),
-        off=providers.Object(None),
+    guardrails = providers.Container(
+        GuardrailsContainer,
+        config=config,
+        db_client=db.db_client,
+        cache_manager=db.cache_manager,
     )
 
     auth = providers.Container(

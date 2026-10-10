@@ -163,11 +163,17 @@ class PresidioAdapter(BaseAdapter):
         language: str = 'en',
         max_workers: int = 2,
         load_optional_recognizers: bool = True,
+        model_url: Optional[str] = None,
+        cache_dir: Optional[str] = None,
+        model_name: Optional[str] = None,
     ) -> None:
         self._entities = list(entities) if entities else list(DEFAULT_ENTITIES)
         self._score_threshold = score_threshold
         self._language = language
         self._load_optional_recognizers = load_optional_recognizers
+        self._model_url = model_url
+        self._cache_dir = cache_dir
+        self._model_name = model_name
         self._analyzer: Any = None
         self._anonymizer: Any = None
         self._init_lock = asyncio.Lock()
@@ -285,10 +291,29 @@ class PresidioAdapter(BaseAdapter):
         def _build() -> tuple:
             try:
                 from presidio_analyzer import AnalyzerEngine
+                from presidio_analyzer.nlp_engine import NlpEngineProvider
                 from presidio_anonymizer import AnonymizerEngine
             except ImportError as exc:  # pragma: no cover - env dependent
                 raise RuntimeError(_IMPORT_HINT) from exc
-            analyzer = AnalyzerEngine()
+
+            from flo_ai.guardrails.model_loader import ensure_spacy_model
+
+            resolved_model = ensure_spacy_model(
+                model_url=self._model_url,
+                cache_dir=self._cache_dir,
+                model_name=self._model_name,
+            )
+            nlp_configuration = {
+                'nlp_engine_name': 'spacy',
+                'models': [
+                    {'lang_code': self._language, 'model_name': str(resolved_model)}
+                ],
+            }
+            nlp_engine = NlpEngineProvider(
+                nlp_configuration=nlp_configuration
+            ).create_engine()
+            analyzer = AnalyzerEngine(nlp_engine=nlp_engine)
+
             if self._load_optional_recognizers:
                 self._augment_registry(analyzer)
             return analyzer, AnonymizerEngine()

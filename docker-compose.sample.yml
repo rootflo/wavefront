@@ -181,6 +181,9 @@ services:
       # Required if EMAIL_PROVIDER=gmail with service account
       # - ./credentials/gmail-service-account.json:/app/credentials/gmail-service-account.json:ro
 
+      # Guardrails spaCy Model Cache Directory (optional, persists models across restarts)
+      # - ./models/spacy:/app/models/spacy
+
     environment:
       # ============================================
       # Database Configuration
@@ -345,6 +348,10 @@ services:
       - SLACK_FLAG=<YOUR_SLACK_FLAG>
       - SUPERSET_FLAG=<YOUR_SUPERSET_FLAG>
       - VECTOR_DB_FLAG=<YOUR_VECTOR_DB_FLAG>
+      - GUARDRAILS_ENABLED=<YOUR_GUARDRAILS_ENABLED>
+      - GUARDRAILS_SPACY_MODEL_URL=<YOUR_GUARDRAILS_SPACY_MODEL_URL>
+      - GUARDRAILS_MODEL_CACHE_DIR=${GUARDRAILS_MODEL_CACHE_DIR:-/app/models/spacy}
+      - GUARDRAILS_WARMUP_ON_STARTUP=true
 
     depends_on:
       postgres-floware:

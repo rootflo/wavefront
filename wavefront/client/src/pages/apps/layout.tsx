@@ -13,10 +13,20 @@ import {
 } from '@app/assets/icons';
 import { appEnv } from '@app/config/env';
 import clsx from 'clsx';
-import React from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router';
+import { useGetGuardrailAdapters } from '@app/hooks/data/fetch-hooks';
 
-const navItems = [
+interface NavItem {
+  id: string;
+  name: string;
+  icon: React.ComponentType<{ className?: string; color?: string; width?: number; height?: number }>;
+  link: string;
+  description: string;
+  alpha?: boolean;
+}
+
+const navItems: NavItem[] = [
   {
     id: 'agents',
     name: 'Agents',
@@ -117,7 +127,7 @@ const navItems = [
   },
 ];
 
-const finalNavItems = [...navItems];
+const finalNavItems: NavItem[] = [...navItems];
 if (appEnv.isApiServicesEnabled) {
   finalNavItems.push({
     id: 'api-services',
@@ -133,6 +143,29 @@ const AppLayout: React.FC = () => {
   const { app } = useParams<{ app: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+
+  const { data: adapterInfo, isError: isAdapterError, isLoading: isAdapterLoading } = useGetGuardrailAdapters(app);
+  const isGuardrailsActive = useMemo(() => {
+    if (isAdapterError || !adapterInfo) {
+      return false;
+    }
+    return Boolean(adapterInfo?.enabled);
+  }, [isAdapterError, adapterInfo]);
+
+  const visibleNavItems = useMemo(() => {
+    return finalNavItems.filter((item) => {
+      if (item.id === 'guardrails') {
+        return isGuardrailsActive;
+      }
+      return true;
+    });
+  }, [isGuardrailsActive]);
+
+  useEffect(() => {
+    if (!isAdapterLoading && !isGuardrailsActive && location.pathname.includes('/guardrails')) {
+      navigate(`/apps/${app}/agents`, { replace: true });
+    }
+  }, [isGuardrailsActive, isAdapterLoading, location.pathname, navigate, app]);
 
   return (
     <div className="relative h-full overflow-hidden">
@@ -150,7 +183,7 @@ const AppLayout: React.FC = () => {
           </div>
 
           <nav className="no-scrollbar flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-3">
-            {finalNavItems.map((item) => {
+            {visibleNavItems.map((item) => {
               const isActive = item.id === location.pathname.split('/')[3];
               return (
                 <button
