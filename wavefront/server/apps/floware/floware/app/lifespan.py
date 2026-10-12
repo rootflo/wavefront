@@ -52,18 +52,11 @@ async def lifespan(app: FastAPI):
             guardrails_enabled = is_truthy(
                 config.get('guardrails', {}).get('enabled', 'false')
             )
-            warmup_enabled = is_truthy(
-                config.get('guardrails', {}).get('warmup_on_startup', 'true')
-            )
-            if guardrails_enabled and warmup_enabled:
+            if guardrails_enabled:
                 logger.info('Warming up guardrails engines and models...')
                 await guardrails.guardrails_engine().warmup()
-            elif not guardrails_enabled:
-                logger.info('Guardrails subsystem disabled (GUARDRAILS_ENABLED=false)')
             else:
-                logger.info(
-                    'Guardrails warmup on startup skipped (warmup_on_startup=false)'
-                )
+                logger.info('Guardrails subsystem disabled (GUARDRAILS_ENABLED=false)')
 
         scheduled_job_service = application_container.scheduled_job_service()
 

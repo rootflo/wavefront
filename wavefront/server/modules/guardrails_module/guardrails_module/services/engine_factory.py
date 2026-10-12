@@ -62,33 +62,26 @@ def build_guardrails_engine(
     ``presidio_pii`` is omitted from registered adapters and reported as
     unavailable in the UI.
     """
-    import os
     from flo_ai.guardrails import VERDICT_CACHE_CHAR_BUDGET, GuardrailsEngine
 
     adapters: List[Any] = []
 
-    is_enabled = cfg_bool(
-        guardrails_enabled
-        if guardrails_enabled is not None
-        else os.getenv('GUARDRAILS_ENABLED'),
-        False,
-    )
+    is_enabled = cfg_bool(guardrails_enabled, False)
 
     if not is_enabled:
         logger.info(
             'Guardrails: Subsystem disabled (GUARDRAILS_ENABLED=false); no adapters registered'
         )
     else:
-        effective_url = (
-            spacy_model_url or os.getenv('GUARDRAILS_SPACY_MODEL_URL') or ''
-        ).strip() or None
-        effective_cache_dir = (
-            model_cache_dir or os.getenv('GUARDRAILS_MODEL_CACHE_DIR') or ''
-        ).strip() or None
+        effective_url = (spacy_model_url or '').strip() or None
+        effective_cache_dir = (model_cache_dir or '').strip() or None
 
         has_spacy_model = False
         try:
-            from flo_ai.guardrails.model_loader import is_spacy_model_available
+            from guardrails_module.services.model_loader import (
+                ensure_spacy_model,
+                is_spacy_model_available,
+            )
 
             has_spacy_model = is_spacy_model_available(
                 model_url=effective_url,
@@ -104,26 +97,29 @@ def build_guardrails_engine(
 
                 from flo_ai.guardrails.adapters import PresidioAdapter
 
+                resolved_model = ensure_spacy_model(
+                    model_url=effective_url,
+                    cache_dir=effective_cache_dir,
+                )
                 adapters.append(
                     PresidioAdapter(
-                        model_url=effective_url,
-                        cache_dir=effective_cache_dir,
+                        model=resolved_model,
                     )
                 )
                 logger.info(
                     'Guardrails: Presidio PII adapter registered '
-                    f'(url={effective_url or "pre-installed/cached"})'
+                    f'(model={resolved_model})'
                 )
             except Exception as exc:
                 logger.warning(
                     f'Guardrails: Presidio unavailable, PII checks cannot run ({exc}). '
-                    'Configure GUARDRAILS_SPACY_MODEL_URL or install with: '
+                    'Configure spacy_model_url or install with: '
                     "uv pip install 'presidio-analyzer' 'presidio-anonymizer'"
                 )
         else:
             logger.info(
                 'Guardrails: Presidio PII not configured '
-                '(set [guardrails] spacy_model_url or GUARDRAILS_SPACY_MODEL_URL)'
+                '(set [guardrails] spacy_model_url or install a spaCy model)'
             )
 
         endpoint = (azure_content_safety_endpoint or '').strip()

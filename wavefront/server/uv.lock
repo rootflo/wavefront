@@ -2948,6 +2948,7 @@ dependencies = [
     { name = "dependency-injector" },
     { name = "fastapi" },
     { name = "flo-ai", extra = ["guardrails"] },
+    { name = "flo-cloud" },
     { name = "pydantic" },
 ]
 

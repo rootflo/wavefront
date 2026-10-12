@@ -16,7 +16,13 @@ def test_build_guardrails_engine_disabled():
 
 def test_build_guardrails_engine_enabled_with_presidio():
     mock_resolver = MagicMock()
-    with patch('flo_ai.guardrails.adapters.PresidioAdapter') as mock_adapter_cls:
+    with patch(
+        'guardrails_module.services.model_loader.is_spacy_model_available',
+        return_value=True,
+    ), patch(
+        'guardrails_module.services.model_loader.ensure_spacy_model',
+        return_value='/tmp/models/cached_spacy',
+    ), patch('flo_ai.guardrails.adapters.PresidioAdapter') as mock_adapter_cls:
         mock_instance = MagicMock()
         mock_instance.name = 'presidio_pii'
         mock_adapter_cls.return_value = mock_instance
@@ -30,8 +36,7 @@ def test_build_guardrails_engine_enabled_with_presidio():
         assert engine is not None
         assert engine.enabled is True
         mock_adapter_cls.assert_called_once_with(
-            model_url='https://models.example.com/model.tar.gz',
-            cache_dir='/tmp/models',
+            model='/tmp/models/cached_spacy',
         )
         assert 'presidio_pii' in engine.registered
 
@@ -39,8 +44,9 @@ def test_build_guardrails_engine_enabled_with_presidio():
 def test_build_guardrails_engine_enabled_without_spacy_url():
     mock_resolver = MagicMock()
     with patch(
-        'flo_ai.guardrails.model_loader.is_spacy_model_available', return_value=False
-    ), patch.dict('os.environ', {}, clear=True):
+        'guardrails_module.services.model_loader.is_spacy_model_available',
+        return_value=False,
+    ):
         engine = build_guardrails_engine(
             mock_resolver,
             guardrails_enabled=True,
@@ -54,7 +60,11 @@ def test_build_guardrails_engine_enabled_without_spacy_url():
 def test_build_guardrails_engine_enabled_with_preinstalled_spacy_package():
     mock_resolver = MagicMock()
     with patch(
-        'flo_ai.guardrails.model_loader.is_spacy_model_available', return_value=True
+        'guardrails_module.services.model_loader.is_spacy_model_available',
+        return_value=True,
+    ), patch(
+        'guardrails_module.services.model_loader.ensure_spacy_model',
+        return_value='en_core_web_lg',
     ), patch('flo_ai.guardrails.adapters.PresidioAdapter') as mock_adapter_cls:
         mock_instance = MagicMock()
         mock_instance.name = 'presidio_pii'
@@ -69,8 +79,7 @@ def test_build_guardrails_engine_enabled_with_preinstalled_spacy_package():
         assert engine.enabled is True
         assert 'presidio_pii' in engine.registered
         mock_adapter_cls.assert_called_once_with(
-            model_url=None,
-            cache_dir=None,
+            model='en_core_web_lg',
         )
 
 
