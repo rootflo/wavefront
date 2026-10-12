@@ -11,6 +11,7 @@ COPY wavefront/server/pyproject.toml wavefront/server/uv.lock ./
 COPY wavefront/server/background_jobs/rag_ingestion ./background_jobs/rag_ingestion/
 COPY wavefront/server/packages/flo_cloud ./packages/flo_cloud/
 COPY wavefront/server/packages/flo_utils ./packages/flo_utils/
+COPY wavefront/server/packages/flo_lib ./packages/flo_lib/
 COPY wavefront/server/modules/db_repo_module ./modules/db_repo_module/
 COPY wavefront/server/modules/common_module ./modules/common_module/
 COPY wavefront/server/scripts/rag_ingestion/startup-rag-ingestion.sh ./background_jobs/rag_ingestion/
