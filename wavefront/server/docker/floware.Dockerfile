@@ -43,6 +43,7 @@ COPY wavefront/server/modules/chatbots_module /app/modules/chatbots_module
 
 COPY wavefront/server/packages/flo_cloud /app/packages/flo_cloud
 COPY wavefront/server/packages/flo_utils /app/packages/flo_utils
+COPY wavefront/server/packages/flo_lib /app/packages/flo_lib
 
 COPY wavefront/server/plugins/datasource /app/plugins/datasource
 COPY wavefront/server/plugins/authenticator /app/plugins/authenticator
