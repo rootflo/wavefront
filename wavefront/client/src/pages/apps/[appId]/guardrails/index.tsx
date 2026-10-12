@@ -178,7 +178,7 @@ const GuardrailsManagement: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: getGuardrailPoliciesKey(appId || '') });
       notifySuccess('Guardrail policy saved');
     } catch (error) {
-      notifyError(extractErrorMessage(error));
+      notifyError(extractErrorMessage(error) || 'An error occurred');
     } finally {
       setSaving(false);
     }
