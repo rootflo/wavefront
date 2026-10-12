@@ -1,6 +1,6 @@
 """Seed required config.ini env vars before test modules import settings.
 
-Locally setup.sh copies celery_worker/.env.sample → .env and settings loads
+Locally dev-start.sh copies celery_worker/.env.sample → .env and settings loads
 it. CI has no .env, so import-time load_ini(envs_required=True) would fail.
 setdefault keeps real CI/local env values when present.
 """

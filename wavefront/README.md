@@ -24,7 +24,7 @@ The platform consists of following components:
 | **floware**         | 8001 | Core AI middleware service. This service connects wavefront to multiple backends, databases, AI models and more. This is the core control center of the platform. | Beta           |
 | **floconsole**      | 8002 | Management console service, this module is multi-app control centre for configuriong multiple apps on the wavefront middleware.                                   | Beta           |
 | **inference_app**   | 8003 | Inference App service. A simple service for running pytorch models. We right now support all models which works on pytorch version 0.16.0.                        | Experimental   |
-| **call_processing** | 8004 | Voice call processing service (Pipecat)                                                                                                                           | Beta           |
+| **call_processing** | 8004 | Voice call processing service                                                                                                                                     | Beta           |
 
 #### Middleware High Level Architecture:
 
@@ -57,37 +57,28 @@ You can use docker compose to setup the platform locally. Details on setting up 
 
 ### Dev/Local Setup
 
-**Step 1**: You can use the local setup to setup the platform locally. Start by cloning the repo and running the following commands:
+From the `wavefront/` directory, use the interactive local scripts (prereqs, `.env` files, docker postgres/redis/localstack, and selected apps):
 
 ```bash
-chmod +x install-dep-local.sh
-./install-dep-local.sh
+./dev-start.sh   # first-time setup + start selected services
+./dev-stop.sh    # stop selected services (running ones pre-checked)
 ```
 
-This will install all the dependencies required to run the platform locally.
+`dev-start.sh` will:
 
-**Step 2**: Wavefront uses vscode (or its clone like cursor or anti-gravity) as the primary editor. We have provided a vscode workspace file to make it easier to work with the project. Open the workspace file in vscode and it will open the project in vscode.
+1. Check prerequisites (Python ≥3.11, uv, docker, openssl, Node, pnpm)
+2. Let you choose which apps to start (floconsole, floware, web client, celery, RAG, inference, call processing)
+3. Create `.env` files from samples when missing (optional replace)
+4. Start postgres, redis, and localstack, then create DBs / LocalStack resources as needed
+5. Install deps and launch the selected services in new terminal windows
 
-Once you open the vscode you will be seeing three workspaces:
+When the stack is up, open http://localhost:5173, log in with the credentials from floconsole’s `.env`, and add floware as an app (Apps → Create new app). With `VITE_APP_ENV=local` in `client/.env`, you can tick “Create local app for development” to fill the URLs.
 
-- `wavefront-root-dir`: This is the root directory of the project. With all the root-dir files
-- `wavefront`: This is the backend & frontend service of the platform.
-- `flo_ai`: The A2A orchestration library developed by RootFlo AI.
+Wavefront uses VS Code (or Cursor / similar) as the primary editor. Open the provided workspace file; you should see:
 
-**Step 3**: Go to `wavefront` workspace and open the server directory. In the directory go to `apps`, where you can find all the services mentioned in the table above. Open each of the setup `.env` files with environment variables as mentioned in the [DOCKER_SETUP.md](DOCKER_SETUP.md).
-
-**Step 4**: Run all the backend services services. Check the floware health at http://localhost:8001/floware/v1/health.
-
-**Step 5**: Go to `wavefront` workspace and open the client directory. Add the neccessary environment variables in the `.env` file. Run the following commands to start the frontend services:
-
-```bash
-pnpm install
-pnpm run dev
-```
-
-Now open http://localhost:5173 in your browser to see the frontend & login with the credentials set in environment variables.
-
-**Step 6**: Go to the console, add your first app by clicking on the `Add App` button. Use the details of the floware service you started on Step 4
+- `wavefront-root-dir`: root directory files
+- `wavefront`: backend & frontend
+- `flo_ai`: the A2A orchestration library
 
 ## Next Steps
 
