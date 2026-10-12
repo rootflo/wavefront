@@ -22,8 +22,8 @@ RUN uv sync --package rag-ingestion --frozen --no-dev
 
 # Download the tiktoken encoding file and NLTK data
 RUN mkdir -p /root/.cache/tiktoken
-RUN uv run python3 -c "import tiktoken; enc = tiktoken.encoding_for_model('gpt-4')"
-RUN uv run python3 -c "import nltk; nltk.download('punkt'); nltk.download('averaged_perceptron_tagger')"
+RUN /app/.venv/bin/python -c "import tiktoken; enc = tiktoken.encoding_for_model('gpt-4')"
+RUN /app/.venv/bin/python -c "import nltk; nltk.download('punkt'); nltk.download('averaged_perceptron_tagger')"
 
 WORKDIR /app/background_jobs/rag_ingestion
 
