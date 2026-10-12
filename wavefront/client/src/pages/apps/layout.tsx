@@ -16,7 +16,16 @@ import clsx from 'clsx';
 import React from 'react';
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router';
 
-const navItems = [
+interface NavItem {
+  id: string;
+  name: string;
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+  link: string;
+  description: string;
+  alpha?: boolean;
+}
+
+const navItems: NavItem[] = [
   {
     id: 'agents',
     name: 'Agents',

@@ -5,6 +5,7 @@ import {
   PiiEntityGroup,
   PolicyPreviewStage,
   PolicyPreviewResult,
+  StreamPreference,
 } from '@app/api/guardrails-service';
 import { Button } from '@app/components/ui/button';
 import { Label } from '@app/components/ui/label';
@@ -23,6 +24,7 @@ interface Props {
   isEnabled: boolean;
   mode: EnforcementMode;
   adapters: GuardrailAdapterConfig[];
+  stream: StreamPreference;
   /** Entity catalog, used to name detections the way the selector does. */
   piiGroups?: PiiEntityGroup[];
 }
@@ -135,7 +137,7 @@ const StageResult: React.FC<{ stage: PolicyPreviewStage; labels: Map<string, str
  * that bills per call and rate-limits, so a debounced preview would quietly
  * cost money on every keystroke.
  */
-const PolicyTestPanel = forwardRef<PolicyTestHandle, Props>(({ isEnabled, mode, adapters, piiGroups }, ref) => {
+const PolicyTestPanel = forwardRef<PolicyTestHandle, Props>(({ isEnabled, mode, adapters, stream, piiGroups }, ref) => {
   const { notifyError } = useNotifyStore();
   const [text, setText] = useState('');
   const [running, setRunning] = useState(false);
@@ -177,6 +179,7 @@ const PolicyTestPanel = forwardRef<PolicyTestHandle, Props>(({ isEnabled, mode, 
         is_enabled: isEnabled,
         mode,
         adapters,
+        stream,
       });
       // Envelope is { meta, data }, so the payload is one level below
       // response.data. Reading response.data.stages yields undefined and
@@ -189,8 +192,9 @@ const PolicyTestPanel = forwardRef<PolicyTestHandle, Props>(({ isEnabled, mode, 
       }
     } catch (err) {
       setStages(null);
-      setError(extractErrorMessage(err));
-      notifyError(extractErrorMessage(err));
+      const message = extractErrorMessage(err) || 'Failed to run the test';
+      setError(message);
+      notifyError(message);
     } finally {
       setRunning(false);
       // Only below lg, where the two columns stack and the results land off

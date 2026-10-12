@@ -178,7 +178,7 @@ const GuardrailsManagement: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: getGuardrailPoliciesKey(appId || '') });
       notifySuccess('Guardrail policy saved');
     } catch (error) {
-      notifyError(extractErrorMessage(error));
+      notifyError(extractErrorMessage(error) || 'Failed to save guardrail policy');
     } finally {
       setSaving(false);
     }
@@ -412,6 +412,7 @@ const GuardrailsManagement: React.FC = () => {
               isEnabled={isEnabled}
               mode={mode}
               adapters={adapters}
+              stream={stream}
               piiGroups={piiEntities?.groups}
             />
           </div>
