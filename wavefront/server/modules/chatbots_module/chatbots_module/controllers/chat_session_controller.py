@@ -8,7 +8,11 @@ from common_module.common_container import CommonContainer
 from common_module.log.logger import logger
 from common_module.middleware.request_id_middleware import get_current_request_id
 from common_module.response_formatter import ResponseFormatter
-from common_module.utils.guardrails import guardrail_run_scope, run_scoped_stream
+from common_module.utils.guardrails import (
+    guardrail_run_scope,
+    is_guarded,
+    run_scoped_stream,
+)
 from db_repo_module.models.chatbot import Chatbot
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Query, Request, status
@@ -505,9 +509,11 @@ async def _stream_reply(
     GeneratorExit". Awaiting is allowed, yielding is not -- so the disconnect
     branch saves without emitting a final event to a socket that is gone.
 
-    One consequence of guarding this path: when policy checks output, nothing
-    is released until the whole reply has been cleared, so the deltas below
-    arrive as a single chunk at the end and the reply stops being incremental.
+    One consequence of guarding this path: when policy checks output without
+    incremental release support, nothing is released until the whole reply has
+    been cleared, so deltas arrive as a single chunk at the end. With retract
+    support declared, cleared prefixes are released incrementally, but partial
+    replies are never persisted on disconnect or error before the final check passes.
     """
     chunks: list[str] = []
 
@@ -544,13 +550,15 @@ async def _stream_reply(
             chunks.append(delta)
             yield f'data: {json.dumps({"content": delta})}\n\n'
     except (GeneratorExit, asyncio.CancelledError):
-        # Client hung up mid-reply. Save the partial text -- the tokens were
-        # already spent, and a thread ending on an unanswered question is worse
-        # than one ending on a short answer.
+        # Client hung up mid-reply. For an unguarded stream, save the partial
+        # text -- the tokens were already spent, and a thread ending on an
+        # unanswered question is worse than one ending on a short answer.
         #
-        # This saves nothing when policy checks output: buffering means no
-        # delta has reached `chunks` yet, so there is no partial reply to keep.
-        # The tokens are still spent, but withholding them is the point.
+        # For a guarded stream, partial text is deliberately withheld: in
+        # buffered mode nothing reached `chunks` anyway, and in incremental mode
+        # the terminal output check never ran, so persisting `chunks` would store
+        # text that a later check or full-context verdict might retract or block.
+        # The tokens are still spent, but withholding unverified text is the point.
         #
         # Both exception types are caught because which one arrives depends on
         # how the server tears the request down: aclose() throws GeneratorExit,
@@ -562,8 +570,9 @@ async def _stream_reply(
         # the insert would never reach the database. Shielding lets the insert
         # run to completion even though we do not get to observe the result --
         # best-effort by construction, which is the most that is available here.
-        with contextlib.suppress(asyncio.CancelledError):
-            await asyncio.shield(persist())
+        if not is_guarded(llm):
+            with contextlib.suppress(asyncio.CancelledError):
+                await asyncio.shield(persist())
         raise
     except GuardrailBlocked as exc:
         # Nothing is persisted. A block cannot follow a delta that has already
@@ -584,7 +593,8 @@ async def _stream_reply(
     except Exception:
         # The exception itself stays in the logs -- see MODEL_FAILURE_MESSAGE.
         logger.exception(f'Chat streaming failed for session {session.id}')
-        await persist()
+        if not is_guarded(llm):
+            await persist()
         yield f'data: {json.dumps({"error": MODEL_FAILURE_MESSAGE})}\n\n'
         return
 

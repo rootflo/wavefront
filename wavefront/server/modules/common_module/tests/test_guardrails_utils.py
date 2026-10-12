@@ -19,7 +19,11 @@ import asyncio
 
 from flo_ai.guardrails.run_context import get_run_id
 
-from common_module.utils.guardrails import guardrail_run_scope, run_scoped_stream
+from common_module.utils.guardrails import (
+    guardrail_run_scope,
+    is_guarded,
+    run_scoped_stream,
+)
 
 
 async def _ids(count=2):
@@ -94,3 +98,17 @@ class TestGuardrailRunScope:
                 assert get_run_id() == 'be-inner0001'
             assert get_run_id() == 'be-outer0001'
         assert get_run_id() is None
+
+
+class TestIsGuarded:
+    def test_an_unwrapped_llm_is_not_guarded(self):
+        assert is_guarded(object()) is False
+        assert is_guarded(None) is False
+
+    def test_a_guarded_llm_is_reported_as_guarded(self):
+        from types import SimpleNamespace
+        from flo_ai.llm.guarded_llm import GuardedLLM
+
+        stub_llm = SimpleNamespace(model='m', api_key='k', temperature=0.5, kwargs={})
+        guarded = GuardedLLM(stub_llm, object())
+        assert is_guarded(guarded) is True

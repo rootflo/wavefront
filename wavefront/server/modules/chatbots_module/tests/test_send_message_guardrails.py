@@ -19,7 +19,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from flo_ai.llm.guarded_llm import GuardrailBlocked
+from flo_ai.llm.guarded_llm import GuardedLLM, GuardrailBlocked
 
 from chatbots_module.controllers.chat_session_controller import (
     MODEL_FAILURE_MESSAGE,
@@ -30,6 +30,11 @@ from common_module.response_formatter import ResponseFormatter
 
 SESSION_ID = uuid.uuid4()
 USER_ID = uuid.uuid4()
+
+
+def _guarded_llm():
+    stub = SimpleNamespace(model='m', api_key='k', temperature=0.5, kwargs={})
+    return GuardedLLM(stub, object())
 
 
 def _blocked(message='This request was refused by policy.'):
@@ -46,13 +51,14 @@ def _blocked(message='This request was refused by policy.'):
 class _FakeInference:
     """Hand-rolled rather than AsyncMock: `stream` has to be a real async gen."""
 
-    def __init__(self, check_error=None, stream_error=None, deltas=()):
+    def __init__(self, check_error=None, stream_error=None, deltas=(), llm=None):
         self.check_error = check_error
         self.stream_error = stream_error
         self.deltas = deltas
+        self.llm = llm if llm is not None else object()
 
     async def resolve_llm(self, chatbot, user_id=None):
-        return object()
+        return self.llm
 
     async def check_user_message(self, chatbot, content, user_id=None):
         if self.check_error:
@@ -164,6 +170,72 @@ class TestOutputBlockWhileStreaming:
         assert json.loads(frames[-1].removeprefix('data: ')) == {
             'error': MODEL_FAILURE_MESSAGE
         }
+
+    async def test_guarded_stream_withholds_partial_reply_on_provider_error(self):
+        # If provider fails mid-stream for a guarded chatbot, partial text must
+        # not be persisted because the terminal guardrail check never ran.
+        services = _services(
+            _FakeInference(
+                deltas=['partial', ' answer'],
+                stream_error=RuntimeError('boom'),
+                llm=_guarded_llm(),
+            )
+        )
+
+        frames = await _frames(await _call(services, stream=True))
+
+        assert json.loads(frames[-1].removeprefix('data: ')) == {
+            'error': MODEL_FAILURE_MESSAGE
+        }
+        # Only 1 write for the user turn, 0 for assistant
+        assert services['chat_session_service'].add_message.await_count == 1
+
+    async def test_unguarded_stream_saves_partial_reply_on_provider_error(self):
+        # An unguarded stream still saves partial reply on provider error.
+        services = _services(
+            _FakeInference(
+                deltas=['partial', ' answer'],
+                stream_error=RuntimeError('boom'),
+                llm=object(),
+            )
+        )
+
+        frames = await _frames(await _call(services, stream=True))
+
+        assert json.loads(frames[-1].removeprefix('data: ')) == {
+            'error': MODEL_FAILURE_MESSAGE
+        }
+        # 1 write for user turn + 1 write for partial assistant message
+        assert services['chat_session_service'].add_message.await_count == 2
+
+
+class TestDisconnectWhileStreaming:
+    async def test_guarded_stream_withholds_partial_reply_on_disconnect(self):
+        # If client disconnects mid-stream for a guarded chatbot, partial text
+        # must not be persisted because terminal check has not run.
+        services = _services(
+            _FakeInference(deltas=['hello', ' world'], llm=_guarded_llm())
+        )
+
+        response = await _call(services, stream=True)
+        iterator = response.body_iterator
+        await iterator.__anext__()
+        await iterator.aclose()
+
+        # Only 1 write for the user turn; no partial assistant turn is persisted.
+        assert services['chat_session_service'].add_message.await_count == 1
+
+    async def test_unguarded_stream_saves_partial_reply_on_disconnect(self):
+        # For an unguarded chatbot, partial reply is saved on disconnect.
+        services = _services(_FakeInference(deltas=['hello', ' world'], llm=object()))
+
+        response = await _call(services, stream=True)
+        iterator = response.body_iterator
+        await iterator.__anext__()
+        await iterator.aclose()
+
+        # 1 write for user turn + 1 write for partial assistant message
+        assert services['chat_session_service'].add_message.await_count == 2
 
 
 class TestCleanTurn:

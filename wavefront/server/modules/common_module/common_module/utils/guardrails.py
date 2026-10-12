@@ -106,6 +106,20 @@ def declare_retract_support(llm: Any) -> bool:
     return True
 
 
+def is_guarded(llm: Any) -> bool:
+    """Return whether ``llm`` is wrapped by GuardedLLM.
+
+    Used by stream consumers that need to know whether output policy applies
+    to the model, e.g. to avoid persisting unvetted partial responses on disconnect.
+    """
+    try:
+        from flo_ai.llm.guarded_llm import GuardedLLM
+    except ImportError:
+        return False
+
+    return isinstance(llm, GuardedLLM)
+
+
 def guardrail_llm_provider(
     guardrails_engine: Any,
     namespace: Optional[str],
