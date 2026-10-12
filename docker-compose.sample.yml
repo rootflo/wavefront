@@ -366,6 +366,8 @@ services:
       - SUPERSET_FLAG=<YOUR_SUPERSET_FLAG>
       - VECTOR_DB_FLAG=<YOUR_VECTOR_DB_FLAG>
       - GUARDRAILS_ENABLED=<YOUR_GUARDRAILS_ENABLED>
+      # Required for Presidio PII detection/redaction on lean Docker images.
+      # Point to a spaCy model archive (e.g. https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0.tar.gz)
       - GUARDRAILS_SPACY_MODEL_URL=<YOUR_GUARDRAILS_SPACY_MODEL_URL>
       - GUARDRAILS_MODEL_CACHE_DIR=${GUARDRAILS_MODEL_CACHE_DIR:-/app/models/spacy}
       - GUARDRAILS_WARMUP_ON_STARTUP=true

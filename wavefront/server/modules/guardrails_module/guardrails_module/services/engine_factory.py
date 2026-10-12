@@ -51,7 +51,17 @@ def build_guardrails_engine(
     spacy_model_url: str | None = None,
     model_cache_dir: str | None = None,
 ):
-    """Build a process-wide engine with whatever providers are available."""
+    """Build a process-wide engine with whatever providers are available.
+
+    For Presidio PII checks (``presidio_pii``), a spaCy model is required.
+    When running the lean Docker image, ``GUARDRAILS_SPACY_MODEL_URL`` must be
+    configured to point to a model archive (HTTP/S3/GCS) so it can be downloaded
+    and cached dynamically. If omitted, the engine falls back to pre-installed
+    packages (e.g. ``en_core_web_lg``) or existing cached models in
+    ``GUARDRAILS_MODEL_CACHE_DIR``. If no model source is available,
+    ``presidio_pii`` is omitted from registered adapters and reported as
+    unavailable in the UI.
+    """
     import os
     from flo_ai.guardrails import VERDICT_CACHE_CHAR_BUDGET, GuardrailsEngine
 
