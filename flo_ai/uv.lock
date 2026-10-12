@@ -1233,7 +1233,11 @@ wheels = [
 
 [[package]]
 name = "flo-ai"
+<<<<<<< HEAD
 version = "1.1.18"
+=======
+version = "1.1.16"
+>>>>>>> 5c7905e6 (update flo ai version)
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
