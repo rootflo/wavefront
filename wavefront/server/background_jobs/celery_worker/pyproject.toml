@@ -31,6 +31,7 @@ flo-lib             = { workspace = true }
 tools-module        = { workspace = true }
 api-services-module = { workspace = true }
 common-module       = { workspace = true }
+flo-testing         = { workspace = true }
 llm-inference-config-module   = { workspace = true }
 guardrails-module             = { workspace = true }
 
@@ -38,6 +39,7 @@ guardrails-module             = { workspace = true }
 dev = [
     "pytest>=9.0.3,<10.0.0",
     "pytest-asyncio>=1.0.0,<2.0.0",
+    "flo-testing"
 ]
 
 [tool.uv]

@@ -35,10 +35,14 @@ dependencies = [
     "flo-lib",
 ]
 
+[dependency-groups]
+dev = ["flo-testing"]
+
 [tool.uv.sources]
 common-module = { workspace = true }
 flo-cloud = { workspace = true }
 flo-lib = { workspace = true }
+flo-testing = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

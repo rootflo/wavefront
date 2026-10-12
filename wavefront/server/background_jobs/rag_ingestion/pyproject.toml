@@ -6,6 +6,7 @@ authors = [
     {name = "rootflo", email = "*@rootfor.xyz"}
 ]
 requires-python = ">=3.11"
+
 dependencies = [
     "flo-cloud",
     "flo-stream",
@@ -23,12 +24,16 @@ dependencies = [
     "pyjwt[crypto]>=2.9.0",
 ]
 
+[dependency-groups]
+dev = ["flo-testing"]
+
 [tool.uv.sources]
 flo-cloud = { workspace = true }
 flo-stream = { workspace = true }
 flo-utils = { workspace = true }
 flo-lib = { workspace = true }
 db-repo-module = { workspace = true }
+flo-testing = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
