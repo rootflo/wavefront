@@ -134,25 +134,27 @@ Because each application has its own floware, each gets its own database, storag
 
 **Option 2**: Self-host for maximum control and customization. Please find the self-hosting instructions in the [Wavefront Documentation](https://github.com/rootflo/wavefront/tree/develop/wavefront) and the [Docker setup guide](DOCKER_SETUP.md).
 
-**Option 3**: Run Wavefront locally for development with the setup script.
+**Option 3**: Run Wavefront locally for development with the interactive scripts.
 
 ### Local development setup
 
-[`wavefront/setup.sh`](wavefront/setup.sh) sets up and starts the whole stack on your machine. It is safe to re-run: services that are already running are left as they are.
+[`wavefront/dev-start.sh`](wavefront/dev-start.sh) sets up and starts selected services on your machine. [`wavefront/dev-stop.sh`](wavefront/dev-stop.sh) stops them (running ones are pre-checked). Both are safe to re-run: services that are already running are left as they are on start.
 
-**Prerequisites**: Python 3.11+, [uv](https://docs.astral.sh/uv/), Docker (running), Node.js 20+, pnpm (`corepack enable`) and openssl. The script checks for all of them first.
+**Prerequisites**: Python 3.11+, [uv](https://docs.astral.sh/uv/), Docker (running), Node.js 20+, pnpm (`corepack enable`) and openssl. `dev-start.sh` checks for all of them first.
 
 ```bash
 cd wavefront
-./setup.sh
+./dev-start.sh   # first-time setup + start selected services
+./dev-stop.sh    # stop selected services
 ```
 
-The script:
-1. Creates each service's `.env` from its checked-in sample (`.env.example` / `.env.sample`). If a `.env` already exists, it asks before replacing it and keeps a backup. Secrets such as `PASSTHROUGH_SECRET` are generated.
-2. Starts Postgres (pgvector), Redis and [LocalStack](https://github.com/localstack/localstack) with `server/docker-compose.yml`. LocalStack provides S3, SQS and KMS locally, so no cloud account is needed.
-3. Creates the databases, the S3 bucket, the RAG ingestion queue and the KMS keys used to sign tokens.
-4. Installs the Python dependencies into `server/.venv` and the web client's dependencies.
-5. Starts each service in its own terminal window, and waits until it is healthy.
+`dev-start.sh`:
+1. Lets you choose which apps to start (floconsole, floware, web client, celery, RAG ingestion, inference, call processing).
+2. Creates each selected service's `.env` from its checked-in sample (`.env.example` / `.env.sample`). Existing `.env` files are kept by default; turn on **replace .env files** to recreate them (with a backup). Secrets such as `PASSTHROUGH_SECRET` are generated or synced across services.
+3. Starts Postgres (pgvector), Redis and [LocalStack](https://github.com/localstack/localstack) with `server/docker-compose.yml`. LocalStack provides S3, SQS and KMS locally, so no cloud account is needed.
+4. Creates the databases, the S3 bucket, the RAG ingestion queue and the KMS keys used to sign tokens.
+5. Installs the Python dependencies into `server/.venv` and the web client's dependencies (when selected).
+6. Starts each selected service in its own terminal window, and waits until it is healthy.
 
 | Service | URL | Reloads on code changes |
 |---------|-----|-------------------------|
@@ -160,17 +162,18 @@ The script:
 | floconsole | http://localhost:8002 | Yes |
 | floware | http://localhost:8001 | Yes |
 | inference_app *(optional)* | http://localhost:8003 | Yes |
+| call_processing *(optional)* | http://localhost:8004 | Yes |
 | Celery worker *(optional)* | Redis queue | No, restart it |
 | RAG ingestion worker *(optional)* | LocalStack SQS queue | No, restart it |
 
-The script asks whether to run each optional service. The inference app downloads its models (several GB) from Hugging Face on first run, and needs a Hugging Face token with access to the gated DINOv3 model. It runs on CPU on Linux and Apple Silicon Macs; with all three models loaded (CLIP, DINOv3 and BGE-M3) it needs roughly 4–5 GB of free memory. Intel Macs have no PyTorch build at the supported version (2.6 or later), so there it runs in mock mode: the same API returning synthetic embeddings, for integration testing, with no models to download. Set `INFERENCE_MOCK_MODELS=true` to use mock mode anywhere.
+Optional services default to off in the checkbox. The inference app downloads its models (several GB) from Hugging Face on first run, and needs a Hugging Face token with access to the gated DINOv3 model. It runs on CPU on Linux and Apple Silicon Macs; with all three models loaded (CLIP, DINOv3 and BGE-M3) it needs roughly 4–5 GB of free memory. Intel Macs have no PyTorch build at the supported version (2.6 or later), so there it runs in mock mode: the same API returning synthetic embeddings, for integration testing, with no models to download. Set `INFERENCE_MOCK_MODELS=true` to use mock mode anywhere.
 
 When the script finishes:
 1. Open the web client at http://localhost:5173 and log in with the seed user from `server/apps/floconsole/floconsole/.env` (`CONSOLE_EMAIL` / `CONSOLE_PASSWORD`).
-2. Add floware as an app: **Apps → Create new app**, with App Name `localhost`, Deployment Type **Manual**, and `http://localhost:8001` as both the Public and Private URL.
+2. Add floware as an app: **Apps → Create new app**, with App Name `localhost`, Deployment Type **Manual**, and `http://localhost:8001` as both the Public and Private URL. With `VITE_APP_ENV=local` in `client/.env`, you can tick “Create local app for development” to fill these in.
 3. Start building.
 
-To stop a service, close its terminal window. To start it again, re-run `./setup.sh`.
+To stop services, run `./dev-stop.sh` (or close their terminal windows). To start again, re-run `./dev-start.sh`.
 
 
 ## Platform Components
