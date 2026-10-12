@@ -120,7 +120,14 @@ spin() {
   SPIN_I=$(( (SPIN_I + 1) % ${#SPIN_FRAMES[@]} ))
 }
 
-spin_done() { (( USE_COLOR )) && [[ -t 1 ]] && clear_line; }
+spin_done() {
+  # Always return 0 so callers under set -e are not aborted when color/TTY
+  # checks fail (a failing `(( USE_COLOR ))` / `[[ -t 1 ]]` in a trailing
+  # `&&` chain would otherwise become this function's exit status).
+  if (( USE_COLOR )) && [[ -t 1 ]]; then
+    clear_line
+  fi
+}
 
 # Sleep that tolerates missing fractional support.
 sleep_ms() {
@@ -188,10 +195,12 @@ checkbox_select() {
     return
   fi
 
-  # Hide cursor; restore on return or interrupt.
+  # Hide cursor; restore on EXIT (normal return or abort). INT must exit so
+  # Ctrl-C does not get swallowed by `read ... || true` and leave the menu loop
+  # running — exit 130, EXIT trap shows the cursor.
   printf '\033[?25l'
-  # shellcheck disable=SC2064
-  trap 'printf "\033[?25h"; trap - EXIT INT' EXIT INT
+  trap 'printf "\033[?25h"' EXIT
+  trap 'exit 130' INT
 
   _cs_draw_hints() {
     printf '  %s│%s  ' "$MUTED" "$RESET"
