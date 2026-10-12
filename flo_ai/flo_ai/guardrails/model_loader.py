@@ -397,3 +397,71 @@ def ensure_spacy_model(
                     lock_file_path.unlink(missing_ok=True)
                 except OSError:
                     pass
+
+
+def is_spacy_model_available(
+    model_url: Optional[str] = None,
+    cache_dir: Optional[Union[str, Path]] = None,
+    model_name: Optional[str] = None,
+) -> bool:
+    """Check whether a spaCy model can be resolved (via URL, cache, or pre-installed package).
+
+    Returns True if:
+    - model_url is non-empty, OR
+    - model_name is a valid local directory or installed package, OR
+    - A valid model directory exists in cache_dir, OR
+    - A pre-installed spaCy package (e.g. en_core_web_lg, en_core_web_sm) is installed.
+    """
+    effective_url = (
+        model_url or os.getenv('GUARDRAILS_SPACY_MODEL_URL') or ''
+    ).strip() or None
+    if effective_url:
+        return True
+
+    try:
+        import spacy.util
+    except ImportError:
+        return False
+
+    if model_name:
+        try:
+            if spacy.util.is_package(model_name):
+                return True
+        except Exception:
+            pass
+        candidate_name_path = Path(model_name)
+        if (
+            candidate_name_path.is_dir()
+            and (resolve_spacy_model_dir(candidate_name_path) / 'config.cfg').is_file()
+        ):
+            return True
+
+    cache_root = _resolve_cache_root(cache_dir)
+    if cache_root.is_dir():
+        if model_name:
+            named_cache = cache_root / model_name
+            if (
+                named_cache.is_dir()
+                and (named_cache / '.sync_complete').is_file()
+                and (resolve_spacy_model_dir(named_cache) / 'config.cfg').is_file()
+            ):
+                return True
+        try:
+            for child in sorted(cache_root.iterdir()):
+                if (
+                    child.is_dir()
+                    and (child / '.sync_complete').is_file()
+                    and (resolve_spacy_model_dir(child) / 'config.cfg').is_file()
+                ):
+                    return True
+        except OSError:
+            pass
+
+    for candidate in ('en_core_web_lg', 'en_core_web_sm', 'en_core_web_md'):
+        try:
+            if spacy.util.is_package(candidate):
+                return True
+        except Exception:
+            pass
+
+    return False

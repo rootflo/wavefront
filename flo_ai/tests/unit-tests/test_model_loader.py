@@ -9,8 +9,11 @@ import pytest
 from flo_ai.guardrails.model_loader import (
     ensure_spacy_model,
     get_model_cache_dir_name,
+    is_spacy_model_available,
     resolve_spacy_model_dir,
 )
+
+pytest.importorskip('spacy', reason='install the guardrails extra')
 
 
 def _create_mock_model_tar(
@@ -169,3 +172,34 @@ def test_whl_download_and_extract():
             resolved_path = Path(resolved)
             assert resolved_path.is_dir()
             assert (resolved_path / 'config.cfg').is_file()
+
+
+def test_is_spacy_model_available():
+    # 1. With URL provided
+    assert is_spacy_model_available('https://models.example.com/model.tar.gz') is True
+
+    # 2. Without URL, but pre-installed package exists
+    with patch(
+        'spacy.util.is_package', side_effect=lambda name: name == 'en_core_web_lg'
+    ):
+        with patch.dict('os.environ', {}, clear=True):
+            assert is_spacy_model_available() is True
+
+    # 3. Without URL or package, but cached model exists
+    with tempfile.TemporaryDirectory() as tmp:
+        cache_dir = Path(tmp)
+        model_sub = cache_dir / 'my_cached_model'
+        model_sub.mkdir()
+        (model_sub / '.sync_complete').write_text('done\n', encoding='utf-8')
+        (model_sub / 'config.cfg').write_text('[nlp]\n', encoding='utf-8')
+
+        with patch('spacy.util.is_package', return_value=False):
+            with patch.dict('os.environ', {}, clear=True):
+                assert is_spacy_model_available(cache_dir=cache_dir) is True
+
+    # 4. Without URL, package, or cached model -> False
+    with tempfile.TemporaryDirectory() as tmp:
+        empty_cache = Path(tmp)
+        with patch('spacy.util.is_package', return_value=False):
+            with patch.dict('os.environ', {}, clear=True):
+                assert is_spacy_model_available(cache_dir=empty_cache) is False

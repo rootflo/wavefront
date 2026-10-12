@@ -76,7 +76,18 @@ def build_guardrails_engine(
             model_cache_dir or os.getenv('GUARDRAILS_MODEL_CACHE_DIR') or ''
         ).strip() or None
 
-        if effective_url:
+        has_spacy_model = False
+        try:
+            from flo_ai.guardrails.model_loader import is_spacy_model_available
+
+            has_spacy_model = is_spacy_model_available(
+                model_url=effective_url,
+                cache_dir=effective_cache_dir,
+            )
+        except Exception:
+            has_spacy_model = bool(effective_url)
+
+        if has_spacy_model:
             try:
                 import presidio_analyzer  # noqa: F401
                 import presidio_anonymizer  # noqa: F401
@@ -90,7 +101,8 @@ def build_guardrails_engine(
                     )
                 )
                 logger.info(
-                    f'Guardrails: Presidio PII adapter registered (url={effective_url})'
+                    'Guardrails: Presidio PII adapter registered '
+                    f'(url={effective_url or "pre-installed/cached"})'
                 )
             except Exception as exc:
                 logger.warning(
