@@ -62,8 +62,8 @@ export interface DynamicQuery {
 export interface AllDynamicQueriesData {
   yamls: DynamicQuery[];
   has_more: boolean;
-  page_number: number;
-  page_size: number;
+  limit: number;
+  offset: number;
   total_count: number;
 }
 export interface DynamicQueryItem {
