@@ -9,6 +9,7 @@ import pytest
 
 from guardrails_module.services.model_loader import (
     _is_safe_extraction_path,
+    cli_main,
     download_file,
     ensure_spacy_model,
     extract_tar_archive,
@@ -224,7 +225,7 @@ class TestIsSpacyModelAvailable:
         ):
             assert is_spacy_model_available(model_url=None) is True
 
-    def test_available_with_cached_model(self, tmp_path):
+    def test_available_with_named_cached_model(self, tmp_path):
         cache_dir = tmp_path / 'cache'
         model_dir = cache_dir / 'cached_model'
         model_dir.mkdir(parents=True)
@@ -232,7 +233,24 @@ class TestIsSpacyModelAvailable:
         (model_dir / 'config.cfg').write_text('lang=en', encoding='utf-8')
 
         with patch('spacy.util.is_package', return_value=False):
-            assert is_spacy_model_available(model_url=None, cache_dir=cache_dir) is True
+            assert (
+                is_spacy_model_available(
+                    model_url=None, model_name='cached_model', cache_dir=cache_dir
+                )
+                is True
+            )
+
+    def test_unavailable_when_url_unset_even_with_cached_models(self, tmp_path):
+        cache_dir = tmp_path / 'cache'
+        model_dir = cache_dir / 'old_model'
+        model_dir.mkdir(parents=True)
+        (model_dir / '.sync_complete').write_text('source=test', encoding='utf-8')
+        (model_dir / 'config.cfg').write_text('lang=en', encoding='utf-8')
+
+        with patch('spacy.util.is_package', return_value=False):
+            assert (
+                is_spacy_model_available(model_url=None, cache_dir=cache_dir) is False
+            )
 
     def test_unavailable_when_no_source(self, tmp_path):
         with patch('spacy.util.is_package', return_value=False):
@@ -240,3 +258,108 @@ class TestIsSpacyModelAvailable:
                 is_spacy_model_available(model_url=None, cache_dir=tmp_path / 'empty')
                 is False
             )
+
+
+class TestCliMain:
+    """Tests for the CLI entrypoint."""
+
+    def test_cli_main_success_with_args(self, tmp_path):
+        archive = _create_dummy_tar_gz(tmp_path / 'archive' / 'model.tar.gz')
+        cache_dir = tmp_path / 'cache'
+
+        ret = cli_main(['--url', archive.as_uri(), '--cache-dir', str(cache_dir)])
+        assert ret == 0
+
+        # Assert model is extracted and marked complete
+        assert any(
+            (p / '.sync_complete').is_file() for p in cache_dir.iterdir() if p.is_dir()
+        )
+
+    def test_cli_main_fallback_to_env(self, tmp_path, monkeypatch):
+        archive = _create_dummy_tar_gz(tmp_path / 'archive' / 'model.tar.gz')
+        cache_dir = tmp_path / 'cache'
+
+        monkeypatch.setenv('GUARDRAILS_SPACY_MODEL_URL', archive.as_uri())
+        monkeypatch.setenv('GUARDRAILS_MODEL_CACHE_DIR', str(cache_dir))
+
+        ret = cli_main([])
+        assert ret == 0
+
+    def test_cli_main_no_url_error(self, monkeypatch):
+        monkeypatch.delenv('GUARDRAILS_SPACY_MODEL_URL', raising=False)
+        ret = cli_main([])
+        assert ret == 1
+
+    def test_cli_main_check_only_available(self, tmp_path):
+        archive = _create_dummy_tar_gz(tmp_path / 'archive' / 'model.tar.gz')
+        cache_dir = tmp_path / 'cache'
+        cli_main(['--url', archive.as_uri(), '--cache-dir', str(cache_dir)])
+
+        ret = cli_main(
+            ['--url', archive.as_uri(), '--cache-dir', str(cache_dir), '--check-only']
+        )
+        assert ret == 0
+
+    def test_cli_main_check_only_unavailable(self, tmp_path, monkeypatch):
+        monkeypatch.delenv('GUARDRAILS_SPACY_MODEL_URL', raising=False)
+        with patch('spacy.util.is_package', return_value=False):
+            ret = cli_main(['--cache-dir', str(tmp_path), '--check-only'])
+            assert ret == 1
+
+    def test_cli_main_download_failure(self):
+        with patch(
+            'guardrails_module.services.model_loader.ensure_spacy_model',
+            side_effect=RuntimeError('Network failure'),
+        ):
+            ret = cli_main(['--url', 'https://example.com/fail.tar.gz'])
+            assert ret == 1
+
+    def test_cli_main_skipped_when_disabled(self, tmp_path):
+        archive = _create_dummy_tar_gz(tmp_path / 'archive' / 'model.tar.gz')
+        cache_dir = tmp_path / 'cache'
+
+        ret = cli_main(
+            [
+                '--enabled',
+                'false',
+                '--url',
+                archive.as_uri(),
+                '--cache-dir',
+                str(cache_dir),
+            ]
+        )
+        assert ret == 0
+        # Assert no model was extracted
+        assert not cache_dir.exists() or not any(cache_dir.iterdir())
+
+    def test_cli_main_skipped_when_disabled_via_env(self, tmp_path, monkeypatch):
+        archive = _create_dummy_tar_gz(tmp_path / 'archive' / 'model.tar.gz')
+        cache_dir = tmp_path / 'cache'
+
+        monkeypatch.setenv('GUARDRAILS_ENABLED', 'false')
+        monkeypatch.setenv('GUARDRAILS_SPACY_MODEL_URL', archive.as_uri())
+        monkeypatch.setenv('GUARDRAILS_MODEL_CACHE_DIR', str(cache_dir))
+
+        ret = cli_main([])
+        assert ret == 0
+        assert not cache_dir.exists() or not any(cache_dir.iterdir())
+
+    def test_cli_main_force_overrides_disabled(self, tmp_path, monkeypatch):
+        archive = _create_dummy_tar_gz(tmp_path / 'archive' / 'model.tar.gz')
+        cache_dir = tmp_path / 'cache'
+
+        monkeypatch.setenv('GUARDRAILS_ENABLED', 'false')
+        monkeypatch.setenv('GUARDRAILS_SPACY_MODEL_URL', archive.as_uri())
+        monkeypatch.setenv('GUARDRAILS_MODEL_CACHE_DIR', str(cache_dir))
+
+        ret = cli_main(['--force'])
+        assert ret == 0
+        assert any(
+            (p / '.sync_complete').is_file() for p in cache_dir.iterdir() if p.is_dir()
+        )
+
+    def test_cli_main_enabled_true_no_url_warns_and_succeeds(self, monkeypatch):
+        monkeypatch.setenv('GUARDRAILS_ENABLED', 'true')
+        monkeypatch.delenv('GUARDRAILS_SPACY_MODEL_URL', raising=False)
+        ret = cli_main([])
+        assert ret == 0

@@ -7,10 +7,13 @@ disk-caching and multi-worker process locking.
 
 from __future__ import annotations
 
+import argparse
 import fcntl
 import hashlib
+import os
 from pathlib import Path
 import shutil
+import sys
 import tarfile
 import tempfile
 import threading
@@ -202,18 +205,8 @@ def ensure_spacy_model(
                 'and spacy_model_url is not configured.'
             )
 
-    # 2. If no URL is provided, check existing cache root and installed packages
+    # 2. If no URL is provided, check installed packages in Python environment
     if not effective_url:
-        if cache_root.is_dir():
-            for child in sorted(cache_root.iterdir()):
-                if child.is_dir() and (child / '.sync_complete').is_file():
-                    resolved = resolve_spacy_model_dir(child)
-                    if (resolved / 'config.cfg').is_file():
-                        logger.debug(
-                            'Found cached fallback spaCy model at %s', resolved
-                        )
-                        return str(resolved)
-
         for candidate in ('en_core_web_lg', 'en_core_web_sm', 'en_core_web_md'):
             if spacy.util.is_package(candidate):
                 logger.debug("Found pre-installed fallback spaCy model '%s'", candidate)
@@ -332,9 +325,9 @@ def is_spacy_model_available(
         ):
             return True
 
-    cache_root = _resolve_cache_root(cache_dir)
-    if cache_root.is_dir():
-        if model_name:
+    if model_name:
+        cache_root = _resolve_cache_root(cache_dir)
+        if cache_root.is_dir():
             named_cache = cache_root / model_name
             if (
                 named_cache.is_dir()
@@ -342,16 +335,6 @@ def is_spacy_model_available(
                 and (resolve_spacy_model_dir(named_cache) / 'config.cfg').is_file()
             ):
                 return True
-        try:
-            for child in sorted(cache_root.iterdir()):
-                if (
-                    child.is_dir()
-                    and (child / '.sync_complete').is_file()
-                    and (resolve_spacy_model_dir(child) / 'config.cfg').is_file()
-                ):
-                    return True
-        except OSError:
-            pass
 
     for candidate in ('en_core_web_lg', 'en_core_web_sm', 'en_core_web_md'):
         try:
@@ -361,3 +344,94 @@ def is_spacy_model_available(
             pass
 
     return False
+
+
+def cli_main(argv: Optional[list[str]] = None) -> int:
+    """CLI entrypoint for pre-populating or checking the guardrails spaCy model cache."""
+    parser = argparse.ArgumentParser(
+        description='Pre-download and cache spaCy model archives for Floware guardrails.',
+    )
+    parser.add_argument(
+        '--url',
+        default=os.environ.get('GUARDRAILS_SPACY_MODEL_URL'),
+        help='Source URL or cloud path (s3://, gs://, azure://, https://, file://). Defaults to GUARDRAILS_SPACY_MODEL_URL env var.',
+    )
+    parser.add_argument(
+        '--cache-dir',
+        default=os.environ.get('GUARDRAILS_MODEL_CACHE_DIR'),
+        help='Target cache directory. Defaults to GUARDRAILS_MODEL_CACHE_DIR env var.',
+    )
+    parser.add_argument(
+        '--model-name',
+        default=None,
+        help='Optional explicit model name or directory alias.',
+    )
+    parser.add_argument(
+        '--enabled',
+        default=os.environ.get('GUARDRAILS_ENABLED'),
+        help="Master guardrails enabled toggle ('true'/'false'). Defaults to GUARDRAILS_ENABLED env var.",
+    )
+    parser.add_argument(
+        '--force',
+        action='store_true',
+        help='Force download even if GUARDRAILS_ENABLED is false or unset.',
+    )
+    parser.add_argument(
+        '--check-only',
+        action='store_true',
+        help='Check whether the model is already available without downloading.',
+    )
+
+    args = parser.parse_args(argv)
+
+    if args.check_only:
+        available = is_spacy_model_available(
+            model_url=args.url,
+            cache_dir=args.cache_dir,
+            model_name=args.model_name,
+        )
+        if available:
+            logger.info('spaCy model is available.')
+            return 0
+        logger.warning('spaCy model is NOT available.')
+        return 1
+
+    # Check whether guardrails is enabled (unless --force is passed)
+    if not args.force and args.enabled is not None:
+        is_truthy = str(args.enabled).strip().lower() in ('1', 'true', 'yes', 'on')
+        if not is_truthy:
+            logger.info(
+                'Guardrails is not enabled (GUARDRAILS_ENABLED=%r). Skipping spaCy model download.',
+                args.enabled,
+            )
+            return 0
+
+    if not args.url or not args.url.strip():
+        if args.enabled is not None:
+            is_truthy = str(args.enabled).strip().lower() in ('1', 'true', 'yes', 'on')
+            if is_truthy:
+                logger.warning(
+                    'Guardrails is enabled, but no model URL was provided via --url or GUARDRAILS_SPACY_MODEL_URL. Skipping model download.'
+                )
+                return 0
+        logger.error(
+            'No model URL provided. Specify --url or set GUARDRAILS_SPACY_MODEL_URL.',
+            exc_info=False,
+        )
+        return 1
+
+    try:
+        resolved = ensure_spacy_model(
+            model_url=args.url,
+            cache_dir=args.cache_dir,
+            model_name=args.model_name,
+        )
+        logger.info('spaCy model ready at: %s', resolved)
+        return 0
+    except Exception as exc:
+        logger.error('Failed to acquire spaCy model: %s', exc)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(cli_main())
