@@ -28,6 +28,8 @@ class AgentBuilder:
         self._generation_params: Dict[str, Any] = {}
         self._tools: List[Tool] = []
         self._max_retries = 3
+        self._max_tool_calls: Optional[int] = None
+        self._interactive = False
         self._reasoning_pattern = ReasoningPattern.DIRECT
         self._output_schema: Optional[Dict[str, Any]] = None
         self._role: Optional[str] = None
@@ -190,6 +192,20 @@ class AgentBuilder:
         self._max_retries = max_retries
         return self
 
+    def with_max_tool_calls(self, max_tool_calls: int) -> 'AgentBuilder':
+        """Set how many tool calls the agent may make in one run"""
+        self._max_tool_calls = max_tool_calls
+        return self
+
+    def with_interactive(self, interactive: bool = True) -> 'AgentBuilder':
+        """Mark the agent as talking to a person, turn by turn.
+
+        Their messages are taken as written (never as templates), and a reply
+        in words ends the turn, so a question the agent asks reaches them.
+        """
+        self._interactive = interactive
+        return self
+
     def with_output_schema(
         self, schema: Union[Dict[str, Any], Type[BaseModel]]
     ) -> 'AgentBuilder':
@@ -242,16 +258,22 @@ class AgentBuilder:
         if self._guardrail_provider is not None:
             llm = self._guardrail_provider(llm, self._name)
 
+        optional_args: Dict[str, Any] = {}
+        if self._max_tool_calls is not None:
+            optional_args['max_tool_calls'] = self._max_tool_calls
+
         return Agent(
             name=self._name,
             system_prompt=self._system_prompt,
             llm=llm,
             tools=self._tools,
             max_retries=self._max_retries,
+            **optional_args,
             reasoning_pattern=self._reasoning_pattern,
             output_schema=self._output_schema,
             role=self._role,
             act_as=self._act_as,
+            interactive=self._interactive,
         )
 
     @staticmethod
@@ -390,6 +412,10 @@ class AgentBuilder:
                 builder.with_temperature(settings.temperature)
             if settings.max_retries is not None:
                 builder.with_retries(settings.max_retries)
+            if settings.max_tool_calls is not None:
+                builder.with_max_tool_calls(settings.max_tool_calls)
+            if settings.interactive is not None:
+                builder.with_interactive(settings.interactive)
             if settings.reasoning_pattern is not None:
                 builder.with_reasoning(ReasoningPattern[settings.reasoning_pattern])
             builder.with_generation_params(**settings.generation_params())
@@ -436,6 +462,9 @@ class AgentBuilder:
                 prefilled_params = tool_config.get('prefilled_params', {})
                 name_override = tool_config.get('name_override')
                 description_override = tool_config.get('description_override')
+                if base_tool.agents:
+                    # A delegation tool was built with its description already.
+                    description_override = None
 
                 # Create tool configuration
                 tool_config_obj = ToolConfig(

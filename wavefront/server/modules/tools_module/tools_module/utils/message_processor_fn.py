@@ -58,8 +58,14 @@ async def execute_message_processor_fn(
     )
     async with httpx.AsyncClient() as client:
         try:
+            # An internal call into floware's own API, so it carries the same
+            # headers as the other tools that make one (see FlowareApiClient).
+            # Without them floware rejects it as unauthenticated.
             response = await client.post(
-                url, json={'input_data': processor_input}, timeout=60.0
+                url,
+                json={'input_data': processor_input},
+                headers=api.headers(),
+                timeout=60.0,
             )
         except httpx.RequestError as e:
             raise Exception(

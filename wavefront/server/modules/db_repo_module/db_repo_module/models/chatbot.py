@@ -10,7 +10,12 @@ from ..database.base import Base
 
 
 class Chatbot(Base):
-    """A configured text chatbot: a system prompt bound to an LLM config.
+    """A configured text chatbot: a system prompt bound to an LLM config, or
+    a reference to an agent.
+
+    A chatbot is one or the other. With `agent_id` set, the prompt, the model
+    and the tools all come from that agent, and `system_prompt` and
+    `llm_config_id` are null.
 
     Distinct from `agents`, whose prompts live in versioned YAML in cloud storage
     and which exist to be orchestrated into workflows. A chatbot is the simpler
@@ -45,11 +50,23 @@ class Chatbot(Base):
     )
     name: Mapped[str] = mapped_column(String(length=255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    system_prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    # Null for an agent-backed chatbot, which takes its prompt from the agent.
+    system_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     welcome_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    llm_config_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey('llm_inference_config.id'), nullable=False, index=True
+    # Null for an agent-backed chatbot, which takes its model from the agent.
+    llm_config_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey('llm_inference_config.id'), nullable=True, index=True
     )
+    # The agent that answers for this chatbot, when it is agent-backed.
+    #
+    # Deliberately not a foreign key. Agents are hard-deleted, so a constraint
+    # would either block deleting an agent that a chatbot points at or null the
+    # reference and leave a chatbot that is neither kind. A missing agent is
+    # instead reported when a session is opened or a message is sent.
+    agent_id: Mapped[Optional[uuid.UUID]] = mapped_column(nullable=True, index=True)
+    # Pin to one agent version; null follows the agent's current version. A
+    # session records the version it started on either way.
+    agent_version: Mapped[Optional[int]] = mapped_column(nullable=True)
     # Per-chatbot overrides on top of the llm_inference_config row. Only
     # `temperature` is honoured today.
     #
@@ -87,7 +104,9 @@ class Chatbot(Base):
             'description': self.description,
             'system_prompt': self.system_prompt,
             'welcome_message': self.welcome_message,
-            'llm_config_id': str(self.llm_config_id),
+            'llm_config_id': str(self.llm_config_id) if self.llm_config_id else None,
+            'agent_id': str(self.agent_id) if self.agent_id else None,
+            'agent_version': self.agent_version,
             'config': self.config,
             'enabled': self.enabled,
             'is_deleted': self.is_deleted,

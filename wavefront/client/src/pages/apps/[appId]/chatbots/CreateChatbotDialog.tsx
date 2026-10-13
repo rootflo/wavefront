@@ -10,7 +10,7 @@ import {
   DialogTitle,
 } from '@app/components/ui/dialog';
 import { Form } from '@app/components/ui/form';
-import { useGetLLMConfigs } from '@app/hooks';
+import { useGetAgents, useGetLLMConfigs } from '@app/hooks';
 import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { CreateChatbotRequest } from '@app/types/chatbot';
@@ -19,7 +19,14 @@ import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 
 import ChatbotFormFields from './ChatbotFormFields';
-import { ChatbotFormValues, buildConfig, chatbotFormSchema } from './schemas';
+import {
+  CHAT_TYPE_AGENT,
+  CHAT_TYPE_LLM,
+  ChatbotFormValues,
+  buildConfig,
+  chatbotFormSchema,
+  parseAgentVersion,
+} from './schemas';
 
 interface CreateChatbotDialogProps {
   isOpen: boolean;
@@ -31,12 +38,15 @@ interface CreateChatbotDialogProps {
 }
 
 const buildDefaultValues = (namespace: string): ChatbotFormValues => ({
+  chat_type: CHAT_TYPE_LLM,
   name: '',
   namespace,
   description: '',
   system_prompt: '',
   welcome_message: '',
   llm_config_id: '',
+  agent_id: '',
+  agent_version: '',
   temperature: '',
   enabled: false,
 });
@@ -52,6 +62,7 @@ const CreateChatbotDialog: React.FC<CreateChatbotDialogProps> = ({
   const { notifySuccess, notifyError } = useNotifyStore();
   const [submitting, setSubmitting] = useState(false);
   const { data: llmConfigs = [] } = useGetLLMConfigs(appId);
+  const { data: agents = [] } = useGetAgents(appId);
 
   const form = useForm<ChatbotFormValues>({
     resolver: zodResolver(chatbotFormSchema),
@@ -75,20 +86,29 @@ const CreateChatbotDialog: React.FC<CreateChatbotDialogProps> = ({
   const onSubmit = async (data: ChatbotFormValues) => {
     setSubmitting(true);
     try {
-      const config = buildConfig(data.temperature);
       const payload: CreateChatbotRequest = {
         name: data.name.trim(),
         namespace: data.namespace,
-        system_prompt: data.system_prompt,
-        llm_config_id: data.llm_config_id,
         enabled: data.enabled,
       };
+
+      // The two types take different fields, and the API rejects a mix: an
+      // agent-backed chatbot gets its prompt and model from the agent.
+      if (data.chat_type === CHAT_TYPE_AGENT) {
+        payload.agent_id = data.agent_id;
+        const agentVersion = parseAgentVersion(data.agent_version);
+        if (agentVersion !== undefined) payload.agent_version = agentVersion;
+      } else {
+        payload.system_prompt = data.system_prompt;
+        payload.llm_config_id = data.llm_config_id;
+        const config = buildConfig(data.temperature);
+        if (Object.keys(config).length) payload.config = config;
+      }
 
       // Omit rather than send empty values on create, so the row stores NULL
       // and reads as "never set" instead of "deliberately blanked".
       if (data.description.trim()) payload.description = data.description.trim();
       if (data.welcome_message.trim()) payload.welcome_message = data.welcome_message;
-      if (Object.keys(config).length) payload.config = config;
 
       await floConsoleService.chatbotService.createChatbot(payload);
       notifySuccess('Chatbot created successfully');
@@ -111,12 +131,20 @@ const CreateChatbotDialog: React.FC<CreateChatbotDialogProps> = ({
       <DialogContent className="max-h-[90vh] min-w-0 overflow-y-auto lg:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Create Chatbot</DialogTitle>
-          <DialogDescription>Configure a chatbot with a system prompt and a model</DialogDescription>
+          <DialogDescription>
+            Configure a chatbot with a system prompt and a model, or back it with an agent
+          </DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <ChatbotFormFields form={form} llmConfigs={llmConfigs} namespaces={namespaces} />
+            <ChatbotFormFields
+              form={form}
+              appId={appId}
+              llmConfigs={llmConfigs}
+              agents={agents}
+              namespaces={namespaces}
+            />
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={submitting}>

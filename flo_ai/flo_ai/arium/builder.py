@@ -6,6 +6,7 @@ from flo_ai.models import BaseMessage, UserMessage
 from flo_ai.agent.agent import Agent, resolve_variables
 from flo_ai.tool.base_tool import Tool
 from flo_ai.tool.tool_config import ToolConfig
+from flo_ai.tool.agent_tool import parallel_agents_tool
 import yaml
 from flo_ai.agent import AgentBuilder
 from flo_ai.llm import BaseLLM
@@ -398,8 +399,24 @@ class AriumBuilder:
         agents_list = arium.agents or []
         agents_dict = {}
 
-        for agent_config in agents_list:
+        # An agent may list other agents of this workflow under `tools:` and
+        # delegate to them. Those are built first, so they exist to be wrapped.
+        workers_by_agent = cls._delegated_agents(agents_list, tool_registry)
+
+        for agent_config in cls._order_for_delegation(agents_list, workers_by_agent):
             agent_name = agent_config.name
+            workers = [agents_dict[name] for name in workers_by_agent[agent_name]]
+            agent_tool_registry = tool_registry
+            if workers:
+                descriptions = cls._delegation_descriptions(agent_config)
+                agent_tool_registry = {
+                    **(tool_registry or {}),
+                    **{
+                        worker.name: worker.as_tool(descriptions.get(worker.name))
+                        for worker in workers
+                    },
+                }
+            built_here = True
 
             # Method 1: Reference pre-built agent
             # Check if only name is provided (no other config fields)
@@ -413,6 +430,7 @@ class AriumBuilder:
                 # Only has name field, so it's a reference to a pre-built agent
                 if agents and agent_name in agents:
                     agent = agents[agent_name]
+                    built_here = False
                 else:
                     raise ValueError(
                         f'Agent {agent_name} not found in provided agents dictionary. '
@@ -422,6 +440,7 @@ class AriumBuilder:
 
             elif agents and agent_name in agents:
                 agent = agents[agent_name]
+                built_here = False
 
             # Method 2: Direct agent definition
             elif (
@@ -432,7 +451,7 @@ class AriumBuilder:
                 agent = cls._create_agent_from_direct_config(
                     agent_config,
                     base_llm,
-                    tool_registry,
+                    agent_tool_registry,
                     guardrail_provider=guardrail_provider,
                     **kwargs,
                 )
@@ -442,7 +461,7 @@ class AriumBuilder:
                 agent_builder = AgentBuilder.from_yaml(
                     yaml_str=agent_config.yaml_config,
                     base_llm=base_llm,
-                    tool_registry=tool_registry,
+                    tool_registry=agent_tool_registry,
                     guardrail_provider=guardrail_provider,
                     **kwargs,
                 )
@@ -453,7 +472,7 @@ class AriumBuilder:
                 agent_builder: AgentBuilder = AgentBuilder.from_yaml(
                     yaml_file=agent_config.yaml_file,
                     base_llm=base_llm,
-                    tool_registry=tool_registry,
+                    tool_registry=agent_tool_registry,
                     guardrail_provider=guardrail_provider,
                     **kwargs,
                 )
@@ -466,6 +485,16 @@ class AriumBuilder:
                     f'  - Direct configuration (job field),\n'
                     f'  - yaml_config, or\n'
                     f'  - yaml_file'
+                )
+
+            # With several agents to delegate to, the supervisor can also hand
+            # out independent tasks in one call and have them run together.
+            if built_here and len(workers) > 1:
+                agent.add_tool(
+                    parallel_agents_tool(
+                        workers,
+                        descriptions=cls._delegation_descriptions(agent_config),
+                    )
                 )
 
             agents_dict[agent_name] = agent
@@ -587,33 +616,6 @@ class AriumBuilder:
                     **settings,
                 )
 
-            elif router_type == 'reflection':
-                if not router.flow_pattern:
-                    raise ValueError(
-                        f'Reflection router {router.name} must specify flow_pattern'
-                    )
-
-                router_fn = create_llm_router(
-                    router_type='reflection',
-                    flow_pattern=router.flow_pattern,
-                    llm=router_llm,
-                    guardrail_provider=node_decorator,
-                    **settings,
-                )
-
-            elif router_type == 'plan_execute':
-                if not router.agents:
-                    raise ValueError(
-                        f'Plan-Execute router {router.name} must specify agents'
-                    )
-
-                router_fn = create_llm_router(
-                    router_type='plan_execute',
-                    agents=router.agents,
-                    llm=router_llm,
-                    guardrail_provider=node_decorator,
-                    **settings,
-                )
             elif router_type == 'field_match':
                 # Deterministic, no-LLM router: branch on a field of the previous
                 # node's JSON output.
@@ -629,7 +631,7 @@ class AriumBuilder:
                 )
             else:
                 raise ValueError(
-                    f'Unknown router type: {router_type}. Supported types: smart, task_classifier, conversation_analysis, reflection, plan_execute'
+                    f'Unknown router type: {router_type}. Supported types: smart, task_classifier, conversation_analysis, field_match'
                 )
 
             yaml_routers[router.name] = router_fn
@@ -876,7 +878,83 @@ class AriumBuilder:
 
             builder.end_with(end_node)
 
+        # An agent that is only ever delegated to is not a step of the
+        # workflow, so it is not a node (it would be an orphan in the graph).
+        in_workflow = {start_node_name, *end_nodes_names}
+        for edge_config in edges_list:
+            in_workflow.update([edge_config.from_, *edge_config.to])
+        in_workflow.update(node.execute_node for node in foreach_nodes_list)
+        delegated_only = {
+            name for workers in workers_by_agent.values() for name in workers
+        } - in_workflow
+        builder._agents = [
+            agent for agent in builder._agents if agent.name not in delegated_only
+        ]
+
         return builder
+
+    @staticmethod
+    def _delegated_agents(
+        agents_list: List[AriumAgentConfigModel],
+        tool_registry: Optional[Dict[str, Tool]],
+    ) -> Dict[str, List[str]]:
+        """For each agent, the other agents it lists under ``tools:``.
+
+        A name that is also in the tool registry is the registered tool.
+        """
+        agent_names = {agent_config.name for agent_config in agents_list}
+        registered = tool_registry or {}
+
+        workers_by_agent: Dict[str, List[str]] = {}
+        for agent_config in agents_list:
+            workers: List[str] = []
+            for tool_item in agent_config.tools or []:
+                tool_name = tool_item if isinstance(tool_item, str) else tool_item.name
+                if (
+                    tool_name in agent_names
+                    and tool_name not in registered
+                    and tool_name != agent_config.name
+                    and tool_name not in workers
+                ):
+                    workers.append(tool_name)
+            workers_by_agent[agent_config.name] = workers
+        return workers_by_agent
+
+    @staticmethod
+    def _order_for_delegation(
+        agents_list: List[AriumAgentConfigModel],
+        workers_by_agent: Dict[str, List[str]],
+    ) -> List[AriumAgentConfigModel]:
+        """Order agents so each comes after the agents it delegates to."""
+        configs = {agent_config.name: agent_config for agent_config in agents_list}
+        ordered: List[AriumAgentConfigModel] = []
+        done: set = set()
+
+        def visit(name: str, path: List[str]) -> None:
+            if name in done:
+                return
+            if name in path:
+                cycle = ' -> '.join([*path[path.index(name) :], name])
+                raise ValueError(f'Agents delegate to each other in a cycle: {cycle}')
+            for worker in workers_by_agent[name]:
+                visit(worker, [*path, name])
+            done.add(name)
+            ordered.append(configs[name])
+
+        for agent_config in agents_list:
+            visit(agent_config.name, [])
+        return ordered
+
+    @staticmethod
+    def _delegation_descriptions(
+        agent_config: AriumAgentConfigModel,
+    ) -> Dict[str, str]:
+        """The descriptions an agent's ``tools:`` entries give its workers."""
+        return {
+            tool_item.name: tool_item.description_override
+            for tool_item in agent_config.tools or []
+            if not isinstance(tool_item, str) and tool_item.description_override
+        }
 
     @staticmethod
     def _create_llm_from_config(
@@ -994,6 +1072,9 @@ class AriumBuilder:
                     )
 
                 base_tool = available_tools[tool_name]
+                if base_tool.agents:
+                    # A delegation tool was built with its description already.
+                    description_override = None
                 if prefilled_params or name_override or description_override:
                     # Wrap in a PartialTool so prefilled_params (e.g. kb_id,
                     # datasource_id) are hidden from the model and locked to
@@ -1047,6 +1128,8 @@ class AriumBuilder:
             builder.with_temperature(temperature)
         if settings is not None:
             builder.with_generation_params(**settings.generation_params())
+            if settings.max_tool_calls is not None:
+                builder.with_max_tool_calls(settings.max_tool_calls)
 
         if act_as is not None:
             builder.with_actas(act_as)

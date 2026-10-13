@@ -1,5 +1,6 @@
+import json
 from typing import Dict, Any, List, AsyncIterator, Optional
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, BadRequestError
 from .base_llm import (
     BaseLLM,
     file_name_text_block,
@@ -42,6 +43,9 @@ class OpenAI(BaseLLM):
             **request_kwargs,
         )
 
+        # Set once the model has refused a non-default temperature: see _create.
+        self._default_temperature_only = False
+
         self.client = AsyncOpenAI(
             api_key=self.api_key,
             base_url=base_url,
@@ -75,6 +79,29 @@ class OpenAI(BaseLLM):
         if extra:
             declared['extra_body'] = extra
         return declared
+
+    async def _create(self, openai_kwargs: Dict[str, Any]) -> Any:
+        """Call chat.completions.create, without `temperature` if the model refuses it.
+
+        Some models (the GPT-5 line and the reasoning models) accept only
+        their default temperature and answer anything else with a 400. Which
+        ones is not something to keep a list of here, so the refusal itself is
+        the signal: the request is sent again without the parameter, and this
+        instance stops sending it.
+        """
+        if self._default_temperature_only:
+            openai_kwargs.pop('temperature', None)
+        try:
+            return await self.client.chat.completions.create(**openai_kwargs)
+        except BadRequestError as error:
+            if (
+                'temperature' not in openai_kwargs
+                or getattr(error, 'param', None) != 'temperature'
+            ):
+                raise
+            self._default_temperature_only = True
+            openai_kwargs.pop('temperature')
+            return await self.client.chat.completions.create(**openai_kwargs)
 
     @trace_llm_call(provider='openai')
     async def generate(
@@ -112,8 +139,15 @@ class OpenAI(BaseLLM):
                     },
                 )
         elif functions:
-            # Use functions for tool calling when output_schema is not provided
-            kwargs['functions'] = functions
+            # Tool calling when output_schema is not provided. Sent through
+            # `tools`, not the older `functions` parameter: newer models reject
+            # the `function` message role that goes with it.
+            kwargs['tools'] = [
+                {'type': 'function', 'function': function} for function in functions
+            ]
+            # The agent loop runs one tool per model turn, and every call the
+            # model makes has to be answered.
+            kwargs.setdefault('parallel_tool_calls', False)
 
         # Prepare OpenAI API parameters
         openai_kwargs = self._create_kwargs(
@@ -127,7 +161,7 @@ class OpenAI(BaseLLM):
         )
 
         # Make the API call
-        response = await self.client.chat.completions.create(**openai_kwargs)
+        response = await self._create(openai_kwargs)
         message = response.choices[0].message
 
         # Record token usage if available
@@ -181,7 +215,7 @@ class OpenAI(BaseLLM):
             openai_kwargs['functions'] = functions
 
         # Stream the API call and yield content deltas
-        response = await self.client.chat.completions.create(**openai_kwargs)
+        response = await self._create(openai_kwargs)
         async for chunk in response:
             choices = getattr(chunk, 'choices', []) or []
             for choice in choices:
@@ -191,6 +225,55 @@ class OpenAI(BaseLLM):
                 content = getattr(delta, 'content', None)
                 if content:
                     yield {'content': content}
+
+    requires_tool_call_ids = True
+
+    async def get_function_call(self, response: Any) -> Optional[Dict[str, Any]]:
+        """The first tool call in the response, with the id its result must name"""
+        tool_calls = getattr(response, 'tool_calls', None)
+        if tool_calls:
+            call = tool_calls[0]
+            return {
+                'name': call.function.name,
+                'arguments': call.function.arguments,
+                'id': call.id,
+            }
+        # A structured-output response, which still uses function_call.
+        return await super().get_function_call(response)
+
+    def format_tool_call_message(
+        self, content: str, tool_calls: List[Any]
+    ) -> Optional[Dict[str, Any]]:
+        """An assistant message carrying the tool call, as the API returns it"""
+        # One call per message is all the agent loop makes.
+        call = tool_calls[0]
+        arguments = json.dumps(call.arguments)
+        if call.id:
+            return {
+                'role': 'assistant',
+                'content': content or None,
+                'tool_calls': [
+                    {
+                        'id': call.id,
+                        'type': 'function',
+                        'function': {'name': call.name, 'arguments': arguments},
+                    }
+                ],
+            }
+        # No id to tie a result to: the older function_call form.
+        return {
+            'role': 'assistant',
+            'content': content or None,
+            'function_call': {'name': call.name, 'arguments': arguments},
+        }
+
+    def format_function_result_message(
+        self, function_name: str, content: str, tool_use_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """A tool result, naming the call it answers"""
+        if tool_use_id:
+            return {'role': 'tool', 'tool_call_id': tool_use_id, 'content': content}
+        return {'role': 'function', 'name': function_name, 'content': content}
 
     def get_message_content(self, response: Dict[str, Any]) -> str:
         if isinstance(response, str):

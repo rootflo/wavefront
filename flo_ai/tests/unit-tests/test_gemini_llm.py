@@ -579,3 +579,72 @@ class TestGemini:
         # Verify the streaming results
         assert len(results) == 1
         assert results[0] == {'content': 'I will use the function'}
+
+
+class TestToolCallContents:
+    """A tool call and its result are sent as structured turns, not bare text."""
+
+    def llm(self):
+        with patch('flo_ai.llm.gemini_llm.genai.Client'):
+            return Gemini(model='gemini-2.5-flash', api_key='x')
+
+    def test_recorded_call_and_result_become_model_and_user_turns(self):
+        from flo_ai.models import ToolCall
+
+        llm = self.llm()
+        call = llm.format_tool_call_message(
+            'Checking.', [ToolCall(name='lookup', arguments={'order_id': 'A-1'})]
+        )
+        result = llm.format_function_result_message('lookup', 'shipped')
+
+        contents, system = llm._to_contents(
+            [
+                {'role': 'system', 'content': 'sys'},
+                {'role': 'user', 'content': 'where is A-1?'},
+                call,
+                result,
+            ]
+        )
+
+        assert system == 'sys\n'
+        assert contents[0] == 'where is A-1?'
+        assert contents[1].role == 'model'
+        assert contents[1].parts[0].text == 'Checking.'
+        assert contents[1].parts[1].function_call.name == 'lookup'
+        assert contents[1].parts[1].function_call.args == {'order_id': 'A-1'}
+        assert contents[2].role == 'user'
+        assert contents[2].parts[0].function_response.name == 'lookup'
+        assert contents[2].parts[0].function_response.response == {'result': 'shipped'}
+
+    def test_the_models_own_turn_is_passed_through(self):
+        from google.genai import types
+
+        llm = self.llm()
+        raw = types.Content(
+            role='model',
+            parts=[types.Part.from_function_call(name='lookup', args={})],
+        )
+
+        contents, _ = llm._to_contents([{'role': 'assistant', 'content': raw}])
+
+        assert contents == [raw]
+
+    @pytest.mark.asyncio
+    async def test_only_the_call_that_runs_is_kept_in_the_models_turn(self):
+        from google.genai import types
+
+        llm = self.llm()
+        thought = types.Part(text='thinking', thought=True)
+        first = types.Part.from_function_call(name='lookup', args={'q': 1})
+        second = types.Part.from_function_call(name='lookup', args={'q': 2})
+        response = Mock(usage_metadata=None, text=None)
+        response.candidates = [Mock(content=Mock(parts=[thought, first, second]))]
+        llm.client.models.generate_content = Mock(return_value=response)
+
+        result = await llm.generate(
+            [{'role': 'user', 'content': 'hi'}], functions=[{'name': 'lookup'}]
+        )
+
+        assert result['function_call'] == {'name': 'lookup', 'arguments': {'q': 1}}
+        assert result['raw_content'].parts == [thought, first]
+        assert llm.get_assistant_message_for_tool_call(result) is result['raw_content']

@@ -196,6 +196,8 @@ class ApplicationContainer(containers.DeclarativeContainer):
         db_client=db.db_client,
         cache_manager=db.cache_manager,
         llm_inference_config_service=llm_inference_config.llm_inference_config_service,
+        agent_crud_service=agents.agent_crud_service,
+        agent_inference_service=agents.agent_inference_service,
         guardrails_engine=providers.Callable(guardrails_engine, guardrails),
     )
 

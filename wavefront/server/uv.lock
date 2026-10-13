@@ -141,7 +141,7 @@ requires-dist = [
     { name = "api-services-module", editable = "modules/api_services_module" },
     { name = "celery", extras = ["redis"], specifier = ">=5.4.0,<6.0.0" },
     { name = "common-module", editable = "modules/common_module" },
-    { name = "flo-ai", specifier = "==1.1.15" },
+    { name = "flo-ai", editable = "../../flo_ai" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "flo-utils", editable = "packages/flo_utils" },
     { name = "llm-inference-config-module", editable = "modules/llm_inference_config_module" },
@@ -1168,7 +1168,7 @@ dependencies = [
 requires-dist = [
     { name = "common-module", editable = "modules/common_module" },
     { name = "db-repo-module", editable = "modules/db_repo_module" },
-    { name = "flo-ai", specifier = "==1.1.15" },
+    { name = "flo-ai", editable = "../../flo_ai" },
     { name = "llm-inference-config-module", editable = "modules/llm_inference_config_module" },
     { name = "user-management-module", editable = "modules/user_management_module" },
 ]
@@ -1935,7 +1935,7 @@ wheels = [
 [[package]]
 name = "flo-ai"
 version = "1.1.15"
-source = { registry = "https://pypi.org/simple" }
+source = { editable = "../../flo_ai" }
 dependencies = [
     { name = "aiohttp" },
     { name = "anthropic" },
@@ -1961,16 +1961,58 @@ dependencies = [
     { name = "pyyaml" },
     { name = "xlrd" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f9/f8/4ce09a73734b50504c9abefaad0261bc5d385cdd3ecd160b624aa724b40a/flo_ai-1.1.15.tar.gz", hash = "sha256:928412bd11ecaf738cdd13f88d422ccc52f9214e82018fc2986249049dfe08db", size = 177293, upload-time = "2026-10-01T09:38:58.188Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/8b/1b/273fcec677725984c191c6c54b5a6afe27a936b86d37d154ec5539204004/flo_ai-1.1.15-py3-none-any.whl", hash = "sha256:8008a17aabbba32786a65f817a2ed8fc6caa47c478fd99b203dcec568204a3ad", size = 214675, upload-time = "2026-10-01T09:38:56.936Z" },
-]
 
 [package.optional-dependencies]
 guardrails = [
     { name = "azure-ai-contentsafety" },
     { name = "presidio-analyzer" },
     { name = "presidio-anonymizer" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiohttp", specifier = ">=3.14.3,<4" },
+    { name = "anthropic", specifier = ">=0.57.1,<0.58" },
+    { name = "azure-ai-contentsafety", marker = "extra == 'guardrails'", specifier = ">=1.0.0,<2" },
+    { name = "boto3", specifier = ">=1.36.1,<2" },
+    { name = "chardet", specifier = ">=3.dev0,<4.dev0" },
+    { name = "cryptography", specifier = ">=46.0.5" },
+    { name = "defusedxml", specifier = ">=0.7.1,<0.8" },
+    { name = "google-cloud-aiplatform", specifier = ">=1.131.0,<2" },
+    { name = "google-genai", specifier = ">=1.25.0,<2" },
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "matplotlib", marker = "extra == 'vizualize'", specifier = ">=3.7.0,<4" },
+    { name = "networkx", marker = "extra == 'vizualize'", specifier = "~=3.0" },
+    { name = "openai", specifier = ">=1.77.0,<2" },
+    { name = "openpyxl", specifier = ">=3.1.5,<4" },
+    { name = "opentelemetry-api", specifier = ">=1.28.2,<2" },
+    { name = "opentelemetry-exporter-otlp", specifier = ">=1.28.2,<2" },
+    { name = "opentelemetry-instrumentation", specifier = ">=0.54b0" },
+    { name = "opentelemetry-sdk", specifier = ">=1.28.2,<2" },
+    { name = "presidio-analyzer", marker = "extra == 'guardrails'", specifier = ">=2.2.364,<3" },
+    { name = "presidio-anonymizer", marker = "extra == 'guardrails'", specifier = ">=2.2.364,<3" },
+    { name = "pydantic", specifier = ">=2.9.2,<3" },
+    { name = "pyjwt", specifier = ">=2.13.0" },
+    { name = "pymupdf", specifier = ">=1.26.7,<2" },
+    { name = "python-docx", specifier = ">=1.1.2,<2" },
+    { name = "pyyaml", specifier = ">=6.0.3,<7" },
+    { name = "xlrd", specifier = ">=2.0.1,<3" },
+]
+provides-extras = ["vizualize", "guardrails"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "db-sqlite3", specifier = ">=0.0.1,<0.0.2" },
+    { name = "ipykernel", specifier = ">=6.29.5,<7" },
+    { name = "peewee", specifier = ">=3.17.6,<4" },
+    { name = "pre-commit", specifier = ">=4.0.1,<5" },
+    { name = "pytest", specifier = ">=9.0.3,<10.0.0" },
+    { name = "pytest-asyncio", specifier = ">=1.0.0,<2.0.0" },
+    { name = "python-dotenv", specifier = ">=1.0.1,<2" },
+    { name = "reportlab", specifier = ">=4.4.3,<5" },
+    { name = "streamlit", specifier = ">=1.42.2,<2" },
+    { name = "ty", specifier = ">=0.0.1a28" },
+    { name = "wikipedia", specifier = ">=1.4.0,<2" },
 ]
 
 [[package]]
@@ -2910,7 +2952,7 @@ requires-dist = [
     { name = "db-repo-module", editable = "modules/db_repo_module" },
     { name = "dependency-injector", specifier = ">=4.40.0" },
     { name = "fastapi", specifier = ">=0.100.0" },
-    { name = "flo-ai", extras = ["guardrails"], specifier = "==1.1.15" },
+    { name = "flo-ai", extras = ["guardrails"], editable = "../../flo_ai" },
     { name = "pydantic", specifier = ">=2.0.0" },
 ]
 
@@ -3377,7 +3419,7 @@ dev = [
 requires-dist = [
     { name = "boto3", specifier = ">=1.42.22,<2.0.0" },
     { name = "datasource", editable = "plugins/datasource" },
-    { name = "flo-ai", specifier = "==1.1.15" },
+    { name = "flo-ai", editable = "../../flo_ai" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "flo-lib", editable = "packages/flo_lib" },
     { name = "google-cloud-pubsub", specifier = "~=2.30.0" },
@@ -6872,7 +6914,7 @@ dev = [
 requires-dist = [
     { name = "common-module", editable = "modules/common_module" },
     { name = "datasource", editable = "plugins/datasource" },
-    { name = "flo-ai", specifier = "==1.1.15" },
+    { name = "flo-ai", editable = "../../flo_ai" },
     { name = "flo-cloud", editable = "packages/flo_cloud" },
     { name = "flo-lib", editable = "packages/flo_lib" },
     { name = "httpx", specifier = ">=0.27.0,<1.0.0" },

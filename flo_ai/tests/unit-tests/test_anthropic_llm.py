@@ -513,3 +513,169 @@ class TestAnthropic:
         # Verify the streaming results
         assert len(results) == 1
         assert results[0] == {'content': 'I will use the function'}
+
+
+class TestSamplingParamsByModel:
+    """Newer Claude models reject temperature/top_p/top_k with a 400."""
+
+    @pytest.mark.parametrize(
+        'model',
+        [
+            'claude-opus-4-7',
+            'claude-opus-4-8',
+            'claude-opus-5',
+            'claude-opus-5-5',
+            'claude-sonnet-5',
+            'claude-sonnet-5-5',
+            'claude-fable-5-1',
+            'claude-mythos-5-1',
+            'anthropic.claude-opus-5-5',
+        ],
+    )
+    def test_sampling_params_are_left_out(self, model):
+        llm = Anthropic(model=model, api_key='x', temperature=0.2, top_p=0.9, top_k=5)
+
+        params = llm._request_params([], {'temperature': 0})
+
+        assert 'temperature' not in params
+        assert 'top_p' not in params
+        assert 'top_k' not in params
+        assert params['max_tokens'] == 16000
+
+    @pytest.mark.parametrize(
+        'model',
+        [
+            'claude-3-5-sonnet-20240620',
+            'claude-sonnet-4-5',
+            'claude-opus-4-6',
+            'claude-sonnet-4-6',
+            'claude-haiku-4-5',
+        ],
+    )
+    def test_older_models_keep_them(self, model):
+        llm = Anthropic(model=model, api_key='x', temperature=0.2, top_p=0.9)
+
+        params = llm._request_params([], {})
+
+        assert params['temperature'] == 0.2
+        assert params['top_p'] == 0.9
+        assert params['max_tokens'] == 1024
+
+    def test_an_explicit_max_tokens_is_kept(self):
+        configured = Anthropic(model='claude-opus-5-5', api_key='x', max_tokens=500)
+        assert configured._request_params([], {})['max_tokens'] == 500
+
+        per_call = Anthropic(model='claude-opus-5-5', api_key='x')
+        assert per_call._request_params([], {'max_tokens': 700})['max_tokens'] == 700
+
+
+class TestRequestShapeForNewerModels:
+    def test_trailing_assistant_message_is_sent_as_user(self):
+        llm = Anthropic(model='claude-opus-5-5', api_key='x')
+        conversation = [
+            {'role': 'user', 'content': 'write'},
+            {'role': 'assistant', 'content': 'a draft'},
+        ]
+
+        result = llm._end_on_user_turn(conversation)
+
+        assert [m['role'] for m in result] == ['user', 'user']
+        assert result[-1]['content'] == 'a draft'
+        # The caller's list is left as it was.
+        assert conversation[-1]['role'] == 'assistant'
+
+    def test_conversation_ending_on_user_is_untouched(self):
+        llm = Anthropic(model='claude-opus-5-5', api_key='x')
+        conversation = [{'role': 'user', 'content': 'hi'}]
+
+        assert llm._end_on_user_turn(conversation) is conversation
+
+    def test_models_that_accept_prefill_are_untouched(self):
+        llm = Anthropic(model='claude-sonnet-4-5', api_key='x')
+        conversation = [
+            {'role': 'user', 'content': 'write'},
+            {'role': 'assistant', 'content': 'a draft'},
+        ]
+
+        assert llm._end_on_user_turn(conversation) is conversation
+
+    @pytest.mark.asyncio
+    async def test_tools_are_requested_one_call_at_a_time(self):
+        llm = Anthropic(model='claude-opus-5-5', api_key='x')
+        text = Mock(type='text', text='ok')
+        llm.client.messages.create = AsyncMock(
+            return_value=Mock(content=[text], usage=None)
+        )
+
+        await llm.generate(
+            [{'role': 'user', 'content': 'hi'}], functions=[{'name': 'lookup'}]
+        )
+
+        sent = llm.client.messages.create.call_args.kwargs
+        assert sent['tool_choice'] == {
+            'type': 'auto',
+            'disable_parallel_tool_use': True,
+        }
+        assert 'temperature' not in sent
+
+    @pytest.mark.asyncio
+    async def test_only_the_call_that_runs_is_sent_back(self):
+        llm = Anthropic(model='claude-opus-5-5', api_key='x')
+        thinking = Mock(type='thinking')
+        first = Mock(type='tool_use', input={'q': 1}, id='toolu_1')
+        first.name = 'lookup'
+        second = Mock(type='tool_use', input={'q': 2}, id='toolu_2')
+        second.name = 'lookup'
+        llm.client.messages.create = AsyncMock(
+            return_value=Mock(content=[thinking, first, second], usage=None)
+        )
+
+        response = await llm.generate(
+            [{'role': 'user', 'content': 'hi'}], functions=[{'name': 'lookup'}]
+        )
+
+        assert response['function_call']['id'] == 'toolu_1'
+        assert response['raw_content'] == [thinking, first]
+
+
+class TestRefusal:
+    @pytest.mark.asyncio
+    async def test_a_refusal_is_raised_with_its_category(self):
+        from flo_ai.models import ModelRefusedError
+
+        llm = Anthropic(model='claude-opus-5-5', api_key='x')
+        refusal = Mock(
+            stop_reason='refusal',
+            stop_details=Mock(category='cyber', explanation='Blocked.'),
+            content=[Mock(type='thinking')],
+            usage=None,
+        )
+        llm.client.messages.create = AsyncMock(return_value=refusal)
+
+        with pytest.raises(ModelRefusedError) as raised:
+            await llm.generate([{'role': 'user', 'content': 'hi'}])
+
+        assert raised.value.category == 'cyber'
+        assert raised.value.explanation == 'Blocked.'
+        assert 'cyber' in str(raised.value)
+
+    @pytest.mark.asyncio
+    async def test_an_agent_passes_the_refusal_on_without_retrying(self):
+        from flo_ai.agent import Agent
+        from flo_ai.models import ModelRefusedError
+
+        llm = Anthropic(model='claude-opus-5-5', api_key='x')
+        refusal = Mock(
+            stop_reason='refusal',
+            stop_details=Mock(category='cyber', explanation='Blocked.'),
+            content=[],
+            usage=None,
+        )
+        llm.client.messages.create = AsyncMock(return_value=refusal)
+        agent = Agent('a', 'sys', llm, max_retries=3)
+
+        with pytest.raises(ModelRefusedError):
+            await agent.run('hi')
+
+        # One request: no error analysis, no retry.
+        assert llm.client.messages.create.call_count == 1

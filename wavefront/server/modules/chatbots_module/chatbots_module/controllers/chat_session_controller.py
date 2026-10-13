@@ -25,6 +25,10 @@ from chatbots_module.models.chat_schemas import (
     SendMessagePayload,
     UpdateChatSessionPayload,
 )
+from chatbots_module.services.agent_chat_service import (
+    AgentChatError,
+    AgentChatService,
+)
 from chatbots_module.services.chat_inference_service import (
     ChatInferenceError,
     ChatInferenceService,
@@ -38,22 +42,19 @@ from chatbots_module.services.chatbot_service import (
     ChatbotNotFoundError,
     ChatbotService,
 )
-from chatbots_module.utils.auth_utils import NotAUserError, current_user_id
-from chatbots_module.utils.constants import ROLE_ASSISTANT, ROLE_USER
+from chatbots_module.utils.auth_utils import (
+    NotAUserError,
+    caller_credentials,
+    current_user_id,
+)
+from chatbots_module.utils.constants import (
+    AGENT_UNAVAILABLE_MESSAGE,
+    MODEL_FAILURE_MESSAGE,
+    ROLE_ASSISTANT,
+    ROLE_USER,
+)
 
 chat_session_router = APIRouter()
-
-# Shown to the caller when generation fails, on both the JSON and the SSE path.
-#
-# A single constant because the two paths must not drift, and because the
-# underlying exception must never reach the client: it comes from the provider
-# SDK, so it can carry the configured base_url (potentially an internal gateway
-# host), deployment names, org identifiers, or an API-key prefix on an auth
-# failure. Every route here is open to any authenticated user, not just admins.
-# The real error goes to the logs via logger.exception.
-MODEL_FAILURE_MESSAGE = (
-    'The model failed to respond. Your message was saved; please retry.'
-)
 
 SSE_HEADERS = {
     'Cache-Control': 'no-cache',
@@ -113,8 +114,14 @@ async def create_chat_session(
     chat_session_service: ChatSessionService = Depends(
         Provide[ChatbotsContainer.chat_session_service]
     ),
+    agent_chat_service: AgentChatService = Depends(
+        Provide[ChatbotsContainer.agent_chat_service]
+    ),
 ):
-    """Open a thread against a chatbot, pinning its current system prompt."""
+    """Open a thread against a chatbot, pinning its current system prompt.
+
+    For an agent-backed chatbot the pin is the agent version instead.
+    """
     try:
         user_id = current_user_id(request)
     except NotAUserError as exc:
@@ -128,9 +135,24 @@ async def create_chat_session(
     except ChatbotNotFoundError as exc:
         return _not_found(response_formatter, str(exc))
 
+    metadata = None
+    if chatbot.agent_id is not None:
+        try:
+            metadata = await agent_chat_service.pin(chatbot)
+        except AgentChatError:
+            logger.warning(
+                f'Chat session rejected: agent for chatbot {chatbot_id} is unavailable'
+            )
+            return JSONResponse(
+                status_code=status.HTTP_409_CONFLICT,
+                content=response_formatter.buildErrorResponse(
+                    'The agent behind this chatbot is no longer available'
+                ),
+            )
+
     try:
         session = await chat_session_service.create_session(
-            chatbot=chatbot, user_id=user_id, title=payload.title
+            chatbot=chatbot, user_id=user_id, title=payload.title, metadata=metadata
         )
     except UnknownChatUserError:
         # Authenticated, but by a credential whose user lives somewhere other
@@ -369,8 +391,14 @@ async def send_message(
     chat_inference_service: ChatInferenceService = Depends(
         Provide[ChatbotsContainer.chat_inference_service]
     ),
+    agent_chat_service: AgentChatService = Depends(
+        Provide[ChatbotsContainer.agent_chat_service]
+    ),
 ):
     """Send a turn and get the reply.
+
+    A session opened against an agent-backed chatbot is answered by that agent
+    (see _send_agent_message); everything below describes the other kind.
 
     Order of operations matters twice here:
 
@@ -408,9 +436,17 @@ async def send_message(
             ),
         )
 
-    # Read while the request context is unambiguously current. The streamed
-    # path below runs after this function has returned, and resolving the id
-    # there would read whatever context happens to be current by then.
+    if agent_chat_service.is_agent_session(session):
+        return await _send_agent_message(
+            request=request,
+            session=session,
+            content=payload.content,
+            stream=stream,
+            response_formatter=response_formatter,
+            chat_session_service=chat_session_service,
+            agent_chat_service=agent_chat_service,
+        )
+
     request_id = get_current_request_id()
 
     try:
@@ -482,6 +518,100 @@ async def send_message(
             }
         ),
     )
+
+
+async def _send_agent_message(
+    request: Request,
+    session,
+    content: str,
+    stream: bool,
+    response_formatter: ResponseFormatter,
+    chat_session_service: ChatSessionService,
+    agent_chat_service: AgentChatService,
+):
+    """One turn of an agent-backed session.
+
+    Same order of operations as the other path, for the same reasons: the
+    agent is built before anything is written, so a broken one can still pick
+    a status code and does not leave an unanswerable message behind; then the
+    user's message is committed before the agent runs.
+
+    The agent's tools act with the caller's own credentials.
+    """
+    access_token, app_key = caller_credentials(request)
+    try:
+        agent = await agent_chat_service.build_agent(
+            session, access_token=access_token, app_key=app_key
+        )
+    except AgentChatError:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content=response_formatter.buildErrorResponse(AGENT_UNAVAILABLE_MESSAGE),
+        )
+
+    user_message = await chat_session_service.add_message(
+        session_id=session.id, role=ROLE_USER, content=content
+    )
+    await chat_session_service.ensure_title(session, content)
+
+    history = await agent_chat_service.load_history(session.id)
+    frames = agent_chat_service.run_turn(agent, session, history)
+
+    if stream:
+        return StreamingResponse(
+            _stream_agent_reply(frames),
+            media_type='text/event-stream',
+            headers=SSE_HEADERS,
+        )
+
+    steps = []
+    closing: dict = {}
+    async for frame in frames:
+        if 'type' in frame:
+            steps.append(frame)
+        else:
+            closing = frame
+
+    if closing.get('error'):
+        return JSONResponse(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            content=response_formatter.buildErrorResponse(closing['error']),
+        )
+
+    reply = next(
+        (step for step in reversed(steps) if step.get('final')),
+        None,
+    )
+    return JSONResponse(
+        status_code=status.HTTP_201_CREATED,
+        content=response_formatter.buildSuccessResponse(
+            {
+                'user_message': user_message.to_dict(),
+                'assistant_message': {
+                    'id': reply['message_id'],
+                    'session_id': str(session.id),
+                    'role': ROLE_ASSISTANT,
+                    'content': reply['content'],
+                }
+                if reply
+                else None,
+                # What the agent did on the way to the reply: its tool calls
+                # and their results, in order.
+                'steps': [step for step in steps if not step.get('final')],
+            }
+        ),
+    )
+
+
+async def _stream_agent_reply(frames):
+    """Relay an agent turn's frames as SSE.
+
+    Storing each step is the service's job and does not depend on this
+    generator being read, so a client that hangs up loses nothing: the turn
+    runs to its end and is there when the session is reopened.
+    """
+    async for frame in frames:
+        yield f'data: {json.dumps(frame, default=str)}\n\n'
 
 
 async def _stream_reply(

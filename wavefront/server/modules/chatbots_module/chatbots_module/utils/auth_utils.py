@@ -1,6 +1,8 @@
 import uuid
+from typing import Optional, Tuple
 
 from fastapi import Request
+from user_management_module.constants.auth import RootfloHeaders
 
 
 class NotAUserError(Exception):
@@ -29,3 +31,23 @@ def current_user_id(request: Request) -> uuid.UUID:
             'Chat sessions require an end-user identity; '
             'service credentials cannot own a conversation'
         ) from exc
+
+
+def caller_credentials(request: Request) -> Tuple[Optional[str], Optional[str]]:
+    """The caller's bearer token and app key, for an agent's tools to act with.
+
+    An agent-backed chatbot runs tools on the caller's behalf, so those tools
+    must carry the caller's own credentials and not the service's: the chat is
+    not a way to do what the user's account cannot.
+
+    Mirrors agents_module's extract_auth_credentials, which this module does
+    not depend on.
+    """
+    access_token = None
+    auth_header = request.headers.get('Authorization')
+    if auth_header:
+        parts = auth_header.split(' ', 1)
+        if len(parts) == 2 and parts[0].lower() == 'bearer':
+            access_token = parts[1]
+
+    return access_token, request.headers.get(RootfloHeaders.CLIENT_KEY)

@@ -6,6 +6,7 @@ from db_repo_module.models.chatbot import Chatbot
 from db_repo_module.models.namespace import Namespace
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 
+from chatbots_module.services.agent_chat_service import AgentChatService
 from chatbots_module.services.chat_inference_service import ChatInferenceService
 from chatbots_module.services.chat_session_service import ChatSessionService
 from chatbots_module.services.chatbot_service import ChatbotService
@@ -18,9 +19,8 @@ class ChatbotsContainer(containers.DeclarativeContainer):
     db_client = providers.Dependency()
     cache_manager = providers.Dependency()
     llm_inference_config_service = providers.Dependency()
-    # Optional: chat runs unguarded when no engine is supplied, so this
-    # container stays usable from entry points that do not build the
-    # guardrails stack.
+    agent_crud_service = providers.Dependency()
+    agent_inference_service = providers.Dependency()
     guardrails_engine = providers.Dependency(default=None)
 
     # Repositories
@@ -54,12 +54,21 @@ class ChatbotsContainer(containers.DeclarativeContainer):
         chatbot_repository=chatbot_repository,
         namespace_repository=namespace_repository,
         llm_inference_config_service=llm_inference_config_service,
+        agent_crud_service=agent_crud_service,
     )
 
     chat_session_service = providers.Singleton(
         ChatSessionService,
         chat_session_repository=chat_session_repository,
         chat_message_repository=chat_message_repository,
+    )
+
+    agent_chat_service = providers.Singleton(
+        AgentChatService,
+        chat_session_service=chat_session_service,
+        chat_message_repository=chat_message_repository,
+        agent_crud_service=agent_crud_service,
+        agent_inference_service=agent_inference_service,
     )
 
     chat_inference_service = providers.Singleton(

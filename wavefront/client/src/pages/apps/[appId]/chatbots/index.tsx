@@ -13,7 +13,7 @@ import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Switch } from '@app/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
-import { useGetChatbots, useGetLLMConfigs, useGetNamespaces } from '@app/hooks';
+import { useGetAgents, useGetChatbots, useGetLLMConfigs, useGetNamespaces } from '@app/hooks';
 import { getChatbotsKey } from '@app/hooks/data/query-keys';
 import { copyToClipboard, extractErrorMessage } from '@app/lib/utils';
 import { useDashboardStore, useNotifyStore } from '@app/store';
@@ -49,6 +49,7 @@ const ChatbotsPage: React.FC = () => {
   const { data: chatbots = [], isLoading } = useGetChatbots(app, namespaceForQuery);
   const { data: namespaces = [] } = useGetNamespaces(app);
   const { data: llmConfigs = [] } = useGetLLMConfigs(app);
+  const { data: agents = [] } = useGetAgents(app);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: getChatbotsKey(app || '', namespaceForQuery) });
@@ -63,7 +64,19 @@ const ChatbotsPage: React.FC = () => {
     }
   };
 
-  const describeModel = (llmConfigId: string) => {
+  const describeModel = (chatbot: Chatbot) => {
+    // An agent-backed chatbot has no LLM config of its own; its model is the agent's.
+    if (chatbot.agent_id) {
+      const agentId = chatbot.agent_id;
+      const agent = agents.find((item) => item.id === agentId);
+      const version = chatbot.agent_version ? ` v${chatbot.agent_version}` : '';
+      // Agents are hard-deleted; show the id rather than nothing.
+      return agent ? `Agent: ${agent.name}${version}` : `Agent ${agentId.slice(0, 8)}… (unavailable)`;
+    }
+    if (!chatbot.llm_config_id) {
+      return '-';
+    }
+    const llmConfigId = chatbot.llm_config_id;
     const config = llmConfigs.find((item) => item.id === llmConfigId);
     // A chatbot can outlive its LLM config; show the id rather than nothing.
     return config ? config.display_name : `${llmConfigId.slice(0, 8)}… (unavailable)`;
@@ -235,7 +248,7 @@ const ChatbotsPage: React.FC = () => {
                     </TableCell>
                     <TableCell className="max-w-xs truncate">{chatbot.description || '-'}</TableCell>
                     <TableCell>
-                      <span className="text-sm text-gray-600">{describeModel(chatbot.llm_config_id)}</span>
+                      <span className="text-sm text-gray-600">{describeModel(chatbot)}</span>
                     </TableCell>
                     <TableCell>
                       <span className="text-sm text-gray-600">{formatTemperature(chatbot.config)}</span>

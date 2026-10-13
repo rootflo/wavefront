@@ -25,23 +25,67 @@ const temperatureSchema = z.string().refine(
   { message: `Temperature must be a number between ${TEMPERATURE_MIN} and ${TEMPERATURE_MAX}, or left blank` }
 );
 
-export const chatbotFormSchema = z.object({
-  name: z
-    .string()
-    .min(1, 'Name is required')
-    .max(255, 'Name must be 255 characters or fewer')
-    .regex(
-      CHATBOT_NAME_PATTERN,
-      'Name must start with a letter and contain only letters, digits, underscores and hyphens'
-    ),
-  namespace: z.string().min(1, 'Namespace is required'),
-  description: z.string().max(500, 'Description must be 500 characters or fewer'),
-  system_prompt: z.string().min(1, 'System prompt is required'),
-  welcome_message: z.string(),
-  llm_config_id: z.string().min(1, 'LLM configuration is required'),
-  temperature: temperatureSchema,
-  enabled: z.boolean(),
-});
+/**
+ * What answers for the chatbot: a prompt sent straight to a model, or an agent
+ * (which brings its own prompt, model and tools).
+ */
+export const CHAT_TYPE_LLM = 'llm';
+export const CHAT_TYPE_AGENT = 'agent';
+
+/**
+ * Held as a string for the same reason temperature is: blank means "follow the
+ * agent's current version", which a coerced number could not tell from 0.
+ */
+const agentVersionSchema = z.string().refine(
+  (value) => {
+    const raw = value.trim();
+    if (raw === '') return true;
+    const parsed = Number(raw);
+    return Number.isInteger(parsed) && parsed >= 1;
+  },
+  { message: 'Version must be a whole number of 1 or more, or left blank' }
+);
+
+export const chatbotFormSchema = z
+  .object({
+    chat_type: z.enum([CHAT_TYPE_LLM, CHAT_TYPE_AGENT]),
+    name: z
+      .string()
+      .min(1, 'Name is required')
+      .max(255, 'Name must be 255 characters or fewer')
+      .regex(
+        CHATBOT_NAME_PATTERN,
+        'Name must start with a letter and contain only letters, digits, underscores and hyphens'
+      ),
+    namespace: z.string().min(1, 'Namespace is required'),
+    description: z.string().max(500, 'Description must be 500 characters or fewer'),
+    // Which of the next four are required depends on chat_type: see below.
+    system_prompt: z.string(),
+    llm_config_id: z.string(),
+    agent_id: z.string(),
+    agent_version: agentVersionSchema,
+    welcome_message: z.string(),
+    temperature: temperatureSchema,
+    enabled: z.boolean(),
+  })
+  .superRefine((values, ctx) => {
+    if (values.chat_type === CHAT_TYPE_AGENT) {
+      if (!values.agent_id) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['agent_id'], message: 'Agent is required' });
+      }
+      return;
+    }
+    if (!values.system_prompt.trim()) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['system_prompt'], message: 'System prompt is required' });
+    }
+    if (!values.llm_config_id) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['llm_config_id'],
+        message: 'LLM configuration is required',
+      });
+    }
+  });
 
 export type ChatbotFormValues = z.infer<typeof chatbotFormSchema>;
 
@@ -60,6 +104,12 @@ export const readTemperature = (config: Record<string, unknown> | null | undefin
     return String(config.temperature);
   }
   return '';
+};
+
+/** Form string -> the pinned version, or `undefined` to follow the agent's current one. */
+export const parseAgentVersion = (version: string): number | undefined => {
+  const raw = version.trim();
+  return raw === '' ? undefined : Number(raw);
 };
 
 /** Display helper for the list column. */

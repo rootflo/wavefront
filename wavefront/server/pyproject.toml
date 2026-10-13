@@ -108,6 +108,10 @@ constraint-dependencies = [
 torch = [{ index = "pytorch-cpu" }]
 torchvision = [{ index = "pytorch-cpu" }]
 flo-testing = { workspace = true }
+# LOCAL TESTING ONLY - do not commit this line or the uv.lock change it causes.
+# Runs the server on the flo_ai in this repo (branch flo_ai_fixes) instead of
+# the published package. Remove once that flo-ai is published and the pins bumped.
+flo-ai = { path = "../../flo_ai", editable = true }
 
 [[tool.uv.index]]
 name = "pytorch-cpu"

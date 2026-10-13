@@ -1,4 +1,4 @@
-from typing import Literal, Optional, Dict, Any
+from typing import List, Literal, Optional, Dict, Any
 from dataclasses import dataclass, field
 
 
@@ -79,10 +79,24 @@ class UserMessage(BaseMessage):
 
 
 @dataclass
+class ToolCall:
+    """A tool the model asked to run."""
+
+    name: str
+    arguments: Dict[str, Any]
+    # The provider's id for the call, where it issues one. It ties the call to
+    # its result (FunctionMessage.tool_call_id).
+    id: Optional[str] = None
+
+
+@dataclass
 class AssistantMessage(BaseMessage):
     content: str
     metadata: Optional[Dict[str, Any]] = None
     role: Optional[str] = None
+    # Set when this turn of the model was a request to run tools. `content`
+    # then holds whatever text came with the request, possibly none.
+    tool_calls: Optional[List[ToolCall]] = None
 
     def __post_init__(self):
         if self.role is None:
@@ -105,6 +119,8 @@ class FunctionMessage(BaseMessage):
     name: str = field(
         kw_only=True
     )  # Function/tool name that was called (keyword-only to allow it after defaults)
+    # The id of the ToolCall this answers, where the provider issued one.
+    tool_call_id: Optional[str] = field(default=None, kw_only=True)
 
     def __post_init__(self):
         self.role = MessageType.FUNCTION

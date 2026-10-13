@@ -42,7 +42,6 @@ from llm_inference_config_module.services.llm_inference_config_service import (
     LlmInferenceConfigService,
 )
 from tools_module.registry.tool_loader import ToolLoader
-from tools_module.utils.message_processor_fn import execute_message_processor_fn
 from tools_module.utils.api_service_tool_loader import load_api_service_tool
 from api_services_module.core.manager import ApiServicesManager
 import yaml
@@ -246,10 +245,23 @@ class AgentInferenceService:
                     processor.description or 'Message processor function',
                 )
 
+                # Taken from the registry, where it is already bound to the API
+                # client it calls through. The bare function is missing that
+                # first argument and fails the moment the tool is used.
+                execute = self.tool_loader.function_registry.get(
+                    'trigger_message_processor'
+                )
+                if execute is None:
+                    logger.warning(
+                        'Message processor tools are unavailable: '
+                        'trigger_message_processor is not in the tool registry'
+                    )
+                    return None
+
                 tool = Tool(
                     name=tool_name,
                     description=description,
-                    function=execute_message_processor_fn,
+                    function=execute,
                     parameters=parameters,
                 )
 
