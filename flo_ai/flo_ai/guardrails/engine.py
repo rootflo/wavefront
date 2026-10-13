@@ -80,9 +80,7 @@ class GuardrailsEngine:
         verdict_cache_chars: int = VERDICT_CACHE_CHAR_BUDGET,
         verdict_cache: Optional[VerdictCache] = None,
         cache_key_secret: Optional[Any] = None,
-        enabled: bool = True,
     ) -> None:
-        self.enabled = enabled
         # No resolver means no policy, which means nothing is enabled. A
         # guardrails engine that enforces by default would surprise every
         # caller that constructed one without configuring it.

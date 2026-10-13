@@ -14,6 +14,7 @@ from guardrails_module.models.schemas import (
     PolicyPreviewPayload,
     UpdateGuardrailPolicyPayload,
 )
+from guardrails_module.services.engine_factory import cfg_bool
 from guardrails_module.services.guardrails_service import (
     GuardrailsService,
     build_resolved_policy,
@@ -73,6 +74,7 @@ async def list_supported_adapters(
         Provide[CommonContainer.response_formatter]
     ),
     guardrails_engine=Depends(Provide[GuardrailsContainer.guardrails_engine]),
+    config: dict = Depends(Provide[GuardrailsContainer.config]),
 ):
     """Adapters this deployment can actually run.
 
@@ -86,12 +88,13 @@ async def list_supported_adapters(
     if denied:
         return denied
 
-    is_enabled = bool(getattr(guardrails_engine, 'enabled', True))
+    guardrails_cfg = (config or {}).get('guardrails', {})
+    is_enabled = cfg_bool(guardrails_cfg.get('enabled'), False)
     if not is_enabled:
         available = []
         unavailable = []
     else:
-        available = list(getattr(guardrails_engine, 'registered', ()) or ())
+        available = list(guardrails_engine.registered) if guardrails_engine else []
         unavailable = [name for name in SUPPORTED_ADAPTERS if name not in available]
         if unavailable:
             logger.warning(

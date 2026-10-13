@@ -163,7 +163,6 @@ def build_guardrails_engine(
         verdict_cache_chars=cache_chars,
         verdict_cache=verdict_cache,
         cache_key_secret=cache_secret,
-        enabled=is_enabled,
     )
     logger.info(f'Guardrails engine ready with adapters: {engine.registered or "none"}')
     return engine

@@ -10,7 +10,6 @@ def test_build_guardrails_engine_disabled():
     mock_resolver = MagicMock()
     engine = build_guardrails_engine(mock_resolver, guardrails_enabled=False)
     assert engine is not None
-    assert engine.enabled is False
     assert engine.registered == ()
 
 
@@ -34,7 +33,6 @@ def test_build_guardrails_engine_enabled_with_presidio():
             model_cache_dir='/tmp/models',
         )
         assert engine is not None
-        assert engine.enabled is True
         mock_adapter_cls.assert_called_once_with(
             model='/tmp/models/cached_spacy',
         )
@@ -53,7 +51,6 @@ def test_build_guardrails_engine_enabled_without_spacy_url():
             spacy_model_url=None,
         )
         assert engine is not None
-        assert engine.enabled is True
         assert 'presidio_pii' not in engine.registered
 
 
@@ -76,7 +73,6 @@ def test_build_guardrails_engine_enabled_with_preinstalled_spacy_package():
             spacy_model_url=None,
         )
         assert engine is not None
-        assert engine.enabled is True
         assert 'presidio_pii' in engine.registered
         mock_adapter_cls.assert_called_once_with(
             model='en_core_web_lg',
@@ -87,7 +83,6 @@ def test_build_guardrails_engine_enabled_with_preinstalled_spacy_package():
 async def test_list_supported_adapters_disabled():
     mock_request = MagicMock()
     mock_engine = MagicMock()
-    mock_engine.enabled = False
     mock_engine.registered = ()
     mock_formatter = MagicMock()
     mock_formatter.buildSuccessResponse.side_effect = lambda data: {'data': data}
@@ -100,6 +95,7 @@ async def test_list_supported_adapters_disabled():
             request=mock_request,
             guardrails_engine=mock_engine,
             response_formatter=mock_formatter,
+            config={'guardrails': {'enabled': 'false'}},
         )
         import json
 
@@ -113,7 +109,6 @@ async def test_list_supported_adapters_disabled():
 async def test_list_supported_adapters_enabled():
     mock_request = MagicMock()
     mock_engine = MagicMock()
-    mock_engine.enabled = True
     mock_engine.registered = ('presidio_pii',)
     mock_formatter = MagicMock()
     mock_formatter.buildSuccessResponse.side_effect = lambda data: {'data': data}
@@ -126,6 +121,7 @@ async def test_list_supported_adapters_enabled():
             request=mock_request,
             guardrails_engine=mock_engine,
             response_formatter=mock_formatter,
+            config={'guardrails': {'enabled': 'true'}},
         )
         import json
 
@@ -139,7 +135,6 @@ async def test_list_supported_adapters_enabled():
 async def test_list_supported_adapters_enabled_without_adapters():
     mock_request = MagicMock()
     mock_engine = MagicMock()
-    mock_engine.enabled = True
     mock_engine.registered = ()
     mock_formatter = MagicMock()
     mock_formatter.buildSuccessResponse.side_effect = lambda data: {'data': data}
@@ -152,6 +147,7 @@ async def test_list_supported_adapters_enabled_without_adapters():
             request=mock_request,
             guardrails_engine=mock_engine,
             response_formatter=mock_formatter,
+            config={'guardrails': {'enabled': 'true'}},
         )
         import json
 
