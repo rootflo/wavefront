@@ -55,6 +55,12 @@ def extract_tar_archive(archive_path: Path, target_dir: Path) -> Path:
             tar.extractall(path=target_dir, filter='data')
         else:
             for member in tar.getmembers():
+                if member.islnk() or member.issym():
+                    raise ValueError(f'Archive link detected in member: {member.name}')
+                if not (member.isreg() or member.isdir()):
+                    raise ValueError(
+                        f'Special file type detected in archive member: {member.name}'
+                    )
                 dest = target_dir / member.name
                 if not _is_safe_extraction_path(target_dir, dest):
                     raise ValueError(

@@ -65,6 +65,47 @@ class TestExtractArchive:
         assert (resolved / 'config.cfg').is_file()
         assert resolved.name == 'test_model'
 
+    def test_fallback_rejects_symlink(self, tmp_path, monkeypatch):
+        archive_path = tmp_path / 'symlink.tar.gz'
+        with tarfile.open(archive_path, 'w:gz') as tar:
+            link_info = tarfile.TarInfo('test_model/link')
+            link_info.type = tarfile.SYMTYPE
+            link_info.linkname = '/etc/passwd'
+            tar.addfile(link_info)
+
+        target = tmp_path / 'extracted'
+        monkeypatch.delattr(tarfile, 'data_filter', raising=False)
+        with pytest.raises(ValueError, match='Archive link detected in member'):
+            extract_tar_archive(archive_path, target)
+
+    def test_fallback_rejects_hardlink(self, tmp_path, monkeypatch):
+        archive_path = tmp_path / 'hardlink.tar.gz'
+        with tarfile.open(archive_path, 'w:gz') as tar:
+            link_info = tarfile.TarInfo('test_model/hardlink')
+            link_info.type = tarfile.LNKTYPE
+            link_info.linkname = 'some_target'
+            tar.addfile(link_info)
+
+        target = tmp_path / 'extracted'
+        monkeypatch.delattr(tarfile, 'data_filter', raising=False)
+        with pytest.raises(ValueError, match='Archive link detected in member'):
+            extract_tar_archive(archive_path, target)
+
+    def test_fallback_rejects_path_traversal(self, tmp_path, monkeypatch):
+        archive_path = tmp_path / 'traversal.tar.gz'
+        with tarfile.open(archive_path, 'w:gz') as tar:
+            content = b'escape'
+            tarinfo = tarfile.TarInfo('../outside.txt')
+            tarinfo.size = len(content)
+            tar.addfile(tarinfo, io.BytesIO(content))
+
+        target = tmp_path / 'extracted'
+        monkeypatch.delattr(tarfile, 'data_filter', raising=False)
+        with pytest.raises(
+            ValueError, match='Path traversal detected in archive member'
+        ):
+            extract_tar_archive(archive_path, target)
+
 
 class TestGetModelCacheDirName:
     def test_clean_name(self):
