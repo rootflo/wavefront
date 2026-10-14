@@ -3,8 +3,13 @@ from flo_lib.http import alias_httpx
 alias_httpx()
 
 # ruff: noqa: E402
+from agents_module.utils.celery_client import celery_queue_key, celery_unacked_keys
 from celery import Celery
-from celery_worker.settings import CELERY_BROKER_URL, CELERY_RESULT_BACKEND
+from celery_worker.settings import (
+    CELERY_BROKER_URL,
+    CELERY_QUEUE_NAME,
+    CELERY_RESULT_BACKEND,
+)
 
 # Connect worker_process_init / shutdown handlers (telemetry + event loop).
 import celery_worker.signals  # noqa: F401
@@ -26,7 +31,8 @@ app.conf.update(
     task_reject_on_worker_lost=True,  # Re-queue on worker crash
     worker_prefetch_multiplier=1,  # Fair task distribution
     task_track_started=True,
-    task_default_queue='{celery}',
+    # Must match the producer's queue_name; it separates apps sharing one Redis.
+    task_default_queue=celery_queue_key(CELERY_QUEUE_NAME),
     worker_enable_remote_control=False,
     # An idle worker's result-backend socket gets closed by Azure Redis / the LB
     # after minutes of no traffic, and redis-py only notices on the next command.
@@ -40,9 +46,5 @@ app.conf.update(
     redis_retry_on_timeout=True,
     result_backend_always_retry=True,
     result_backend_max_retries=5,
-    broker_transport_options={
-        'unacked_key': '{celery}.unacked',
-        'unacked_index_key': '{celery}.unacked_index',
-        'unacked_mutex_key': '{celery}.unacked_mutex',
-    },
+    broker_transport_options=celery_unacked_keys(CELERY_QUEUE_NAME),
 )
