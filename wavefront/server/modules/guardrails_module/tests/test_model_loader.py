@@ -135,6 +135,22 @@ class TestDownloadFile:
             download_file('https://example.com/model.tar.gz', dest)
             mock_http.assert_called_once_with('https://example.com/model.tar.gz', dest)
 
+    def test_download_stream_http_with_progress(self, tmp_path):
+        from guardrails_module.services.model_loader import _download_stream_http
+
+        dest = tmp_path / 'downloaded.tar.gz'
+        fake_content = b'model data chunk 1' * 1000
+        mock_response = MagicMock()
+        mock_response.headers = {'Content-Length': str(len(fake_content))}
+        mock_response.read.side_effect = [fake_content[:5000], fake_content[5000:], b'']
+        mock_response.__enter__.return_value = mock_response
+
+        with patch('urllib.request.urlopen', return_value=mock_response):
+            _download_stream_http('https://example.com/model.tar.gz', dest)
+
+        assert dest.exists()
+        assert dest.read_bytes() == fake_content
+
     def test_download_s3_via_flo_cloud(self, tmp_path):
         dest = tmp_path / 'dest.tar.gz'
         mock_storage = MagicMock()

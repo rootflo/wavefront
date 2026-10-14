@@ -393,7 +393,7 @@ services:
       context: .
       dockerfile: ./wavefront/server/docker/floware.Dockerfile
     container_name: guardrails-model-init
-    command: ["python", "-m", "guardrails_module.services.model_loader"]
+    entrypoint: ["/app/.venv/bin/python", "-m", "guardrails_module.services.model_loader"]
     environment: *floware-env
     volumes:
       - floware-spacy-models:/app/models/spacy

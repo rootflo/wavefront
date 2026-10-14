@@ -17,6 +17,7 @@ import sys
 import tarfile
 import tempfile
 import threading
+import time
 from typing import Optional, Union
 from urllib.parse import urlparse
 import urllib.request
@@ -51,6 +52,9 @@ def resolve_spacy_model_dir(extracted_root: Path) -> Path:
 
 def extract_tar_archive(archive_path: Path, target_dir: Path) -> Path:
     """Safely extract a .tar.gz archive to target_dir and resolve the model directory."""
+    logger.info(
+        "Extracting spaCy model archive '%s' to '%s'...", archive_path.name, target_dir
+    )
     target_dir.mkdir(parents=True, exist_ok=True)
 
     with tarfile.open(archive_path, 'r:*') as tar:
@@ -71,7 +75,9 @@ def extract_tar_archive(archive_path: Path, target_dir: Path) -> Path:
                     )
             tar.extractall(path=target_dir)
 
-    return resolve_spacy_model_dir(target_dir)
+    resolved = resolve_spacy_model_dir(target_dir)
+    logger.info("Extraction complete. Model configuration located at '%s'.", resolved)
+    return resolved
 
 
 def _resolve_cache_root(cache_dir: Optional[Union[str, Path]]) -> Path:
@@ -119,14 +125,69 @@ def get_model_cache_dir_name(url: str) -> str:
 
 
 def _download_stream_http(url: str, dest_path: Path, timeout_s: int = 120) -> None:
-    """Stream download over HTTP/HTTPS in 1MB chunks."""
+    """Stream download over HTTP/HTTPS in 1MB chunks with progress logging."""
     req = urllib.request.Request(
         url, headers={'User-Agent': 'Wavefront-ModelLoader/1.0'}
     )
     with urllib.request.urlopen(req, timeout=timeout_s) as response, open(
         dest_path, 'wb'
     ) as f:
-        shutil.copyfileobj(response, f, length=1024 * 1024)
+        total_header = (
+            getattr(response, 'headers', {}).get('Content-Length')
+            if hasattr(response, 'headers')
+            else None
+        )
+        total_bytes = (
+            int(total_header) if total_header and str(total_header).isdigit() else 0
+        )
+
+        if total_bytes > 0:
+            logger.info(
+                "Starting download from '%s' (total size: %.2f MB)...",
+                url,
+                total_bytes / (1024 * 1024),
+            )
+        else:
+            logger.info("Starting download from '%s'...", url)
+
+        chunk_size = 1024 * 1024  # 1 MB chunks
+        downloaded = 0
+        last_logged_bytes = 0
+        last_logged_time = time.time()
+
+        while True:
+            chunk = response.read(chunk_size)
+            if not chunk:
+                break
+            f.write(chunk)
+            downloaded += len(chunk)
+            now = time.time()
+
+            # Log every 20 MB or at least every 5 seconds
+            if (downloaded - last_logged_bytes >= 20 * 1024 * 1024) or (
+                now - last_logged_time >= 5.0
+            ):
+                last_logged_bytes = downloaded
+                last_logged_time = now
+                if total_bytes > 0:
+                    pct = (downloaded / total_bytes) * 100
+                    logger.info(
+                        'Download progress: %.1f MB / %.1f MB (%.1f%%)',
+                        downloaded / (1024 * 1024),
+                        total_bytes / (1024 * 1024),
+                        pct,
+                    )
+                else:
+                    logger.info(
+                        'Download progress: %.1f MB downloaded...',
+                        downloaded / (1024 * 1024),
+                    )
+
+        logger.info(
+            'Download completed: %.2f MB received and written to %s.',
+            downloaded / (1024 * 1024),
+            dest_path.name,
+        )
 
 
 def download_file(url: str, dest_path: Path) -> None:
@@ -148,25 +209,32 @@ def download_file(url: str, dest_path: Path) -> None:
         storage = CloudStorageManager(provider)
         bucket, key = storage.get_bucket_key(url_clean)
 
+        logger.info("Starting cloud download of spaCy model from '%s'...", url_clean)
+
         if scheme == 's3':
             storage.handler.s3_client.download_file(bucket, key, str(dest_path))
+            logger.info('S3 download completed: %s', dest_path)
         elif scheme == 'gs':
             storage.handler.client.bucket(bucket).blob(key).download_to_filename(
                 str(dest_path)
             )
+            logger.info('GCS download completed: %s', dest_path)
         elif scheme == 'azure':
             blob_client = storage.handler.client.get_blob_client(
                 container=bucket, blob=key
             )
             with open(dest_path, 'wb') as f:
                 blob_client.download_blob().readinto(f)
+            logger.info('Azure Blob download completed: %s', dest_path)
     elif scheme in ('http', 'https'):
         _download_stream_http(url_clean, dest_path)
     elif scheme == 'file' or not scheme or Path(url_clean).exists():
         local_src = Path(urlparse(url_clean).path if scheme == 'file' else url_clean)
         if not local_src.exists():
             raise FileNotFoundError(f'Local file not found: {local_src}')
+        logger.info("Copying local spaCy model archive from '%s'...", local_src)
         shutil.copy2(local_src, dest_path)
+        logger.info('Local copy completed: %s', dest_path)
     else:
         raise ValueError(f'Unsupported URL scheme {scheme!r} in model URL: {url!r}')
 
