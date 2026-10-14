@@ -379,3 +379,41 @@ class TestCliMain:
         monkeypatch.delenv('GUARDRAILS_SPACY_MODEL_URL', raising=False)
         ret = cli_main([])
         assert ret == 0
+
+    def test_load_guardrails_model_config_from_ini(self, tmp_path):
+        from guardrails_module.services.model_loader import load_guardrails_model_config
+
+        ini_file = tmp_path / 'test_config.ini'
+        ini_file.write_text(
+            '[guardrails]\n'
+            'enabled = true\n'
+            'spacy_model_url = https://example.com/spacy.tar.gz\n'
+            'model_cache_dir = /tmp/spacy_cache\n'
+            '\n'
+            '[env_config]\n'
+            'log_level = DEBUG\n'
+        )
+
+        cfg = load_guardrails_model_config(ini_file)
+        assert cfg.enabled is True
+        assert cfg.model_url == 'https://example.com/spacy.tar.gz'
+        assert cfg.model_cache_dir == '/tmp/spacy_cache'
+        assert cfg.log_level == 'DEBUG'
+
+    def test_cli_main_with_config_flag(self, tmp_path):
+        archive = _create_dummy_tar_gz(tmp_path / 'archive' / 'model.tar.gz')
+        cache_dir = tmp_path / 'cache'
+
+        ini_file = tmp_path / 'custom_config.ini'
+        ini_file.write_text(
+            '[guardrails]\n'
+            'enabled = true\n'
+            f'spacy_model_url = {archive.as_uri()}\n'
+            f'model_cache_dir = {cache_dir}\n'
+        )
+
+        ret = cli_main(['--config', str(ini_file)])
+        assert ret == 0
+        assert any(
+            (p / '.sync_complete').is_file() for p in cache_dir.iterdir() if p.is_dir()
+        )

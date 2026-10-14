@@ -8,9 +8,10 @@ disk-caching and multi-worker process locking.
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import fcntl
 import hashlib
-import os
+import logging
 from pathlib import Path
 import shutil
 import sys
@@ -22,9 +23,97 @@ from typing import Optional, Union
 from urllib.parse import urlparse
 import urllib.request
 
-from common_module.log.logger import logger
+from common_module.config_loader import is_truthy
+from common_module.log.logger import configure_logging
+from dependency_injector import providers
+
+logger = logging.getLogger('guardrails_model_init')
 
 _DOWNLOAD_LOCK = threading.Lock()
+
+
+@dataclass(frozen=True)
+class GuardrailsModelConfig:
+    enabled: bool = False
+    model_url: Optional[str] = None
+    model_cache_dir: Optional[str] = None
+    log_level: str = 'INFO'
+
+
+def find_config_ini(explicit_path: Optional[Union[str, Path]] = None) -> Optional[Path]:
+    """Find the Wavefront config.ini file across standard container and repository locations."""
+    if explicit_path:
+        p = Path(explicit_path).expanduser().resolve()
+        if p.is_file():
+            return p
+        raise FileNotFoundError(f'Config file not found at: {explicit_path}')
+
+    candidates = [
+        Path('/app/apps/floware/floware/config.ini'),
+        Path(__file__).resolve().parents[4]
+        / 'apps'
+        / 'floware'
+        / 'floware'
+        / 'config.ini',
+        Path.cwd() / 'apps' / 'floware' / 'floware' / 'config.ini',
+        Path.cwd() / 'floware' / 'config.ini',
+        Path.cwd() / 'config.ini',
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def load_guardrails_model_config(
+    config_path: Optional[Union[str, Path]] = None,
+) -> GuardrailsModelConfig:
+    """Load guardrails model settings from config.ini via dependency_injector Configuration."""
+    resolved_ini = find_config_ini(config_path)
+    if not resolved_ini:
+        return GuardrailsModelConfig()
+
+    cfg = providers.Configuration()
+    cfg.from_ini(str(resolved_ini), required=True, envs_required=False)
+
+    raw_enabled = (
+        cfg.guardrails.enabled() if hasattr(cfg.guardrails, 'enabled') else None
+    )
+    enabled = is_truthy(raw_enabled)
+
+    raw_url = (
+        cfg.guardrails.spacy_model_url()
+        if hasattr(cfg.guardrails, 'spacy_model_url')
+        else None
+    )
+    url = str(raw_url).strip() if raw_url and str(raw_url).strip() else None
+
+    raw_cache_dir = (
+        cfg.guardrails.model_cache_dir()
+        if hasattr(cfg.guardrails, 'model_cache_dir')
+        else None
+    )
+    cache_dir = (
+        str(raw_cache_dir).strip()
+        if raw_cache_dir and str(raw_cache_dir).strip()
+        else None
+    )
+
+    raw_log_level = (
+        cfg.env_config.log_level() if hasattr(cfg.env_config, 'log_level') else None
+    )
+    log_level = (
+        str(raw_log_level).strip().upper()
+        if raw_log_level and str(raw_log_level).strip()
+        else 'INFO'
+    )
+
+    return GuardrailsModelConfig(
+        enabled=enabled,
+        model_url=url,
+        model_cache_dir=cache_dir,
+        log_level=log_level,
+    )
 
 
 def _is_safe_extraction_path(base_dir: Path, target_path: Path) -> bool:
@@ -82,6 +171,10 @@ def extract_tar_archive(archive_path: Path, target_dir: Path) -> Path:
 
 def _resolve_cache_root(cache_dir: Optional[Union[str, Path]]) -> Path:
     """Resolve and verify cache root directory with multi-tier fallback."""
+    if cache_dir is None:
+        cfg = load_guardrails_model_config()
+        cache_dir = cfg.model_cache_dir
+
     candidates: list[Path] = []
     if cache_dir is not None and str(cache_dir).strip():
         candidates.append(Path(cache_dir))
@@ -247,6 +340,13 @@ def ensure_spacy_model(
     """Resolve or download spaCy model archive (.tar.gz) to local cache and return directory path."""
     import spacy.util
 
+    if model_url is None or cache_dir is None:
+        cfg = load_guardrails_model_config()
+        if model_url is None:
+            model_url = cfg.model_url
+        if cache_dir is None:
+            cache_dir = cfg.model_cache_dir
+
     cache_root = _resolve_cache_root(cache_dir)
     effective_url = (model_url or '').strip()
 
@@ -372,6 +472,13 @@ def is_spacy_model_available(
     model_name: Optional[str] = None,
 ) -> bool:
     """Check whether a spaCy model can be resolved (via URL, cache, or pre-installed package)."""
+    if model_url is None or cache_dir is None:
+        cfg = load_guardrails_model_config()
+        if model_url is None:
+            model_url = cfg.model_url
+        if cache_dir is None:
+            cache_dir = cfg.model_cache_dir
+
     if model_url and model_url.strip():
         return True
 
@@ -416,18 +523,31 @@ def is_spacy_model_available(
 
 def cli_main(argv: Optional[list[str]] = None) -> int:
     """CLI entrypoint for pre-populating or checking the guardrails spaCy model cache."""
+    try:
+        if hasattr(sys.stdout, 'reconfigure'):
+            sys.stdout.reconfigure(line_buffering=True)
+        if hasattr(sys.stderr, 'reconfigure'):
+            sys.stderr.reconfigure(line_buffering=True)
+    except Exception:
+        pass
+
     parser = argparse.ArgumentParser(
         description='Pre-download and cache spaCy model archives for Floware guardrails.',
     )
     parser.add_argument(
+        '--config',
+        default=None,
+        help='Optional path to config.ini file.',
+    )
+    parser.add_argument(
         '--url',
-        default=os.environ.get('GUARDRAILS_SPACY_MODEL_URL'),
-        help='Source URL or cloud path (s3://, gs://, azure://, https://, file://). Defaults to GUARDRAILS_SPACY_MODEL_URL env var.',
+        default=None,
+        help='Source URL or cloud path (s3://, gs://, azure://, https://, file://). Defaults to [guardrails] spacy_model_url in config.ini.',
     )
     parser.add_argument(
         '--cache-dir',
-        default=os.environ.get('GUARDRAILS_MODEL_CACHE_DIR'),
-        help='Target cache directory. Defaults to GUARDRAILS_MODEL_CACHE_DIR env var.',
+        default=None,
+        help='Target cache directory. Defaults to [guardrails] model_cache_dir in config.ini.',
     )
     parser.add_argument(
         '--model-name',
@@ -436,13 +556,13 @@ def cli_main(argv: Optional[list[str]] = None) -> int:
     )
     parser.add_argument(
         '--enabled',
-        default=os.environ.get('GUARDRAILS_ENABLED'),
-        help="Master guardrails enabled toggle ('true'/'false'). Defaults to GUARDRAILS_ENABLED env var.",
+        default=None,
+        help="Master guardrails enabled toggle ('true'/'false'). Defaults to [guardrails] enabled in config.ini.",
     )
     parser.add_argument(
         '--force',
         action='store_true',
-        help='Force download even if GUARDRAILS_ENABLED is false or unset.',
+        help='Force download even if guardrails is disabled in config.',
     )
     parser.add_argument(
         '--check-only',
@@ -452,10 +572,44 @@ def cli_main(argv: Optional[list[str]] = None) -> int:
 
     args = parser.parse_args(argv)
 
+    # 1. Load config from config.ini
+    cfg = load_guardrails_model_config(args.config)
+
+    # 2. Configure logging with dedicated service name 'guardrails_model_init'
+    log_level = cfg.log_level
+    try:
+        configure_logging(app_name='guardrails_model_init', log_level=log_level)
+    except Exception:
+        import logging
+
+        logging.basicConfig(
+            level=log_level, format='%(asctime)s | %(levelname)-8s | %(message)s'
+        )
+
+    logger.info('Guardrails spaCy model init service starting...')
+
+    # 3. Resolve effective settings (CLI arguments take precedence over config.ini)
+    if args.url is not None:
+        effective_url = args.url
+        effective_enabled = args.enabled if args.enabled is not None else True
+    else:
+        effective_url = cfg.model_url
+        effective_enabled = args.enabled if args.enabled is not None else cfg.enabled
+    effective_cache_dir = (
+        args.cache_dir if args.cache_dir is not None else cfg.model_cache_dir
+    )
+
+    logger.info(
+        'Model loader configuration: enabled=%s, url=%s, cache_dir=%s',
+        effective_enabled,
+        effective_url or '(none)',
+        effective_cache_dir or '(default)',
+    )
+
     if args.check_only:
         available = is_spacy_model_available(
-            model_url=args.url,
-            cache_dir=args.cache_dir,
+            model_url=effective_url,
+            cache_dir=effective_cache_dir,
             model_name=args.model_name,
         )
         if available:
@@ -464,34 +618,30 @@ def cli_main(argv: Optional[list[str]] = None) -> int:
         logger.warning('spaCy model is NOT available.')
         return 1
 
-    # Check whether guardrails is enabled (unless --force is passed)
-    if not args.force and args.enabled is not None:
-        is_truthy = str(args.enabled).strip().lower() in ('1', 'true', 'yes', 'on')
-        if not is_truthy:
-            logger.info(
-                'Guardrails is not enabled (GUARDRAILS_ENABLED=%r). Skipping spaCy model download.',
-                args.enabled,
+    if not effective_url or not effective_url.strip():
+        if is_truthy(effective_enabled):
+            logger.warning(
+                'Guardrails is enabled, but no model URL was configured in [guardrails] spacy_model_url or passed via --url. Skipping model download.'
             )
             return 0
-
-    if not args.url or not args.url.strip():
-        if args.enabled is not None:
-            is_truthy = str(args.enabled).strip().lower() in ('1', 'true', 'yes', 'on')
-            if is_truthy:
-                logger.warning(
-                    'Guardrails is enabled, but no model URL was provided via --url or GUARDRAILS_SPACY_MODEL_URL. Skipping model download.'
-                )
-                return 0
         logger.error(
-            'No model URL provided. Specify --url or set GUARDRAILS_SPACY_MODEL_URL.',
+            'No model URL provided. Specify --url or configure [guardrails] spacy_model_url in config.ini.',
             exc_info=False,
         )
         return 1
 
+    # An effective URL was provided; check if guardrails is explicitly disabled (unless --force is passed)
+    if not args.force and not is_truthy(effective_enabled):
+        logger.info(
+            'Guardrails is not enabled (enabled=%r). Skipping spaCy model download.',
+            effective_enabled,
+        )
+        return 0
+
     try:
         resolved = ensure_spacy_model(
-            model_url=args.url,
-            cache_dir=args.cache_dir,
+            model_url=effective_url,
+            cache_dir=effective_cache_dir,
             model_name=args.model_name,
         )
         logger.info('spaCy model ready at: %s', resolved)
