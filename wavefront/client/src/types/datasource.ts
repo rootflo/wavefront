@@ -26,6 +26,12 @@ export interface UpdateDatasourceRequest {
 
 export type TestDatasourceData = boolean;
 
+export interface UploadDatasourceFileData {
+  path: string;
+}
+
+export type UploadDatasourceFileResponse = IApiResponse<UploadDatasourceFileData>;
+
 export interface DatasourceData {
   status: 'success' | 'error';
   data: {

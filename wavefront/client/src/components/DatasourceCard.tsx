@@ -27,6 +27,18 @@ const DATASOURCE_TYPE_CHIPS: Record<string, { label: string; className: string }
     label: 'MSSQL',
     className: 'text-amber-800 bg-amber-400/15 ring-1 ring-amber-400/20 dark:text-amber-300',
   },
+  aws_s3: {
+    label: 'S3',
+    className: 'text-orange-800 bg-orange-400/15 ring-1 ring-orange-400/20 dark:text-orange-300',
+  },
+  gcs: {
+    label: 'GCS',
+    className: 'text-emerald-800 bg-emerald-400/15 ring-1 ring-emerald-400/20 dark:text-emerald-300',
+  },
+  azure_blob_storage: {
+    label: 'Azure Blob',
+    className: 'text-cyan-800 bg-cyan-400/15 ring-1 ring-cyan-400/20 dark:text-cyan-300',
+  },
 };
 
 const getTypeChip = (type: string) =>

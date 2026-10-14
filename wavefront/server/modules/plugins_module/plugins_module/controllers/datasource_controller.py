@@ -1,4 +1,8 @@
 from typing import Dict, Any
+import io
+import mimetypes
+import posixpath
+from urllib.parse import quote
 from datasource.bigquery.config import BigQueryConfig
 from datasource.redshift.config import RedshiftConfig
 from datasource.postgres.config import PostgresConfig
@@ -8,10 +12,14 @@ import asyncio
 import json
 from dependency_injector.wiring import Provide
 from fastapi import Depends
+from fastapi import File
+from fastapi import Form
 from fastapi import Query
+from fastapi import UploadFile
 from fastapi import Request
 from fastapi import status
 from fastapi.responses import JSONResponse
+from fastapi.responses import StreamingResponse
 from fastapi.routing import APIRouter
 
 from common_module.common_container import CommonContainer
@@ -28,7 +36,12 @@ from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.cache.application_cache import (
     invalidate_datasources_cache,
 )
-from datasource import DatasourcePlugin
+from datasource import (
+    DatasourcePlugin,
+    FileStoragePlugin,
+    build_file_storage_config,
+    is_file_storage_type,
+)
 from datasource.types import DataSourceType, QueryResult, TableListResult
 from plugins_module.services.datasource_services import (
     check_is_valid_resource,
@@ -75,6 +88,37 @@ EXPORT_RATE_LIMIT_SECONDS = 5  # 5 seconds between exports per user
 datasource_router = APIRouter()
 
 
+def _build_datasource_config(datasource_type: str, config_json: dict):
+    """Config object for ``datasource_type``; ValueError if it is unsupported."""
+    if is_file_storage_type(datasource_type):
+        return build_file_storage_config(datasource_type, config_json)
+    if datasource_type == DataSourceType.GCP_BIGQUERY:
+        return BigQueryConfig(**config_json)
+    if datasource_type == DataSourceType.AWS_REDSHIFT:
+        return RedshiftConfig(**config_json)
+    if datasource_type == DataSourceType.POSTGRES:
+        return PostgresConfig(**config_json)
+    if datasource_type == DataSourceType.MSSQL:
+        return MSSQLConfig(**config_json)
+    raise ValueError(f'Invalid datasource type: {datasource_type}')
+
+
+async def _test_datasource_connection(datasource_type: str, config) -> bool:
+    if is_file_storage_type(datasource_type):
+        return await FileStoragePlugin(config).test_connection()
+    result = await DatasourcePlugin(datasource_type, config).test_connection()
+    return result.result
+
+
+def _file_storage_unsupported(response_formatter: ResponseFormatter) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content=response_formatter.buildErrorResponse(
+            'This operation is not supported for file storage datasources'
+        ),
+    )
+
+
 @datasource_router.post('/v1/datasources')
 @inject
 async def add_datasource(
@@ -107,20 +151,17 @@ async def add_datasource(
 
     config_json = json.loads(add_datasource_payload.config)
 
-    if add_datasource_payload.type == DataSourceType.GCP_BIGQUERY:
-        config = BigQueryConfig(**config_json)
-    elif add_datasource_payload.type == DataSourceType.AWS_REDSHIFT:
-        config = RedshiftConfig(**config_json)
-    elif add_datasource_payload.type == DataSourceType.POSTGRES:
-        config = PostgresConfig(**config_json)
-    elif add_datasource_payload.type == DataSourceType.MSSQL:
-        config = MSSQLConfig(**config_json)
-    else:
-        raise ValueError(f'Invalid datasource type: {add_datasource_payload.type}')
+    try:
+        config = _build_datasource_config(add_datasource_payload.type, config_json)
+    except (ValueError, TypeError) as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
 
-    datasource_plugin = DatasourcePlugin(add_datasource_payload.type, config)
-
-    connection_result = await datasource_plugin.test_connection()
+    connection_result = await _test_datasource_connection(
+        add_datasource_payload.type, config
+    )
 
     if not connection_result:
         return JSONResponse(
@@ -201,23 +242,31 @@ async def update_datasource(
         # Use provided type or keep existing type
         datasource_type = update_datasource_payload.type or existing_datasource.type
 
+        if update_datasource_payload.config is None and is_file_storage_type(
+            datasource_type
+        ) != is_file_storage_type(existing_datasource.type):
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content=response_formatter.buildErrorResponse(
+                    'Switching between file storage and database types requires a new config'
+                ),
+            )
+
         if update_datasource_payload.config is not None:
             payload_config = json.loads(update_datasource_payload.config)
 
-            if datasource_type == DataSourceType.GCP_BIGQUERY:
-                config = BigQueryConfig(**payload_config)
-            elif datasource_type == DataSourceType.AWS_REDSHIFT:
-                config = RedshiftConfig(**payload_config)
-            elif datasource_type == DataSourceType.POSTGRES:
-                config = PostgresConfig(**payload_config)
-            elif datasource_type == DataSourceType.MSSQL:
-                config = MSSQLConfig(**payload_config)
-            else:
-                raise ValueError(f'Invalid datasource type: {datasource_type}')
+            try:
+                config = _build_datasource_config(datasource_type, payload_config)
+            except (ValueError, TypeError) as e:
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content=response_formatter.buildErrorResponse(str(e)),
+                )
 
             # Test connection with new config
-            datasource_plugin = DatasourcePlugin(datasource_type, config)
-            connection_result = await datasource_plugin.test_connection()
+            connection_result = await _test_datasource_connection(
+                datasource_type, config
+            )
 
             if not connection_result:
                 return JSONResponse(
@@ -395,10 +444,11 @@ async def test_datasource_connection(
                 f'Datasource not found: {datasource_id}'
             ),
         )
-    datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
-    connection_result = await datasource_plugin.test_connection()
+    connection_result = await _test_datasource_connection(
+        datasource_type, datasource_config
+    )
     return JSONResponse(
-        content=connection_result.result,
+        content=connection_result,
         status_code=status.HTTP_200_OK,
     )
 
@@ -431,6 +481,8 @@ async def get_tables(
                 f'Datasource not found: {datasource_id}'
             ),
         )
+    if is_file_storage_type(datasource_type):
+        return _file_storage_unsupported(response_formatter)
     datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
     table_list: TableListResult = datasource_plugin.get_table_names()
     return JSONResponse(
@@ -505,6 +557,8 @@ async def query_datasource(
                 f'Datasource not found: {datasource_id}'
             ),
         )
+    if is_file_storage_type(datasource_type):
+        return _file_storage_unsupported(response_formatter)
     datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
 
     join_query = None
@@ -614,6 +668,8 @@ async def insert_rows_json_multi(
             ),
         )
 
+    if is_file_storage_type(datasource_type):
+        return _file_storage_unsupported(response_formatter)
     datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
 
     prepared = []
@@ -677,6 +733,8 @@ async def insert_rows_json(
             ),
         )
 
+    if is_file_storage_type(datasource_type):
+        return _file_storage_unsupported(response_formatter)
     datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
     rows_with_created_at = [
         {**row, 'created_at': datetime.now().isoformat()}
@@ -774,6 +832,8 @@ async def update_rows_json_multi(
             ),
         )
 
+    if is_file_storage_type(datasource_type):
+        return _file_storage_unsupported(response_formatter)
     datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
 
     try:
@@ -882,6 +942,8 @@ async def update_rows_json(
             ),
         )
 
+    if is_file_storage_type(datasource_type):
+        return _file_storage_unsupported(response_formatter)
     datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
 
     try:
@@ -985,6 +1047,8 @@ async def delete_rows_json(
             ),
         )
 
+    if is_file_storage_type(datasource_type):
+        return _file_storage_unsupported(response_formatter)
     datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
 
     try:
@@ -1218,6 +1282,8 @@ async def execute_dynamic_query(
             )
         rls_filters = fetch_data_filters(rls_filters)
         rls_filter_str = f"{ ' $and '.join(rls_filters)}"
+    if is_file_storage_type(datasource_type):
+        return _file_storage_unsupported(response_formatter)
     datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
     # checking if the given query is already in cache
     cache_key = generate_cache_key(
@@ -1358,6 +1424,8 @@ async def export_dynamic_query_csv(
                 ),
             )
 
+    if is_file_storage_type(datasource_type):
+        return _file_storage_unsupported(response_formatter)
     datasource_plugin = DatasourcePlugin(datasource_type, datasource_config)
     res: Dict[str, Any] = await datasource_plugin.execute_dynamic_query(
         yaml_query,
@@ -1453,4 +1521,134 @@ async def delete_dynamic_query(
         content=response_formatter.buildSuccessResponse(
             {'message': 'Dynamic query deleted successfully'}
         ),
+    )
+
+
+def _upload_target_path(path: str | None, filename: str | None) -> str:
+    """``path`` if given; a trailing ``/`` (or no path) appends the file's name."""
+    base_name = posixpath.basename((filename or '').replace('\\', '/'))
+    if path and not path.endswith('/'):
+        return path
+    if not base_name:
+        raise ValueError('A path or a file name is required')
+    return f'{path or ""}{base_name}'
+
+
+@datasource_router.post('/v1/datasources/{datasource_id}/files')
+@inject
+async def upload_datasource_file(
+    request: Request,
+    datasource_id: str,
+    file: UploadFile = File(...),
+    path: str | None = Form(None),
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+):
+    role_id = request.state.session.role_id
+    is_admin = await check_is_admin(role_id)
+    if not is_admin:
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=response_formatter.buildErrorResponse(
+                'Data access not set for non-admin user'
+            ),
+        )
+
+    datasource_type, datasource_config = await get_datasource_config(datasource_id)
+    if not datasource_config:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse(
+                f'Datasource not found: {datasource_id}'
+            ),
+        )
+    if not is_file_storage_type(datasource_type):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                'File upload is only supported for file storage datasources'
+            ),
+        )
+
+    try:
+        target_path = _upload_target_path(path, file.filename)
+        file_storage = FileStoragePlugin(datasource_config)
+        file_content = await file.read()
+        full_path = await asyncio.to_thread(
+            file_storage.upload_file, file_content, target_path, file.content_type
+        )
+    except ValueError as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
+
+    return JSONResponse(
+        status_code=status.HTTP_201_CREATED,
+        content=response_formatter.buildSuccessResponse({'path': full_path}),
+    )
+
+
+@datasource_router.get('/v1/datasources/{datasource_id}/files')
+@inject
+async def download_datasource_file(
+    request: Request,
+    datasource_id: str,
+    path: str = Query(..., description='Full URI or key relative to base_path'),
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+):
+    role_id = request.state.session.role_id
+    is_admin = await check_is_admin(role_id)
+    if not is_admin:
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=response_formatter.buildErrorResponse(
+                'Data access not set for non-admin user'
+            ),
+        )
+
+    datasource_type, datasource_config = await get_datasource_config(datasource_id)
+    if not datasource_config:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse(
+                f'Datasource not found: {datasource_id}'
+            ),
+        )
+    if not is_file_storage_type(datasource_type):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                'File download is only supported for file storage datasources'
+            ),
+        )
+
+    try:
+        file_storage = FileStoragePlugin(datasource_config)
+        key = file_storage.resolve_key(path)
+        file_content = await asyncio.to_thread(file_storage.download_file, path)
+    except ValueError as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
+    except CloudStorageFileNotFoundError:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse(f'File not found: {path}'),
+        )
+
+    filename = posixpath.basename(key)
+    media_type = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
+    return StreamingResponse(
+        io.BytesIO(file_content),
+        media_type=media_type,
+        headers={
+            'Content-Disposition': f"attachment; filename*=UTF-8''{quote(filename)}",
+            'Content-Length': str(len(file_content)),
+            'X-Content-Type-Options': 'nosniff',
+        },
     )

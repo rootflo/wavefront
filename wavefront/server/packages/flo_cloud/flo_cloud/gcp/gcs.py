@@ -10,27 +10,45 @@ import re
 from re import Match
 from google.auth.transport import requests as google_requests
 import google.auth
+from google.oauth2 import service_account
 
 
 class GCSStorage(CloudStorageHandler):
     """Google Cloud Storage implementation"""
 
-    def __init__(self, credentials_path: Optional[str] = None):
+    def __init__(
+        self,
+        credentials_path: Optional[str] = None,
+        credentials_info: Optional[dict] = None,
+        project_id: Optional[str] = None,
+    ):
         """
         Initialize GCP client
 
         Args:
             credentials_path: Path to GCP credentials JSON file (optional)
+            credentials_info: Parsed service account JSON (optional)
+            project_id: GCP project to bill/scope requests to (optional)
         """
         self.signing_credentials = None
         self.credential_path = credentials_path
 
         if credentials_path:
-            self.client = storage.Client.from_service_account_json(credentials_path)
+            self.client = storage.Client.from_service_account_json(
+                credentials_path, project=project_id
+            )
+        elif credentials_info:
+            self.credentials = service_account.Credentials.from_service_account_info(
+                credentials_info
+            )
+            self.project_id = project_id or credentials_info.get('project_id')
+            self.client = storage.Client(
+                project=self.project_id, credentials=self.credentials
+            )
         else:
             self.credentials, self.project_id = google.auth.default()
 
-            self.client = storage.Client()
+            self.client = storage.Client(project=project_id)
 
     def get_file(self, bucket_name: str, file_path: str) -> bytes:
         """

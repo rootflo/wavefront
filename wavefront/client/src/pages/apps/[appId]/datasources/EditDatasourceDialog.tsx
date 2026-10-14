@@ -13,14 +13,8 @@ import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeMirror from '@uiw/react-codemirror';
 import React, { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { createDatasourceSchema, type CreateDatasourceInput } from './schemas';
-
-const DATASOURCE_TYPES = [
-  { value: 'gcp_bigquery', label: 'Google BigQuery' },
-  { value: 'aws_redshift', label: 'AWS Redshift' },
-  { value: 'postgres', label: 'PostgreSQL' },
-  { value: 'mssql', label: 'Microsoft SQL Server' },
-];
+import { DATASOURCE_TYPES, SAMPLE_CONFIGS } from './datasource-types';
+import { createDatasourceSchema, type CreateDatasourceInput, type DatasourceTypeValue } from './schemas';
 
 interface EditDatasourceDialogProps {
   isOpen: boolean;
@@ -54,12 +48,19 @@ const EditDatasourceDialog: React.FC<EditDatasourceDialogProps> = ({
     if (datasource && isOpen) {
       form.reset({
         name: datasource.name || '',
-        type: (datasource.type as 'gcp_bigquery' | 'aws_redshift' | 'postgres' | 'mssql') || 'gcp_bigquery',
+        type: (datasource.type as DatasourceTypeValue) || 'gcp_bigquery',
         description: datasource.description || '',
         connectionConfig: JSON.stringify(datasource.config || {}, null, 2),
       });
     }
   }, [datasource, isOpen, form]);
+
+  // Switching type swaps in that type's sample config; switching back restores the saved one.
+  const handleTypeChange = (value: string, onChange: (value: string) => void) => {
+    onChange(value);
+    const config = value === datasource.type ? datasource.config || {} : SAMPLE_CONFIGS[value as DatasourceTypeValue];
+    form.setValue('connectionConfig', JSON.stringify(config, null, 2));
+  };
 
   const onSubmit = async (data: CreateDatasourceInput) => {
     if (!appId) {
@@ -133,7 +134,7 @@ const EditDatasourceDialog: React.FC<EditDatasourceDialogProps> = ({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Datasource Type</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+                    <Select onValueChange={(value) => handleTypeChange(value, field.onChange)} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select datasource type" />

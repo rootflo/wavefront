@@ -12,8 +12,9 @@ import {
   TestDatasourceData,
   TestDatasourceResponse,
   DynamicQueryResponse,
+  UploadDatasourceFileResponse,
 } from '@app/types/datasource';
-import { AxiosInstance } from 'axios';
+import { AxiosInstance, AxiosResponse } from 'axios';
 
 export class DatasourcesService {
   constructor(private http: AxiosInstance) {}
@@ -71,6 +72,27 @@ export class DatasourcesService {
       `/v1/:appId/floware/v1/datasources/${datasourceId}/test-connection`
     );
     return response;
+  }
+
+  async uploadFile(datasourceId: string, file: File, path?: string): Promise<UploadDatasourceFileResponse> {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (path) {
+      formData.append('path', path);
+    }
+    return this.http.post(`/v1/:appId/floware/v1/datasources/${datasourceId}/files`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  }
+
+  /** `path` is a full URI (e.g. s3://bucket/key) or a key relative to the datasource's base path. */
+  async downloadFile(datasourceId: string, path: string): Promise<AxiosResponse<Blob>> {
+    return this.http.get(`/v1/:appId/floware/v1/datasources/${datasourceId}/files`, {
+      params: { path },
+      responseType: 'blob',
+    });
   }
 
   async getAllDatasources(): Promise<IApiResponse<{ datasources: Datasource[] }>> {
