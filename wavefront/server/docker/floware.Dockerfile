@@ -70,7 +70,8 @@ ARG GUARDRAILS_MODEL_CACHE_DIR=/app/models/spacy
 ENV GUARDRAILS_MODEL_CACHE_DIR=${GUARDRAILS_MODEL_CACHE_DIR}
 RUN mkdir -p ${GUARDRAILS_MODEL_CACHE_DIR}
 
-# Create a non-root user and change ownership of the /app directory
+# Create a non-root user and change ownership of the /app directory, including
+# the model cache above, so mounted model volumes stay writable by floware
 RUN adduser -D -u 1000 floware && \
     chown -R floware:floware /app
 

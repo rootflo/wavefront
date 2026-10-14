@@ -347,7 +347,6 @@ def ensure_spacy_model(
         if cache_dir is None:
             cache_dir = cfg.model_cache_dir
 
-    cache_root = _resolve_cache_root(cache_dir)
     effective_url = (model_url or '').strip()
 
     # 1. Check if model_name was explicitly passed and is an installed package or directory
@@ -361,12 +360,13 @@ def ensure_spacy_model(
             and (resolve_spacy_model_dir(candidate_name_path) / 'config.cfg').is_file()
         ):
             return str(resolve_spacy_model_dir(candidate_name_path))
-        named_cache = cache_root / model_name
-        if named_cache.is_dir() and (named_cache / '.sync_complete').is_file():
-            resolved = resolve_spacy_model_dir(named_cache)
-            if (resolved / 'config.cfg').is_file():
-                logger.debug('Using cached spaCy model at %s', resolved)
-                return str(resolved)
+        if cache_dir:
+            named_cache = Path(cache_dir) / model_name
+            if named_cache.is_dir() and (named_cache / '.sync_complete').is_file():
+                resolved = resolve_spacy_model_dir(named_cache)
+                if (resolved / 'config.cfg').is_file():
+                    logger.debug('Using cached spaCy model at %s', resolved)
+                    return str(resolved)
         if not effective_url:
             raise RuntimeError(
                 f"spaCy model '{model_name}' was requested but not found in installed packages or cache, "
@@ -385,12 +385,23 @@ def ensure_spacy_model(
             'Configure [guardrails] spacy_model_url in config.ini or install en_core_web_lg.'
         )
 
-    # 3. Resolve target cache folder for effective_url
+    # 3. Fast path: check if model is ALREADY cached in cache_dir without needing write permission
     dir_name = get_model_cache_dir_name(effective_url)
+    if cache_dir:
+        candidate_target = Path(cache_dir) / dir_name
+        sync_marker = candidate_target / '.sync_complete'
+        if candidate_target.is_dir() and sync_marker.is_file():
+            resolved = resolve_spacy_model_dir(candidate_target)
+            if (resolved / 'config.cfg').is_file():
+                logger.debug('Using cached spaCy model at %s', resolved)
+                return str(resolved)
+
+    # 4. Model not yet cached: resolve a writable cache root to download into
+    cache_root = _resolve_cache_root(cache_dir)
     target_dir = cache_root / dir_name
     sync_marker = target_dir / '.sync_complete'
 
-    # Fast path: already cached and synced
+    # Check fast path in resolved cache root
     if target_dir.is_dir() and sync_marker.is_file():
         resolved = resolve_spacy_model_dir(target_dir)
         if (resolved / 'config.cfg').is_file():
@@ -501,6 +512,14 @@ def is_spacy_model_available(
             return True
 
     if model_name:
+        if cache_dir and Path(cache_dir).is_dir():
+            named_cache = Path(cache_dir) / model_name
+            if (
+                named_cache.is_dir()
+                and (named_cache / '.sync_complete').is_file()
+                and (resolve_spacy_model_dir(named_cache) / 'config.cfg').is_file()
+            ):
+                return True
         cache_root = _resolve_cache_root(cache_dir)
         if cache_root.is_dir():
             named_cache = cache_root / model_name

@@ -193,6 +193,29 @@ class TestEnsureSpacyModel:
         resolved = ensure_spacy_model(model_url=model_url, cache_dir=cache_dir)
         assert resolved == str(target)
 
+    def test_cached_model_in_readonly_directory(self, tmp_path):
+        import os
+
+        cache_dir = tmp_path / 'ro_cache'
+        cache_dir.mkdir(parents=True)
+        model_url = 'https://example.com/ro_model.tar.gz'
+        dir_name = get_model_cache_dir_name(model_url)
+        target = cache_dir / dir_name
+        target.mkdir(parents=True)
+        (target / '.sync_complete').write_text('source=test', encoding='utf-8')
+        (target / 'config.cfg').write_text('lang=en', encoding='utf-8')
+
+        # Make cache directory read-only (simulating read-only volume or restricted mount)
+        os.chmod(target, 0o555)
+        os.chmod(cache_dir, 0o555)
+
+        try:
+            resolved = ensure_spacy_model(model_url=model_url, cache_dir=cache_dir)
+            assert resolved == str(target)
+        finally:
+            os.chmod(cache_dir, 0o777)
+            os.chmod(target, 0o777)
+
     def test_download_and_extract_flow(self, tmp_path):
         cache_dir = tmp_path / 'cache'
         archive_src = _create_dummy_tar_gz(tmp_path / 'src_model.tar.gz')
