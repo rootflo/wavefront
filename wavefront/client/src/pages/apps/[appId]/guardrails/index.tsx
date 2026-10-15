@@ -83,13 +83,16 @@ const GuardrailsManagement: React.FC = () => {
   const testPanelRef = useRef<PolicyTestHandle>(null);
 
   const { data: namespaces = [] } = useGetNamespaces(appId);
-  const { data: adapterInfo } = useGetGuardrailAdapters(appId);
+  const { data: adapterInfo, isError: isAdapterError } = useGetGuardrailAdapters(appId);
+  const isGuardrailsActive = !isAdapterError && Boolean(adapterInfo?.enabled === true);
+
   // Memoised because `?? []` allocates a new array on every render, which
   // would invalidate the useMemo below each time.
   const supportedAdapters = useMemo(() => adapterInfo?.adapters ?? [], [adapterInfo]);
   const unavailableAdapters = adapterInfo?.unavailable ?? [];
-  const { data: policy, isLoading } = useGetGuardrailPolicy(appId, namespace);
-  const { data: piiEntities } = useGetGuardrailPiiEntities(appId);
+  const { data: policy, isLoading } = useGetGuardrailPolicy(isGuardrailsActive ? appId : undefined, namespace);
+  const hasPiiAdapter = supportedAdapters.includes('presidio_pii');
+  const { data: piiEntities } = useGetGuardrailPiiEntities(hasPiiAdapter ? appId : undefined);
 
   // Fingerprint of the policy as it stands on the server. Null until the
   // first load, so nothing is reported as unsaved before there is a baseline
@@ -178,7 +181,7 @@ const GuardrailsManagement: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: getGuardrailPoliciesKey(appId || '') });
       notifySuccess('Guardrail policy saved');
     } catch (error) {
-      notifyError(extractErrorMessage(error) || 'Failed to save guardrail policy');
+      notifyError(extractErrorMessage(error) ?? 'Failed to save guardrail policy');
     } finally {
       setSaving(false);
     }
@@ -214,8 +217,8 @@ const GuardrailsManagement: React.FC = () => {
 
       <div className="mb-8 flex w-full items-start justify-between">
         <div>
-          <h1 className="animate-fade-in text-3xl font-bold text-gray-900">Guardrails &amp; Security</h1>
-          <p className="animate-fade-in mt-2 text-gray-600">AI safety policy for {selectedApp?.app_name}</p>
+          <h1 className="animate-fade-in text-foreground text-3xl font-bold">Guardrails &amp; Security</h1>
+          <p className="animate-fade-in text-muted-foreground mt-2">AI safety policy for {selectedApp?.app_name}</p>
         </div>
         <div className="animate-fade-in flex items-center gap-4">
           <Select value={namespace} onValueChange={setNamespace}>
@@ -250,9 +253,9 @@ const GuardrailsManagement: React.FC = () => {
             <span
               role="status"
               title="These settings are not live yet. Agents and workflows in this namespace keep using the saved policy until you save."
-              className="flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800"
+              className="flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
             >
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden="true" />
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-500 dark:bg-amber-400" aria-hidden="true" />
               Unsaved changes
             </span>
           )}
@@ -278,15 +281,15 @@ const GuardrailsManagement: React.FC = () => {
             flip back to Monitor.
           */}
           <div className="grid max-w-[1400px] grid-cols-1 items-start gap-6 lg:grid-cols-[340px_minmax(0,1fr)]">
-            <section className="rounded-lg border border-gray-200 p-6 lg:sticky lg:top-0 lg:self-start">
+            <section className="border-border rounded-lg border p-6 lg:sticky lg:top-0 lg:self-start">
               <div>
                 <div className="flex items-center justify-between gap-3">
                   <Label className="text-base font-semibold">Enable guardrails</Label>
                   <Switch checked={isEnabled} onCheckedChange={setIsEnabled} />
                 </div>
-                <p className="mt-1.5 text-sm text-gray-600">
-                  The master switch for <span className="font-medium">{namespace}</span>. While off, none of the checks
-                  below run.
+                <p className="text-muted-foreground mt-1.5 text-sm">
+                  The master switch for <span className="text-foreground font-medium">{namespace}</span>. While off,
+                  none of the checks below run.
                 </p>
               </div>
 
@@ -305,7 +308,7 @@ const GuardrailsManagement: React.FC = () => {
                     </SelectContent>
                   </Select>
                 </div>
-                <p className="mt-1.5 text-sm text-gray-600">
+                <p className="text-muted-foreground mt-1.5 text-sm">
                   {mode === 'MONITOR'
                     ? 'Monitor records what the policy would have done without blocking or redacting anything. Start here to measure false positives against real traffic.'
                     : 'Enforce blocks prompts and redacts responses. Switch here once monitor mode shows an acceptable false-positive rate.'}
@@ -323,7 +326,7 @@ const GuardrailsManagement: React.FC = () => {
                     onCheckedChange={(checked) => setStream(checked ? 'INCREMENTAL' : 'BUFFERED')}
                   />
                 </div>
-                <p className="mt-1.5 text-sm text-gray-600">
+                <p className="text-muted-foreground mt-1.5 text-sm">
                   {stream === 'INCREMENTAL'
                     ? 'Responses appear as they are written, with the end held back until it has been checked. Only providers whose findings are span-local support this; if any configured check does not, the whole response is withheld regardless of this setting.'
                     : 'Responses are withheld until the whole of them has been checked, so nothing reaches the user before the verdict. Turning this on trades some of that delay for text appearing as it is written.'}
@@ -337,11 +340,17 @@ const GuardrailsManagement: React.FC = () => {
                 cards scroll underneath this, and a transparent header would let
                 their text show through it.
               */}
-              <div className="bg-frost-glass sticky top-0 z-10 -mt-4 pt-4 pb-4 shadow-[inset_0_-1px_0_0_var(--frost-border)] backdrop-blur-md">
-                <h2 className="text-lg font-semibold">Safety checks</h2>
-                <p className="mt-1 text-sm text-gray-600">
+              <div className="bg-frost-canvas/95 sticky top-0 z-10 p-4 shadow-[inset_0_-1px_0_0_var(--frost-border)] backdrop-blur-md">
+                <h2 className="text-foreground text-lg font-semibold">Safety checks</h2>
+                <p className="text-muted-foreground mt-1 text-sm">
                   Each check runs at the stages you select. Checks not enabled here are never called.
                 </p>
+                {supportedAdapters.length === 0 && (
+                  <p className="text-muted-foreground mt-2 text-sm">
+                    No safety checks are available on this deployment. Enabling guardrails without a working check would
+                    block all traffic for this namespace, so none can be selected here.
+                  </p>
+                )}
               </div>
               <div className="flex flex-col gap-4">
                 {supportedAdapters.map((name) => (
@@ -355,22 +364,16 @@ const GuardrailsManagement: React.FC = () => {
                     piiGroups={piiEntities?.groups}
                   />
                 ))}
-                {supportedAdapters.length === 0 && (
-                  <p className="text-sm text-gray-500">
-                    No safety checks are available on this deployment. Enabling guardrails without a working check would
-                    block all traffic for this namespace, so none can be selected here.
-                  </p>
-                )}
                 {strandedAdapters.map((name) => (
                   <div
                     key={name}
-                    className="flex items-center justify-between gap-4 rounded-lg border border-red-300 bg-red-50 p-4"
+                    className="mt-4 flex items-center justify-between gap-4 rounded-lg border border-red-300 bg-red-50 p-4 dark:border-red-800/80 dark:bg-red-950/40"
                   >
                     <div>
-                      <p className="text-sm font-medium text-red-900">
+                      <p className="text-sm font-medium text-red-900 dark:text-red-200">
                         {adapterLabel(name)} — not available on this deployment
                       </p>
-                      <p className="mt-1 text-sm text-red-700">
+                      <p className="mt-1 text-sm text-red-700 dark:text-red-300">
                         This check is saved in the policy but cannot run, so in Enforce mode it blocks every request for
                         this namespace. Remove it, or switch back to Monitor while you fix the deployment.
                       </p>
@@ -381,22 +384,22 @@ const GuardrailsManagement: React.FC = () => {
                   </div>
                 ))}
                 {unavailableAdapters.map((name) => (
-                  <div key={name} className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4">
+                  <div key={name} className="border-border bg-muted/30 rounded-lg border border-dashed p-4">
                     <div className="flex items-start justify-between gap-4">
                       <div>
-                        <p className="text-sm font-medium text-gray-700">
+                        <p className="text-foreground text-sm font-medium">
                           {adapterLabel(name)}
-                          <span className="ml-2 rounded bg-gray-200 px-2 py-0.5 text-xs font-normal text-gray-600">
+                          <span className="bg-muted text-muted-foreground ml-2 rounded px-2 py-0.5 text-xs font-normal">
                             Not available
                           </span>
                         </p>
                         {ADAPTER_META[name]?.description && (
-                          <p className="mt-1 text-sm text-gray-500">{ADAPTER_META[name].description}</p>
+                          <p className="text-muted-foreground mt-1 text-sm">{ADAPTER_META[name].description}</p>
                         )}
                       </div>
                       <Switch checked={false} disabled />
                     </div>
-                    <p className="mt-3 text-sm text-gray-600">
+                    <p className="text-muted-foreground mt-3 text-sm">
                       {ADAPTER_META[name]?.unavailableHint ?? DEFAULT_UNAVAILABLE_HINT}
                     </p>
                   </div>

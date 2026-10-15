@@ -61,6 +61,8 @@ export interface GuardrailPolicyListData {
 }
 
 export interface GuardrailAdapterListData {
+  /** Master switch indicating whether guardrails subsystem is enabled. */
+  enabled?: boolean;
   /** Providers the server actually registered and can run. */
   adapters: string[];
   /** Known providers whose dependencies or credentials are missing. */

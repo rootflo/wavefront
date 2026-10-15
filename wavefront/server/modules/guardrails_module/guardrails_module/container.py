@@ -71,4 +71,7 @@ class GuardrailsContainer(containers.DeclarativeContainer):
         verdict_cache_secret=config.guardrails.verdict_cache_secret,
         verdict_cache_shared=config.guardrails.verdict_cache_shared,
         verdict_cache_ttl=config.guardrails.verdict_cache_ttl,
+        guardrails_enabled=config.guardrails.enabled,
+        spacy_model_url=config.guardrails.spacy_model_url,
+        model_cache_dir=config.guardrails.model_cache_dir,
     )

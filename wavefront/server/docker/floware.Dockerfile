@@ -54,21 +54,11 @@ COPY wavefront/server/apps/floware /app/apps/floware
 COPY wavefront/server/scripts/floware-init.sh /app/scripts/floware-init.sh
 RUN chmod +x /app/scripts/floware-init.sh
 
-RUN uv sync --package floware --frozen --no-dev
-
-# spaCy model for Presidio, which arrives with the flo-ai[guardrails] extra
-# that guardrails_module depends on. The model is not a pip dependency of it,
-# and Presidio downloads one on first use when absent -- which would put a
-# multi-hundred-MB fetch inside the first guarded request.
-#
-# `pip` is installed on purpose: `spacy download` resolves the model version
-# and then shells out to `python -m pip install`, and a uv-created venv has no
-# pip, so the download fails without it.
-RUN uv pip install pip && \
-    /app/.venv/bin/python -m spacy download en_core_web_lg
-
-# Create a non-root user and change ownership of the /app directory
-RUN useradd -m -u 1000 floware && \
+RUN uv sync --package floware --frozen --no-dev && \
+    rm -rf /root/.cache/uv
+# Create models cache directory and non-root user with proper ownership for mounted volumes
+RUN mkdir -p /app/models/spacy && \
+    useradd -m -u 1000 floware && \
     chown -R floware:floware /app
 
 USER floware

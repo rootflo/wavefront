@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, List, Optional, Sequence
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 from flo_ai.utils.logger import logger
 
@@ -169,13 +170,25 @@ class PresidioAdapter(BaseAdapter):
         language: str = 'en',
         max_workers: int = 2,
         load_optional_recognizers: bool = True,
+        model: Optional[Union[str, Path]] = None,
+        model_name: Optional[str] = None,
+        nlp_engine: Optional[Any] = None,
+        analyzer: Optional[Any] = None,
+        anonymizer: Optional[Any] = None,
+        model_url: Optional[str] = None,
+        cache_dir: Optional[str] = None,
     ) -> None:
         self._entities = list(entities) if entities else list(DEFAULT_ENTITIES)
         self._score_threshold = score_threshold
         self._language = language
         self._load_optional_recognizers = load_optional_recognizers
-        self._analyzer: Any = None
-        self._anonymizer: Any = None
+        self._model = model or model_name
+        self._model_name = model_name
+        self._nlp_engine = nlp_engine
+        self._analyzer: Any = analyzer
+        self._anonymizer: Any = anonymizer
+        self._model_url = model_url
+        self._cache_dir = cache_dir
         self._init_lock = asyncio.Lock()
         #: The in-flight build, so a cancelled caller cannot discard it.
         self._init_task: Optional['asyncio.Future'] = None
@@ -291,13 +304,33 @@ class PresidioAdapter(BaseAdapter):
         def _build() -> tuple:
             try:
                 from presidio_analyzer import AnalyzerEngine
+                from presidio_analyzer.nlp_engine import NlpEngineProvider
                 from presidio_anonymizer import AnonymizerEngine
             except ImportError as exc:  # pragma: no cover - env dependent
                 raise RuntimeError(_IMPORT_HINT) from exc
-            analyzer = AnalyzerEngine()
-            if self._load_optional_recognizers:
-                self._augment_registry(analyzer)
-            return analyzer, AnonymizerEngine()
+
+            analyzer = self._analyzer
+            if analyzer is None:
+                if self._nlp_engine is not None:
+                    analyzer = AnalyzerEngine(nlp_engine=self._nlp_engine)
+                else:
+                    target_model = str(self._model or 'en_core_web_lg')
+                    nlp_configuration = {
+                        'nlp_engine_name': 'spacy',
+                        'models': [
+                            {'lang_code': self._language, 'model_name': target_model}
+                        ],
+                    }
+                    nlp_engine = NlpEngineProvider(
+                        nlp_configuration=nlp_configuration
+                    ).create_engine()
+                    analyzer = AnalyzerEngine(nlp_engine=nlp_engine)
+
+                if self._load_optional_recognizers:
+                    self._augment_registry(analyzer)
+
+            anonymizer = self._anonymizer or AnonymizerEngine()
+            return analyzer, anonymizer
 
         loop = asyncio.get_running_loop()
         analyzer, anonymizer = await loop.run_in_executor(self._executor, _build)

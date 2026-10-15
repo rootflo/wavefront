@@ -181,7 +181,10 @@ services:
       # Required if EMAIL_PROVIDER=gmail with service account
       # - ./credentials/gmail-service-account.json:/app/credentials/gmail-service-account.json:ro
 
-    environment:
+      # Guardrails spaCy Model Cache Directory (persisted volume shared with init service)
+      - floware-spacy-models:/app/models/spacy
+
+    environment: &floware-env
       # ============================================
       # Database Configuration
       # ============================================
@@ -345,6 +348,11 @@ services:
       - SLACK_FLAG=<YOUR_SLACK_FLAG>
       - SUPERSET_FLAG=<YOUR_SUPERSET_FLAG>
       - VECTOR_DB_FLAG=<YOUR_VECTOR_DB_FLAG>
+      - GUARDRAILS_ENABLED=<YOUR_GUARDRAILS_ENABLED>
+      # Required for Presidio PII detection/redaction on lean Docker images.
+      # Point to a spaCy model archive (e.g. https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0.tar.gz)
+      - GUARDRAILS_SPACY_MODEL_URL=<YOUR_GUARDRAILS_SPACY_MODEL_URL>
+      - GUARDRAILS_MODEL_CACHE_DIR=${GUARDRAILS_MODEL_CACHE_DIR:-/app/models/spacy}
 
     depends_on:
       postgres-floware:
@@ -353,6 +361,26 @@ services:
         condition: service_healthy
       otel-collector:
         condition: service_started
+      guardrails-model-init:
+        condition: service_completed_successfully
+    networks:
+      - floware-network
+
+  # Guardrails spaCy Model Preloader (Init Service)
+  # Pre-downloads and extracts the spaCy model archive before Floware boots,
+  # keeping download latency off Floware's healthcheck/readiness path.
+  # Automatically skipped if GUARDRAILS_ENABLED is false or not set to true.
+  # Inherits Floware's environment via YAML alias (*floware-env) to prevent duplication.
+  guardrails-model-init:
+    build:
+      context: .
+      dockerfile: ./wavefront/server/docker/floware.Dockerfile
+    container_name: guardrails-model-init
+    entrypoint: ["/app/.venv/bin/python", "-u", "-m", "guardrails_module.services.model_loader"]
+    environment: *floware-env
+    volumes:
+      - floware-spacy-models:/app/models/spacy
+      - ./credentials/gcp-service-account.json:/app/credentials/gcp-service-account.json:ro
     networks:
       - floware-network
 
@@ -508,6 +536,8 @@ volumes:
   postgres-floware-data:
     driver: local
   postgres-console-data:
+    driver: local
+  floware-spacy-models:
     driver: local
 
 networks:
