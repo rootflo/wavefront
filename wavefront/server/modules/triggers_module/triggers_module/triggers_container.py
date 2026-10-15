@@ -25,7 +25,9 @@ class TriggersContainer(containers.DeclarativeContainer):
     async_agentic_execution_service = providers.Dependency()
     cache_manager = providers.Dependency()
     celery_client = providers.Singleton(
-        build_celery_client, broker_url=config.celery.broker_url
+        build_celery_client,
+        broker_url=config.celery.broker_url,
+        queue_name=config.celery.queue_name,
     )
 
     gmail_watch_config = providers.Singleton(
