@@ -1,3 +1,4 @@
+import base64
 import json
 from urllib.parse import quote
 import flo_lib.http as httpx
@@ -190,3 +191,69 @@ async def datasource_execute_query(
         rows_by_query[sub_query_id] = entry.get('result', [])
 
     return json.dumps(rows_by_query)
+
+
+# Whatever the tool returns lands in the model's context, so a large object is
+# refused rather than inlined (base64 also grows binary content by a third).
+MAX_DOWNLOAD_BYTES = 5 * 1024 * 1024
+
+
+async def datasource_download_file(
+    api: FlowareApiClient,
+    /,
+    datasource_id: str,
+    path: str,
+) -> str:
+    """Download one file from a file storage datasource (S3, GCS or Azure Blob)
+    via wavefront's own REST API (GET /v1/datasources/{datasource_id}/files).
+
+    path: the full URI an upload returned (e.g. "s3://bucket/reports/q1.csv")
+        or a key relative to the datasource's base path ("reports/q1.csv").
+
+    Returns JSON {"path", "content_type", "size_bytes", "encoding", "content"}:
+    "content" is the text itself when the bytes are UTF-8, otherwise base64
+    with "encoding": "base64".
+    """
+    url = f'{api.base_url}/floware/v1/datasources/{quote(datasource_id, safe="")}/files'
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(
+                url,
+                params={'path': path},
+                headers=api.headers(),
+                timeout=60.0,
+            )
+        except httpx.RequestError as e:
+            return f"Failed to reach datasource API for '{datasource_id}': {e}"
+
+    if response.status_code == 404:
+        # Either the datasource or the file is missing; the server says which.
+        return (
+            _error_message(response)
+            or f"File '{path}' not found in datasource '{datasource_id}'"
+        )
+    if response.status_code != 200:
+        detail = _error_message(response) or response.text
+        return f'File download failed ({response.status_code}): {detail}'
+
+    content = response.content
+    if len(content) > MAX_DOWNLOAD_BYTES:
+        return (
+            f"File '{path}' is {len(content)} bytes, over the "
+            f'{MAX_DOWNLOAD_BYTES}-byte limit for this tool'
+        )
+
+    try:
+        encoding, body = 'utf-8', content.decode('utf-8')
+    except UnicodeDecodeError:
+        encoding, body = 'base64', base64.b64encode(content).decode('ascii')
+
+    return json.dumps(
+        {
+            'path': path,
+            'content_type': response.headers.get('content-type', ''),
+            'size_bytes': len(content),
+            'encoding': encoding,
+            'content': body,
+        }
+    )

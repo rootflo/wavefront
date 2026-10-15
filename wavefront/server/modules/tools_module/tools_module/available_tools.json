@@ -95,6 +95,28 @@
     "required": [],
     "category": "datasource"
   },
+  "datasource_download_file": {
+    "name": "datasource_download_file",
+    "description": "Download a file from the configured file storage datasource (AWS S3, Google Cloud Storage or Azure Blob Storage) given its path. Returns JSON {\"path\", \"content_type\", \"size_bytes\", \"encoding\", \"content\"}: content is the file's text when it is UTF-8, otherwise base64 with encoding \"base64\". Files over 5 MB are refused. On failure (file not found, path outside the datasource's bucket or base path) it returns a descriptive error string instead.",
+    "parameters": {
+      "datasource_id": {
+        "type": "string",
+        "description": "UUID of the configured file storage datasource"
+      },
+      "path": {
+        "type": "string",
+        "description": "The file to download: either the full URI returned when it was uploaded, e.g. \"s3://my-bucket/reports/q1.csv\", or a key relative to the datasource's base path, e.g. \"reports/q1.csv\""
+      }
+    },
+    "prefill_values": [
+      "datasource_id"
+    ],
+    "required": [
+      "path"
+    ],
+    "category": "datasource",
+    "datasource_kind": "file_storage"
+  },
   "send_email": {
     "name": "send_email",
     "description": "Send an email to the specified recipient from the connected mailbox. Returns a descriptive string indicating success or failure of the email delivery process.",
