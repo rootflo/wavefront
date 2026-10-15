@@ -97,7 +97,7 @@
   },
   "datasource_download_file": {
     "name": "datasource_download_file",
-    "description": "Download a file from the configured file storage datasource (AWS S3, Google Cloud Storage or Azure Blob Storage) given its path. Returns JSON {\"path\", \"content_type\", \"size_bytes\", \"encoding\", \"content\"}: content is the file's text when it is UTF-8, otherwise base64 with encoding \"base64\". Files over 5 MB are refused. On failure (file not found, path belonging to another datasource or outside its base path) it returns a descriptive error string instead.",
+    "description": "Download a file from the configured file storage datasource (AWS S3, Google Cloud Storage or Azure Blob Storage) given its path. Images (PNG, JPEG, GIF, WebP) and videos are attached to the conversation as media you can see (up to 20 MB). Any other file returns JSON {\"path\", \"content_type\", \"size_bytes\", \"encoding\", \"content\"}: content is the file's text when it is UTF-8, otherwise base64 with encoding \"base64\"; these files are refused over 5 MB. On failure (file not found, path belonging to another datasource or outside its base path) it returns a descriptive error string instead.",
     "parameters": {
       "datasource_id": {
         "type": "string",

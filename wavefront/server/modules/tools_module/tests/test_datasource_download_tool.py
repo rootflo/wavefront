@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 
 import flo_lib.http as httpx
 import pytest
+from flo_ai import ImageMessageContent, VideoMessageContent
 
 from tools_module.datasources import datasource_api_tools
 from tools_module.datasources.provider import DatasourceToolDetailsProvider
@@ -81,10 +82,10 @@ class TestDatasourceDownloadFile:
     async def test_binary_file_is_base64(self, http):
         payload = b'\x89PNG\r\n\x1a\n\x00\xff'
         http.reply = lambda request: httpx.Response(
-            200, content=payload, headers={'content-type': 'image/png'}
+            200, content=payload, headers={'content-type': 'application/octet-stream'}
         )
 
-        result = json.loads(await _download()('ds-1', 'img/logo.png'))
+        result = json.loads(await _download()('ds-1', 'blobs/logo.bin'))
 
         assert result['encoding'] == 'base64'
         assert base64.b64decode(result['content']) == payload
@@ -98,6 +99,61 @@ class TestDatasourceDownloadFile:
 
         assert (
             result == "File 'big.bin' is 5 bytes, over the 4-byte limit for this tool"
+        )
+
+    async def test_image_is_returned_as_image_content(self, http):
+        payload = b'\x89PNG\r\n\x1a\n\x00\xff'
+        http.reply = lambda request: httpx.Response(
+            200, content=payload, headers={'content-type': 'image/PNG; q=1'}
+        )
+
+        result = await _download()('ds-1', 'datasource://ds-1/img/logo.png')
+
+        assert isinstance(result, ImageMessageContent)
+        assert result.type == 'image'
+        assert base64.b64decode(result.base64) == payload
+        assert result.mime_type == 'image/png'
+        assert result.file_name == 'logo.png'
+
+    async def test_video_is_returned_as_video_content(self, http):
+        http.reply = lambda request: httpx.Response(
+            200,
+            content=b'\x00\x00\x00\x18ftypmp42',
+            headers={'content-type': 'video/mp4'},
+        )
+
+        result = await _download()('ds-1', 'clips/demo.mp4')
+
+        assert isinstance(result, VideoMessageContent)
+        assert result.type == 'video'
+        assert base64.b64decode(result.base64) == b'\x00\x00\x00\x18ftypmp42'
+        assert result.mime_type == 'video/mp4'
+        assert result.file_name == 'demo.mp4'
+
+    @pytest.mark.parametrize('content_type', ['image/svg+xml', 'image/tiff'])
+    async def test_images_models_cannot_read_stay_json(self, http, content_type):
+        http.reply = lambda request: httpx.Response(
+            200, content=b'<svg/>', headers={'content-type': content_type}
+        )
+
+        result = json.loads(await _download()('ds-1', 'img/logo.svg'))
+
+        assert result['content_type'] == content_type
+        assert result['content'] == '<svg/>'
+
+    async def test_media_has_its_own_size_limit(self, http, monkeypatch):
+        monkeypatch.setattr(datasource_api_tools, 'MAX_DOWNLOAD_BYTES', 4)
+        monkeypatch.setattr(datasource_api_tools, 'MAX_MEDIA_DOWNLOAD_BYTES', 8)
+        http.reply = lambda request: httpx.Response(
+            200, content=b'123456', headers={'content-type': 'video/mp4'}
+        )
+        assert isinstance(await _download()('ds-1', 'a.mp4'), VideoMessageContent)
+
+        http.reply = lambda request: httpx.Response(
+            200, content=b'123456789', headers={'content-type': 'video/mp4'}
+        )
+        assert await _download()('ds-1', 'a.mp4') == (
+            "File 'a.mp4' is 9 bytes, over the 8-byte limit for this tool"
         )
 
     async def test_not_found_quotes_server_error(self, http):

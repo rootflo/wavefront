@@ -3,7 +3,11 @@ import asyncio
 from typing import Dict, Any, List, Optional, AsyncIterator
 from .base_llm import BaseLLM
 from flo_ai.utils.logger import logger
-from flo_ai.models.chat_message import DocumentMessageContent, ImageMessageContent
+from flo_ai.models.chat_message import (
+    DocumentMessageContent,
+    ImageMessageContent,
+    VideoMessageContent,
+)
 from google import genai
 from google.genai import types
 from flo_ai.tool.base_tool import Tool
@@ -292,6 +296,19 @@ class Gemini(BaseLLM):
     def format_tools_for_llm(self, tools: List['Tool']) -> List[Dict[str, Any]]:
         """Format tools for Gemini's function declarations"""
         return [self.format_tool_for_llm(tool) for tool in tools]
+
+    async def _format_native_video(self, video: VideoMessageContent) -> types.Part:
+        """Gemini reads video natively, so the bytes go in as one Part."""
+        mime = video.mime_type or 'video/mp4'
+        if video.bytes:
+            return types.Part.from_bytes(data=video.bytes, mime_type=mime)
+        if video.base64:
+            return types.Part.from_bytes(
+                data=base64.b64decode(video.base64), mime_type=mime
+            )
+        if video.url:
+            return types.Part.from_uri(file_uri=video.url, mime_type=mime)
+        raise ValueError('VideoMessageContent has no bytes, base64, or url')
 
     def format_image_in_message(self, image: ImageMessageContent) -> types.Part:
         """Format a image in the message"""

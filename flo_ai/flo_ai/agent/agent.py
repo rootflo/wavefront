@@ -10,7 +10,9 @@ from flo_ai.models.chat_message import (
     UserMessage,
     TextMessageContent,
     FunctionMessage,
+    ImageMessageContent,
     SystemMessage,
+    VideoMessageContent,
 )
 from flo_ai.tool.base_tool import Tool, ToolExecutionError
 from flo_ai.models.agent_error import AgentError
@@ -376,11 +378,24 @@ class Agent(BaseAgent):
 
                         # Add function call result to history using OpenAI's "function" role format
                         # According to OpenAI API: {"role": "function", "name": "<function-name>", "content": "<result>"}
+                        tool_media = (
+                            function_response
+                            if isinstance(
+                                function_response,
+                                (ImageMessageContent, VideoMessageContent),
+                            )
+                            else None
+                        )
+                        result_text = (
+                            _describe_tool_media(tool_media)
+                            if tool_media is not None
+                            else str(function_response)
+                        )
                         self.add_to_history(
                             FunctionMessage(
                                 content=str(
                                     'Here is the result of the tool call: \n'
-                                    + str(function_response)
+                                    + result_text
                                 ),
                                 name=function_name,
                             )
@@ -389,9 +404,22 @@ class Agent(BaseAgent):
                         # Add the function response to messages for context
                         # LLM-specific implementations format the message appropriately
                         function_result_msg = self.llm.format_function_result_message(
-                            function_name, str(function_response), tool_use_id
+                            function_name, result_text, tool_use_id
                         )
                         messages.append(function_result_msg)
+
+                        if tool_media is not None:
+                            # Tool results are text-only on most providers, so
+                            # the image or video follows as its own user turn.
+                            self.add_to_history(UserMessage(content=tool_media))
+                            messages.append(
+                                {
+                                    'role': MessageType.USER,
+                                    'content': await self.format_media_content(
+                                        tool_media
+                                    ),
+                                }
+                            )
 
                     except (json.JSONDecodeError, KeyError, ToolExecutionError) as e:
                         # Record tool call failure
@@ -676,3 +704,8 @@ Respond with EXACTLY one word: "FINAL" or "INTERMEDIATE"
             # Conservative default: treat as intermediate to avoid premature exit
             # This is safer as it allows the agent to continue rather than stopping too early
             return False
+
+
+def _describe_tool_media(media: ImageMessageContent | VideoMessageContent) -> str:
+    name = media.file_name or media.mime_type or media.type
+    return f'Returned {media.type} {name!r}; it is attached in the next message.'

@@ -187,6 +187,11 @@ class GuardedLLM(BaseLLM):
         # the provider's native document handling and cache under 'GuardedLLM'.
         return await self._inner_llm.format_document_in_message(document)
 
+    async def format_video_in_message(self, video: Any) -> Any:
+        # Delegated for the same reason as documents: Gemini sends video
+        # natively, and the cache key must be the provider's.
+        return await self._inner_llm.format_video_in_message(video)
+
     # -- inference -------------------------------------------------------
 
     async def generate(

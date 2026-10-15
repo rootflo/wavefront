@@ -1,7 +1,11 @@
 from enum import Enum
 from typing import AsyncIterator, Dict, Any, List, Optional
 from datetime import datetime, timedelta
-from flo_ai.models.chat_message import DocumentMessageContent, ImageMessageContent
+from flo_ai.models.chat_message import (
+    DocumentMessageContent,
+    ImageMessageContent,
+    VideoMessageContent,
+)
 import jwt
 import httpx
 import asyncio
@@ -450,3 +454,9 @@ class RootFloLLM(BaseLLM):
         if self._llm is None:
             raise RuntimeError('LLM initialization failed: _llm is None')
         return await self._llm.format_document_in_message(document)
+
+    async def format_video_in_message(self, video: VideoMessageContent) -> Any:
+        """Delegate video formatting to the underlying provider LLM."""
+        if self._llm is None:
+            raise RuntimeError('LLM initialization failed: _llm is None')
+        return await self._llm.format_video_in_message(video)
