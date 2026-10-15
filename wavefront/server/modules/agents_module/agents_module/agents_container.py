@@ -2,6 +2,7 @@ from dependency_injector import containers
 from dependency_injector import providers
 from agents_module.services.agent_inference_service import AgentInferenceService
 from agents_module.utils.celery_client import build_celery_client
+from agents_module.utils.celery_settings import CeleryProducerSettings
 from agents_module.services.agent_crud_service import AgentCrudService
 from agents_module.services.async_agentic_execution_service import (
     AsyncAgenticExecutionService,
@@ -107,10 +108,22 @@ class AgentsContainer(containers.DeclarativeContainer):
         agent_inference_service=agent_inference_service,
     )
 
+    celery_settings = providers.Singleton(
+        CeleryProducerSettings,
+        max_queue_depth=config.celery.max_queue_depth,
+        queue_depth_cache_ttl_seconds=config.celery.queue_depth_cache_ttl_seconds,
+        queue_depth_warn_ratio=config.celery.queue_depth_warn_ratio,
+        backpressure_retry_after_seconds=(
+            config.celery.backpressure_retry_after_seconds
+        ),
+        broker_socket_timeout_seconds=config.celery.broker_socket_timeout_seconds,
+    )
+
     celery_client = providers.Singleton(
         build_celery_client,
         broker_url=config.celery.broker_url,
         queue_name=config.celery.queue_name,
+        settings=celery_settings,
     )
 
     async_agentic_execution_service = providers.Singleton(
@@ -120,4 +133,5 @@ class AgentsContainer(containers.DeclarativeContainer):
         cache_manager=cache_manager,
         executions_bucket=executions_bucket,
         celery_client=celery_client,
+        celery_settings=celery_settings,
     )

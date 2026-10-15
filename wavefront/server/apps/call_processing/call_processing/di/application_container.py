@@ -31,8 +31,6 @@ class ApplicationContainer(containers.DeclarativeContainer):
         redis_protocol=config.redis.protocol,
         redis_password=config.redis.password,
         redis_db=config.redis.db,
-        redis_username=config.redis.username,
-        cloud_provider=config.cloud.platform,
         pool_size=config.redis.pool_size,
         pool_timeout=config.redis.pool_timeout,
     )
