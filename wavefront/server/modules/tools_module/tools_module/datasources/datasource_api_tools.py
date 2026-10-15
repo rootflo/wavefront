@@ -3,13 +3,7 @@ import json
 import posixpath
 from urllib.parse import quote
 import flo_lib.http as httpx
-
-try:
-    from flo_ai import ImageMessageContent, VideoMessageContent
-except ImportError:
-    # flo-ai < 1.1.17 stringifies media tool results (base64 and all) into the
-    # tool message, so images/videos fall back to the JSON shape there.
-    ImageMessageContent = VideoMessageContent = None
+from flo_ai import ImageMessageContent, VideoMessageContent
 
 from tools_module.floware_api import FlowareApiClient
 
@@ -217,7 +211,7 @@ async def datasource_download_file(
     /,
     datasource_id: str,
     path: str,
-) -> 'str | ImageMessageContent | VideoMessageContent':
+) -> str | ImageMessageContent | VideoMessageContent:
     """Download one file from a file storage datasource (S3, GCS or Azure Blob)
     via wavefront's own REST API (GET /v1/datasources/{datasource_id}/files).
 
@@ -256,9 +250,7 @@ async def datasource_download_file(
     content = response.content
     content_type = response.headers.get('content-type', '')
     mime_type = content_type.split(';')[0].strip().lower()
-    if VideoMessageContent is None:
-        media_class = None
-    elif mime_type in MODEL_IMAGE_TYPES:
+    if mime_type in MODEL_IMAGE_TYPES:
         media_class = ImageMessageContent
     elif mime_type.startswith('video/'):
         media_class = VideoMessageContent

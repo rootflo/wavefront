@@ -7,12 +7,9 @@ from unittest.mock import AsyncMock
 
 import flo_lib.http as httpx
 import pytest
+from flo_ai import ImageMessageContent, VideoMessageContent
 
 from tools_module.datasources import datasource_api_tools
-from tools_module.datasources.datasource_api_tools import (
-    ImageMessageContent,
-    VideoMessageContent,
-)
 from tools_module.datasources.provider import DatasourceToolDetailsProvider
 from tools_module.floware_api import FlowareApiClient
 from tools_module.registry.function_registry import build_function_registry
@@ -40,11 +37,6 @@ def http(monkeypatch):
     Recorder.requests = []
     monkeypatch.setattr(httpx, 'AsyncClient', make_client)
     return Recorder
-
-
-needs_media = pytest.mark.skipif(
-    VideoMessageContent is None, reason='flo-ai < 1.1.17 has no tool media results'
-)
 
 
 def _download():
@@ -109,19 +101,6 @@ class TestDatasourceDownloadFile:
             result == "File 'big.bin' is 5 bytes, over the 4-byte limit for this tool"
         )
 
-    async def test_media_stays_json_on_older_flo_ai(self, http, monkeypatch):
-        monkeypatch.setattr(datasource_api_tools, 'ImageMessageContent', None)
-        monkeypatch.setattr(datasource_api_tools, 'VideoMessageContent', None)
-        http.reply = lambda request: httpx.Response(
-            200, content=b'\x89PNG\xff', headers={'content-type': 'image/png'}
-        )
-
-        result = json.loads(await _download()('ds-1', 'img/logo.png'))
-
-        assert result['encoding'] == 'base64'
-        assert base64.b64decode(result['content']) == b'\x89PNG\xff'
-
-    @needs_media
     async def test_image_is_returned_as_image_content(self, http):
         payload = b'\x89PNG\r\n\x1a\n\x00\xff'
         http.reply = lambda request: httpx.Response(
@@ -136,7 +115,6 @@ class TestDatasourceDownloadFile:
         assert result.mime_type == 'image/png'
         assert result.file_name == 'logo.png'
 
-    @needs_media
     async def test_video_is_returned_as_video_content(self, http):
         http.reply = lambda request: httpx.Response(
             200,
@@ -163,7 +141,6 @@ class TestDatasourceDownloadFile:
         assert result['content_type'] == content_type
         assert result['content'] == '<svg/>'
 
-    @needs_media
     async def test_media_has_its_own_size_limit(self, http, monkeypatch):
         monkeypatch.setattr(datasource_api_tools, 'MAX_DOWNLOAD_BYTES', 4)
         monkeypatch.setattr(datasource_api_tools, 'MAX_MEDIA_DOWNLOAD_BYTES', 8)
