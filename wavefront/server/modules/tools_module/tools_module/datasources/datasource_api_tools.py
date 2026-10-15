@@ -207,8 +207,9 @@ async def datasource_download_file(
     """Download one file from a file storage datasource (S3, GCS or Azure Blob)
     via wavefront's own REST API (GET /v1/datasources/{datasource_id}/files).
 
-    path: the full URI an upload returned (e.g. "s3://bucket/reports/q1.csv")
-        or a key relative to the datasource's base path ("reports/q1.csv").
+    path: the path an upload returned, "datasource://<datasource_id>/<key>"
+        (it must name this datasource), or a key relative to the datasource's
+        base path ("reports/q1.csv").
 
     Returns JSON {"path", "content_type", "size_bytes", "encoding", "content"}:
     "content" is the text itself when the bytes are UTF-8, otherwise base64

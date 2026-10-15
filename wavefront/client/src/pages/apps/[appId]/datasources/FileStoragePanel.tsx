@@ -6,11 +6,9 @@ import { copyToClipboard, downloadBlobFile, extractErrorMessage } from '@app/lib
 import { useNotifyStore } from '@app/store';
 import { Copy } from 'lucide-react';
 import React, { useRef, useState } from 'react';
-import { FILE_STORAGE_PROTOCOLS } from './datasource-types';
 
 interface FileStoragePanelProps {
   datasourceId: string;
-  datasourceType: string;
 }
 
 /** Blob responses hide the JSON error body; read it back out for the message. */
@@ -29,7 +27,7 @@ const getDownloadErrorMessage = async (error: unknown): Promise<string | undefin
 
 const fileNameFromPath = (path: string) => path.split('/').filter(Boolean).pop() || 'download';
 
-const FileStoragePanel: React.FC<FileStoragePanelProps> = ({ datasourceId, datasourceType }) => {
+const FileStoragePanel: React.FC<FileStoragePanelProps> = ({ datasourceId }) => {
   const { notifySuccess, notifyError } = useNotifyStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -40,8 +38,6 @@ const FileStoragePanel: React.FC<FileStoragePanelProps> = ({ datasourceId, datas
 
   const [downloadPath, setDownloadPath] = useState('');
   const [downloading, setDownloading] = useState(false);
-
-  const protocol = FILE_STORAGE_PROTOCOLS[datasourceType] || 's3';
 
   const handleUpload = async () => {
     if (!file) return;
@@ -159,7 +155,7 @@ const FileStoragePanel: React.FC<FileStoragePanelProps> = ({ datasourceId, datas
             <Label htmlFor="fileStorageDownloadPath">Path</Label>
             <Input
               id="fileStorageDownloadPath"
-              placeholder={`${protocol}://bucket/folder/name.ext or folder/name.ext`}
+              placeholder={`datasource://${datasourceId}/folder/name.ext or folder/name.ext`}
               value={downloadPath}
               onChange={(e) => setDownloadPath(e.target.value)}
               disabled={downloading}

@@ -18,6 +18,9 @@ from .config import (
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    'DATASOURCE_URI_PREFIX',
+    'build_datasource_uri',
+    'split_datasource_uri',
     'AzureBlobStorageConfig',
     'FileStorageConfig',
     'FileStoragePlugin',
@@ -25,6 +28,31 @@ __all__ = [
     'S3FileStorageConfig',
     'build_file_storage_config',
 ]
+
+
+# Paths handed out by the API name the datasource rather than the bucket, so a
+# stored path always leads back to the datasource (and its credentials) that
+# owns it: datasource://<datasource_id>/<key relative to base_path>.
+DATASOURCE_URI_PREFIX = 'datasource://'
+
+
+def build_datasource_uri(datasource_id: str, path: str) -> str:
+    relative = normalize_storage_path(path)
+    if not relative:
+        raise ValueError('path is required')
+    return f'{DATASOURCE_URI_PREFIX}{datasource_id}/{relative}'
+
+
+def split_datasource_uri(path: str) -> Optional[tuple[str, str]]:
+    """``(datasource_id, key)`` for a ``datasource://`` path, None for a plain key."""
+    if not isinstance(path, str) or not path.lower().startswith(DATASOURCE_URI_PREFIX):
+        return None
+    datasource_id, _, key = path[len(DATASOURCE_URI_PREFIX) :].partition('/')
+    if not datasource_id or not key:
+        raise ValueError(
+            f'Expected {DATASOURCE_URI_PREFIX}<datasource_id>/<key>, got: {path}'
+        )
+    return datasource_id, key
 
 
 class FileStoragePlugin(FileStorageABC):
@@ -100,33 +128,19 @@ class FileStoragePlugin(FileStorageABC):
         return f'{self.protocol}://{self.bucket_name}/{key}'
 
     def resolve_key(self, path: str) -> str:
-        """Key for ``path``: a full URI as-is, otherwise relative to ``base_path``.
+        """Storage key for ``path``, a key relative to ``base_path``.
 
-        Either way the key must stay inside this datasource's bucket and
-        ``base_path``.
+        Callers holding a ``datasource://`` path strip it with
+        ``split_datasource_uri`` first, after checking the datasource id.
         """
         if not isinstance(path, str) or not path.strip():
             raise ValueError('path is required')
-        if '://' not in path:
-            return self._key_for(path)
-
-        prefix = f'{self.protocol}://'
-        if not path.startswith(prefix):
-            raise ValueError(f'Expected a {prefix} URI, got: {path}')
-        bucket_name, key = self.storage.get_bucket_key(path)
-        if bucket_name != self.bucket_name:
+        if '://' in path:
             raise ValueError(
-                f'URI bucket {bucket_name!r} does not match datasource bucket '
-                f'{self.bucket_name!r}'
+                f'Expected {DATASOURCE_URI_PREFIX}<datasource_id>/<key> or a key '
+                f'relative to the base path, got: {path}'
             )
-        key = normalize_storage_path(key)
-        if self.base_path and not (
-            key == self.base_path or key.startswith(f'{self.base_path}/')
-        ):
-            raise ValueError(f'Path is outside the datasource base path: {path}')
-        if not key:
-            raise ValueError('path is required')
-        return key
+        return self._key_for(path)
 
     def _key_for(self, path: str) -> str:
         relative = normalize_storage_path(path)

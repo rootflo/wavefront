@@ -87,7 +87,7 @@ export class DatasourcesService {
     });
   }
 
-  /** `path` is a full URI (e.g. s3://bucket/key) or a key relative to the datasource's base path. */
+  /** `path` is the datasource://<datasource_id>/<key> path an upload returned, or a key relative to the datasource's base path. */
   async downloadFile(datasourceId: string, path: string): Promise<AxiosResponse<Blob>> {
     return this.http.get(`/v1/:appId/floware/v1/datasources/${datasourceId}/files`, {
       params: { path },

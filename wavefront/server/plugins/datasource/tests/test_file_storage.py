@@ -11,8 +11,10 @@ from datasource import (
     GCSFileStorageConfig,
     PostgresConfig,
     S3FileStorageConfig,
+    build_datasource_uri,
     build_file_storage_config,
     is_file_storage_type,
+    split_datasource_uri,
 )
 from flo_cloud.exceptions import CloudStorageFileNotFoundError
 
@@ -234,25 +236,24 @@ class TestUploadDownload:
         plugin = FileStoragePlugin(S3FileStorageConfig('bkt', base_path='in'))
 
         uri = plugin.upload_file(b'payload', 'docs/a.pdf', 'application/pdf')
-        assert plugin.download_file(uri) == b'payload'
+        assert uri == 's3://bkt/in/docs/a.pdf'
         assert plugin.download_file('docs/a.pdf') == b'payload'
+        assert handler.get_file.call_args.args == ('bkt', 'in/docs/a.pdf')
 
-    def test_download_wrong_bucket(self, s3_handler):
+    @pytest.mark.parametrize(
+        'path',
+        ['s3://bkt/a.txt', 'gs://bkt/a.txt', 'datasource://ds-1/a.txt'],
+    )
+    def test_download_rejects_uris(self, s3_handler, path):
         plugin = FileStoragePlugin(S3FileStorageConfig('bkt'))
-        with pytest.raises(ValueError, match='does not match'):
-            plugin.download_file('s3://other/a.txt')
+        with pytest.raises(ValueError, match='relative to the base path'):
+            plugin.download_file(path)
 
-    def test_download_wrong_scheme(self, s3_handler):
-        plugin = FileStoragePlugin(S3FileStorageConfig('bkt'))
-        with pytest.raises(ValueError, match='Expected a s3://'):
-            plugin.download_file('gs://bkt/a.txt')
-
-    def test_download_outside_base_path(self, s3_handler):
+    def test_download_stays_inside_base_path(self, s3_handler):
         plugin = FileStoragePlugin(S3FileStorageConfig('bkt', base_path='in'))
-        with pytest.raises(ValueError, match='outside'):
-            plugin.download_file('s3://bkt/other/a.txt')
-        with pytest.raises(ValueError, match='outside'):
-            plugin.download_file('s3://bkt/inside/a.txt')
+        assert plugin.resolve_key('other/a.txt') == 'in/other/a.txt'
+        with pytest.raises(ValueError):
+            plugin.download_file('../other/a.txt')
 
     def test_download_not_found_propagates(self, s3_handler):
         _, handler = s3_handler
@@ -276,3 +277,38 @@ def test_gcs_storage_accepts_credentials_info():
         storage = gcs.GCSStorage(credentials_info={'project_id': 'from-sa'})
         client.assert_called_once_with(project='from-sa', credentials=credentials)
         assert storage.project_id == 'from-sa'
+
+
+class TestDatasourceUri:
+    def test_build(self):
+        assert build_datasource_uri('ds-1', '/docs//a.pdf') == (
+            'datasource://ds-1/docs/a.pdf'
+        )
+
+    def test_build_rejects_empty_and_traversal(self):
+        with pytest.raises(ValueError, match='path is required'):
+            build_datasource_uri('ds-1', '/')
+        with pytest.raises(ValueError):
+            build_datasource_uri('ds-1', '../a.txt')
+
+    def test_split(self):
+        assert split_datasource_uri('datasource://ds-1/docs/a.pdf') == (
+            'ds-1',
+            'docs/a.pdf',
+        )
+        assert split_datasource_uri('DataSource://ds-1/a') == ('ds-1', 'a')
+
+    def test_split_plain_key(self):
+        assert split_datasource_uri('docs/a.pdf') is None
+        assert split_datasource_uri('s3://bkt/a.pdf') is None
+
+    @pytest.mark.parametrize(
+        'path', ['datasource://', 'datasource://ds-1', 'datasource:///a']
+    )
+    def test_split_malformed(self, path):
+        with pytest.raises(ValueError, match='Expected datasource://'):
+            split_datasource_uri(path)
+
+    def test_roundtrip(self):
+        uri = build_datasource_uri('ds-1', 'docs/a.pdf')
+        assert split_datasource_uri(uri) == ('ds-1', 'docs/a.pdf')

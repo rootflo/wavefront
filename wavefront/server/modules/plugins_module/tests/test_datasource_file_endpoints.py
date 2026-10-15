@@ -2,7 +2,7 @@
 
 import json
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from datasource import PostgresConfig, S3FileStorageConfig
@@ -13,18 +13,24 @@ from flo_cloud.exceptions import CloudStorageFileNotFoundError
 
 from common_module.common_container import CommonContainer
 from common_module.response_formatter import ResponseFormatter
+from dependency_injector import providers
 from plugins_module.controllers import datasource_controller
+from plugins_module.plugins_container import PluginsContainer
 
 DATASOURCE_ID = '11111111-1111-1111-1111-111111111111'
 FILES_URL = f'/v1/datasources/{DATASOURCE_ID}/files'
 S3_CONFIG = S3FileStorageConfig(bucket_name='bkt')
 PG_CONFIG = PostgresConfig('h', 5432, 'db', 'u', 'p')
+AUDIT_SERVICE = MagicMock()
 
 
 @pytest.fixture(scope='module')
 def client():
     container = CommonContainer()
     container.wire(modules=[datasource_controller])
+    plugins = PluginsContainer()
+    plugins.datasource_audit_service.override(providers.Object(AUDIT_SERVICE))
+    plugins.wire(modules=[datasource_controller])
     app = FastAPI()
 
     @app.middleware('http')
@@ -34,7 +40,25 @@ def client():
 
     app.include_router(datasource_controller.datasource_router)
     yield TestClient(app)
+    plugins.unwire()
     container.unwire()
+
+
+@pytest.fixture
+def audit():
+    AUDIT_SERVICE.reset_mock()
+    return AUDIT_SERVICE.record_from_request
+
+
+def _audited(audit, operation):
+    audit.assert_called_once()
+    kwargs = audit.call_args.kwargs
+    assert kwargs['datasource_id'] == DATASOURCE_ID
+    assert kwargs['datasource_type'] == DataSourceType.AWS_S3
+    assert kwargs['operation'] == operation
+    [entry] = kwargs['entries']
+    assert entry.rows_affected == 1
+    return entry
 
 
 @pytest.fixture
@@ -62,39 +86,84 @@ def plugin():
         instance.upload_file.side_effect = (
             lambda content, path, content_type: f's3://bkt/{path}'
         )
-        instance.resolve_key.side_effect = lambda path: path.removeprefix('s3://bkt/')
+        instance.resolve_key.side_effect = lambda path: path
+        instance.uri_for.side_effect = lambda key: f's3://bkt/{key}'
         instance.download_file.return_value = b'%PDF-1.4'
         yield instance
 
 
 class TestUpload:
-    def test_returns_full_uri(self, client, admin, datasource_config, plugin):
+    def test_returns_datasource_uri(
+        self, client, admin, datasource_config, plugin, audit
+    ):
         response = client.post(
             FILES_URL,
             files={'file': ('a.pdf', b'%PDF-1.4', 'application/pdf')},
             data={'path': 'docs/'},
         )
         assert response.status_code == 201
-        assert response.json()['data'] == {'path': 's3://bkt/docs/a.pdf'}
+        assert response.json()['data'] == {
+            'path': f'datasource://{DATASOURCE_ID}/docs/a.pdf',
+            'storage_uri': 's3://bkt/docs/a.pdf',
+        }
         plugin.upload_file.assert_called_once_with(
             b'%PDF-1.4', 'docs/a.pdf', 'application/pdf'
         )
 
+    def test_audited(self, client, admin, datasource_config, plugin, audit):
+        client.post(
+            FILES_URL,
+            files={'file': ('a.pdf', b'%PDF-1.4', 'application/pdf')},
+            data={'path': 'docs/'},
+        )
+        entry = _audited(audit, 'upload')
+        assert entry.table_name == 'docs/a.pdf'
+        assert entry.snapshot == 'submitted'
+        assert entry.rows == [
+            {
+                'path': f'datasource://{DATASOURCE_ID}/docs/a.pdf',
+                'storage_uri': 's3://bkt/docs/a.pdf',
+                'size_bytes': 8,
+                'content_type': 'application/pdf',
+            }
+        ]
+
+    def test_long_key_clipped_in_audit(
+        self, client, admin, datasource_config, plugin, audit
+    ):
+        key = 'd/' * 300 + 'a.txt'
+        client.post(FILES_URL, files={'file': ('a.txt', b'hi')}, data={'path': key})
+        entry = _audited(audit, 'upload')
+        assert len(entry.table_name) == 512
+        assert entry.meta['key_truncated'] is True
+        assert entry.rows[0]['path'].endswith(key)
+
+    def test_failed_upload_not_audited(
+        self, client, admin, datasource_config, plugin, audit
+    ):
+        plugin.upload_file.side_effect = RuntimeError('boom')
+        with pytest.raises(RuntimeError):
+            client.post(FILES_URL, files={'file': ('a.txt', b'hi')})
+        audit.assert_not_called()
+
     def test_defaults_to_file_name(self, client, admin, datasource_config, plugin):
         response = client.post(FILES_URL, files={'file': ('a.txt', b'hi')})
-        assert response.json()['data'] == {'path': 's3://bkt/a.txt'}
+        assert response.json()['data']['path'] == f'datasource://{DATASOURCE_ID}/a.txt'
 
     def test_explicit_path_used_as_key(self, client, admin, datasource_config, plugin):
         response = client.post(
             FILES_URL, files={'file': ('a.txt', b'hi')}, data={'path': 'x/b.txt'}
         )
-        assert response.json()['data'] == {'path': 's3://bkt/x/b.txt'}
+        assert (
+            response.json()['data']['path'] == f'datasource://{DATASOURCE_ID}/x/b.txt'
+        )
 
-    def test_non_admin_forbidden(self, client, admin, datasource_config, plugin):
+    def test_non_admin_forbidden(self, client, admin, datasource_config, plugin, audit):
         admin.return_value = False
         response = client.post(FILES_URL, files={'file': ('a.txt', b'hi')})
         assert response.status_code == 403
         plugin.upload_file.assert_not_called()
+        audit.assert_not_called()
 
     def test_sql_datasource_rejected(self, client, admin, datasource_config, plugin):
         datasource_config.return_value = (DataSourceType.POSTGRES, PG_CONFIG)
@@ -107,30 +176,76 @@ class TestUpload:
         response = client.post(FILES_URL, files={'file': ('a.txt', b'hi')})
         assert response.status_code == 404
 
-    def test_invalid_path(self, client, admin, datasource_config, plugin):
-        plugin.upload_file.side_effect = ValueError('bad path')
+    def test_invalid_path(self, client, admin, datasource_config, plugin, audit):
         response = client.post(
             FILES_URL, files={'file': ('a.txt', b'hi')}, data={'path': '../x'}
         )
         assert response.status_code == 400
+        plugin.upload_file.assert_not_called()
+        audit.assert_not_called()
 
 
 class TestDownload:
     def test_streams_bytes(self, client, admin, datasource_config, plugin):
-        response = client.get(FILES_URL, params={'path': 's3://bkt/docs/a.pdf'})
+        response = client.get(
+            FILES_URL, params={'path': f'datasource://{DATASOURCE_ID}/docs/a.pdf'}
+        )
         assert response.status_code == 200
         assert response.content == b'%PDF-1.4'
         assert response.headers['content-type'] == 'application/pdf'
         assert 'a.pdf' in response.headers['content-disposition']
-        plugin.download_file.assert_called_once_with('s3://bkt/docs/a.pdf')
+        plugin.download_file.assert_called_once_with('docs/a.pdf')
 
-    def test_not_found(self, client, admin, datasource_config, plugin):
+    def test_plain_key(self, client, admin, datasource_config, plugin):
+        response = client.get(FILES_URL, params={'path': 'docs/a.pdf'})
+        assert response.status_code == 200
+        plugin.download_file.assert_called_once_with('docs/a.pdf')
+
+    def test_datasource_id_case_insensitive(
+        self, client, admin, datasource_config, plugin
+    ):
+        path = f'datasource://{DATASOURCE_ID.upper()}/a.pdf'
+        assert client.get(FILES_URL, params={'path': path}).status_code == 200
+
+    def test_audited(self, client, admin, datasource_config, plugin, audit):
+        client.get(
+            FILES_URL, params={'path': f'datasource://{DATASOURCE_ID}/docs/a.pdf'}
+        )
+        entry = _audited(audit, 'download')
+        assert entry.table_name == 'docs/a.pdf'
+        assert entry.snapshot == 'read'
+        assert entry.rows == [
+            {
+                'path': f'datasource://{DATASOURCE_ID}/docs/a.pdf',
+                'storage_uri': 's3://bkt/docs/a.pdf',
+                'size_bytes': 8,
+                'content_type': 'application/pdf',
+            }
+        ]
+
+    def test_other_datasource_rejected(
+        self, client, admin, datasource_config, plugin, audit
+    ):
+        path = 'datasource://22222222-2222-2222-2222-222222222222/a.pdf'
+        response = client.get(FILES_URL, params={'path': path})
+        assert response.status_code == 400
+        assert 'belongs to datasource' in response.text
+        plugin.download_file.assert_not_called()
+        audit.assert_not_called()
+
+    def test_malformed_datasource_uri(self, client, admin, datasource_config, plugin):
+        response = client.get(FILES_URL, params={'path': 'datasource://only-id'})
+        assert response.status_code == 400
+        plugin.download_file.assert_not_called()
+
+    def test_not_found(self, client, admin, datasource_config, plugin, audit):
         plugin.download_file.side_effect = CloudStorageFileNotFoundError('bkt', 'a')
         response = client.get(FILES_URL, params={'path': 'missing.txt'})
         assert response.status_code == 404
+        audit.assert_not_called()
 
-    def test_path_outside_bucket(self, client, admin, datasource_config, plugin):
-        plugin.resolve_key.side_effect = ValueError('does not match')
+    def test_provider_uri_rejected(self, client, admin, datasource_config, plugin):
+        plugin.resolve_key.side_effect = ValueError('relative to the base path')
         response = client.get(FILES_URL, params={'path': 's3://other/a'})
         assert response.status_code == 400
 

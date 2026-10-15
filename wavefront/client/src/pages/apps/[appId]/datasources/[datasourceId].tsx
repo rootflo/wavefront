@@ -441,7 +441,7 @@ const DatasourceDetail: React.FC = () => {
 
           {isFileStorage && datasource && datasourceId && (
             <TabsContent value="files" className="mt-6 min-h-0 flex-1 overflow-auto">
-              <FileStoragePanel datasourceId={datasourceId} datasourceType={datasource.type} />
+              <FileStoragePanel datasourceId={datasourceId} />
             </TabsContent>
           )}
 

@@ -39,7 +39,9 @@ from db_repo_module.cache.application_cache import (
 from datasource import (
     DatasourcePlugin,
     FileStoragePlugin,
+    build_datasource_uri,
     build_file_storage_config,
+    split_datasource_uri,
     is_file_storage_type,
 )
 from datasource.types import DataSourceType, QueryResult, TableListResult
@@ -1562,6 +1564,47 @@ def _stored_content_type(content_type: str | None) -> str | None:
     return content_type
 
 
+def _relative_file_path(path: str, datasource_id: str) -> str:
+    """Key relative to base_path; a datasource:// path must name this datasource."""
+    parsed = split_datasource_uri(path)
+    if parsed is None:
+        return path
+    path_datasource_id, relative_path = parsed
+    if path_datasource_id.lower() != datasource_id.lower():
+        raise ValueError(
+            f'Path belongs to datasource {path_datasource_id}, not {datasource_id}'
+        )
+    return relative_path
+
+
+# Matches DatasourceAuditLog.table_name, which holds the file's key here.
+_AUDIT_FILE_KEY_MAX_CHARS = 512
+
+
+def _file_audit_entry(
+    datasource_path: str,
+    storage_uri: str,
+    size_bytes: int,
+    content_type: str | None,
+    snapshot: str,
+) -> AuditEntry:
+    key = datasource_path.split('/', 3)[3]
+    return AuditEntry(
+        table_name=key[:_AUDIT_FILE_KEY_MAX_CHARS],
+        snapshot=snapshot,
+        rows=[
+            {
+                'path': datasource_path,
+                'storage_uri': storage_uri,
+                'size_bytes': size_bytes,
+                'content_type': content_type,
+            }
+        ],
+        rows_affected=1,
+        meta={'file': True, 'key_truncated': len(key) > _AUDIT_FILE_KEY_MAX_CHARS},
+    )
+
+
 def _upload_target_path(path: str | None, filename: str | None) -> str:
     """``path`` if given; a trailing ``/`` (or no path) appends the file's name."""
     base_name = posixpath.basename((filename or '').replace('\\', '/'))
@@ -1581,6 +1624,9 @@ async def upload_datasource_file(
     path: str | None = Form(None),
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
+    ),
+    datasource_audit_service: DatasourceAuditService = Depends(
+        Provide[PluginsContainer.datasource_audit_service]
     ),
 ):
     role_id = request.state.session.role_id
@@ -1611,13 +1657,12 @@ async def upload_datasource_file(
 
     try:
         target_path = _upload_target_path(path, file.filename)
+        datasource_path = build_datasource_uri(datasource_id, target_path)
         file_storage = FileStoragePlugin(datasource_config)
         file_content = await file.read()
-        full_path = await asyncio.to_thread(
-            file_storage.upload_file,
-            file_content,
-            target_path,
-            _stored_content_type(file.content_type),
+        content_type = _stored_content_type(file.content_type)
+        storage_uri = await asyncio.to_thread(
+            file_storage.upload_file, file_content, target_path, content_type
         )
     except ValueError as e:
         return JSONResponse(
@@ -1625,9 +1670,27 @@ async def upload_datasource_file(
             content=response_formatter.buildErrorResponse(str(e)),
         )
 
+    datasource_audit_service.record_from_request(
+        request,
+        datasource_id=datasource_id,
+        datasource_type=datasource_type,
+        operation='upload',
+        entries=[
+            _file_audit_entry(
+                datasource_path,
+                storage_uri,
+                len(file_content),
+                content_type,
+                snapshot='submitted',
+            )
+        ],
+    )
+
     return JSONResponse(
         status_code=status.HTTP_201_CREATED,
-        content=response_formatter.buildSuccessResponse({'path': full_path}),
+        content=response_formatter.buildSuccessResponse(
+            {'path': datasource_path, 'storage_uri': storage_uri}
+        ),
     )
 
 
@@ -1636,9 +1699,15 @@ async def upload_datasource_file(
 async def download_datasource_file(
     request: Request,
     datasource_id: str,
-    path: str = Query(..., description='Full URI or key relative to base_path'),
+    path: str = Query(
+        ...,
+        description='datasource://<datasource_id>/<key> or a key relative to base_path',
+    ),
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
+    ),
+    datasource_audit_service: DatasourceAuditService = Depends(
+        Provide[PluginsContainer.datasource_audit_service]
     ),
 ):
     role_id = request.state.session.role_id
@@ -1668,9 +1737,12 @@ async def download_datasource_file(
         )
 
     try:
+        relative_path = _relative_file_path(path, datasource_id)
         file_storage = FileStoragePlugin(datasource_config)
-        key = file_storage.resolve_key(path)
-        file_content = await asyncio.to_thread(file_storage.download_file, path)
+        key = file_storage.resolve_key(relative_path)
+        file_content = await asyncio.to_thread(
+            file_storage.download_file, relative_path
+        )
     except ValueError as e:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1684,6 +1756,21 @@ async def download_datasource_file(
 
     filename = posixpath.basename(key)
     media_type = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
+    datasource_audit_service.record_from_request(
+        request,
+        datasource_id=datasource_id,
+        datasource_type=datasource_type,
+        operation='download',
+        entries=[
+            _file_audit_entry(
+                build_datasource_uri(datasource_id, relative_path),
+                file_storage.uri_for(key),
+                len(file_content),
+                media_type,
+                snapshot='read',
+            )
+        ],
+    )
     return StreamingResponse(
         io.BytesIO(file_content),
         media_type=media_type,
