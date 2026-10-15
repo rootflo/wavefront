@@ -70,6 +70,8 @@ class FileStoragePlugin(FileStorageABC):
         self.protocol = self.storage.file_protocol()
 
     async def test_connection(self) -> bool:
+        """Lists at most one object under ``base_path``, so the credentials need
+        list permission there (e.g. s3:ListBucket) on top of read/write."""
         try:
             await asyncio.to_thread(
                 self.storage.list_files, self.bucket_name, self.base_path, 1, 1

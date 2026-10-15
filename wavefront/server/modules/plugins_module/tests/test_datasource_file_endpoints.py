@@ -252,3 +252,29 @@ class TestUpdateFileStorageDatasource:
         )
         assert response.status_code == 400
         repository.find_one_and_update.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    'content_type, expected',
+    [
+        ('application/pdf', 'application/pdf'),
+        ('text/csv; charset=utf-8', 'text/csv; charset=utf-8'),
+        ('text/html', 'application/octet-stream'),
+        ('Image/SVG+XML', 'application/octet-stream'),
+        ('application/xhtml+xml; charset=utf-8', 'application/octet-stream'),
+        (None, None),
+        ('', None),
+    ],
+)
+def test_stored_content_type(content_type, expected):
+    assert datasource_controller._stored_content_type(content_type) == expected
+
+
+def test_upload_stores_html_as_octet_stream(client, admin, datasource_config, plugin):
+    response = client.post(
+        FILES_URL, files={'file': ('x.html', b'<script></script>', 'text/html')}
+    )
+    assert response.status_code == 201
+    plugin.upload_file.assert_called_once_with(
+        b'<script></script>', 'x.html', 'application/octet-stream'
+    )

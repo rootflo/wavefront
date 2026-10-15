@@ -1539,6 +1539,29 @@ async def delete_dynamic_query(
     )
 
 
+# Types a browser would render or run if the object is opened straight from
+# the bucket; they are stored as opaque bytes instead.
+_ACTIVE_CONTENT_TYPES = frozenset(
+    {
+        'text/html',
+        'application/xhtml+xml',
+        'image/svg+xml',
+        'text/xml',
+        'application/xml',
+        'text/javascript',
+        'application/javascript',
+    }
+)
+
+
+def _stored_content_type(content_type: str | None) -> str | None:
+    if not content_type:
+        return None
+    if content_type.split(';', 1)[0].strip().lower() in _ACTIVE_CONTENT_TYPES:
+        return 'application/octet-stream'
+    return content_type
+
+
 def _upload_target_path(path: str | None, filename: str | None) -> str:
     """``path`` if given; a trailing ``/`` (or no path) appends the file's name."""
     base_name = posixpath.basename((filename or '').replace('\\', '/'))
@@ -1591,7 +1614,10 @@ async def upload_datasource_file(
         file_storage = FileStoragePlugin(datasource_config)
         file_content = await file.read()
         full_path = await asyncio.to_thread(
-            file_storage.upload_file, file_content, target_path, file.content_type
+            file_storage.upload_file,
+            file_content,
+            target_path,
+            _stored_content_type(file.content_type),
         )
     except ValueError as e:
         return JSONResponse(
