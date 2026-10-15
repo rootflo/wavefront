@@ -13,7 +13,7 @@ import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeMirror from '@uiw/react-codemirror';
 import React, { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { DATASOURCE_TYPES, SAMPLE_CONFIGS } from './datasource-types';
+import { DATASOURCE_TYPES, SAMPLE_CONFIGS, isFileStorageType } from './datasource-types';
 import { createDatasourceSchema, type CreateDatasourceInput, type DatasourceTypeValue } from './schemas';
 
 interface EditDatasourceDialogProps {
@@ -32,6 +32,11 @@ const EditDatasourceDialog: React.FC<EditDatasourceDialogProps> = ({
   onSuccess,
 }) => {
   const { notifySuccess, notifyError } = useNotifyStore();
+  // File storage datasources only allow renaming; SQL ones can't become file storage.
+  const isFileStorage = isFileStorageType(datasource.type);
+  const typeOptions = isFileStorage
+    ? DATASOURCE_TYPES.filter((type) => type.value === datasource.type)
+    : DATASOURCE_TYPES.filter((type) => !isFileStorageType(type.value));
 
   const form = useForm<CreateDatasourceInput>({
     resolver: zodResolver(createDatasourceSchema),
@@ -134,14 +139,18 @@ const EditDatasourceDialog: React.FC<EditDatasourceDialogProps> = ({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Datasource Type</FormLabel>
-                    <Select onValueChange={(value) => handleTypeChange(value, field.onChange)} value={field.value}>
+                    <Select
+                      onValueChange={(value) => handleTypeChange(value, field.onChange)}
+                      value={field.value}
+                      disabled={isFileStorage}
+                    >
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select datasource type" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {DATASOURCE_TYPES.map((type) => (
+                        {typeOptions.map((type) => (
                           <SelectItem key={type.value} value={type.value}>
                             {type.label}
                           </SelectItem>
@@ -175,12 +184,21 @@ const EditDatasourceDialog: React.FC<EditDatasourceDialogProps> = ({
               name="connectionConfig"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Connection Configuration (JSON)</FormLabel>
+                  <FormLabel>
+                    Connection Configuration (JSON)
+                    {isFileStorage && (
+                      <span className="frost-text-subtle">
+                        {' '}
+                        (read-only: delete and recreate the datasource to change it)
+                      </span>
+                    )}
+                  </FormLabel>
                   <FormControl>
                     <div className="w-full min-w-0">
                       <CodeMirror
                         value={field.value}
                         onChange={field.onChange}
+                        editable={!isFileStorage}
                         theme="dark"
                         height="300px"
                         width="100%"

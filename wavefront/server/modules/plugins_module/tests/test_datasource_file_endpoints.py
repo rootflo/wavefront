@@ -1,5 +1,6 @@
 """Upload/download endpoints and the SQL-only guard for file storage datasources."""
 
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -11,6 +12,7 @@ from fastapi.testclient import TestClient
 from flo_cloud.exceptions import CloudStorageFileNotFoundError
 
 from common_module.common_container import CommonContainer
+from common_module.response_formatter import ResponseFormatter
 from plugins_module.controllers import datasource_controller
 
 DATASOURCE_ID = '11111111-1111-1111-1111-111111111111'
@@ -180,3 +182,73 @@ def test_upload_target_path(path, filename, expected):
 def test_upload_target_path_needs_name():
     with pytest.raises(ValueError):
         datasource_controller._upload_target_path(None, None)
+
+
+class TestUpdateFileStorageDatasource:
+    S3_STORED = {'bucket_name': 'bkt', 'region_name': 'us-east-1'}
+
+    @pytest.fixture
+    def repository(self):
+        existing = SimpleNamespace(type='aws_s3', config=dict(self.S3_STORED))
+        repository = SimpleNamespace(
+            find_one=AsyncMock(return_value=existing),
+            find_one_and_update=AsyncMock(return_value=SimpleNamespace(id='x')),
+        )
+        with patch.object(datasource_controller.Datasource, 'to_dict', return_value={}):
+            yield repository
+
+    async def _patch(self, repository, existing_type=None, **payload):
+        if existing_type:
+            repository.find_one.return_value.type = existing_type
+        request = SimpleNamespace(
+            state=SimpleNamespace(session=SimpleNamespace(role_id='role'))
+        )
+        with patch.object(datasource_controller, 'invalidate_datasources_cache'):
+            return await datasource_controller.update_datasource(
+                request,
+                DATASOURCE_ID,
+                datasource_controller.UpdateDatasourcePayload(**payload),
+                response_formatter=ResponseFormatter(),
+                datasource_repository=repository,
+                cache_manager=None,
+            )
+
+    async def test_rename_allowed(self, admin, repository):
+        response = await self._patch(repository, name='renamed')
+        assert response.status_code == 200
+        repository.find_one_and_update.assert_awaited_once_with(
+            filters={'id': DATASOURCE_ID}, refresh=True, name='renamed'
+        )
+
+    async def test_unchanged_type_and_config_ignored(self, admin, repository):
+        response = await self._patch(
+            repository,
+            name='renamed',
+            type='aws_s3',
+            config=json.dumps(self.S3_STORED),
+        )
+        assert response.status_code == 200
+        repository.find_one_and_update.assert_awaited_once_with(
+            filters={'id': DATASOURCE_ID}, refresh=True, name='renamed'
+        )
+
+    @pytest.mark.parametrize(
+        'payload',
+        [
+            {'type': 'gcs'},
+            {'type': 'azure_blob_storage'},
+            {'type': 'postgres'},
+            {'config': json.dumps({'bucket_name': 'other'})},
+        ],
+    )
+    async def test_type_or_config_change_rejected(self, admin, repository, payload):
+        response = await self._patch(repository, **payload)
+        assert response.status_code == 400
+        repository.find_one_and_update.assert_not_awaited()
+
+    async def test_sql_cannot_become_file_storage(self, admin, repository):
+        response = await self._patch(
+            repository, existing_type='postgres', type='aws_s3'
+        )
+        assert response.status_code == 400
+        repository.find_one_and_update.assert_not_awaited()

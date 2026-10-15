@@ -225,6 +225,31 @@ async def update_datasource(
             ),
         )
 
+    # A file storage datasource's type and config are fixed: a new bucket or
+    # provider would orphan every path already handed out. Unchanged values
+    # (the edit dialog resends them) are ignored.
+    if is_file_storage_type(existing_datasource.type) or is_file_storage_type(
+        update_datasource_payload.type
+    ):
+        changes_type = (
+            update_datasource_payload.type is not None
+            and update_datasource_payload.type != existing_datasource.type
+        )
+        changes_config = update_datasource_payload.config is not None and json.loads(
+            update_datasource_payload.config
+        ) != (existing_datasource.config or {})
+        if changes_type or changes_config:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content=response_formatter.buildErrorResponse(
+                    'Only the name and description of a file storage datasource '
+                    'can be changed; delete it and create a new one instead'
+                ),
+            )
+        update_datasource_payload = update_datasource_payload.model_copy(
+            update={'type': None, 'config': None}
+        )
+
     # Prepare update data
     update_data = {}
 
@@ -241,16 +266,6 @@ async def update_datasource(
     ):
         # Use provided type or keep existing type
         datasource_type = update_datasource_payload.type or existing_datasource.type
-
-        if update_datasource_payload.config is None and is_file_storage_type(
-            datasource_type
-        ) != is_file_storage_type(existing_datasource.type):
-            return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content=response_formatter.buildErrorResponse(
-                    'Switching between file storage and database types requires a new config'
-                ),
-            )
 
         if update_datasource_payload.config is not None:
             payload_config = json.loads(update_datasource_payload.config)
