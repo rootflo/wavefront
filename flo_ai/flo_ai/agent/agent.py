@@ -324,10 +324,17 @@ class Agent(BaseAgent):
 
                     # If there's a function call, add the assistant's response
                     # LLM-specific implementations handle special formatting (e.g., Claude's raw_content)
-                    assistant_message_content = (
-                        self.llm.get_assistant_message_for_tool_call(response)
+                    tool_call_message = self.llm.format_tool_call_message(
+                        response, function_call
                     )
-                    if assistant_message_content:
+                    assistant_message_content = (
+                        None
+                        if tool_call_message
+                        else self.llm.get_assistant_message_for_tool_call(response)
+                    )
+                    if tool_call_message:
+                        messages.append(tool_call_message)
+                    elif assistant_message_content:
                         # LLM returned special formatting (e.g., Claude's raw_content)
                         messages.append(
                             {
@@ -335,12 +342,11 @@ class Agent(BaseAgent):
                                 'content': assistant_message_content,
                             }
                         )
+                    tool_use_id = self.llm.get_tool_use_id(function_call)
 
                     # Execute the tool
                     try:
                         function_name = function_call['name']
-                        # Get tool_use_id if available (LLM-specific, e.g., Claude)
-                        tool_use_id = self.llm.get_tool_use_id(function_call)
                         if isinstance(function_call['arguments'], str):
                             function_args = json.loads(function_call['arguments'])
                         else:
@@ -448,6 +454,16 @@ class Agent(BaseAgent):
                                     content=f'Tool execution error: {analysis}'
                                 )
                             )
+                            if tool_call_message or assistant_message_content:
+                                # The recorded call needs an answer, or the
+                                # provider rejects the retried request.
+                                messages.append(
+                                    self.llm.format_function_result_message(
+                                        error_function_name,
+                                        f'Tool execution error: {analysis}',
+                                        tool_use_id,
+                                    )
+                                )
                             continue
                         raise AgentError(
                             f'Tool execution failed: {analysis}', original_error=e

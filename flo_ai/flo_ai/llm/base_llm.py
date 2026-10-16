@@ -270,6 +270,17 @@ class BaseLLM(ABC):
         """
         return None
 
+    def format_tool_call_message(
+        self, response: Any, function_call: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """The assistant turn that requested ``function_call``, as a whole message.
+
+        For providers whose tool result must reference the call it answers
+        (OpenAI's ``tool_call_id``). None falls back to
+        ``get_assistant_message_for_tool_call``.
+        """
+        return None
+
     def get_tool_use_id(self, function_call: Dict[str, Any]) -> Optional[str]:
         """
         Extract tool_use_id from function call if available.
