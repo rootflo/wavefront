@@ -168,8 +168,8 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
         parameters: {
           model: {
             type: 'string',
-            default: 'bulbul:v2',
-            options: ['bulbul:v2', 'bulbul:v3'],
+            default: 'bulbul:v3',
+            options: ['bulbul:v2', 'bulbul:v3', 'bulbul:v4-flash'],
             description: 'Sarvam TTS model',
           },
           language: {
@@ -354,8 +354,8 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
         parameters: {
           model: {
             type: 'string',
-            default: 'saarika:v2.5',
-            options: ['saarika:v2.5', 'saaras:v2.5', 'saaras:v3'],
+            default: 'saaras:v3',
+            options: ['saaras:v3', 'saaras:v4'],
             description: 'Sarvam STT model',
           },
           language: {

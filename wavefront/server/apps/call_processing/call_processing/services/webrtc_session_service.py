@@ -28,8 +28,6 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from pipecat.audio.vad.silero import SileroVADAnalyzer
-from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.transports.base_transport import TransportParams
 from pipecat.transports.smallwebrtc.connection import IceServer, SmallWebRTCConnection
 from pipecat.transports.smallwebrtc.request_handler import (
@@ -236,14 +234,6 @@ class WebRTCSessionService:
                 params=TransportParams(
                     audio_in_enabled=True,
                     audio_out_enabled=True,
-                    vad_analyzer=SileroVADAnalyzer(
-                        params=VADParams(
-                            confidence=0.7,
-                            start_secs=0.2,
-                            stop_secs=0.2,
-                            min_volume=0.6,
-                        ),
-                    ),
                 ),
             )
             await asyncio.wait_for(

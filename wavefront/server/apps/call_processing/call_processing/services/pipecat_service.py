@@ -20,6 +20,8 @@ from pipecat.utils.tracing.setup import setup_tracing
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
+from pipecat.audio.vad.silero import SileroVADAnalyzer
+from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.frames.frames import (
     CancelFrame,
     EndFrame,
@@ -464,9 +466,20 @@ class PipecatService:
         if use_language_tool:
             context_container['context'] = context
 
+        # VAD must live on the user aggregator in Pipecat 1.x — TransportParams
+        # no longer accepts vad_analyzer (silently dropped), which would leave
+        # VADUserTurnStartStrategy with nothing to drive turn starts.
         context_aggregator = LLMContextAggregatorPair(
             context,
             user_params=LLMUserAggregatorParams(
+                vad_analyzer=SileroVADAnalyzer(
+                    params=VADParams(
+                        confidence=0.7,
+                        start_secs=0.2,
+                        stop_secs=0.2,
+                        min_volume=0.6,
+                    ),
+                ),
                 user_turn_strategies=UserTurnStrategies(
                     start=[
                         VADUserTurnStartStrategy(),

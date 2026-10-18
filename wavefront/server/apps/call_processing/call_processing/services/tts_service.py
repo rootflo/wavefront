@@ -4,6 +4,7 @@ TTS (Text-to-Speech) service factory
 Supports multiple providers: ElevenLabs, Deepgram, Cartesia, Azure, Google, AWS
 """
 
+from dataclasses import replace
 from typing import Dict, Any
 from call_processing.log.logger import logger
 
@@ -11,7 +12,11 @@ from call_processing.log.logger import logger
 from pipecat.services.elevenlabs.tts import ElevenLabsTTSService, ElevenLabsTTSSettings
 from pipecat.services.deepgram.tts import DeepgramTTSService, DeepgramTTSSettings
 from pipecat.services.cartesia.tts import CartesiaTTSService, CartesiaTTSSettings
-from pipecat.services.sarvam.tts import SarvamTTSService, SarvamTTSSettings
+from pipecat.services.sarvam.tts import (
+    SarvamTTSService,
+    SarvamTTSSettings,
+    TTS_MODEL_CONFIGS,
+)
 from pipecat.services.azure.tts import AzureTTSService, AzureTTSSettings
 
 # Language for params
@@ -19,6 +24,13 @@ from pipecat.transcriptions.language import Language
 
 # Frames
 from pipecat.frames.frames import TTSUpdateSettingsFrame
+
+# Pipecat 1.12 still only ships bulbul v2/v3; register flash so pipeline
+# construction accepts agent configs that select it.
+_BULBUL_V4_FLASH = 'bulbul:v4-flash'
+if _BULBUL_V4_FLASH not in TTS_MODEL_CONFIGS:
+    _base = TTS_MODEL_CONFIGS.get('bulbul:v3') or TTS_MODEL_CONFIGS['bulbul:v2']
+    TTS_MODEL_CONFIGS[_BULBUL_V4_FLASH] = replace(_base)
 
 
 class TTSServiceFactory:
@@ -191,7 +203,7 @@ class TTSServiceFactory:
     @staticmethod
     def _create_sarvam_tts(api_key: str, voice_id: str, parameters: Dict[str, Any]):
         """Create Sarvam TTS service (WebSocket-based streaming)"""
-        model = parameters.get('model', 'bulbul:v2')
+        model = parameters.get('model', 'bulbul:v3')
         sample_rate = parameters.get('sample_rate')
 
         settings_kwargs: Dict[str, Any] = {

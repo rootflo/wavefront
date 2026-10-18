@@ -140,16 +140,22 @@ class STTServiceFactory:
         if 'high_vad_sensitivity' in parameters:
             settings_kwargs['high_vad_sensitivity'] = parameters['high_vad_sensitivity']
 
-        model = parameters.get('model', 'saarika:v2.5')
+        # Pipecat 1.12 Sarvam STT only allows saaras:v3 / saaras:v4.
+        legacy_models = {
+            'saarika:v2.5': 'saaras:v3',
+            'saaras:v2.5': 'saaras:v3',
+        }
+        model = parameters.get('model', 'saaras:v3')
+        model = legacy_models.get(model, model)
+        settings_kwargs['model'] = model
         sample_rate = parameters.get('sample_rate', 8000)
 
         logger.info(f'Sarvam STT config: model={model}, sample_rate={sample_rate}')
 
         return SarvamSTTService(
             api_key=api_key,
-            model=model,
             sample_rate=sample_rate,
-            settings=SarvamSTTSettings(**settings_kwargs) if settings_kwargs else None,
+            settings=SarvamSTTSettings(**settings_kwargs),
         )
 
     # Mapping of short language codes to ElevenLabs ISO-639-3 language codes
