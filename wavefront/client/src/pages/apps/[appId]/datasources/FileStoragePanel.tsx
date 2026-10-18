@@ -15,8 +15,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { copyToClipboard, downloadBlobFile, extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { DatasourceFileEntry } from '@app/types/datasource';
-import { Copy, Download, RefreshCw, Trash2, Upload } from 'lucide-react';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ChevronRight, Copy, Download, Folder, RefreshCw, Trash2, Upload } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 interface FileStoragePanelProps {
   datasourceId: string;
@@ -33,7 +33,24 @@ type FilePreviewState = {
   sizeBytes: number;
 };
 
+type FolderEntry = {
+  kind: 'folder';
+  name: string;
+  /** Prefix used for list API / navigation, with trailing slash when non-root */
+  prefix: string;
+};
+
+type FileRow = {
+  kind: 'file';
+  entry: DatasourceFileEntry;
+};
+
+type BrowserRow = FolderEntry | FileRow;
+
 const TEXT_PREVIEW_MAX_BYTES = 512 * 1024;
+const PAGE_SIZE = 50;
+/** Cap recursive pages under a prefix so a huge bucket cannot hang the UI. */
+const MAX_LIST_PAGES = 40;
 
 /** Blob responses hide the JSON error body; read it back out for the message. */
 const getDownloadErrorMessage = async (error: unknown): Promise<string | undefined> => {
@@ -68,16 +85,73 @@ const previewKindFor = (mime: string): PreviewKind => {
   return 'unsupported';
 };
 
+/** Normalize to '' or 'a/b/' (no leading slash). */
+const normalizeDirPrefix = (prefix: string): string => {
+  const trimmed = prefix.replace(/^\/+/, '').replace(/\/+$/, '');
+  return trimmed ? `${trimmed}/` : '';
+};
+
+/** API list prefix: no trailing slash (matches backend tests / storage prefix join). */
+const listApiPrefix = (dirPrefix: string): string => dirPrefix.replace(/\/+$/, '');
+
+const breadcrumbSegments = (dirPrefix: string): { label: string; prefix: string }[] => {
+  const trimmed = dirPrefix.replace(/^\/+|\/+$/g, '');
+  if (!trimmed) return [];
+  const parts = trimmed.split('/');
+  return parts.map((label, index) => ({
+    label,
+    prefix: `${parts.slice(0, index + 1).join('/')}/`,
+  }));
+};
+
+/**
+ * Collapse a recursive flat key list into immediate folders + files under `dirPrefix`.
+ */
+const buildBrowserRows = (files: DatasourceFileEntry[], dirPrefix: string): BrowserRow[] => {
+  const prefix = normalizeDirPrefix(dirPrefix);
+  const folders = new Map<string, FolderEntry>();
+  const fileRows: FileRow[] = [];
+
+  for (const entry of files) {
+    const relative = entry.relative_path.replace(/^\/+/, '');
+    if (prefix && !relative.startsWith(prefix) && relative !== prefix.slice(0, -1)) {
+      continue;
+    }
+
+    const remainder = prefix ? relative.slice(prefix.length) : relative;
+    if (!remainder) continue;
+
+    const slash = remainder.indexOf('/');
+    if (slash === -1) {
+      fileRows.push({ kind: 'file', entry });
+      continue;
+    }
+
+    const folderName = remainder.slice(0, slash);
+    if (!folders.has(folderName)) {
+      folders.set(folderName, {
+        kind: 'folder',
+        name: folderName,
+        prefix: `${prefix}${folderName}/`,
+      });
+    }
+  }
+
+  const folderRows = [...folders.values()].sort((a, b) => a.name.localeCompare(b.name));
+  fileRows.sort((a, b) => a.entry.name.localeCompare(b.entry.name));
+  return [...folderRows, ...fileRows];
+};
+
 const FileStoragePanel: React.FC<FileStoragePanelProps> = ({ datasourceId }) => {
   const { notifySuccess, notifyError } = useNotifyStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const previewObjectUrlRef = useRef<string | null>(null);
 
+  /** Current directory: '' root, or 'docs/reports/' */
+  const [currentPrefix, setCurrentPrefix] = useState('');
   const [files, setFiles] = useState<DatasourceFileEntry[]>([]);
   const [loadingFiles, setLoadingFiles] = useState(false);
-  const [hasNextPage, setHasNextPage] = useState(false);
-  const [pageNumber, setPageNumber] = useState(1);
-  const pageSize = 50;
+  const [listTruncated, setListTruncated] = useState(false);
 
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -92,31 +166,47 @@ const FileStoragePanel: React.FC<FileStoragePanelProps> = ({ datasourceId }) => 
   const [previewLoadingPath, setPreviewLoadingPath] = useState<string | null>(null);
 
   const loadFiles = useCallback(
-    async (page = 1) => {
+    async (dirPrefix = currentPrefix) => {
       setLoadingFiles(true);
+      setListTruncated(false);
       try {
-        const response = await floConsoleService.datasourcesService.listFiles(datasourceId, {
-          page_number: page,
-          page_size: pageSize,
-        });
-        const data = response.data?.data;
-        setFiles(data?.files ?? []);
-        setHasNextPage(Boolean(data?.has_next_page));
-        setPageNumber(data?.page_number ?? page);
+        const apiPrefix = listApiPrefix(dirPrefix);
+        const collected: DatasourceFileEntry[] = [];
+        let page = 1;
+        let hasMore = true;
+
+        while (hasMore && page <= MAX_LIST_PAGES) {
+          const response = await floConsoleService.datasourcesService.listFiles(datasourceId, {
+            prefix: apiPrefix || undefined,
+            page_number: page,
+            page_size: PAGE_SIZE,
+          });
+          const data = response.data?.data;
+          collected.push(...(data?.files ?? []));
+          hasMore = Boolean(data?.has_next_page);
+          page += 1;
+        }
+
+        if (hasMore) {
+          setListTruncated(true);
+        }
+        setFiles(collected);
       } catch (error) {
         notifyError(extractErrorMessage(error) || 'Failed to list files');
         setFiles([]);
-        setHasNextPage(false);
       } finally {
         setLoadingFiles(false);
       }
     },
-    [datasourceId, notifyError]
+    [currentPrefix, datasourceId, notifyError]
   );
 
   useEffect(() => {
-    void loadFiles(1);
-  }, [loadFiles]);
+    void loadFiles(currentPrefix);
+  }, [currentPrefix, loadFiles]);
+
+  const browserRows = useMemo(() => buildBrowserRows(files, currentPrefix), [files, currentPrefix]);
+  const crumbs = useMemo(() => breadcrumbSegments(currentPrefix), [currentPrefix]);
 
   const clearPreview = useCallback(() => {
     if (previewObjectUrlRef.current) {
@@ -129,30 +219,45 @@ const FileStoragePanel: React.FC<FileStoragePanelProps> = ({ datasourceId }) => 
 
   useEffect(() => () => clearPreview(), [clearPreview]);
 
-  const resetUploadForm = () => {
+  const resetUploadForm = (dirPrefix = currentPrefix) => {
     setFile(null);
-    setUploadPath('');
+    setUploadPath(normalizeDirPrefix(dirPrefix));
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const openUploadDialog = () => {
+    resetUploadForm(currentPrefix);
+    setUploadDialogOpen(true);
+  };
+
+  const resolveUploadPath = (selected: File, pathInput: string): string | undefined => {
+    const trimmed = pathInput.trim();
+    if (!trimmed) {
+      // Stay in current directory when the field is cleared.
+      const dir = normalizeDirPrefix(currentPrefix);
+      return dir ? `${dir}${selected.name}` : selected.name;
+    }
+    if (trimmed.endsWith('/')) {
+      return `${trimmed}${selected.name}`;
+    }
+    return trimmed;
   };
 
   const handleUpload = async () => {
     if (!file) return;
     setUploading(true);
     try {
-      const response = await floConsoleService.datasourcesService.uploadFile(
-        datasourceId,
-        file,
-        uploadPath.trim() || undefined
-      );
-      const path = response.data?.data?.path;
-      if (!path) {
+      const path = resolveUploadPath(file, uploadPath);
+      const response = await floConsoleService.datasourcesService.uploadFile(datasourceId, file, path);
+      const returned = response.data?.data?.path;
+      if (!returned) {
         notifyError('Upload succeeded but no path was returned');
         return;
       }
       notifySuccess('File uploaded successfully');
       setUploadDialogOpen(false);
-      resetUploadForm();
-      await loadFiles(1);
+      resetUploadForm(currentPrefix);
+      await loadFiles(currentPrefix);
     } catch (error) {
       notifyError(extractErrorMessage(error) || 'Failed to upload file');
     } finally {
@@ -246,7 +351,7 @@ const FileStoragePanel: React.FC<FileStoragePanelProps> = ({ datasourceId }) => 
       }
       notifySuccess('File deleted');
       setFilePendingDelete(null);
-      await loadFiles(pageNumber);
+      await loadFiles(currentPrefix);
     } catch (error) {
       notifyError(extractErrorMessage(error) || 'Failed to delete file');
     } finally {
@@ -254,41 +359,71 @@ const FileStoragePanel: React.FC<FileStoragePanelProps> = ({ datasourceId }) => 
     }
   };
 
+  const navigateTo = (prefix: string) => {
+    clearPreview();
+    setCurrentPrefix(normalizeDirPrefix(prefix));
+  };
+
+  const locationLabel = currentPrefix ? currentPrefix.replace(/\/$/, '') : '/';
+
   return (
     <div className="frost-panel ring-frost-border flex min-h-0 flex-col rounded-xl border ring-1">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#EFF0F1] px-6 py-4">
-        <div>
+        <div className="min-w-0">
           <h2 className="frost-text text-lg font-semibold">Files</h2>
-          <p className="frost-text-muted text-sm">Objects under this datasource base path</p>
+          <p className="frost-text-muted text-sm">Browse folders under this datasource base path</p>
         </div>
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
             size="sm"
-            onClick={() => void loadFiles(pageNumber)}
+            onClick={() => void loadFiles(currentPrefix)}
             disabled={loadingFiles}
             title="Refresh"
           >
             <RefreshCw className={`h-4 w-4 ${loadingFiles ? 'animate-spin' : ''}`} />
           </Button>
-          <Button
-            size="sm"
-            onClick={() => {
-              resetUploadForm();
-              setUploadDialogOpen(true);
-            }}
-          >
+          <Button size="sm" onClick={openUploadDialog}>
             <Upload className="mr-1.5 h-4 w-4" />
             Upload
           </Button>
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center gap-1 border-b border-[#EFF0F1] px-6 py-2.5">
+        <button
+          type="button"
+          className={`text-sm ${currentPrefix ? 'text-brand hover:underline' : 'frost-text font-medium'}`}
+          onClick={() => navigateTo('')}
+          disabled={!currentPrefix}
+        >
+          Root
+        </button>
+        {crumbs.map((crumb) => (
+          <React.Fragment key={crumb.prefix}>
+            <ChevronRight className="frost-text-subtle h-3.5 w-3.5 shrink-0" />
+            <button
+              type="button"
+              className={`max-w-[12rem] truncate text-sm ${
+                crumb.prefix === currentPrefix ? 'frost-text font-medium' : 'text-brand hover:underline'
+              }`}
+              title={crumb.prefix}
+              onClick={() => navigateTo(crumb.prefix)}
+              disabled={crumb.prefix === currentPrefix}
+            >
+              {crumb.label}
+            </button>
+          </React.Fragment>
+        ))}
+      </div>
+
       <div className="min-h-0 flex-1 overflow-auto p-6">
-        {loadingFiles && files.length === 0 ? (
+        {loadingFiles && browserRows.length === 0 ? (
           <p className="frost-text-muted text-sm">Loading files…</p>
-        ) : files.length === 0 ? (
-          <p className="frost-text-muted text-sm">No files yet. Upload one to get started.</p>
+        ) : browserRows.length === 0 ? (
+          <p className="frost-text-muted text-sm">
+            {currentPrefix ? 'This folder is empty.' : 'No files yet. Upload one to get started.'}
+          </p>
         ) : (
           <Table>
             <TableHeader>
@@ -299,83 +434,93 @@ const FileStoragePanel: React.FC<FileStoragePanelProps> = ({ datasourceId }) => 
               </TableRow>
             </TableHeader>
             <TableBody>
-              {files.map((entry) => (
-                <TableRow key={entry.path}>
-                  <TableCell className="frost-text font-medium">
-                    <button
-                      type="button"
-                      className="text-brand text-left hover:underline disabled:opacity-60"
-                      title="Preview file"
-                      disabled={previewLoadingPath === entry.path}
-                      onClick={() => void handlePreview(entry)}
-                    >
-                      {previewLoadingPath === entry.path ? 'Opening…' : entry.name}
-                    </button>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex min-w-0 items-center gap-1">
-                      <span className="frost-text truncate font-mono text-sm" title={entry.path}>
-                        {entry.relative_path}
+              {browserRows.map((row) =>
+                row.kind === 'folder' ? (
+                  <TableRow key={`folder:${row.prefix}`}>
+                    <TableCell className="frost-text font-medium">
+                      <button
+                        type="button"
+                        className="text-brand inline-flex items-center gap-2 text-left hover:underline"
+                        onClick={() => navigateTo(row.prefix)}
+                      >
+                        <Folder className="h-4 w-4 shrink-0" />
+                        {row.name}
+                      </button>
+                    </TableCell>
+                    <TableCell>
+                      <span className="frost-text truncate font-mono text-sm" title={row.prefix}>
+                        {row.prefix.replace(/\/$/, '')}
                       </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        title="Copy datasource path"
-                        onClick={() => void handleCopy(entry.path)}
-                      >
-                        <Copy className="h-3.5 w-3.5" />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="sm" title="Open folder" onClick={() => navigateTo(row.prefix)}>
+                        Open
                       </Button>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        title="Download"
-                        loading={downloadingPath === entry.path}
-                        disabled={downloadingPath === entry.path || deleting}
-                        onClick={() => void handleDownload(entry)}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  <TableRow key={row.entry.path}>
+                    <TableCell className="frost-text font-medium">
+                      <button
+                        type="button"
+                        className="text-brand text-left hover:underline disabled:opacity-60"
+                        title="Preview file"
+                        disabled={previewLoadingPath === row.entry.path}
+                        onClick={() => void handlePreview(row.entry)}
                       >
-                        <Download className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        title="Delete"
-                        disabled={deleting}
-                        onClick={() => setFilePendingDelete(entry)}
-                      >
-                        <Trash2 className="h-4 w-4 text-red-600" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+                        {previewLoadingPath === row.entry.path ? 'Opening…' : row.entry.name}
+                      </button>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex min-w-0 items-center gap-1">
+                        <span className="frost-text truncate font-mono text-sm" title={row.entry.path}>
+                          {row.entry.relative_path}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="Copy datasource path"
+                          onClick={() => void handleCopy(row.entry.path)}
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="Download"
+                          loading={downloadingPath === row.entry.path}
+                          disabled={downloadingPath === row.entry.path || deleting}
+                          onClick={() => void handleDownload(row.entry)}
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="Delete"
+                          disabled={deleting}
+                          onClick={() => setFilePendingDelete(row.entry)}
+                        >
+                          <Trash2 className="h-4 w-4 text-red-600" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )
+              )}
             </TableBody>
           </Table>
         )}
 
-        {(pageNumber > 1 || hasNextPage) && (
-          <div className="mt-4 flex items-center justify-end gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={loadingFiles || pageNumber <= 1}
-              onClick={() => void loadFiles(pageNumber - 1)}
-            >
-              Previous
-            </Button>
-            <span className="frost-text-muted text-sm">Page {pageNumber}</span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={loadingFiles || !hasNextPage}
-              onClick={() => void loadFiles(pageNumber + 1)}
-            >
-              Next
-            </Button>
-          </div>
+        {listTruncated && (
+          <p className="frost-text-muted mt-3 text-xs">
+            Listing stopped after {MAX_LIST_PAGES * PAGE_SIZE} objects under this path. Some deeper entries may be
+            missing.
+          </p>
         )}
       </div>
 
@@ -383,14 +528,15 @@ const FileStoragePanel: React.FC<FileStoragePanelProps> = ({ datasourceId }) => 
         open={uploadDialogOpen}
         onOpenChange={(open) => {
           setUploadDialogOpen(open);
-          if (!open) resetUploadForm();
+          if (!open) resetUploadForm(currentPrefix);
         }}
       >
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Upload file</DialogTitle>
             <DialogDescription>
-              Store a file in this datasource. Destination path is optional and defaults to the file name.
+              Uploading into <span className="font-mono text-xs">{locationLabel}</span>. Use a trailing{' '}
+              <span className="font-mono">/</span> to keep the original file name, or set a full relative path.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4 py-2">
@@ -400,15 +546,26 @@ const FileStoragePanel: React.FC<FileStoragePanelProps> = ({ datasourceId }) => 
                 ref={fileInputRef}
                 type="file"
                 id="fileStorageUpload"
-                onChange={(e) => setFile(e.target.files ? e.target.files[0] : null)}
+                onChange={(e) => {
+                  const next = e.target.files ? e.target.files[0] : null;
+                  setFile(next);
+                  // Keep directory destination; append name only when path is a bare folder or empty.
+                  if (next) {
+                    setUploadPath((prev) => {
+                      const trimmed = prev.trim();
+                      if (!trimmed || trimmed.endsWith('/')) {
+                        return normalizeDirPrefix(trimmed || currentPrefix);
+                      }
+                      return trimmed;
+                    });
+                  }
+                }}
                 disabled={uploading}
                 className="frost-control ring-frost-border frost-text file:text-brand w-full cursor-pointer border px-3 py-2 text-sm ring-1 outline-none file:cursor-pointer"
               />
             </div>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="fileStorageUploadPath">
-                Destination path <span className="frost-text-subtle">(Optional)</span>
-              </Label>
+              <Label htmlFor="fileStorageUploadPath">Destination path (relative)</Label>
               <Input
                 id="fileStorageUploadPath"
                 placeholder="folder/ or folder/name.ext"
@@ -416,6 +573,9 @@ const FileStoragePanel: React.FC<FileStoragePanelProps> = ({ datasourceId }) => 
                 onChange={(e) => setUploadPath(e.target.value)}
                 disabled={uploading}
               />
+              <p className="frost-text-subtle text-xs">
+                Relative to the datasource base path. Current folder is pre-filled.
+              </p>
             </div>
           </div>
           <DialogFooter>
