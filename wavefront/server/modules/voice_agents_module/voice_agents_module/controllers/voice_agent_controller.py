@@ -96,7 +96,7 @@ async def create_voice_agent(
         stt_config_id=payload.stt_config_id,
         telephony_config_id=payload.telephony_config_id,
         system_prompt=payload.system_prompt,
-        welcome_message=payload.welcome_message,
+        welcome_message=payload.welcome_message or '',
         tts_voice_ids=payload.tts_voice_ids,
         tts_parameters=payload.tts_parameters,
         stt_parameters=payload.stt_parameters,

@@ -45,7 +45,8 @@ export interface CreateVoiceAgentRequest {
   stt_config_id: string;
   telephony_config_id: string;
   system_prompt: string;
-  welcome_message: string;
+  /** Optional; empty string skips the spoken greeting. */
+  welcome_message?: string;
   tts_voice_ids: Record<string, string>;
   tts_parameters?: Record<string, unknown> | null;
   stt_parameters?: Record<string, unknown> | null;

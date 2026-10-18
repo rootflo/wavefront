@@ -49,7 +49,9 @@ def fake_services(monkeypatch):
         monkeypatch.setattr(pipecat_service_module, name, FakeServiceFactory)
 
 
-def _build(provider='webrtc', languages=('en', 'hi', 'ta'), **kwargs):
+def _build(
+    provider='webrtc', languages=('en', 'hi', 'ta'), customer_number='', **kwargs
+):
     service = PipecatService(SimpleNamespace(pipecat=SimpleNamespace()))
     return service.build_agent_stack(
         agent_config={
@@ -65,7 +67,7 @@ def _build(provider='webrtc', languages=('en', 'hi', 'ta'), **kwargs):
         tts_config={'provider': 'deepgram', 'api_key': 'k'},
         stt_config={'provider': 'deepgram', 'api_key': 'k'},
         tools=[],
-        customer_number='',
+        customer_number=customer_number,
         provider=provider,
         audio_in_sample_rate=16000,
         audio_out_sample_rate=16000,
@@ -108,12 +110,32 @@ def test_room_context_mode_leaves_the_prompt_untouched_and_has_no_language_tool(
     assert 'Respond in' not in _system(stack)
     assert TOOL not in _tool_names(stack)
     assert TOOL not in stack.llm.functions
-    assert _system(stack).endswith(BASE_PROMPT)
+    assert _system(stack) == BASE_PROMPT
     # Still multi-language so the app's set_context.language can move STT/TTS
     assert stack.supported_languages == ['en', 'hi', 'ta']
-    assert stack.language_state['original_system_prompt'].endswith(BASE_PROMPT)
+    assert stack.language_state['original_system_prompt'] == BASE_PROMPT
     assert RULES not in stack.language_state['original_system_prompt']
     assert stack.language_state['current_language'] == 'en'
+
+
+def test_webrtc_omits_telephony_phone_and_ist_prefix():
+    stack = _build(languages=('en',))
+
+    prompt = _system(stack)
+    assert prompt == BASE_PROMPT
+    assert 'Customer phone number' not in prompt
+    assert 'Current Date and Time (IST)' not in prompt
+
+
+def test_telephony_includes_phone_and_ist_prefix():
+    stack = _build(
+        provider='twilio', languages=('en',), customer_number='+911234567890'
+    )
+
+    prompt = _system(stack)
+    assert prompt.startswith('Customer phone number: +911234567890\n')
+    assert 'Current Date and Time (IST)' in prompt
+    assert prompt.endswith(BASE_PROMPT)
 
 
 def test_room_context_mode_keeps_multi_language_stt_and_tts():

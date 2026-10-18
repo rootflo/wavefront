@@ -51,7 +51,6 @@ from pipecat.processors.aggregators.llm_response_universal import (
 from pipecat.transports.base_transport import BaseTransport
 from pipecat.turns.user_mute import (
     FunctionCallUserMuteStrategy,
-    MuteUntilFirstBotCompleteUserMuteStrategy,
 )
 from pipecat.turns.user_turn_strategies import UserTurnStrategies
 from pipecat.turns.user_start import (
@@ -250,11 +249,15 @@ class PipecatService:
             stt = STTServiceFactory.create_stt_service(stt_config_with_params)
             tts = TTSServiceFactory.create_tts_service(tts_config_with_params)
 
-        # Create initial messages with system prompt
-        base_system_prompt = (
-            f'Customer phone number: {customer_number}\n'
-            f'{get_current_ist_time_str()}\n' + agent_config['system_prompt']
-        )
+        # Telephony-only context: caller number + IST clock/relative-date rules.
+        # Browser (WebRTC) sessions have no caller number and must not get this prefix.
+        if provider != WEBRTC_PROVIDER:
+            base_system_prompt = (
+                f'Customer phone number: {customer_number}\n'
+                f'{get_current_ist_time_str()}\n' + agent_config['system_prompt']
+            )
+        else:
+            base_system_prompt = agent_config['system_prompt']
 
         supported_language_names = [
             LANGUAGE_DISPLAY_NAMES.get(code, code) for code in supported_languages
@@ -492,8 +495,9 @@ class PipecatService:
                         # TranscriptionUserTurnStopStrategy() # Not needed
                     ],  # List of stop strategies
                 ),
+                # Welcome is interruptible: do not mute until first bot speech.
+                # Still mute during in-flight tool calls so audio does not collide.
                 user_mute_strategies=[
-                    MuteUntilFirstBotCompleteUserMuteStrategy(),
                     FunctionCallUserMuteStrategy(),
                 ],
             ),
@@ -580,7 +584,7 @@ class PipecatService:
             tts_provider=tts_config['provider'],
             stt_provider=stt_config['provider'],
             tts_voice_ids=tts_voice_ids_dict,
-            welcome_message=agent_config['welcome_message'],
+            welcome_message=(agent_config.get('welcome_message') or '').strip(),
         )
 
     async def run_conversation(
@@ -820,9 +824,10 @@ class PipecatService:
         @transport.event_handler('on_client_connected')
         async def on_client_connected(transport, client):
             logger.info(f"Client connected for agent: {agent_config['name']}")
-            await task.queue_frame(
-                TTSSpeakFrame(stack.welcome_message, append_to_context=True)
-            )
+            if stack.welcome_message:
+                await task.queue_frame(
+                    TTSSpeakFrame(stack.welcome_message, append_to_context=True)
+                )
 
         @transport.event_handler('on_client_disconnected')
         async def on_client_disconnected(transport, client):

@@ -372,7 +372,7 @@ class VoiceAgentService:
             stt_config_id: STT config ID
             telephony_config_id: Telephony config ID
             system_prompt: System prompt for the agent
-            welcome_message: Welcome message text (will be converted to audio)
+            welcome_message: Optional greeting spoken at call start (empty skips it)
             tts_voice_ids: TTS voice identifiers per language
             description: Description of the agent (optional)
             conversation_config: Conversation configuration (optional)

@@ -65,7 +65,7 @@ const updateVoiceAgentSchema = z.object({
   telephony_config_id: z.string().min(1, 'Telephony configuration is required'),
   tts_voice_ids: z.record(z.string(), z.string()).optional(),
   system_prompt: z.string().min(1, 'System prompt is required'),
-  welcome_message: z.string().min(1, 'Welcome message is required'),
+  welcome_message: z.string().optional().default(''),
   conversation_config: z.string().optional(),
   status: z.enum(['active', 'inactive']),
   inbound_numbers: z.string().optional(),
@@ -351,8 +351,9 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
         requestData.system_prompt = data.system_prompt.trim();
       }
 
-      if (data.welcome_message.trim() !== agent.welcome_message) {
-        requestData.welcome_message = data.welcome_message.trim();
+      const welcomeMessage = (data.welcome_message || '').trim();
+      if (welcomeMessage !== (agent.welcome_message || '')) {
+        requestData.welcome_message = welcomeMessage;
       }
 
       // Check if conversation config changed
@@ -1028,13 +1029,11 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                   name="welcome_message"
                   render={({ field }) => (
                     <FormItem className="flex min-h-0 flex-1 flex-col gap-2">
-                      <FormLabel>
-                        Welcome Message<span className="text-red-500">*</span>
-                      </FormLabel>
+                      <FormLabel>Welcome Message</FormLabel>
                       <div className="relative min-h-0 flex-1">
                         <FormControl>
                           <textarea
-                            placeholder="Hello! Thank you for calling. How can I help you today?"
+                            placeholder="Optional. Leave blank to skip the greeting. Example: Hello! How can I help you today?"
                             className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring absolute inset-0 h-full w-full resize-none rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                             {...field}
                           />
@@ -1064,7 +1063,7 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                             maxWidth="100%"
                             className="w-full min-w-0"
                             extensions={[langs.json(), ...popupCodeMirrorExtensions]}
-                            placeholder='{\n  "max_duration_seconds": 600,\n  "silence_timeout_seconds": 10,\n  "enable_interruptions": true\n}'
+                            placeholder="{}"
                           />
                         </div>
                       </FormControl>

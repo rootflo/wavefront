@@ -27,8 +27,8 @@ class CreateVoiceAgentPayload(BaseModel):
         None, description='Conversation configuration settings (optional)'
     )
     welcome_message: str = Field(
-        ...,
-        description='Welcome message to play at call start (will be converted to audio)',
+        '',
+        description='Optional welcome message spoken at call start (empty skips greeting)',
     )
     # Must be declared before tts_voice_ids so the voice-id validator can read it
     # (Pydantic v1 validators only see already-validated fields).
