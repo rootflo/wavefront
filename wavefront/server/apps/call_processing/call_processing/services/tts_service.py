@@ -102,7 +102,7 @@ class TTSServiceFactory:
     @staticmethod
     def _create_elevenlabs_tts(api_key: str, voice_id: str, parameters: Dict[str, Any]):
         """Create ElevenLabs TTS service"""
-        model = parameters.get('model', 'eleven_turbo_v2_5')
+        model = parameters.get('model', 'eleven_flash_v2_5')
 
         settings_kwargs: Dict[str, Any] = {
             'voice': voice_id,
@@ -161,7 +161,7 @@ class TTSServiceFactory:
     @staticmethod
     def _create_cartesia_tts(api_key: str, voice_id: str, parameters: Dict[str, Any]):
         """Create Cartesia TTS service"""
-        model = parameters.get('model', 'sonic-2')
+        model = parameters.get('model', 'sonic-3.6')
 
         settings_kwargs: Dict[str, Any] = {
             'voice': voice_id,
@@ -203,7 +203,7 @@ class TTSServiceFactory:
     @staticmethod
     def _create_sarvam_tts(api_key: str, voice_id: str, parameters: Dict[str, Any]):
         """Create Sarvam TTS service (WebSocket-based streaming)"""
-        model = parameters.get('model', 'bulbul:v3')
+        model = parameters.get('model', 'bulbul:v4-flash')
         sample_rate = parameters.get('sample_rate')
 
         settings_kwargs: Dict[str, Any] = {

@@ -43,7 +43,7 @@ export type SttConfigListResponse = IApiResponse<SttConfigListData>;
 
 // Deepgram STT specific parameters
 export interface DeepgramSttParameters {
-  model?: string; // default: 'nova-2'
+  model?: string; // default: 'nova-3-general'
   language?: string;
   interim_results?: boolean; // default: true
   encoding?: string; // default: 'linear16'

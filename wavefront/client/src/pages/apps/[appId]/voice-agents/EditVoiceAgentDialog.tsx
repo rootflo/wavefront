@@ -25,8 +25,10 @@ import {
 import { extractErrorMessage } from '@app/lib/utils';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { UpdateVoiceAgentRequest, VoiceAgent } from '@app/types/voice-agent';
+import FieldHelp from '@app/components/FieldHelp';
+import { VoiceIdsSection } from '@app/components/VoiceIdsSection';
 import { SUPPORTED_LANGUAGES, getLanguageDisplayName } from '@app/constants/languages';
-import { getProviderConfig } from '@app/config/voice-providers';
+import { getProviderConfig, groupParamKeys } from '@app/config/voice-providers';
 import { getBooleanParameterWithDefault, getNumberParameterWithDefault } from '@app/utils/parameter-helpers';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
@@ -120,6 +122,10 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
   const [ttsParameters, setTtsParameters] = useState<Record<string, unknown>>({});
   const [sttParameters, setSttParameters] = useState<Record<string, unknown>>({});
   const [voiceIdState, setVoiceIdState] = useState<Record<string, string>>(agent.tts_voice_ids || { en: '' });
+  const [customizeVoicesPerLanguage, setCustomizeVoicesPerLanguage] = useState(() => {
+    const ids = Object.values(agent.tts_voice_ids || {});
+    return ids.length > 1 && new Set(ids).size > 1;
+  });
 
   const form = useForm<UpdateVoiceAgentInput>({
     resolver: zodResolver(updateVoiceAgentSchema),
@@ -152,6 +158,8 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
 
   const ttsProviderConfig = selectedTtsProvider ? getProviderConfig('tts', selectedTtsProvider) : null;
   const sttProviderConfig = selectedSttProvider ? getProviderConfig('stt', selectedSttProvider) : null;
+  const ttsParamGroups = ttsProviderConfig ? groupParamKeys(ttsProviderConfig.parameters) : null;
+  const sttParamGroups = sttProviderConfig ? groupParamKeys(sttProviderConfig.parameters) : null;
 
   // Reset form when dialog opens with agent data
   useEffect(() => {
@@ -174,6 +182,8 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
         default_language: agent.default_language || 'en',
       });
       setVoiceIdState(agent.tts_voice_ids || { en: '' });
+      const ids = Object.values(agent.tts_voice_ids || {});
+      setCustomizeVoicesPerLanguage(ids.length > 1 && new Set(ids).size > 1);
       setActiveTab(FORM_TAB.BASIC);
     }
   }, [isOpen, agent, form]);
@@ -192,20 +202,20 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
     }
   }, [isOpen, agent.stt_parameters]);
 
-  // Sync voice ID state with language changes
+  // Sync voice ID state with language changes (keep shared default when not customizing)
   useEffect(() => {
     if (isOpen && watchedSupportedLanguages) {
       setVoiceIdState((prev) => {
+        const shared = Object.values(prev).find((value) => value) || '';
         const newState: Record<string, string> = {};
-        // Preserve existing voice IDs for languages still selected
         watchedSupportedLanguages.forEach((lang) => {
-          newState[lang] = prev[lang] || '';
+          newState[lang] = customizeVoicesPerLanguage ? prev[lang] || shared : shared || prev[lang] || '';
         });
         form.setValue('tts_voice_ids', newState);
         return newState;
       });
     }
-  }, [watchedSupportedLanguages, isOpen]);
+  }, [watchedSupportedLanguages, isOpen, customizeVoicesPerLanguage]);
 
   // Helper functions to update parameters
   const setTtsParameter = (key: string, value: unknown) => {
@@ -407,17 +417,15 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
     switch (paramConfig.type) {
       case 'boolean':
         return (
-          <div key={key} className="col-span-2">
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id={`tts-${key}`}
-                checked={getBooleanParameterWithDefault(ttsParameters, key, paramConfig.default)}
-                onCheckedChange={(checked) => setTtsParameter(key, checked)}
-              />
-              <Label htmlFor={`tts-${key}`} className="cursor-pointer">
-                {paramConfig.description || key}
-              </Label>
-            </div>
+          <div key={key} className="flex items-center space-x-2">
+            <Checkbox
+              id={`tts-${key}`}
+              checked={getBooleanParameterWithDefault(ttsParameters, key, paramConfig.default)}
+              onCheckedChange={(checked) => setTtsParameter(key, checked)}
+            />
+            <Label htmlFor={`tts-${key}`} className="frost-text-muted cursor-pointer">
+              {paramConfig.description || key}
+            </Label>
           </div>
         );
 
@@ -425,8 +433,8 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
         if (paramConfig.min !== undefined && paramConfig.max !== undefined) {
           const sliderValue = getNumberParameterWithDefault(ttsParameters, key, paramConfig.default, paramConfig.min);
           return (
-            <div key={key} className="col-span-2 space-y-2">
-              <Label>
+            <div key={key} className="space-y-2">
+              <Label className="frost-text-muted">
                 {paramConfig.description || key}: {sliderValue.toFixed(2)}
               </Label>
               <Slider
@@ -436,16 +444,15 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                 value={[sliderValue]}
                 onValueChange={(values: number[]) => setTtsParameter(key, values[0])}
               />
-              <p className="text-muted-foreground text-[0.8rem]">
-                {paramConfig.min} - {paramConfig.max}
-              </p>
             </div>
           );
         }
         // Number without range - use input
         return (
-          <div key={key} className="col-span-2 space-y-2">
-            <Label htmlFor={`tts-${key}`}>{paramConfig.description || key}</Label>
+          <div key={key} className="space-y-2">
+            <Label htmlFor={`tts-${key}`} className="frost-text-muted">
+              {paramConfig.description || key}
+            </Label>
             <Input
               id={`tts-${key}`}
               type="number"
@@ -457,14 +464,16 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
 
       case 'string':
         if (paramConfig.options && paramConfig.options.length > 0) {
-          // Dropdown for predefined options
-          const currentValue = String(ttsParameters[key] ?? paramConfig.default ?? '');
+          const raw = ttsParameters[key] ?? paramConfig.default;
+          const currentValue = raw !== undefined && raw !== '' ? String(raw) : undefined;
           return (
-            <div key={key} className="col-span-2 space-y-2">
-              <Label htmlFor={`tts-${key}`}>{paramConfig.description || key}</Label>
+            <div key={key} className="space-y-2">
+              <Label htmlFor={`tts-${key}`} className="frost-text-muted">
+                {paramConfig.description || key}
+              </Label>
               <Select value={currentValue} onValueChange={(value) => setTtsParameter(key, value)}>
                 <SelectTrigger id={`tts-${key}`}>
-                  <SelectValue />
+                  <SelectValue placeholder="Select..." />
                 </SelectTrigger>
                 <SelectContent>
                   {paramConfig.options.map((opt) => (
@@ -479,8 +488,10 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
         }
         // Text input for free-form strings
         return (
-          <div key={key} className="col-span-2 space-y-2">
-            <Label htmlFor={`tts-${key}`}>{paramConfig.description || key}</Label>
+          <div key={key} className="space-y-2">
+            <Label htmlFor={`tts-${key}`} className="frost-text-muted">
+              {paramConfig.description || key}
+            </Label>
             <Input
               id={`tts-${key}`}
               type="text"
@@ -507,17 +518,15 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
     switch (paramConfig.type) {
       case 'boolean':
         return (
-          <div key={key} className="col-span-2">
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id={`stt-${key}`}
-                checked={getBooleanParameterWithDefault(sttParameters, key, paramConfig.default)}
-                onCheckedChange={(checked) => setSttParameter(key, checked)}
-              />
-              <Label htmlFor={`stt-${key}`} className="cursor-pointer">
-                {paramConfig.description || key}
-              </Label>
-            </div>
+          <div key={key} className="flex items-center space-x-2">
+            <Checkbox
+              id={`stt-${key}`}
+              checked={getBooleanParameterWithDefault(sttParameters, key, paramConfig.default)}
+              onCheckedChange={(checked) => setSttParameter(key, checked)}
+            />
+            <Label htmlFor={`stt-${key}`} className="frost-text-muted cursor-pointer">
+              {paramConfig.description || key}
+            </Label>
           </div>
         );
 
@@ -525,8 +534,8 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
         if (paramConfig.min !== undefined && paramConfig.max !== undefined) {
           const sliderValue = getNumberParameterWithDefault(sttParameters, key, paramConfig.default, paramConfig.min);
           return (
-            <div key={key} className="col-span-2 space-y-2">
-              <Label>
+            <div key={key} className="space-y-2">
+              <Label className="frost-text-muted">
                 {paramConfig.description || key}: {sliderValue.toFixed(2)}
               </Label>
               <Slider
@@ -536,16 +545,15 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                 value={[sliderValue]}
                 onValueChange={(values: number[]) => setSttParameter(key, values[0])}
               />
-              <p className="text-muted-foreground text-[0.8rem]">
-                {paramConfig.min} - {paramConfig.max}
-              </p>
             </div>
           );
         }
         // Number without range - use input
         return (
-          <div key={key} className="col-span-2 space-y-2">
-            <Label htmlFor={`stt-${key}`}>{paramConfig.description || key}</Label>
+          <div key={key} className="space-y-2">
+            <Label htmlFor={`stt-${key}`} className="frost-text-muted">
+              {paramConfig.description || key}
+            </Label>
             <Input
               id={`stt-${key}`}
               type="number"
@@ -557,14 +565,16 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
 
       case 'string':
         if (paramConfig.options && paramConfig.options.length > 0) {
-          // Dropdown for predefined options
-          const currentValue = String(sttParameters[key] ?? paramConfig.default ?? '');
+          const raw = sttParameters[key] ?? paramConfig.default;
+          const currentValue = raw !== undefined && raw !== '' ? String(raw) : undefined;
           return (
-            <div key={key} className="col-span-2 space-y-2">
-              <Label htmlFor={`stt-${key}`}>{paramConfig.description || key}</Label>
+            <div key={key} className="space-y-2">
+              <Label htmlFor={`stt-${key}`} className="frost-text-muted">
+                {paramConfig.description || key}
+              </Label>
               <Select value={currentValue} onValueChange={(value) => setSttParameter(key, value)}>
                 <SelectTrigger id={`stt-${key}`}>
-                  <SelectValue />
+                  <SelectValue placeholder="Select..." />
                 </SelectTrigger>
                 <SelectContent>
                   {paramConfig.options.map((opt) => (
@@ -579,8 +589,10 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
         }
         // Text input for free-form strings
         return (
-          <div key={key} className="col-span-2 space-y-2">
-            <Label htmlFor={`stt-${key}`}>{paramConfig.description || key}</Label>
+          <div key={key} className="space-y-2">
+            <Label htmlFor={`stt-${key}`} className="frost-text-muted">
+              {paramConfig.description || key}
+            </Label>
             <Input
               id={`stt-${key}`}
               type="text"
@@ -685,172 +697,200 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
               </TabsContent>
 
               <TabsContent value={FORM_TAB.CONFIGURATIONS} className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto">
-                <div className="grid grid-cols-2 gap-6">
-                  <FormField
-                    control={form.control}
-                    name="llm_config_id"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>
-                          LLM Configuration<span className="text-red-500">*</span>
-                        </FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select LLM configuration" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {llmConfigs.map((config) => (
-                              <SelectItem key={config.id} value={config.id}>
-                                {config.display_name} ({config.type})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="tts_config_id"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>
-                          TTS Configuration<span className="text-red-500">*</span>
-                        </FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select TTS configuration" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {ttsConfigs.map((config) => (
-                              <SelectItem key={config.id} value={config.id}>
-                                {config.display_name} ({config.provider})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="stt_config_id"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>
-                          STT Configuration<span className="text-red-500">*</span>
-                        </FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select STT configuration" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {sttConfigs.map((config) => (
-                              <SelectItem key={config.id} value={config.id}>
-                                {config.display_name} ({config.provider})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="telephony_config_id"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>
-                          Telephony Configuration<span className="text-red-500">*</span>
-                        </FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select telephony configuration" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {telephonyConfigs.map((config) => (
-                              <SelectItem key={config.id} value={config.id}>
-                                {config.display_name} ({config.provider})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <div className="space-y-4">
-                  <h4 className="text-sm font-medium">TTS Voice Settings</h4>
-                  <FormField
-                    control={form.control}
-                    name="tts_voice_ids"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>
-                          TTS Voice IDs<span className="text-red-500">*</span>
-                        </FormLabel>
-                        <div className="space-y-3">
-                          {watchedSupportedLanguages.map((langCode) => (
-                            <div key={langCode} className="flex items-center gap-3">
-                              <Label className="w-24 text-sm font-medium">{getLanguageDisplayName(langCode)}:</Label>
-                              <Input
-                                placeholder={`Voice ID for ${getLanguageDisplayName(langCode)}`}
-                                value={voiceIdState[langCode] || ''}
-                                onChange={(e) => {
-                                  const newState = { ...voiceIdState, [langCode]: e.target.value };
-                                  setVoiceIdState(newState);
-                                  field.onChange(newState);
-                                }}
-                                className="flex-1"
-                              />
-                            </div>
-                          ))}
-                        </div>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  {ttsProviderConfig &&
-                    Object.keys(ttsProviderConfig.parameters).filter((key) => key !== 'language').length > 0 && (
-                      <div className="col-span-2 space-y-4">
-                        <h4 className="text-sm font-medium">TTS Parameters</h4>
-                        <div className="grid grid-cols-2 gap-6">
-                          {Object.keys(ttsProviderConfig.parameters)
-                            .filter((key) => key !== 'language')
-                            .map((key) => renderTtsParameterField(key))}
-                        </div>
+                {/* 1. Speech input (STT) */}
+                <section className="space-y-4 rounded-md border p-4">
+                  <div className="flex items-center gap-1.5">
+                    <h4 className="text-base font-semibold tracking-tight">Speech input</h4>
+                    <FieldHelp ariaLabel="About speech input">How the agent hears the caller</FieldHelp>
+                  </div>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="stt_config_id"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="frost-text-muted">
+                              Provider<span className="text-red-500">*</span>
+                            </FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select STT configuration" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {sttConfigs.map((config) => (
+                                  <SelectItem key={config.id} value={config.id}>
+                                    {config.display_name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      {sttParamGroups?.compact.map((key) => renderSttParameterField(key))}
+                    </div>
+                    {sttParamGroups && sttParamGroups.sliders.length > 0 && (
+                      <div className="grid grid-cols-2 gap-4">
+                        {sttParamGroups.sliders.map((key) => renderSttParameterField(key))}
                       </div>
                     )}
-
-                  {sttProviderConfig &&
-                    Object.keys(sttProviderConfig.parameters).filter((key) => key !== 'language').length > 0 && (
-                      <div className="col-span-2 space-y-4">
-                        <h4 className="text-sm font-medium">STT Parameters</h4>
-                        <div className="grid grid-cols-2 gap-6">
-                          {Object.keys(sttProviderConfig.parameters)
-                            .filter((key) => key !== 'language')
-                            .map((key) => renderSttParameterField(key))}
-                        </div>
+                    {sttParamGroups && sttParamGroups.booleans.length > 0 && (
+                      <div className="grid grid-cols-2 gap-4">
+                        {sttParamGroups.booleans.map((key) => renderSttParameterField(key))}
                       </div>
                     )}
-                </div>
+                  </div>
+                </section>
+
+                {/* 2. Intelligence (LLM) */}
+                <section className="space-y-4 rounded-md border p-4">
+                  <div className="flex items-center gap-1.5">
+                    <h4 className="text-base font-semibold tracking-tight">Intelligence</h4>
+                    <FieldHelp ariaLabel="About intelligence">The model that decides what to say</FieldHelp>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="llm_config_id"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="frost-text-muted">
+                            Provider<span className="text-red-500">*</span>
+                          </FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select LLM configuration" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {llmConfigs.map((config) => (
+                                <SelectItem key={config.id} value={config.id}>
+                                  {config.display_name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </section>
+
+                {/* 3. Speech output (TTS) */}
+                <section className="space-y-4 rounded-md border p-4">
+                  <div className="flex items-center gap-1.5">
+                    <h4 className="text-base font-semibold tracking-tight">Speech output</h4>
+                    <FieldHelp ariaLabel="About speech output">How the agent speaks back</FieldHelp>
+                  </div>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="tts_config_id"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="frost-text-muted">
+                              Provider<span className="text-red-500">*</span>
+                            </FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select TTS configuration" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {ttsConfigs.map((config) => (
+                                  <SelectItem key={config.id} value={config.id}>
+                                    {config.display_name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      {ttsParamGroups?.compact.map((key) => renderTtsParameterField(key))}
+                    </div>
+                    {ttsParamGroups && ttsParamGroups.sliders.length > 0 && (
+                      <div className="grid grid-cols-2 gap-4">
+                        {ttsParamGroups.sliders.map((key) => renderTtsParameterField(key))}
+                      </div>
+                    )}
+                    {ttsParamGroups && ttsParamGroups.booleans.length > 0 && (
+                      <div className="grid grid-cols-2 gap-4">
+                        {ttsParamGroups.booleans.map((key) => renderTtsParameterField(key))}
+                      </div>
+                    )}
+                    {selectedTtsProvider && (
+                      <FormField
+                        control={form.control}
+                        name="tts_voice_ids"
+                        render={({ field }) => (
+                          <FormItem>
+                            <VoiceIdsSection
+                              provider={selectedTtsProvider}
+                              model={typeof ttsParameters.model === 'string' ? ttsParameters.model : undefined}
+                              languages={watchedSupportedLanguages}
+                              voiceIds={voiceIdState}
+                              customizePerLanguage={customizeVoicesPerLanguage}
+                              onCustomizePerLanguageChange={setCustomizeVoicesPerLanguage}
+                              onChange={(next) => {
+                                setVoiceIdState(next);
+                                field.onChange(next);
+                              }}
+                            />
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
+                  </div>
+                </section>
+
+                {/* 4. Telephony */}
+                <section className="space-y-4 rounded-md border p-4">
+                  <div className="flex items-center gap-1.5">
+                    <h4 className="text-base font-semibold tracking-tight">Telephony</h4>
+                    <FieldHelp ariaLabel="About telephony">
+                      Provider credentials for calls (numbers are on the Phone Numbers tab)
+                    </FieldHelp>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="telephony_config_id"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="frost-text-muted">
+                            Provider<span className="text-red-500">*</span>
+                          </FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select telephony configuration" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {telephonyConfigs.map((config) => (
+                                <SelectItem key={config.id} value={config.id}>
+                                  {config.display_name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </section>
               </TabsContent>
 
               <TabsContent value={FORM_TAB.PHONE_NUMBERS} className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto">
@@ -894,11 +934,12 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                       <FormLabel>
                         Supported Languages<span className="text-red-500">*</span>
                       </FormLabel>
-                      <div className="max-h-64 overflow-y-auto rounded-md border p-4">
+                      <div className="rounded-md border p-4">
                         <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
                           {SUPPORTED_LANGUAGES.map((lang) => (
                             <div key={lang.code} className="flex items-center space-x-2">
                               <Checkbox
+                                id={`edit-supported-lang-${lang.code}`}
                                 checked={field.value?.includes(lang.code)}
                                 onCheckedChange={(checked) => {
                                   const current = field.value || [];
@@ -909,7 +950,10 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                                   }
                                 }}
                               />
-                              <label className="text-sm leading-none font-normal peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                              <label
+                                htmlFor={`edit-supported-lang-${lang.code}`}
+                                className="cursor-pointer text-sm leading-none font-normal peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                              >
                                 {getLanguageDisplayName(lang.code)}
                               </label>
                             </div>
@@ -951,23 +995,27 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                 />
               </TabsContent>
 
-              <TabsContent value={FORM_TAB.BEHAVIOR} className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto">
+              <TabsContent
+                value={FORM_TAB.BEHAVIOR}
+                className="mt-4 flex min-h-0 flex-1 flex-col gap-4 overflow-hidden"
+              >
                 <FormField
                   control={form.control}
                   name="system_prompt"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem className="flex min-h-0 flex-[2] flex-col gap-2">
                       <FormLabel>
                         System Prompt<span className="text-red-500">*</span>
                       </FormLabel>
-                      <FormControl>
-                        <textarea
-                          rows={6}
-                          placeholder="You are a helpful customer support agent. Answer questions politely and professionally..."
-                          className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex min-h-[120px] w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-                          {...field}
-                        />
-                      </FormControl>
+                      <div className="relative min-h-0 flex-1">
+                        <FormControl>
+                          <textarea
+                            placeholder="You are a helpful customer support agent. Answer questions politely and professionally..."
+                            className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring absolute inset-0 h-full w-full resize-none rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                            {...field}
+                          />
+                        </FormControl>
+                      </div>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -977,18 +1025,19 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                   control={form.control}
                   name="welcome_message"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem className="flex min-h-0 flex-1 flex-col gap-2">
                       <FormLabel>
                         Welcome Message<span className="text-red-500">*</span>
                       </FormLabel>
-                      <FormControl>
-                        <textarea
-                          rows={3}
-                          placeholder="Hello! Thank you for calling. How can I help you today?"
-                          className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex min-h-[80px] w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-                          {...field}
-                        />
-                      </FormControl>
+                      <div className="relative min-h-0 flex-1">
+                        <FormControl>
+                          <textarea
+                            placeholder="Hello! Thank you for calling. How can I help you today?"
+                            className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring absolute inset-0 h-full w-full resize-none rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                            {...field}
+                          />
+                        </FormControl>
+                      </div>
                       <FormMessage />
                     </FormItem>
                   )}

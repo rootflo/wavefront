@@ -55,9 +55,19 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
         parameters: {
           model: {
             type: 'string',
-            default: 'eleven_turbo_v2_5',
-            description: 'ElevenLabs model to use',
-            placeholder: 'eleven_turbo_v2_5',
+            default: 'eleven_flash_v2_5',
+            description: 'ElevenLabs TTS model',
+            options: [
+              'eleven_v4_turbo',
+              'eleven_v4',
+              'eleven_v3_conversational',
+              'eleven_v3',
+              'eleven_flash_v2_5',
+              'eleven_flash_v2',
+              'eleven_multilingual_v2',
+              'eleven_turbo_v2_5',
+              'eleven_turbo_v2',
+            ],
           },
           language: {
             type: 'string',
@@ -121,7 +131,7 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
             type: 'string',
             default: '',
             description: 'Audio encoding format',
-            placeholder: 'linear16',
+            options: ['linear16', 'mulaw', 'alaw', 'mp3', 'opus', 'flac', 'aac'],
           },
           sample_rate: {
             type: 'number',
@@ -140,9 +150,9 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
         parameters: {
           model: {
             type: 'string',
-            default: 'sonic-2',
-            description: 'Cartesia model to use',
-            placeholder: 'sonic-2',
+            default: 'sonic-3.6',
+            description: 'Cartesia TTS model',
+            options: ['sonic-3.6', 'sonic-3.5', 'sonic-3', 'sonic-preview', 'sonic-2', 'sonic-turbo'],
           },
           language: {
             type: 'string',
@@ -168,9 +178,9 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
         parameters: {
           model: {
             type: 'string',
-            default: 'bulbul:v3',
-            options: ['bulbul:v2', 'bulbul:v3', 'bulbul:v4-flash'],
-            description: 'Sarvam TTS model',
+            default: 'bulbul:v4-flash',
+            options: ['bulbul:v4-flash', 'bulbul:v3', 'bulbul:v2'],
+            description: 'TTS model',
           },
           language: {
             type: 'string',
@@ -227,38 +237,64 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
           style: {
             type: 'string' as const,
             default: '',
-            description: 'Speaking style (e.g. cheerful, sad, angry)',
-            placeholder: 'cheerful',
+            description: 'Speaking style',
+            options: [
+              'cheerful',
+              'sad',
+              'angry',
+              'excited',
+              'friendly',
+              'hopeful',
+              'shouting',
+              'terrified',
+              'unfriendly',
+              'whispering',
+              'newscast',
+              'customerservice',
+              'assistant',
+              'chat',
+              'empathetic',
+              'narration-professional',
+            ],
           },
           rate: {
             type: 'string' as const,
             default: '',
-            description: 'Speech rate (e.g. +10%, fast, slow)',
-            placeholder: '+0%',
+            description: 'Speech rate',
+            options: ['x-slow', 'slow', 'medium', 'fast', 'x-fast', '-20%', '-10%', '+0%', '+10%', '+20%'],
           },
           pitch: {
             type: 'string' as const,
             default: '',
-            description: 'Pitch adjustment (e.g. +0Hz, high, low)',
-            placeholder: '+0Hz',
+            description: 'Pitch adjustment',
+            options: ['x-low', 'low', 'medium', 'high', 'x-high', '-50Hz', '+0Hz', '+50Hz'],
           },
           role: {
             type: 'string' as const,
             default: '',
-            description: 'Voice role for expression (e.g. YoungAdultFemale)',
-            placeholder: 'YoungAdultFemale',
+            description: 'Voice role for expression',
+            options: [
+              'Girl',
+              'Boy',
+              'YoungAdultFemale',
+              'YoungAdultMale',
+              'OlderAdultFemale',
+              'OlderAdultMale',
+              'SeniorFemale',
+              'SeniorMale',
+            ],
           },
           style_degree: {
             type: 'string' as const,
             default: '',
             description: 'Intensity of speaking style (0.01 to 2.0)',
-            placeholder: '1.0',
+            options: ['0.5', '1.0', '1.5', '2.0'],
           },
           volume: {
             type: 'string' as const,
             default: '',
-            description: 'Volume level (e.g. +20%, loud, x-soft)',
-            placeholder: '+0%',
+            description: 'Volume level',
+            options: ['silent', 'x-soft', 'soft', 'medium', 'loud', 'x-loud', '-20%', '+0%', '+20%'],
           },
           sample_rate: {
             type: 'number' as const,
@@ -282,9 +318,26 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
         parameters: {
           model: {
             type: 'string',
-            default: 'nova-2',
-            description: 'Deepgram STT model',
-            options: ['nova-2', 'nova-3-general'],
+            default: 'nova-3-general',
+            description: 'Deepgram STT model / profile',
+            options: [
+              'nova-3',
+              'nova-3-general',
+              'nova-3-medical',
+              'nova-3-pharma',
+              'nova-2',
+              'nova-2-general',
+              'nova-2-phonecall',
+              'nova-2-meeting',
+              'nova-2-voicemail',
+              'nova-2-finance',
+              'nova-2-conversationalai',
+              'nova-2-video',
+              'nova-2-medical',
+              'nova-2-drivethru',
+              'nova-2-automotive',
+              'nova-2-atc',
+            ],
           },
           language: {
             type: 'string',
@@ -301,7 +354,7 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
             type: 'string',
             default: 'linear16',
             description: 'Audio encoding format',
-            placeholder: 'linear16',
+            options: ['linear16', 'mulaw', 'alaw', 'mp3', 'opus', 'flac', 'aac'],
           },
           sample_rate: {
             type: 'number',
@@ -356,7 +409,7 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
             type: 'string',
             default: 'saaras:v3',
             options: ['saaras:v3', 'saaras:v4'],
-            description: 'Sarvam STT model',
+            description: 'STT model (saaras:v4 needs Pipecat ≥1.12)',
           },
           language: {
             type: 'string',
@@ -387,7 +440,7 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
             type: 'string',
             default: 'scribe_v2_realtime',
             description: 'ElevenLabs STT model',
-            options: ['scribe_v2_realtime'],
+            options: ['scribe_v2_realtime', 'scribe_v2', 'scribe_v2_medical'],
           },
           language: {
             type: 'string',
@@ -478,4 +531,41 @@ export function mergeParameters(
 
   // Override defaults with saved values
   return { ...defaultParams, ...savedParams };
+}
+
+export interface ParamKeyGroups {
+  compact: string[];
+  sliders: string[];
+  booleans: string[];
+}
+
+/**
+ * Parameter keys grouped for 2-col layout: compact fields, then sliders,
+ * then checkboxes (enable_preprocessing first). Each group starts a new row.
+ */
+export function groupParamKeys(parameters: Record<string, ParameterConfig>): ParamKeyGroups {
+  const keys = Object.keys(parameters).filter((key) => key !== 'language');
+  const isSlider = (key: string) => {
+    const param = parameters[key];
+    return param.type === 'number' && param.min !== undefined && param.max !== undefined;
+  };
+  const isBoolean = (key: string) => parameters[key].type === 'boolean';
+
+  const compact = keys.filter((key) => !isSlider(key) && !isBoolean(key));
+  const sliders = keys.filter(isSlider);
+  const booleans = keys.filter(isBoolean);
+
+  return {
+    compact: compact.includes('model') ? ['model', ...compact.filter((key) => key !== 'model')] : compact,
+    sliders,
+    booleans: booleans.includes('enable_preprocessing')
+      ? ['enable_preprocessing', ...booleans.filter((key) => key !== 'enable_preprocessing')]
+      : booleans,
+  };
+}
+
+/** Flat order: compact → sliders → booleans (enable_preprocessing first among booleans). */
+export function orderedParamKeys(parameters: Record<string, ParameterConfig>): string[] {
+  const { compact, sliders, booleans } = groupParamKeys(parameters);
+  return [...compact, ...sliders, ...booleans];
 }
