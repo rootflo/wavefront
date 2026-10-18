@@ -1,7 +1,10 @@
 import floConsoleService from '@app/api';
 import { Alert, AlertDescription, AlertTitle } from '@app/components/ui/alert';
 import { Button } from '@app/components/ui/button';
+import { Checkbox } from '@app/components/ui/checkbox';
+import { Label } from '@app/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
+import { Switch } from '@app/components/ui/switch';
 import {
   Dialog,
   DialogContent,
@@ -11,14 +14,15 @@ import {
   DialogTitle,
 } from '@app/components/ui/dialog';
 import { appEnv } from '@app/config/env';
+import { useGetVoiceAgents } from '@app/hooks';
 import { TOKEN_KEY } from '@app/lib/constants';
 import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
-import { VoiceAgent, VoiceAgentRoom, VoiceAgentRoomAgent } from '@app/types/voice-agent';
+import { CreateVoiceAgentRoomRequest, VoiceAgent, VoiceAgentRoom, VoiceAgentRoomAgent } from '@app/types/voice-agent';
 import { PipecatClient } from '@pipecat-ai/client-js';
 import { SmallWebRTCTransport } from '@pipecat-ai/small-webrtc-transport';
 import { AlertTriangle, ArrowRightLeft, Mic, MicOff, PhoneOff } from 'lucide-react';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AgentSwitchError,
   BrowserCallError,
@@ -41,6 +45,10 @@ interface BrowserCallDialogProps {
   onOpenChange: (open: boolean) => void;
   agent: VoiceAgent;
   appId: string;
+  /** When true, render panel content only (parent owns the Dialog shell). */
+  embedded?: boolean;
+  /** Disable Connect / Hang up until agent detail has loaded. */
+  actionsDisabled?: boolean;
 }
 
 /**
@@ -83,17 +91,35 @@ const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> =>
     );
   });
 
-const BrowserCallDialog: React.FC<BrowserCallDialogProps> = ({ isOpen, onOpenChange, agent, appId }) => {
+const BrowserCallDialog: React.FC<BrowserCallDialogProps> = ({
+  isOpen,
+  onOpenChange,
+  agent,
+  appId,
+  embedded = false,
+  actionsDisabled = false,
+}) => {
   const { notifyError } = useNotifyStore();
+  const { data: allAgents = [] } = useGetVoiceAgents(appId);
   const [status, setStatus] = useState<CallStatus>('idle');
   const [error, setError] = useState<BrowserCallError | null>(null);
   const [micEnabled, setMicEnabled] = useState(true);
+  // Room create options (sent with POST /rooms)
+  const [carryHistoryOnSwap, setCarryHistoryOnSwap] = useState(true);
+  const [roomContextHandlesLanguage, setRoomContextHandlesLanguage] = useState(false);
+  const [limitHotSwapAgents, setLimitHotSwapAgents] = useState(false);
+  const [allowedAgentIds, setAllowedAgentIds] = useState<string[]>([]);
   // Agent hot-swap: the room's allowlist (initial agent first), who is talking now, and swap progress.
   const [roomAgents, setRoomAgents] = useState<VoiceAgentRoomAgent[]>([]);
   const [activeAgentId, setActiveAgentId] = useState<string>(agent.id);
   const [selectedAgentId, setSelectedAgentId] = useState<string>('');
   const [switchingToId, setSwitchingToId] = useState<string | null>(null);
   const [switchError, setSwitchError] = useState<AgentSwitchError | null>(null);
+
+  const otherActiveAgents = useMemo(
+    () => allAgents.filter((a) => a.id !== agent.id && a.status === 'active' && !a.is_deleted),
+    [allAgents, agent.id]
+  );
 
   const clientRef = useRef<PipecatClient | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -173,6 +199,17 @@ const BrowserCallDialog: React.FC<BrowserCallDialogProps> = ({ isOpen, onOpenCha
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Parent Dialog (e.g. operations) owns open state; tear down when it closes.
+  useEffect(() => {
+    if (embedded && !isOpen) {
+      void teardown();
+      setStatus('idle');
+      setError(null);
+      resetSwitchState();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [embedded, isOpen]);
+
   const fail = (attempt: number, callError: BrowserCallError, toast = true) => {
     if (attempt !== attemptRef.current) return;
     setError(callError);
@@ -181,6 +218,7 @@ const BrowserCallDialog: React.FC<BrowserCallDialogProps> = ({ isOpen, onOpenCha
   };
 
   const handleConnect = async () => {
+    if (actionsDisabled) return;
     await teardown();
     const attempt = attemptRef.current;
     setError(null);
@@ -192,7 +230,14 @@ const BrowserCallDialog: React.FC<BrowserCallDialogProps> = ({ isOpen, onOpenCha
 
     let room: VoiceAgentRoom | undefined;
     try {
-      const response = await floConsoleService.voiceAgentService.createRoom(agent.id);
+      const roomOptions: CreateVoiceAgentRoomRequest = {
+        carry_history_on_swap: carryHistoryOnSwap,
+        room_context_handles_language: roomContextHandlesLanguage,
+      };
+      if (limitHotSwapAgents) {
+        roomOptions.allowed_agent_ids = allowedAgentIds;
+      }
+      const response = await floConsoleService.voiceAgentService.createRoom(agent.id, roomOptions);
       room = response.data?.data;
     } catch (err) {
       // The shared axios instance already toasts API failures.
@@ -307,6 +352,213 @@ const BrowserCallDialog: React.FC<BrowserCallDialogProps> = ({ isOpen, onOpenCha
   const isSwitching = switchingToId !== null;
   const switchingToName = roomAgents.find((a) => a.id === switchingToId)?.name;
 
+  const body = (
+    <div className="space-y-4 py-4" aria-live="polite">
+      {!embedded && (
+        <p className="frost-text-muted text-sm">
+          Speak with <strong>{isLive ? activeAgentName : agent.name}</strong> using your microphone. No phone number is
+          needed.
+        </p>
+      )}
+
+      {(status === 'idle' || status === 'ended' || status === 'error') && (
+        <div className="space-y-4">
+          <p className="frost-text-muted text-sm">
+            Your browser will ask for microphone access when you connect. Each session uses a new one-time room.
+          </p>
+
+          <div className="space-y-3 rounded-md border p-3">
+            <p className="text-sm font-medium">Session options</p>
+
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 space-y-0.5">
+                <Label htmlFor="carry-history" className="cursor-pointer text-sm font-normal">
+                  Carry history on agent switch
+                </Label>
+                <p className="text-muted-foreground text-xs">
+                  Pass the conversation so far to the next agent when you hot-swap
+                </p>
+              </div>
+              <Switch
+                id="carry-history"
+                checked={carryHistoryOnSwap}
+                onCheckedChange={setCarryHistoryOnSwap}
+                disabled={actionsDisabled || isBusy}
+              />
+            </div>
+
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 space-y-0.5">
+                <Label htmlFor="room-language" className="cursor-pointer text-sm font-normal">
+                  App controls language
+                </Label>
+                <p className="text-muted-foreground text-xs">
+                  Drive language via room context instead of the agent&apos;s own language switching
+                </p>
+              </div>
+              <Switch
+                id="room-language"
+                checked={roomContextHandlesLanguage}
+                onCheckedChange={setRoomContextHandlesLanguage}
+                disabled={actionsDisabled || isBusy}
+              />
+            </div>
+
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 space-y-0.5">
+                <Label htmlFor="limit-hot-swap" className="cursor-pointer text-sm font-normal">
+                  Limit agents for hot-swap
+                </Label>
+                <p className="text-muted-foreground text-xs">
+                  {otherActiveAgents.length === 0
+                    ? 'No other active agents available to switch to'
+                    : 'By default every active agent can be switched to mid-call'}
+                </p>
+              </div>
+              <Switch
+                id="limit-hot-swap"
+                checked={limitHotSwapAgents}
+                onCheckedChange={(enabled) => {
+                  setLimitHotSwapAgents(enabled);
+                  if (!enabled) setAllowedAgentIds([]);
+                }}
+                disabled={actionsDisabled || isBusy || otherActiveAgents.length === 0}
+              />
+            </div>
+
+            {limitHotSwapAgents && otherActiveAgents.length > 0 && (
+              <div className="max-h-28 space-y-2 overflow-y-auto rounded-md border p-2">
+                {otherActiveAgents.map((a) => {
+                  const checked = allowedAgentIds.includes(a.id);
+                  return (
+                    <label key={a.id} className="flex cursor-pointer items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={checked}
+                        disabled={actionsDisabled || isBusy}
+                        onCheckedChange={(next) => {
+                          setAllowedAgentIds((prev) => (next ? [...prev, a.id] : prev.filter((id) => id !== a.id)));
+                        }}
+                      />
+                      <span className="truncate">{a.name}</span>
+                    </label>
+                  );
+                })}
+                <p className="text-muted-foreground text-xs">
+                  Leave none selected to allow only this agent (no hot-swap)
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {isBusy && <p className="frost-text-muted text-sm">Connecting to {agent.name}...</p>}
+
+      {isLive && (
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm font-medium">
+            {isSwitching
+              ? `Switching to ${switchingToName ?? 'another agent'}...`
+              : `Connected to ${activeAgentName}. Start speaking.`}
+          </p>
+          <Button type="button" variant="outline" size="sm" onClick={handleToggleMic}>
+            {micEnabled ? <Mic /> : <MicOff />}
+            {micEnabled ? 'Mute' : 'Unmute'}
+          </Button>
+        </div>
+      )}
+
+      {isLive && switchableAgents.length > 0 && (
+        <div className="space-y-2">
+          <p className="frost-text-muted text-xs">Switch agent (the call stays connected)</p>
+          <div className="flex items-center gap-2">
+            <Select value={selectedAgentId} onValueChange={setSelectedAgentId} disabled={isSwitching}>
+              <SelectTrigger aria-label="Agent to switch to">
+                <SelectValue placeholder="Choose an agent" />
+              </SelectTrigger>
+              <SelectContent>
+                {switchableAgents.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleSwitchAgent}
+              disabled={!selectedAgentId || isSwitching}
+              loading={isSwitching}
+            >
+              <ArrowRightLeft />
+              Switch
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {isLive && switchError && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>{switchError.title}</AlertTitle>
+          <AlertDescription>{switchError.message}</AlertDescription>
+        </Alert>
+      )}
+
+      {status === 'ended' && (
+        <Alert variant="info">
+          <AlertTitle>Call ended</AlertTitle>
+          <AlertDescription>
+            The session finished (idle or time limit reached). Start a new session to keep talking.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {status === 'error' && error && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>{error.title}</AlertTitle>
+          <AlertDescription>{error.message}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* Plays the agent's voice; the transport does not attach remote audio itself. */}
+      <audio ref={audioRef} autoPlay />
+    </div>
+  );
+
+  const footer = (
+    <div className="mt-auto flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+      {isLive ? (
+        <Button type="button" variant="destructive" onClick={handleHangUp} disabled={actionsDisabled}>
+          <PhoneOff />
+          Hang up
+        </Button>
+      ) : (
+        <>
+          {!embedded && (
+            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
+              Close
+            </Button>
+          )}
+          <Button type="button" onClick={handleConnect} disabled={actionsDisabled || isBusy} loading={isBusy}>
+            {status === 'error' ? 'Retry' : status === 'ended' ? 'Start new session' : 'Connect'}
+          </Button>
+        </>
+      )}
+    </div>
+  );
+
+  if (embedded) {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        {body}
+        {footer}
+      </div>
+    );
+  }
+
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-md">
@@ -317,106 +569,8 @@ const BrowserCallDialog: React.FC<BrowserCallDialogProps> = ({ isOpen, onOpenCha
             is needed.
           </DialogDescription>
         </DialogHeader>
-
-        <div className="space-y-4 py-4" aria-live="polite">
-          {status === 'idle' && (
-            <p className="frost-text-muted text-sm">
-              Your browser will ask for microphone access when you connect. Each session uses a new one-time room.
-            </p>
-          )}
-
-          {isBusy && <p className="frost-text-muted text-sm">Connecting to {agent.name}...</p>}
-
-          {isLive && (
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-medium">
-                {isSwitching
-                  ? `Switching to ${switchingToName ?? 'another agent'}...`
-                  : `Connected to ${activeAgentName}. Start speaking.`}
-              </p>
-              <Button type="button" variant="outline" size="sm" onClick={handleToggleMic}>
-                {micEnabled ? <Mic /> : <MicOff />}
-                {micEnabled ? 'Mute' : 'Unmute'}
-              </Button>
-            </div>
-          )}
-
-          {isLive && switchableAgents.length > 0 && (
-            <div className="space-y-2">
-              <p className="frost-text-muted text-xs">Switch agent (the call stays connected)</p>
-              <div className="flex items-center gap-2">
-                <Select value={selectedAgentId} onValueChange={setSelectedAgentId} disabled={isSwitching}>
-                  <SelectTrigger aria-label="Agent to switch to">
-                    <SelectValue placeholder="Choose an agent" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {switchableAgents.map((a) => (
-                      <SelectItem key={a.id} value={a.id}>
-                        {a.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleSwitchAgent}
-                  disabled={!selectedAgentId || isSwitching}
-                  loading={isSwitching}
-                >
-                  <ArrowRightLeft />
-                  Switch
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {isLive && switchError && (
-            <Alert variant="destructive">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>{switchError.title}</AlertTitle>
-              <AlertDescription>{switchError.message}</AlertDescription>
-            </Alert>
-          )}
-
-          {status === 'ended' && (
-            <Alert variant="info">
-              <AlertTitle>Call ended</AlertTitle>
-              <AlertDescription>
-                The session finished (idle or time limit reached). Start a new session to keep talking.
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {status === 'error' && error && (
-            <Alert variant="destructive">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>{error.title}</AlertTitle>
-              <AlertDescription>{error.message}</AlertDescription>
-            </Alert>
-          )}
-
-          {/* Plays the agent's voice; the transport does not attach remote audio itself. */}
-          <audio ref={audioRef} autoPlay />
-        </div>
-
-        <DialogFooter>
-          {isLive ? (
-            <Button type="button" variant="destructive" onClick={handleHangUp}>
-              <PhoneOff />
-              Hang up
-            </Button>
-          ) : (
-            <>
-              <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
-                Close
-              </Button>
-              <Button type="button" onClick={handleConnect} disabled={isBusy} loading={isBusy}>
-                {status === 'error' ? 'Retry' : status === 'ended' ? 'Start new session' : 'Connect'}
-              </Button>
-            </>
-          )}
-        </DialogFooter>
+        {body}
+        <DialogFooter>{footer}</DialogFooter>
       </DialogContent>
     </Dialog>
   );

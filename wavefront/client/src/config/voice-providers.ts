@@ -409,7 +409,7 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
             type: 'string',
             default: 'saaras:v3',
             options: ['saaras:v3', 'saaras:v4'],
-            description: 'STT model (saaras:v4 needs Pipecat ≥1.12)',
+            description: 'STT model',
           },
           language: {
             type: 'string',
@@ -493,6 +493,11 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
  */
 export function getProviderConfig(type: 'tts' | 'stt', provider: string): ProviderConfig | null {
   return VOICE_PROVIDERS_CONFIG[type].configs[provider] || null;
+}
+
+/** Proper provider label for dropdowns (e.g. Deepgram, not dg / Deepgram TTS). */
+export function getVoiceProviderLabel(type: 'tts' | 'stt', provider: string): string {
+  return getProviderConfig(type, provider)?.name || provider;
 }
 
 /**

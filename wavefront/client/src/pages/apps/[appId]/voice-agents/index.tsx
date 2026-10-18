@@ -8,16 +8,15 @@ import { useGetVoiceAgents } from '@app/hooks';
 import { getVoiceAgentsKey } from '@app/hooks/data/query-keys';
 import { copyToClipboard, extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
-import { VoiceAgent } from '@app/types/voice-agent';
+import { VoiceAgent, VoiceAgentListItem } from '@app/types/voice-agent';
 import { getLanguageName } from '@app/constants/languages';
 import { useQueryClient } from '@tanstack/react-query';
-import { Copy, Globe, Pencil, Phone, Trash2 } from 'lucide-react';
+import { Copy, Pencil, Phone, Trash2 } from 'lucide-react';
 import React, { useState } from 'react';
 import { useParams } from 'react-router';
-import BrowserCallDialog from './BrowserCallDialog';
 import CreateVoiceAgentDialog from './CreateVoiceAgentDialog';
 import EditVoiceAgentDialog from './EditVoiceAgentDialog';
-import OutboundCallDialog from './OutboundCallDialog';
+import VoiceAgentOperationsDialog from './VoiceAgentOperationsDialog';
 
 const VoiceAgentsPage: React.FC = () => {
   const { app } = useParams<{ app: string }>();
@@ -25,15 +24,32 @@ const VoiceAgentsPage: React.FC = () => {
   const { notifySuccess, notifyError } = useNotifyStore();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [deleteItem, setDeleteItem] = useState<VoiceAgent | null>(null);
+  const [deleteItem, setDeleteItem] = useState<VoiceAgentListItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editItem, setEditItem] = useState<VoiceAgent | null>(null);
-  const [callItem, setCallItem] = useState<VoiceAgent | null>(null);
-  const [browserCallItem, setBrowserCallItem] = useState<VoiceAgent | null>(null);
+  const [opsItem, setOpsItem] = useState<VoiceAgentListItem | null>(null);
+  const [editLoadingId, setEditLoadingId] = useState<string | null>(null);
 
-  // Fetch voice agents
   const { data: agents = [], isLoading: agentsLoading } = useGetVoiceAgents(app);
+
+  const fetchAgentDetail = async (agentId: string): Promise<VoiceAgent | null> => {
+    setEditLoadingId(agentId);
+    try {
+      const response = await floConsoleService.voiceAgentService.getVoiceAgent(agentId);
+      const detail = response.data?.data;
+      if (!detail) {
+        notifyError('Failed to load voice agent details');
+        return null;
+      }
+      return detail;
+    } catch (error) {
+      notifyError(extractErrorMessage(error) || 'Failed to load voice agent details');
+      return null;
+    } finally {
+      setEditLoadingId(null);
+    }
+  };
 
   const handleCopyId = async (id: string) => {
     const copied = await copyToClipboard(id);
@@ -44,24 +60,20 @@ const VoiceAgentsPage: React.FC = () => {
     }
   };
 
-  const handleDeleteClick = (e: React.MouseEvent, agent: VoiceAgent) => {
+  const handleDeleteClick = (e: React.MouseEvent, agent: VoiceAgentListItem) => {
     e.stopPropagation();
     setDeleteItem(agent);
   };
 
-  const handleEditClick = (e: React.MouseEvent, agent: VoiceAgent) => {
+  const handleEditClick = async (e: React.MouseEvent, agent: VoiceAgentListItem) => {
     e.stopPropagation();
-    setEditItem(agent);
+    const detail = await fetchAgentDetail(agent.id);
+    if (detail) setEditItem(detail);
   };
 
-  const handleCallClick = (e: React.MouseEvent, agent: VoiceAgent) => {
+  const handleOperationsClick = (e: React.MouseEvent, agent: VoiceAgentListItem) => {
     e.stopPropagation();
-    setCallItem(agent);
-  };
-
-  const handleBrowserCallClick = (e: React.MouseEvent, agent: VoiceAgent) => {
-    e.stopPropagation();
-    setBrowserCallItem(agent);
+    setOpsItem(agent);
   };
 
   const handleEditSuccess = () => {
@@ -150,8 +162,6 @@ const VoiceAgentsPage: React.FC = () => {
                 <TableHead>Name</TableHead>
                 <TableHead>ID</TableHead>
                 <TableHead>Description</TableHead>
-                <TableHead>Inbound #s</TableHead>
-                <TableHead>Outbound #s</TableHead>
                 <TableHead>Languages</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Created</TableHead>
@@ -174,12 +184,6 @@ const VoiceAgentsPage: React.FC = () => {
                   </TableCell>
                   <TableCell className="max-w-md truncate">{agent.description || '-'}</TableCell>
                   <TableCell>
-                    <span className="frost-text-muted text-sm">{agent.inbound_numbers?.length || 0}</span>
-                  </TableCell>
-                  <TableCell>
-                    <span className="frost-text-muted text-sm">{agent.outbound_numbers?.length || 0}</span>
-                  </TableCell>
-                  <TableCell>
                     <span
                       className="frost-text-muted text-sm"
                       title={agent.supported_languages?.map(getLanguageName).join(', ')}
@@ -201,25 +205,22 @@ const VoiceAgentsPage: React.FC = () => {
                   <TableCell>{new Date(agent.created_at).toLocaleDateString()}</TableCell>
                   <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-2">
-                      <Button variant="ghost" size="sm" onClick={(e) => handleEditClick(e, agent)} title="Edit">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => void handleEditClick(e, agent)}
+                        title="Edit"
+                        disabled={editLoadingId === agent.id}
+                        loading={editLoadingId === agent.id}
+                      >
                         <Pencil className="h-4 w-4" />
                       </Button>
                       {agent.status === 'active' && (
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={(e) => handleBrowserCallClick(e, agent)}
-                          title="Talk in browser"
-                        >
-                          <Globe className="h-4 w-4" />
-                        </Button>
-                      )}
-                      {agent.status === 'active' && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => handleCallClick(e, agent)}
-                          title="Outbound Call"
+                          onClick={(e) => handleOperationsClick(e, agent)}
+                          title="Talk to agent"
                         >
                           <Phone className="h-4 w-4" />
                         </Button>
@@ -236,7 +237,6 @@ const VoiceAgentsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Delete Confirmation Dialog */}
       <DeleteConfirmationDialog
         isOpen={!!deleteItem}
         title="Delete Voice Agent"
@@ -246,7 +246,6 @@ const VoiceAgentsPage: React.FC = () => {
         loading={deleting}
       />
 
-      {/* Create Voice Agent Dialog */}
       {app && (
         <CreateVoiceAgentDialog
           isOpen={createDialogOpen}
@@ -256,7 +255,6 @@ const VoiceAgentsPage: React.FC = () => {
         />
       )}
 
-      {/* Edit Voice Agent Dialog */}
       {app && editItem && (
         <EditVoiceAgentDialog
           isOpen={!!editItem}
@@ -267,17 +265,11 @@ const VoiceAgentsPage: React.FC = () => {
         />
       )}
 
-      {/* Outbound Call Dialog */}
-      {app && callItem && (
-        <OutboundCallDialog isOpen={!!callItem} onOpenChange={(open) => !open && setCallItem(null)} agent={callItem} />
-      )}
-
-      {/* Browser (WebRTC) Call Dialog */}
-      {app && browserCallItem && (
-        <BrowserCallDialog
-          isOpen={!!browserCallItem}
-          onOpenChange={(open) => !open && setBrowserCallItem(null)}
-          agent={browserCallItem}
+      {app && opsItem && (
+        <VoiceAgentOperationsDialog
+          isOpen={!!opsItem}
+          onOpenChange={(open) => !open && setOpsItem(null)}
+          agentSummary={opsItem}
           appId={app}
         />
       )}

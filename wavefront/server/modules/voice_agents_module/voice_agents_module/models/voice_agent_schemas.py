@@ -119,7 +119,23 @@ class UpdateVoiceAgentPayload(BaseModel):
     default_language: Union[str, Any] = Field(default=UNSET)
 
 
+class VoiceAgentListItem(BaseModel):
+    """Compact voice agent fields for table / list views."""
+
+    id: uuid.UUID
+    name: str
+    description: Optional[str]
+    status: str
+    supported_languages: List[str]
+    default_language: str
+    is_deleted: bool
+    created_at: datetime
+    updated_at: datetime
+
+
 class VoiceAgentResponse(BaseModel):
+    """Full voice agent detail (edit / operations / runtime)."""
+
     id: uuid.UUID
     name: str
     description: Optional[str]

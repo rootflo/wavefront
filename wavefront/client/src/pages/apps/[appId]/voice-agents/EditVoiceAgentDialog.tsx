@@ -28,7 +28,9 @@ import { UpdateVoiceAgentRequest, VoiceAgent } from '@app/types/voice-agent';
 import FieldHelp from '@app/components/FieldHelp';
 import { VoiceIdsSection } from '@app/components/VoiceIdsSection';
 import { SUPPORTED_LANGUAGES, getLanguageDisplayName } from '@app/constants/languages';
-import { getProviderConfig, groupParamKeys } from '@app/config/voice-providers';
+import { getTelephonyProviderConfig } from '@app/config/telephony-providers';
+import { getProviderConfig, getVoiceProviderLabel, groupParamKeys } from '@app/config/voice-providers';
+import { TelephonyProvider } from '@app/types/telephony-config';
 import { getBooleanParameterWithDefault, getNumberParameterWithDefault } from '@app/utils/parameter-helpers';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
@@ -626,10 +628,10 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
             >
               <TabsList className="grid w-full shrink-0 grid-cols-7">
                 <TabsTrigger value={FORM_TAB.BASIC}>Basic Info</TabsTrigger>
+                <TabsTrigger value={FORM_TAB.BEHAVIOR}>Behavior</TabsTrigger>
                 <TabsTrigger value={FORM_TAB.CONFIGURATIONS}>Configurations</TabsTrigger>
                 <TabsTrigger value={FORM_TAB.PHONE_NUMBERS}>Phone Numbers</TabsTrigger>
                 <TabsTrigger value={FORM_TAB.LANGUAGES}>Languages</TabsTrigger>
-                <TabsTrigger value={FORM_TAB.BEHAVIOR}>Behavior</TabsTrigger>
                 <TabsTrigger value={FORM_TAB.ADVANCED}>Advanced</TabsTrigger>
                 <TabsTrigger value={FORM_TAB.TOOLS}>Tools</TabsTrigger>
               </TabsList>
@@ -722,7 +724,7 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                               <SelectContent>
                                 {sttConfigs.map((config) => (
                                   <SelectItem key={config.id} value={config.id}>
-                                    {config.display_name}
+                                    {getVoiceProviderLabel('stt', config.provider)}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
@@ -807,7 +809,7 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                               <SelectContent>
                                 {ttsConfigs.map((config) => (
                                   <SelectItem key={config.id} value={config.id}>
-                                    {config.display_name}
+                                    {getVoiceProviderLabel('tts', config.provider)}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
@@ -880,7 +882,7 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                             <SelectContent>
                               {telephonyConfigs.map((config) => (
                                 <SelectItem key={config.id} value={config.id}>
-                                  {config.display_name}
+                                  {getTelephonyProviderConfig(config.provider as TelephonyProvider).name}
                                 </SelectItem>
                               ))}
                             </SelectContent>

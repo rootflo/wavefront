@@ -1,12 +1,25 @@
 import { IApiResponse } from '@app/lib/axios';
 
 /**
- * Voice Agent entity interface
+ * Compact voice agent fields for table / list views.
+ * Full prompts, params, and config IDs are omitted — fetch VoiceAgent for those.
  */
-export interface VoiceAgent {
+export interface VoiceAgentListItem {
   id: string;
   name: string;
   description: string | null;
+  status: 'active' | 'inactive';
+  supported_languages: string[];
+  default_language: string;
+  is_deleted: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Full voice agent entity (edit / operations / runtime).
+ */
+export interface VoiceAgent extends VoiceAgentListItem {
   llm_config_id: string;
   tts_config_id: string;
   stt_config_id: string;
@@ -17,14 +30,8 @@ export interface VoiceAgent {
   tts_parameters: Record<string, unknown> | null;
   stt_parameters: Record<string, unknown> | null;
   conversation_config: Record<string, unknown> | null;
-  status: 'active' | 'inactive';
   inbound_numbers: string[];
   outbound_numbers: string[];
-  supported_languages: string[];
-  default_language: string;
-  is_deleted: boolean;
-  created_at: string;
-  updated_at: string;
 }
 
 /**
@@ -87,7 +94,7 @@ export interface VoiceAgentData {
  * Response data for list operations
  */
 export interface VoiceAgentListData {
-  voice_agents: VoiceAgent[];
+  voice_agents: VoiceAgentListItem[];
 }
 
 /**
@@ -122,3 +129,18 @@ export interface VoiceAgentRoomAgent {
 }
 
 export type VoiceAgentRoomResponse = IApiResponse<VoiceAgentRoom>;
+
+/** Options for creating a browser (WebRTC) room — mirrors CreateWebRTCRoomPayload. */
+export interface CreateVoiceAgentRoomRequest {
+  /** Narrow hot-swap allowlist to these active agents (initial agent always included). Omit for all active. */
+  allowed_agent_ids?: string[];
+  /**
+   * When true, the app drives language via room context (set_context.language);
+   * agent language-switching rules/tool are disabled. Default false.
+   */
+  room_context_handles_language?: boolean;
+  /**
+   * When swapping agents, carry conversation history to the new agent. Default true.
+   */
+  carry_history_on_swap?: boolean;
+}

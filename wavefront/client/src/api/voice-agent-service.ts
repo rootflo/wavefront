@@ -1,6 +1,7 @@
 import { IApiResponse } from '@app/lib/axios';
 import {
   CreateVoiceAgentRequest,
+  CreateVoiceAgentRoomRequest,
   UpdateVoiceAgentRequest,
   VoiceAgent,
   VoiceAgentData,
@@ -21,8 +22,11 @@ export class VoiceAgentService {
     return response;
   }
 
+  /** Full agent detail (prompts, config IDs, TTS/STT params). Use before edit or operations. */
   async getVoiceAgent(agentId: string): Promise<VoiceAgentDetailResponse> {
-    const response: IApiResponse<VoiceAgent> = await this.http.get(`/v1/:appId/floware/v1/voice-agents/${agentId}`);
+    const response: IApiResponse<VoiceAgent> = await this.http.get(
+      `/v1/:appId/floware/v1/voice-agents/${agentId}/details`
+    );
     return response;
   }
 
@@ -55,9 +59,10 @@ export class VoiceAgentService {
   }
 
   /** Create a browser (WebRTC) room for an active voice agent. */
-  async createRoom(agentId: string): Promise<VoiceAgentRoomResponse> {
+  async createRoom(agentId: string, options?: CreateVoiceAgentRoomRequest): Promise<VoiceAgentRoomResponse> {
     const response: IApiResponse<VoiceAgentRoom> = await this.http.post(
-      `/v1/:appId/floware/v1/voice-agents/${agentId}/rooms`
+      `/v1/:appId/floware/v1/voice-agents/${agentId}/rooms`,
+      options ?? {}
     );
     return response;
   }

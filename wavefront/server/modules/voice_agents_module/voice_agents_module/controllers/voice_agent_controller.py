@@ -130,10 +130,11 @@ async def list_voice_agents(
     ),
 ):
     """
-    List all voice agents
+    List voice agents (table/summary fields only).
 
-    Returns:
-        JSONResponse: List of all voice agents
+    Omits prompts, TTS/STT parameters, and config IDs. Use
+    ``GET /v1/voice-agents/{agent_id}`` (or ``.../details``) for the full
+    agent payload needed by edit and operations flows.
     """
     agents_data = await voice_agent_service.list_agents()
 
@@ -144,6 +145,7 @@ async def list_voice_agents(
 
 
 @voice_agent_router.get('/v1/voice-agents/{agent_id}')
+@voice_agent_router.get('/v1/voice-agents/{agent_id}/details')
 @inject
 async def get_voice_agent(
     agent_id: UUID = Path(..., description='The ID of the voice agent'),
@@ -155,13 +157,10 @@ async def get_voice_agent(
     ),
 ):
     """
-    Get a single voice agent by ID
+    Get full details for a single voice agent.
 
-    Args:
-        agent_id: UUID of the voice agent to retrieve
-
-    Returns:
-        JSONResponse: Voice agent details
+    Includes prompts, config IDs, TTS/STT parameters, and conversation config.
+    Prefer this over the list endpoint before edit or call operations.
     """
     agent_dict = await voice_agent_service.get_agent(agent_id)
 

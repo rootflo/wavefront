@@ -12,6 +12,8 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
+import { Checkbox } from '@app/components/ui/checkbox';
+import { Label } from '@app/components/ui/label';
 import { Textarea } from '@app/components/ui/textarea';
 import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
@@ -31,10 +33,10 @@ const createToolSchema = z.object({
     .regex(/^[a-z_][a-z0-9_]*$/, 'Name must follow Python function naming (lowercase, underscores, no spaces)'),
   display_name: z.string().min(1, 'Display name is required').max(255, 'Display name must be 255 characters or less'),
   description: z.string().min(1, 'Description is required'),
-  tool_type: z.enum(['api', 'python']),
+  tool_type: z.enum(['api', 'python', 'app']),
   // API Config fields
   method: z.enum(HTTP_METHODS).optional(),
-  url: z.string().url('Must be a valid URL').optional(),
+  url: z.string().url('Must be a valid URL').optional().or(z.literal('')),
   timeout: z.number().min(1).max(300).optional(),
   auth_type: z.enum(AUTH_TYPES).optional(),
   auth_token: z.string().optional(),
@@ -42,6 +44,9 @@ const createToolSchema = z.object({
   api_key_value: z.string().optional(),
   basic_username: z.string().optional(),
   basic_password: z.string().optional(),
+  // App Config fields
+  ack_timeout_s: z.number().gt(0).max(30).optional(),
+  speak_on_success: z.boolean().optional(),
   // Parameter schema as JSON string
   parameter_schema: z.string().optional(),
 });
@@ -74,6 +79,8 @@ const CreateToolDialog: React.FC<CreateToolDialogProps> = ({ isOpen, onOpenChang
       api_key_value: '',
       basic_username: '',
       basic_password: '',
+      ack_timeout_s: 4,
+      speak_on_success: false,
       parameter_schema: '',
     },
   });
@@ -95,6 +102,11 @@ const CreateToolDialog: React.FC<CreateToolDialogProps> = ({ isOpen, onOpenChang
       let parameterSchema: any = undefined;
 
       if (data.tool_type === 'api') {
+        if (!data.url?.trim()) {
+          notifyError('API URL is required');
+          setLoading(false);
+          return;
+        }
         const authCredentials: Record<string, string> = {};
         if (data.auth_type === 'bearer' && data.auth_token) {
           authCredentials.token = data.auth_token;
@@ -112,6 +124,11 @@ const CreateToolDialog: React.FC<CreateToolDialogProps> = ({ isOpen, onOpenChang
           timeout: data.timeout || 30,
           auth_type: data.auth_type || 'none',
           auth_credentials: Object.keys(authCredentials).length > 0 ? authCredentials : undefined,
+        };
+      } else if (data.tool_type === 'app') {
+        config = {
+          ack_timeout_s: data.ack_timeout_s ?? 4,
+          speak_on_success: data.speak_on_success ?? false,
         };
       }
 
@@ -220,6 +237,7 @@ const CreateToolDialog: React.FC<CreateToolDialogProps> = ({ isOpen, onOpenChang
                       </FormControl>
                       <SelectContent>
                         <SelectItem value="api">API Tool</SelectItem>
+                        <SelectItem value="app">App Tool</SelectItem>
                         <SelectItem value="python" disabled>
                           Python Tool (Coming Soon)
                         </SelectItem>
@@ -396,6 +414,58 @@ const CreateToolDialog: React.FC<CreateToolDialogProps> = ({ isOpen, onOpenChang
                     />
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* App Configuration */}
+            {watchToolType === 'app' && (
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">App Configuration</h3>
+                <p className="frost-text-muted text-sm">
+                  Handled by the browser app — the agent emits an event instead of making an HTTP call.
+                </p>
+
+                <FormField
+                  control={form.control}
+                  name="ack_timeout_s"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Ack timeout (seconds)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          min={0.1}
+                          max={30}
+                          {...field}
+                          onChange={(e) => field.onChange(parseFloat(e.target.value) || 4)}
+                        />
+                      </FormControl>
+                      <p className="frost-text-muted text-xs">How long to wait for the app to acknowledge the event</p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="speak_on_success"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-start gap-3 space-y-0 rounded-md border p-3">
+                      <FormControl>
+                        <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                        <Label className="cursor-pointer font-medium" onClick={() => field.onChange(!field.value)}>
+                          Speak on success
+                        </Label>
+                        <p className="frost-text-muted text-xs">
+                          Let the agent speak after a successful call. Off by default so the app can open the next turn.
+                        </p>
+                      </div>
+                    </FormItem>
+                  )}
+                />
               </div>
             )}
 
