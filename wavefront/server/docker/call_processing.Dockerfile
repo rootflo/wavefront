@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y \
 COPY wavefront/server/pyproject.toml wavefront/server/uv.lock ./
 
 COPY wavefront/server/modules/common_module /app/modules/common_module
+COPY wavefront/server/packages/flo_lib /app/packages/flo_lib
 
 COPY wavefront/server/apps/call_processing /app/apps/call_processing
 
