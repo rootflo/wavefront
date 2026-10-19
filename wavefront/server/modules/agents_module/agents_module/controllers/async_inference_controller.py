@@ -17,6 +17,7 @@ from agents_module.services.workflow_crud_service import WorkflowCrudService
 from agents_module.models.agent_schemas import AgentInferenceRequest
 from agents_module.models.workflow_schemas import WorkflowInferenceRequest
 from agents_module.utils.auth_utils import extract_auth_credentials
+from agents_module.utils.celery_backpressure import QueueBackpressure
 from agents_module.utils.input_processing_utils import validate_inference_inputs_media
 from agents_module.utils.validation_utils import validate_variable_filters
 from user_management_module.utils.user_utils import check_is_admin
@@ -52,6 +53,33 @@ def _extract_variable_filters(request: Request) -> Dict[str, str]:
         for key, value in request.query_params.items()
         if key.startswith(VARIABLE_FILTER_PREFIX)
     }
+
+
+def _queue_saturated_json(
+    response_formatter: ResponseFormatter,
+    retry_after: int,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content=response_formatter.buildErrorResponse(
+            'Execution queue is saturated. Please retry shortly.'
+        ),
+        headers={'Retry-After': str(retry_after)},
+    )
+
+
+async def _queue_saturated_response(
+    async_agentic_execution_service: AsyncAgenticExecutionService,
+    response_formatter: ResponseFormatter,
+) -> Optional[JSONResponse]:
+    """A 429 when the broker queue is over its limit, otherwise None."""
+    if not await async_agentic_execution_service.queue_is_saturated():
+        return None
+
+    return _queue_saturated_json(
+        response_formatter,
+        async_agentic_execution_service.backpressure_retry_after_seconds,
+    )
 
 
 async def _may_see_error(request: Request, show_error: bool) -> bool:
@@ -107,6 +135,13 @@ async def async_agent_inference(
     # plus a stored blob and a failed execution.
     validate_inference_inputs_media(payload.inputs)
 
+    # Before any I/O, so a refusal leaves no blob or row behind.
+    queue_full = await _queue_saturated_response(
+        async_agentic_execution_service, response_formatter
+    )
+    if queue_full is not None:
+        return queue_full
+
     # Resolve the concrete version now (rejecting a missing/deleted explicit
     # version) so the enqueued job runs the version observed by this request,
     # not whatever is current when the worker later picks it up.
@@ -144,6 +179,10 @@ async def async_agent_inference(
             llm_config=llm_config,
             version=resolved_version,
         )
+    except QueueBackpressure as e:
+        # The queue filled up after the pre-check above.
+        logger.warning(f'Refusing inference at enqueue: {e}')
+        return _queue_saturated_json(response_formatter, e.retry_after)
     except ValueError as e:
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -192,6 +231,12 @@ async def async_workflow_inference(
 
     validate_inference_inputs_media(payload.inputs)
 
+    queue_full = await _queue_saturated_response(
+        async_agentic_execution_service, response_formatter
+    )
+    if queue_full is not None:
+        return queue_full
+
     try:
         workflow_data = await workflow_crud_service.get_workflow(
             workflow_id, version=version
@@ -214,6 +259,9 @@ async def async_workflow_inference(
             app_key=app_key,
             version=workflow_data.get('version'),
         )
+    except QueueBackpressure as e:
+        logger.warning(f'Refusing inference at enqueue: {e}')
+        return _queue_saturated_json(response_formatter, e.retry_after)
     except ValueError as e:
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

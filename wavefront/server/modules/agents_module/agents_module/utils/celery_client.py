@@ -3,6 +3,8 @@ from typing import Any
 
 from celery import Celery
 
+from agents_module.utils.celery_settings import CeleryProducerSettings
+
 DEFAULT_QUEUE_NAME = 'celery'
 _QUEUE_NAME_RE = re.compile(r'[A-Za-z0-9_.:-]+')
 
@@ -38,8 +40,19 @@ def celery_unacked_keys(name: Any) -> dict[str, str]:
     }
 
 
-def build_celery_client(broker_url: str, queue_name: Any = None) -> Celery:
+def build_celery_client(
+    broker_url: str,
+    queue_name: Any = None,
+    settings: CeleryProducerSettings | None = None,
+) -> Celery:
     # queue_name must match the worker's; it separates apps sharing one Redis.
-    app = Celery('async_executor', broker=broker_url)
+    # set_as_current=False: this app is also built inside the worker, and the
+    # default would replace the worker's own app.
+    app = Celery('async_executor', broker=broker_url, set_as_current=False)
     app.conf.task_default_queue = celery_queue_key(queue_name)
+    timeout = (settings or CeleryProducerSettings()).broker_socket_timeout_seconds
+    app.conf.broker_transport_options = {
+        'socket_timeout': timeout,
+        'socket_connect_timeout': timeout,
+    }
     return app

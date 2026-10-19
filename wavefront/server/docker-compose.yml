@@ -10,18 +10,28 @@ services:
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=floware
     ports:
-      - '5432:5432'
+      - "5432:5432"
     volumes:
       - /var/lib/postgres-data:/var/lib/postgresql/data
       - /var/lib/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - floware-network
 
+  # Celery broker and floware cache. noeviction so queued tasks are never
+  # evicted; at the cap, writes fail and reads keep working.
   redis:
     image: redis:7.4
     container_name: redis
     security_opt:
       - no-new-privileges:true
+    command:
+      - redis-server
+      - --maxmemory
+      - ${REDIS_MAXMEMORY:-2gb}
+      - --maxmemory-policy
+      - noeviction
+      - --maxmemory-clients
+      - ${REDIS_MAXMEMORY_CLIENTS:-5%}
     ports:
       - "6379:6379"
     networks:
@@ -44,7 +54,7 @@ services:
       - SQS_ENDPOINT_STRATEGY=path
       - LOCALSTACK_HOST=localhost:4566
     ports:
-      - '4566:4566'
+      - "4566:4566"
     volumes:
       - localstack-data:/persisted-data
     networks:
