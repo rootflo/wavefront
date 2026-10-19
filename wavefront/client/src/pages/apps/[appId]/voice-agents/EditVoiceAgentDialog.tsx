@@ -65,7 +65,7 @@ const updateVoiceAgentSchema = z.object({
   telephony_config_id: z.string().min(1, 'Telephony configuration is required'),
   tts_voice_ids: z.record(z.string(), z.string()).optional(),
   system_prompt: z.string().min(1, 'System prompt is required'),
-  welcome_message: z.string().optional().default(''),
+  welcome_message: z.string(),
   conversation_config: z.string().optional(),
   status: z.enum(['active', 'inactive']),
   inbound_numbers: z.string().optional(),

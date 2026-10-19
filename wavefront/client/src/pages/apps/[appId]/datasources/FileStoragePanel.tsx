@@ -283,7 +283,8 @@ const FileStoragePanel: React.FC<FileStoragePanelProps> = ({ datasourceId }) => 
     try {
       const response = await floConsoleService.datasourcesService.downloadFile(datasourceId, entry.relative_path);
       const blob = response.data;
-      const contentType = mimeTypeOf(response.headers?.['content-type'], blob.type);
+      const headerContentType = response.headers?.['content-type'];
+      const contentType = mimeTypeOf(typeof headerContentType === 'string' ? headerContentType : undefined, blob.type);
       const kind = previewKindFor(contentType);
 
       if (kind === 'image' || kind === 'video') {

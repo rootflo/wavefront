@@ -78,7 +78,7 @@ const createVoiceAgentSchema = z.object({
       message: 'At least one voice ID is required',
     }),
   system_prompt: z.string().min(1, 'System prompt is required'),
-  welcome_message: z.string().optional().default(''),
+  welcome_message: z.string(),
   conversation_config: z.string().optional(),
   status: z.enum(['active', 'inactive']),
   inbound_numbers: z.string().optional(),
