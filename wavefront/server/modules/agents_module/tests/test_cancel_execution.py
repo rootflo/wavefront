@@ -227,6 +227,17 @@ async def test_db_failure_after_removal_is_reported_as_incomplete():
     service.cache.add.assert_not_called()
 
 
+async def test_status_read_cannot_overwrite_a_cancel_already_in_the_cache():
+    record = _record()
+    service, repo = _service(record)
+    repo.find_one.return_value = _cancelled_row(record)
+    service.cache.get_str.return_value = None
+
+    await service.get_execution_status(record.id)
+
+    assert service.cache.add.call_args.kwargs == {'nx': True}
+
+
 async def test_row_no_longer_pending_after_removal_leaves_the_cache_alone():
     record = _record()
     service, repo = _service(record)

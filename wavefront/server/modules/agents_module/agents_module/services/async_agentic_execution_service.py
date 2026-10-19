@@ -616,7 +616,10 @@ class AsyncAgenticExecutionService:
             if status in ('completed', 'failed', 'cancelled')
             else _STATUS_CACHE_TTL_ACTIVE
         )
-        await asyncio.to_thread(self.cache.add, cache_key, json.dumps(record_dict), ttl)
+        # nx: a value written since the read (e.g. by cancel) is newer than ours.
+        await asyncio.to_thread(
+            self.cache.add, cache_key, json.dumps(record_dict), ttl, nx=True
+        )
 
         return self._build_status_response(record_dict, include_error=include_error)
 
