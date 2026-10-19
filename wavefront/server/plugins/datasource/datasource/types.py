@@ -52,6 +52,41 @@ class DataSourceType(str, Enum):
     SQLITE = 'sqlite'
 
 
+FILE_STORAGE_TYPES: frozenset[DataSourceType] = frozenset(
+    {
+        DataSourceType.AWS_S3,
+        DataSourceType.GCS,
+        DataSourceType.AZURE_BLOB_STORAGE,
+    }
+)
+
+
+def is_file_storage_type(datasource_type: str | DataSourceType | None) -> bool:
+    """True for object-storage datasources (upload/download), not SQL ones."""
+    try:
+        return DataSourceType(datasource_type) in FILE_STORAGE_TYPES
+    except ValueError:
+        return False
+
+
+class FileStorageABC(ABC):
+    @abstractmethod
+    async def test_connection(self) -> bool:
+        pass
+
+    @abstractmethod
+    def upload_file(
+        self, file_content: bytes, path: str, content_type: Optional[str] = None
+    ) -> str:
+        """Store ``file_content`` at ``path``; return its full URI."""
+        pass
+
+    @abstractmethod
+    def download_file(self, path: str) -> bytes:
+        """Return the bytes at ``path`` (a full URI or a key)."""
+        pass
+
+
 class DataSourceABC(ABC):
     @abstractmethod
     async def test_connection(self) -> bool:

@@ -139,6 +139,14 @@ class TestFeatureFlag:
         assert audit_repository.create_all.await_count == 1
         assert notification_repository.create.await_count == 1
 
+    async def test_download_is_audited_but_not_published(
+        self, service, audit_repository, notification_repository, flag_on
+    ):
+        await _record(service, [_entry()], operation='download')
+
+        assert audit_repository.create_all.await_count == 1
+        notification_repository.create.assert_not_awaited()
+
     async def test_audit_service_without_notification_service_still_records(
         self, audit_repository, flag_on
     ):
@@ -553,6 +561,13 @@ class TestTitle:
         title = _published(notification_repository)['title']
         assert title.endswith('…')
         assert len(title) < 100
+
+    async def test_upload_counts_files(self, service, notification_repository, flag_on):
+        await _record(service, [_entry(table_name='docs/a.pdf')], operation='upload')
+
+        assert _published(notification_repository)['title'] == (
+            '1 file uploaded to docs/a.pdf'
+        )
 
     async def test_unknown_operation_falls_back_instead_of_raising(
         self, service, notification_repository, flag_on

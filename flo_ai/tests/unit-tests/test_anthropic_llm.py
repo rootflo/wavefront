@@ -350,11 +350,28 @@ class TestAnthropic:
         """Test format_image_in_message method."""
         llm = Anthropic()
 
-        # This method is not implemented yet
-        image = ImageMessageContent(url='https://example.com/image.jpg')
-
-        with pytest.raises(NotImplementedError):
-            llm.format_image_in_message(image)
+        assert llm.format_image_in_message(
+            ImageMessageContent(url='https://example.com/image.jpg')
+        ) == [
+            {
+                'type': 'image',
+                'source': {'type': 'url', 'url': 'https://example.com/image.jpg'},
+            }
+        ]
+        assert llm.format_image_in_message(
+            ImageMessageContent(bytes=b'png', mime_type='image/png')
+        ) == [
+            {
+                'type': 'image',
+                'source': {
+                    'type': 'base64',
+                    'media_type': 'image/png',
+                    'data': 'cG5n',
+                },
+            }
+        ]
+        with pytest.raises(ValueError, match='mime type'):
+            llm.format_image_in_message(ImageMessageContent(base64='cG5n'))
 
     @pytest.mark.asyncio
     async def test_anthropic_generate_error_handling(self):

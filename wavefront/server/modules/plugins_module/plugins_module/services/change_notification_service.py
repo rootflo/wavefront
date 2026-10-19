@@ -53,7 +53,11 @@ _VERBS = {
     'insert': ('inserted', 'into'),
     'update': ('updated', 'in'),
     'delete': ('deleted', 'from'),
+    'upload': ('uploaded', 'to'),
 }
+
+# Operations whose audit entries are files (table_name holds the key), not rows.
+_FILE_OPERATIONS = frozenset({'upload'})
 
 # The table name is the caller's and its column allows 512 characters. The title
 # column is an unbounded String, so this is about keeping a feed readable rather
@@ -260,7 +264,8 @@ class ChangeNotificationService:
         Denormalized on purpose: a feed should be renderable without unpacking
         the payload, and a client that wants to localize builds its own string.
         """
-        noun = '1 row' if total_rows == 1 else f'{total_rows} rows'
+        unit = 'file' if operation in _FILE_OPERATIONS else 'row'
+        noun = f'1 {unit}' if total_rows == 1 else f'{total_rows} {unit}s'
         # An operation outside the known set still produces a usable title. This
         # runs on a best-effort path after a committed mutation, so a KeyError
         # here must not be what loses the notification.

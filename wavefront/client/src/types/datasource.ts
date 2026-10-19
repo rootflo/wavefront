@@ -26,6 +26,15 @@ export interface UpdateDatasourceRequest {
 
 export type TestDatasourceData = boolean;
 
+export interface UploadDatasourceFileData {
+  /** datasource://<datasource_id>/<key> */
+  path: string;
+  /** Provider URI of the stored object, e.g. s3://bucket/key */
+  storage_uri: string;
+}
+
+export type UploadDatasourceFileResponse = IApiResponse<UploadDatasourceFileData>;
+
 export interface DatasourceData {
   status: 'success' | 'error';
   data: {

@@ -2,8 +2,11 @@ from .types import (
     BooleanResult,
     DataSourceABC,
     DataSourceType,
+    FILE_STORAGE_TYPES,
+    FileStorageABC,
     TableListResult,
     QueryResult,
+    is_file_storage_type,
 )
 from dataclasses import replace
 from typing import Any, Optional, List, Dict
@@ -18,8 +21,39 @@ from .dialect import RedshiftSqlDialect
 from .redshift import RedshiftPlugin, RedshiftConfig
 from .postgres import PostgresPlugin, PostgresConfig
 from .mssql import MSSQLPlugin, MSSQLConfig
+from .file_storage import (
+    AzureBlobStorageConfig,
+    FileStorageConfig,
+    FileStoragePlugin,
+    build_datasource_uri,
+    split_datasource_uri,
+    GCSFileStorageConfig,
+    S3FileStorageConfig,
+    build_file_storage_config,
+)
 from .helper import construct_meta
 from .odata_parser import ODataQueryParser
+
+
+__all__ = [
+    'AzureBlobStorageConfig',
+    'BigQueryConfig',
+    'DataSourceType',
+    'DatasourcePlugin',
+    'FILE_STORAGE_TYPES',
+    'FileStorageABC',
+    'FileStorageConfig',
+    'FileStoragePlugin',
+    'build_datasource_uri',
+    'split_datasource_uri',
+    'GCSFileStorageConfig',
+    'MSSQLConfig',
+    'PostgresConfig',
+    'RedshiftConfig',
+    'S3FileStorageConfig',
+    'build_file_storage_config',
+    'is_file_storage_type',
+]
 
 
 class DatasourcePlugin:
@@ -33,6 +67,11 @@ class DatasourcePlugin:
         self.datasource = self.__get_datasource()
 
     def __get_datasource(self) -> DataSourceABC:
+        if is_file_storage_type(self.datasource_type):
+            raise ValueError(
+                f'{self.datasource_type} is a file storage datasource; '
+                'use FileStoragePlugin instead of DatasourcePlugin'
+            )
         if self.datasource_type == DataSourceType.AWS_REDSHIFT:
             self.odata_parser = ODataQueryParser(
                 type='sql',

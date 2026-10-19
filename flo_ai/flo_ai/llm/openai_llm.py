@@ -8,7 +8,7 @@ from .base_llm import (
     split_request_kwargs,
 )
 from flo_ai.models.chat_message import DocumentMessageContent, ImageMessageContent
-from flo_ai.tool.base_tool import Tool
+from .openai_tool_calling import OpenAIToolCallingMixin
 from flo_ai.telemetry.instrumentation import (
     trace_llm_call,
     trace_llm_stream,
@@ -19,7 +19,7 @@ from flo_ai.telemetry import get_tracer
 from opentelemetry import trace
 
 
-class OpenAI(BaseLLM):
+class OpenAI(OpenAIToolCallingMixin, BaseLLM):
     provider_name = 'openai'
 
     def __init__(
@@ -89,13 +89,7 @@ class OpenAI(BaseLLM):
         if output_schema:
             # Convert output_schema to OpenAI format for structured output
             kwargs['response_format'] = {'type': 'json_object'}
-            kwargs['functions'] = [
-                {
-                    'name': output_schema.get('title', 'default'),
-                    'parameters': output_schema.get('schema', output_schema),
-                }
-            ]
-            kwargs['function_call'] = {'name': output_schema.get('title', 'default')}
+            kwargs.update(self._tool_request_kwargs(None, output_schema))
 
             # Add JSON format instruction to the system prompt
             if messages and messages[0]['role'] == 'system':
@@ -112,14 +106,13 @@ class OpenAI(BaseLLM):
                     },
                 )
         elif functions:
-            # Use functions for tool calling when output_schema is not provided
-            kwargs['functions'] = functions
+            kwargs.update(self._tool_request_kwargs(functions))
 
         # Prepare OpenAI API parameters
         openai_kwargs = self._create_kwargs(
             {
                 'model': self.model,
-                'messages': messages,
+                'messages': self._to_tool_messages(messages),
                 'temperature': self.temperature,
                 **flatten_extra_body(self.kwargs),
                 **flatten_extra_body(kwargs),
@@ -169,7 +162,7 @@ class OpenAI(BaseLLM):
         openai_kwargs = self._create_kwargs(
             {
                 'model': self.model,
-                'messages': messages,
+                'messages': self._to_tool_messages(messages),
                 'temperature': self.temperature,
                 'stream': True,
                 **flatten_extra_body(self.kwargs),
@@ -177,8 +170,7 @@ class OpenAI(BaseLLM):
             }
         )
 
-        if functions:
-            openai_kwargs['functions'] = functions
+        openai_kwargs.update(self._tool_request_kwargs(functions))
 
         # Stream the API call and yield content deltas
         response = await self.client.chat.completions.create(**openai_kwargs)
@@ -198,33 +190,6 @@ class OpenAI(BaseLLM):
         if hasattr(response, 'content') and response.content is not None:
             return str(response.content)
         return ''
-
-    def format_tool_for_llm(self, tool: 'Tool') -> Dict[str, Any]:
-        """Format a single tool for OpenAI's API"""
-        return {
-            'name': tool.name,
-            'description': tool.description,
-            'parameters': {
-                'type': 'object',
-                'properties': {
-                    name: {
-                        'type': info['type'],
-                        'description': info['description'],
-                        **(
-                            {'items': info['items']}
-                            if info.get('type') == 'array' and 'items' in info
-                            else {}
-                        ),
-                    }
-                    for name, info in tool.parameters.items()
-                },
-                'required': list(tool.parameters.keys()),
-            },
-        }
-
-    def format_tools_for_llm(self, tools: List['Tool']) -> List[Dict[str, Any]]:
-        """Format tools for OpenAI's API"""
-        return [self.format_tool_for_llm(tool) for tool in tools]
 
     async def _format_native_document(
         self, document: DocumentMessageContent

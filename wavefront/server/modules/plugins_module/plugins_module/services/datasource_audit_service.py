@@ -50,6 +50,9 @@ AUDIT_MAX_PAYLOAD_BYTES: Optional[int] = 256 * 1024  # 256 KiB of serialized row
 # that index.
 AUDIT_FILTER_MAX_CHARS = 512
 
+# Audited, but not changes: kept out of the change notification feed.
+READ_OPERATIONS = frozenset({'download'})
+
 # Held module-level: asyncio.create_task keeps only a weak reference to the task,
 # so one with no other referent can be garbage collected mid-await and vanish
 # silently. Keeping a strong reference until it finishes is the documented fix.
@@ -237,14 +240,18 @@ class DatasourceAuditService:
             # expire_on_commit at its default, so once create_all commits and
             # closes its session these records are expired and detached, and
             # reading .changes off one raises DetachedInstanceError.
-            notification = self._build_change_notification(
-                datasource_id=datasource_id,
-                datasource_type=datasource_type,
-                operation=operation,
-                actor=actor,
-                occurred_at=occurred_at,
-                batch_id=batch_id,
-                records=records,
+            notification = (
+                None
+                if operation in READ_OPERATIONS
+                else self._build_change_notification(
+                    datasource_id=datasource_id,
+                    datasource_type=datasource_type,
+                    operation=operation,
+                    actor=actor,
+                    occurred_at=occurred_at,
+                    batch_id=batch_id,
+                    records=records,
+                )
             )
 
             # create_all opens one session and commits once, so a multi-table

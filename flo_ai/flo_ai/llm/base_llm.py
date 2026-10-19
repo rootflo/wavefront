@@ -20,11 +20,13 @@ from flo_ai.utils.document_text_extraction import (
     EXTRACTABLE_DOCUMENT_MIME_TYPES,
     extract_document_text,
 )
+from flo_ai.utils.video_frames import sample_video_frames, video_to_bytes
 from flo_ai.utils.logger import logger
 from flo_ai.utils.profiler import aprofile, profile as _sync_profile
 from flo_ai.models.chat_message import (
     DocumentMessageContent,
     ImageMessageContent,
+    VideoMessageContent,
     MediaMessageContent,
 )
 
@@ -163,6 +165,9 @@ def file_name_text_block(media: MediaMessageContent) -> Optional[Dict[str, Any]]
 
 
 class BaseLLM(ABC):
+    # Frames sampled per video for providers without native video input.
+    video_max_frames: int = 8
+
     # Which provider's wire names this wrapper's request params use. Read when
     # translating canonical generation params; see llm.generation_params.
     provider_name: str = ''
@@ -265,6 +270,17 @@ class BaseLLM(ABC):
         """
         return None
 
+    def format_tool_call_message(
+        self, response: Any, function_call: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """The assistant turn that requested ``function_call``, as a whole message.
+
+        For providers whose tool result must reference the call it answers
+        (OpenAI's ``tool_call_id``). None falls back to
+        ``get_assistant_message_for_tool_call``.
+        """
+        return None
+
     def get_tool_use_id(self, function_call: Dict[str, Any]) -> Optional[str]:
         """
         Extract tool_use_id from function call if available.
@@ -362,6 +378,54 @@ class BaseLLM(ABC):
             document.file_name,
         )
         return self.format_text_content(text)
+
+    def format_image_block(self, mime_type: str, b64: str) -> Any:
+        """One inline image in this provider's content-block shape.
+
+        The default is the OpenAI Chat Completions ``image_url`` data URL.
+        """
+        return {
+            'type': 'image_url',
+            'image_url': {'url': f'data:{mime_type};base64,{b64}'},
+        }
+
+    async def format_video_in_message(self, video: VideoMessageContent) -> Any:
+        """Return provider-ready content for a video, cached per LLM class.
+
+        Providers with native video input (Gemini, Vertex) override
+        ``_format_native_video``. The default samples frames and sends them as
+        images, so any vision-capable model can see the video.
+        """
+        cache_key = type(self).__name__
+        cached = video._formatted_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        formatted = await self._format_native_video(video)
+        video._formatted_cache[cache_key] = formatted
+        return formatted
+
+    async def _format_native_video(self, video: VideoMessageContent) -> Any:
+        """Frames sampled across the video, as text-labelled image blocks.
+
+        The number of frames is the ``video_max_frames`` attribute.
+        """
+        frames = await asyncio.to_thread(
+            sample_video_frames, video_to_bytes(video), self.video_max_frames
+        )
+        name_block = file_name_text_block(video)
+        times = ', '.join(f'{seconds:.1f}s' for seconds, _ in frames)
+        return [
+            *([name_block] if name_block else []),
+            self.format_text_content(
+                f'Video shown as {len(frames)} frames sampled at {times}'
+            )[0],
+            *(
+                self.format_image_block(
+                    'image/png', _base64.b64encode(png).decode('utf-8')
+                )
+                for _, png in frames
+            ),
+        ]
 
     def format_text_content(self, text: str) -> Any:
         """Wrap plain text in this provider's content-block shape.

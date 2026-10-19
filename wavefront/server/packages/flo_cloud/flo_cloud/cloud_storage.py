@@ -18,7 +18,9 @@ class CloudStorageManager:
         if provider == CloudProvider.AWS:
             self.handler = S3Storage(**_filter_creds(credentials, _AWS_CREDENTIAL_KEYS))
         elif provider == CloudProvider.GCP:
-            self.handler = GCSStorage()
+            self.handler = GCSStorage(
+                **_filter_creds(credentials, _GCP_CREDENTIAL_KEYS)
+            )
         elif provider == CloudProvider.AZURE:
             self.handler = AzureBlobStorage(
                 **_filter_creds(credentials, _AZURE_CREDENTIAL_KEYS)
@@ -134,6 +136,11 @@ _AWS_CREDENTIAL_KEYS = (
     'aws_access_key_id',
     'aws_secret_access_key',
     'region_name',
+)
+_GCP_CREDENTIAL_KEYS = (
+    'credentials_path',
+    'credentials_info',
+    'project_id',
 )
 _AZURE_CREDENTIAL_KEYS = (
     'account_url',

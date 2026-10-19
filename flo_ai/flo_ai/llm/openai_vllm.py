@@ -65,7 +65,7 @@ class OpenAIVLLM(OpenAI):
         vllm_openai_kwargs = self._create_kwargs(
             {
                 'model': self.model,
-                'messages': messages,
+                'messages': self._to_tool_messages(messages),
                 'temperature': self.temperature,
                 **flatten_extra_body(self.kwargs),
                 **flatten_extra_body(kwargs),
@@ -90,7 +90,7 @@ class OpenAIVLLM(OpenAI):
         vllm_openai_kwargs = self._create_kwargs(
             {
                 'model': self.model,
-                'messages': messages,
+                'messages': self._to_tool_messages(messages),
                 'temperature': self.temperature,
                 'stream': True,
                 **flatten_extra_body(self.kwargs),
@@ -98,8 +98,7 @@ class OpenAIVLLM(OpenAI):
             }
         )
 
-        if functions:
-            vllm_openai_kwargs['functions'] = functions
+        vllm_openai_kwargs.update(self._tool_request_kwargs(functions))
         response = await self.client.chat.completions.create(**vllm_openai_kwargs)
         async for chunk in response:
             choices = getattr(chunk, 'choices', []) or []
