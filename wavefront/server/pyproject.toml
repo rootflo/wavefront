@@ -62,8 +62,8 @@ override-dependencies = [
     # 1.1.18 still caps google-genai<2. Remove once flo-ai widens that cap.
     "google-genai>=2.19.0,<3",
     # Pipecat 1.12 wants onnxruntime~=1.24.3, which dropped Intel macOS wheels.
-    # Pin the last x86_64 mac build on that platform only; Linux/arm64 keep 1.24.x.
     "onnxruntime==1.23.2 ; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "onnxruntime~=1.24.3 ; sys_platform != 'darwin' or platform_machine != 'x86_64'",
 ]
 
 # Security floors for packages that mostly arrive indirectly -- via flo-ai,
