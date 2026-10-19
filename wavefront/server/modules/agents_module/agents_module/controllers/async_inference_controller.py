@@ -11,6 +11,8 @@ from common_module.common_container import CommonContainer
 from agents_module.agents_container import AgentsContainer
 from agents_module.services.async_agentic_execution_service import (
     AsyncAgenticExecutionService,
+    CancellationIncomplete,
+    ExecutionNotCancellable,
 )
 from agents_module.services.agent_crud_service import AgentCrudService
 from agents_module.services.workflow_crud_service import WorkflowCrudService
@@ -18,6 +20,7 @@ from agents_module.models.agent_schemas import AgentInferenceRequest
 from agents_module.models.workflow_schemas import WorkflowInferenceRequest
 from agents_module.utils.auth_utils import extract_auth_credentials
 from agents_module.utils.celery_backpressure import QueueBackpressure
+from agents_module.utils.celery_broker import BrokerUnavailable
 from agents_module.utils.input_processing_utils import validate_inference_inputs_media
 from agents_module.utils.validation_utils import validate_variable_filters
 from user_management_module.utils.user_utils import check_is_admin
@@ -93,6 +96,11 @@ async def _may_see_error(request: Request, show_error: bool) -> bool:
     if not show_error:
         return False
 
+    return await _is_admin(request)
+
+
+async def _is_admin(request: Request) -> bool:
+    """No session means not an admin."""
     session = getattr(request.state, 'session', None)
     if session is None:
         return False
@@ -310,6 +318,66 @@ async def get_execution_status(
         content=response_formatter.buildSuccessResponse(
             {
                 'message': 'Execution status retrieved successfully',
+                'data': result.model_dump(mode='json'),
+            }
+        ),
+    )
+
+
+@async_router.post('/v1/agentic-executions/{execution_id}/cancel')
+@inject
+async def cancel_execution(
+    request: Request,
+    execution_id: UUID,
+    async_agentic_execution_service: AsyncAgenticExecutionService = Depends(
+        Provide[AgentsContainer.async_agentic_execution_service]
+    ),
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+):
+    """Admin only. Cancel a pending execution that no worker has picked up."""
+    if not await _is_admin(request):
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=response_formatter.buildErrorResponse('Admin access required'),
+        )
+
+    logger.info(f'Cancelling pending execution: {execution_id}')
+
+    try:
+        result = await async_agentic_execution_service.cancel_execution(execution_id)
+    except ValueError as e:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
+    except ExecutionNotCancellable as e:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
+    except BrokerUnavailable as e:
+        # Nothing changed; safe to retry.
+        logger.error(f'Failed to cancel execution {execution_id}: {e}')
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content=response_formatter.buildErrorResponse(
+                'Execution queue is unavailable. Please retry shortly.'
+            ),
+        )
+    except CancellationIncomplete as e:
+        # The task will not run, but the row wasn't updated. Not retryable.
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            {
+                'message': 'Execution cancelled successfully',
                 'data': result.model_dump(mode='json'),
             }
         ),
