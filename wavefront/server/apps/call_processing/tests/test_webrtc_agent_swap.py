@@ -7,7 +7,6 @@ disconnect the transport in production).
 """
 
 import asyncio
-import uuid
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 
@@ -275,10 +274,11 @@ def test_handoff_history_strips_overlay_tools_and_system():
 # ---------------------------------------------------------------- controller
 
 
-A_ID = str(uuid.uuid4())
-B_ID = str(uuid.uuid4())
-C_ID = str(uuid.uuid4())
-D_ID = str(uuid.uuid4())  # active_ids excludes it: not on the allowlist
+# Fixed UUIDs so pytest-xdist workers collect identical node ids.
+A_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+B_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+C_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+D_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'  # not on the allowlist
 
 
 class FakeMessenger:
