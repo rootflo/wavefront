@@ -1,0 +1,122 @@
+---
+title: "Dynamic queries"
+description: "Named, parameterised SQL saved on a datasource: the way to read data from workflows and applications"
+icon: "magnifying-glass"
+---
+
+A **dynamic query** is SQL you save on a datasource under an id, with named parameters, and run by that id. It is the standard way to read data in Wavefront: your application, workflows and agent tools run the same query by name, and the SQL stays on the server.
+
+One dynamic query can hold **several queries**, returning several result sets in one call. For example, a record, its line items and its history together.
+
+## Defining a query
+
+```yaml
+id: order_detail
+name: Order detail
+description: One order with its lines, for the order page and the review workflow
+queries:
+  - id: order
+    description: The order
+    query: >-
+      SELECT order_id, customer_id, amount, status, created_at
+      FROM orders
+      WHERE order_id = :order_id AND {{filters}}
+    parameters:
+      - name: order_id
+        type: string
+  - id: lines
+    description: Its lines
+    query: >-
+      SELECT sku, description, quantity, price
+      FROM order_lines
+      WHERE order_id = :order_id AND {{filters}}
+      ORDER BY line_no
+    parameters:
+      - name: order_id
+        type: string
+```
+
+| Key | |
+|---|---|
+| `id` | The query's id. **Unique across the app**, not just the datasource: choose ids that name what they return (`order_detail`, `orders_dashboard`) |
+| `name`, `description` | For humans; shown in the console |
+| `queries` | One or more entries, each with an `id`, a `description` and the SQL in `query` (all three required), plus `parameters`. Each entry becomes a result set; ids must be unique within the file |
+| `:name` | A parameter placeholder (PostgreSQL syntax). Every declared parameter is required when the query runs |
+| `{{filters}}` | Where an optional filter expression is inserted at run time; `TRUE` when none is given. Include it to let callers narrow results |
+| `{{rls}}` | Where the caller's **row-level data filters** are inserted for non-admin users (see [Users and access](/wavefront/users-and-access#data-permissions)); `TRUE` for admins |
+
+<Warning>
+Row-level data permissions are applied **only where a query contains `{{rls}}`**. A query without it returns every row it selects to any user allowed to run it. Put `AND {{rls}}` in the `WHERE` clause of every query that non-admin users run.
+</Warning>
+
+### Rules of thumb
+
+- **One query per screen or step.** A page that shows an order, its lines and its review is one dynamic query with three result sets: one round trip, one place to change.
+- **Aggregate in SQL.** Dashboards are best served by queries that return counts and sums, not rows to count in code.
+- **Add `ORDER BY`** to anything you paginate, so pages are stable.
+- **Select the columns you need.** Sensitive columns that a caller does not need should not leave the database.
+
+## Saving queries
+
+<Tabs>
+  <Tab title="Console">
+    Open the datasource. In its dynamic queries section, use **Create Dynamic Query**, or upload several YAML files at once. Each query has a **Download** action that exports its YAML, which is handy for keeping queries in git.
+  </Tab>
+  <Tab title="API">
+    ```bash
+    curl -X PUT "$APP/floware/v1/<datasource-id>/dynamic-queries" \
+      -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+      -d "$(jq -n --arg q "$(cat order_detail.yaml)" '{dynamic_query: $q}')"
+    ```
+    `PUT` creates or replaces the query with that `id`. Saving queries needs an admin user.
+  </Tab>
+</Tabs>
+
+## Running a query
+
+```bash
+curl -X POST "$APP/floware/v1/<datasource-id>/dynamic-queries/order_detail/execute?force_fetch=1" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"params": {"order_id": "O-1001"}}'
+```
+
+```json Response
+{
+  "meta": { "status": "success", "code": 1, "error": null },
+  "data": {
+    "order": { "status": "success", "error": null, "description": "…", "result": [ { "order_id": "O-1001", "amount": 250, … } ] },
+    "lines": { "status": "success", "error": null, "description": "…", "result": [ { "sku": "A-1", … }, { "sku": "B-7", … } ] }
+  }
+}
+```
+
+Each result set reports its own `status` and `error`; check them, because one query of several can fail while the others succeed.
+
+| Option | Where | Default | |
+|---|---|---|---|
+| `params` | body | | Values for the declared parameters |
+| `$filter` | query string | | A [filter expression](/wavefront/datasources#filters) inserted at `{{filters}}` |
+| `limit`, `offset` | query string | 100, 0 | Applied to **each** result set |
+| `force_fetch` | query string | 0 | Results are cached for 2 minutes per query, parameters and filter. Pass `1` to bypass the cache, for example right after a write |
+
+Pagination is added for you: `LIMIT … OFFSET …` is appended to each query, or, if the query already ends with its own top-level `LIMIT`, it is wrapped as a subquery and paginated outside.
+
+<Note>
+In a workflow, the [`datasource_execute_query`](/wavefront/function-nodes#datasource_execute_query) node defaults to **10** rows per result set and bypasses the cache. Prefill `limit` when you need more rows.
+</Note>
+
+### Exporting to CSV
+
+`POST /floware/v1/<datasource-id>/dynamic-queries/<id>/export` runs a query with the same options and returns CSV. Exports are limited to one every 5 seconds per user.
+
+## Other routes
+
+| Action | Request |
+|---|---|
+| List a datasource's queries | `GET /floware/v1/<datasource-id>/dynamic-queries` |
+| Get one | `GET /floware/v1/<datasource-id>/dynamic-queries/<id>` |
+| Delete | `DELETE /floware/v1/<datasource-id>/dynamic-queries/<id>` |
+
+## Access
+
+Admins can run every query. Other users need data permissions; their reads are narrowed to the data they are allowed to see. See [Users and access](/wavefront/users-and-access).

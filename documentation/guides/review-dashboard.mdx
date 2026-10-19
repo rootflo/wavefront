@@ -1,0 +1,96 @@
+---
+title: "Guide: a review dashboard and work lists"
+description: "Statuses, dashboards and work queues built from dynamic queries"
+icon: "chart-column"
+---
+
+Once records flow through a review workflow, people need to see them: a list with each record's current status, and a dashboard of the pipeline. This guide builds both from [dynamic queries](/wavefront/dynamic-queries), without a separate reporting system.
+
+## 1. Derive status in SQL, don't store it twice
+
+A record's status usually depends on what has happened to it: submitted, waiting for the customer, reviewed with a decision. Rather than updating a `status` column from several places, **derive** it when reading, from the record and its latest result:
+
+```yaml queries/records_list.yaml
+id: records_list
+name: Records with their current status
+queries:
+  - id: records
+    description: Every record with its latest review, newest first
+    query: >-
+      SELECT r.record_id, r.customer_name, r.amount, r.created_at,
+             rv.decision, rv.score, rv.created_at AS reviewed_at,
+             COALESCE(rv.decision,
+                      CASE WHEN r.customer_step_done THEN 'AWAITING_REVIEW' ELSE 'AWAITING_CUSTOMER' END
+             ) AS status
+      FROM records r
+      LEFT JOIN LATERAL (
+        SELECT decision, score, created_at FROM review_results x
+        WHERE x.record_id = r.record_id
+        ORDER BY created_at DESC LIMIT 1
+      ) rv ON TRUE
+      WHERE {{filters}} AND {{rls}}
+      ORDER BY r.created_at DESC
+```
+
+- `LEFT JOIN LATERAL … LIMIT 1` takes the **latest** result per record, so re-running a review simply adds a row and the status follows.
+- `{{rls}}` applies each user's [data permissions](/wavefront/users-and-access#data-permissions).
+- Callers can narrow the list with a filter, for example `$filter=status eq 'AWAITING_REVIEW'`.
+
+## 2. One query for the whole dashboard
+
+A dashboard is one dynamic query with several result sets: one round trip, and every number in one place. The SQL below is abbreviated where marked `…`; reuse the status derivation from step 1.
+
+```yaml queries/reviews_dashboard.yaml
+id: reviews_dashboard
+name: Reviews dashboard
+queries:
+  - id: status_summary
+    description: Records and amount per status
+    query: >-
+      WITH latest AS (…the status derivation above…)
+      SELECT status, COUNT(*) AS records, SUM(amount) AS amount
+      FROM latest WHERE {{filters}} GROUP BY status
+  - id: daily_activity
+    description: Submissions and reviews per day, last 30 days
+    query: >-
+      SELECT d::date AS day,
+             (SELECT COUNT(*) FROM records WHERE created_at::date = d::date) AS submitted,
+             (SELECT COUNT(*) FROM review_results WHERE created_at::date = d::date) AS reviewed
+      FROM generate_series(current_date - 29, current_date, interval '1 day') d
+      WHERE {{filters}} ORDER BY day
+  - id: top_reasons
+    description: Most frequent reasons on the latest reviews
+    query: >-
+      SELECT reason->>'code' AS code, reason->>'effect' AS effect, COUNT(*) AS records
+      FROM (…latest review per record…) rv, jsonb_array_elements(rv.reasons) reason
+      WHERE {{filters}} GROUP BY 1, 2 ORDER BY records DESC LIMIT 10
+  - id: attention_queue
+    description: Records waiting longest for a person
+    query: >-
+      SELECT record_id, customer_name, status, created_at
+      FROM (…the status derivation…) s
+      WHERE status IN ('REFERRED', 'AWAITING_REVIEW') AND {{filters}}
+      ORDER BY created_at LIMIT 10
+```
+
+Run it once per page load with `force_fetch=1`, or rely on the 2-minute cache for busy dashboards.
+
+## 3. What to show
+
+| Need | Show |
+|---|---|
+| "How many, and where are they stuck?" | A row of numbers: total, waiting for the customer, waiting for review, approval rate, average time to review |
+| Pipeline | A bar per status, in a fixed order, with status colours **and** labels |
+| Trend | Submissions and reviews per day, as two lines on one axis |
+| Why things are referred or declined | The top reasons, labelled in plain language |
+| What to do next | The attention queue, each row linking to the record |
+
+Keep statuses consistent everywhere: the same name, colour and label in the list, the dashboard and the record page.
+
+## 4. Lists
+
+For the record list, run `records_list` with `limit`/`offset` for paging and a `$filter` for the status tabs. Link each row to the record's page, where the decision, the evidence, an [audit timeline](/wavefront/audit-trail#building-a-records-history) and a [chat assistant](/guides/record-chat-assistant) sit together.
+
+<Tip>
+Dynamic queries return at most 100 rows per result set unless you pass a larger `limit`. Aggregate in SQL for dashboards rather than fetching rows to count in the browser.
+</Tip>

@@ -1,0 +1,122 @@
+---
+title: "Passing data between nodes"
+description: "input_filter, how agents and function nodes receive inputs, node_outputs, variables and prefilled parameters"
+icon: "arrow-right-arrow-left"
+---
+
+Each node chooses which earlier outputs it receives with `input_filter`, and receives them in a form that depends on the node type.
+
+## Choosing inputs with `input_filter`
+
+```yaml
+- name: decide
+  function_name: trigger_message_processor
+  input_filter: [load_record, review_agent]   # outputs of these two nodes only
+  prefilled_params:
+    message_processor_id: <function-id>
+```
+
+- List node names. `input` means the workflow's input messages.
+- Without `input_filter`, a node receives everything in memory so far.
+- The names are the names outputs are **stored** under: a node's `name`, and for a [referenced agent](/wavefront/workflows#referencing-saved-agents) the `agent.name` from its own YAML (not the `namespace/name` reference).
+
+## What an agent receives
+
+An agent's role and instructions are its system prompt; the selected outputs arrive as the messages of the conversation. A JSON output from an earlier node arrives as JSON text; images and documents produced by a [file download node](/wavefront/function-nodes#datasource_download_file) arrive as media the model can see.
+
+## What a function node receives
+
+A function node (any entry in `function_nodes`) turns its inputs into parameters:
+
+1. **Each selected message is parsed as JSON.** Messages that are not JSON (for example a plain-text workflow input) are skipped. The **last** selected message must be JSON, unless all the node's parameters are prefilled.
+2. **The parsed objects are merged, flat,** in the order the nodes ran; a later key overwrites an earlier one.
+3. **`node_outputs`** is added: every parsed payload grouped by the node that produced it, `{ "<node>": [payload, …] }`. A list, because a node can contribute several outputs (see [ForEach](/wavefront/routing-and-iteration#foreach)).
+4. **Variables** are merged over the inputs.
+5. **`prefilled_params`** are applied last and always win.
+
+So a function reading two upstream nodes can use either style:
+
+```js
+export default function (input) {
+  // flat: fields of the upstream outputs, merged
+  const total = input.total_amount;
+
+  // grouped: unambiguous when two nodes have fields with the same name
+  const record = input.node_outputs.load_record?.[0];
+  const review = input.node_outputs.review_agent?.[0];
+
+  // variables
+  const customer = input.customer_id;
+}
+```
+
+<Tip>
+Prefer `node_outputs` whenever a function reads more than one node. The flat merge silently overwrites fields that appear in both, such as `id` or `status`.
+</Tip>
+
+### Worked example
+
+With `input_filter: [triage, load_customer]`, where `triage` returned `{"category": "billing"}` and `load_customer` returned `{"customer": [{"id": "C-1", "plan": "Pro"}]}`, and the run has `variables: {"region": "EU"}`, a function receives:
+
+```json
+{
+  "category": "billing",
+  "customer": [{ "id": "C-1", "plan": "Pro" }],
+  "region": "EU",
+  "_wf_execution_id": "…",
+  "node_outputs": {
+    "triage": [{ "category": "billing" }],
+    "load_customer": [{ "customer": [{ "id": "C-1", "plan": "Pro" }] }]
+  }
+}
+```
+
+## Prefilled parameters
+
+`prefilled_params` fixes a function node's arguments in the YAML:
+
+```yaml
+- name: load_customer
+  function_name: datasource_execute_query
+  input_filter: [customer_params]
+  prefilled_params:
+    datasource_id: <datasource-id>
+    query_id: customer_detail
+```
+
+Here `datasource_id` and `query_id` are fixed, while `params` comes from the output of `customer_params`. A common pattern is a small [function](/wavefront/functions) that builds exactly the parameters the next node needs from variables and earlier outputs.
+
+## Turning variables into node inputs
+
+Variables are plain values. When a node needs a structured argument, such as the `params` object of a query, add a function as the first step:
+
+```yaml
+function_nodes:
+  - name: params
+    function_name: trigger_message_processor
+    prefilled_params: { message_processor_id: <function-id> }
+  - name: load_customer
+    function_name: datasource_execute_query
+    input_filter: [params]
+    prefilled_params: { datasource_id: <datasource-id>, query_id: customer_detail }
+```
+
+```js
+// the "params" function
+export default function (input) {
+  if (!input.customer_id) throw new Error('customer_id variable is required');
+  return { params: { customer_id: String(input.customer_id) } };
+}
+```
+
+When a workflow starts with a function node, send JSON as the run's input; `"{}"` is enough. A plain-text input is rejected by a function node.
+
+## What a node outputs
+
+| Node | Output |
+|---|---|
+| Agent with a parser | The JSON object |
+| Agent without a parser | Its text |
+| Function node | Whatever the function returns: a JSON string for most built-ins and your functions; media for a file download of an image or video |
+| Sub-workflow | The output of its last node only |
+| ForEach | The last item's result, or every item's result with `forward_all_results: true` |
