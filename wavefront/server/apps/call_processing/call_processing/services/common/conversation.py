@@ -231,6 +231,15 @@ class BaseConversation(ABC):
                 )
                 call_evaluation_tasks.append(t)
 
+        # WorkerRunner runs the worker in its own task and doesn't re-raise its
+        # errors, so they would never reach the except block around run().
+        @task.event_handler('on_pipeline_error')
+        async def on_pipeline_error(task, frame):
+            logger.error(
+                f"Pipeline error for agent {agent_config['name']}: {frame.error} "
+                f'(processor usable: {getattr(frame.processor, "is_usable", "n/a")})'
+            )
+
         @transport.event_handler('on_client_connected')
         async def on_client_connected(transport, client):
             logger.info(f"Client connected for agent: {agent_config['name']}")
