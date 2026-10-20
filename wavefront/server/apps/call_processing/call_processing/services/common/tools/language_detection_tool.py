@@ -33,8 +33,8 @@ class LanguageDetectionToolFactory:
         Create language detection tool function with captured context
 
         Args:
-            task_container: Dictionary containing PipelineTask (populated after task creation)
-                           Format: {'task': PipelineTask | None}
+            task_container: Dictionary containing PipelineWorker (populated after task creation)
+                           Format: {'task': PipelineWorker | None}
             tts_provider: TTS provider name (e.g. 'elevenlabs', 'azure')
             stt_provider: STT provider name (e.g. 'deepgram', 'azure')
             tts_voice_ids: Dict mapping language code -> voice ID for TTS

@@ -54,8 +54,8 @@ class ConversationCompletionToolFactory:
         Create conversation completion tool function with captured context
 
         Args:
-            task_container: Dictionary containing PipelineTask (populated after task creation)
-                           Format: {'task': PipelineTask | None}
+            task_container: Dictionary containing PipelineWorker (populated after task creation)
+                           Format: {'task': PipelineWorker | None}
 
         Returns:
             Async function compatible with Pipecat's function calling

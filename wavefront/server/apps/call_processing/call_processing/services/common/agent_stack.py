@@ -4,7 +4,7 @@ A browser (WebRTC) room can swap its voice agent mid-session. Everything that
 belongs to *one* agent (STT, LLM, TTS, system prompt, tools, conversation
 context and its aggregators, language state) lives in an ``AgentStack`` so a
 whole stack can be built off to the side and replaced while the transport, the
-``PipelineTask`` and the peer connection keep running.
+``PipelineWorker`` and the peer connection keep running.
 
 Everything that belongs to the *call* (stats, transcript, the task handle, the
 browser messenger) lives in ``SharedSession`` and outlives any single stack.
@@ -77,7 +77,7 @@ class SharedSession:
 
     call_stats: Dict[str, Any]
     transcript_log: List[Dict[str, Any]]
-    # {'task': PipelineTask}; filled once the task exists
+    # {'task': PipelineWorker}; filled once the task exists
     task_container: Dict[str, Any] = field(default_factory=lambda: {'task': None})
     # ClientSessionMessenger for browser sessions, else None
     messenger: Optional[Any] = None

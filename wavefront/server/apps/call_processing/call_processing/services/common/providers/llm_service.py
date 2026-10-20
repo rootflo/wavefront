@@ -15,7 +15,7 @@ from pipecat.services.groq.llm import GroqLLMService
 from pipecat.services.azure.llm import AzureLLMService
 # Add more as needed
 
-# Reasoning-model knob (gpt-5 / o-series) that InputParams has no field for;
+# Reasoning-model knob (gpt-5 / o-series) that Settings has no field for;
 # sent through ``extra``. A low effort keeps voice-turn latency down.
 OPENAI_EXTRA_PARAMS = ('reasoning_effort',)
 
@@ -84,7 +84,7 @@ class LLMServiceFactory:
     @staticmethod
     def _create_openai_llm(api_key: str, model: str, parameters: Dict[str, Any]):
         """Create OpenAI LLM service"""
-        # Build InputParams from the parameters dict
+        # Build Settings from the parameters dict
         params_dict = {}
 
         if 'temperature' in parameters:
@@ -102,17 +102,16 @@ class LLMServiceFactory:
         extra = _openai_extra_params(parameters)
         if extra:
             params_dict['extra'] = extra
-        if 'service_tier' in parameters:
-            params_dict['service_tier'] = parameters['service_tier']
-
-        # Create InputParams object
-        input_params = BaseOpenAILLMService.InputParams(**params_dict)
 
         logger.info(
             f"OpenAI LLM config: model={model}, temp={params_dict.get('temperature', 'default')}"
         )
 
-        return OpenAILLMService(api_key=api_key, model=model, params=input_params)
+        return OpenAILLMService(
+            api_key=api_key,
+            service_tier=parameters.get('service_tier'),
+            settings=OpenAILLMService.Settings(model=model, **params_dict),
+        )
 
     @staticmethod
     def _create_openai_compatible_llm(
@@ -137,20 +136,20 @@ class LLMServiceFactory:
         if extra:
             params_dict['extra'] = extra
 
-        input_params = BaseOpenAILLMService.InputParams(**params_dict)
-
         logger.info(
             f"OpenAI-compatible LLM config: model={model}, base_url={base_url}, temp={params_dict.get('temperature', 'default')}"
         )
 
         return BaseOpenAILLMService(
-            api_key=api_key, model=model, base_url=base_url, params=input_params
+            api_key=api_key,
+            base_url=base_url,
+            settings=BaseOpenAILLMService.Settings(model=model, **params_dict),
         )
 
     @staticmethod
     def _create_google_llm(api_key: str, model: str, parameters: Dict[str, Any]):
         """Create Google LLM service"""
-        # Build InputParams from the parameters dict
+        # Build Settings from the parameters dict
         params_dict = {}
 
         if 'temperature' in parameters:
@@ -170,19 +169,19 @@ class LLMServiceFactory:
         if thinking:
             params_dict['thinking'] = GoogleLLMService.ThinkingConfig(**thinking)
 
-        # Create InputParams object
-        input_params = GoogleLLMService.InputParams(**params_dict)
-
         logger.info(
             f"Google LLM config: model={model}, temp={params_dict.get('temperature', 'default')}, thinking={thinking or 'default'}"
         )
 
-        return GoogleLLMService(api_key=api_key, model=model, params=input_params)
+        return GoogleLLMService(
+            api_key=api_key,
+            settings=GoogleLLMService.Settings(model=model, **params_dict),
+        )
 
     @staticmethod
     def _create_groq_llm(api_key: str, model: str, parameters: Dict[str, Any]):
         """Create Groq LLM service"""
-        # Build InputParams from the parameters dict
+        # Build Settings from the parameters dict
         params_dict = {}
 
         if 'temperature' in parameters:
@@ -221,7 +220,7 @@ class LLMServiceFactory:
         # Extract Azure specific params
         # api_version = parameters.get('api_version')
 
-        # Build InputParams from the parameters dict
+        # Build Settings from the parameters dict
         params_dict = {}
 
         if 'temperature' in parameters:

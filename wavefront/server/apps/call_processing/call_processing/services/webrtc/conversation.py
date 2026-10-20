@@ -10,7 +10,7 @@ On top of the common conversation, a room gets:
 
 from typing import Any, List, Optional
 
-from pipecat.pipeline.task import PipelineTask
+from pipecat.pipeline.worker import PipelineWorker
 from pipecat.transports.base_transport import BaseTransport
 
 from call_processing.app_settings import CallProcessingAppSettings
@@ -103,7 +103,7 @@ class WebRTCConversation(BaseConversation):
 
     def on_task_created(
         self,
-        task: PipelineTask,
+        task: PipelineWorker,
         shared: SharedSession,
         stack: AgentStack,
         build_stack: BuildStack,

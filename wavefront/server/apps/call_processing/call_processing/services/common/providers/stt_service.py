@@ -205,7 +205,8 @@ class STTServiceFactory:
     @staticmethod
     def _create_elevenlabs_stt(api_key: str, parameters: Dict[str, Any]):
         """Create ElevenLabs Realtime STT service (WebSocket streaming, scribe_v2_realtime)"""
-        settings_kwargs: Dict[str, Any] = {}
+        model = parameters.get('model', 'scribe_v2_realtime')
+        settings_kwargs: Dict[str, Any] = {'model': model}
 
         if 'language' in parameters and parameters['language']:
             lang_code = parameters['language']
@@ -217,18 +218,14 @@ class STTServiceFactory:
                     f"Unknown ElevenLabs language '{lang_code}', skipping (auto-detect will be used)"
                 )
 
-        model = parameters.get('model', 'scribe_v2_realtime')
         sample_rate = parameters.get('sample_rate', 8000)
 
         logger.info(f'ElevenLabs STT config: model={model}, sample_rate={sample_rate}')
 
         return ElevenLabsRealtimeSTTService(
             api_key=api_key,
-            model=model,
             sample_rate=sample_rate,
-            settings=ElevenLabsRealtimeSTTSettings(**settings_kwargs)
-            if settings_kwargs
-            else None,
+            settings=ElevenLabsRealtimeSTTSettings(**settings_kwargs),
         )
 
     @staticmethod

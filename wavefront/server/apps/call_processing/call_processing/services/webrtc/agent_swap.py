@@ -2,8 +2,8 @@
 
 Why this is not "restart ``run_conversation``": the SmallWebRTC input/output
 transports disconnect the peer connection when they stop or are cancelled, so
-ending the ``PipelineTask`` would drop the browser. The swap therefore happens
-*inside* the running pipeline. The transport, the ``PipelineTask``, RTVI, VAD,
+ending the ``PipelineWorker`` would drop the browser. The swap therefore happens
+*inside* the running pipeline. The transport, the ``PipelineWorker``, RTVI, VAD,
 the idle watchdog and the room session timers are never touched:
 
     transport.input -> SwappableSlot A -> transport.output

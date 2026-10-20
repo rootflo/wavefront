@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
 from typing import Optional, Union, Any, Dict, List
 from enum import Enum
 from datetime import datetime
@@ -31,7 +31,7 @@ class CreateVoiceAgentPayload(BaseModel):
         description='Optional welcome message spoken at call start (empty skips greeting)',
     )
     # Must be declared before tts_voice_ids so the voice-id validator can read it
-    # (Pydantic v1 validators only see already-validated fields).
+    # (field validators only see already-validated fields via info.data).
     supported_languages: Optional[List[str]] = Field(
         None,
         description='List of supported language codes (ISO 639-1, e.g., ["en", "hi", "te"])',
@@ -63,11 +63,12 @@ class CreateVoiceAgentPayload(BaseModel):
         description='Phone numbers for making outbound calls (E.164 format)',
     )
 
-    @validator('tts_voice_ids')
-    def validate_tts_voice_ids_keys(cls, v, values):
+    @field_validator('tts_voice_ids')
+    @classmethod
+    def validate_tts_voice_ids_keys(cls, v, info: ValidationInfo):
         """Validate that tts_voice_ids has voice IDs for all supported languages."""
         # Get supported languages, default to ['en'] if not provided
-        supported_langs = values.get('supported_languages') or ['en']
+        supported_langs = info.data.get('supported_languages') or ['en']
 
         if not isinstance(v, dict):
             raise ValueError('tts_voice_ids must be a dictionary')
