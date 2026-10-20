@@ -689,12 +689,18 @@ class AsyncAgenticExecutionService:
 
         record_dict = cancelled.to_dict()
         # Written rather than removed, so a concurrent poll can't re-cache `pending`.
-        await asyncio.to_thread(
-            self.cache.add,
-            _cache_key(execution_id),
-            json.dumps(record_dict),
-            _STATUS_CACHE_TTL_TERMINAL,
-        )
+        try:
+            await asyncio.to_thread(
+                self.cache.add,
+                _cache_key(execution_id),
+                json.dumps(record_dict),
+                _STATUS_CACHE_TTL_TERMINAL,
+            )
+        except Exception as exc:
+            logger.warning(
+                f'Cancellation persisted for execution {execution_id}, '
+                f'but the status cache could not be updated: {exc}'
+            )
 
         logger.info(
             f'Cancelled execution {execution_id}, '

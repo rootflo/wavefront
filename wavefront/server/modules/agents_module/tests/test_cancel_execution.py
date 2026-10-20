@@ -228,6 +228,17 @@ async def test_db_failure_after_removal_is_reported_as_incomplete():
     service.cache.add.assert_not_called()
 
 
+async def test_cache_failure_does_not_fail_a_persisted_cancel():
+    record = _record()
+    service, _ = _service(record)
+    service.cache.add.side_effect = ConnectionError('redis down')
+
+    with patch.object(svc_module, 'remove_queued_task', return_value=True):
+        result = await service.cancel_execution(record.id)
+
+    assert result.status == 'cancelled'
+
+
 async def test_status_read_cannot_overwrite_a_cancel_already_in_the_cache():
     record = _record()
     service, repo = _service(record)
