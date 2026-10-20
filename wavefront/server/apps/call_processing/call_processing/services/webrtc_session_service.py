@@ -81,6 +81,8 @@ class _Session:
     cleaned_up: bool = False
     # Set by the pipeline once it is up (None until then / if swapping is off)
     swap_controller: Optional[AgentSwapController] = None
+    # Background warm-up of swap targets' configs (held so it is not GC'd mid-run)
+    prefetch_task: Optional[asyncio.Task] = None
 
     @property
     def pc_id(self) -> str:
@@ -137,7 +139,7 @@ class WebRTCSessionService:
 
         try:
             configs = await self.voice_agent_cache_service.get_all_agent_configs(
-                UUID(voice_agent_id)
+                UUID(voice_agent_id), require_telephony=False
             )
 
             captured: Dict[str, SmallWebRTCConnection] = {}
@@ -271,7 +273,7 @@ class WebRTCSessionService:
                     audio_in_sample_rate=settings.sample_rate,
                     audio_out_sample_rate=settings.sample_rate,
                     idle_timeout_secs=IDLE_TIMEOUT_SECS,
-                    session_hooks=self._session_hooks(session),
+                    session_hooks=self._session_hooks(session, initial_configs=configs),
                     room_context_handles_language=(
                         self.room_service.get_room_context_handles_language(
                             session.room_id
@@ -293,30 +295,69 @@ class WebRTCSessionService:
             watchdog.cancel()
             await self._cleanup(session)
 
-    def _session_hooks(self, session: _Session) -> SessionHooks:
+    def _session_hooks(
+        self,
+        session: _Session,
+        *,
+        initial_configs: Optional[Dict[str, Any]] = None,
+    ) -> SessionHooks:
         """What the live pipeline needs to hot-swap agents for this room."""
         # The allowlist lives on the room (set by floware); the initial agent is
         # always allowed. The browser can never widen it.
         allowed = set(self.room_service.get_allowed_agent_ids(session.room_id))
         allowed.add(session.voice_agent_id)
 
+        # Warm configs for allowlisted swap targets so mid-call switches skip Redis/API.
+        config_cache: Dict[str, Dict[str, Any]] = {}
+        if initial_configs is not None:
+            config_cache[session.voice_agent_id] = initial_configs
+
+        async def load_agent_configs(agent_id: UUID) -> Dict[str, Any]:
+            return await self.voice_agent_cache_service.get_all_agent_configs(
+                agent_id, require_telephony=False
+            )
+
         def on_agent_switched(agent_id: str) -> None:
             self.room_service.record_swap(session.room_id, agent_id)
 
         def on_ready(controller: Optional[AgentSwapController]) -> None:
             session.swap_controller = controller
+            # Prefetch remaining allowlisted agents in the background.
+            others = [aid for aid in allowed if aid not in config_cache]
+            if others:
+                session.prefetch_task = asyncio.create_task(
+                    self._prefetch_swap_targets(others, config_cache),
+                    name=f'webrtc-prefetch-{session.room_id}',
+                )
 
         return SessionHooks(
             swap=SwapOptions(
                 allowed_agent_ids=allowed,
-                load_agent_configs=self.voice_agent_cache_service.get_all_agent_configs,
+                load_agent_configs=load_agent_configs,
                 on_agent_switched=on_agent_switched,
                 carry_history=self.room_service.get_carry_history_on_swap(
                     session.room_id
                 ),
+                config_cache=config_cache,
             ),
             on_ready=on_ready,
         )
+
+    async def _prefetch_swap_targets(
+        self, agent_ids: List[str], config_cache: Dict[str, Dict[str, Any]]
+    ) -> None:
+        try:
+            warmed = await self.voice_agent_cache_service.prefetch_agent_configs(
+                agent_ids, require_telephony=False
+            )
+            config_cache.update(warmed)
+            if warmed:
+                logger.info(
+                    f'Prefetched configs for {len(warmed)} swap target(s): '
+                    f'{list(warmed)}'
+                )
+        except Exception as e:
+            logger.warning(f'Swap-target config prefetch failed: {e}')
 
     async def _connect_watchdog(self, session: _Session) -> None:
         """End sessions whose peer connection never comes up."""
@@ -336,6 +377,8 @@ class WebRTCSessionService:
         if session.cleaned_up:
             return
         session.cleaned_up = True
+        if session.prefetch_task and not session.prefetch_task.done():
+            session.prefetch_task.cancel()
         controller = session.swap_controller
         if controller is not None:
             try:

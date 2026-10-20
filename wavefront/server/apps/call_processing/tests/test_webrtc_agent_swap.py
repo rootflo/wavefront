@@ -342,6 +342,7 @@ def make_stack(
         stt_provider='x',
         tts_voice_ids={},
         welcome_message='hi',
+        filler=Passthrough(name=f'{name}-filler'),
     )
 
 

@@ -354,6 +354,8 @@ class SwapOptions:
     timeout_secs: float = DEFAULT_SWAP_TIMEOUT_SECS
     # False: the new agent starts with only its own system prompt (set per room)
     carry_history: bool = True
+    # Pre-warmed configs keyed by agent id (filled at room join). Mutated in place.
+    config_cache: Optional[Dict[str, Dict[str, Any]]] = None
 
 
 @dataclass
@@ -530,10 +532,19 @@ class AgentSwapController:
         # 4. Cut the old agent's speech and stop its stack (closes STT/TTS sockets).
         await asyncio.shield(self._finish_commit(old_stack, new_stack, old_a, old_b))
 
+    async def _load_configs(self, agent_id: str) -> Dict[str, Any]:
+        cache = self._options.config_cache
+        if cache is not None and agent_id in cache:
+            return cache[agent_id]
+        configs = await self._options.load_agent_configs(UUID(agent_id))
+        if cache is not None and configs:
+            cache[agent_id] = configs
+        return configs
+
     async def _build_and_prepare(self, agent_id: str):
         # 1. Build the new stack off to the side. Nothing live is touched yet.
         try:
-            configs = await self._options.load_agent_configs(UUID(agent_id))
+            configs = await self._load_configs(agent_id)
         except Exception as e:
             logger.warning(f'Could not load agent {agent_id} for swap: {e}')
             raise SwapError(ERR_AGENT_UNAVAILABLE)
