@@ -171,14 +171,14 @@ def test_single_language_agent_is_unaffected_by_the_flag():
 # ------------------------------------------------------------- end_conversation
 
 
-def _build_with_config(conversation_config):
+def _build_with_config(conversation_config, welcome='Hello', **kwargs):
     service = PipecatService(SimpleNamespace(pipecat=SimpleNamespace()))
     return service.build_agent_stack(
         agent_config={
             'id': 'agent-1',
             'name': 'Agent',
             'system_prompt': BASE_PROMPT,
-            'welcome_message': 'Hello',
+            'welcome_message': welcome,
             'supported_languages': ['en'],
             'default_language': 'en',
             'tts_voice_ids': {'en': 'v-en'},
@@ -202,6 +202,7 @@ def _build_with_config(conversation_config):
             },
             transcript_log=[],
         ),
+        **kwargs,
     )
 
 
@@ -218,3 +219,40 @@ def test_end_conversation_is_registered_when_enabled():
 
     assert 'end_conversation' in [s.name for s in stack.function_schemas]
     assert 'end_conversation' in stack.llm.functions
+
+
+# ----------------------------------------------------- mute until first bot speech
+
+
+def _mute_strategy_names(stack):
+    aggregator = stack.context_aggregator.user()
+    return [type(s).__name__ for s in aggregator._params.user_mute_strategies]
+
+
+MUTE = {'turn_taking': {'mute_until_first_bot_complete': True}}
+
+
+def test_user_is_not_muted_for_the_welcome_by_default():
+    assert _mute_strategy_names(_build_with_config(None)) == [
+        'FunctionCallUserMuteStrategy'
+    ]
+
+
+def test_welcome_mute_applies_when_enabled_and_a_welcome_exists():
+    assert _mute_strategy_names(_build_with_config(MUTE)) == [
+        'MuteUntilFirstBotCompleteUserMuteStrategy',
+        'FunctionCallUserMuteStrategy',
+    ]
+
+
+def test_welcome_mute_is_skipped_without_a_welcome_message():
+    for welcome in ('', '   ', None):
+        stack = _build_with_config(MUTE, welcome=welcome)
+
+        assert _mute_strategy_names(stack) == ['FunctionCallUserMuteStrategy']
+
+
+def test_welcome_mute_is_skipped_for_an_agent_swapped_in_mid_call():
+    stack = _build_with_config(MUTE, is_initial_stack=False)
+
+    assert _mute_strategy_names(stack) == ['FunctionCallUserMuteStrategy']

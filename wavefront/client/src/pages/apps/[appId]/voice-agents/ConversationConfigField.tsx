@@ -125,19 +125,30 @@ function ConversationConfigField<T extends FieldValues>({ form, name }: Conversa
           <h4 className="text-sm font-medium">Examples</h4>
           <ul className="frost-text-muted list-disc space-y-1 pl-5 text-xs">
             <li>
-              <b>Noisy phone line:</b> raise <code>vad_confidence</code> and <code>vad_min_volume</code>, and set{' '}
-              <code>barge_in_min_words</code> to 3.
+              <b>Bot must finish what it says:</b> set <code>barge_in</code> to false. Nothing the user says over the
+              bot interrupts it.
             </li>
             <li>
-              <b>Quiet browser, snappier:</b> set <code>barge_in_min_words</code> to 1 and lower{' '}
-              <code>end_of_turn_timeout_ms</code> to about 1500.
+              <b>Welcome message must play fully:</b> set <code>mute_until_first_bot_complete</code> to true. Users can
+              still interrupt the bot after the welcome.
+            </li>
+            <li>
+              <b>Fewer accidental interruptions:</b> keep <code>barge_in</code> true and set{' '}
+              <code>barge_in_min_words</code> to 2. The bot then stops only after two words are heard, not on any sound.
+            </li>
+            <li>
+              <b>Noisy phone line:</b> raise <code>vad_confidence</code> and <code>vad_min_volume</code>, and set{' '}
+              <code>barge_in_min_words</code> to 3 (or turn barge-in off).
             </li>
             <li>
               <b>Bot talks over users who pause:</b> raise <code>end_of_turn_timeout_ms</code>.
             </li>
             <li>
-              <b>Bot interrupts itself on speakers:</b> raise <code>barge_in_min_words</code> (echo can sound like the
-              user).
+              <b>Bot interrupts itself on speakers:</b> raise <code>barge_in_min_words</code> to 2 or more, or turn
+              barge-in off (echo can sound like the user).
+            </li>
+            <li>
+              <b>Snappier replies:</b> lower <code>end_of_turn_timeout_ms</code> to about 1500.
             </li>
           </ul>
         </div>

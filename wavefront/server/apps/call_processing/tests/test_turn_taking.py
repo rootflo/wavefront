@@ -1,4 +1,15 @@
-from pipecat.turns.user_start import MinWordsUserTurnStartStrategy
+from pipecat.frames.frames import (
+    BotStartedSpeakingFrame,
+    BotStoppedSpeakingFrame,
+    InterimTranscriptionFrame,
+    VADUserStartedSpeakingFrame,
+    VADUserStoppedSpeakingFrame,
+)
+from pipecat.turns.types import ProcessFrameResult
+from pipecat.turns.user_start import (
+    MinWordsUserTurnStartStrategy,
+    VADUserTurnStartStrategy,
+)
 
 from call_processing.services.smart_turn import SharedSmartTurnAnalyzer
 from call_processing.services.turn_taking import (
@@ -15,6 +26,8 @@ def test_agent_without_turn_taking_config_gets_defaults():
     config = TurnTakingConfig.from_agent_config({})
 
     assert config == TurnTakingConfig()
+    assert config.barge_in is True
+    assert config.barge_in_min_words == 0
     vad = config.vad_params()
     assert (vad.confidence, vad.min_volume, vad.start_secs, vad.stop_secs) == (
         0.75,
@@ -28,6 +41,7 @@ def test_agent_overrides_are_applied_in_ms_and_seconds():
     config = TurnTakingConfig.from_agent_config(
         _agent(
             {
+                'barge_in': True,
                 'barge_in_min_words': 3,
                 'vad_confidence': 0.8,
                 'vad_min_volume': 0.5,
@@ -38,6 +52,7 @@ def test_agent_overrides_are_applied_in_ms_and_seconds():
         )
     )
 
+    assert config.barge_in is True
     assert config.barge_in_min_words == 3
     assert config.vad_confidence == 0.8
     assert config.vad_min_volume == 0.5
@@ -50,7 +65,8 @@ def test_out_of_range_values_are_clamped_and_junk_is_ignored():
     config = TurnTakingConfig.from_agent_config(
         _agent(
             {
-                'barge_in_min_words': 0,
+                'barge_in': 'true',
+                'barge_in_min_words': 99,
                 'vad_confidence': 5,
                 'vad_stop_ms': 'fast',
                 'end_of_turn_timeout_ms': True,
@@ -58,7 +74,8 @@ def test_out_of_range_values_are_clamped_and_junk_is_ignored():
         )
     )
 
-    assert config.barge_in_min_words == 1
+    assert config.barge_in is True  # a non-boolean falls back to the default
+    assert config.barge_in_min_words == 10
     assert config.vad_confidence == 0.95
     assert config.vad_stop_secs == 0.2
     assert config.end_of_turn_timeout_secs == 3.0
@@ -66,7 +83,13 @@ def test_out_of_range_values_are_clamped_and_junk_is_ignored():
 
 def test_strategies_carry_the_agent_settings():
     config = TurnTakingConfig.from_agent_config(
-        _agent({'barge_in_min_words': 4, 'end_of_turn_timeout_ms': 1500})
+        _agent(
+            {
+                'barge_in': True,
+                'barge_in_min_words': 4,
+                'end_of_turn_timeout_ms': 1500,
+            }
+        )
     )
 
     vad_start, min_words = config.start_strategies()
@@ -78,3 +101,146 @@ def test_strategies_carry_the_agent_settings():
     analyzer = stop._turn_analyzer
     assert isinstance(analyzer, SharedSmartTurnAnalyzer)
     assert analyzer.params.stop_secs == 1.5
+
+
+# ------------------------------------------------------------ barge-in modes
+
+
+def test_default_is_instant_barge_in_on_vad_alone():
+    (only,) = TurnTakingConfig.from_agent_config({}).start_strategies()
+
+    assert type(only) is VADUserTurnStartStrategy
+
+
+def test_barge_in_can_be_turned_off():
+    config = TurnTakingConfig.from_agent_config(_agent({'barge_in': False}))
+
+    assert config.barge_in is False
+    (only,) = config.start_strategies()
+    assert isinstance(only, VADWhenBotSilentStartStrategy)
+
+    assert isinstance(only, VADWhenBotSilentStartStrategy)
+
+
+def _discarding_strategy():
+    strategy = VADWhenBotSilentStartStrategy(discard_talk_over=True)
+    events = []
+
+    async def on_started(*_):
+        events.append('turn_started')
+
+    async def on_reset(*_):
+        events.append('reset')
+
+    strategy.add_event_handler('on_user_turn_started', on_started)
+    strategy.add_event_handler('on_reset_aggregation', on_reset)
+    return strategy, events
+
+
+async def test_talk_over_never_starts_a_turn_and_its_transcript_is_dropped():
+    strategy, events = _discarding_strategy()
+
+    await strategy.process_frame(BotStartedSpeakingFrame())
+    started = await strategy.process_frame(VADUserStartedSpeakingFrame())
+    await strategy.process_frame(
+        InterimTranscriptionFrame('hello there', 'u', '', language=None)
+    )
+    await strategy.process_frame(VADUserStoppedSpeakingFrame())
+    await strategy.process_frame(BotStoppedSpeakingFrame())
+
+    assert started == ProcessFrameResult.CONTINUE
+    assert events == ['reset']
+
+
+async def test_user_still_speaking_when_the_bot_finishes_gets_their_turn():
+    strategy, events = _discarding_strategy()
+
+    await strategy.process_frame(BotStartedSpeakingFrame())
+    await strategy.process_frame(VADUserStartedSpeakingFrame())
+    result = await strategy.process_frame(BotStoppedSpeakingFrame())
+
+    assert result == ProcessFrameResult.STOP
+    assert events == ['turn_started']
+
+
+async def test_normal_turns_after_the_bot_finishes_are_unaffected():
+    strategy, events = _discarding_strategy()
+
+    await strategy.process_frame(BotStartedSpeakingFrame())
+    await strategy.process_frame(BotStoppedSpeakingFrame())
+    result = await strategy.process_frame(VADUserStartedSpeakingFrame())
+
+    assert result == ProcessFrameResult.STOP
+    assert events == ['turn_started']
+
+
+def test_zero_words_interrupts_on_vad_alone():
+    config = TurnTakingConfig.from_agent_config(
+        _agent({'barge_in': True, 'barge_in_min_words': 0})
+    )
+
+    assert config.barge_in_min_words == 0
+    (only,) = config.start_strategies()
+    assert type(only) is VADUserTurnStartStrategy
+
+
+def test_zero_words_does_nothing_while_barge_in_is_off():
+    config = TurnTakingConfig.from_agent_config(
+        _agent({'barge_in': False, 'barge_in_min_words': 0})
+    )
+
+    (only,) = config.start_strategies()
+    assert isinstance(only, VADWhenBotSilentStartStrategy)
+
+
+async def test_vad_alone_starts_a_turn_even_while_the_bot_is_speaking():
+    strategy = TurnTakingConfig.from_agent_config(
+        _agent({'barge_in': True, 'barge_in_min_words': 0})
+    ).start_strategies()[0]
+    started = []
+
+    async def on_started(*_):
+        started.append(True)
+
+    strategy.add_event_handler('on_user_turn_started', on_started)
+
+    await strategy.process_frame(BotStartedSpeakingFrame())
+    result = await strategy.process_frame(VADUserStartedSpeakingFrame())
+
+    assert result == ProcessFrameResult.STOP
+    assert started == [True]
+
+
+# ------------------------------------------------------ mute until first bot speech
+
+
+def test_welcome_mute_is_off_by_default():
+    config = TurnTakingConfig.from_agent_config({})
+
+    assert config.mute_until_first_bot_complete is False
+    assert [type(s).__name__ for s in config.mute_strategies(will_greet=True)] == [
+        'FunctionCallUserMuteStrategy'
+    ]
+
+
+def test_welcome_mute_needs_a_greeting_to_wait_for():
+    config = TurnTakingConfig.from_agent_config(
+        _agent({'mute_until_first_bot_complete': True})
+    )
+
+    assert config.mute_until_first_bot_complete is True
+    assert [type(s).__name__ for s in config.mute_strategies(will_greet=True)] == [
+        'MuteUntilFirstBotCompleteUserMuteStrategy',
+        'FunctionCallUserMuteStrategy',
+    ]
+    assert [type(s).__name__ for s in config.mute_strategies(will_greet=False)] == [
+        'FunctionCallUserMuteStrategy'
+    ]
+
+
+def test_non_boolean_welcome_mute_falls_back_to_the_default():
+    config = TurnTakingConfig.from_agent_config(
+        _agent({'mute_until_first_bot_complete': 'true'})
+    )
+
+    assert config.mute_until_first_bot_complete is False
