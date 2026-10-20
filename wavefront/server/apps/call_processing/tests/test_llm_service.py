@@ -39,35 +39,49 @@ def test_parameters_reach_the_request_settings(llm_type, config):
     assert settings.extra == {}
 
 
-def test_reasoning_effort_is_sent_without_the_sampling_params():
-    # What the LLM config UI saves for Azure: its pre-filled sampling defaults
-    # plus the reasoning effort. Reasoning models 400 on the sampling params.
-    parameters = {
-        'temperature': 0.7,
-        'top_p': 1.0,
-        'frequency_penalty': 0.0,
-        'presence_penalty': 0.0,
-        'max_completion_tokens': 500,
-        'api_version': '2025-01-01-preview',
-        'reasoning_effort': 'minimal',
-    }
-    llm = _create('azure_openai', parameters, base_url='https://test.openai.azure.com')
+def test_reasoning_effort_is_sent_in_the_request():
+    llm = _create(
+        'azure_openai',
+        {'reasoning_effort': 'none', 'max_completion_tokens': 500},
+        base_url='https://test.openai.azure.com',
+    )
 
     request = llm.build_chat_completion_params({'messages': []})
 
-    assert request['reasoning_effort'] == 'minimal'
+    assert request['reasoning_effort'] == 'none'
     assert request['max_completion_tokens'] == 500
-    for key in ('temperature', 'top_p', 'frequency_penalty', 'presence_penalty'):
-        assert not isinstance(request[key], float), key
 
 
-def test_sampling_params_are_kept_without_reasoning_effort():
-    llm = _create('openai', {'temperature': 0.7, 'top_p': 0.9})
+def test_sampling_params_go_out_alongside_reasoning_effort():
+    # GPT-OSS and GPT-6 Astra take both; the UI only saves what the model accepts
+    llm = _create('groq', {'reasoning_effort': 'low', 'temperature': 0.7, 'top_p': 0.9})
 
     request = llm.build_chat_completion_params({'messages': []})
 
+    assert request['reasoning_effort'] == 'low'
     assert request['temperature'] == 0.7
     assert request['top_p'] == 0.9
+
+
+@pytest.mark.parametrize(
+    'parameters, expected',
+    [
+        ({'thinking_level': 'minimal'}, {'thinking_level': 'minimal'}),
+        ({'thinking_budget': 0}, {'thinking_budget': 0}),
+    ],
+)
+def test_gemini_thinking_reaches_the_settings(parameters, expected):
+    settings = _create('gemini', {'temperature': 1.0, **parameters})._settings
+
+    assert settings.temperature == 1.0
+    thinking = settings.thinking.model_dump(exclude_none=True)
+    assert thinking == expected
+
+
+def test_gemini_without_thinking_leaves_the_model_default():
+    settings = _create('gemini', {'temperature': 0.5})._settings
+
+    assert settings.thinking is None
 
 
 def test_unsupported_keys_are_not_forwarded():

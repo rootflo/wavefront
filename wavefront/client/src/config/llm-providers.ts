@@ -1,30 +1,48 @@
 /**
  * LLM Provider Configuration
  *
- * Centralized configuration for LLM inference providers.
- * Based on pipecat implementation (pipecat/llm-service.py)
+ * Every setting a provider can take, as the backends read it from a config's
+ * `parameters`: call_processing (pipecat, llm_service.py) for voice agents and
+ * flo_ai for chatbots and agents. Which of these a given model accepts lives
+ * in llm-models.ts.
+ *
+ * Nothing is pre-filled: an unset setting is left out of the request, so the
+ * provider's own default applies. `default` only documents that default (it
+ * places the slider and labels the empty state).
  */
 
 export type ParameterType = 'string' | 'number' | 'boolean' | 'select';
 
+export interface ParameterOption {
+  value: string | number;
+  label: string;
+}
+
 export interface ParameterConfig {
   type: ParameterType;
-  default: unknown;
+  label: string;
+  /** The provider's own default, for display only. */
+  default?: unknown;
   min?: number;
   max?: number;
   step?: number;
   description?: string;
   placeholder?: string;
-  options?: Array<{ value: string | number; label: string }>;
+  options?: ParameterOption[];
+  /** Shown under "Advanced" rather than with the everyday settings. */
+  advanced?: boolean;
+  /** The model takes this setting only while another setting has this value (e.g. temperature with reasoning effort None). */
+  activeWhen?: { key: string; equals: string };
 }
 
 export interface ProviderConfig {
   name: string;
   baseUrl?: string;
-  badge: {
-    bg: string;
-    text: string;
-  };
+  /** Voice agents (call_processing) can run this provider. */
+  voiceSupported: boolean;
+  /** What the model field holds for this provider. */
+  modelLabel: string;
+  modelHelp?: string;
   parameters: Record<string, ParameterConfig>;
 }
 
@@ -36,525 +54,250 @@ export const UNSET_SELECT_VALUE = '__unset__';
 
 export type InferenceEngineType = 'gemini' | 'openai' | 'ollama' | 'vllm' | 'anthropic' | 'azure_openai' | 'groq';
 
-/**
- * LLM Provider Configuration
- * Parameters mapped from pipecat/llm-service.py implementation
- */
+const temperature = (max: number, description?: string): ParameterConfig => ({
+  type: 'number',
+  label: 'Temperature',
+  default: 1,
+  min: 0,
+  max,
+  step: 0.1,
+  description: description ?? 'Higher is more varied, lower is more predictable',
+});
+
+const topP: ParameterConfig = {
+  type: 'number',
+  label: 'Top P',
+  default: 1,
+  min: 0,
+  max: 1,
+  step: 0.01,
+  description: 'Nucleus sampling. Change this or temperature, not both',
+  advanced: true,
+};
+
+const topK = (max: number): ParameterConfig => ({
+  type: 'number',
+  label: 'Top K',
+  min: 1,
+  max,
+  step: 1,
+  description: 'Sample only from the K most likely tokens',
+  placeholder: '40',
+  advanced: true,
+});
+
+const maxCompletionTokens = (max: number): ParameterConfig => ({
+  type: 'number',
+  label: 'Max output tokens',
+  min: 1,
+  max,
+  step: 1,
+  description: 'Caps the reply, reasoning tokens included. Voice replies rarely need more than 300',
+  placeholder: 'No limit',
+});
+
+const maxTokens = (max: number, placeholder = 'No limit'): ParameterConfig => ({
+  type: 'number',
+  label: 'Max output tokens',
+  min: 1,
+  max,
+  step: 1,
+  description: 'Caps the length of the reply',
+  placeholder,
+});
+
+const penalty = (label: string, description: string): ParameterConfig => ({
+  type: 'number',
+  label,
+  default: 0,
+  min: -2,
+  max: 2,
+  step: 0.1,
+  description,
+  advanced: true,
+});
+
+const seed: ParameterConfig = {
+  type: 'number',
+  label: 'Seed',
+  min: 0,
+  max: 999999,
+  step: 1,
+  description: 'Best-effort repeatable outputs for the same input',
+  placeholder: 'Random',
+  advanced: true,
+};
+
+const serviceTier: ParameterConfig = {
+  type: 'select',
+  label: 'Service tier',
+  description: 'Request routing tier',
+  options: [
+    { value: 'auto', label: 'Auto' },
+    { value: 'default', label: 'Default' },
+  ],
+  advanced: true,
+};
+
+/** Every effort value any OpenAI-family model takes; llm-models.ts narrows it per model. */
+const reasoningEffort: ParameterConfig = {
+  type: 'select',
+  label: 'Reasoning effort',
+  description: 'How long the model thinks before answering. Lower is faster; voice agents should use the lowest',
+  options: [
+    { value: 'none', label: 'None' },
+    { value: 'minimal', label: 'Minimal' },
+    { value: 'low', label: 'Low' },
+    { value: 'medium', label: 'Medium' },
+    { value: 'high', label: 'High' },
+    { value: 'xhigh', label: 'Extra high' },
+  ],
+};
+
+const thinkingLevel: ParameterConfig = {
+  type: 'select',
+  label: 'Thinking level',
+  description: 'How long Gemini thinks before answering. Lower is faster',
+  options: [
+    { value: 'minimal', label: 'Minimal' },
+    { value: 'low', label: 'Low' },
+    { value: 'medium', label: 'Medium' },
+    { value: 'high', label: 'High' },
+  ],
+};
+
+const thinkingBudget: ParameterConfig = {
+  type: 'number',
+  label: 'Thinking budget',
+  min: 0,
+  max: 24576,
+  step: 128,
+  description: 'Tokens Gemini may spend thinking. 0 turns thinking off where the model allows it',
+  placeholder: 'Model decides',
+};
+
+const frequencyPenalty = penalty('Frequency penalty', 'Discourages repeating the same words');
+const presencePenalty = penalty('Presence penalty', 'Encourages moving on to new topics');
+
 export const LLM_PROVIDERS_CONFIG: Record<InferenceEngineType, ProviderConfig> = {
   openai: {
-    name: 'OpenAI GPT',
+    name: 'OpenAI',
     baseUrl: 'https://api.openai.com/v1',
-    badge: {
-      bg: 'bg-green-100',
-      text: 'text-green-800',
-    },
+    voiceSupported: true,
+    modelLabel: 'Model',
+    modelHelp: 'Pick a model, or type any model ID. A non-OpenAI base URL makes this an OpenAI-compatible endpoint',
     parameters: {
-      temperature: {
-        type: 'number',
-        default: 0.7,
-        min: 0,
-        max: 2,
-        step: 0.1,
-        description: 'Controls randomness in responses (0-2)',
-        placeholder: '0.7',
-      },
-      max_completion_tokens: {
-        type: 'number',
-        default: undefined,
-        min: 1,
-        max: 16000,
-        step: 1,
-        description: 'Maximum completion tokens',
-        placeholder: '1000',
-      },
-      top_p: {
-        type: 'number',
-        default: 1.0,
-        min: 0,
-        max: 1,
-        step: 0.01,
-        description: 'Nucleus sampling threshold (0-1)',
-        placeholder: '1.0',
-      },
-      frequency_penalty: {
-        type: 'number',
-        default: 0.0,
-        min: -2,
-        max: 2,
-        step: 0.1,
-        description: 'Penalize repeated tokens (-2 to 2)',
-        placeholder: '0.0',
-      },
-      presence_penalty: {
-        type: 'number',
-        default: 0.0,
-        min: -2,
-        max: 2,
-        step: 0.1,
-        description: 'Penalize new topics (-2 to 2)',
-        placeholder: '0.0',
-      },
-      seed: {
-        type: 'number',
-        default: undefined,
-        min: 0,
-        max: 999999,
-        step: 1,
-        description: 'Random seed for deterministic outputs',
-        placeholder: '42',
-      },
-      reasoning_effort: {
-        type: 'select',
-        default: undefined,
-        description:
-          'Reasoning models only (gpt-5, o-series); leave unset for gpt-4.1 / gpt-4o, which reject it. Lower is faster; for voice use none (gpt-5.1+) or minimal (gpt-5). When set, voice calls do not send temperature, top_p or penalties, which reasoning models reject',
-        options: [
-          { value: 'none', label: 'None (gpt-5.1 and later)' },
-          { value: 'minimal', label: 'Minimal (gpt-5)' },
-          { value: 'low', label: 'Low' },
-          { value: 'medium', label: 'Medium' },
-          { value: 'high', label: 'High' },
-        ],
-      },
-      service_tier: {
-        type: 'select',
-        default: undefined,
-        description: 'Service tier for request routing',
-        options: [
-          { value: 'auto', label: 'Auto' },
-          { value: 'default', label: 'Default' },
-        ],
-      },
+      reasoning_effort: reasoningEffort,
+      temperature: temperature(2),
+      max_completion_tokens: maxCompletionTokens(128000),
+      top_p: topP,
+      frequency_penalty: frequencyPenalty,
+      presence_penalty: presencePenalty,
+      seed,
+      service_tier: serviceTier,
     },
   },
-  anthropic: {
-    name: 'Anthropic Claude',
-    baseUrl: 'https://api.anthropic.com',
-    badge: {
-      bg: 'bg-orange-100',
-      text: 'text-orange-800',
-    },
+  azure_openai: {
+    name: 'Azure OpenAI',
+    voiceSupported: true,
+    modelLabel: 'Deployment name',
+    modelHelp:
+      'The name of your Azure deployment. Picking a model fills it in; settings are matched from the name, so deployments named after their model get the right ones',
     parameters: {
-      temperature: {
-        type: 'number',
-        default: 0.7,
-        min: 0,
-        max: 1,
-        step: 0.1,
-        description: 'Controls randomness in responses (0-1)',
-        placeholder: '0.7',
-      },
-      max_tokens: {
-        type: 'number',
-        default: 1024,
-        min: 1,
-        max: 8192,
-        step: 1,
-        description: 'Maximum number of tokens to generate',
-        placeholder: '1024',
-      },
-      top_p: {
-        type: 'number',
-        default: 1.0,
-        min: 0,
-        max: 1,
-        step: 0.01,
-        description: 'Nucleus sampling threshold (0-1)',
-        placeholder: '1.0',
-      },
-      top_k: {
-        type: 'number',
-        default: undefined,
-        min: 1,
-        max: 500,
-        step: 1,
-        description: 'Top-K sampling parameter',
-        placeholder: '40',
-      },
+      reasoning_effort: reasoningEffort,
+      temperature: temperature(2),
+      max_completion_tokens: maxCompletionTokens(128000),
+      top_p: topP,
+      frequency_penalty: frequencyPenalty,
+      presence_penalty: presencePenalty,
+      seed,
     },
   },
   gemini: {
     name: 'Google Gemini',
     baseUrl: 'https://generativelanguage.googleapis.com',
-    badge: {
-      bg: 'bg-blue-100',
-      text: 'text-blue-800',
-    },
+    voiceSupported: true,
+    modelLabel: 'Model',
     parameters: {
-      temperature: {
-        type: 'number',
-        default: 0.7,
-        min: 0,
-        max: 2,
-        step: 0.1,
-        description: 'Controls randomness in responses (0-2)',
-        placeholder: '0.7',
-      },
-      max_tokens: {
-        type: 'number',
-        default: 1024,
-        min: 1,
-        max: 8192,
-        step: 1,
-        description: 'Maximum output tokens',
-        placeholder: '1024',
-      },
-      top_p: {
-        type: 'number',
-        default: 0.95,
-        min: 0,
-        max: 1,
-        step: 0.01,
-        description: 'Nucleus sampling threshold (0-1)',
-        placeholder: '0.95',
-      },
-      top_k: {
-        type: 'number',
-        default: 40,
-        min: 1,
-        max: 100,
-        step: 1,
-        description: 'Top-K sampling parameter',
-        placeholder: '40',
-      },
-    },
-  },
-  azure_openai: {
-    name: 'Azure OpenAI',
-    badge: {
-      bg: 'bg-cyan-100',
-      text: 'text-cyan-800',
-    },
-    parameters: {
-      temperature: {
-        type: 'number',
-        default: 0.7,
-        min: 0,
-        max: 2,
-        step: 0.1,
-        description: 'Controls randomness in responses (0-2)',
-        placeholder: '0.7',
-      },
-      max_completion_tokens: {
-        type: 'number',
-        default: undefined,
-        min: 1,
-        max: 16000,
-        step: 1,
-        description: 'Maximum completion tokens',
-        placeholder: '1000',
-      },
-      top_p: {
-        type: 'number',
-        default: 1.0,
-        min: 0,
-        max: 1,
-        step: 0.01,
-        description: 'Nucleus sampling threshold (0-1)',
-        placeholder: '1.0',
-      },
-      frequency_penalty: {
-        type: 'number',
-        default: 0.0,
-        min: -2,
-        max: 2,
-        step: 0.1,
-        description: 'Penalize repeated tokens (-2 to 2)',
-        placeholder: '0.0',
-      },
-      presence_penalty: {
-        type: 'number',
-        default: 0.0,
-        min: -2,
-        max: 2,
-        step: 0.1,
-        description: 'Penalize new topics (-2 to 2)',
-        placeholder: '0.0',
-      },
-      seed: {
-        type: 'number',
-        default: undefined,
-        min: 0,
-        max: 999999,
-        step: 1,
-        description: 'Random seed for deterministic outputs',
-        placeholder: '42',
-      },
-      reasoning_effort: {
-        type: 'select',
-        default: undefined,
-        description:
-          'Reasoning models only (gpt-5, o-series); leave unset for gpt-4.1 / gpt-4o, which reject it. Lower is faster; for voice use none (gpt-5.1+) or minimal (gpt-5). When set, voice calls do not send temperature, top_p or penalties, which reasoning models reject',
-        options: [
-          { value: 'none', label: 'None (gpt-5.1 and later)' },
-          { value: 'minimal', label: 'Minimal (gpt-5)' },
-          { value: 'low', label: 'Low' },
-          { value: 'medium', label: 'Medium' },
-          { value: 'high', label: 'High' },
-        ],
-      },
+      thinking_level: thinkingLevel,
+      thinking_budget: thinkingBudget,
+      temperature: temperature(2, 'Google recommends leaving Gemini 3 models at the default (1.0)'),
+      max_tokens: maxTokens(65536),
+      top_p: topP,
+      top_k: topK(100),
     },
   },
   groq: {
     name: 'Groq',
     baseUrl: 'https://api.groq.com/openai/v1',
-    badge: {
-      bg: 'bg-purple-100',
-      text: 'text-purple-800',
-    },
+    voiceSupported: true,
+    modelLabel: 'Model',
     parameters: {
-      temperature: {
-        type: 'number',
-        default: 0.7,
-        min: 0,
-        max: 2,
-        step: 0.1,
-        description: 'Controls randomness in responses (0-2)',
-        placeholder: '0.7',
-      },
-      max_completion_tokens: {
-        type: 'number',
-        default: undefined,
-        min: 1,
-        max: 8000,
-        step: 1,
-        description: 'Maximum completion tokens',
-        placeholder: '1000',
-      },
-      top_p: {
-        type: 'number',
-        default: 1.0,
-        min: 0,
-        max: 1,
-        step: 0.01,
-        description: 'Nucleus sampling threshold (0-1)',
-        placeholder: '1.0',
-      },
-      frequency_penalty: {
-        type: 'number',
-        default: 0.0,
-        min: -2,
-        max: 2,
-        step: 0.1,
-        description: 'Penalize repeated tokens (-2 to 2)',
-        placeholder: '0.0',
-      },
-      presence_penalty: {
-        type: 'number',
-        default: 0.0,
-        min: -2,
-        max: 2,
-        step: 0.1,
-        description: 'Penalize new topics (-2 to 2)',
-        placeholder: '0.0',
-      },
-      seed: {
-        type: 'number',
-        default: undefined,
-        min: 0,
-        max: 999999,
-        step: 1,
-        description: 'Random seed for deterministic outputs',
-        placeholder: '42',
-      },
-      service_tier: {
-        type: 'select',
-        default: undefined,
-        description: 'Service tier for request routing',
-        options: [
-          { value: 'auto', label: 'Auto' },
-          { value: 'default', label: 'Default' },
-        ],
-      },
+      reasoning_effort: { ...reasoningEffort, options: reasoningEffort.options?.filter((o) => o.value !== 'none') },
+      temperature: temperature(2),
+      max_completion_tokens: maxCompletionTokens(65536),
+      top_p: topP,
+      frequency_penalty: frequencyPenalty,
+      presence_penalty: presencePenalty,
+      seed,
+      service_tier: serviceTier,
+    },
+  },
+  anthropic: {
+    name: 'Anthropic Claude',
+    baseUrl: 'https://api.anthropic.com',
+    voiceSupported: false,
+    modelLabel: 'Model',
+    parameters: {
+      temperature: temperature(1),
+      max_tokens: maxTokens(128000, '1024'),
+      top_p: topP,
+      top_k: topK(500),
     },
   },
   ollama: {
     name: 'Ollama (Local)',
-    badge: {
-      bg: 'bg-gray-100',
-      text: 'text-gray-800',
-    },
+    voiceSupported: false,
+    modelLabel: 'Model',
+    modelHelp: 'A model pulled on your Ollama server, e.g. llama3.3',
     parameters: {
-      temperature: {
-        type: 'number',
-        default: 0.7,
-        min: 0,
-        max: 2,
-        step: 0.1,
-        description: 'Controls randomness in responses (0-2)',
-        placeholder: '0.7',
-      },
-      max_tokens: {
-        type: 'number',
-        default: 150,
-        min: 1,
-        max: 32000,
-        step: 1,
-        description: 'Maximum number of tokens to generate',
-        placeholder: '150',
-      },
-      top_p: {
-        type: 'number',
-        default: 1.0,
-        min: 0,
-        max: 1,
-        step: 0.01,
-        description: 'Nucleus sampling threshold (0-1)',
-        placeholder: '1.0',
-      },
-      top_k: {
-        type: 'number',
-        default: 40,
-        min: 1,
-        max: 100,
-        step: 1,
-        description: 'Top-K sampling parameter',
-        placeholder: '40',
-      },
+      temperature: temperature(2),
+      max_tokens: maxTokens(32000),
+      top_p: topP,
+      top_k: topK(100),
     },
   },
   vllm: {
     name: 'vLLM',
-    badge: {
-      bg: 'bg-indigo-100',
-      text: 'text-indigo-800',
-    },
+    voiceSupported: false,
+    modelLabel: 'Model',
+    modelHelp: 'The model name your vLLM server serves',
     parameters: {
-      temperature: {
-        type: 'number',
-        default: 0.7,
-        min: 0,
-        max: 2,
-        step: 0.1,
-        description: 'Controls randomness in responses (0-2)',
-        placeholder: '0.7',
-      },
-      max_tokens: {
-        type: 'number',
-        default: 150,
-        min: 1,
-        max: 32000,
-        step: 1,
-        description: 'Maximum number of tokens to generate',
-        placeholder: '150',
-      },
-      top_p: {
-        type: 'number',
-        default: 1.0,
-        min: 0,
-        max: 1,
-        step: 0.01,
-        description: 'Nucleus sampling threshold (0-1)',
-        placeholder: '1.0',
-      },
-      top_k: {
-        type: 'number',
-        default: -1,
-        min: -1,
-        max: 100,
-        step: 1,
-        description: 'Top-K sampling parameter (-1 to disable)',
-        placeholder: '-1',
-      },
-      frequency_penalty: {
-        type: 'number',
-        default: 0.0,
-        min: -2,
-        max: 2,
-        step: 0.1,
-        description: 'Penalize repeated tokens (-2 to 2)',
-        placeholder: '0.0',
-      },
-      presence_penalty: {
-        type: 'number',
-        default: 0.0,
-        min: -2,
-        max: 2,
-        step: 0.1,
-        description: 'Penalize new topics (-2 to 2)',
-        placeholder: '0.0',
-      },
+      temperature: temperature(2),
+      max_tokens: maxTokens(32000),
+      top_p: topP,
+      top_k: { ...topK(100), min: -1, description: 'Sample only from the K most likely tokens (-1 to disable)' },
+      frequency_penalty: frequencyPenalty,
+      presence_penalty: presencePenalty,
     },
   },
 };
+
+export const INFERENCE_ENGINE_TYPES: InferenceEngineType[] = [
+  'openai',
+  'azure_openai',
+  'gemini',
+  'groq',
+  'anthropic',
+  'ollama',
+  'vllm',
+];
 
 /**
  * Get provider configuration
  */
 export function getProviderConfig(provider: InferenceEngineType): ProviderConfig | null {
   return LLM_PROVIDERS_CONFIG[provider] || null;
-}
-
-/**
- * Get provider badge
- */
-export function getProviderBadge(provider: InferenceEngineType): { bg: string; text: string } {
-  const config = LLM_PROVIDERS_CONFIG[provider];
-  return config ? config.badge : { bg: 'bg-gray-100', text: 'text-gray-800' };
-}
-
-/**
- * Initialize parameters with defaults for a provider
- */
-export function initializeParameters(provider: InferenceEngineType): Record<string, unknown> {
-  const config = getProviderConfig(provider);
-  if (!config) return {};
-
-  const params: Record<string, unknown> = {};
-  Object.entries(config.parameters).forEach(([key, paramConfig]) => {
-    // Only include parameters with defined defaults
-    if (paramConfig.default !== undefined) {
-      params[key] = paramConfig.default;
-    }
-  });
-
-  return params;
-}
-
-/**
- * Merge saved parameters with defaults (for edit mode)
- * Prioritizes saved values over defaults
- */
-export function mergeParameters(
-  provider: InferenceEngineType,
-  savedParams: Record<string, unknown> | null | undefined
-): Record<string, unknown> {
-  const defaultParams = initializeParameters(provider);
-
-  if (!savedParams) return defaultParams;
-
-  const schema = getProviderConfig(provider)?.parameters ?? {};
-
-  // Override defaults with saved values, removing undefined/null values
-  const merged = { ...defaultParams };
-  Object.entries(savedParams).forEach(([key, value]) => {
-    // A key this provider has no field for is an orphan left by an earlier
-    // provider. Carrying it through is how a config ends up holding both
-    // max_tokens and max_completion_tokens, which providers reject outright.
-    if (value === undefined || value === null || !(key in schema)) return;
-    merged[key] = value;
-  });
-
-  return merged;
-}
-
-/**
- * Clean parameters by removing undefined, null, and empty string values.
- * With a provider, also drops keys that provider has no field for, so a
- * provider switch cannot leave a stale parameter behind in the saved config.
- */
-export function cleanParameters(
-  params: Record<string, unknown>,
-  provider?: InferenceEngineType
-): Record<string, unknown> {
-  const schema = provider ? (getProviderConfig(provider)?.parameters ?? {}) : null;
-  const cleaned: Record<string, unknown> = {};
-  Object.entries(params).forEach(([key, value]) => {
-    if (value === undefined || value === null || value === '') return;
-    if (schema && !(key in schema)) return;
-    cleaned[key] = value;
-  });
-  return cleaned;
 }
 
 /**
