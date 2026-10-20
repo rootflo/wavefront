@@ -20,6 +20,7 @@ import {
   getProviderConfig,
   initializeParameters,
   ParameterConfig,
+  UNSET_SELECT_VALUE,
 } from '@app/config/llm-providers';
 import { extractErrorMessage } from '@app/lib/utils';
 import { useDashboardStore, useNotifyStore } from '@app/store';
@@ -289,12 +290,13 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
       return (
         <Select
           value={currentValue !== undefined && currentValue !== null ? String(currentValue) : undefined}
-          onValueChange={(value) => setParameter(paramKey, value || undefined)}
+          onValueChange={(value) => setParameter(paramKey, value && value !== UNSET_SELECT_VALUE ? value : undefined)}
         >
           <SelectTrigger>
             <SelectValue placeholder="Select an option" />
           </SelectTrigger>
           <SelectContent>
+            {paramConfig.default === undefined && <SelectItem value={UNSET_SELECT_VALUE}>Not set</SelectItem>}
             {paramConfig.options.map((option) => (
               <SelectItem key={String(option.value)} value={String(option.value)}>
                 {option.label}

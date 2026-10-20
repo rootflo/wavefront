@@ -243,14 +243,18 @@ class PipecatService:
             tts = TTSServiceFactory.create_tts_service(tts_config_with_params)
 
         # Telephony-only context: caller number + IST clock/relative-date rules.
-        # Browser (WebRTC) sessions have no caller number and must not get this prefix.
+        # Browser (WebRTC) sessions have no caller number and must not get it.
+        # It changes on every call, so it goes at the very end of the system
+        # prompt: the static part before it stays a stable prefix the provider
+        # can prompt-cache across calls (a cache miss adds to every turn's TTFB).
         if provider != WEBRTC_PROVIDER:
-            base_system_prompt = (
-                f'Customer phone number: {customer_number}\n'
-                f'{get_current_ist_time_str()}\n' + agent_config['system_prompt']
+            call_context = (
+                f'\n\nCustomer phone number: {customer_number}\n'
+                f'{get_current_ist_time_str()}'
             )
         else:
-            base_system_prompt = agent_config['system_prompt']
+            call_context = ''
+        base_system_prompt = agent_config['system_prompt']
 
         supported_language_names = [
             LANGUAGE_DISPLAY_NAMES.get(code, code) for code in supported_languages
@@ -260,9 +264,9 @@ class PipecatService:
         if is_multi_language and room_context_language:
             # The app sets the language through the step overlay; keep the prompt
             # exactly as the agent author wrote it.
-            system_content = base_system_prompt
+            system_content = base_system_prompt + call_context
             # Non-empty marks the agent as multi-language for the browser messenger
-            language_state['original_system_prompt'] = base_system_prompt
+            language_state['original_system_prompt'] = system_content
         elif is_multi_language:
             initial_language_instruction = LANGUAGE_INSTRUCTIONS.get(
                 default_language, LANGUAGE_INSTRUCTIONS.get('en', 'Respond in English.')
@@ -304,13 +308,13 @@ class PipecatService:
                 f"- Never respond with your own words before or instead of calling the tool in Case 1.\n"
                 f"- Never invent responses outside these three cases."
             )
-            system_content = f'{initial_language_instruction}\n\n{base_system_prompt}{language_switching_rules}'
+            system_content = f'{initial_language_instruction}\n\n{base_system_prompt}{language_switching_rules}{call_context}'
             # Store base prompt without language instruction for switching (rules persist across switches)
             language_state['original_system_prompt'] = (
-                base_system_prompt + language_switching_rules
+                base_system_prompt + language_switching_rules + call_context
             )
         else:
-            system_content = base_system_prompt
+            system_content = base_system_prompt + call_context
 
         messages = [
             {

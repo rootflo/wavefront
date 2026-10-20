@@ -127,15 +127,27 @@ def test_webrtc_omits_telephony_phone_and_ist_prefix():
     assert 'Current Date and Time (IST)' not in prompt
 
 
-def test_telephony_includes_phone_and_ist_prefix():
+def test_telephony_appends_phone_and_ist_after_the_static_prompt():
     stack = _build(
         provider='twilio', languages=('en',), customer_number='+911234567890'
     )
 
     prompt = _system(stack)
-    assert prompt.startswith('Customer phone number: +911234567890\n')
+    # Per-call context last, so the static agent prompt is a cacheable prefix
+    assert prompt.startswith(BASE_PROMPT)
+    assert '\n\nCustomer phone number: +911234567890\n' in prompt
     assert 'Current Date and Time (IST)' in prompt
-    assert prompt.endswith(BASE_PROMPT)
+
+
+def test_telephony_multi_language_keeps_call_context_after_the_rules():
+    stack = _build(provider='twilio', customer_number='+911234567890')
+
+    prompt = _system(stack)
+    assert prompt.startswith('Respond in English.')
+    assert prompt.index(RULES) < prompt.index('Customer phone number')
+    original = stack.language_state['original_system_prompt']
+    assert original.startswith(BASE_PROMPT)
+    assert 'Customer phone number: +911234567890' in original
 
 
 def test_room_context_mode_keeps_multi_language_stt_and_tts():
