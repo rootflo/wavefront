@@ -4,7 +4,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
 import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeMirror from '@uiw/react-codemirror';
-import React from 'react';
 import { Control, FieldValues, Path, PathValue, UseFormReturn } from 'react-hook-form';
 import { CONVERSATION_CONFIG_DOCS, ConversationConfig, DEFAULT_EDITOR_TEXT, withDefaults } from './conversation-config';
 

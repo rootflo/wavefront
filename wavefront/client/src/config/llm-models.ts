@@ -519,6 +519,19 @@ export function getModelGroups(provider: InferenceEngineType): ModelGroup[] {
 }
 
 /**
+ * The model to pre-select when a provider is chosen: the first one tagged for
+ * voice, else the first fast one, else the first listed. Empty when the provider
+ * has no catalog (self-hosted: the model ID is typed in).
+ */
+export function getDefaultModelId(provider: InferenceEngineType): string {
+  const models = getModelGroups(provider).flatMap((g) => g.models);
+  return (
+    (models.find((m) => m.tags?.includes('voice')) ?? models.find((m) => m.tags?.includes('fast')) ?? models[0])?.id ??
+    ''
+  );
+}
+
+/**
  * The catalog model a model ID refers to: the exact ID, otherwise the longest
  * catalog ID it contains. That covers dated snapshots (gpt-4.1-2025-04-14) and
  * Azure deployments named after their model (prod-gpt-5.4-nano).

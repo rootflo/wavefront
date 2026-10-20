@@ -30,13 +30,23 @@ interface ModelParametersProps {
   disabled?: boolean;
   /** Saved settings this model does not accept; they are removed on the next save. */
   droppedKeys?: string[];
+  /** One field per row, for a narrow container (the grid otherwise follows the viewport width). */
+  compact?: boolean;
 }
 
 /**
  * The settings the chosen model accepts. An empty field is left out of the
  * request, so the provider's default applies.
  */
-export function ModelParameters({ provider, modelId, values, onChange, disabled, droppedKeys }: ModelParametersProps) {
+export function ModelParameters({
+  provider,
+  modelId,
+  values,
+  onChange,
+  disabled,
+  droppedKeys,
+  compact,
+}: ModelParametersProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const preset = findModelPreset(provider, modelId);
   const allParams = getModelParameters(provider, modelId);
@@ -95,7 +105,7 @@ export function ModelParameters({ provider, modelId, values, onChange, disabled,
         <p className="frost-text-muted text-sm">This model has no adjustable settings.</p>
       ) : (
         <>
-          <ParameterGrid params={basic} values={values} onChange={onChange} disabled={disabled} />
+          <ParameterGrid params={basic} values={values} onChange={onChange} disabled={disabled} compact={compact} />
           {advanced.length > 0 && (
             <div className="flex flex-col gap-4">
               <button
@@ -108,7 +118,13 @@ export function ModelParameters({ provider, modelId, values, onChange, disabled,
                 {advancedSet > 0 && !showAdvanced && <span className="text-xs">({advancedSet} set)</span>}
               </button>
               {showAdvanced && (
-                <ParameterGrid params={advanced} values={values} onChange={onChange} disabled={disabled} />
+                <ParameterGrid
+                  params={advanced}
+                  values={values}
+                  onChange={onChange}
+                  disabled={disabled}
+                  compact={compact}
+                />
               )}
             </div>
           )}
@@ -123,11 +139,12 @@ interface ParameterGridProps {
   values: Record<string, unknown>;
   onChange: (key: string, value: unknown) => void;
   disabled?: boolean;
+  compact?: boolean;
 }
 
-function ParameterGrid({ params, values, onChange, disabled }: ParameterGridProps) {
+function ParameterGrid({ params, values, onChange, disabled, compact }: ParameterGridProps) {
   return (
-    <div className="grid w-full gap-x-6 gap-y-5 sm:grid-cols-2 xl:grid-cols-3">
+    <div className={cn('grid w-full gap-x-6 gap-y-5', !compact && 'sm:grid-cols-2 xl:grid-cols-3')}>
       {params.map(([key, config]) => (
         <ParameterField
           key={key}
