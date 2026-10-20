@@ -28,6 +28,12 @@ export interface ProviderConfig {
   parameters: Record<string, ParameterConfig>;
 }
 
+/**
+ * Select value for "no value chosen". Radix Select items cannot have an empty
+ * value, so optional select parameters offer this item to clear the parameter.
+ */
+export const UNSET_SELECT_VALUE = '__unset__';
+
 export type InferenceEngineType = 'gemini' | 'openai' | 'ollama' | 'vllm' | 'anthropic' | 'azure_openai' | 'groq';
 
 /**
@@ -96,6 +102,19 @@ export const LLM_PROVIDERS_CONFIG: Record<InferenceEngineType, ProviderConfig> =
         step: 1,
         description: 'Random seed for deterministic outputs',
         placeholder: '42',
+      },
+      reasoning_effort: {
+        type: 'select',
+        default: undefined,
+        description:
+          'Reasoning models only (gpt-5, o-series); leave unset for gpt-4.1 / gpt-4o, which reject it. Lower is faster; for voice use none (gpt-5.1+) or minimal (gpt-5). When set, voice calls do not send temperature, top_p or penalties, which reasoning models reject',
+        options: [
+          { value: 'none', label: 'None (gpt-5.1 and later)' },
+          { value: 'minimal', label: 'Minimal (gpt-5)' },
+          { value: 'low', label: 'Low' },
+          { value: 'medium', label: 'Medium' },
+          { value: 'high', label: 'High' },
+        ],
       },
       service_tier: {
         type: 'select',
@@ -260,6 +279,19 @@ export const LLM_PROVIDERS_CONFIG: Record<InferenceEngineType, ProviderConfig> =
         step: 1,
         description: 'Random seed for deterministic outputs',
         placeholder: '42',
+      },
+      reasoning_effort: {
+        type: 'select',
+        default: undefined,
+        description:
+          'Reasoning models only (gpt-5, o-series); leave unset for gpt-4.1 / gpt-4o, which reject it. Lower is faster; for voice use none (gpt-5.1+) or minimal (gpt-5). When set, voice calls do not send temperature, top_p or penalties, which reasoning models reject',
+        options: [
+          { value: 'none', label: 'None (gpt-5.1 and later)' },
+          { value: 'minimal', label: 'Minimal (gpt-5)' },
+          { value: 'low', label: 'Low' },
+          { value: 'medium', label: 'Medium' },
+          { value: 'high', label: 'High' },
+        ],
       },
     },
   },

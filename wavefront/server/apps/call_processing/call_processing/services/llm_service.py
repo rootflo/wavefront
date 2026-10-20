@@ -15,6 +15,36 @@ from pipecat.services.groq.llm import GroqLLMService
 from pipecat.services.azure.llm import AzureLLMService
 # Add more as needed
 
+# Reasoning-model knob (gpt-5 / o-series) that InputParams has no field for;
+# sent through ``extra``. A low effort keeps voice-turn latency down.
+OPENAI_EXTRA_PARAMS = ('reasoning_effort',)
+
+
+def _openai_extra_params(parameters: Dict[str, Any]) -> Dict[str, Any]:
+    return {k: parameters[k] for k in OPENAI_EXTRA_PARAMS if k in parameters}
+
+
+# Reasoning models reject these with a 400. The LLM config UI pre-fills them
+# (and refills them on every edit), so a config naming a reasoning effort is
+# taken to be for a reasoning model and they are left out of the request.
+REASONING_UNSUPPORTED_PARAMS = (
+    'temperature',
+    'top_p',
+    'frequency_penalty',
+    'presence_penalty',
+)
+
+
+def _without_reasoning_unsupported(parameters: Dict[str, Any]) -> Dict[str, Any]:
+    if 'reasoning_effort' not in parameters:
+        return parameters
+    dropped = [k for k in REASONING_UNSUPPORTED_PARAMS if k in parameters]
+    if dropped:
+        logger.info(f'reasoning_effort set; not sending {dropped} to the LLM')
+    return {
+        k: v for k, v in parameters.items() if k not in REASONING_UNSUPPORTED_PARAMS
+    }
+
 
 class LLMServiceFactory:
     """Factory for creating LLM service instances from configuration"""
@@ -46,6 +76,7 @@ class LLMServiceFactory:
 
         if parameters is None:
             parameters = {}
+        parameters = _without_reasoning_unsupported(parameters)
 
         logger.info(f'Creating LLM service: {llm_type} / {model}')
 
@@ -91,6 +122,9 @@ class LLMServiceFactory:
             params_dict['presence_penalty'] = parameters['presence_penalty']
         if 'seed' in parameters:
             params_dict['seed'] = parameters['seed']
+        extra = _openai_extra_params(parameters)
+        if extra:
+            params_dict['extra'] = extra
         if 'service_tier' in parameters:
             params_dict['service_tier'] = parameters['service_tier']
 
@@ -122,6 +156,9 @@ class LLMServiceFactory:
             params_dict['presence_penalty'] = parameters['presence_penalty']
         if 'seed' in parameters:
             params_dict['seed'] = parameters['seed']
+        extra = _openai_extra_params(parameters)
+        if extra:
+            params_dict['extra'] = extra
 
         input_params = BaseOpenAILLMService.InputParams(**params_dict)
 
@@ -175,17 +212,21 @@ class LLMServiceFactory:
             params_dict['presence_penalty'] = parameters['presence_penalty']
         if 'seed' in parameters:
             params_dict['seed'] = parameters['seed']
-        if 'service_tier' in parameters:
-            params_dict['service_tier'] = parameters['service_tier']
-
-        # Create InputParams object
-        input_params = GroqLLMService.InputParams(**params_dict)
+        extra = _openai_extra_params(parameters)
+        if extra:
+            params_dict['extra'] = extra
 
         logger.info(
             f"Groq LLM config: model={model}, temp={params_dict.get('temperature', 'default')}"
         )
 
-        return GroqLLMService(api_key=api_key, model=model, params=input_params)
+        # GroqLLMService ignores ``params`` (it always hands its own settings to
+        # the base class), so everything must go through ``settings``.
+        return GroqLLMService(
+            api_key=api_key,
+            service_tier=parameters.get('service_tier'),
+            settings=GroqLLMService.Settings(model=model, **params_dict),
+        )
 
     @staticmethod
     def _create_azure_llm(
@@ -210,18 +251,19 @@ class LLMServiceFactory:
             params_dict['presence_penalty'] = parameters['presence_penalty']
         if 'seed' in parameters:
             params_dict['seed'] = parameters['seed']
-
-        # Create InputParams object
-        input_params = BaseOpenAILLMService.InputParams(**params_dict)
+        extra = _openai_extra_params(parameters)
+        if extra:
+            params_dict['extra'] = extra
 
         logger.info(
-            f"Azure OpenAI LLM config: model={model}, endpoint={base_url}, temp={params_dict.get('temperature', 'default')}"
+            f"Azure OpenAI LLM config: model={model}, endpoint={base_url}, temp={params_dict.get('temperature', 'default')}, extra={extra or 'none'}"
         )
 
+        # AzureLLMService ignores ``params`` (it always hands its own settings to
+        # the base class), so everything must go through ``settings``.
         return AzureLLMService(
             api_key=api_key,
             endpoint=base_url,
-            model=model,
             # api_version=api_version,
-            params=input_params,
+            settings=AzureLLMService.Settings(model=model, **params_dict),
         )

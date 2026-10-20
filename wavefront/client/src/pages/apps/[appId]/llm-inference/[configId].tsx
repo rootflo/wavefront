@@ -20,6 +20,7 @@ import {
   getProviderConfig,
   mergeParameters,
   ParameterConfig,
+  UNSET_SELECT_VALUE,
 } from '@app/config/llm-providers';
 import { Spinner } from '@app/components/ui/spinner';
 import { useGetLLMConfig } from '@app/hooks';
@@ -543,7 +544,7 @@ const LLMInferenceConfigDetail: React.FC = () => {
                                       value={getStringParameter(parameters, paramKey) || ''}
                                       onValueChange={(value) => {
                                         if (!value) return;
-                                        const val = value || undefined;
+                                        const val = value === UNSET_SELECT_VALUE ? undefined : value;
                                         setParameters((prev) => ({ ...prev, [paramKey]: val }));
                                         field.onChange(val);
                                       }}
@@ -555,6 +556,9 @@ const LLMInferenceConfigDetail: React.FC = () => {
                                         </SelectTrigger>
                                       </FormControl>
                                       <SelectContent>
+                                        {paramConfig.default === undefined && (
+                                          <SelectItem value={UNSET_SELECT_VALUE}>Not set</SelectItem>
+                                        )}
                                         {paramConfig.options.map((option) => (
                                           <SelectItem key={String(option.value)} value={String(option.value)}>
                                             {option.label}
