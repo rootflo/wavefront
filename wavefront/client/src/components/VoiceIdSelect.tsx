@@ -12,7 +12,7 @@ import {
 } from '@app/components/ui/command';
 import { Input } from '@app/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@app/components/ui/popover';
-import { getTtsVoiceLabel, getTtsVoiceOptions } from '@app/config/tts-voice-catalogs';
+import { allowsCustomTtsVoiceId, getTtsVoiceLabel, getTtsVoiceOptions } from '@app/config/tts-voice-catalogs';
 import { cn } from '@app/lib/utils';
 
 interface VoiceIdSelectProps {
@@ -48,6 +48,8 @@ export function VoiceIdSelect({
     return getTtsVoiceLabel(provider, model, value) || value;
   }, [provider, model, value, placeholder]);
 
+  const allowCustom = allowsCustomTtsVoiceId(provider);
+
   if (options.length === 0) {
     return (
       <Input
@@ -59,23 +61,29 @@ export function VoiceIdSelect({
     );
   }
 
-  return (
+  const trigger = allowCustom ? (
+    <Button type="button" variant="outline" size="icon" aria-label="Suggested voices" className="shrink-0">
+      <ChevronsUpDown className="h-4 w-4 opacity-50" />
+    </Button>
+  ) : (
+    <Button
+      type="button"
+      variant="outline"
+      role="combobox"
+      aria-expanded={open}
+      className={cn('w-full justify-between font-normal', className)}
+    >
+      <span className="truncate">{displayLabel}</span>
+      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+    </Button>
+  );
+
+  const picker = (
     <Popover modal open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          className={cn('w-full justify-between font-normal', className)}
-        >
-          <span className="truncate">{displayLabel}</span>
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
+      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       <PopoverContent
-        className="w-[var(--radix-popover-trigger-width)] p-0"
-        align="start"
+        className={cn('p-0', allowCustom ? 'w-72' : 'w-[var(--radix-popover-trigger-width)]')}
+        align="end"
         onWheel={(e) => e.stopPropagation()}
       >
         <Command>
@@ -106,5 +114,20 @@ export function VoiceIdSelect({
         </Command>
       </PopoverContent>
     </Popover>
+  );
+
+  if (!allowCustom) return picker;
+
+  // Cartesia/Azure: free-text voice ID, with the curated catalog offered as suggestions
+  return (
+    <div className={cn('flex gap-2', className)}>
+      <Input
+        placeholder={placeholder || 'Voice ID'}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="min-w-0 flex-1"
+      />
+      {picker}
+    </div>
   );
 }

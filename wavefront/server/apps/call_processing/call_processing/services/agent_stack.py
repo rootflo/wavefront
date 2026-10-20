@@ -65,7 +65,7 @@ class SharedSession:
     transcript_log: List[Dict[str, Any]]
     # {'task': PipelineTask}; filled once the task exists
     task_container: Dict[str, Any] = field(default_factory=lambda: {'task': None})
-    # BrowserSessionMessenger for browser sessions, else None
+    # ClientSessionMessenger for browser sessions, else None
     messenger: Optional[Any] = None
     # The stack currently serving the call (updated by every agent swap)
     active_stack: Optional[AgentStack] = None

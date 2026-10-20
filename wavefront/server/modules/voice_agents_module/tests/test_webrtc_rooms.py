@@ -163,6 +163,30 @@ class TestWebRTCRoomClient:
         assert json.loads(proxied.content) == {'error': 'room_already_joined'}
         assert proxied.set_cookie == 'wf_webrtc_affinity=pod-a; Path=/'
 
+    @pytest.mark.parametrize(
+        'browser_cookie, expected',
+        [
+            (
+                'session=secret; wf_webrtc_affinity=pod-a; theme=dark',
+                'wf_webrtc_affinity=pod-a',
+            ),
+            ('session=secret; theme=dark', None),
+            ('wf_webrtc_affinity=', None),
+            (None, None),
+        ],
+    )
+    async def test_forward_signaling_forwards_only_affinity_cookie(
+        self, transport, browser_cookie, expected
+    ):
+        transport.handler = lambda request: httpx.Response(200, json={})
+
+        await make_client(signaling_via_floware=True).forward_signaling(
+            'POST', b'{}', browser_cookie
+        )
+
+        (request,) = transport.requests
+        assert request.headers.get('cookie') == expected
+
 
 def agent(status='active'):
     return {

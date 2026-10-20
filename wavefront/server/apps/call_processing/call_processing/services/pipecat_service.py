@@ -81,7 +81,7 @@ from call_processing.services.webrtc_app_messages import (
     STATE_SPEAKING,
     STATE_THINKING,
     BotCaptionProcessor,
-    BrowserSessionMessenger,
+    ClientSessionMessenger,
 )
 
 # from call_processing.services.conversation_completion_tool import (
@@ -676,11 +676,11 @@ class PipecatService:
 
         # Browser sessions only: app messages (set_context / interrupt / switch_agent)
         # in and agent_state / caption / transcript events out. Bound to the task below.
-        browser_messenger: Optional[BrowserSessionMessenger] = None
+        client_messenger: Optional[ClientSessionMessenger] = None
         slot_a: Optional[SwappableSlot] = None
         slot_b: Optional[SwappableSlot] = None
         if is_webrtc:
-            browser_messenger = BrowserSessionMessenger(
+            client_messenger = ClientSessionMessenger(
                 context=stack.context,
                 function_schemas=stack.function_schemas,
                 language_state=stack.language_state,
@@ -693,7 +693,7 @@ class PipecatService:
                 stt_provider=stack.stt_provider,
                 tts_voice_ids=stack.tts_voice_ids,
             )
-            shared.messenger = browser_messenger
+            shared.messenger = client_messenger
 
             # The agent-specific processors sit in swappable slots so the voice agent
             # can change without touching the transport (and so the peer connection).
@@ -704,7 +704,7 @@ class PipecatService:
                 slot_a,  # STT -> user aggregator -> LLM -> TTS
                 transport.output(),  # Audio output to the browser
                 # After output so captions follow what the bot is actually saying
-                BotCaptionProcessor(browser_messenger),
+                BotCaptionProcessor(client_messenger),
                 slot_b,  # Add assistant response to context
             ]
         else:
@@ -763,25 +763,25 @@ class PipecatService:
         shared.task_container['task'] = task
 
         swap_controller: Optional[AgentSwapController] = None
-        if browser_messenger:
-            browser_messenger.bind_task(task)
+        if client_messenger:
+            client_messenger.bind_task(task)
 
             if slot_a and slot_b and session_hooks and session_hooks.swap:
                 swap_controller = AgentSwapController(
                     slot_a=slot_a,
                     slot_b=slot_b,
                     task=task,
-                    messenger=browser_messenger,
+                    messenger=client_messenger,
                     shared=shared,
                     build_stack=build_stack,
                     stack=stack,
                     options=session_hooks.swap,
                 )
-                browser_messenger.set_switch_handler(swap_controller.request_switch)
+                client_messenger.set_switch_handler(swap_controller.request_switch)
 
             @task.rtvi.event_handler('on_client_message')
             async def on_client_message(rtvi, message):
-                await browser_messenger.handle_client_message(message)
+                await client_messenger.handle_client_message(message)
 
         if session_hooks and session_hooks.on_ready:
             session_hooks.on_ready(swap_controller)
@@ -847,8 +847,8 @@ class PipecatService:
         finally:
             if swap_controller:
                 await swap_controller.close()
-            if browser_messenger:
-                await browser_messenger.close()
+            if client_messenger:
+                await client_messenger.close()
             await task.cancel()
             if call_evaluation_tasks:
                 await asyncio.gather(*call_evaluation_tasks, return_exceptions=True)

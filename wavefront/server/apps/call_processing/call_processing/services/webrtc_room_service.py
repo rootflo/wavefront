@@ -52,81 +52,6 @@ ERR_ALREADY_ACTIVE = 'already_active'
 ERR_SWAP_FAILED = 'swap_failed'
 ERR_INVALID_REQUEST = 'invalid_request'
 
-# Consume the join token: validate, flip pending -> joined, drop the token hash.
-# Runs atomically so two concurrent offers cannot both win.
-#
-# KEYS[1] room key
-# ARGV[1] token hash, ARGV[2] voice_agent_id, ARGV[3] joined_at, ARGV[4] joined TTL
-# Returns {'ok'} or {'err', <code>}
-_CONSUME_SCRIPT = """
-local raw = redis.call('GET', KEYS[1])
-if not raw then
-    return {'err', 'room_expired'}
-end
-local room = cjson.decode(raw)
-if room['status'] == 'ended' then
-    return {'err', 'room_expired'}
-end
-if room['status'] ~= 'pending' then
-    return {'err', 'room_already_joined'}
-end
-if room['voice_agent_id'] ~= ARGV[2] then
-    return {'err', 'invalid_join_token'}
-end
-if (not room['join_token_hash']) or room['join_token_hash'] ~= ARGV[1] then
-    return {'err', 'invalid_join_token'}
-end
-room['status'] = 'joined'
-room['joined_at'] = ARGV[3]
-room['join_token_hash'] = nil
-redis.call('SET', KEYS[1], cjson.encode(room), 'EX', tonumber(ARGV[4]))
-return {'ok'}
-"""
-
-# Attach pc_id / instance_id to a joined room, keeping its TTL.
-# ARGV[1] pc_id, ARGV[2] instance_id
-_ATTACH_SCRIPT = """
-local raw = redis.call('GET', KEYS[1])
-if not raw then
-    return 0
-end
-local room = cjson.decode(raw)
-room['pc_id'] = ARGV[1]
-room['instance_id'] = ARGV[2]
-redis.call('SET', KEYS[1], cjson.encode(room), 'KEEPTTL')
-return 1
-"""
-
-# Record a completed agent swap, keeping the room TTL. Refuses agents that are not
-# on the room's allowlist, so the record can never point outside it.
-# ARGV[1] agent_id
-# Returns {'ok', <swap_count>} or {'err', <code>}
-_RECORD_SWAP_SCRIPT = """
-local raw = redis.call('GET', KEYS[1])
-if not raw then
-    return {'err', 'room_expired'}
-end
-local room = cjson.decode(raw)
-if room['status'] ~= 'joined' then
-    return {'err', 'room_expired'}
-end
-local allowed = false
-if type(room['allowed_agent_ids']) == 'table' then
-    for _, id in ipairs(room['allowed_agent_ids']) do
-        if id == ARGV[1] then
-            allowed = true
-        end
-    end
-end
-if not allowed then
-    return {'err', 'agent_not_allowed'}
-end
-room['active_voice_agent_id'] = ARGV[1]
-room['swap_count'] = (tonumber(room['swap_count']) or 0) + 1
-redis.call('SET', KEYS[1], cjson.encode(room), 'KEEPTTL')
-return {'ok', room['swap_count']}
-"""
-
 
 class WebRTCRoomError(Exception):
     """Raised when a room cannot be joined. ``code`` is a stable ERR_* value."""
@@ -235,24 +160,21 @@ class WebRTCRoomService:
         if not room_id or not voice_agent_id or not join_token:
             raise room_error(ERR_INVALID_JOIN_TOKEN)
 
-        result = self.cache_manager.run_script(
-            _CONSUME_SCRIPT,
-            keys=[self._key(room_id)],
-            args=[
-                hash_join_token(join_token),
-                voice_agent_id,
-                str(time.time()),
-                # Joined rooms live for the max session plus a small buffer
-                self.max_session_secs + 60,
-            ],
+        result = self.cache_manager.consume_room_join_token(
+            self._key(room_id),
+            hash_join_token(join_token),
+            voice_agent_id,
+            str(time.time()),
+            # Joined rooms live for the max session plus a small buffer
+            self.max_session_secs + 60,
         )
         if not result or result[0] != 'ok':
             code = result[1] if result and len(result) > 1 else ERR_ROOM_EXPIRED
             raise room_error(code if code in _ERROR_STATUS else ERR_ROOM_EXPIRED)
 
     def attach_connection(self, room_id: str, pc_id: str, instance_id: str) -> None:
-        self.cache_manager.run_script(
-            _ATTACH_SCRIPT, keys=[self._key(room_id)], args=[pc_id, instance_id]
+        self.cache_manager.attach_room_connection(
+            self._key(room_id), pc_id, instance_id
         )
 
     def record_swap(self, room_id: str, agent_id: str) -> Optional[int]:
@@ -262,9 +184,7 @@ class WebRTCRoomService:
         raises: the live session must not fail because bookkeeping did.
         """
         try:
-            result = self.cache_manager.run_script(
-                _RECORD_SWAP_SCRIPT, keys=[self._key(room_id)], args=[agent_id]
-            )
+            result = self.cache_manager.record_room_swap(self._key(room_id), agent_id)
         except Exception as e:
             logger.warning(f'Failed to record swap for room {room_id}: {e}')
             return None

@@ -1,11 +1,16 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 
 import FieldHelp from '@app/components/FieldHelp';
 import { VoiceIdSelect } from '@app/components/VoiceIdSelect';
 import { Label } from '@app/components/ui/label';
 import { Switch } from '@app/components/ui/switch';
 import { getLanguageDisplayName } from '@app/constants/languages';
-import { getDefaultTtsVoiceId, getTtsVoiceOptions, isTtsVoiceIdValid } from '@app/config/tts-voice-catalogs';
+import {
+  allowsCustomTtsVoiceId,
+  getDefaultTtsVoiceId,
+  getTtsVoiceOptions,
+  isTtsVoiceIdValid,
+} from '@app/config/tts-voice-catalogs';
 
 interface VoiceIdsSectionProps {
   provider: string | undefined;
@@ -55,8 +60,23 @@ export function VoiceIdsSection({
     }
   };
 
-  // Auto-select a valid default voice when provider/model changes or voices are empty/invalid
+  // Fill empty voices, and replace invalid ones only after the provider/model changes.
+  // Existing non-empty voice IDs are preserved on mount and while the context is unchanged.
+  const contextKey = `${provider}|${model}`;
+  const prevContext = useRef<{ provider?: string; model?: string } | undefined>(undefined);
+
   useEffect(() => {
+    const prev = prevContext.current;
+    const contextChanged = !!prev && (prev.provider !== provider || prev.model !== model);
+    const providerChanged = !!prev && prev.provider !== provider;
+    prevContext.current = { provider, model };
+
+    // Free-text providers accept any ID, so a switch of provider must drop the old provider's voice
+    const isStale = (voiceId: string, lang?: string) =>
+      providerChanged && allowsCustomTtsVoiceId(provider)
+        ? !getTtsVoiceOptions(provider, model, lang).some((option) => option.value === voiceId)
+        : !isTtsVoiceIdValid(provider, model, voiceId, lang);
+
     if (!provider || languages.length === 0) return;
     if (getTtsVoiceOptions(provider, model).length === 0) return;
 
@@ -65,11 +85,13 @@ export function VoiceIdsSection({
 
     if (!customizePerLanguage) {
       const current = languages.map((lang) => voiceIds[lang] || '').find(Boolean) || '';
-      const valid = isTtsVoiceIdValid(provider, model, current);
-      const defaultId = valid ? current : getDefaultTtsVoiceId(provider, model);
+      const keepCurrent = !!current && (!contextChanged || !isStale(current));
+      const defaultId = keepCurrent ? current : getDefaultTtsVoiceId(provider, model);
       if (!defaultId) return;
 
       languages.forEach((lang) => {
+        const existing = voiceIds[lang] || '';
+        if (existing && keepCurrent) return;
         if (next[lang] !== defaultId) {
           next[lang] = defaultId;
           changed = true;
@@ -78,7 +100,7 @@ export function VoiceIdsSection({
     } else {
       languages.forEach((lang) => {
         const current = voiceIds[lang] || '';
-        if (isTtsVoiceIdValid(provider, model, current, lang)) return;
+        if (current && (!contextChanged || !isStale(current, lang))) return;
         const defaultId = getDefaultTtsVoiceId(provider, model, lang);
         if (defaultId && next[lang] !== defaultId) {
           next[lang] = defaultId;
@@ -90,7 +112,7 @@ export function VoiceIdsSection({
     if (changed) onChange(next);
     // Only react to catalog context / language list — not every voiceIds keystroke
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [provider, model, languages.join(','), customizePerLanguage]);
+  }, [contextKey, languages.join(','), customizePerLanguage]);
 
   return (
     <div className="space-y-3 border-t pt-4">

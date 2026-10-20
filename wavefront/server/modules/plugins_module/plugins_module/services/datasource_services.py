@@ -21,7 +21,7 @@ from plugins_module.utils.helper import AddDatasourcePayload
 
 # Safe SQL identifiers only (optionally schema-qualified). Table names are
 # interpolated into queries, so reject anything outside this shape.
-_RESOURCE_ID_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$')
+_RESOURCE_ID_RE = re.compile(r'[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?')
 
 
 async def get_datasource_config(
@@ -72,7 +72,7 @@ def check_is_valid_resource(resource_id: str) -> bool:
         return False
     if resource_id == 'parsed_data_object':
         return True
-    return bool(_RESOURCE_ID_RE.match(resource_id))
+    return bool(_RESOURCE_ID_RE.fullmatch(resource_id))
 
 
 def fetch_data_filters(data_filters: list) -> str:

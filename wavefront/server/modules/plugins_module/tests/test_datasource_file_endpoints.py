@@ -492,6 +492,8 @@ def test_stored_content_type(content_type, expected):
         ('photo.jpg', b'not-an-image', None, 'image/jpeg'),
         ('blob', b'plain', 'application/octet-stream', 'application/octet-stream'),
         ('blob', b'plain', None, 'application/octet-stream'),
+        ('photo.jpg', b'not-an-image', 'binary/octet-stream', 'image/jpeg'),
+        ('vishnu', b'\xff\xd8\xff\xe0xx', 'binary/octet-stream', 'image/jpeg'),
     ],
 )
 def test_resolve_download_media_type(filename, content, stored, expected):

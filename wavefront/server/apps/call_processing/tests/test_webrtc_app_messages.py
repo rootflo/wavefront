@@ -12,7 +12,7 @@ from call_processing.services.webrtc_app_messages import (
     OVERLAY_END,
     OVERLAY_START,
     CaptionAssembler,
-    BrowserSessionMessenger,
+    ClientSessionMessenger,
     SetContext,
     apply_step_overlay,
     build_step_overlay,
@@ -170,7 +170,7 @@ def _messenger(tools=('tool_a', 'tool_b'), language_state=None, **kwargs):
     context = LLMContext(
         [{'role': 'system', 'content': 'BASE PROMPT'}],
     )
-    messenger = BrowserSessionMessenger(
+    messenger = ClientSessionMessenger(
         context=context,
         function_schemas=[_schema(n) for n in tools],
         language_state=language_state

@@ -1577,6 +1577,12 @@ def _sniff_media_type(content: bytes) -> str | None:
     return None
 
 
+# Stored types that carry no real type information; fall back to filename/magic bytes.
+_GENERIC_STORED_MEDIA_TYPES = frozenset(
+    {'application/octet-stream', 'binary/octet-stream'}
+)
+
+
 def _resolve_download_media_type(
     filename: str,
     content: bytes,
@@ -1585,7 +1591,7 @@ def _resolve_download_media_type(
     """Prefer stored object metadata, then filename guess, then magic bytes."""
     if stored_content_type:
         mime = stored_content_type.split(';', 1)[0].strip().lower()
-        if mime and mime != 'application/octet-stream':
+        if mime and mime not in _GENERIC_STORED_MEDIA_TYPES:
             return mime
     guessed = mimetypes.guess_type(filename)[0]
     if guessed:

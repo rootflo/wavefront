@@ -123,6 +123,8 @@ const BrowserCallDialog: React.FC<BrowserCallDialogProps> = ({
 
   const clientRef = useRef<PipecatClient | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  // One stream for the remote audio element; tracks are added/removed as they start/stop.
+  const remoteStreamRef = useRef<MediaStream | null>(null);
   // Bumped on every start/teardown so late results from an abandoned attempt are ignored.
   const attemptRef = useRef(0);
   // True only while a call is established, so late transport events can't clobber connecting/error states.
@@ -181,6 +183,12 @@ const BrowserCallDialog: React.FC<BrowserCallDialogProps> = ({
     const client = clientRef.current;
     clientRef.current = null;
     if (audioRef.current) audioRef.current.srcObject = null;
+    const remoteStream = remoteStreamRef.current;
+    remoteStreamRef.current = null;
+    remoteStream?.getTracks().forEach((track) => {
+      remoteStream.removeTrack(track);
+      track.stop();
+    });
     if (client) {
       try {
         // Closes the peer connection and releases the microphone.
@@ -264,8 +272,15 @@ const BrowserCallDialog: React.FC<BrowserCallDialogProps> = ({
       callbacks: {
         onTrackStarted: (track, participant) => {
           if (participant?.local || track.kind !== 'audio' || !audioRef.current) return;
-          audioRef.current.srcObject = new MediaStream([track]);
+          const stream = remoteStreamRef.current ?? new MediaStream();
+          remoteStreamRef.current = stream;
+          if (!stream.getTracks().some((t) => t.id === track.id)) stream.addTrack(track);
+          if (audioRef.current.srcObject !== stream) audioRef.current.srcObject = stream;
           void audioRef.current.play().catch(() => undefined);
+        },
+        onTrackStopped: (track, participant) => {
+          if (participant?.local || track.kind !== 'audio') return;
+          remoteStreamRef.current?.removeTrack(track);
         },
         onDisconnected: () => {
           if (attempt !== attemptRef.current) return;

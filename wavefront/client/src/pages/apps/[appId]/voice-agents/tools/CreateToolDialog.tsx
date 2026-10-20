@@ -434,11 +434,12 @@ const CreateToolDialog: React.FC<CreateToolDialogProps> = ({ isOpen, onOpenChang
                       <FormControl>
                         <Input
                           type="number"
-                          step="0.1"
-                          min={0.1}
+                          step="0.5"
+                          min={0.5}
                           max={30}
                           {...field}
-                          onChange={(e) => field.onChange(parseFloat(e.target.value) || 4)}
+                          value={field.value ?? ''}
+                          onChange={(e) => field.onChange(e.target.value === '' ? undefined : e.target.valueAsNumber)}
                         />
                       </FormControl>
                       <p className="frost-text-muted text-xs">How long to wait for the app to acknowledge the event</p>

@@ -194,13 +194,14 @@ class WebRTCSessionService:
         new_pc_id = (answer or {}).get('pc_id')
         old_pc_id = offer.pc_id
         if new_pc_id and old_pc_id and new_pc_id != old_pc_id:
+            # Write the room first: if it fails, the old id stays mapped locally
+            self.room_service.attach_connection(
+                session.room_id, new_pc_id, self.instance_id
+            )
             self._sessions.pop(old_pc_id, None)
             self._sessions[new_pc_id] = session
             # The handler re-keys its own map but leaves the stale id behind
             getattr(self._handler, '_pcs_map', {}).pop(old_pc_id, None)
-            self.room_service.attach_connection(
-                session.room_id, new_pc_id, self.instance_id
-            )
             logger.info(
                 f'WebRTC peer connection restarted room={session.room_id} '
                 f'pc_id={old_pc_id}->{new_pc_id}'

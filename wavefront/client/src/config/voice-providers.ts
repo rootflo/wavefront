@@ -214,7 +214,7 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
           },
           enable_preprocessing: {
             type: 'boolean',
-            default: false,
+            default: true,
             description: 'Enable text preprocessing',
           },
           temperature: {
@@ -407,8 +407,8 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
         parameters: {
           model: {
             type: 'string',
-            default: 'saaras:v3',
-            options: ['saaras:v3', 'saaras:v4'],
+            default: 'saaras:v4',
+            options: ['saaras:v4', 'saaras:v3'],
             description: 'STT model',
           },
           language: {
@@ -516,7 +516,9 @@ export function initializeParameters(type: 'tts' | 'stt', provider: string): Rec
 
   const params: Record<string, unknown> = {};
   Object.entries(config.parameters).forEach(([key, paramConfig]) => {
-    params[key] = paramConfig.default;
+    // A newly selected provider starts on its first listed model
+    const firstOption = key === 'model' ? paramConfig.options?.[0] : undefined;
+    params[key] = firstOption ?? paramConfig.default;
   });
 
   return params;

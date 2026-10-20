@@ -265,7 +265,7 @@ class CaptionAssembler:
 class BotCaptionProcessor(FrameProcessor):
     """Place after ``transport.output()``: emits captions as the bot speaks."""
 
-    def __init__(self, messenger: 'BrowserSessionMessenger', **kwargs):
+    def __init__(self, messenger: 'ClientSessionMessenger', **kwargs):
         super().__init__(**kwargs)
         self._messenger = messenger
         self._assembler = CaptionAssembler()
@@ -292,8 +292,8 @@ class BotCaptionProcessor(FrameProcessor):
 # -------------------------------------------------------------------- messenger
 
 
-class BrowserSessionMessenger:
-    """Handles browser messages for one live pipeline and emits UI events."""
+class ClientSessionMessenger:
+    """Handles client (browser or app) messages for one live pipeline and emits UI events."""
 
     def __init__(
         self,

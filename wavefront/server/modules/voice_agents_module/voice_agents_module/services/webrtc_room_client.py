@@ -9,6 +9,7 @@ registry and the media. This client:
 """
 
 from dataclasses import dataclass
+from http.cookies import CookieError, SimpleCookie
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -19,6 +20,23 @@ from common_module.log.logger import logger
 # Floware-relative base the browser uses when signaling goes through floware.
 # The console gateway serves floware under /v1/{appId}, so the client resolves it there.
 FLOWARE_SIGNALING_PATH = '/floware/v1/webrtc'
+
+AFFINITY_COOKIE_NAME = 'wf_webrtc_affinity'
+
+
+def _extract_affinity_cookie(cookie_header: Optional[str]) -> Optional[str]:
+    """Return only the affinity cookie as ``name=value``; never other browser cookies."""
+    if not cookie_header:
+        return None
+    parsed: SimpleCookie = SimpleCookie()
+    try:
+        parsed.load(cookie_header)
+    except CookieError:
+        return None
+    morsel = parsed.get(AFFINITY_COOKIE_NAME)
+    if morsel is None or not morsel.value:
+        return None
+    return f'{AFFINITY_COOKIE_NAME}={morsel.value}'
 
 
 class WebRTCRoomClientError(Exception):
@@ -117,7 +135,7 @@ class WebRTCRoomClient:
     ) -> ProxiedResponse:
         """Forward the browser's SDP offer (POST) / ICE (PATCH) to call_processing.
 
-        The sticky-affinity cookie is passed both ways so an ingress in front of
+        Only the sticky-affinity cookie is forwarded upstream (and its Set-Cookie back) so an ingress in front of
         call_processing keeps the browser pinned to one replica.
         """
         if not self.signaling_via_floware:
@@ -126,8 +144,9 @@ class WebRTCRoomClient:
             )
         url = f'{self._require_base_url()}/api/webrtc/offer'
         headers = {'Content-Type': 'application/json'}
-        if cookie:
-            headers['Cookie'] = cookie
+        affinity_cookie = _extract_affinity_cookie(cookie)
+        if affinity_cookie:
+            headers['Cookie'] = affinity_cookie
 
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:

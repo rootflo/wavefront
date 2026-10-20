@@ -146,12 +146,13 @@ const FileStoragePanel: React.FC<FileStoragePanelProps> = ({ datasourceId }) => 
   const { notifySuccess, notifyError } = useNotifyStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const previewObjectUrlRef = useRef<string | null>(null);
+  const previewRequestIdRef = useRef(0);
 
   /** Current directory: '' root, or 'docs/reports/' */
   const [currentPrefix, setCurrentPrefix] = useState('');
   const [files, setFiles] = useState<DatasourceFileEntry[]>([]);
   const [loadingFiles, setLoadingFiles] = useState(false);
-  const [listTruncated, setListTruncated] = useState(false);
+  const [listHasMore, setListHasMore] = useState(false);
 
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -165,37 +166,57 @@ const FileStoragePanel: React.FC<FileStoragePanelProps> = ({ datasourceId }) => 
   const [preview, setPreview] = useState<FilePreviewState | null>(null);
   const [previewLoadingPath, setPreviewLoadingPath] = useState<string | null>(null);
 
+  const listRequestIdRef = useRef(0);
+  const nextPageRef = useRef(1);
+
+  /** Fetch up to MAX_LIST_PAGES pages; `append` continues from the page after the last one loaded. */
   const loadFiles = useCallback(
-    async (dirPrefix = currentPrefix) => {
+    async (dirPrefix = currentPrefix, append = false) => {
+      const requestId = ++listRequestIdRef.current;
+      const isStale = () => listRequestIdRef.current !== requestId;
       setLoadingFiles(true);
-      setListTruncated(false);
+      if (!append) {
+        // Drop the previous folder's rows so they never show under the new path
+        setFiles([]);
+        setListHasMore(false);
+        nextPageRef.current = 1;
+      }
       try {
         const apiPrefix = listApiPrefix(dirPrefix);
         const collected: DatasourceFileEntry[] = [];
-        let page = 1;
+        const firstPage = nextPageRef.current;
+        let page = firstPage;
         let hasMore = true;
 
-        while (hasMore && page <= MAX_LIST_PAGES) {
+        while (hasMore && page < firstPage + MAX_LIST_PAGES) {
           const response = await floConsoleService.datasourcesService.listFiles(datasourceId, {
             prefix: apiPrefix || undefined,
             page_number: page,
             page_size: PAGE_SIZE,
           });
+          if (isStale()) return;
           const data = response.data?.data;
           collected.push(...(data?.files ?? []));
           hasMore = Boolean(data?.has_next_page);
           page += 1;
         }
 
-        if (hasMore) {
-          setListTruncated(true);
-        }
-        setFiles(collected);
+        nextPageRef.current = page;
+        setListHasMore(hasMore);
+        setFiles((prev) => {
+          if (!append) return collected;
+          const seen = new Set(prev.map((entry) => entry.path));
+          return [...prev, ...collected.filter((entry) => !seen.has(entry.path))];
+        });
       } catch (error) {
+        if (isStale()) return;
         notifyError(extractErrorMessage(error) || 'Failed to list files');
-        setFiles([]);
+        if (!append) {
+          setFiles([]);
+          setListHasMore(false);
+        }
       } finally {
-        setLoadingFiles(false);
+        if (!isStale()) setLoadingFiles(false);
       }
     },
     [currentPrefix, datasourceId, notifyError]
@@ -209,6 +230,8 @@ const FileStoragePanel: React.FC<FileStoragePanelProps> = ({ datasourceId }) => 
   const crumbs = useMemo(() => breadcrumbSegments(currentPrefix), [currentPrefix]);
 
   const clearPreview = useCallback(() => {
+    // Invalidate any in-flight preview request
+    previewRequestIdRef.current += 1;
     if (previewObjectUrlRef.current) {
       URL.revokeObjectURL(previewObjectUrlRef.current);
       previewObjectUrlRef.current = null;
@@ -279,9 +302,12 @@ const FileStoragePanel: React.FC<FileStoragePanelProps> = ({ datasourceId }) => 
 
   const handlePreview = async (entry: DatasourceFileEntry) => {
     clearPreview();
+    const requestId = previewRequestIdRef.current;
+    const isStale = () => previewRequestIdRef.current !== requestId;
     setPreviewLoadingPath(entry.path);
     try {
       const response = await floConsoleService.datasourcesService.downloadFile(datasourceId, entry.relative_path);
+      if (isStale()) return;
       const blob = response.data;
       const headerContentType = response.headers?.['content-type'];
       const contentType = mimeTypeOf(typeof headerContentType === 'string' ? headerContentType : undefined, blob.type);
@@ -310,10 +336,12 @@ const FileStoragePanel: React.FC<FileStoragePanelProps> = ({ datasourceId }) => 
           });
           return;
         }
+        const text = await blob.text();
+        if (isStale()) return;
         setPreview({
           entry,
           kind: 'text',
-          text: await blob.text(),
+          text,
           contentType,
           sizeBytes: blob.size,
         });
@@ -327,10 +355,13 @@ const FileStoragePanel: React.FC<FileStoragePanelProps> = ({ datasourceId }) => 
         sizeBytes: blob.size,
       });
     } catch (error) {
-      notifyError((await getDownloadErrorMessage(error)) || 'Failed to open file');
+      if (isStale()) return;
+      const message = await getDownloadErrorMessage(error);
+      if (isStale()) return;
+      notifyError(message || 'Failed to open file');
       clearPreview();
     } finally {
-      setPreviewLoadingPath(null);
+      if (!isStale()) setPreviewLoadingPath(null);
     }
   };
 
@@ -517,11 +548,20 @@ const FileStoragePanel: React.FC<FileStoragePanelProps> = ({ datasourceId }) => 
           </Table>
         )}
 
-        {listTruncated && (
-          <p className="frost-text-muted mt-3 text-xs">
-            Listing stopped after {MAX_LIST_PAGES * PAGE_SIZE} objects under this path. Some deeper entries may be
-            missing.
-          </p>
+        {listHasMore && (
+          <div className="mt-3 flex items-center gap-3">
+            <p className="frost-text-muted text-xs">
+              Showing the first {files.length} objects under this path. More are available.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={loadingFiles}
+              onClick={() => void loadFiles(currentPrefix, true)}
+            >
+              {loadingFiles ? 'Loading…' : 'Load more'}
+            </Button>
+          </div>
         )}
       </div>
 

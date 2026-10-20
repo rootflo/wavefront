@@ -114,6 +114,17 @@ export const DEEPGRAM_TTS_VOICES: VoiceOption[] = [
   { value: 'aura-zeus-en', label: 'aura-zeus-en' },
 ];
 
+/** Sarvam Bulbul v2 speaker names */
+export const SARVAM_V2_SPEAKERS: VoiceOption[] = [
+  { value: 'anushka', label: 'anushka' },
+  { value: 'manisha', label: 'manisha' },
+  { value: 'vidya', label: 'vidya' },
+  { value: 'arya', label: 'arya' },
+  { value: 'abhilash', label: 'abhilash' },
+  { value: 'karun', label: 'karun' },
+  { value: 'hitesh', label: 'hitesh' },
+];
+
 /** Sarvam Bulbul v3 short speaker names */
 export const SARVAM_V3_SPEAKERS: VoiceOption[] = [
   { value: 'shubh', label: 'shubh' },
@@ -501,11 +512,17 @@ function filterDeepgramByLanguage(langCode: string): VoiceOption[] {
   return matched.length > 0 ? matched : DEEPGRAM_TTS_VOICES;
 }
 
+function getSarvamSpeakers(model: string | undefined, languageCode?: string): VoiceOption[] {
+  if (model === 'bulbul:v2') return SARVAM_V2_SPEAKERS;
+  if (model === 'bulbul:v4-flash') {
+    return languageCode ? filterSarvamV4ByLanguage(languageCode) : SARVAM_V4_SPEAKERS;
+  }
+  return SARVAM_V3_SPEAKERS;
+}
+
 function getAllVoicesForProvider(provider: string, model: string | undefined): VoiceOption[] {
   if (provider === 'deepgram') return DEEPGRAM_TTS_VOICES;
-  if (provider === 'sarvam') {
-    return model === 'bulbul:v4-flash' ? SARVAM_V4_SPEAKERS : SARVAM_V3_SPEAKERS;
-  }
+  if (provider === 'sarvam') return getSarvamSpeakers(model);
   if (provider === 'cartesia') return CARTESIA_FEATURED_VOICES;
   if (provider === 'azure') return AZURE_NEURAL_VOICES;
   return [];
@@ -530,7 +547,7 @@ export function getTtsVoiceOptions(
   } else if (provider === 'deepgram') {
     options = filterDeepgramByLanguage(languageCode);
   } else if (provider === 'sarvam') {
-    options = model === 'bulbul:v4-flash' ? filterSarvamV4ByLanguage(languageCode) : SARVAM_V3_SPEAKERS;
+    options = getSarvamSpeakers(model, languageCode);
   } else if (provider === 'cartesia') {
     options = CARTESIA_FEATURED_VOICES;
   } else if (provider === 'azure') {
@@ -551,6 +568,11 @@ export function getTtsVoiceLabel(provider: string | undefined, model: string | u
   return formatVoiceOption(provider, { value: voiceId, label: voiceId }).label;
 }
 
+/** Providers whose curated catalog is only suggestions; any voice ID may be entered. */
+export function allowsCustomTtsVoiceId(provider: string | undefined): boolean {
+  return provider === 'cartesia' || provider === 'azure';
+}
+
 /** Whether voiceId is selectable for this provider/model(/language). Free-text providers always valid. */
 export function isTtsVoiceIdValid(
   provider: string | undefined,
@@ -559,6 +581,7 @@ export function isTtsVoiceIdValid(
   languageCode?: string
 ): boolean {
   if (!voiceId) return false;
+  if (allowsCustomTtsVoiceId(provider)) return true;
   const options = getTtsVoiceOptions(provider, model, languageCode);
   if (options.length === 0) return true;
   return options.some((option) => option.value === voiceId);
