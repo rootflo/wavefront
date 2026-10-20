@@ -10,7 +10,7 @@ from pipecat.services.llm_service import FunctionCallParams
 from pipecat.frames.frames import EndFrame, TTSSpeakFrame
 from pipecat.frames.frames import FunctionCallResultProperties
 from call_processing.log.logger import logger
-from call_processing.services.conversation_config import config_section
+from call_processing.services.common.conversation_config import config_section
 
 DEFAULT_FAREWELL = 'Thank you for using our service! Goodbye!'
 

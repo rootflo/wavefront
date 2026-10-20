@@ -14,7 +14,7 @@ from call_processing.cache.cache_utils import (
     get_tools_config_cache_key,
 )
 from call_processing.log.logger import logger
-from call_processing.services.floware_http_client import FlowareHttpClient
+from call_processing.services.common.floware_http_client import FlowareHttpClient
 from fastapi import HTTPException
 
 

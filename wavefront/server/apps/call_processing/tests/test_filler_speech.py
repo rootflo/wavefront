@@ -10,12 +10,12 @@ from pipecat.tests.utils import SleepFrame, run_test
 from pipecat.turns.types import ProcessFrameResult
 
 from call_processing.constants.filler_phrases import FILLER_PHRASES, THINKING_PHRASES
-from call_processing.services.filler_speech import (
+from call_processing.services.common.filler_speech import (
     THINKING_FILLER_DELAY_SECS,
     FillerSpeechConfig,
     FillerSpeechProcessor,
 )
-from call_processing.services.turn_taking import VADWhenBotSilentStartStrategy
+from call_processing.services.common.turn_taking import VADWhenBotSilentStartStrategy
 
 # ------------------------------------------------------------------- config
 

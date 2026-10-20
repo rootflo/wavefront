@@ -35,7 +35,6 @@ from call_processing.log.logger import logger
 
 ROOM_STATUS_PENDING = 'pending'
 ROOM_STATUS_JOINED = 'joined'
-ROOM_STATUS_ENDED = 'ended'
 
 # Stable error codes surfaced to the browser client
 ERR_INVALID_JOIN_TOKEN = 'invalid_join_token'

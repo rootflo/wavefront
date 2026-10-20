@@ -7,7 +7,7 @@ import pytest
 from redis import Redis
 
 from call_processing.cache.cache_manager import CacheManager
-from call_processing.services.webrtc_room_service import (
+from call_processing.services.webrtc.room_service import (
     ERR_INVALID_JOIN_TOKEN,
     ERR_ROOM_ALREADY_JOINED,
     ERR_ROOM_EXPIRED,

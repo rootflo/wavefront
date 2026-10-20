@@ -40,15 +40,16 @@ from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
 
 from call_processing.app_settings import CallProcessingAppSettings
 from call_processing.log.logger import logger
-from call_processing.services.audio_config import WEBRTC_PROVIDER
-from call_processing.services.pipecat_service import PipecatService
-from call_processing.services.voice_agent_cache_service import VoiceAgentCacheService
-from call_processing.services.webrtc_agent_swap import (
+from call_processing.services.common.voice_agent_cache_service import (
+    VoiceAgentCacheService,
+)
+from call_processing.services.webrtc.agent_swap import (
     AgentSwapController,
     SessionHooks,
     SwapOptions,
 )
-from call_processing.services.webrtc_room_service import (
+from call_processing.services.webrtc.conversation import WebRTCConversation
+from call_processing.services.webrtc.room_service import (
     ERR_INVALID_JOIN_TOKEN,
     ERR_STICKY_REQUIRED,
     WebRTCRoomError,
@@ -257,29 +258,18 @@ class WebRTCSessionService:
                     audio_out_enabled=True,
                 ),
             )
-            await asyncio.wait_for(
-                PipecatService(self.app_settings).run_conversation(
-                    transport=transport,
-                    agent_config=configs['agent'],
-                    llm_config=configs['llm_config'],
-                    tts_config=configs['tts_config'],
-                    stt_config=configs['stt_config'],
-                    tools=configs['tools'],
-                    customer_number='',
-                    call_id=session.room_id,
-                    agent_number='',
-                    provider=WEBRTC_PROVIDER,
-                    call_direction='inbound',
-                    audio_in_sample_rate=settings.sample_rate,
-                    audio_out_sample_rate=settings.sample_rate,
-                    idle_timeout_secs=IDLE_TIMEOUT_SECS,
-                    session_hooks=self._session_hooks(session, initial_configs=configs),
-                    room_context_handles_language=(
-                        self.room_service.get_room_context_handles_language(
-                            session.room_id
-                        )
-                    ),
+            conversation = WebRTCConversation(
+                self.app_settings,
+                room_id=session.room_id,
+                sample_rate=settings.sample_rate,
+                idle_timeout_secs=IDLE_TIMEOUT_SECS,
+                session_hooks=self._session_hooks(session, initial_configs=configs),
+                room_context_handles_language=(
+                    self.room_service.get_room_context_handles_language(session.room_id)
                 ),
+            )
+            await asyncio.wait_for(
+                conversation.run(transport, configs),
                 timeout=settings.max_session_secs,
             )
         except asyncio.TimeoutError:

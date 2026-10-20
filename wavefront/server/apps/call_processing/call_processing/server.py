@@ -18,7 +18,7 @@ import uvicorn
 from call_processing.di import application_container
 from call_processing.middleware import add_middlewares
 from call_processing.router import include_routers
-from call_processing.services import smart_turn
+from call_processing.services.common import smart_turn
 
 config = application_container.config()
 runtime = RuntimeSettings.from_config(config)

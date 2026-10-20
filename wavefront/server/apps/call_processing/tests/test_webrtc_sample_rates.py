@@ -1,12 +1,15 @@
 """The browser (WebRTC) path must run STT/TTS at 16 kHz, never the 8 kHz telephony defaults."""
 
-from call_processing.services.audio_config import (
+from types import SimpleNamespace
+
+from call_processing.services.common.audio_config import (
     TELEPHONY_SAMPLE_RATE,
-    service_sample_rate,
     with_sample_rate,
 )
-from call_processing.services.stt_service import STTServiceFactory
-from call_processing.services.tts_service import TTSServiceFactory
+from call_processing.services.common.providers.stt_service import STTServiceFactory
+from call_processing.services.common.providers.tts_service import TTSServiceFactory
+from call_processing.services.telephony.conversation import TelephonyConversation
+from call_processing.services.webrtc.conversation import WebRTCConversation
 
 WEBRTC_RATE = 16000
 
@@ -31,9 +34,22 @@ def _tts_config(provider: str, **parameters):
 
 
 def test_only_webrtc_forces_a_service_rate():
-    assert service_sample_rate('webrtc', WEBRTC_RATE) == WEBRTC_RATE
-    for telephony in ('twilio', 'exotel', 'smartflo'):
-        assert service_sample_rate(telephony, TELEPHONY_SAMPLE_RATE) is None
+    settings = SimpleNamespace()
+    webrtc = WebRTCConversation(
+        settings, room_id='r', sample_rate=WEBRTC_RATE, idle_timeout_secs=300
+    )
+    assert webrtc.stack_options().service_sample_rate == WEBRTC_RATE
+    for provider in ('twilio', 'exotel', 'smartflo'):
+        telephony = TelephonyConversation(
+            settings,
+            provider=provider,
+            call_id='c',
+            call_direction='inbound',
+            customer_number='+911234567890',
+            agent_number='',
+        )
+        assert telephony.audio_sample_rate == TELEPHONY_SAMPLE_RATE
+        assert telephony.stack_options().service_sample_rate is None
 
 
 def test_with_sample_rate_overrides_agent_parameters_without_mutating_input():

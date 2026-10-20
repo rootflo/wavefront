@@ -6,10 +6,13 @@ from dependency_injector import providers
 from call_processing.app_settings import CallProcessingAppSettings
 from call_processing.cache.cache_manager import CacheManager
 from call_processing.log.logger import configure_logging
-from call_processing.services.voice_agent_cache_service import VoiceAgentCacheService
-from call_processing.services.floware_http_client import FlowareHttpClient
-from call_processing.services.webrtc_room_service import WebRTCRoomService
-from call_processing.services.webrtc_session_service import WebRTCSessionService
+from call_processing.services.common.voice_agent_cache_service import (
+    VoiceAgentCacheService,
+)
+from call_processing.services.common.floware_http_client import FlowareHttpClient
+from call_processing.services.telephony.session_service import TelephonySessionService
+from call_processing.services.webrtc.room_service import WebRTCRoomService
+from call_processing.services.webrtc.session_service import WebRTCSessionService
 from common_module.config_loader import load_ini
 
 CONFIG_INI = Path(__file__).resolve().parent.parent / 'config.ini'
@@ -51,6 +54,13 @@ class ApplicationContainer(containers.DeclarativeContainer):
         VoiceAgentCacheService,
         cache_manager=cache_manager,
         floware_http_client=floware_http_client,
+    )
+
+    # Phone call media streams
+    telephony_session_service = providers.Singleton(
+        TelephonySessionService,
+        voice_agent_cache_service=voice_agent_cache_service,
+        app_settings=app_settings,
     )
 
     # Browser (WebRTC) rooms + sessions
