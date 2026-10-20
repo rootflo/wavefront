@@ -71,8 +71,20 @@ async def client(pipeline_calls):
     ) as http_client:
         yield http_client
     await application_container.webrtc_session_service().close()
+    await _cancel_leftover_tasks()
     application_container.voice_agent_cache_service.reset_override()
     application_container.webrtc_session_service.reset()
+
+
+async def _cancel_leftover_tasks():
+    # aioice's Connection.close() doesn't stop a trickle-ICE connect loop
+    # (aiortc's RTCPeerConnection.__connect task): it keeps starting STUN checks
+    # whose retries fire after the test loop closes, logging "Task exception was
+    # never retrieved" into whichever test runs next.
+    leftover = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+    for task in leftover:
+        task.cancel()
+    await asyncio.gather(*leftover, return_exceptions=True)
 
 
 async def _create_room(client):

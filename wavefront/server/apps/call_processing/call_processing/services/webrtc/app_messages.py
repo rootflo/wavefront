@@ -1,7 +1,7 @@
 """Browser (WebRTC) app messages for a live voice session.
 
 The browser talks to the running pipeline over Pipecat's RTVI data channel
-(``PipelineTask`` enables RTVI by default):
+(``PipelineWorker`` enables RTVI by default):
 
 Inbound (browser -> pipeline), via ``client.sendClientMessage(type, data)``:
     ``set_context``  {step, field?, language?, instruction?, allowedTools?}
@@ -307,7 +307,7 @@ class ClientSessionMessenger(SessionEvents):
         # Room property (kept across agent swaps): the app alone drives the
         # language, so the prompt carries no language instruction prefix.
         self._room_context_language = room_context_language
-        self._task: Any = None  # set via bind_task once the PipelineTask exists
+        self._task: Any = None  # set via bind_task once the PipelineWorker exists
         self._context = context
         self._function_schemas = list(function_schemas)
         self._language_state = language_state

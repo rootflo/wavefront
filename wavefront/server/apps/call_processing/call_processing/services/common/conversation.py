@@ -1,7 +1,7 @@
 """Run one voice conversation: the pipeline around an agent stack, connect to hang-up.
 
 ``BaseConversation`` owns what every flow shares: the call's stats and
-transcript, the first agent stack, the ``PipelineTask`` (metrics, idle timeout,
+transcript, the first agent stack, the ``PipelineWorker`` (metrics, idle timeout,
 tracing), the welcome message, cancel-on-disconnect and the call evaluation.
 The telephony and browser (WebRTC) flows subclass it for their pipeline shape
 and extras (``services/telephony/conversation.py``,
@@ -26,10 +26,10 @@ from pipecat.frames.frames import (
     UserStartedSpeakingFrame,
 )
 from pipecat.pipeline.pipeline import Pipeline
-from pipecat.pipeline.runner import PipelineRunner
-from pipecat.pipeline.task import PipelineParams, PipelineTask
+from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.transports.base_transport import BaseTransport
 from pipecat.utils.tracing.setup import setup_tracing
+from pipecat.workers.runner import WorkerRunner
 
 from call_processing.app_settings import CallProcessingAppSettings
 from call_processing.log.logger import logger
@@ -108,12 +108,12 @@ class BaseConversation(ABC):
 
     def on_task_created(
         self,
-        task: PipelineTask,
+        task: PipelineWorker,
         shared: SharedSession,
         stack: AgentStack,
         build_stack: BuildStack,
     ) -> None:
-        """Called once the ``PipelineTask`` exists, before the pipeline runs."""
+        """Called once the ``PipelineWorker`` exists, before the pipeline runs."""
 
     async def close(self) -> None:
         """Release flow-specific resources once the pipeline has stopped."""
@@ -165,7 +165,7 @@ class BaseConversation(ABC):
 
         pipeline = Pipeline(self.build_pipeline(transport, stack, shared))
 
-        task = PipelineTask(
+        task = PipelineWorker(
             pipeline,
             params=PipelineParams(
                 audio_in_sample_rate=self.audio_sample_rate,
@@ -244,9 +244,10 @@ class BaseConversation(ABC):
             logger.info(f"Client disconnected for agent: {agent_config['name']}")
             await task.cancel()
 
-        runner = PipelineRunner(handle_sigint=False)
+        runner = WorkerRunner(handle_sigint=False)
         try:
-            await runner.run(task)
+            await runner.add_workers(task)
+            await runner.run()
         except Exception as e:
             logger.error(
                 f"Pipeline error for agent {agent_config['name']}: {e}",

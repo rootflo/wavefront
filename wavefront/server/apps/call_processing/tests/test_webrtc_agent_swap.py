@@ -1,6 +1,6 @@
 """Hot-swapping the voice agent of a live room.
 
-Starts with the spike: a ``SwappableSlot`` inside a real ``PipelineTask`` can
+Starts with the spike: a ``SwappableSlot`` inside a real ``PipelineWorker`` can
 forward frames, be swapped, and the old inner pipeline is cleaned up without the
 outer task seeing a second StartFrame or a CancelFrame (which would restart or
 disconnect the transport in production).
@@ -20,10 +20,10 @@ from pipecat.frames.frames import (
     TextFrame,
 )
 from pipecat.pipeline.pipeline import Pipeline
-from pipecat.pipeline.runner import PipelineRunner
-from pipecat.pipeline.task import PipelineParams, PipelineTask
+from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+from pipecat.workers.runner import WorkerRunner
 
 from call_processing.services.common.agent_stack import AgentStack, SharedSession
 from call_processing.services.webrtc.agent_swap import (
@@ -110,20 +110,25 @@ async def _until(predicate, timeout: float = 5.0):
     await asyncio.wait_for(poll(), timeout)
 
 
+async def _run(worker: PipelineWorker):
+    runner = WorkerRunner(handle_sigint=False)
+    await runner.add_workers(worker)
+    await runner.run()
+
+
 class Harness:
     def __init__(self, slot: SwappableSlot):
         self.slot = slot
         self.collector = Collector()
-        self.task = PipelineTask(
+        self.task = PipelineWorker(
             Pipeline([slot, self.collector]),
             params=PipelineParams(),
             cancel_on_idle_timeout=False,
         )
-        self.runner = PipelineRunner(handle_sigint=False)
         self.run: Optional[asyncio.Task] = None
 
     async def __aenter__(self):
-        self.run = asyncio.create_task(self.runner.run(self.task))
+        self.run = asyncio.create_task(_run(self.task))
         await asyncio.wait_for(self.collector.started.wait(), 5)
         return self
 
@@ -187,12 +192,12 @@ async def test_spike_upstream_frames_flow_through_the_new_stack_only():
 
     slot = SwappableSlot([Upstreamer('one')], name='slot')
     collector = Collector()
-    task = PipelineTask(
+    task = PipelineWorker(
         Pipeline([Head(name='Head'), slot, collector]),
         params=PipelineParams(),
         cancel_on_idle_timeout=False,
     )
-    run = asyncio.create_task(PipelineRunner(handle_sigint=False).run(task))
+    run = asyncio.create_task(_run(task))
     try:
         await asyncio.wait_for(collector.started.wait(), 5)
         await task.queue_frame(TextFrame('x'))
@@ -398,7 +403,7 @@ class ControllerHarness:
         self.slot_a = SwappableSlot(self.stack.slot_a_processors, name='A')
         self.slot_b = SwappableSlot(self.stack.slot_b_processors, name='B')
         self.collector = Collector()
-        self.task = PipelineTask(
+        self.task = PipelineWorker(
             Pipeline([self.slot_a, self.collector, self.slot_b]),
             params=PipelineParams(),
             cancel_on_idle_timeout=False,
@@ -427,9 +432,7 @@ class ControllerHarness:
         )
 
     async def __aenter__(self):
-        self.run = asyncio.create_task(
-            PipelineRunner(handle_sigint=False).run(self.task)
-        )
+        self.run = asyncio.create_task(_run(self.task))
         await asyncio.wait_for(self.collector.started.wait(), 5)
         return self
 
