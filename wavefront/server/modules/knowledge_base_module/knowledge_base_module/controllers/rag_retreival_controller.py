@@ -171,7 +171,7 @@ def _embedding_error_response(
 DEFAULT_TOP_K = 10
 # Bounds on paging, so candidate retrieval and response size stay predictable:
 # limit + offset never exceeds 1000, pgvector's hnsw.ef_search maximum.
-MAX_TOP_K = 100
+MAX_TOP_K = 400
 MAX_OFFSET = 900
 
 
