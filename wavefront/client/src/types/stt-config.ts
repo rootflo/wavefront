@@ -58,7 +58,7 @@ export interface DeepgramSttParameters {
 
 // Sarvam STT specific parameters
 export interface SarvamSttParameters {
-  model?: string; // default: 'saaras:v3'
+  model?: string; // default: 'saaras:v4'
   language?: string;
   vad_signals?: boolean;
   high_vad_sensitivity?: boolean;
