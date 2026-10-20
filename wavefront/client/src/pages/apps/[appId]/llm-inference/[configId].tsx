@@ -16,7 +16,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Spinner } from '@app/components/ui/spinner';
-import { filterParameters, findModelPreset } from '@app/config/llm-models';
+import { filterParameters, findModelPreset, getDefaultModelId } from '@app/config/llm-models';
 import { getDefaultBaseUrl, getProviderConfig } from '@app/config/llm-providers';
 import { useGetLLMConfig } from '@app/hooks';
 import { getLLMConfigKey, getLLMConfigsKey } from '@app/hooks/data/query-keys';
@@ -135,9 +135,13 @@ const LLMInferenceConfigDetail: React.FC = () => {
   const dropped = config ? filterParameters(type, llmModel, config.parameters).dropped : [];
 
   const changeProvider = (newType: InferenceEngineType) => {
+    if (newType === type) return;
+    // The old provider's model means nothing to the new one: pick a sensible one (chat models only)
+    const newModel = modelType === 'llm' ? getDefaultModelId(newType) : '';
     form.setValue('type', newType, { shouldValidate: true });
+    form.setValue('llm_model', newModel, { shouldValidate: true });
     form.setValue('base_url', getDefaultBaseUrl(newType));
-    setParameters((prev) => filterParameters(newType, form.getValues('llm_model'), prev).kept);
+    setParameters((prev) => filterParameters(newType, newModel, prev).kept);
   };
 
   const changeModel = (modelId: string) => {
@@ -199,8 +203,8 @@ const LLMInferenceConfigDetail: React.FC = () => {
   };
 
   return (
-    <div className="h-full bg-transparent px-8 pt-8 pb-[200px]">
-      <Breadcrumb className="mb-6">
+    <div className="flex h-full flex-col overflow-y-auto bg-transparent px-8 pt-8 pb-8 lg:overflow-hidden">
+      <Breadcrumb className="mb-6 shrink-0">
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
@@ -235,8 +239,8 @@ const LLMInferenceConfigDetail: React.FC = () => {
       ) : !config ? (
         <div className="frost-text-muted flex h-64 items-center justify-center">Model configuration not found</div>
       ) : (
-        <div className="flex w-full flex-col gap-8 pb-5">
-          <div className="flex items-center justify-between gap-4">
+        <div className="flex w-full flex-col gap-8 lg:min-h-0 lg:flex-1">
+          <div className="flex shrink-0 items-center justify-between gap-4">
             <div className="flex min-w-0 flex-col gap-1">
               <p className="frost-text text-2xl leading-normal font-semibold">{formatAppName(config.display_name)}</p>
               <div className="frost-text-muted flex flex-wrap items-center gap-2 text-sm">
@@ -274,170 +278,180 @@ const LLMInferenceConfigDetail: React.FC = () => {
           </div>
 
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(handleSave)} className="flex w-full flex-col gap-6">
-              <div className="frost-panel ring-frost-border flex w-full flex-col gap-6 rounded-lg border p-6 ring-1">
-                <SectionTitle title="Model" />
-                <div className={clsx('grid w-full gap-6 lg:grid-cols-2', !editing && 'opacity-80')}>
-                  <FormField
-                    control={form.control}
-                    name="type"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Provider</FormLabel>
-                        <ProviderSelect value={field.value} onChange={changeProvider} disabled={!editing} />
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="llm_model"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{providerConfig?.modelLabel ?? 'Model'}</FormLabel>
-                        <ModelSelect provider={type} value={field.value} onChange={changeModel} disabled={!editing} />
-                        {type === 'azure_openai' && editing && (
-                          <Input
-                            value={field.value}
-                            onChange={(e) => changeModel(e.target.value)}
-                            placeholder="Deployment name, e.g. gpt-5.4-nano"
-                            aria-label="Deployment name"
-                          />
+            <form onSubmit={form.handleSubmit(handleSave)} className="flex w-full flex-col lg:min-h-0 lg:flex-1">
+              <div className="flex w-full flex-col gap-6 lg:min-h-0 lg:flex-1 lg:flex-row">
+                <div className="flex min-w-0 flex-1 flex-col gap-6 lg:min-h-0 lg:overflow-y-auto">
+                  <div className="frost-panel ring-frost-border flex w-full shrink-0 flex-col gap-6 rounded-lg border p-6 ring-1">
+                    <SectionTitle title="Model" />
+                    <div className={clsx('grid w-full gap-6 lg:grid-cols-2', !editing && 'opacity-80')}>
+                      <FormField
+                        control={form.control}
+                        name="display_name"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Name</FormLabel>
+                            <FormControl>
+                              <Input disabled={!editing} placeholder="Name" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
                         )}
-                        {editing && providerConfig?.modelHelp && (
-                          <p className="frost-text-muted text-xs">{providerConfig.modelHelp}</p>
-                        )}
-                        {preset && <p className="frost-text-muted text-xs">{preset.description}</p>}
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                      />
 
-                  <FormField
-                    control={form.control}
-                    name="display_name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Display name</FormLabel>
-                        <FormControl>
-                          <Input disabled={!editing} placeholder="Display name" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="model_type"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Used for</FormLabel>
-                        <Select
-                          onValueChange={(val) => {
-                            if (val) field.onChange(val);
-                          }}
-                          value={field.value}
-                          disabled={!editing}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="llm">Chat and voice (LLM)</SelectItem>
-                            <SelectItem value="embedding">Embeddings</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </div>
-
-              <div className="frost-panel ring-frost-border flex w-full flex-col gap-6 rounded-lg border p-6 ring-1">
-                <SectionTitle title="Connection" />
-                <div className={clsx('grid w-full gap-6 lg:grid-cols-2', !editing && 'opacity-80')}>
-                  {REQUIRES_API_KEY.includes(type) && (
-                    <FormField
-                      control={form.control}
-                      name="api_key"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>API key</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="password"
-                              autoComplete="off"
+                      <FormField
+                        control={form.control}
+                        name="model_type"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Type</FormLabel>
+                            <Select
+                              onValueChange={(val) => {
+                                if (val) field.onChange(val);
+                              }}
+                              value={field.value}
                               disabled={!editing}
-                              placeholder={editing ? 'Leave blank to keep the current key' : '••••••••'}
-                              {...field}
+                            >
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="llm">Chat and voice (LLM)</SelectItem>
+                                <SelectItem value="embedding">Embeddings</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="type"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Provider</FormLabel>
+                            <ProviderSelect value={field.value} onChange={changeProvider} disabled={!editing} />
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="llm_model"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{providerConfig?.modelLabel ?? 'Model'}</FormLabel>
+                            <ModelSelect
+                              provider={type}
+                              value={field.value}
+                              onChange={changeModel}
+                              disabled={!editing}
                             />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
+                            {type === 'azure_openai' && editing && (
+                              <Input
+                                value={field.value}
+                                onChange={(e) => changeModel(e.target.value)}
+                                placeholder="Deployment name, e.g. gpt-5.4-nano"
+                                aria-label="Deployment name"
+                              />
+                            )}
+                            {editing && providerConfig?.modelHelp && (
+                              <p className="frost-text-muted text-xs">{providerConfig.modelHelp}</p>
+                            )}
+                            {preset && <p className="frost-text-muted text-xs">{preset.description}</p>}
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="frost-panel ring-frost-border flex w-full shrink-0 flex-col gap-6 rounded-lg border p-6 ring-1">
+                    <SectionTitle title="Connection" />
+                    <div className={clsx('grid w-full gap-6 lg:grid-cols-2', !editing && 'opacity-80')}>
+                      <FormField
+                        control={form.control}
+                        name="base_url"
+                        render={({ field }) => (
+                          <FormItem className="lg:col-span-2">
+                            <FormLabel>{type === 'azure_openai' ? 'Endpoint' : 'Base URL'}</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="url"
+                                disabled={!editing}
+                                placeholder="Base URL for the API endpoint"
+                                {...field}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {REQUIRES_API_KEY.includes(type) && (
+                        <FormField
+                          control={form.control}
+                          name="api_key"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>API key</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="password"
+                                  autoComplete="off"
+                                  disabled={!editing}
+                                  placeholder={editing ? 'Leave blank to keep the current key' : '••••••••'}
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
                       )}
-                    />
-                  )}
 
-                  <FormField
-                    control={form.control}
-                    name="base_url"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{type === 'azure_openai' ? 'Endpoint' : 'Base URL'}</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="url"
-                            disabled={!editing}
-                            placeholder="Base URL for the API endpoint"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  {type === 'azure_openai' && (
-                    <FormField
-                      control={form.control}
-                      name="api_version"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>API version</FormLabel>
-                          <FormControl>
-                            <Input type="text" disabled={!editing} placeholder="2025-04-01-preview" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
+                      {type === 'azure_openai' && (
+                        <FormField
+                          control={form.control}
+                          name="api_version"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>API version</FormLabel>
+                              <FormControl>
+                                <Input type="text" disabled={!editing} placeholder="2025-04-01-preview" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
                       )}
-                    />
-                  )}
-                </div>
-              </div>
-
-              {modelType === 'llm' && (
-                <div className="frost-panel ring-frost-border flex w-full flex-col gap-6 rounded-lg border p-6 ring-1">
-                  <SectionTitle
-                    title="Settings"
-                    description="Only the settings this model accepts are shown. An empty field uses the provider's default."
-                  />
-                  <div className={clsx(!editing && 'opacity-80')}>
-                    <ModelParameters
-                      provider={type}
-                      modelId={llmModel}
-                      values={parameters}
-                      onChange={(key, value) => setParameters((prev) => ({ ...prev, [key]: value }))}
-                      disabled={!editing}
-                      droppedKeys={dropped}
-                    />
+                    </div>
                   </div>
                 </div>
-              )}
+
+                {modelType === 'llm' && (
+                  <div className="frost-panel ring-frost-border flex w-full flex-col gap-6 rounded-lg border p-6 ring-1 lg:min-h-0 lg:w-[420px] lg:shrink-0">
+                    <SectionTitle
+                      title="Settings"
+                      description="Only the settings this model accepts are shown. An empty field uses the provider's default."
+                    />
+                    <div className={clsx('lg:min-h-0 lg:flex-1 lg:overflow-y-auto', !editing && 'opacity-80')}>
+                      <ModelParameters
+                        provider={type}
+                        modelId={llmModel}
+                        values={parameters}
+                        onChange={(key, value) => setParameters((prev) => ({ ...prev, [key]: value }))}
+                        disabled={!editing}
+                        droppedKeys={dropped}
+                        compact
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             </form>
           </Form>
         </div>

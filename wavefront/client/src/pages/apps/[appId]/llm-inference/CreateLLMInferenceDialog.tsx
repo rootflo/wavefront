@@ -15,7 +15,7 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
-import { filterParameters, findModelPreset } from '@app/config/llm-models';
+import { filterParameters, findModelPreset, getDefaultModelId } from '@app/config/llm-models';
 import { getDefaultBaseUrl, getProviderConfig } from '@app/config/llm-providers';
 import { extractErrorMessage } from '@app/lib/utils';
 import { useDashboardStore, useNotifyStore } from '@app/store';
@@ -123,7 +123,18 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
   }, [isOpen, form]);
 
   const changeProvider = (newType: InferenceEngineType) => {
-    form.reset({ ...emptyForm(newType), displayName: displayNameEdited.current ? form.getValues('displayName') : '' });
+    if (newType === type) return;
+    const model = getDefaultModelId(newType);
+    const preset = findModelPreset(newType, model);
+    form.reset({
+      ...emptyForm(newType),
+      llmModel: model,
+      displayName: displayNameEdited.current
+        ? form.getValues('displayName')
+        : preset?.id === model
+          ? preset.label
+          : model,
+    });
     setParameters({});
   };
 
