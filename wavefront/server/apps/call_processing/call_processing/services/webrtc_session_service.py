@@ -187,6 +187,24 @@ class WebRTCSessionService:
             return None
 
         answer = await self._handler.handle_web_request(request, noop)
+
+        # ``restart_pc`` makes pipecat build a new peer connection with a NEW
+        # pc_id. The client then PATCHes/renegotiates with the id from this
+        # answer, so re-key the session or those calls 409 ``sticky_required``.
+        new_pc_id = (answer or {}).get('pc_id')
+        old_pc_id = offer.pc_id
+        if new_pc_id and old_pc_id and new_pc_id != old_pc_id:
+            self._sessions.pop(old_pc_id, None)
+            self._sessions[new_pc_id] = session
+            # The handler re-keys its own map but leaves the stale id behind
+            getattr(self._handler, '_pcs_map', {}).pop(old_pc_id, None)
+            self.room_service.attach_connection(
+                session.room_id, new_pc_id, self.instance_id
+            )
+            logger.info(
+                f'WebRTC peer connection restarted room={session.room_id} '
+                f'pc_id={old_pc_id}->{new_pc_id}'
+            )
         return answer
 
     async def handle_ice_candidates(

@@ -242,3 +242,50 @@ async def test_ice_for_a_connection_owned_by_another_instance_is_sticky_required
     )
     assert response.status_code == 409
     assert response.json()['error'] == 'sticky_required'
+
+
+async def test_restart_pc_renegotiation_keeps_the_session_reachable(client):
+    """restart_pc gives the connection a new pc_id; ICE PATCH / offers with it must not 409."""
+    room = await _create_room(client)
+    pc = await _make_offer()
+    retry = await _make_offer()
+    try:
+        first = await client.post('/api/webrtc/offer', json=_offer_body(pc, room))
+        assert first.status_code == 200, first.text
+        old_pc_id = first.json()['pc_id']
+
+        second = await client.post(
+            '/api/webrtc/offer',
+            json={
+                'sdp': retry.localDescription.sdp,
+                'type': retry.localDescription.type,
+                'pc_id': old_pc_id,
+                'restart_pc': True,
+            },
+        )
+        assert second.status_code == 200, second.text
+        new_pc_id = second.json()['pc_id']
+        assert new_pc_id != old_pc_id
+
+        session_service = application_container.webrtc_session_service()
+        assert session_service.active_sessions == 1
+        record = session_service.room_service.get_room(room['room_id'])
+        assert record['pc_id'] == new_pc_id
+
+        patch = await client.patch(
+            '/api/webrtc/offer',
+            json={
+                'pc_id': new_pc_id,
+                'candidates': [
+                    {
+                        'candidate': 'candidate:1 1 UDP 1 127.0.0.1 9 typ host',
+                        'sdp_mid': '0',
+                        'sdp_mline_index': 0,
+                    }
+                ],
+            },
+        )
+        assert patch.status_code == 200, patch.text
+    finally:
+        await pc.close()
+        await retry.close()
