@@ -7,7 +7,6 @@ Creates and runs the voice conversation pipeline using configured STT/LLM/TTS se
 from typing import Dict, Any, List, Optional
 from copy import deepcopy
 import asyncio
-import random
 from call_processing.log.logger import logger
 from call_processing.services.call_evaluation_service import CallEvaluationService
 from call_processing.services.tool_wrapper_service import ToolWrapperFactory
@@ -19,9 +18,7 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExport
 from pipecat.utils.tracing.setup import setup_tracing
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.adapters.schemas.function_schema import FunctionSchema
-from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
 from pipecat.audio.vad.silero import SileroVADAnalyzer
-from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.frames.frames import (
     CancelFrame,
     EndFrame,
@@ -53,14 +50,6 @@ from pipecat.turns.user_mute import (
     FunctionCallUserMuteStrategy,
 )
 from pipecat.turns.user_turn_strategies import UserTurnStrategies
-from pipecat.turns.user_start import (
-    VADUserTurnStartStrategy,
-    # MinWordsUserTurnStartStrategy,
-)
-from pipecat.turns.user_stop import (
-    TurnAnalyzerUserTurnStopStrategy,
-    #  TranscriptionUserTurnStopStrategy
-)
 from call_processing.services.stt_service import STTServiceFactory
 from call_processing.services.tts_service import TTSServiceFactory
 from call_processing.services.llm_service import LLMServiceFactory
@@ -84,15 +73,20 @@ from call_processing.services.webrtc_app_messages import (
     ClientSessionMessenger,
 )
 
-# from call_processing.services.conversation_completion_tool import (
-#     ConversationCompletionToolFactory,
-# )
+from call_processing.services.conversation_completion_tool import (
+    ConversationCompletionToolFactory,
+    EndConversationConfig,
+)
 from call_processing.app_settings import CallProcessingAppSettings
 from call_processing.constants.language_config import (
     LANGUAGE_INSTRUCTIONS,
     LANGUAGE_DISPLAY_NAMES,
 )
-from call_processing.constants.filler_phrases import FILLER_PHRASES
+from call_processing.services.filler_speech import (
+    FillerSpeechConfig,
+    FillerSpeechProcessor,
+)
+from call_processing.services.turn_taking import TurnTakingConfig
 
 _pipecat_tracing_initialized = False
 
@@ -148,7 +142,6 @@ class PipecatService:
         state (stats, transcript, task, browser messenger) comes from ``shared`` so
         a stack can be built off to the side and swapped into a running session.
         """
-        pipecat_settings = self.settings.pipecat
         call_stats = shared.call_stats
         transcript_log = shared.transcript_log
 
@@ -173,7 +166,7 @@ class PipecatService:
         )
 
         # Track language state for multi-language conversations
-        language_state = {
+        language_state: Dict[str, Any] = {
             'current_language': default_language,
             'switch_count': 0,
             'original_system_prompt': '',
@@ -392,35 +385,41 @@ class PipecatService:
             llm.register_function('detect_and_switch_language', language_detection_func)
             logger.info('Registered language detection tool with LLM')
 
-        # Register conversation completion tool
-        # conversation_completion_func = (
-        #     ConversationCompletionToolFactory.create_conversation_completion_tool(
-        #         task_container=task_container
-        #     )
-        # )
-        # llm.register_function('end_conversation', conversation_completion_func)
-        logger.info('Registered conversation completion tool with LLM')
-
-        # Create FunctionSchema for conversation completion
-        # end_conversation_schema = FunctionSchema(
-        #     name='end_conversation',
-        #     description=(
-        #         'Call this function when the user indicates they want to end the conversation. '
-        #         'This includes goodbye phrases, expressions of completion, or any indication '
-        #         'that the user wants to hang up or finish the call. Examples: "goodbye", "bye", '
-        #         '"thank you", "that\'s all", "I\'m done", etc.'
-        #     ),
-        #     properties={
-        #         'farewell_message': {
-        #             'type': 'string',
-        #             'description': (
-        #                 'Optional custom farewell message to say to the user before ending. '
-        #                 'If not provided, uses default: "Thank you for using our service! Goodbye!"'
-        #             ),
-        #         }
-        #     },
-        #     required=[],
-        # )
+        # Conversation completion tool (farewell TTS then EndFrame): opt-in per
+        # agent, so by default the bot never ends the call on its own.
+        end_conversation_config = EndConversationConfig.from_agent_config(agent_config)
+        end_conversation_schemas = []
+        if end_conversation_config.enabled:
+            llm.register_function(
+                'end_conversation',
+                ConversationCompletionToolFactory.create_conversation_completion_tool(
+                    task_container=task_container,
+                    default_farewell=end_conversation_config.farewell_message,
+                ),
+            )
+            logger.info('Registered conversation completion tool with LLM')
+            end_conversation_schemas.append(
+                FunctionSchema(
+                    name='end_conversation',
+                    description=(
+                        'End the call. Call this only when the user clearly wants to finish: '
+                        'a goodbye ("bye", "goodbye"), or "that\'s all" / "I\'m done" / "nothing else" '
+                        'after their request has been handled. A "thank you" or "okay" in the middle '
+                        'of the conversation is NOT a reason to end it; if unsure, ask whether there '
+                        'is anything else instead of ending.'
+                    ),
+                    properties={
+                        'farewell_message': {
+                            'type': 'string',
+                            'description': (
+                                'Optional custom farewell message to say to the user before ending. '
+                                'If not provided, a default farewell is used.'
+                            ),
+                        }
+                    },
+                    required=[],
+                )
+            )
 
         # Create FunctionSchema for language detection (if multi-language)
         language_detection_schemas = []
@@ -457,8 +456,7 @@ class PipecatService:
 
         # Combine all FunctionSchema objects for ToolsSchema
         all_function_schemas = (
-            # [end_conversation_schema] +
-            language_detection_schemas + function_schemas
+            end_conversation_schemas + language_detection_schemas + function_schemas
         )
         tools_schema = ToolsSchema(standard_tools=all_function_schemas)
 
@@ -472,28 +470,17 @@ class PipecatService:
         # VAD must live on the user aggregator in Pipecat 1.x — TransportParams
         # no longer accepts vad_analyzer (silently dropped), which would leave
         # VADUserTurnStartStrategy with nothing to drive turn starts.
+        # Turn-taking and filler timing are per agent (conversation_config).
+        turn_taking = TurnTakingConfig.from_agent_config(agent_config)
+        filler_config = FillerSpeechConfig.from_agent_config(agent_config)
+        filler = FillerSpeechProcessor(delay_secs=filler_config.thinking_delay_secs)
         context_aggregator = LLMContextAggregatorPair(
             context,
             user_params=LLMUserAggregatorParams(
-                vad_analyzer=SileroVADAnalyzer(
-                    params=VADParams(
-                        confidence=0.7,
-                        start_secs=0.2,
-                        stop_secs=0.2,
-                        min_volume=0.6,
-                    ),
-                ),
+                vad_analyzer=SileroVADAnalyzer(params=turn_taking.vad_params()),
                 user_turn_strategies=UserTurnStrategies(
-                    start=[
-                        VADUserTurnStartStrategy(),
-                        # MinWordsUserTurnStartStrategy(min_words=3),
-                    ],  # List of start strategies
-                    stop=[
-                        TurnAnalyzerUserTurnStopStrategy(
-                            turn_analyzer=LocalSmartTurnAnalyzerV3()
-                        ),
-                        # TranscriptionUserTurnStopStrategy() # Not needed
-                    ],  # List of stop strategies
+                    start=turn_taking.start_strategies(),
+                    stop=turn_taking.stop_strategies(),
                 ),
                 # Welcome is interruptible: do not mute until first bot speech.
                 # Still mute during in-flight tool calls so audio does not collide.
@@ -507,6 +494,7 @@ class PipecatService:
 
         @context_aggregator.user().event_handler('on_user_turn_started')
         async def on_user_turn_started(aggregator, strategy):
+            await filler.cancel_thinking_filler()
             if call_stats['_bot_speaking']:
                 call_stats['interruption_count'] += 1
             if shared.messenger:
@@ -528,6 +516,13 @@ class PipecatService:
             if shared.messenger:
                 await shared.messenger.emit_transcript(message.content)
                 await shared.messenger.emit_agent_state(STATE_THINKING)
+            # Backchannel only if the LLM is slow to start (see FillerSpeechProcessor)
+            if filler_config.thinking:
+                await filler.arm_thinking_filler(
+                    filler_config.thinking_phrases_for(
+                        language_state.get('current_language', 'en')
+                    )
+                )
 
         @context_aggregator.assistant().event_handler('on_assistant_turn_started')
         async def on_assistant_turn_started(aggregator):
@@ -555,21 +550,22 @@ class PipecatService:
         # Register event handlers
         @llm.event_handler('on_function_calls_started')
         async def on_function_calls_started(service, function_calls):
-            if not pipecat_settings.enable_filler_phrases_before_tool_call:
+            call_names = {fc.function_name for fc in function_calls}
+            # Language switches are not tool work the caller is waiting on
+            call_stats['tool_calls_count'] += len(
+                call_names - {'detect_and_switch_language'}
+            )
+            if not filler_config.before_tool_call:
                 return
-            # Skip filler phrase when language is switching — the TTS service's language
-            # may change before the queued frame is processed, causing a language mismatch error.
-            call_names = [fc.function_name for fc in function_calls]
-            if 'detect_and_switch_language' in call_names:
+            # No filler around a language switch (the TTS language may change
+            # before it is spoken) or before the goodbye ("One moment... Goodbye!").
+            if call_names & {'detect_and_switch_language', 'end_conversation'}:
                 return
-            # Count non-language-switch tool invocations
-            call_stats['tool_calls_count'] += len(function_calls)
-            current_lang = language_state.get('current_language', 'en')
-            phrases = FILLER_PHRASES.get(current_lang)
-            if not phrases:
-                return
-            phrase = random.choice(phrases)
-            await task_container['task'].queue_frame(TTSSpeakFrame(phrase))
+            await filler.speak_one_of(
+                filler_config.tool_call_phrases_for(
+                    language_state.get('current_language', 'en')
+                )
+            )
 
         return AgentStack(
             agent_config=agent_config,
@@ -585,6 +581,7 @@ class PipecatService:
             stt_provider=stt_config['provider'],
             tts_voice_ids=tts_voice_ids_dict,
             welcome_message=(agent_config.get('welcome_message') or '').strip(),
+            filler=filler,
         )
 
     async def run_conversation(
@@ -713,6 +710,7 @@ class PipecatService:
                 stack.stt,  # Speech-to-Text
                 stack.context_aggregator.user(),  # Add user message to context
                 stack.llm,  # LLM processing
+                stack.filler,  # Thinking / tool-call fillers straight into TTS
                 stack.tts,  # Text-to-Speech
                 transport.output(),  # Audio output to Twilio
                 stack.context_aggregator.assistant(),  # Add assistant response to context

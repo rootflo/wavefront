@@ -36,6 +36,8 @@ class AgentStack:
     stt_provider: str
     tts_voice_ids: Dict[str, str]
     welcome_message: str
+    # Between LLM and TTS: speaks thinking / tool-call fillers
+    filler: Any
 
     @property
     def agent_id(self) -> str:
@@ -49,7 +51,13 @@ class AgentStack:
     @property
     def slot_a_processors(self) -> List[Any]:
         """Everything between ``transport.input()`` and ``transport.output()``."""
-        return [self.stt, self.context_aggregator.user(), self.llm, self.tts]
+        return [
+            self.stt,
+            self.context_aggregator.user(),
+            self.llm,
+            self.filler,
+            self.tts,
+        ]
 
     @property
     def slot_b_processors(self) -> List[Any]:

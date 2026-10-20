@@ -154,3 +154,55 @@ def test_single_language_agent_is_unaffected_by_the_flag():
     assert RULES not in _system(native)
     assert TOOL not in _tool_names(native) and TOOL not in _tool_names(room_context)
     assert native.supported_languages == room_context.supported_languages == []
+
+
+# ------------------------------------------------------------- end_conversation
+
+
+def _build_with_config(conversation_config):
+    service = PipecatService(SimpleNamespace(pipecat=SimpleNamespace()))
+    return service.build_agent_stack(
+        agent_config={
+            'id': 'agent-1',
+            'name': 'Agent',
+            'system_prompt': BASE_PROMPT,
+            'welcome_message': 'Hello',
+            'supported_languages': ['en'],
+            'default_language': 'en',
+            'tts_voice_ids': {'en': 'v-en'},
+            'conversation_config': conversation_config,
+        },
+        llm_config={},
+        tts_config={'provider': 'deepgram', 'api_key': 'k'},
+        stt_config={'provider': 'deepgram', 'api_key': 'k'},
+        tools=[],
+        customer_number='',
+        provider='webrtc',
+        audio_in_sample_rate=16000,
+        audio_out_sample_rate=16000,
+        shared=SharedSession(
+            call_stats={
+                'user_turns': 0,
+                'assistant_turns': 0,
+                'interruption_count': 0,
+                'tool_calls_count': 0,
+                '_bot_speaking': False,
+            },
+            transcript_log=[],
+        ),
+    )
+
+
+def test_end_conversation_is_off_by_default():
+    for config in (None, {}, {'end_conversation': {}}):
+        stack = _build_with_config(config)
+
+        assert 'end_conversation' not in [s.name for s in stack.function_schemas]
+        assert 'end_conversation' not in stack.llm.functions
+
+
+def test_end_conversation_is_registered_when_enabled():
+    stack = _build_with_config({'end_conversation': {'enabled': True}})
+
+    assert 'end_conversation' in [s.name for s in stack.function_schemas]
+    assert 'end_conversation' in stack.llm.functions

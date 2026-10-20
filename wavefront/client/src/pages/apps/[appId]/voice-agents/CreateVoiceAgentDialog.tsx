@@ -8,6 +8,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@app/components/ui/dialog';
+import ConversationConfigField from './ConversationConfigField';
+import { DEFAULT_EDITOR_TEXT, fromEditorText } from './conversation-config';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
@@ -42,9 +44,6 @@ import {
   getStringParameter,
 } from '@app/utils/parameter-helpers';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
-import { langs } from '@uiw/codemirror-extensions-langs';
-import CodeMirror from '@uiw/react-codemirror';
 import React, { useEffect, useState } from 'react';
 import { FieldErrors, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
@@ -143,7 +142,7 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
       tts_voice_ids: { en: '' },
       system_prompt: '',
       welcome_message: '',
-      conversation_config: '{}',
+      conversation_config: DEFAULT_EDITOR_TEXT,
       status: 'inactive',
       inbound_numbers: '',
       outbound_numbers: '',
@@ -202,7 +201,7 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
         tts_voice_ids: { en: '' },
         system_prompt: '',
         welcome_message: '',
-        conversation_config: '{}',
+        conversation_config: DEFAULT_EDITOR_TEXT,
         status: 'inactive',
         inbound_numbers: '',
         outbound_numbers: '',
@@ -226,14 +225,10 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
 
   const onSubmit = async (data: CreateVoiceAgentInput) => {
     // Validate JSON if provided
-    let conversationConfig = null;
-    if (data.conversation_config?.trim() && data.conversation_config.trim() !== '{}') {
-      try {
-        conversationConfig = JSON.parse(data.conversation_config);
-      } catch {
-        notifyError('Invalid JSON in conversation configuration');
-        return;
-      }
+    const conversationConfig = fromEditorText(data.conversation_config);
+    if (conversationConfig === undefined) {
+      notifyError('Conversation configuration must be a valid JSON object');
+      return;
     }
 
     // Build TTS parameters (filter out empty values + unsupported keys)
@@ -993,31 +988,7 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
               </TabsContent>
 
               <TabsContent value={FORM_TAB.ADVANCED} className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto">
-                <FormField
-                  control={form.control}
-                  name="conversation_config"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Conversation Configuration</FormLabel>
-                      <FormControl>
-                        <div className="w-full min-w-0">
-                          <CodeMirror
-                            value={field.value || '{}'}
-                            onChange={field.onChange}
-                            theme="dark"
-                            height="200px"
-                            width="100%"
-                            maxWidth="100%"
-                            className="w-full min-w-0"
-                            extensions={[langs.json(), ...popupCodeMirrorExtensions]}
-                            placeholder="{}"
-                          />
-                        </div>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <ConversationConfigField form={form} name="conversation_config" />
               </TabsContent>
             </Tabs>
 

@@ -56,10 +56,14 @@ async def client(pipeline_calls):
     }
     fake_cache = MagicMock()
 
-    async def get_all_agent_configs(agent_id):
+    async def get_all_agent_configs(agent_id, **kwargs):
         return configs
 
+    async def prefetch_agent_configs(agent_ids, **kwargs):
+        return {}
+
     fake_cache.get_all_agent_configs = get_all_agent_configs
+    fake_cache.prefetch_agent_configs = prefetch_agent_configs
 
     application_container.voice_agent_cache_service.override(
         providers.Object(fake_cache)

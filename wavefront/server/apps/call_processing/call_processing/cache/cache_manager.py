@@ -1,3 +1,4 @@
+import asyncio
 import json
 import time
 from typing import Any, Dict, Optional, Union
@@ -266,6 +267,14 @@ class CacheManager:
             logger.error(f'Error decoding JSON for key: {key}: {e}')
             return None
 
+    async def aget_json(self, key: str) -> Optional[Dict]:
+        """Async wrapper so Redis I/O does not block the event loop."""
+        return await asyncio.to_thread(self.get_json, key)
+
+    async def aget_str(self, key: str, default: Any = None) -> Optional[str]:
+        """Async wrapper for ``get_str``."""
+        return await asyncio.to_thread(self.get_str, key, default)
+
     def set_json(self, key: str, value: Dict, expiry: int = 3600) -> bool:
         """
         Set JSON value in cache
@@ -284,6 +293,10 @@ class CacheManager:
         except (TypeError, ValueError) as e:
             logger.error(f'Error encoding JSON for key: {key}: {e}')
             return False
+
+    async def aset_json(self, key: str, value: Dict, expiry: int = 3600) -> bool:
+        """Async wrapper for ``set_json``."""
+        return await asyncio.to_thread(self.set_json, key, value, expiry)
 
     def remove(self, key: str) -> bool:
         try:

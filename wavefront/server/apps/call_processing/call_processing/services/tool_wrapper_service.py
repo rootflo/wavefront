@@ -13,6 +13,22 @@ from call_processing.log.logger import logger
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.frames.frames import FunctionCallResultProperties
 
+# Shared client so every tool call does not pay TLS/handshake cost.
+_SHARED_HTTP_CLIENT: Optional[httpx.AsyncClient] = None
+# Voice budget: keep tool waits short so the user is not muted for long.
+_DEFAULT_API_TIMEOUT_S = 4.0
+_DEFAULT_APP_ACK_TIMEOUT_S = 3.0
+
+
+def _shared_http_client() -> httpx.AsyncClient:
+    global _SHARED_HTTP_CLIENT
+    if _SHARED_HTTP_CLIENT is None or _SHARED_HTTP_CLIENT.is_closed:
+        _SHARED_HTTP_CLIENT = httpx.AsyncClient(
+            timeout=httpx.Timeout(_DEFAULT_API_TIMEOUT_S),
+            limits=httpx.Limits(max_connections=50, max_keepalive_connections=20),
+        )
+    return _SHARED_HTTP_CLIENT
+
 
 class AppToolWrapper:
     """Tool handled by the browser app instead of an HTTP call.
@@ -27,7 +43,7 @@ class AppToolWrapper:
         self,
         name: str,
         messenger_getter: Optional[Callable[[], Any]] = None,
-        ack_timeout_s: float = 4.0,
+        ack_timeout_s: float = _DEFAULT_APP_ACK_TIMEOUT_S,
         speak_on_success: bool = False,
     ):
         self.name = name
@@ -59,7 +75,7 @@ class ApiToolWrapper:
         headers: Optional[Dict[str, str]] = None,
         auth_type: Optional[str] = None,
         auth_credentials: Optional[Dict[str, str]] = None,
-        timeout: int = 6,
+        timeout: float = _DEFAULT_API_TIMEOUT_S,
     ):
         """
         Initialize API tool wrapper
@@ -125,34 +141,40 @@ class ApiToolWrapper:
         try:
             # Apply authentication
             headers = self._apply_auth(self.headers.copy())
+            client = _shared_http_client()
+            timeout = httpx.Timeout(float(self.timeout))
 
-            # Make HTTP request
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                if self.method == 'GET':
-                    response = await client.get(
-                        self.url, params=params, headers=headers
-                    )
-                elif self.method in ['POST', 'PUT', 'PATCH']:
-                    response = await client.request(
-                        self.method, self.url, json=params, headers=headers
-                    )
-                elif self.method == 'DELETE':
-                    response = await client.delete(self.url, headers=headers)
-                else:
-                    return {
-                        'success': False,
-                        'error': f'Unsupported HTTP method: {self.method}',
-                        'status_code': 400,
-                    }
+            if self.method == 'GET':
+                response = await client.get(
+                    self.url, params=params, headers=headers, timeout=timeout
+                )
+            elif self.method in ['POST', 'PUT', 'PATCH']:
+                response = await client.request(
+                    self.method,
+                    self.url,
+                    json=params,
+                    headers=headers,
+                    timeout=timeout,
+                )
+            elif self.method == 'DELETE':
+                response = await client.delete(
+                    self.url, headers=headers, timeout=timeout
+                )
+            else:
+                return {
+                    'success': False,
+                    'error': f'Unsupported HTTP method: {self.method}',
+                    'status_code': 400,
+                }
 
-                # Parse response
-                response.raise_for_status()
-                try:
-                    data = response.json()
-                except Exception:
-                    data = {'raw': response.text}
+            # Parse response
+            response.raise_for_status()
+            try:
+                data = response.json()
+            except Exception:
+                data = {'raw': response.text}
 
-                return data
+            return data
 
         except httpx.TimeoutException as e:
             logger.warning(f'API tool timeout for {self.url}: {str(e)}')
@@ -237,7 +259,7 @@ class ToolWrapperFactory:
                 headers=config.get('headers', {}),
                 auth_type=config.get('auth_type', 'none'),
                 auth_credentials=config.get('auth_credentials', {}),
-                timeout=config.get('timeout', 6),
+                timeout=config.get('timeout', _DEFAULT_API_TIMEOUT_S),
             )
         elif tool_type == 'python':
             return PythonToolWrapper(config)
@@ -245,7 +267,7 @@ class ToolWrapperFactory:
             return AppToolWrapper(
                 name=tool.get('name'),
                 messenger_getter=messenger_getter,
-                ack_timeout_s=config.get('ack_timeout_s', 4.0),
+                ack_timeout_s=config.get('ack_timeout_s', _DEFAULT_APP_ACK_TIMEOUT_S),
                 speak_on_success=config.get('speak_on_success', False),
             )
         else:

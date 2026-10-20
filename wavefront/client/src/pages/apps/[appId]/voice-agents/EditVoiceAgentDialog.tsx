@@ -9,6 +9,8 @@ import {
   DialogTitle,
 } from '@app/components/ui/dialog';
 import VoiceAgentToolsManager from './VoiceAgentToolsManager';
+import ConversationConfigField from './ConversationConfigField';
+import { fromEditorText, toEditorText } from './conversation-config';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Label } from '@app/components/ui/label';
@@ -33,9 +35,6 @@ import { getProviderConfig, getVoiceProviderLabel, groupParamKeys } from '@app/c
 import { TelephonyProvider } from '@app/types/telephony-config';
 import { getBooleanParameterWithDefault, getNumberParameterWithDefault } from '@app/utils/parameter-helpers';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
-import { langs } from '@uiw/codemirror-extensions-langs';
-import CodeMirror from '@uiw/react-codemirror';
 import React, { useEffect, useState } from 'react';
 import { FieldErrors, useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -141,7 +140,7 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
       tts_voice_ids: agent.tts_voice_ids,
       system_prompt: agent.system_prompt,
       welcome_message: agent.welcome_message,
-      conversation_config: agent.conversation_config ? JSON.stringify(agent.conversation_config, null, 2) : '{}',
+      conversation_config: toEditorText(agent.conversation_config),
       status: agent.status,
       inbound_numbers: agent.inbound_numbers?.join(', ') || '',
       outbound_numbers: agent.outbound_numbers?.join(', ') || '',
@@ -176,7 +175,7 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
         tts_voice_ids: agent.tts_voice_ids,
         system_prompt: agent.system_prompt,
         welcome_message: agent.welcome_message,
-        conversation_config: agent.conversation_config ? JSON.stringify(agent.conversation_config, null, 2) : '{}',
+        conversation_config: toEditorText(agent.conversation_config),
         status: agent.status,
         inbound_numbers: agent.inbound_numbers?.join(', ') || '',
         outbound_numbers: agent.outbound_numbers?.join(', ') || '',
@@ -237,14 +236,10 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
 
   const onSubmit = async (data: UpdateVoiceAgentInput) => {
     // Validate JSON if provided
-    let conversationConfig = null;
-    if (data.conversation_config?.trim() && data.conversation_config.trim() !== '{}') {
-      try {
-        conversationConfig = JSON.parse(data.conversation_config);
-      } catch {
-        notifyError('Invalid JSON in conversation configuration');
-        return;
-      }
+    const conversationConfig = fromEditorText(data.conversation_config);
+    if (conversationConfig === undefined) {
+      notifyError('Conversation configuration must be a valid JSON object');
+      return;
     }
 
     // Build TTS parameters (filter out empty values + unsupported keys)
@@ -1046,31 +1041,7 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
               </TabsContent>
 
               <TabsContent value={FORM_TAB.ADVANCED} className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto">
-                <FormField
-                  control={form.control}
-                  name="conversation_config"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Conversation Configuration</FormLabel>
-                      <FormControl>
-                        <div className="w-full min-w-0">
-                          <CodeMirror
-                            value={field.value || '{}'}
-                            onChange={field.onChange}
-                            theme="dark"
-                            height="200px"
-                            width="100%"
-                            maxWidth="100%"
-                            className="w-full min-w-0"
-                            extensions={[langs.json(), ...popupCodeMirrorExtensions]}
-                            placeholder="{}"
-                          />
-                        </div>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <ConversationConfigField form={form} name="conversation_config" />
               </TabsContent>
 
               <TabsContent value={FORM_TAB.TOOLS} className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto">
