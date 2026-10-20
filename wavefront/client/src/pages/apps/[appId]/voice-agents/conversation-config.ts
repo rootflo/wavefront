@@ -10,7 +10,9 @@ export type ConversationConfig = Record<string, unknown>;
 
 export const DEFAULT_CONVERSATION_CONFIG = {
   turn_taking: {
-    barge_in_min_words: 2,
+    barge_in: true,
+    barge_in_min_words: 0,
+    mute_until_first_bot_complete: false,
     vad_confidence: 0.75,
     vad_min_volume: 0.65,
     vad_start_ms: 200,
@@ -49,11 +51,25 @@ export const CONVERSATION_CONFIG_DOCS: ConfigSectionDoc[] = [
     summary: 'When the bot decides the user has started or finished speaking, and when the user can interrupt it.',
     options: [
       {
-        key: 'barge_in_min_words',
-        defaultValue: '2',
-        range: '1 – 10',
+        key: 'barge_in',
+        defaultValue: 'true',
+        range: 'true / false',
         description:
-          'Words the user must say to interrupt the bot while it is talking. 1 stops the bot on any word; raise it on noisy lines so coughs and background talk do not cut the bot off.',
+          'Let the user interrupt the bot while it is talking. Set to false and the bot always finishes what it is saying (including the welcome message): anything the user says over it is ignored, and if they are still speaking when the bot finishes, they are heard from that point.',
+      },
+      {
+        key: 'barge_in_min_words',
+        defaultValue: '0',
+        range: '0 – 10',
+        description:
+          'Only used when barge_in is true. Words the user must say to interrupt the bot. 0 interrupts the moment any speech is heard (fastest, but noise or echo can cut the bot off). 1 waits for a transcribed word; raise it on noisy lines so coughs and background talk do not cut the bot off.',
+      },
+      {
+        key: 'mute_until_first_bot_complete',
+        defaultValue: 'false',
+        range: 'true / false',
+        description:
+          'Play the welcome message to the end before the bot listens: nothing the user says during it is heard, whatever the barge-in setting. After the welcome, barge-in applies as usual. Needs a welcome message (ignored without one), and only applies to the first agent of a call, not one switched to mid-call.',
       },
       {
         key: 'vad_confidence',

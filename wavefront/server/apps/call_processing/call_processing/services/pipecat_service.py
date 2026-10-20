@@ -46,9 +46,6 @@ from pipecat.processors.aggregators.llm_response_universal import (
 #     ServiceSwitcherStrategyManual,
 # )
 from pipecat.transports.base_transport import BaseTransport
-from pipecat.turns.user_mute import (
-    FunctionCallUserMuteStrategy,
-)
 from pipecat.turns.user_turn_strategies import UserTurnStrategies
 from call_processing.services.stt_service import STTServiceFactory
 from call_processing.services.tts_service import TTSServiceFactory
@@ -129,6 +126,7 @@ class PipecatService:
         audio_out_sample_rate: int,
         shared: SharedSession,
         room_context_language: bool = False,
+        is_initial_stack: bool = True,
     ) -> AgentStack:
         """Build everything that belongs to a single agent.
 
@@ -476,6 +474,14 @@ class PipecatService:
         # VADUserTurnStartStrategy with nothing to drive turn starts.
         # Turn-taking and filler timing are per agent (conversation_config).
         turn_taking = TurnTakingConfig.from_agent_config(agent_config)
+        # The welcome is only spoken at connect, i.e. by the call's first agent
+        will_greet = is_initial_stack and bool(
+            (agent_config.get('welcome_message') or '').strip()
+        )
+        if turn_taking.mute_until_first_bot_complete and not will_greet:
+            logger.info(
+                'mute_until_first_bot_complete ignored: no welcome message to wait for'
+            )
         filler_config = FillerSpeechConfig.from_agent_config(agent_config)
         filler = FillerSpeechProcessor(delay_secs=filler_config.thinking_delay_secs)
         context_aggregator = LLMContextAggregatorPair(
@@ -486,11 +492,7 @@ class PipecatService:
                     start=turn_taking.start_strategies(),
                     stop=turn_taking.stop_strategies(),
                 ),
-                # Welcome is interruptible: do not mute until first bot speech.
-                # Still mute during in-flight tool calls so audio does not collide.
-                user_mute_strategies=[
-                    FunctionCallUserMuteStrategy(),
-                ],
+                user_mute_strategies=turn_taking.mute_strategies(will_greet=will_greet),
             ),
         )
 
@@ -648,7 +650,7 @@ class PipecatService:
         }
         shared = SharedSession(call_stats=call_stats, transcript_log=transcript_log)
 
-        def build_stack(cfg: Dict[str, Any]) -> AgentStack:
+        def build_stack(cfg: Dict[str, Any], initial: bool = False) -> AgentStack:
             return self.build_agent_stack(
                 agent_config=cfg['agent'],
                 llm_config=cfg['llm_config'],
@@ -661,6 +663,7 @@ class PipecatService:
                 audio_out_sample_rate=audio_out_sample_rate,
                 shared=shared,
                 room_context_language=room_context_language,
+                is_initial_stack=initial,
             )
 
         stack = build_stack(
@@ -670,7 +673,8 @@ class PipecatService:
                 'tts_config': tts_config,
                 'stt_config': stt_config,
                 'tools': tools,
-            }
+            },
+            initial=True,
         )
         shared.active_stack = stack
         agent_id = agent_config.get('id')
