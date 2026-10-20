@@ -3,6 +3,7 @@
 import json
 import uuid
 from contextlib import contextmanager
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -259,10 +260,17 @@ def _request(session):
     return req
 
 
+CANCELLED_ID = uuid.uuid4()
+
+
 def _ok_result():
-    result = MagicMock()
-    result.model_dump.return_value = {'status': 'cancelled'}
-    return result
+    return SimpleNamespace(
+        id=CANCELLED_ID,
+        status='cancelled',
+        completed_at=datetime(2026, 10, 20, 10, 0, 5),
+        celery_task_id='task-1',
+        variables={'secret': 'x'},
+    )
 
 
 @pytest.mark.parametrize(
@@ -290,6 +298,25 @@ async def test_route_status_codes(side_effect, expected, monkeypatch):
     )
 
     assert response.status_code == expected
+
+
+async def test_route_returns_only_the_cancel_fields(monkeypatch):
+    monkeypatch.setattr(controller, 'check_is_admin', AsyncMock(return_value=True))
+    service = MagicMock()
+    service.cancel_execution = AsyncMock(return_value=_ok_result())
+
+    response = await controller.cancel_execution(
+        request=_request(session=SimpleNamespace(role_id='admin-role')),
+        execution_id=CANCELLED_ID,
+        async_agentic_execution_service=service,
+        response_formatter=ResponseFormatter(),
+    )
+
+    assert json.loads(response.body)['data']['data'] == {
+        'execution_id': str(CANCELLED_ID),
+        'status': 'cancelled',
+        'cancelled_at': '2026-10-20T10:00:05',
+    }
 
 
 @pytest.mark.parametrize(

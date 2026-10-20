@@ -378,7 +378,13 @@ async def cancel_execution(
         content=response_formatter.buildSuccessResponse(
             {
                 'message': 'Execution cancelled successfully',
-                'data': result.model_dump(mode='json'),
+                'data': {
+                    'execution_id': str(result.id),
+                    'status': result.status,
+                    'cancelled_at': result.completed_at.isoformat()
+                    if result.completed_at
+                    else None,
+                },
             }
         ),
     )
