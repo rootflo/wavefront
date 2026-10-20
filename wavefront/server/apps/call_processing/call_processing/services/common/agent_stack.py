@@ -8,6 +8,8 @@ whole stack can be built off to the side and replaced while the transport, the
 
 Everything that belongs to the *call* (stats, transcript, the task handle, the
 browser messenger) lives in ``SharedSession`` and outlives any single stack.
+Both the telephony and the browser flow build their agent through this split;
+only browser rooms ever swap it.
 """
 
 from __future__ import annotations
@@ -16,6 +18,10 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from pipecat.adapters.schemas.function_schema import FunctionSchema
+
+from call_processing.services.common.session_events import SessionEvents
+
+_NO_EVENTS = SessionEvents()
 
 
 @dataclass
@@ -77,3 +83,8 @@ class SharedSession:
     messenger: Optional[Any] = None
     # The stack currently serving the call (updated by every agent swap)
     active_stack: Optional[AgentStack] = None
+
+    @property
+    def events(self) -> SessionEvents:
+        """Where conversation events go: the browser messenger, else nowhere."""
+        return self.messenger or _NO_EVENTS

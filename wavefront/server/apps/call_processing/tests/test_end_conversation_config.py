@@ -1,4 +1,4 @@
-from call_processing.services.conversation_completion_tool import (
+from call_processing.services.common.tools.conversation_completion_tool import (
     DEFAULT_FAREWELL,
     EndConversationConfig,
 )

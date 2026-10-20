@@ -8,7 +8,7 @@ from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.frames.frames import LLMMessagesAppendFrame
 from pipecat.processors.aggregators.llm_context import NOT_GIVEN, LLMContext
 
-from call_processing.services.webrtc_app_messages import (
+from call_processing.services.webrtc.app_messages import (
     OVERLAY_END,
     OVERLAY_START,
     CaptionAssembler,
@@ -22,7 +22,7 @@ from call_processing.services.webrtc_app_messages import (
     parse_switch_agent,
     strip_step_overlay,
 )
-from call_processing.services.tool_wrapper_service import (
+from call_processing.services.common.tools.tool_wrapper_service import (
     AppToolWrapper,
     ToolWrapperFactory,
 )

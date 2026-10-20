@@ -42,7 +42,7 @@ from pipecat.frames.frames import (
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 from call_processing.constants.filler_phrases import FILLER_PHRASES, THINKING_PHRASES
-from call_processing.services.conversation_config import (
+from call_processing.services.common.conversation_config import (
     bounded_number,
     config_section,
 )

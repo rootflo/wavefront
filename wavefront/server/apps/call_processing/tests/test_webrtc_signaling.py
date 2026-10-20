@@ -17,7 +17,7 @@ from redis import Redis
 
 from call_processing.di import application_container
 from call_processing.server import app
-from call_processing.services import pipecat_service as pipecat_service_module
+from call_processing.services.webrtc.conversation import WebRTCConversation
 
 PASSTHROUGH = {'X-Passthrough': 'test-passthrough-secret'}
 AGENT_ID = str(uuid.uuid4())
@@ -25,18 +25,14 @@ AGENT_ID = str(uuid.uuid4())
 
 @pytest.fixture
 def pipeline_calls(monkeypatch):
-    """Replace the pipeline with one that records its arguments and waits."""
+    """Replace the pipeline with one that records its conversation and waits."""
     calls = []
 
-    async def fake_run_conversation(self, **kwargs):
-        calls.append(kwargs)
+    async def fake_run(self, transport, configs):
+        calls.append(self)
         await asyncio.Event().wait()  # until the session is cancelled
 
-    monkeypatch.setattr(
-        pipecat_service_module.PipecatService,
-        'run_conversation',
-        fake_run_conversation,
-    )
+    monkeypatch.setattr(WebRTCConversation, 'run', fake_run)
     return calls
 
 
@@ -135,11 +131,11 @@ async def test_offer_joins_room_runs_16k_pipeline_and_cleans_up(client, pipeline
         await asyncio.sleep(0.5)  # let the session task start the pipeline
         assert len(pipeline_calls) == 1
         call = pipeline_calls[0]
-        assert call['provider'] == 'webrtc'
-        assert call['call_id'] == room['room_id']
-        assert call['audio_in_sample_rate'] == 16000
-        assert call['audio_out_sample_rate'] == 16000
-        assert call['idle_timeout_secs'] == 300
+        assert call.provider == 'webrtc'
+        assert call.call_id == room['room_id']
+        assert call.audio_sample_rate == 16000
+        assert call.stack_options().service_sample_rate == 16000
+        assert call.idle_timeout_secs == 300
 
         session_service = application_container.webrtc_session_service()
         assert session_service.active_sessions == 1

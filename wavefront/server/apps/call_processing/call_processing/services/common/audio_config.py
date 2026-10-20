@@ -8,7 +8,6 @@ from copy import deepcopy
 from typing import Any, Dict, Optional
 
 TELEPHONY_SAMPLE_RATE = 8000
-WEBRTC_PROVIDER = 'webrtc'
 
 
 def with_sample_rate(
@@ -27,8 +26,3 @@ def with_sample_rate(
     parameters['sample_rate'] = sample_rate
     forced['parameters'] = parameters
     return forced
-
-
-def service_sample_rate(provider: str, pipeline_rate: int) -> Optional[int]:
-    """Rate to force onto STT/TTS services, or None to keep telephony defaults."""
-    return pipeline_rate if provider == WEBRTC_PROVIDER else None

@@ -25,20 +25,16 @@ from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
-from call_processing.services.agent_stack import AgentStack, SharedSession
-from call_processing.services.webrtc_agent_swap import (
+from call_processing.services.common.agent_stack import AgentStack, SharedSession
+from call_processing.services.webrtc.agent_swap import (
     AgentSwapController,
     SwapOptions,
     SwappableSlot,
     build_handoff_history,
-    build_handoff_note,
 )
-from call_processing.services.webrtc_app_messages import (
-    OVERLAY_END,
-    OVERLAY_START,
-    STEP_OPENER,
-)
-from call_processing.services.webrtc_room_service import (
+from call_processing.services.webrtc.app_messages import OVERLAY_END, OVERLAY_START
+from call_processing.services.webrtc.prompts import STEP_OPENER, build_handoff_note
+from call_processing.services.webrtc.room_service import (
     ERR_AGENT_NOT_ALLOWED,
     ERR_AGENT_UNAVAILABLE,
     ERR_ALREADY_ACTIVE,

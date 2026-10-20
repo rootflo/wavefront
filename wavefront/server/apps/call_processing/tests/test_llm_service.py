@@ -1,6 +1,6 @@
 import pytest
 
-from call_processing.services.llm_service import LLMServiceFactory
+from call_processing.services.common.providers.llm_service import LLMServiceFactory
 
 PARAMS = {
     'temperature': 0.2,

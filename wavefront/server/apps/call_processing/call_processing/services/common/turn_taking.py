@@ -71,11 +71,11 @@ from pipecat.turns.user_stop import (
     TurnAnalyzerUserTurnStopStrategy,
 )
 
-from call_processing.services.conversation_config import (
+from call_processing.services.common.conversation_config import (
     bounded_number,
     config_section,
 )
-from call_processing.services.smart_turn import SharedSmartTurnAnalyzer
+from call_processing.services.common.smart_turn import SharedSmartTurnAnalyzer
 
 _SECTION = 'conversation_config.turn_taking'
 

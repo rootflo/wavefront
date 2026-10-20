@@ -11,8 +11,8 @@ from pipecat.turns.user_start import (
     VADUserTurnStartStrategy,
 )
 
-from call_processing.services.smart_turn import SharedSmartTurnAnalyzer
-from call_processing.services.turn_taking import (
+from call_processing.services.common.smart_turn import SharedSmartTurnAnalyzer
+from call_processing.services.common.turn_taking import (
     TurnTakingConfig,
     VADWhenBotSilentStartStrategy,
 )
