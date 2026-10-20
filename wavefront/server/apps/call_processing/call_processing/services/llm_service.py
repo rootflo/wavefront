@@ -24,28 +24,6 @@ def _openai_extra_params(parameters: Dict[str, Any]) -> Dict[str, Any]:
     return {k: parameters[k] for k in OPENAI_EXTRA_PARAMS if k in parameters}
 
 
-# Reasoning models reject these with a 400. The LLM config UI pre-fills them
-# (and refills them on every edit), so a config naming a reasoning effort is
-# taken to be for a reasoning model and they are left out of the request.
-REASONING_UNSUPPORTED_PARAMS = (
-    'temperature',
-    'top_p',
-    'frequency_penalty',
-    'presence_penalty',
-)
-
-
-def _without_reasoning_unsupported(parameters: Dict[str, Any]) -> Dict[str, Any]:
-    if 'reasoning_effort' not in parameters:
-        return parameters
-    dropped = [k for k in REASONING_UNSUPPORTED_PARAMS if k in parameters]
-    if dropped:
-        logger.info(f'reasoning_effort set; not sending {dropped} to the LLM')
-    return {
-        k: v for k, v in parameters.items() if k not in REASONING_UNSUPPORTED_PARAMS
-    }
-
-
 class LLMServiceFactory:
     """Factory for creating LLM service instances from configuration"""
 
@@ -76,7 +54,6 @@ class LLMServiceFactory:
 
         if parameters is None:
             parameters = {}
-        parameters = _without_reasoning_unsupported(parameters)
 
         logger.info(f'Creating LLM service: {llm_type} / {model}')
 
@@ -184,12 +161,20 @@ class LLMServiceFactory:
             params_dict['top_p'] = parameters['top_p']
         if 'top_k' in parameters:
             params_dict['top_k'] = parameters['top_k']
+        # Gemini 3+ takes a thinking level, 2.5 a token budget (0 = off on Flash)
+        thinking = {
+            k: parameters[k]
+            for k in ('thinking_level', 'thinking_budget')
+            if parameters.get(k) is not None
+        }
+        if thinking:
+            params_dict['thinking'] = GoogleLLMService.ThinkingConfig(**thinking)
 
         # Create InputParams object
         input_params = GoogleLLMService.InputParams(**params_dict)
 
         logger.info(
-            f"Google LLM config: model={model}, temp={params_dict.get('temperature', 'default')}"
+            f"Google LLM config: model={model}, temp={params_dict.get('temperature', 'default')}, thinking={thinking or 'default'}"
         )
 
         return GoogleLLMService(api_key=api_key, model=model, params=input_params)
