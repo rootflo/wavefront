@@ -21,9 +21,10 @@ ENV UV_NO_CACHE=1 \
 # Every locked dependency ships a wheel (psycopg/psycopg2 -binary bundle libpq),
 # so no compiler, headers or libpq are needed; bash is for the init script.
 # MSSQL goes through mssql-python, which bundles Microsoft's ODBC driver; the
-# driver needs libltdl, krb5 (GSSAPI) and glibc's iconv modules at runtime.
+# driver needs libltdl, krb5 (GSSAPI) and glibc's iconv modules at runtime, and
+# dlopens OpenSSL 1.x/3.x for TLS (Wolfi's default is OpenSSL 4, hence libssl3).
 RUN apk upgrade --no-cache && \
-    apk add --no-cache bash python-3.11 libltdl krb5-libs glibc-iconv
+    apk add --no-cache bash python-3.11 libltdl krb5-libs glibc-iconv libssl3 libcrypto3
 
 COPY wavefront/server/pyproject.toml wavefront/server/uv.lock ./
 
