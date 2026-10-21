@@ -19,11 +19,13 @@ class WorkflowInferenceRequest(BaseModel):
             'and slashes; values may also contain spaces. At most 10 '
             'variables, names up to 64 characters and values up to 500.'
         ),
-        example={
-            'target_language': 'Spanish',
-            'tone': 'formal',
-            'text_to_process': 'Welcome to our application',
-        },
+        examples=[
+            {
+                'target_language': 'Spanish',
+                'tone': 'formal',
+                'text_to_process': 'Welcome to our application',
+            }
+        ],
     )
 
     # Validated on the model so every caller of this schema is covered — v1, v2
@@ -36,8 +38,8 @@ class WorkflowInferenceRequest(BaseModel):
     inputs: List[dict | str] | str = Field(
         ...,
         description='Inputs to use for inference',
-        example=[
-            'Process the following text: <text_to_process> with <target_language>'
+        examples=[
+            ['Process the following text: <text_to_process> with <target_language>']
         ],
     )
 

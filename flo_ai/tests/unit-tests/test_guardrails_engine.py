@@ -18,8 +18,10 @@ from flo_ai.guardrails import (
     WorkflowStage,
 )
 from flo_ai.guardrails.adapters.base_adapter import BaseAdapter
+from flo_ai.guardrails.contracts import StreamCapability, StreamMode
 
 BEFORE = WorkflowStage.BEFORE_MODEL
+AFTER = WorkflowStage.AFTER_MODEL
 
 
 class FakeAdapter(BaseAdapter):
@@ -88,9 +90,25 @@ class RecordingAudit:
         self.records.append((decision, context))
 
 
-def policy(*specs, enabled=True, mode=EnforcementMode.ENFORCE, version='v1'):
+class IncrementalAdapter(FakeAdapter):
+    """Stands in for Presidio: findings are spans, so a prefix means something."""
+
+    stream_capability = StreamCapability.INCREMENTAL
+
+
+def policy(
+    *specs,
+    enabled=True,
+    mode=EnforcementMode.ENFORCE,
+    version='v1',
+    stream=StreamCapability.BUFFERED,
+):
     return ResolvedPolicy(
-        is_enabled=enabled, mode=mode, adapters=tuple(specs), version=version
+        is_enabled=enabled,
+        mode=mode,
+        adapters=tuple(specs),
+        version=version,
+        stream=stream,
     )
 
 
@@ -417,12 +435,123 @@ class TestAudit:
         assert decision.action is PolicyAction.BLOCK
 
 
+class TestPrefixEvaluation:
+    """A scan of part of a response is advisory: no audit row, no cache entry."""
+
+    async def test_a_prefix_scan_is_not_audited(self):
+        recorded = []
+
+        class RecordingAudit:
+            async def record(self, decision, context):
+                recorded.append(decision)
+
+        engine = build(
+            policy(spec(stages=(AFTER,))),
+            FakeAdapter(behaviour='block'),
+            audit=RecordingAudit(),
+        )
+
+        await engine.evaluate_prefix('partial text', Principal(), AFTER)
+
+        assert recorded == [], (
+            'one row per chunk would report counts that climb as the model '
+            'types, which is a record of the measurement rather than the event'
+        )
+
+    async def test_a_prefix_scan_is_not_cached(self):
+        """Every prefix is a distinct key, so a stored one is dead on arrival."""
+        adapter = FakeAdapter()
+        engine = build(policy(spec(stages=(AFTER,))), adapter)
+
+        await engine.evaluate_prefix('same text', Principal(), AFTER)
+        calls_after_prefix = len(adapter.calls)
+        await engine.evaluate('same text', Principal(), AFTER)
+
+        assert len(adapter.calls) == calls_after_prefix + 1, (
+            'the terminal scan reused a verdict the prefix scan should not '
+            'have stored'
+        )
+
+    async def test_a_prefix_scan_still_produces_a_verdict(self):
+        engine = build(policy(spec(stages=(AFTER,))), FakeAdapter(behaviour='block'))
+
+        decision = await engine.evaluate_prefix('bad', Principal(), AFTER)
+
+        assert decision.action is PolicyAction.BLOCK
+
+    async def test_a_prefix_scan_with_no_adapters_is_inert(self):
+        adapter = FakeAdapter()
+        engine = build(policy(spec(stages=(BEFORE,))), adapter)
+
+        decision = await engine.evaluate_prefix('anything', Principal(), AFTER)
+
+        assert decision.action is PolicyAction.ALLOW
+        assert adapter.calls == []
+
+
 class TestLifecycle:
     async def test_has_checks(self):
         engine = build(policy(spec(stages=(BEFORE,))), FakeAdapter())
 
         assert await engine.has_checks(Principal(), BEFORE) is True
         assert await engine.has_checks(Principal(), WorkflowStage.AFTER_MODEL) is False
+
+    async def test_stream_mode_without_checks_is_passthrough(self):
+        engine = build(policy(spec(stages=(BEFORE,))), FakeAdapter())
+
+        assert await engine.stream_mode(Principal(), AFTER) is StreamMode.PASSTHROUGH
+
+    async def test_monitor_mode_streams_without_a_margin(self):
+        """Nothing is withheld in MONITOR, so withholding text buys nothing."""
+        engine = build(
+            policy(spec(stages=(AFTER,)), mode=EnforcementMode.MONITOR),
+            IncrementalAdapter(),
+        )
+
+        assert await engine.stream_mode(Principal(), AFTER) is StreamMode.OBSERVE
+
+    async def test_an_unregistered_adapter_buffers(self):
+        """It fails closed on every request; releasing first would retract all."""
+        engine = build(policy(spec(name='missing', stages=(AFTER,))), FakeAdapter())
+
+        assert await engine.stream_mode(Principal(), AFTER) is StreamMode.BUFFERED
+
+    async def test_one_buffered_adapter_decides_for_all_of_them(self):
+        engine = build(
+            policy(
+                spec(name='span', stages=(AFTER,)),
+                spec(name='holistic', stages=(AFTER,)),
+                stream=StreamCapability.INCREMENTAL,
+            ),
+            IncrementalAdapter(name='span'),
+            FakeAdapter(name='holistic'),
+        )
+
+        assert await engine.stream_mode(Principal(), AFTER) is StreamMode.BUFFERED
+
+    async def test_incremental_needs_the_policy_to_ask_for_it(self):
+        """Capability is permission, not intent. An old policy keeps buffering."""
+        engine = build(policy(spec(stages=(AFTER,))), IncrementalAdapter())
+
+        assert await engine.stream_mode(Principal(), AFTER) is StreamMode.BUFFERED
+
+    async def test_incremental_when_policy_and_adapters_agree(self):
+        engine = build(
+            policy(spec(stages=(AFTER,)), stream=StreamCapability.INCREMENTAL),
+            IncrementalAdapter(),
+        )
+
+        assert await engine.stream_mode(Principal(), AFTER) is StreamMode.INCREMENTAL
+
+    async def test_an_unsupported_stage_buffers(self):
+        """A tool stage is MISCONFIGURED, so it must not stream either."""
+        tool_stage = WorkflowStage.AFTER_TOOL
+        engine = build(
+            policy(spec(stages=(tool_stage,)), stream=StreamCapability.INCREMENTAL),
+            IncrementalAdapter(),
+        )
+
+        assert await engine.stream_mode(Principal(), tool_stage) is StreamMode.BUFFERED
 
     async def test_aclose_closes_every_adapter(self):
         a, b = FakeAdapter(name='a'), FakeAdapter(name='b')

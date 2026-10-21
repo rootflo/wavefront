@@ -11,8 +11,9 @@ Every service speaks plain OTLP to the collector and nothing else.
 """
 
 import os
-import socket
 from typing import Any, Dict, Optional
+
+from common_module.telemetry.settings import TelemetrySettings
 
 from opentelemetry import trace
 from opentelemetry.propagate import set_global_textmap
@@ -27,27 +28,20 @@ EXCLUDED_URLS = 'health,healthz,docs,openapi.json,redoc,favicon.ico'
 
 _providers_configured = False
 _sqlalchemy_instrumented = False
+_active_settings: TelemetrySettings | None = None
 
 
 def telemetry_endpoint() -> Optional[str]:
     """Return the collector endpoint, or ``None`` when telemetry is disabled."""
-    return os.getenv('OTEL_EXPORTER_OTLP_ENDPOINT') or None
+    if _active_settings is None:
+        return None
+    return _active_settings.otlp_endpoint
 
 
-def _service_name(default: str) -> str:
-    return os.getenv('OTEL_SERVICE_NAME') or os.getenv('APP_NAME') or default
-
-
-def _resource_attributes() -> Dict[str, Any]:
-    """Extra resource attributes beyond service name/version/environment.
-
-    ``service.instance.id`` lets a backend tell replicas apart. It replaces the
-    per-request client-IP ``instance`` label the old Prometheus middleware used,
-    which was both unbounded in cardinality and personally identifying.
-    """
-    instance_id = os.getenv('HOSTNAME') or socket.gethostname()
+def _resource_attributes(settings: TelemetrySettings) -> Dict[str, Any]:
+    """Extra resource attributes beyond service name/version/environment."""
     return {
-        'service.instance.id': f'{instance_id}:{os.getpid()}',
+        'service.instance.id': f'{settings.resolved_instance_id()}:{os.getpid()}',
     }
 
 
@@ -110,44 +104,38 @@ def _restrict_propagation() -> None:
     set_global_textmap(TraceContextTextMapPropagator())
 
 
-def configure_telemetry_providers(default_service_name: str) -> bool:
+def configure_telemetry_providers(settings: TelemetrySettings) -> bool:
     """Set up trace/metric providers and library instrumentation.
 
     Returns ``True`` when telemetry was configured, ``False`` when it is
     disabled because no collector endpoint is set. Never raises: a broken
     telemetry setup must not stop a service from serving traffic.
     """
-    global _providers_configured
+    global _providers_configured, _active_settings
 
-    # First, and on every path: BaggageMiddleware populates the context whether
-    # or not telemetry is enabled, so the baggage propagator has to go even when
-    # we bail out below. Idempotent, so repeat calls are harmless.
     _restrict_propagation()
+    _active_settings = settings
 
     if _providers_configured:
         return True
 
-    otlp_endpoint = telemetry_endpoint()
+    otlp_endpoint = settings.otlp_endpoint
     if not otlp_endpoint:
-        logger.info('OTEL_EXPORTER_OTLP_ENDPOINT is not set; OpenTelemetry is disabled')
+        logger.info('telemetry.otlp_endpoint is not set; OpenTelemetry is disabled')
         return False
-
-    service_name = _service_name(default_service_name)
 
     try:
         from flo_ai import configure_telemetry
 
         configure_telemetry(
-            service_name=service_name,
-            service_version=os.getenv('APP_VERSION', '0.1.0'),
-            environment=os.getenv('APP_ENV', 'dev'),
+            service_name=settings.service_name,
+            service_version=settings.app_version,
+            environment=settings.app_env,
             otlp_endpoint=otlp_endpoint,
-            additional_attributes=_resource_attributes(),
+            additional_attributes=_resource_attributes(settings),
         )
         _rebuild_flo_ai_metric_singletons()
 
-        # flo_ai installs its TracerProvider as the global one, so the baggage
-        # processor can be attached to it after the fact.
         tracer_provider = trace.get_tracer_provider()
         if hasattr(tracer_provider, 'add_span_processor'):
             tracer_provider.add_span_processor(BaggageSpanProcessor())
@@ -156,8 +144,8 @@ def configure_telemetry_providers(default_service_name: str) -> bool:
 
         _providers_configured = True
         logger.info(
-            f'OpenTelemetry configured for service "{service_name}" '
-            f'(env={os.getenv("APP_ENV", "dev")}) exporting to {otlp_endpoint}'
+            f'OpenTelemetry configured for service "{settings.service_name}" '
+            f'(env={settings.app_env}) exporting to {otlp_endpoint}'
         )
         return True
     except Exception as exc:
@@ -180,6 +168,13 @@ def _instrument_clients() -> None:
         HTTPXClientInstrumentor().instrument()
     except Exception as exc:
         logger.warning(f'HTTPX instrumentation unavailable: {exc}')
+
+    try:
+        from opentelemetry.instrumentation.httpx import HTTPX2ClientInstrumentor
+
+        HTTPX2ClientInstrumentor().instrument()
+    except Exception as exc:
+        logger.warning(f'HTTPX2 instrumentation unavailable: {exc}')
 
 
 def instrument_fastapi(app: Any) -> None:

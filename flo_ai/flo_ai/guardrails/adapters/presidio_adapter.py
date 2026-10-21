@@ -14,9 +14,10 @@ from ..contracts import (
     CheckResult,
     FailureClass,
     PolicyAction,
+    StreamCapability,
 )
 from .base_adapter import BaseAdapter
-from .pii_catalog import NLP_BACKED
+from .pii_catalog import INCREMENTAL_SAFE, NLP_BACKED
 
 #: What runs when a policy names no entity types.
 #:
@@ -155,6 +156,11 @@ class PresidioAdapter(BaseAdapter):
     unreachable the deployment degrades to this rather than to nothing, which
     is what makes fail-open on the remote adapter defensible.
     """
+
+    #: Findings are spans, so a verdict on a prefix stays true of that prefix.
+    #: Narrowed per policy by ``stream_capability_for``, which is where the
+    #: selections that break the span argument are turned away.
+    stream_capability = StreamCapability.INCREMENTAL
 
     def __init__(
         self,
@@ -398,6 +404,46 @@ class PresidioAdapter(BaseAdapter):
         )
 
     # -- policy translation ----------------------------------------------
+
+    def stream_capability_for(self, options: Dict[str, Any]) -> StreamCapability:
+        """Whether this policy's selection is safe to release incrementally.
+
+        The class declares INCREMENTAL because Presidio's findings are spans:
+        a card number is a property of twenty-four characters, not of the
+        paragraph around them, so a scan of a prefix says something true and
+        permanent about that prefix. What the class cannot know is *which*
+        entities a policy asked for, and the span argument does not survive
+        every answer.
+
+        Two selections take it away:
+
+        An entity with no length bound (see ``UNBOUNDED_LENGTH``) defeats the
+        margin. Incremental release holds back enough characters that an
+        entity starting before the cut must end inside the scanned text; a URL
+        can be longer than any margin worth the latency, so it could be half
+        released before it was ever visible to a scan.
+
+        A ``hash`` operator rewrites an entity to 64 hex characters, which is
+        longer than most of what it replaces. Redaction that *expands* pushes
+        the vetted text past the plaintext offsets the cut was computed from,
+        and while the divergence check downstream would catch the result, the
+        honest answer is that the bound stops holding.
+        """
+        entities = self._resolve_entities(options)
+        if entities is None:
+            # The policy selected nothing, so nothing is detected and nothing
+            # is rewritten. Vacuously safe.
+            return StreamCapability.INCREMENTAL
+
+        if not set(entities) <= INCREMENTAL_SAFE:
+            return StreamCapability.BUFFERED
+
+        configured = options.get('operators') or {}
+        for spec in configured.values():
+            if isinstance(spec, dict) and spec.get('type') == 'hash':
+                return StreamCapability.BUFFERED
+
+        return StreamCapability.INCREMENTAL
 
     def _resolve_entities(self, options: Dict[str, Any]) -> Optional[List[str]]:
         """Which entity types this policy wants detected.

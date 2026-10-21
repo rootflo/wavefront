@@ -1,8 +1,7 @@
 """Building the FastAPI app under test.
 
-Every module mounted the same two middlewares in the same order, except
-inference_module which silently omitted RequestIdMiddleware. Going through one
-builder keeps the app under test the same shape as the real one.
+Every module mounted the same two middlewares in the same order. Going through
+one builder keeps the app under test the same shape as the real one.
 """
 
 from __future__ import annotations
@@ -21,7 +20,12 @@ def build_app(*routers: Any, prefix: str = '/floware') -> FastAPI:
 
     app = FastAPI()
     app.add_middleware(RequestIdMiddleware)
-    app.add_middleware(RequireAuthMiddleware)
+    # Non-production so passthrough auth is honoured, as when APP_ENV=test.
+    app.add_middleware(
+        RequireAuthMiddleware,
+        app_env='test',
+        mtls_allowed_namespaces=('client-applications', 'gpu-processing'),
+    )
     for router in routers:
         app.include_router(router, prefix=prefix)
     return app

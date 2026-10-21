@@ -1,5 +1,5 @@
 import json
-import requests
+import flo_lib.http as http
 from datetime import datetime
 from typing import Dict, Any, Optional
 from urllib.parse import urlencode, urlparse
@@ -201,7 +201,7 @@ class GoogleOAuthAuthenticator(AuthenticatorABC):
         }
 
         try:
-            response = requests.post(self.token_url, data=data, timeout=10)
+            response = http.post(self.token_url, data=data, timeout=10)
             response.raise_for_status()
 
             token_data = response.json()
@@ -215,7 +215,7 @@ class GoogleOAuthAuthenticator(AuthenticatorABC):
                 expires_in=token_data.get('expires_in'),
             )
 
-        except requests.exceptions.RequestException as e:
+        except http.HTTPError as e:
             return TokenResult(success=False, error=f'Token refresh failed: {str(e)}')
         except json.JSONDecodeError:
             return TokenResult(
@@ -231,7 +231,7 @@ class GoogleOAuthAuthenticator(AuthenticatorABC):
                 revoke_url = (
                     f'https://oauth2.googleapis.com/revoke?token={access_token}'
                 )
-                requests.post(revoke_url, timeout=5)
+                http.post(revoke_url, timeout=5)
             except Exception:
                 pass  # Non-critical if revocation fails
 
@@ -248,7 +248,7 @@ class GoogleOAuthAuthenticator(AuthenticatorABC):
 
         # Test Google OAuth endpoints connectivity
         try:
-            response = requests.get('https://www.googleapis.com', timeout=5)
+            response = http.get('https://www.googleapis.com', timeout=5)
             details['google_api_reachable'] = response.status_code == 200
         except Exception:
             details['google_api_reachable'] = False
@@ -278,7 +278,7 @@ class GoogleOAuthAuthenticator(AuthenticatorABC):
         }
 
         try:
-            response = requests.post(self.token_url, data=data, timeout=10)
+            response = http.post(self.token_url, data=data, timeout=10)
             response.raise_for_status()
 
             token_data = response.json()
@@ -290,7 +290,7 @@ class GoogleOAuthAuthenticator(AuthenticatorABC):
                 expires_in=token_data.get('expires_in'),
             )
 
-        except requests.exceptions.RequestException as e:
+        except http.HTTPError as e:
             return TokenResult(success=False, error=f'Token exchange failed: {str(e)}')
         except json.JSONDecodeError:
             return TokenResult(
@@ -301,7 +301,7 @@ class GoogleOAuthAuthenticator(AuthenticatorABC):
         """Get user information from Google API."""
         try:
             headers = {'Authorization': f'Bearer {access_token}'}
-            response = requests.get(self.userinfo_url, headers=headers, timeout=10)
+            response = http.get(self.userinfo_url, headers=headers, timeout=10)
             response.raise_for_status()
 
             user_data = response.json()

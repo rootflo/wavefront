@@ -162,7 +162,7 @@ class TestSimpleIntegration:
     async def test_bearer_auth_integration(self, test_proxy, simple_mock_backend):
         """Test Bearer authentication integration."""
 
-        with patch('httpx.AsyncClient') as mock_client_class:
+        with patch('flo_lib.http.AsyncClient') as mock_client_class:
             # Setup mock client
             mock_client = MagicMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -216,7 +216,7 @@ class TestSimpleIntegration:
     async def test_basic_auth_integration(self, test_proxy, simple_mock_backend):
         """Test Basic authentication integration."""
 
-        with patch('httpx.AsyncClient') as mock_client_class:
+        with patch('flo_lib.http.AsyncClient') as mock_client_class:
             mock_client = MagicMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=None)
@@ -259,7 +259,7 @@ class TestSimpleIntegration:
     async def test_api_key_auth_integration(self, test_proxy, simple_mock_backend):
         """Test API Key authentication integration."""
 
-        with patch('httpx.AsyncClient') as mock_client_class:
+        with patch('flo_lib.http.AsyncClient') as mock_client_class:
             mock_client = MagicMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=None)
@@ -295,7 +295,7 @@ class TestSimpleIntegration:
     async def test_pipeline_execution_trace(self, test_proxy, simple_mock_backend):
         """Test that pipeline execution is properly traced."""
 
-        with patch('httpx.AsyncClient') as mock_client_class:
+        with patch('flo_lib.http.AsyncClient') as mock_client_class:
             mock_client = MagicMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=None)
@@ -335,13 +335,13 @@ class TestSimpleIntegration:
     async def test_error_handling_integration(self, test_proxy):
         """Test error handling when backend is unreachable."""
 
-        with patch('httpx.AsyncClient') as mock_client_class:
+        with patch('flo_lib.http.AsyncClient') as mock_client_class:
             mock_client = MagicMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=None)
 
             # Simulate network error
-            import httpx
+            import flo_lib.http as httpx
 
             mock_client.request.side_effect = httpx.ConnectError('Connection failed')
             mock_client_class.return_value = mock_client
@@ -372,7 +372,7 @@ class TestSimpleIntegration:
     async def test_concurrent_requests(self, test_proxy, simple_mock_backend):
         """Test handling multiple concurrent requests."""
 
-        with patch('httpx.AsyncClient') as mock_client_class:
+        with patch('flo_lib.http.AsyncClient') as mock_client_class:
             mock_client = MagicMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=None)
@@ -480,7 +480,7 @@ class TestPipelineComponents:
     async def test_auth_pipeline_execution(self, test_proxy, simple_mock_backend):
         """Test authentication pipeline execution."""
 
-        with patch('httpx.AsyncClient') as mock_client_class:
+        with patch('flo_lib.http.AsyncClient') as mock_client_class:
             mock_client = MagicMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=None)
@@ -535,7 +535,7 @@ class TestPerformance:
     async def test_throughput(self, test_proxy, simple_mock_backend):
         """Test basic throughput with mock backend."""
 
-        with patch('httpx.AsyncClient') as mock_client_class:
+        with patch('flo_lib.http.AsyncClient') as mock_client_class:
             mock_client = MagicMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=None)

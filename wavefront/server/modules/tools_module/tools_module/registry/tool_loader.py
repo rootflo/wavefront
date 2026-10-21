@@ -1,8 +1,8 @@
 import json
 import os
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Mapping, Optional
 from flo_ai.tool.base_tool import Tool
-from tools_module.registry.function_registry import FUNCTION_REGISTRY
+from tools_module.registry.function_node_registry import build_function_node_registry
 
 
 class ToolLoader:
@@ -10,12 +10,15 @@ class ToolLoader:
 
     def __init__(
         self,
+        function_registry: Mapping[str, Callable],
         tools_json_path: Optional[str] = None,
     ):
         """
         Initialize tool loader
 
         Args:
+            function_registry: Tool functions by name, already bound to the
+                services they call (see ``build_function_registry``)
             tools_json_path: Path to available_tools.json file
         """
         if tools_json_path is None:
@@ -24,7 +27,18 @@ class ToolLoader:
             tools_json_path = os.path.join(current_dir, 'available_tools.json')
 
         self.tools_json_path = tools_json_path
+        self.function_registry = function_registry
         self._tools_metadata = None
+        self._function_node_registry: Optional[Dict[str, Callable]] = None
+
+    @property
+    def function_node_registry(self) -> Dict[str, Callable]:
+        """Function-node adapters for every registry function (built once)."""
+        if self._function_node_registry is None:
+            self._function_node_registry = build_function_node_registry(
+                self.function_registry
+            )
+        return self._function_node_registry
 
     def _load_tools_metadata(self) -> Dict:
         """Load tools metadata from JSON file"""
@@ -62,7 +76,7 @@ class ToolLoader:
             return None
 
         # Get tool function from registry
-        tool_function = FUNCTION_REGISTRY.get(tool_name)
+        tool_function = self.function_registry.get(tool_name)
         if not tool_function:
             return None
 

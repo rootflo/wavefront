@@ -11,7 +11,7 @@ class MessageType:
 
 @dataclass
 class MediaMessageContent:
-    type: Optional[Literal['text', 'image', 'document']] = None
+    type: Optional[Literal['text', 'image', 'document', 'video']] = None
     url: Optional[str] = None
     base64: Optional[str] = None
     mime_type: Optional[str] = None
@@ -48,6 +48,21 @@ class DocumentMessageContent(MediaMessageContent):
 
 
 @dataclass
+class VideoMessageContent(MediaMessageContent):
+    url: Optional[str] = None
+    # Kept out of repr: tool results are logged, and a video is megabytes.
+    base64: Optional[str] = field(default=None, repr=False)
+    bytes: Optional[bytes] = field(default=None, repr=False)
+    mime_type: Optional[str] = None
+
+    def __post_init__(self):
+        self.type = 'video'
+        # Provider-formatted payloads keyed by LLM class name, so frame
+        # sampling runs once per video per LLM.
+        self._formatted_cache: Dict[str, Any] = {}
+
+
+@dataclass
 class TextMessageContent:
     text: str
     type: str = 'text'
@@ -55,7 +70,13 @@ class TextMessageContent:
 
 @dataclass
 class BaseMessage:
-    content: str | ImageMessageContent | DocumentMessageContent | TextMessageContent
+    content: (
+        str
+        | ImageMessageContent
+        | DocumentMessageContent
+        | VideoMessageContent
+        | TextMessageContent
+    )
     role: Optional[Literal['system', 'user', 'assistant', 'function']] = None
     metadata: Optional[Dict[str, Any]] = None
 
@@ -71,7 +92,13 @@ class SystemMessage(BaseMessage):
 
 @dataclass
 class UserMessage(BaseMessage):
-    content: str | ImageMessageContent | DocumentMessageContent | TextMessageContent
+    content: (
+        str
+        | ImageMessageContent
+        | DocumentMessageContent
+        | VideoMessageContent
+        | TextMessageContent
+    )
     metadata: Optional[Dict[str, Any]] = None
 
     def __post_init__(self):

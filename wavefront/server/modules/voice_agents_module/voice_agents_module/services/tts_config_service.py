@@ -2,6 +2,7 @@ import json
 from typing import List, Optional
 from uuid import UUID
 
+from common_module.call_processing_cache import CallProcessingCacheInvalidator
 from common_module.log.logger import logger
 from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.models.tts_config import TtsConfig
@@ -9,9 +10,6 @@ from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyReposit
 from voice_agents_module.utils.cache_utils import (
     get_tts_config_cache_key,
     get_tts_configs_list_cache_key,
-)
-from voice_agents_module.utils.cache_invalidation import (
-    invalidate_call_processing_cache,
 )
 
 
@@ -22,6 +20,7 @@ class TtsConfigService:
         self,
         tts_config_repository: SQLAlchemyRepository[TtsConfig],
         cache_manager: CacheManager,
+        cache_invalidator: CallProcessingCacheInvalidator,
     ):
         """
         Initialize the TTS config service
@@ -29,9 +28,11 @@ class TtsConfigService:
         Args:
             tts_config_repository: Repository for TTS configs
             cache_manager: Cache manager instance
+            cache_invalidator: Invalidates call_processing's cached configs
         """
         self.tts_config_repository = tts_config_repository
         self.cache_manager = cache_manager
+        self.cache_invalidator = cache_invalidator
         self.tts_config_cache_time = 3600 * 24
 
     async def create_config(
@@ -81,7 +82,7 @@ class TtsConfigService:
         self.cache_manager.remove(list_cache_key)
 
         # Invalidate cache in call_processing
-        await invalidate_call_processing_cache('tts_config', config.id, 'create')
+        await self.cache_invalidator.invalidate('tts_config', config.id, 'create')
 
         logger.info(f'Successfully created TTS config with id: {config.id}')
         return config_dict
@@ -178,7 +179,7 @@ class TtsConfigService:
         self.cache_manager.remove(list_cache_key)
 
         # Invalidate cache in call_processing
-        await invalidate_call_processing_cache('tts_config', config_id, 'update')
+        await self.cache_invalidator.invalidate('tts_config', config_id, 'update')
 
         logger.info(f'Successfully updated TTS config: {config_id}')
         return updated_config.to_dict(exclude_api_key=False)
@@ -213,7 +214,7 @@ class TtsConfigService:
         self.cache_manager.remove(list_cache_key)
 
         # Invalidate cache in call_processing
-        await invalidate_call_processing_cache('tts_config', config_id, 'delete')
+        await self.cache_invalidator.invalidate('tts_config', config_id, 'delete')
 
         logger.info(f'Successfully deleted TTS config: {config_id}')
         return True

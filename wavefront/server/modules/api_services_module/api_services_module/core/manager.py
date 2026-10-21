@@ -3,7 +3,6 @@ from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyReposit
 from db_repo_module.models.api_services import ApiServices
 from flo_cloud.cloud_storage import CloudStorageManager
 from typing import List
-from api_services_module.env import SERVICE_DEFINITION_BUCKET
 
 
 class ApiServicesManager:
@@ -21,6 +20,7 @@ class ApiServicesManager:
         self.cache_manager = cache_manager
         self.api_services_repository = api_services_repository
         self.cloud_storage_manager = cloud_storage_manager
+        self.application_bucket = config['storage']['application_bucket']
 
     async def create_api_service(
         self, id: str, service_def_yaml: str
@@ -29,7 +29,7 @@ class ApiServicesManager:
         service_def_path = f'api_services/{id}.yaml'
         self.cloud_storage_manager.save_small_file(
             file_content=service_def_yaml.encode('utf-8'),
-            bucket_name=self._service_storage_bucket(),
+            bucket_name=self.application_bucket,
             key=service_def_path,
             content_type='application/yaml',
         )
@@ -44,7 +44,8 @@ class ApiServicesManager:
         if cache_entry:
             return cache_entry
         yaml_bytes: bytes = self.cloud_storage_manager.read_file(
-            bucket_name=self._service_storage_bucket(), file_path=service_def_path
+            bucket_name=self.application_bucket,
+            file_path=service_def_path,
         )
         yaml_content = yaml_bytes.decode('utf-8')
         return yaml_content
@@ -62,7 +63,7 @@ class ApiServicesManager:
         service_def_path = f'api_services/{id}.yaml'
         self.cloud_storage_manager.save_small_file(
             file_content=service_def_yaml.encode('utf-8'),
-            bucket_name=self._service_storage_bucket(),
+            bucket_name=self.application_bucket,
             key=service_def_path,
             content_type='application/yaml',
         )
@@ -77,7 +78,8 @@ class ApiServicesManager:
         service_def_path = f'api_services/{id}.yaml'
         await self.api_services_repository.delete_all(filters={'id': id})
         self.cloud_storage_manager.delete_file(
-            bucket_name=self._service_storage_bucket(), file_path=service_def_path
+            bucket_name=self.application_bucket,
+            file_path=service_def_path,
         )
         return True
 
@@ -92,10 +94,3 @@ class ApiServicesManager:
         return await self.api_services_repository.find_one_and_update(
             filters={'id': id}, update_data={'is_active': True}
         )
-
-    def _service_storage_bucket(self) -> str:
-        if not SERVICE_DEFINITION_BUCKET:
-            raise ValueError(
-                'SERVICE_DEFINITION_BUCKET is not set in the environment variables'
-            )
-        return SERVICE_DEFINITION_BUCKET

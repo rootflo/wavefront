@@ -12,7 +12,14 @@ plain signatures of registry functions. Two behaviours matter most here:
 
 import pytest
 
-from flo_ai.models import DocumentMessageContent, TextMessageContent, UserMessage
+from flo_ai.arium.nodes import FunctionNode
+from flo_ai.models import (
+    DocumentMessageContent,
+    ImageMessageContent,
+    TextMessageContent,
+    UserMessage,
+    VideoMessageContent,
+)
 
 from tools_module.registry.function_node_adapter import (
     create_function_node_adapter,
@@ -385,6 +392,57 @@ class TestVarKeywordDispatch:
         result = await adapter(inputs=[message('{}')], processor_id='mp-1')
 
         assert result == 'ok'
+
+
+class TestMediaResultsPassThrough:
+    """A function that returns an image or video (datasource_download_file) hands
+    the media to the next node instead of a string the model cannot see."""
+
+    async def test_image_result_is_returned_unchanged(self):
+        image = ImageMessageContent(base64='aW1n', mime_type='image/png')
+
+        async def download(path: str):
+            return image
+
+        adapter = create_function_node_adapter(download, 'download')
+
+        assert await adapter(inputs=[message('{"path": "a.png"}')]) is image
+
+    async def test_video_result_is_returned_unchanged(self):
+        video = VideoMessageContent(base64='dmlk', mime_type='video/mp4')
+
+        async def download(path: str):
+            return video
+
+        adapter = create_function_node_adapter(download, 'download')
+
+        assert await adapter(inputs=[message('{"path": "a.mp4"}')]) is video
+
+    async def test_other_results_are_still_strings(self):
+        async def query(path: str):
+            return {'rows': [1]}
+
+        adapter = create_function_node_adapter(query, 'query')
+
+        assert await adapter(inputs=[message('{"path": "x"}')]) == '{"rows": [1]}'
+
+    async def test_function_node_emits_the_media_as_a_user_message(self):
+        """End to end through flo_ai's FunctionNode: the message the next node
+        reads carries the image itself."""
+        image = ImageMessageContent(base64='aW1n', mime_type='image/png')
+
+        async def download(path: str):
+            return image
+
+        node = FunctionNode(
+            name='load_photo',
+            function=create_function_node_adapter(download, 'download'),
+        )
+
+        out = await node.run(inputs=[message('{"path": "a.png"}')])
+
+        assert isinstance(out, UserMessage)
+        assert out.content is image
 
 
 if __name__ == '__main__':

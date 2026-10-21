@@ -2,10 +2,7 @@ import secrets
 from typing import List, Optional
 from urllib.parse import quote
 
-from common_module.feature.feature_flag import (
-    ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG,
-    is_feature_enabled,
-)
+from common_module.feature.feature_flag import ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG
 from common_module.log.logger import logger
 from db_repo_module.models.resource import Resource
 from db_repo_module.models.resource import ResourceScope
@@ -40,6 +37,7 @@ from user_management_module.dependencies.injection import (
     CommonCacheDep,
     EmailSenderDep,
     RecaptchaServiceDep,
+    FeatureFlagsDep,
     ResponseFormatterDep,
     TokenServiceDep,
     UserConfigDep,
@@ -515,6 +513,7 @@ async def get_all_user(
     response_formatter: ResponseFormatterDep,
     user_repository: UserRepositoryDep,
     cache_manager: CacheManagerDep,
+    feature_flags: FeatureFlagsDep,
     search: Optional[str] = Query(
         None, max_length=200, description='Search by name or email'
     ),
@@ -536,7 +535,7 @@ async def get_all_user(
     role_id, _, _ = get_current_user(request)
     is_admin = await check_is_admin(role_id)
 
-    if not is_admin and not is_feature_enabled(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG):
+    if not is_admin and not feature_flags.enabled(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG):
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content=response_formatter.buildErrorResponse('Access denied'),

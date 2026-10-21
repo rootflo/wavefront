@@ -1,5 +1,5 @@
 import asyncio
-from typing import Dict, Any, List, Tuple, cast, Optional
+from typing import Awaitable, Dict, Any, List, Tuple, cast, Optional
 from abc import ABC, abstractmethod
 from enum import Enum
 from flo_ai.llm.base_llm import BaseLLM
@@ -11,6 +11,10 @@ from flo_ai.models.chat_message import (
 )
 from flo_ai.utils.variable_extractor import resolve_variables
 from flo_ai.utils.profiler import aprofile
+
+
+# Media formatted asynchronously (PDF rasterising, video frame sampling).
+ASYNC_MEDIA_TYPES = ('document', 'video')
 
 
 class AgentType(Enum):
@@ -99,6 +103,19 @@ class BaseAgent(ABC):
         async with aprofile(f'agent.{self.name}.get_message_history'):
             return await self._get_message_history_impl(variables)
 
+    def _format_async_media(self, media: MediaMessageContent) -> Awaitable[Any]:
+        if media.type == 'video':
+            return self.llm.format_video_in_message(media)  # type: ignore[arg-type]
+        return self.llm.format_document_in_message(media)  # type: ignore[arg-type]
+
+    async def format_media_content(self, media: MediaMessageContent) -> Any:
+        """Provider-ready content for one image, video or document."""
+        if media.type == 'image':
+            return self.llm.format_image_in_message(media)  # type: ignore[arg-type]
+        if media.type in ASYNC_MEDIA_TYPES:
+            return await self._format_async_media(media)
+        raise ValueError(f'Invalid media message content type: {media.type}')
+
     async def _get_message_history_impl(
         self, variables: Optional[Dict[str, Any]] = None
     ):
@@ -122,13 +139,13 @@ class BaseAgent(ABC):
             if (
                 not isinstance(input, FunctionMessage)
                 and isinstance(input.content, MediaMessageContent)
-                and input.content.type == 'document'
+                and input.content.type in ASYNC_MEDIA_TYPES
             ):
                 doc_id = id(input.content)
                 doc_id_by_idx[idx] = doc_id
                 if doc_id not in doc_tasks_by_id:
                     doc_tasks_by_id[doc_id] = asyncio.ensure_future(
-                        self.llm.format_document_in_message(input.content)  # type: ignore[arg-type]
+                        self._format_async_media(input.content)
                     )
 
         if doc_tasks_by_id:
@@ -157,7 +174,7 @@ class BaseAgent(ABC):
                     message_history.append(
                         {'role': input.role, 'content': formatted_content}
                     )
-                elif input.content.type == 'document':
+                elif input.content.type in ASYNC_MEDIA_TYPES:
                     message_history.append(
                         {
                             'role': input.role,

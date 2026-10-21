@@ -5,7 +5,7 @@ import json
 import base64 as _base64
 
 from flo_ai.models.chat_message import DocumentMessageContent, ImageMessageContent
-from .base_llm import BaseLLM, split_client_kwargs
+from .base_llm import BaseLLM, file_name_text_block, split_client_kwargs
 from flo_ai.tool.base_tool import Tool
 from flo_ai.telemetry.instrumentation import (
     trace_llm_call,
@@ -251,9 +251,30 @@ class Anthropic(BaseLLM):
         """Format tools for Claude's API"""
         return [self.format_tool_for_llm(tool) for tool in tools]
 
-    def format_image_in_message(self, image: ImageMessageContent) -> str:
-        """Format a image in the message"""
-        raise NotImplementedError('Not implemented image for LLM Anthropic')
+    def format_image_block(self, mime_type: str, b64: str) -> Dict[str, Any]:
+        return {
+            'type': 'image',
+            'source': {'type': 'base64', 'media_type': mime_type, 'data': b64},
+        }
+
+    def format_image_in_message(
+        self, image: ImageMessageContent
+    ) -> List[Dict[str, Any]]:
+        """Claude image content block (base64 or URL source)."""
+        name_block = file_name_text_block(image)
+        if image.url and not (image.base64 or image.bytes):
+            block = {'type': 'image', 'source': {'type': 'url', 'url': image.url}}
+        else:
+            if not image.mime_type:
+                raise ValueError('Image mime type is required')
+            if image.base64:
+                b64 = image.base64
+            elif image.bytes:
+                b64 = _base64.b64encode(image.bytes).decode('utf-8')
+            else:
+                raise ValueError('ImageMessageContent has no bytes, base64, or url')
+            block = self.format_image_block(image.mime_type, b64)
+        return [name_block, block] if name_block else [block]
 
     async def _format_native_document(
         self, document: DocumentMessageContent

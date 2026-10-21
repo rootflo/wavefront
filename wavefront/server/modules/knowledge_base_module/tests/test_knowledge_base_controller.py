@@ -14,8 +14,7 @@ async def test_create_knowledge_base(
     new_kb_payload = {
         'name': 'Test Knowledge Base',
         'description': 'This is a test knowledge base',
-        'type': 'document',
-        'vector_size': 1536,
+        'type': 'text',
     }
 
     response = test_client.post(
@@ -41,8 +40,7 @@ async def test_create_knowledge_base_already_exists(
     new_kb_payload = {
         'name': 'Existing Knowledge Base',
         'description': 'This is an existing knowledge base',
-        'type': 'document',
-        'vector_size': 1536,
+        'type': 'text',
     }
     response = test_client.post(
         '/floware/v1/knowledge-bases',
@@ -75,8 +73,7 @@ async def test_get_knowledge_base_by_id(
     new_kb_payload = {
         'name': 'Knowledge Base to Retrieve',
         'description': 'This is a knowledge base to retrieve',
-        'type': 'document',
-        'vector_size': 1536,
+        'type': 'text',
     }
     create_response = test_client.post(
         '/floware/v1/knowledge-bases',
@@ -130,8 +127,7 @@ async def test_get_all_knowledge_bases_default_pagination(
         new_kb_payload = {
             'name': f'Knowledge Base {i}',
             'description': f'Description {i}',
-            'type': 'document',
-            'vector_size': 1536,
+            'type': 'text',
         }
         create_response = test_client.post(
             '/floware/v1/knowledge-bases',
@@ -163,8 +159,7 @@ async def test_get_all_knowledge_bases_custom_pagination(
         new_kb_payload = {
             'name': f'Paginatable Knowledge Base {i}',
             'description': f'Description {i}',
-            'type': 'document',
-            'vector_size': 1536,
+            'type': 'text',
         }
         create_response = test_client.post(
             '/floware/v1/knowledge-bases',
@@ -214,8 +209,7 @@ async def test_update_existing_knowledge_base(
     new_kb_payload = {
         'name': 'Knowledge Base to Update',
         'description': 'Original description',
-        'type': 'document',
-        'vector_size': 1536,
+        'type': 'text',
     }
     create_response = test_client.post(
         '/floware/v1/knowledge-bases',
@@ -229,7 +223,7 @@ async def test_update_existing_knowledge_base(
     updated_kb_payload = {
         'name': 'Updated Knowledge Base Name',
         'description': 'Updated description',
-        'type': 'image',
+        'type': 'text',  # unchanged; changing it is rejected (tested below)
     }
     update_response = test_client.patch(
         f'/floware/v1/knowledge-bases/{created_kb_id}',
@@ -266,8 +260,7 @@ async def test_update_non_existent_knowledge_base(
     updated_kb_payload = {
         'name': 'Non Existent KB',
         'description': 'Description',
-        'type': 'document',
-        'vector_size': 1536,
+        'type': 'text',
     }
     update_response = test_client.patch(
         f'/floware/v1/knowledge-bases/{non_existent_id}',
@@ -292,8 +285,7 @@ async def test_delete_existing_knowledge_base(
     new_kb_payload = {
         'name': 'Knowledge Base to Delete',
         'description': 'Description',
-        'type': 'document',
-        'vector_size': 1536,
+        'type': 'text',
     }
     create_response = test_client.post(
         '/floware/v1/knowledge-bases',

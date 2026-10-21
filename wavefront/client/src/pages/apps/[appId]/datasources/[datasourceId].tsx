@@ -26,18 +26,13 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Copy } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
+import { DATASOURCE_TYPE_LABELS, isFileStorageType } from './datasource-types';
 import EditDatasourceDialog from './EditDatasourceDialog';
+import FileStoragePanel from './FileStoragePanel';
 import DynamicQueryCreation from './DynamicQueryCreation';
 import DynamicQueries from './DynamicQueries';
 import DynamicQueryView from './DynamicQueryView';
 import { buildDynamicQueryYaml, downloadTextFile, getDynamicQueryYamlFilename } from './dynamic-query-utils';
-
-const DATASOURCE_TYPE_LABELS: Record<string, string> = {
-  gcp_bigquery: 'Google BigQuery',
-  aws_redshift: 'AWS Redshift',
-  postgres: 'PostgreSQL',
-  mssql: 'Microsoft SQL Server',
-};
 
 const formatDatasourceDate = (value?: string) => {
   if (!value) return '—';
@@ -57,7 +52,12 @@ const DatasourceDetail: React.FC = () => {
 
   // Use hooks for GET requests
   const { data: datasource } = useGetDatasource(appId, datasourceId);
-  const { data: dynamicQueries = [], isLoading: dynamicQueriesLoading } = useGetAllDynamicQueries(appId, datasourceId);
+  const isFileStorage = isFileStorageType(datasource?.type);
+  // File storage datasources have no SQL surface, so skip the dynamic queries fetch.
+  const { data: dynamicQueries = [], isLoading: dynamicQueriesLoading } = useGetAllDynamicQueries(
+    appId,
+    datasource && !isFileStorage ? datasourceId : undefined
+  );
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedQuery, setSelectedQuery] = useState<string | null>(null);
@@ -372,9 +372,15 @@ const DatasourceDetail: React.FC = () => {
             <TabsTrigger className="cursor-pointer" value="configuration">
               Info
             </TabsTrigger>
-            <TabsTrigger className="cursor-pointer" value="dynamic-queries">
-              Dynamic Queries
-            </TabsTrigger>
+            {isFileStorage ? (
+              <TabsTrigger className="cursor-pointer" value="files">
+                Files
+              </TabsTrigger>
+            ) : (
+              <TabsTrigger className="cursor-pointer" value="dynamic-queries">
+                Dynamic Queries
+              </TabsTrigger>
+            )}
           </TabsList>
 
           <TabsContent value="configuration" className="mt-6 min-h-0 flex-1 overflow-auto">
@@ -432,6 +438,12 @@ const DatasourceDetail: React.FC = () => {
               )}
             </div>
           </TabsContent>
+
+          {isFileStorage && datasource && datasourceId && (
+            <TabsContent value="files" className="mt-6 min-h-0 flex-1 overflow-auto">
+              <FileStoragePanel datasourceId={datasourceId} />
+            </TabsContent>
+          )}
 
           <TabsContent
             value="dynamic-queries"

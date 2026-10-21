@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: ankane/pgvector
+    image: pgvector/pgvector:pg15
     container_name: postgres
     restart: always
     security_opt:
@@ -17,11 +17,21 @@ services:
     networks:
       - floware-network
 
+  # Celery broker and floware cache. noeviction so queued tasks are never
+  # evicted; at the cap, writes fail and reads keep working.
   redis:
     image: redis:7.4
     container_name: redis
     security_opt:
       - no-new-privileges:true
+    command:
+      - redis-server
+      - --maxmemory
+      - ${REDIS_MAXMEMORY:-2gb}
+      - --maxmemory-policy
+      - noeviction
+      - --maxmemory-clients
+      - ${REDIS_MAXMEMORY_CLIENTS:-5%}
     ports:
       - "6379:6379"
     networks:
@@ -29,7 +39,7 @@ services:
 
   # Local S3 + SQS for CLOUD_PROVIDER=aws.
   # Pinned to 4.14, the last community release that runs without LOCALSTACK_AUTH_TOKEN.
-  # State is in-memory; setup.sh creates the bucket and queue after it starts.
+  # State is in-memory; dev-start.sh creates the bucket and queue after it starts.
   localstack:
     image: localstack/localstack:4.14
     container_name: localstack
@@ -41,6 +51,15 @@ services:
       - LOCALSTACK_HOST=localhost:4566
     ports:
       - '4566:4566'
+    volumes:
+      # Runs on every start (community 4.14 has no persistence): recreates KMS
+      # keys, bucket, CORS and queue, then restores the S3 objects from the
+      # snapshot below. See init-ready.d/01-restore.sh.
+      - ./localstack/init-ready.d:/etc/localstack/init/ready.d:ro
+      # Object source for the restore. Produced by
+      # scripts/migrate_assets_to_localstack.py --mode pull; gitignored, so this
+      # is empty (and the restore a no-op) until a snapshot exists.
+      - ./scripts/.asset_snapshot:/opt/asset-snapshot:ro
     networks:
       - floware-network
 

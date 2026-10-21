@@ -15,14 +15,22 @@ from flo_ai.guardrails.adapters.presidio_adapter import (
     DEFAULT_ENTITIES,
     PresidioAdapter,
 )
+from flo_ai.guardrails.adapters.pii_catalog import (
+    ENTITY_CATALOG,
+    INCREMENTAL_SAFE,
+    NLP_BACKED,
+    UNBOUNDED_LENGTH,
+)
 from flo_ai.guardrails.contracts import (
     AssessmentRequest,
     EvaluationContext,
     FailureClass,
     PolicyAction,
     Principal,
+    StreamCapability,
     WorkflowStage,
 )
+from flo_ai.guardrails.stream_guard import DEFAULT_MARGIN_CHARS
 
 pytest.importorskip('presidio_analyzer', reason='install the guardrails extra')
 pytest.importorskip('presidio_anonymizer', reason='install the guardrails extra')
@@ -475,3 +483,111 @@ class TestPlaceholderFormat:
         # The actual guarantee: a later turn can still resolve this text.
         assert resolve_variables(redacted, {}) == redacted
         await adapter.aclose()
+
+
+class TestStreamCapability:
+    """Which selections may be released incrementally, and which may not.
+
+    Pure option inspection -- no analyzer is built, so these run whether or
+    not the optional extra is installed.
+    """
+
+    def test_span_local_findings_are_the_class_default(self):
+        assert PresidioAdapter.stream_capability is StreamCapability.INCREMENTAL
+
+    def test_a_bounded_identifier_streams(self):
+        adapter = PresidioAdapter()
+
+        capability = adapter.stream_capability_for({'entities': ['CREDIT_CARD']})
+
+        assert capability is StreamCapability.INCREMENTAL
+
+    def test_an_nlp_backed_entity_buffers(self):
+        """PERSON needs a parsed sentence and has no length bound."""
+        adapter = PresidioAdapter()
+
+        capability = adapter.stream_capability_for({'entities': ['PERSON']})
+
+        assert capability is StreamCapability.BUFFERED
+
+    def test_url_buffers(self):
+        """Unbounded length defeats the margin the guarantee rests on."""
+        adapter = PresidioAdapter()
+
+        capability = adapter.stream_capability_for({'entities': ['URL']})
+
+        assert capability is StreamCapability.BUFFERED
+
+    def test_one_unsafe_entity_decides_for_the_selection(self):
+        adapter = PresidioAdapter()
+
+        capability = adapter.stream_capability_for(
+            {'entities': ['CREDIT_CARD', 'US_SSN', 'URL']}
+        )
+
+        assert capability is StreamCapability.BUFFERED
+
+    def test_an_unset_selection_falls_back_to_the_defaults(self):
+        """DEFAULT_ENTITIES is CREDIT_CARD, so an unconfigured policy streams."""
+        adapter = PresidioAdapter()
+
+        assert adapter.stream_capability_for({}) is StreamCapability.INCREMENTAL
+
+    def test_selecting_nothing_is_vacuously_safe(self):
+        """An empty list means detect nothing, so there is nothing to leak."""
+        adapter = PresidioAdapter()
+
+        capability = adapter.stream_capability_for({'entities': []})
+
+        assert capability is StreamCapability.INCREMENTAL
+
+    def test_a_hash_operator_buffers(self):
+        """Hashing expands to 64 hex characters, outrunning the plaintext cut."""
+        adapter = PresidioAdapter()
+
+        capability = adapter.stream_capability_for(
+            {
+                'entities': ['CREDIT_CARD'],
+                'operators': {'CREDIT_CARD': {'type': 'hash'}},
+            }
+        )
+
+        assert capability is StreamCapability.BUFFERED
+
+    def test_a_masking_operator_still_streams(self):
+        adapter = PresidioAdapter()
+
+        capability = adapter.stream_capability_for(
+            {
+                'entities': ['CREDIT_CARD'],
+                'operators': {'CREDIT_CARD': {'type': 'mask'}},
+            }
+        )
+
+        assert capability is StreamCapability.INCREMENTAL
+
+
+class TestAllowlistInvariants:
+    """The allowlist and the margin are one mechanism in two files.
+
+    These assertions are the reminder that editing either means re-checking
+    the other, which a comment alone would not enforce.
+    """
+
+    def test_the_allowlist_excludes_everything_unbounded(self):
+        assert INCREMENTAL_SAFE.isdisjoint(UNBOUNDED_LENGTH)
+        assert INCREMENTAL_SAFE.isdisjoint(NLP_BACKED)
+
+    def test_the_margin_covers_the_longest_allowlisted_entity(self):
+        """EMAIL_ADDRESS at the RFC 5321 maximum is the binding constraint."""
+        assert 'EMAIL_ADDRESS' in INCREMENTAL_SAFE
+        assert DEFAULT_MARGIN_CHARS >= 320
+
+    def test_the_allowlist_is_derived_rather_than_typed_out(self):
+        """An entity the catalog has never heard of must not stream.
+
+        This is what makes staleness cost latency rather than a guarantee: a
+        new recogniser arriving with a Presidio upgrade is absent from the
+        catalog, so absent from here, so a policy selecting it buffers.
+        """
+        assert INCREMENTAL_SAFE <= frozenset(ENTITY_CATALOG)

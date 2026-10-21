@@ -10,7 +10,9 @@ from flo_ai.models.chat_message import (
     UserMessage,
     TextMessageContent,
     FunctionMessage,
+    ImageMessageContent,
     SystemMessage,
+    VideoMessageContent,
 )
 from flo_ai.tool.base_tool import Tool, ToolExecutionError
 from flo_ai.models.agent_error import AgentError
@@ -264,7 +266,6 @@ class Agent(BaseAgent):
                     response = await self.llm.generate(
                         messages,
                         functions=formatted_tools,
-                        output_schema=self.output_schema,
                     )
 
                     # Handle ReACT and CoT patterns
@@ -279,6 +280,12 @@ class Agent(BaseAgent):
                                 assistant_message, tool_call_count, messages
                             )
                             if is_final:
+                                if self.output_schema:
+                                    # A tool loop response is only a draft when a
+                                    # parser is configured; break so the final
+                                    # request can apply the schema to the answer.
+                                    break
+
                                 # Ensure act_as is not None (default to 'assistant' if missing)
                                 role = (
                                     self.act_as
@@ -322,10 +329,17 @@ class Agent(BaseAgent):
 
                     # If there's a function call, add the assistant's response
                     # LLM-specific implementations handle special formatting (e.g., Claude's raw_content)
-                    assistant_message_content = (
-                        self.llm.get_assistant_message_for_tool_call(response)
+                    tool_call_message = self.llm.format_tool_call_message(
+                        response, function_call
                     )
-                    if assistant_message_content:
+                    assistant_message_content = (
+                        None
+                        if tool_call_message
+                        else self.llm.get_assistant_message_for_tool_call(response)
+                    )
+                    if tool_call_message:
+                        messages.append(tool_call_message)
+                    elif assistant_message_content:
                         # LLM returned special formatting (e.g., Claude's raw_content)
                         messages.append(
                             {
@@ -333,12 +347,11 @@ class Agent(BaseAgent):
                                 'content': assistant_message_content,
                             }
                         )
+                    tool_use_id = self.llm.get_tool_use_id(function_call)
 
                     # Execute the tool
                     try:
                         function_name = function_call['name']
-                        # Get tool_use_id if available (LLM-specific, e.g., Claude)
-                        tool_use_id = self.llm.get_tool_use_id(function_call)
                         if isinstance(function_call['arguments'], str):
                             function_args = json.loads(function_call['arguments'])
                         else:
@@ -376,11 +389,24 @@ class Agent(BaseAgent):
 
                         # Add function call result to history using OpenAI's "function" role format
                         # According to OpenAI API: {"role": "function", "name": "<function-name>", "content": "<result>"}
+                        tool_media = (
+                            function_response
+                            if isinstance(
+                                function_response,
+                                (ImageMessageContent, VideoMessageContent),
+                            )
+                            else None
+                        )
+                        result_text = (
+                            _describe_tool_media(tool_media)
+                            if tool_media is not None
+                            else str(function_response)
+                        )
                         self.add_to_history(
                             FunctionMessage(
                                 content=str(
                                     'Here is the result of the tool call: \n'
-                                    + str(function_response)
+                                    + result_text
                                 ),
                                 name=function_name,
                             )
@@ -389,9 +415,22 @@ class Agent(BaseAgent):
                         # Add the function response to messages for context
                         # LLM-specific implementations format the message appropriately
                         function_result_msg = self.llm.format_function_result_message(
-                            function_name, str(function_response), tool_use_id
+                            function_name, result_text, tool_use_id
                         )
                         messages.append(function_result_msg)
+
+                        if tool_media is not None:
+                            # Tool results are text-only on most providers, so
+                            # the image or video follows as its own user turn.
+                            self.add_to_history(UserMessage(content=tool_media))
+                            messages.append(
+                                {
+                                    'role': MessageType.USER,
+                                    'content': await self.format_media_content(
+                                        tool_media
+                                    ),
+                                }
+                            )
 
                     except (json.JSONDecodeError, KeyError, ToolExecutionError) as e:
                         # Record tool call failure
@@ -420,20 +459,33 @@ class Agent(BaseAgent):
                                     content=f'Tool execution error: {analysis}'
                                 )
                             )
+                            if tool_call_message or assistant_message_content:
+                                # The recorded call needs an answer, or the
+                                # provider rejects the retried request.
+                                messages.append(
+                                    self.llm.format_function_result_message(
+                                        error_function_name,
+                                        f'Tool execution error: {analysis}',
+                                        tool_use_id,
+                                    )
+                                )
                             continue
                         raise AgentError(
                             f'Tool execution failed: {analysis}', original_error=e
                         )
 
-                # If no tools were called, return conversation history
-                if tool_call_count == 0:
+                # Without a parser, a direct answer is already complete. With a
+                # parser, continue to the schema-constrained final request even
+                # when the model did not call a tool.
+                if tool_call_count == 0 and not self.output_schema:
                     return self.conversation_history
 
                 # Generate final response if we've hit the tool call limit or exited the loop
-                system_message = SystemMessage(
-                    content='Please provide a final answer based on all the tool results above.'
-                )
-                self.add_to_history(system_message)
+                if tool_call_count:
+                    system_message = SystemMessage(
+                        content='Please provide a final answer based on all the tool results above.'
+                    )
+                    self.add_to_history(system_message)
                 messages = await self._get_message_history(variables)
 
                 final_response = await self.llm.generate(
@@ -676,3 +728,8 @@ Respond with EXACTLY one word: "FINAL" or "INTERMEDIATE"
             # Conservative default: treat as intermediate to avoid premature exit
             # This is safer as it allows the agent to continue rather than stopping too early
             return False
+
+
+def _describe_tool_media(media: ImageMessageContent | VideoMessageContent) -> str:
+    name = media.file_name or media.mime_type or media.type
+    return f'Returned {media.type} {name!r}; it is attached in the next message.'

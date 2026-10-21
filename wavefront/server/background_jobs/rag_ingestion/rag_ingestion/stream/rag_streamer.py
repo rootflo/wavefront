@@ -1,18 +1,18 @@
-from flo_utils.streaming.stream_listner import StreamListener
-from flo_cloud._types import MessageQueueDict
-from flo_utils.streaming.event_message import BaseEventMessage
-from typing import List
+from flo_stream.stream_listener import StreamListener
+from flo_stream.event_message import BaseEventMessage
+from flo_stream.protocols import RawQueueMessage
+from typing import List, Sequence
 
 from rag_ingestion.models.rag_message import RagEventMessage
 
 
 class RagStreamListener(StreamListener):
     def get_event_messages(
-        self, messages: List[MessageQueueDict]
+        self, messages: Sequence[RawQueueMessage]
     ) -> List[BaseEventMessage]:
         return [self.__make_event_message(msg) for msg in messages]
 
-    def __make_event_message(self, message: MessageQueueDict) -> RagEventMessage:
+    def __make_event_message(self, message: RawQueueMessage) -> RagEventMessage:
         bucket_name, bucket_key, kb_id, doc_id, parse_type, file_type = (
             self.__fetch_bucket_details(message.body)
         )

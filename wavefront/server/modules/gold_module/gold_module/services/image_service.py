@@ -6,19 +6,28 @@ import json
 
 from common_module.log.logger import logger
 from common_module.utils.image_formats import SUPPORTED_PILLOW_FORMATS
-from gold_module.services.cloud_image_service import CloudImageService
+from flo_cloud._types import MessageQueue
+from flo_cloud.cloud_storage import CloudStorageManager
 from PIL import Image
 
 
 class ImageService:
-    def __init__(self, cloud_service: CloudImageService):
-        self.cloud_service = cloud_service
+    def __init__(
+        self,
+        bucket_name: str,
+        cloud_storage_manager: CloudStorageManager,
+        message_queue: MessageQueue,
+    ):
+        if not bucket_name:
+            raise ValueError('application bucket name must be provided')
+        self.bucket_name = bucket_name
+        self.cloud_storage_manager = cloud_storage_manager
+        self.message_queue = message_queue
 
     async def save_image(self, image_data: bytes, image_name: str):
         validated_image_data = await self._validate_image(image_data)
-
-        bucket_name, file_path = await self.cloud_service.upload_image(
-            validated_image_data, f'historical_data/{image_name}'
+        self._upload(
+            validated_image_data, f'historical_data/{image_name}', 'image/jpeg'
         )
 
     async def process_image(
@@ -31,23 +40,23 @@ class ImageService:
                 object_key = str(uuid.uuid4())
                 metadata['item_id'] = object_key
 
-            bucket_name, file_path = await self.cloud_service.upload_image(
-                validated_image_data, object_key
-            )
+            self._upload(validated_image_data, object_key, 'image/jpeg')
 
             message = {
                 'parse_type': 'gold',
-                'bucket_name': bucket_name,
-                'key': file_path,
+                'bucket_name': self.bucket_name,
+                'key': object_key,
                 'metadata': self._custom_serializer(metadata),
             }
 
-            await self.cloud_service.upload_image_metadata(
-                image_metadata=json.dumps(message),
-                object_key=f'gold_image_metadata/{object_key}.json',
+            self._upload(
+                json.dumps(message).encode('utf-8'),
+                f'gold_image_metadata/{object_key}.json',
+                'application/json',
             )
 
-            message_id = await self.cloud_service.send_message(message)
+            message_id = self.message_queue.add_message(message)
+            logger.info(f'Successfully sent message to gold queue: {message_id}')
 
             return {
                 'status': 'success',
@@ -57,6 +66,14 @@ class ImageService:
         except Exception as e:
             logger.error(f'Error processing image: {str(e)}')
             raise Exception(f'Failed to process image: {str(e)}')
+
+    def _upload(self, data: bytes, object_key: str, content_type: str) -> None:
+        self.cloud_storage_manager.save_small_file(
+            data,
+            self.bucket_name,
+            object_key,
+            content_type=content_type,
+        )
 
     async def _validate_image(self, image_data: bytes) -> bytes:
         try:

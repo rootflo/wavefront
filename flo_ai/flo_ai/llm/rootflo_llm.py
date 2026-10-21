@@ -1,7 +1,11 @@
 from enum import Enum
 from typing import AsyncIterator, Dict, Any, List, Optional
 from datetime import datetime, timedelta
-from flo_ai.models.chat_message import DocumentMessageContent, ImageMessageContent
+from flo_ai.models.chat_message import (
+    DocumentMessageContent,
+    ImageMessageContent,
+    VideoMessageContent,
+)
 import jwt
 import httpx
 import asyncio
@@ -450,3 +454,38 @@ class RootFloLLM(BaseLLM):
         if self._llm is None:
             raise RuntimeError('LLM initialization failed: _llm is None')
         return await self._llm.format_document_in_message(document)
+
+    async def format_video_in_message(self, video: VideoMessageContent) -> Any:
+        """Delegate video formatting to the underlying provider LLM."""
+        if self._llm is None:
+            raise RuntimeError('LLM initialization failed: _llm is None')
+        return await self._llm.format_video_in_message(video)
+
+    @property
+    def _provider_llm(self) -> BaseLLM:
+        if self._llm is None:
+            raise RuntimeError('LLM initialization failed: _llm is None')
+        return self._llm
+
+    # Tool-call protocol, delegated so the provider's message shapes are used.
+
+    async def get_function_call(self, response: Any) -> Optional[Dict[str, Any]]:
+        return await self._provider_llm.get_function_call(response)
+
+    def get_assistant_message_for_tool_call(self, response: Any) -> Optional[Any]:
+        return self._provider_llm.get_assistant_message_for_tool_call(response)
+
+    def format_tool_call_message(
+        self, response: Any, function_call: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        return self._provider_llm.format_tool_call_message(response, function_call)
+
+    def get_tool_use_id(self, function_call: Dict[str, Any]) -> Optional[str]:
+        return self._provider_llm.get_tool_use_id(function_call)
+
+    def format_function_result_message(
+        self, function_name: str, content: str, tool_use_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        return self._provider_llm.format_function_result_message(
+            function_name, content, tool_use_id
+        )

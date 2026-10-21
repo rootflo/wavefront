@@ -1,45 +1,29 @@
 import json
-import os
 import time
 from typing import Any, Dict, Optional, Union
 
-from azure.core.exceptions import ClientAuthenticationError
-from azure.identity import DefaultAzureCredential
 from call_processing.log.logger import logger
 
 from redis import Connection
 from redis import ConnectionError
+from redis import BlockingConnectionPool
 from redis import ConnectionPool
 from redis import Redis
 from redis import RedisError
 from redis import SSLConnection
 from redis import TimeoutError
-from redis.credentials import CredentialProvider
+from redis.exceptions import OutOfMemoryError
 from tenacity import retry
-from tenacity import retry_if_exception_type
+from tenacity import retry_if_exception
 from tenacity import stop_after_attempt
 from tenacity import wait_exponential
 
 
-class AzureManagedRedisProvider(CredentialProvider):
-    """
-    Adapter to bridge Azure Identity with Redis CredentialProvider.
-    Azure Managed Redis requires 'default' as the username and the
-    Entra ID access token as the password.
-    """
-
-    def __init__(self):
-        self.credential = DefaultAzureCredential()
-        self.scope = 'https://redis.azure.com/.default'
-        self.username = os.getenv('REDIS_USERNAME', 'default')
-
-    def get_credentials(self):
-        try:
-            token = self.credential.get_token(self.scope)
-            return (self.username, token.token)
-        except ClientAuthenticationError as e:
-            logger.error(f'Azure authentication failed: {e}')
-            raise
+def _is_retryable_redis_error(exc: BaseException) -> bool:
+    """Retry everything except OOM, which fails the same way every time."""
+    if isinstance(exc, OutOfMemoryError):
+        return False
+    return isinstance(exc, (RedisError, ConnectionError, TimeoutError))
 
 
 class CacheManager:
@@ -52,9 +36,32 @@ class CacheManager:
         connection_timeout: int = 60,
         socket_timeout: int = 60,
         socket_keepalive: bool = True,
-        pool_size: int = 10,
+        pool_size: Optional[int] = None,
+        *,
+        redis_host: str = 'localhost',
+        redis_port: int = 6379,
+        redis_protocol: str = 'redis',
+        redis_password: str | None = None,
+        redis_db: int = 0,
+        pool_timeout: float = 2.0,
     ):
+        """
+        Args:
+            pool_size: Max Redis connections this process may open. Defaults to
+                REDIS_POOL_SIZE (10). Connections are opened on demand, so the
+                cap only costs anything under concurrency. When all are in use,
+                a caller waits up to REDIS_POOL_TIMEOUT (2s) for one to be
+                released, then gets ConnectionError('No connection available.').
+        """
+        if pool_size is None:
+            pool_size = 10
         self.namespace = namespace
+        self.redis_host = redis_host
+        self.redis_port = int(redis_port)
+        self.redis_protocol = redis_protocol
+        self.redis_password = redis_password or None
+        self.redis_db = int(redis_db)
+        self.pool_timeout = float(pool_timeout)
         self.max_retries = max_retries
         self.initial_backoff = initial_backoff
         self.max_backoff = max_backoff
@@ -77,11 +84,10 @@ class CacheManager:
         pool_size: int,
     ) -> ConnectionPool:
         try:
-            host = os.getenv('REDIS_HOST', 'localhost')
-            port = int(os.getenv('REDIS_PORT', 6379))
-            protocol = os.getenv('REDIS_PROTOCOL', 'redis')
-            password = os.getenv('REDIS_PASSWORD')
-            cloud_provider = os.getenv('CLOUD_PROVIDER', '').lower()
+            host = self.redis_host
+            port = self.redis_port
+            protocol = self.redis_protocol
+            password = self.redis_password
 
             connection_class = Connection
             if protocol == 'rediss' or port == 10000:
@@ -92,7 +98,7 @@ class CacheManager:
                 'connection_class': connection_class,
                 'host': host,
                 'port': port,
-                'db': int(os.getenv('REDIS_DB', 0)),
+                'db': self.redis_db,
                 'max_connections': pool_size,
                 'socket_timeout': socket_timeout,
                 'socket_keepalive': socket_keepalive,
@@ -103,15 +109,12 @@ class CacheManager:
                 'decode_responses': True,
             }
 
-            if cloud_provider == 'azure' and not password:
-                logger.info(
-                    'Configuring Azure Entra ID (Workload Identity) authentication'
-                )
-                pool_kwargs['credential_provider'] = AzureManagedRedisProvider()
-            elif password:
+            if password:
                 pool_kwargs['password'] = password
 
-            return ConnectionPool(**pool_kwargs)
+            # Blocking: when every connection is busy, wait briefly for one to
+            # be released instead of failing at once with 'Too many connections'.
+            return BlockingConnectionPool(timeout=self.pool_timeout, **pool_kwargs)
         except Exception as e:
             logger.error(f'Failed to create connection pool: {e}s')
             raise
@@ -132,7 +135,7 @@ class CacheManager:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception_type((RedisError, ConnectionError, TimeoutError)),
+        retry=retry_if_exception(_is_retryable_redis_error),
     )
     def add(
         self,
@@ -153,7 +156,7 @@ class CacheManager:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception_type((RedisError, ConnectionError, TimeoutError)),
+        retry=retry_if_exception(_is_retryable_redis_error),
     )
     def get_str(self, key: str, default: Any = None) -> Optional[str]:
         try:
@@ -213,19 +216,31 @@ class CacheManager:
             logger.error(f'Error getting key: {key} from cache: {e}')
             raise
 
+    _INVALIDATE_BATCH = 500
+
     def invalidate_query(self, pattern: str) -> int:
-        """Remove all keys matching the given pattern"""
+        """Remove all keys matching the given pattern (SCAN, not KEYS)."""
         try:
-            # Get all keys matching the pattern
             search_pattern = f'{self.namespace}/{pattern}'
-            keys = self.redis.keys(search_pattern)
-            if keys:
+            deleted = 0
+            batch: list = []
+            for key in self.redis.scan_iter(
+                match=search_pattern, count=self._INVALIDATE_BATCH
+            ):
+                batch.append(key)
+                if len(batch) >= self._INVALIDATE_BATCH:
+                    deleted += self.redis.delete(*batch)
+                    batch.clear()
+            if batch:
+                deleted += self.redis.delete(*batch)
+
+            if deleted:
                 logger.info(
-                    f'Invalidating {len(keys)} cache keys matching pattern: {pattern}'
+                    f'Invalidated {deleted} cache keys matching pattern: {pattern}'
                 )
-                return self.redis.delete(*keys)
-            logger.info(f'No cache keys found matching pattern: {pattern}')
-            return 0
+            else:
+                logger.info(f'No cache keys found matching pattern: {pattern}')
+            return deleted
         except (RedisError, ConnectionError, TimeoutError) as e:
             logger.error(f'Error removing keys with pattern: {pattern} from cache: {e}')
             raise
@@ -242,7 +257,7 @@ class CacheManager:
         while retries < self.max_retries:
             try:
                 return func(*args, **kwargs)
-            except (RedisError, ConnectionPool, TimeoutError) as e:
+            except (RedisError, ConnectionError, TimeoutError) as e:
                 retries += 1
                 if retries >= self.max_retries:
                     logger.error(f'Max retries reached for {func.__name__}: {e}')

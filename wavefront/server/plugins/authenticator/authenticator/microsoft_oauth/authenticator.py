@@ -1,5 +1,5 @@
 import json
-import requests
+import flo_lib.http as http
 from datetime import datetime
 from typing import Dict, Any, Optional
 from urllib.parse import urlencode, urlparse
@@ -198,7 +198,7 @@ class MicrosoftOAuthAuthenticator(AuthenticatorABC):
         }
 
         try:
-            response = requests.post(self.token_url, data=data, timeout=10)
+            response = http.post(self.token_url, data=data, timeout=10)
             response.raise_for_status()
 
             token_data = response.json()
@@ -212,7 +212,7 @@ class MicrosoftOAuthAuthenticator(AuthenticatorABC):
                 expires_in=token_data.get('expires_in'),
             )
 
-        except requests.exceptions.RequestException as e:
+        except http.HTTPError as e:
             return TokenResult(success=False, error=f'Token refresh failed: {str(e)}')
         except json.JSONDecodeError:
             return TokenResult(
@@ -236,7 +236,7 @@ class MicrosoftOAuthAuthenticator(AuthenticatorABC):
 
         # Test Microsoft Graph API connectivity
         try:
-            response = requests.get('https://graph.microsoft.com', timeout=5)
+            response = http.get('https://graph.microsoft.com', timeout=5)
             details['graph_api_reachable'] = response.status_code == 200
         except Exception:
             details['graph_api_reachable'] = False
@@ -267,7 +267,7 @@ class MicrosoftOAuthAuthenticator(AuthenticatorABC):
         }
 
         try:
-            response = requests.post(self.token_url, data=data, timeout=10)
+            response = http.post(self.token_url, data=data, timeout=10)
             response.raise_for_status()
 
             token_data = response.json()
@@ -279,7 +279,7 @@ class MicrosoftOAuthAuthenticator(AuthenticatorABC):
                 expires_in=token_data.get('expires_in'),
             )
 
-        except requests.exceptions.RequestException as e:
+        except http.HTTPError as e:
             return TokenResult(success=False, error=f'Token exchange failed: {str(e)}')
         except json.JSONDecodeError:
             return TokenResult(
@@ -290,7 +290,7 @@ class MicrosoftOAuthAuthenticator(AuthenticatorABC):
         """Get user information from Microsoft Graph API."""
         try:
             headers = {'Authorization': f'Bearer {access_token}'}
-            response = requests.get(self.graph_url, headers=headers, timeout=10)
+            response = http.get(self.graph_url, headers=headers, timeout=10)
             response.raise_for_status()
 
             user_data = response.json()

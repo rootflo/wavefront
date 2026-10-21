@@ -1,13 +1,12 @@
 import base64
 import binascii
 import json
-import os
 from typing import List
 
 from azure.identity import DefaultAzureCredential
 from azure.storage.queue import QueueClient
 
-from .._types import MessageQueue, MessageQueueDict
+from .._types import MessageQueue, MessageQueueDict, QueueSettings
 
 
 def _decode_message(content: str):
@@ -28,23 +27,20 @@ def _decode_message(content: str):
 
 
 class StorageQueue(MessageQueue):
-    """Azure Storage Queue implementation."""
+    """Azure Storage Queue implementation bound to a single queue."""
 
-    def __init__(self):
-        account_url = os.environ.get('AZURE_STORAGE_QUEUE_URL')
-        if not account_url:
-            raise ValueError('AZURE_STORAGE_QUEUE_URL env var must be set')
+    def __init__(self, settings: QueueSettings):
+        if not settings.account_url:
+            raise ValueError('account_url must be set for StorageQueue')
+        if not settings.target:
+            raise ValueError('target (queue name) must be set for StorageQueue')
 
-        queue_name = os.environ.get('AZURE_STORAGE_QUEUE_NAME')
-        if not queue_name:
-            raise ValueError('AZURE_STORAGE_QUEUE_NAME env var must be set')
-
-        self._account_url = account_url
-        self._queue_name = queue_name
+        self._account_url = settings.account_url
+        self._queue_name = settings.target
         self._credential = DefaultAzureCredential()
         self._client = QueueClient(
-            account_url=account_url,
-            queue_name=queue_name,
+            account_url=settings.account_url,
+            queue_name=settings.target,
             credential=self._credential,
             message_encode_policy=None,
             message_decode_policy=None,
@@ -61,13 +57,6 @@ class StorageQueue(MessageQueue):
         returns immediately, potentially with an empty list. The `wait_time_sec`
         parameter is repurposed as the visibility timeout, controlling how long
         received messages remain hidden from other consumers.
-
-        Args:
-            max_messages: Maximum number of messages to receive (1-32).
-            wait_time_sec: Visibility timeout in seconds for received messages.
-
-        Returns:
-            List of MessageQueueDict, possibly empty.
         """
         received = []
         for msg in self._client.receive_messages(
@@ -90,18 +79,6 @@ class StorageQueue(MessageQueue):
             )
         self._client.delete_message(message_id, ack_id)
 
-    def add_message(
-        self, message_body: dict, topic_name_or_queue_url: str | None = None
-    ) -> str:
-        if topic_name_or_queue_url and topic_name_or_queue_url != self._queue_name:
-            client = QueueClient(
-                account_url=self._account_url,
-                queue_name=topic_name_or_queue_url,
-                credential=self._credential,
-                message_encode_policy=None,
-                message_decode_policy=None,
-            )
-        else:
-            client = self._client
-        result = client.send_message(json.dumps(message_body))
+    def add_message(self, message_body: dict) -> str:
+        result = self._client.send_message(json.dumps(message_body))
         return result.id

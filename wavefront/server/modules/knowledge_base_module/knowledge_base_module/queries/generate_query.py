@@ -1,8 +1,13 @@
 import re
-from typing import Any, Dict, Tuple, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from db_repo_module.models.knowledge_base_documents import KnowledgeBaseDocuments
-from db_repo_module.models.knowledge_base_embeddings import KnowledgeBaseEmbeddings
+from db_repo_module.models.knowledge_base_embeddings import (
+    TEXT_EMBEDDING_DIM,
+    TEXT_SPARSE_EMBEDDING_DIM,
+    KnowledgeBaseEmbeddings,
+)
+from pgvector import SparseVector
 from datasource.odata_parser import ODataQueryParser
 from datasource.dialect import PostgresSqlDialect
 
@@ -108,8 +113,8 @@ class QueryGenerator:
 
     def get_combined_search_query(
         self,
-        query: str,
-        query_embeddings: list,
+        query_dense: List[float],
+        query_sparse: Dict[str, List],
         params: Dict[str, Any],
         filter: str,
         offset: Optional[int] = None,
@@ -126,55 +131,57 @@ class QueryGenerator:
         created_at_end: Optional[Any] = None,
     ) -> Tuple[str, Dict[str, Any]]:
         """
-        Generate SQL query for combined vector and keyword search with reranking.
+        Hybrid text search over BGE-M3 dense and sparse (lexical) vectors.
+
+        Candidates are the nearest chunks by dense cosine distance and by
+        sparse inner product, each from its own HNSW index and within the KB
+        and filters. Every candidate is then scored on both, from the same
+        model, so the scores are on comparable scales:
+
+            vector_score   = cosine similarity of the dense vectors
+            text_score     = inner product of the sparse (lexical) vectors
+            combined_score = vector_weight * vector_score
+                             + keyword_weight * text_score
+
+        This is BGE-M3's own dense + sparse hybrid. It replaces the English
+        tsvector keyword search, whose unbounded ts_rank_cd scores were not
+        comparable with cosine similarity and only matched English.
 
         Args:
-            query: The search query text
-            query_embeddings: The vector embeddings of the query
-            params: Dictionary containing query parameters:
-                - threshold: Cosine similarity threshold
-                - top_k: Number of results to return
-                - vector_weight: Weight for vector similarity score
-                - keyword_weight: Weight for keyword similarity score
-                - kb_id: Knowledge base ID
+            query_dense: The query's BGE-M3 dense vector
+            query_sparse: The query's BGE-M3 sparse vector, {indices, values}
+            params: threshold (on combined_score), vector_weight,
+                keyword_weight, top_k, kb_id
 
         Returns:
             Tuple of (SQL query string, query parameters)
         """
-        # Validate and sanitize parameters
         threshold = float(params.get('threshold', 0.2))
-        # Use limit if provided, otherwise use top_k
         effective_limit = limit if limit is not None else int(params.get('top_k', 10))
         vector_weight = float(params.get('vector_weight', 0.7))
         keyword_weight = float(params.get('keyword_weight', 0.3))
         kb_id = str(params.get('kb_id'))
         effective_offset = offset or 0
+        # Per index, enough candidates that the page asked for can still be
+        # filled after the two sets are merged and thresholded.
+        candidate_limit = max((effective_limit + effective_offset) * 10, 100)
 
-        # Prepare query parameters
         query_params = {
-            'query_embed': str(query_embeddings[0]),
+            'query_embed': str(list(query_dense)),
+            'query_sparse': _sparse_text(query_sparse),
             'threshold': threshold,
             'kb_id': kb_id,
             'vector_weight': vector_weight,
             'keyword_weight': keyword_weight,
-            'query': query,
             'offset': effective_offset,
             'limit': effective_limit,
+            'candidate_limit': candidate_limit,
         }
-        metadata_filter_clause_final = ''
-        metadata_filter_clause_inner = ''
+        metadata_filter_clause = ''
         if filter:
             where_clause, filter_params = self.odata_parser.prepare_odata_filter(filter)
             if where_clause and filter_params:
-                metadata_filter_clause_final = self.build_metadata_clause(
-                    where_clause,
-                    filter_params,
-                    lambda field: (
-                        f"(COALESCE(k.metadata_value ->> '{field}', "
-                        f"v.metadata_value ->> '{field}'))"
-                    ),
-                )
-                metadata_filter_clause_inner = self.build_metadata_clause(
+                metadata_filter_clause = self.build_metadata_clause(
                     where_clause,
                     filter_params,
                     lambda field: f"(d.metadata_value ->> '{field}')",
@@ -196,86 +203,73 @@ class QueryGenerator:
         )
         query_params.update(filter_columns_params)
 
+        scope = (
+            'd.knowledge_base_id = :kb_id'
+            + (f' AND ({metadata_filter_clause})' if metadata_filter_clause else '')
+            + f' {filter_columns_clause}'
+        )
+        dense = f':query_embed ::vector({TEXT_EMBEDDING_DIM})'
+        sparse = f':query_sparse ::sparsevec({TEXT_SPARSE_EMBEDDING_DIM})'
+        embeddings = KnowledgeBaseEmbeddings.__tablename__
+        documents = KnowledgeBaseDocuments.__tablename__
+
+        # ORDER BY the bare columns (no casts) so each HNSW index applies:
+        # ix_kbe_text_embedding_hnsw_cosine and ix_kbe_text_sparse_embedding_hnsw_ip.
         sql_query = f"""
-            WITH hnsw_candidates AS (
+            WITH dense_candidates AS (
+                SELECT e.id
+                FROM {embeddings} e
+                JOIN {documents} d ON e.document_id = d.id
+                WHERE {scope}
+                    AND e.text_embedding IS NOT NULL
+                ORDER BY e.text_embedding <=> {dense}
+                LIMIT :candidate_limit
+            ),
+            sparse_candidates AS (
+                SELECT e.id
+                FROM {embeddings} e
+                JOIN {documents} d ON e.document_id = d.id
+                WHERE {scope}
+                    AND e.text_sparse_embedding IS NOT NULL
+                ORDER BY e.text_sparse_embedding <#> {sparse}
+                LIMIT :candidate_limit
+            ),
+            scored AS (
                 SELECT
-                    e.id,
-                    e.document_id,
+                    e.id AS embedding_id,
                     e.chunk_text,
                     e.chunk_index,
+                    d.id AS document_id,
                     d.file_path,
-                    d.knowledge_base_id,
                     d.metadata_value,
-                    (e.embedding_vector::vector(512)) <=> :query_embed ::vector(512) AS distance
-                FROM
-                    {KnowledgeBaseEmbeddings.__tablename__} e
-                JOIN
-                    {KnowledgeBaseDocuments.__tablename__} d ON e.document_id = d.id
-                WHERE
-                     d.knowledge_base_id = :kb_id {'AND (' + metadata_filter_clause_inner + ')' if metadata_filter_clause_inner else ''} {filter_columns_clause}
-                ORDER BY
-                    (e.embedding_vector::vector(512)) <=> :query_embed ::vector(512)
-                LIMIT :limit * 20
-            ),
-            vector_results AS (
-                SELECT
-                    id as embedding_id,
-                    chunk_text,
-                    chunk_index,
-                    document_id,
-                    file_path,
-                    knowledge_base_id,
-                    metadata_value,
-                    1 - distance as vector_score
-                FROM
-                    hnsw_candidates
-                ORDER BY
-                    distance ASC
-                LIMIT :limit
-            ),
-            keyword_results AS (
-                SELECT
-                    e.id as embedding_id,
-                    e.chunk_text,
-                    e.chunk_index,
-                    d.id as document_id,
-                    d.file_path,
                     d.knowledge_base_id,
-                    d.metadata_value,
-                    ts_rank_cd(e.token, query_tokens) AS text_score
-                FROM
-                    {KnowledgeBaseEmbeddings.__tablename__} e
-                JOIN
-                    {KnowledgeBaseDocuments.__tablename__} d ON e.document_id = d.id,
-                    plainto_tsquery('english', :query) AS query_tokens
-                WHERE
-                    e.token @@ query_tokens
-                    AND d.knowledge_base_id = :kb_id {'AND (' + metadata_filter_clause_inner + ')' if metadata_filter_clause_inner else ''} {filter_columns_clause}
-                ORDER BY
-                    text_score DESC
-                LIMIT :limit
+                    1 - (e.text_embedding <=> {dense}) AS vector_score,
+                    -- <#> is the negative inner product
+                    COALESCE(-(e.text_sparse_embedding <#> {sparse}), 0) AS text_score
+                FROM {embeddings} e
+                JOIN {documents} d ON e.document_id = d.id
+                WHERE e.id IN (
+                    SELECT id FROM dense_candidates
+                    UNION
+                    SELECT id FROM sparse_candidates
+                )
             )
             SELECT
-                COALESCE(k.embedding_id, v.embedding_id) as embedding_id,
-                COALESCE(k.chunk_text, v.chunk_text) as chunk_text,
-                COALESCE(k.chunk_index, v.chunk_index) as chunk_index,
-                COALESCE(k.document_id, v.document_id) as document_id,
-                COALESCE(k.file_path, v.file_path) as file_path,
-                COALESCE(k.metadata_value, v.metadata_value) as metadata_value,
-                COALESCE(k.knowledge_base_id, v.knowledge_base_id) as knowledge_base_id,
-                COALESCE(v.vector_score, 0) * :vector_weight +
-                COALESCE(k.text_score, 0) * :keyword_weight AS combined_score,
-                COALESCE(v.vector_score, 0) as vector_score,
-                COALESCE(k.text_score, 0) as text_score
-            FROM
-                keyword_results k
-            FULL OUTER JOIN
-                vector_results v ON k.embedding_id = v.embedding_id
-            WHERE
-              (COALESCE(v.vector_score, 0) * :vector_weight +
-               COALESCE(k.text_score, 0) * :keyword_weight) > :threshold {'AND (' + metadata_filter_clause_final + ')' if metadata_filter_clause_final else ''}
-            ORDER BY
-                combined_score DESC
+                embedding_id,
+                chunk_text,
+                chunk_index,
+                document_id,
+                file_path,
+                metadata_value,
+                knowledge_base_id,
+                vector_score * :vector_weight + text_score * :keyword_weight
+                    AS combined_score,
+                vector_score,
+                text_score
+            FROM scored
+            WHERE vector_score * :vector_weight + text_score * :keyword_weight
+                > :threshold
+            ORDER BY combined_score DESC
             LIMIT :limit OFFSET :offset
         """
 
@@ -417,7 +411,7 @@ class QueryGenerator:
         self,
         query_embeddings: list,
         kb_id: str,
-        filter1: str,
+        filter1: Optional[str],
         document_date_start,
         document_date_end,
         max_candidates: int,
@@ -430,12 +424,11 @@ class QueryGenerator:
         created_at_end: Optional[Any] = None,
     ) -> Tuple[str, Dict[str, Any]]:
         """
-        Exact (brute-force) DINO similarity search restricted to documents on
-        `knowledge_base_documents` matching `filter1` and a `document_date`
-        window, further narrowed by an equality match on any of
-        `filter2`..`filter6` that are provided. All `filterN` columns are
-        generic, caller-defined columns -- see `KnowledgeBaseDocuments` --
-        this query has no notion of what they mean semantically.
+        Exact (brute-force) DINO similarity search over documents in a KB,
+        optionally narrowed by `filter1`..`filter6` and a `document_date` /
+        `created_at` window. All `filterN` columns are generic, caller-defined
+        columns -- see `KnowledgeBaseDocuments` -- this query has no notion of
+        what they mean semantically.
 
         Candidates are capped via `ORDER BY d.id LIMIT :fetch_limit`, where
         `fetch_limit` is computed here as `max_candidates + 1`. Ordering by
@@ -542,7 +535,10 @@ class QueryGenerator:
                 file_size,
                 created_at,
                 updated_at,
-                metadata_value
+                metadata_value,
+                index_status,
+                index_error,
+                index_status_updated_at
             FROM
                 {KnowledgeBaseDocuments.__tablename__}
             WHERE
@@ -552,12 +548,10 @@ class QueryGenerator:
         """
         return sql_query, params
 
-    @staticmethod
-    def get_update_tokens_query() -> str:
-        """
-        Generate SQL query to update text search tokens.
 
-        Returns:
-            SQL query string
-        """
-        return "UPDATE knowledge_base_embeddings SET token = to_tsvector('english', chunk_text) WHERE token IS NULL"
+def _sparse_text(sparse: Optional[Dict[str, List]]) -> str:
+    """BGE-M3 {indices, values} (0-based token ids) in pgvector's sparsevec
+    text form. An empty vector scores 0 against every chunk."""
+    sparse = sparse or {}
+    weights = dict(zip(sparse.get('indices', []), sparse.get('values', [])))
+    return SparseVector(weights, TEXT_SPARSE_EMBEDDING_DIM).to_text()

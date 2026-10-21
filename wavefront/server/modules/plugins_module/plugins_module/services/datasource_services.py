@@ -7,6 +7,9 @@ from datasource import (
     RedshiftConfig,
     PostgresConfig,
     MSSQLConfig,
+    FileStorageConfig,
+    build_file_storage_config,
+    is_file_storage_type,
 )
 from db_repo_module.models.datasource import Datasource
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
@@ -23,7 +26,7 @@ async def get_datasource_config(
     ),
 ) -> tuple[
     DataSourceType,
-    BigQueryConfig | RedshiftConfig | PostgresConfig | MSSQLConfig,
+    BigQueryConfig | RedshiftConfig | PostgresConfig | MSSQLConfig | FileStorageConfig,
 ]:
     # Without this, a mistyped id raises InvalidTextRepresentation inside the
     # query before find_one can return None, so every caller's "not found -> 404"
@@ -37,7 +40,11 @@ async def get_datasource_config(
     if not datasource:
         return None, None
 
-    if datasource.type == DataSourceType.GCP_BIGQUERY:
+    if is_file_storage_type(datasource.type):
+        return DataSourceType(datasource.type), build_file_storage_config(
+            datasource.type, datasource.config
+        )
+    elif datasource.type == DataSourceType.GCP_BIGQUERY:
         return DataSourceType.GCP_BIGQUERY, BigQueryConfig(**datasource.config)
     elif datasource.type == DataSourceType.AWS_REDSHIFT:
         return DataSourceType.AWS_REDSHIFT, RedshiftConfig(**datasource.config)

@@ -11,7 +11,7 @@ from common_module.log.logger import logger
 from db_repo_module.models.email_connection import EmailConnection
 from db_repo_module.models.oauth_app import OAuthApp
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
-from flo_cloud.kms import FloKmsService
+from flo_cloud.kms import FloKmsCipher
 from mailer import EmailCapability, EmailProviderABC, EmailProviderError, TokenBundle
 from sqlalchemy import update
 
@@ -93,13 +93,13 @@ class EmailConnectionService:
         connection_repository: SQLAlchemyRepository[EmailConnection],
         oauth_app_repository: SQLAlchemyRepository[OAuthApp],
         oauth_app_service: OAuthAppService,
-        kms_service: FloKmsService,
+        kms_cipher: FloKmsCipher,
         cache_manager: CommonCache,
     ):
         self._connections = connection_repository
         self._apps = oauth_app_repository
         self._app_service = oauth_app_service
-        self._kms = kms_service
+        self._kms_cipher = kms_cipher
         self._cache = cache_manager
         self._refresh_locks: weakref.WeakKeyDictionary[
             asyncio.AbstractEventLoop, Dict[UUID, asyncio.Lock]
@@ -258,7 +258,7 @@ class EmailConnectionService:
             # Google may omit refresh_token on re-consent when one was already
             # issued; keep the stored token in that case rather than wiping it.
             if bundle.refresh_token:
-                encrypted_refresh_token = self._kms.encrypt_for_storage(
+                encrypted_refresh_token = self._kms_cipher.encrypt_for_storage(
                     bundle.refresh_token
                 )
             else:
@@ -277,7 +277,7 @@ class EmailConnectionService:
                 status='active',
                 granted_scopes=bundle.scopes,
                 encrypted_refresh_token=encrypted_refresh_token,
-                encrypted_access_token=self._kms.encrypt_for_storage(
+                encrypted_access_token=self._kms_cipher.encrypt_for_storage(
                     bundle.access_token
                 ),
                 token_expires_at=bundle.expires_at,
@@ -509,7 +509,7 @@ class EmailConnectionService:
         expires_at = self._as_aware(connection.token_expires_at)
         if expires_at - TOKEN_REFRESH_SKEW <= datetime.now(timezone.utc):
             return None
-        return self._kms.decrypt_from_storage(connection.encrypted_access_token)
+        return self._kms_cipher.decrypt_from_storage(connection.encrypted_access_token)
 
     def _local_refresh_lock(self, connection_id: UUID) -> asyncio.Lock:
         """A per-connection lock, scoped to the running loop.
@@ -597,7 +597,7 @@ class EmailConnectionService:
         Callers must hold `_refresh_lock` for the connection.
         """
         refresh_token = (
-            self._kms.decrypt_from_storage(connection.encrypted_refresh_token)
+            self._kms_cipher.decrypt_from_storage(connection.encrypted_refresh_token)
             if connection.encrypted_refresh_token
             else None
         )
@@ -621,7 +621,7 @@ class EmailConnectionService:
             raise
 
         updates: Dict[str, Any] = {
-            'encrypted_access_token': self._kms.encrypt_for_storage(
+            'encrypted_access_token': self._kms_cipher.encrypt_for_storage(
                 bundle.access_token
             ),
             'token_expires_at': bundle.expires_at,
@@ -630,7 +630,7 @@ class EmailConnectionService:
         # Microsoft rotates refresh tokens on use; storing the new one keeps the
         # connection alive past the old token's lifetime.
         if bundle.refresh_token and bundle.refresh_token != refresh_token:
-            updates['encrypted_refresh_token'] = self._kms.encrypt_for_storage(
+            updates['encrypted_refresh_token'] = self._kms_cipher.encrypt_for_storage(
                 bundle.refresh_token
             )
         if bundle.scopes:

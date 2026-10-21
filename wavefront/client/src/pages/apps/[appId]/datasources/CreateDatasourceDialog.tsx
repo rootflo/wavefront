@@ -13,49 +13,8 @@ import CodeMirror from '@uiw/react-codemirror';
 import React, { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
+import { DATASOURCE_TYPES, SAMPLE_CONFIGS } from './datasource-types';
 import { createDatasourceSchema, type CreateDatasourceInput } from './schemas';
-
-const DATASOURCE_TYPES = [
-  { value: 'gcp_bigquery', label: 'Google BigQuery' },
-  { value: 'aws_redshift', label: 'AWS Redshift' },
-  { value: 'postgres', label: 'PostgreSQL' },
-  { value: 'mssql', label: 'Microsoft SQL Server' },
-];
-
-const SAMPLE_CONFIGS = {
-  gcp_bigquery: {
-    project_id: 'your-project-id',
-    dataset_id: 'your-dataset-id',
-    location: 'US',
-    credentials_path: '/path/to/service-account.json',
-    credentials_json: '{ ... service account JSON ... }',
-  },
-  aws_redshift: {
-    host: 'your-cluster.region.redshift.amazonaws.com',
-    port: 5439,
-    database: 'your-database',
-    user: 'your-username',
-    password: 'your-password',
-  },
-  postgres: {
-    host: 'localhost',
-    port: 5432,
-    database: 'your-database',
-    user: 'your-username',
-    password: 'your-password',
-    schema: 'public',
-  },
-  mssql: {
-    host: 'localhost',
-    port: 1433,
-    database: 'your-database',
-    user: 'your-username',
-    password: 'your-password',
-    schema: 'dbo',
-    encrypt: true,
-    trust_server_certificate: false,
-  },
-};
 
 interface CreateDatasourceDialogProps {
   isOpen: boolean;
@@ -83,10 +42,7 @@ const CreateDatasourceDialog: React.FC<CreateDatasourceDialogProps> = ({ isOpen,
   // Update connection config when type changes
   useEffect(() => {
     if (datasourceType) {
-      form.setValue(
-        'connectionConfig',
-        JSON.stringify(SAMPLE_CONFIGS[datasourceType as keyof typeof SAMPLE_CONFIGS], null, 2)
-      );
+      form.setValue('connectionConfig', JSON.stringify(SAMPLE_CONFIGS[datasourceType], null, 2));
     }
   }, [datasourceType, form]);
 

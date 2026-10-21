@@ -42,7 +42,7 @@ class ToolNamesData(BaseModel):
     tool_names: List[str] = Field(
         ...,
         description='List of available tool names',
-        examples=[['datasource_insert_rows', 'querying_knowlegebase']],
+        examples=[['datasource_insert_rows', 'send_email']],
     )
     count: int = Field(..., description='Total number of tools', examples=[2])
 
@@ -109,6 +109,6 @@ class ValidateToolsRequest(BaseModel):
     tool_names: List[str] = Field(
         ...,
         description='List of tool names to validate',
-        examples=[['datasource_insert_rows', 'querying_knowlegebase']],
+        examples=[['datasource_insert_rows', 'send_email']],
         min_length=1,
     )

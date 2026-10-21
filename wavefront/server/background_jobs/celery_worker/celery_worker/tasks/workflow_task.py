@@ -1,39 +1,41 @@
+"""Celery task: async workflow inference."""
+
 import asyncio
 from typing import Dict
 
 from common_module.log.logger import logger
 
 from celery_worker.celery_app import app
-from celery_worker.env import MAX_RETRIES, RETRY_DELAY
-from celery_worker.tasks.agent_task import (
-    _build_history,
-    _now,
-    _publish,
-    _reconstruct_inputs,
-    _save_json,
+from celery_worker.event_loop import get_event_loop
+from celery_worker.services import get_services
+from celery_worker.settings import MAX_RETRIES, RETRY_DELAY
+from celery_worker.tasks.helpers import (
+    build_history,
+    now_iso,
+    publish_result,
+    reconstruct_inputs,
+    save_json,
 )
-from celery_worker.worker_setup import get_event_loop, get_services
 
 
 async def _run(task, payload: Dict) -> None:
     services = get_services()
     execution_id = payload['execution_id']
 
-    # Signal in_progress — floware consumer updates DB
-    _publish(
+    publish_result(
         services.cache,
         execution_id,
         {
             'execution_id': execution_id,
             'status': 'in_progress',
-            'started_at': _now(),
+            'started_at': now_iso(),
             'error': '',
         },
     )
 
     try:
         inputs = await asyncio.to_thread(
-            _reconstruct_inputs, payload, services.cloud_storage
+            reconstruct_inputs, payload, services.cloud_storage
         )
 
         (
@@ -60,7 +62,7 @@ async def _run(task, payload: Dict) -> None:
         history_key = f"{payload['output_prefix']}history.json"
         bucket = payload['execution_bucket']
 
-        _save_json(
+        save_json(
             services.cloud_storage,
             bucket,
             output_key,
@@ -69,15 +71,14 @@ async def _run(task, payload: Dict) -> None:
                 'execution_time_seconds': round(exec_time, 3),
             },
         )
-        _save_json(
+        save_json(
             services.cloud_storage,
             bucket,
             history_key,
-            _build_history(payload, result, exec_time, trace),
+            build_history(payload, result, exec_time, trace),
         )
 
-        # Signal completed — floware consumer updates DB
-        _publish(
+        publish_result(
             services.cache,
             execution_id,
             {
@@ -86,7 +87,7 @@ async def _run(task, payload: Dict) -> None:
                 'output_file': output_key,
                 'history_file': history_key,
                 'input_bucket': bucket,
-                'completed_at': _now(),
+                'completed_at': now_iso(),
                 'error': '',
             },
         )
@@ -96,15 +97,14 @@ async def _run(task, payload: Dict) -> None:
         error_msg = str(exc)
         logger.error(f'Workflow execution failed: {execution_id} — {error_msg}')
 
-        # Signal failed — floware consumer updates DB
-        _publish(
+        publish_result(
             services.cache,
             execution_id,
             {
                 'execution_id': execution_id,
                 'status': 'failed',
                 'error': error_msg,
-                'completed_at': _now(),
+                'completed_at': now_iso(),
             },
         )
         raise  # triggers Celery retry if MAX_RETRIES > 0

@@ -2,7 +2,6 @@ import hashlib
 import html
 import io
 import json
-import os
 import re
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -82,6 +81,7 @@ class ScheduledJobService:
         user_service: UserService,
         role_repository: SQLAlchemyRepository[Role],
         user_role_repository: SQLAlchemyRepository[UserRole],
+        worker_id: str,
     ):
         self.db_client = db_client
         self.scheduled_job_repository = scheduled_job_repository
@@ -96,7 +96,7 @@ class ScheduledJobService:
         self.user_service = user_service
         self.role_repository = role_repository
         self.user_role_repository = user_role_repository
-        self.worker_id = os.getenv('HOSTNAME', 'floware-worker')
+        self.worker_id = worker_id
         self.dynamic_query_service = DynamicQueryService(
             cloud_storage_manager=self.cloud_storage_manager,
             dynamic_query_repo=self.dynamic_query_repository,
@@ -1044,8 +1044,8 @@ class ScheduledJobService:
         return self.cloud_storage_manager.generate_presigned_url(
             bucket_name=self.bucket_name,
             key=report_key,
-            type='GET',
-            expiresIn=SIGNED_URL_EXPIRY_SECONDS,
+            operation='GET',
+            expires_in=SIGNED_URL_EXPIRY_SECONDS,
         )
 
     @staticmethod

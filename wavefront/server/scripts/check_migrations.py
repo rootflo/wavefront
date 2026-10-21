@@ -205,9 +205,7 @@ def _scratch_database(tree: Tree) -> dict[str, str]:
         scratch.dispose()
 
     env = {**os.environ, **{k: os.environ.get(k, v) for k, v in SEED_DEFAULTS.items()}}
-    # knowledge_base_embeddings declares Vector outside tests and Text under
-    # APP_ENV=test. Leaving it set would compare a Text model against a VECTOR
-    # column and report drift that does not exist in any real environment.
+    # Subprocess alembic uses pgvector column types (test stand-ins are pytest-only).
     env.pop('APP_ENV', None)
     env.update(
         {

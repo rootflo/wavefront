@@ -1,7 +1,7 @@
 import uuid
 import re
 from typing import Optional, Dict
-import httpx
+import flo_lib.http as httpx
 import json
 from fastapi import Request, HTTPException, status
 from fastapi.responses import StreamingResponse, Response

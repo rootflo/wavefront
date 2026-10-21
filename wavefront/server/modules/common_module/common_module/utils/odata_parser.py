@@ -1,15 +1,17 @@
 from datetime import datetime
-import os
 import re
 from typing import Any, Tuple
 
 from common_module.log.logger import logger
 
 
+def parameter_char_for_provider(provider: str | None) -> str:
+    """GCP OData uses ``@`` placeholders; every other platform uses ``:``."""
+    return '@' if (provider or '').lower() == 'gcp' else ':'
+
+
 def _dynamic_var_char(parameter: str | None = None) -> str:
-    if parameter:
-        return parameter
-    return '@' if os.environ.get('CLOUD_PROVIDER') == 'gcp' else ':'
+    return parameter or ':'
 
 
 def parse_value(value: str) -> Any:
@@ -101,9 +103,12 @@ def prepare_odata_filter(
     return sql_expr, params
 
 
-def fill_odata_query(sql_expr: str, parameters: dict = {}) -> str:
+def fill_odata_query(
+    sql_expr: str, parameters: dict | None = None, parameter: str | None = None
+) -> str:
     output_sql = sql_expr
-    dynamic_var_char = _dynamic_var_char()
+    parameters = parameters or {}
+    dynamic_var_char = _dynamic_var_char(parameter)
     param_names = sorted(parameters.keys(), key=len, reverse=True)
     for parameter in param_names:
         if isinstance(parameters[parameter], str):

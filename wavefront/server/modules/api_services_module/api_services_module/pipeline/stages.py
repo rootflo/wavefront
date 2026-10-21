@@ -1,7 +1,7 @@
 """Concrete pipeline stages for API processing."""
 
 import asyncio
-import httpx
+import flo_lib.http as httpx
 from typing import Dict, Any, Optional
 from urllib.parse import urljoin
 

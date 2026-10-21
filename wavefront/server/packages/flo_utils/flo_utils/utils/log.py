@@ -1,15 +1,21 @@
-import os
 import logging
 
-log_level = os.environ.get('LOG_LEVEL', 'INFO')
 log_format = (
     '%(asctime)s | %(levelname)-8s | %(name)s | %(filename)s:%(lineno)d | %(message)s'
 )
-logging.basicConfig(
-    level=log_level,
-    format=log_format,
-    datefmt='%Y-%m-%d %H:%M:%S',
-)
+
+
+def configure_flo_utils_logging(log_level: str = 'INFO') -> None:
+    """Apply log level from the worker's config.ini at startup."""
+    logging.basicConfig(
+        level=log_level,
+        format=log_format,
+        datefmt='%Y-%m-%d %H:%M:%S',
+        force=True,
+    )
+
+
+configure_flo_utils_logging()
 
 
 class CustomLogger(logging.Logger):

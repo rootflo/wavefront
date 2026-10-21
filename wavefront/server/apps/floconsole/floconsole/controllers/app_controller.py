@@ -1,4 +1,4 @@
-import requests
+import flo_lib.http as http
 
 from typing import Optional
 from uuid import UUID
@@ -153,7 +153,8 @@ async def create_app(
             }
 
             build_trigger_url = config['deployment']['build_trigger_url']
-            response = requests.post(build_trigger_url, json=data)
+            async with http.AsyncClient() as client:
+                response = await client.post(build_trigger_url, json=data)
 
             if response.status_code != 200:
                 logger.error(f'Failed to create app: {response.json()}')
@@ -346,7 +347,8 @@ async def delete_app(
             }
 
             build_trigger_url = config['deployment']['build_trigger_url']
-            response = requests.post(build_trigger_url, json=data)
+            async with http.AsyncClient() as client:
+                response = await client.post(build_trigger_url, json=data)
 
             if response.status_code != 200:
                 return JSONResponse(

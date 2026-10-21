@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 
 from common_module.feature.feature_flag import (
     DATASOURCE_CHANGE_NOTIFICATION_FLAG,
-    is_feature_enabled,
+    FeatureFlags,
 )
 from common_module.log.logger import logger
 from db_repo_module.models.datasource_audit_log import DatasourceAuditLog
@@ -53,7 +53,11 @@ _VERBS = {
     'insert': ('inserted', 'into'),
     'update': ('updated', 'in'),
     'delete': ('deleted', 'from'),
+    'upload': ('uploaded', 'to'),
 }
+
+# Operations whose audit entries are files (table_name holds the key), not rows.
+_FILE_OPERATIONS = frozenset({'upload'})
 
 # The table name is the caller's and its column allows 512 characters. The title
 # column is an unbounded String, so this is about keeping a feed readable rather
@@ -74,9 +78,11 @@ class ChangeNotificationService:
         self,
         notification_repository: 'SQLAlchemyRepository[Notification]',
         max_payload_bytes: Optional[int] = NOTIFICATION_MAX_PAYLOAD_BYTES,
+        feature_flags: FeatureFlags | None = None,
     ) -> None:
         self.notification_repository = notification_repository
         self.max_payload_bytes = max_payload_bytes
+        self.feature_flags = feature_flags or FeatureFlags()
 
     def build_payload(
         self,
@@ -101,7 +107,7 @@ class ChangeNotificationService:
         Returns None when the flag is off or there is nothing to report, which
         the caller reads as "do not publish".
         """
-        if not is_feature_enabled(DATASOURCE_CHANGE_NOTIFICATION_FLAG):
+        if not self.feature_flags.enabled(DATASOURCE_CHANGE_NOTIFICATION_FLAG):
             return None
 
         if not records:
@@ -258,7 +264,8 @@ class ChangeNotificationService:
         Denormalized on purpose: a feed should be renderable without unpacking
         the payload, and a client that wants to localize builds its own string.
         """
-        noun = '1 row' if total_rows == 1 else f'{total_rows} rows'
+        unit = 'file' if operation in _FILE_OPERATIONS else 'row'
+        noun = f'1 {unit}' if total_rows == 1 else f'{total_rows} {unit}s'
         # An operation outside the known set still produces a usable title. This
         # runs on a best-effort path after a committed mutation, so a KeyError
         # here must not be what loses the notification.

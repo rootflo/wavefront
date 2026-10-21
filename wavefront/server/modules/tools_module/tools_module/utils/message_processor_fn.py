@@ -1,12 +1,13 @@
 import json
-import os
 
-import httpx
+import flo_lib.http as httpx
 
-FLOWARE_BASE_URL = os.getenv('FLOWARE_BASE_URL', 'http://localhost:8001').rstrip('/')
+from tools_module.floware_api import FlowareApiClient
 
 
-async def execute_message_processor_fn(message_processor_id: str, **kwargs) -> str:
+async def execute_message_processor_fn(
+    api: FlowareApiClient, /, message_processor_id: str, **kwargs
+) -> str:
     """Execute a deployed message processor via wavefront's own REST API
     (POST /v1/message-processors/{processor_id}/execute).
 
@@ -52,7 +53,7 @@ async def execute_message_processor_fn(message_processor_id: str, **kwargs) -> s
     payload_bytes = len(json.dumps(body, default=str))
 
     url = (
-        f'{FLOWARE_BASE_URL}/floware/v1/message-processors/'
+        f'{api.base_url}/floware/v1/message-processors/'
         f'{message_processor_id}/execute'
     )
     async with httpx.AsyncClient() as client:

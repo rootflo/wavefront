@@ -1,4 +1,4 @@
-import aiohttp
+import flo_lib.http as http
 from common_module.log.logger import logger
 
 
@@ -38,7 +38,7 @@ class SmartfloService:
             if not api_key:
                 raise ValueError('Missing Smartflo credentials: api_key')
 
-            timeout = aiohttp.ClientTimeout(total=15)
+            timeout = http.Timeout(15.0)
             headers = {
                 'accept': 'application/json',
                 'content-type': 'application/json',
@@ -56,30 +56,28 @@ class SmartfloService:
                 f'for agent {voice_agent_id}'
             )
 
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post(
+            async with http.AsyncClient(timeout=timeout) as client:
+                response = await client.post(
                     self.SMARTFLO_CLICK_TO_CALL_URL,
                     json=payload,
                     headers=headers,
-                ) as response:
-                    result = await response.json()
+                )
+                result = response.json()
 
-                    if response.status != 200:
-                        raise ValueError(
-                            f'Smartflo API error ({response.status}): {result}'
-                        )
-
-                    call_sid = result.get('call_id', 'unknown')
-                    logger.info(
-                        f'Smartflo call created successfully. Call SID: {call_sid}'
+                if response.status_code != 200:
+                    raise ValueError(
+                        f'Smartflo API error ({response.status_code}): {result}'
                     )
 
-                    return {
-                        'call_sid': call_sid,
-                        'status': 'call_initiated',
-                        'to_number': to_number,
-                        'from_number': from_number,
-                    }
+                call_sid = result.get('call_id', 'unknown')
+                logger.info(f'Smartflo call created successfully. Call SID: {call_sid}')
+
+                return {
+                    'call_sid': call_sid,
+                    'status': 'call_initiated',
+                    'to_number': to_number,
+                    'from_number': from_number,
+                }
 
         except Exception as e:
             logger.error(f'Failed to initiate Smartflo call: {str(e)}')

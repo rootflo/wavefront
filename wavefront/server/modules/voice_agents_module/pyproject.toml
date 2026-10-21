@@ -12,13 +12,20 @@ dependencies = [
     "db-repo-module",
     "flo-cloud",
     "twilio",
-    "httpx>=0.27.0,<1.0.0",
+    "flo-lib",
 ]
 
 [tool.uv.sources]
 common-module = { workspace = true }
 db-repo-module = { workspace = true }
 flo-cloud = { workspace = true }
+flo-lib = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3,<10.0.0",
+    "pytest-asyncio>=1.0.0,<2.0.0",
+]
 
 [tool.uv]
 package = true

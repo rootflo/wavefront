@@ -1,6 +1,8 @@
 from auth_module.auth_container import AuthContainer
 from auth_module.services.superset_service import SupersetService
 from common_module.common_container import CommonContainer
+from common_module.feature.feature_flag import SUPERSET_FLAG
+from common_module.feature.feature_flag import FeatureFlags
 from common_module.response_formatter import ResponseFormatter
 from db_repo_module.models.resource import ResourceScope
 from user_management_module.user_container import UserContainer
@@ -29,8 +31,15 @@ async def superset_authenticator(
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
     ),
+    feature_flags: FeatureFlags = Depends(Provide[CommonContainer.feature_flags]),
     filter: str | None = Query(None, alias='$filter'),
 ):
+    if not feature_flags.enabled(SUPERSET_FLAG):
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse('Superset is not enabled'),
+        )
+
     user_id = request.state.session.user_id
     role_id = request.state.session.role_id
     dashboards = []
@@ -64,7 +73,7 @@ async def superset_authenticator(
                 ),
             )
 
-    guest_token = superset_service.generate_guest_token(
+    guest_token = await superset_service.generate_guest_token(
         user_id, dashboards, data_filters, filter
     )
 

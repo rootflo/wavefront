@@ -1,5 +1,5 @@
 import React from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router';
+import { useNavigate, useParams } from 'react-router';
 import { Outlet } from 'react-router';
 import {
   Breadcrumb,
@@ -8,32 +8,10 @@ import {
   BreadcrumbList,
   BreadcrumbSeparator,
 } from '@app/components/ui/breadcrumb';
-import { Tabs, TabsList, TabsTrigger } from '@app/components/ui/tabs';
 
 const WorkflowsLayout: React.FC = () => {
   const { app } = useParams<{ app: string }>();
-  const location = useLocation();
   const navigate = useNavigate();
-
-  // Determine active tab based on current location
-  const basePath = `/apps/${app}/workflows`;
-
-  const getActiveTab = () => {
-    if (location.pathname.startsWith(`${basePath}/pipelines`)) {
-      return 'pipelines';
-    }
-    return 'workflows';
-  };
-
-  const activeTab = getActiveTab();
-
-  const handleTabChange = (value: string) => {
-    if (value === 'workflows') {
-      navigate(basePath);
-    } else {
-      navigate(`${basePath}/pipelines`);
-    }
-  };
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-transparent">
@@ -73,18 +51,8 @@ const WorkflowsLayout: React.FC = () => {
         <div className="border-frost-border px-8">
           <div className="mb-6">
             <h1 className="animate-fade-in frost-text text-3xl font-bold">Workflows</h1>
-            <p className="animate-fade-in frost-text-muted mt-2">
-              Manage AI workflows and pipelines for your application
-            </p>
+            <p className="animate-fade-in frost-text-muted mt-2">Manage AI workflows for your application</p>
           </div>
-
-          {/* Navigation Tabs */}
-          <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-            <TabsList>
-              <TabsTrigger value="workflows">Workflows</TabsTrigger>
-              <TabsTrigger value="pipelines">Pipelines</TabsTrigger>
-            </TabsList>
-          </Tabs>
         </div>
 
         {/* Child Route Content */}

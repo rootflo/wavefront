@@ -20,6 +20,7 @@ from flo_ai.guardrails.contracts import (
     FailureClass,
     PolicyAction,
     Principal,
+    StreamCapability,
     WorkflowStage,
 )
 
@@ -301,3 +302,14 @@ class TestLifecycle:
 
         assert adapter._client is None
         assert adapter._http is None
+
+
+class TestStreamCapability:
+    def test_a_holistic_verdict_is_never_released_incrementally(self):
+        """One line, so that flipping it means reading the comment beside it.
+
+        Severity is a property of the whole passage -- ``_moderate`` takes the
+        worst across its chunks precisely because it does not compose over a
+        prefix -- and each prefix scan would be another billed network call.
+        """
+        assert AzureContentSafetyAdapter.stream_capability is StreamCapability.BUFFERED

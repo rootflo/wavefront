@@ -1,9 +1,10 @@
 from datetime import datetime
 from typing import Optional
 
+from common_module.common_container import CommonContainer
 from common_module.feature.feature_flag import (
     ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG,
-    is_feature_enabled,
+    FeatureFlags,
 )
 from common_module.response_formatter import ResponseFormatter
 from db_repo_module.models.role import Role
@@ -85,7 +86,11 @@ async def check_is_manager(
     return await _role_name(role_id, role_repository) == MANAGER_ROLE_NAME
 
 
-async def can_read_users(req: Request) -> bool:
+@inject
+async def can_read_users(
+    req: Request,
+    feature_flags: FeatureFlags = Depends(Provide[CommonContainer.feature_flags]),
+) -> bool:
     """Read access for the fetch-by-id user endpoint.
 
     Admin-only by default. Deployments where every authenticated user needs to
@@ -98,7 +103,7 @@ async def can_read_users(req: Request) -> bool:
     admin bit also selects which payload shape to build, not just whether to
     answer at all.
     """
-    if is_feature_enabled(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG):
+    if feature_flags.enabled(ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG):
         return True
 
     role_id, _, _ = get_current_user(req)

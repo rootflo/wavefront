@@ -29,24 +29,19 @@ def _config(**overrides) -> LlmInferenceConfig:
     return LlmInferenceConfig(**values)
 
 
-@pytest.fixture(autouse=True)
-def _azure_api_version(monkeypatch):
-    # AzureOpenAI will not construct without one.
-    monkeypatch.setenv('AZURE_OPENAI_API_VERSION', '2024-06-01')
-
-
 class TestAzureOpenAI:
     def test_uses_the_azure_client_not_openai(self):
         llm = build_llm(
-            _config(type='azure_openai', base_url='https://x.openai.azure.com')
+            _config(type='azure_openai', base_url='https://x.openai.azure.com'),
+            azure_openai_api_version='2024-06-01',
         )
         assert isinstance(llm, AzureOpenAI)
 
-    def test_api_version_falls_back_to_the_environment(self, monkeypatch):
-        monkeypatch.setenv('AZURE_OPENAI_API_VERSION', '2099-01-01')
+    def test_api_version_falls_back_to_startup_config(self):
         # Constructing at all is the assertion: a missing api_version raises.
         assert build_llm(
-            _config(type='azure_openai', base_url='https://x.openai.azure.com')
+            _config(type='azure_openai', base_url='https://x.openai.azure.com'),
+            azure_openai_api_version='2099-01-01',
         )
 
     def test_api_version_from_config_parameters_is_used(self):

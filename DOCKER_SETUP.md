@@ -173,6 +173,19 @@ adding one file there.
 | `REDIS_PROTOCOL` | Protocol (default: `redis`) |
 | `REDIS_HOST` | Redis host (default: `redis-floware`) |
 | `REDIS_PORT` | Redis port (default: `6379`) |
+| `REDIS_MAXMEMORY` | Memory cap for the Redis carrying the Celery broker and the app cache (default: `2gb`) |
+| `REDIS_CALL_PROCESSING_MAXMEMORY` | Memory cap for `redis-call-processing`, a cache only (default: `512mb`) |
+| `REDIS_MAXMEMORY_CLIENTS` | Cap on client output buffers (default: `5%`) |
+
+The eviction policy is fixed at `noeviction` so queued Celery tasks are never evicted.
+
+**Celery backpressure** (the enqueue path refuses work above a queue depth):
+
+| Variable | Description |
+|----------|-------------|
+| `CELERY_MAX_QUEUE_DEPTH` | Queued tasks above which inference requests get a 429 (default: `10000`; `0` disables) |
+| `CELERY_QUEUE_DEPTH_CACHE_TTL_SECONDS` | How long a measured queue depth is reused (default: `1.0`) |
+| `CELERY_BACKPRESSURE_RETRY_AFTER_SECONDS` | `Retry-After` on the 429 (default: `30`) |
 
 **Application Settings**:
 
@@ -252,8 +265,7 @@ adding one file there.
 
 | Variable | Description |
 |----------|-------------|
-| `INFERENCE_SERVICE_URL` | URL for the inference service (default: `http://inference_app:8003`) |
-| `EMBEDDING_SERVICE_URL` | URL for the embedding service |
+| `INFERENCE_SERVICE_URL` | URL for the inference service (default: `http://inference_app:8003`). Serves both image embeddings (CLIP + DINOv3) and text embeddings (BGE-M3) |
 | `CALL_PROCESSING_BASE_URL` | URL for call processing service (default: `http://call_processing:8004`) |
 | `HERMES_URL` | URL for Hermes service |
 
@@ -608,6 +620,20 @@ docker-compose exec redis-call-processing redis-cli
 
 - Ensure Redis is running: `docker-compose ps redis-floware`
 - Test connection: `docker-compose exec redis-floware redis-cli ping`
+- Check the memory limits: `docker-compose exec redis-floware redis-cli config get maxmemory maxmemory-policy`
+- Check headroom: `docker-compose exec redis-floware redis-cli info memory | grep -E 'used_memory_human|maxmemory_human'`
+
+`OOM command not allowed` means Redis is at `maxmemory`; raise
+`REDIS_MAXMEMORY` or find what filled it with `redis-cli --bigkeys`.
+
+### Celery Queue Issues
+
+- Queue depth: `docker-compose exec redis-floware redis-cli llen '{celery}'`
+- The key is literally `{celery}`, quoted; `llen celery` always answers `0`.
+- All broker keys: `docker-compose exec redis-floware redis-cli --scan --pattern '{celery}*'`
+
+A `429` from the inference endpoints means the queue is at
+`CELERY_MAX_QUEUE_DEPTH`: scale the workers, or raise the limit.
 
 ### Port Conflicts
 

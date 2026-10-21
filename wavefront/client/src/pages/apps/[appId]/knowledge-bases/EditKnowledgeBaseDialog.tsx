@@ -1,5 +1,5 @@
 import floConsoleService from '@app/api';
-import { KbData, UpdateKnowledgeBasePayload } from '@app/api/knowledge-base-service';
+import { KbData, KNOWLEDGE_BASE_TYPES, UpdateKnowledgeBasePayload } from '@app/api/knowledge-base-service';
 import { Button } from '@app/components/ui/button';
 import {
   Dialog,
@@ -20,7 +20,6 @@ import { z } from 'zod';
 
 const editKnowledgeBaseSchema = z.object({
   name: z.string().min(1, 'Knowledge base name is required'),
-  type: z.string().min(1, 'Type is required'),
   description: z.string().optional(),
 });
 
@@ -45,7 +44,6 @@ const EditKnowledgeBaseDialog: React.FC<EditKnowledgeBaseDialogProps> = ({
     resolver: zodResolver(editKnowledgeBaseSchema),
     defaultValues: {
       name: '',
-      type: '',
       description: '',
     },
   });
@@ -54,7 +52,6 @@ const EditKnowledgeBaseDialog: React.FC<EditKnowledgeBaseDialogProps> = ({
     if (knowledgeBase && isOpen) {
       form.reset({
         name: knowledgeBase.name || '',
-        type: knowledgeBase.type || '',
         description: knowledgeBase.description || '',
       });
     }
@@ -65,7 +62,6 @@ const EditKnowledgeBaseDialog: React.FC<EditKnowledgeBaseDialogProps> = ({
       const payload: UpdateKnowledgeBasePayload = {
         name: data.name.trim(),
         description: data.description?.trim() || '',
-        type: data.type.trim(),
       };
 
       await floConsoleService.knowledgeBaseService.updateKnowledgeBase(knowledgeBase.id, payload);
@@ -107,21 +103,18 @@ const EditKnowledgeBaseDialog: React.FC<EditKnowledgeBaseDialogProps> = ({
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name="type"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      Type<span className="text-red-500">*</span>
-                    </FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g., General" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {/* The type decides the embedding models, so it is fixed at creation */}
+              <FormItem>
+                <FormLabel>Type</FormLabel>
+                <Input
+                  disabled
+                  value={
+                    KNOWLEDGE_BASE_TYPES.find((t) => t.value === knowledgeBase?.type)?.label ??
+                    knowledgeBase?.type ??
+                    ''
+                  }
+                />
+              </FormItem>
             </div>
 
             <FormField

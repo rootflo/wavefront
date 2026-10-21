@@ -6,7 +6,7 @@ This service is used to pre-generate welcome message audio files.
 """
 
 import base64
-import httpx
+import flo_lib.http as httpx
 from typing import Dict, Any
 from common_module.log.logger import logger
 

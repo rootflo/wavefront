@@ -32,7 +32,5 @@ class MessageQueue(ABC):
         pass
 
     @abstractmethod
-    def add_message(
-        self, message_body: dict, topic_name_or_queue_url: str | None = None
-    ) -> str:
+    def add_message(self, message_body: dict) -> str:
         pass

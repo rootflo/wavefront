@@ -7,7 +7,7 @@ from db_repo_module.cache.cache_manager import CacheManager
 from db_repo_module.cache.application_cache import (
     invalidate_knowledge_bases_cache,
 )
-from db_repo_module.models.knowledge_bases import KnowledgeBase
+from db_repo_module.models.knowledge_bases import KB_VECTOR_SIZES, KnowledgeBase
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from dependency_injector.wiring import inject
 from dependency_injector.wiring import Provide
@@ -65,13 +65,15 @@ async def create_knowledge_base(
             ),
         )
 
-    # Create new knowledge base
+    # Vector sizes come from the type: they are what its embedding models
+    # produce (NewKnowledge rejects any that were sent and don't match).
+    vector_size, vector_size_1 = KB_VECTOR_SIZES[new_base.type]
     new_kb = await knowledge_base_repository.create(
         name=new_base.name,
         description=new_base.description,
-        type=new_base.type,
-        vector_size=new_base.vector_size,
-        vector_size_1=new_base.vector_size_1 if new_base.vector_size_1 else None,
+        type=new_base.type.value,
+        vector_size=vector_size,
+        vector_size_1=vector_size_1,
     )
     invalidate_knowledge_bases_cache(cache_manager)
 
@@ -81,6 +83,9 @@ async def create_knowledge_base(
             {
                 'id': str(new_kb.id),
                 'name': new_kb.name,
+                'type': new_kb.type,
+                'vector_size': new_kb.vector_size,
+                'vector_size_1': new_kb.vector_size_1,
                 'created_at': new_kb.created_at.isoformat(),
                 'updated_at': new_kb.updated_at.isoformat(),
             }
@@ -183,8 +188,14 @@ async def update_knowledge_bases(
         update_kwargs['name'] = update_base.name
     if update_base.description is not None:
         update_kwargs['description'] = update_base.description
-    if update_base.type is not None:
-        update_kwargs['type'] = update_base.type
+    if update_base.type is not None and update_base.type.value != existing_kb.type:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                "A knowledge base's type can't be changed, because its documents "
+                'are embedded for that type. Create a new knowledge base instead.'
+            ),
+        )
 
     if not update_kwargs:
         return JSONResponse(

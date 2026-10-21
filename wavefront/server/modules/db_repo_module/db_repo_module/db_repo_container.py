@@ -1,11 +1,11 @@
 from db_repo_module.cache.cache_manager import CacheManager
+from db_repo_module.cache.redis_settings import RedisSettings
 from db_repo_module.database.connection import DatabaseClient
 from db_repo_module.database.connection import DatabaseConfig
 from db_repo_module.models.auth_secrets import AuthSecrets
 from db_repo_module.models.datasource import Datasource
 from db_repo_module.models.email_connection import EmailConnection
 from db_repo_module.models.oauth_app import OAuthApp
-from db_repo_module.models.kb_inferences import KnowledgeBaseInferences
 from db_repo_module.models.knowledge_base_documents import KnowledgeBaseDocuments
 from db_repo_module.models.knowledge_base_embeddings import KnowledgeBaseEmbeddings
 from db_repo_module.models.knowledge_bases import KnowledgeBase
@@ -23,8 +23,6 @@ from db_repo_module.models.datasource_audit_log import DatasourceAuditLog
 from db_repo_module.models.config import Config
 from db_repo_module.models.dynamic_query_yaml import DynamicQueryYaml
 from db_repo_module.models.model_schema import ModelSchema
-from db_repo_module.models.workflow_pipeline import WorkflowPipeline
-from db_repo_module.models.workflow_runs import WorkflowRuns
 from db_repo_module.models.scheduled_job import ScheduledJob
 from db_repo_module.models.scheduled_job_execution import ScheduledJobExecution
 from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
@@ -50,7 +48,7 @@ from dependency_injector import providers
 
 
 class DatabaseModuleContainer(containers.DeclarativeContainer):
-    config = providers.Configuration(ini_files=['config.ini'])
+    config = providers.Configuration()
 
     db_config = providers.Factory(
         DatabaseConfig,
@@ -133,8 +131,21 @@ class DatabaseModuleContainer(containers.DeclarativeContainer):
         db_client=db_client,
     )
 
+    redis_settings = providers.Factory(
+        RedisSettings,
+        host=config.redis.host,
+        port=config.redis.port,
+        protocol=config.redis.protocol,
+        password=config.redis.password,
+        db=config.redis.db,
+        pool_size=config.redis.pool_size,
+        pool_timeout=config.redis.pool_timeout,
+    )
+
     cache_manager = providers.Singleton(
-        CacheManager, namespace=config.env_config.app_name
+        CacheManager,
+        namespace=config.env_config.app_name,
+        settings=redis_settings,
     )
 
     knowledge_base_repository = providers.Singleton(
@@ -152,12 +163,6 @@ class DatabaseModuleContainer(containers.DeclarativeContainer):
     knowledge_base_embeddings_repository = providers.Singleton(
         SQLAlchemyRepository[KnowledgeBaseEmbeddings],
         model=KnowledgeBaseEmbeddings,
-        db_client=db_client,
-    )
-
-    kb_inference_repository = providers.Singleton(
-        SQLAlchemyRepository[KnowledgeBaseInferences],
-        model=KnowledgeBaseInferences,
         db_client=db_client,
     )
 
@@ -212,18 +217,6 @@ class DatabaseModuleContainer(containers.DeclarativeContainer):
     sift_features_repository = providers.Singleton(
         SQLAlchemyRepository[SIFTFeatures],
         model=SIFTFeatures,
-        db_client=db_client,
-    )
-
-    workflow_pipeline_repository = providers.Singleton(
-        SQLAlchemyRepository[WorkflowPipeline],
-        model=WorkflowPipeline,
-        db_client=db_client,
-    )
-
-    workflow_runs_repository = providers.Singleton(
-        SQLAlchemyRepository[WorkflowRuns],
-        model=WorkflowRuns,
         db_client=db_client,
     )
 
@@ -287,11 +280,6 @@ class DatabaseModuleContainer(containers.DeclarativeContainer):
     scheduled_job_execution_repository = providers.Singleton(
         SQLAlchemyRepository[ScheduledJobExecution],
         model=ScheduledJobExecution,
-        db_client=db_client,
-    )
-    knowledge_base_inference_repository = providers.Singleton(
-        SQLAlchemyRepository[KnowledgeBaseInferences],
-        model=KnowledgeBaseInferences,
         db_client=db_client,
     )
 

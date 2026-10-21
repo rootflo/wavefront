@@ -6,9 +6,12 @@ readme = "README.md"
 requires-python = ">=3.11"
 
 dependencies = [
-    "requests>=2.25.0",
+    "flo-lib",
     "pyjwt[crypto]>=2.9.0",
 ]
+
+[tool.uv.sources]
+flo-lib = { workspace = true }
 
 [tool.uv]
 package = true

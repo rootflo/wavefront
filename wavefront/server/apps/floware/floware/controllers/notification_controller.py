@@ -2,9 +2,6 @@ from uuid import UUID
 
 from common_module.common_container import CommonContainer
 from common_module.response_formatter import ResponseFormatter
-from db_repo_module.models.notification_users import NotificationUser
-from db_repo_module.models.notifications import Notification
-from db_repo_module.repositories.sql_alchemy_repository import SQLAlchemyRepository
 from dependency_injector.wiring import inject
 from dependency_injector.wiring import Provide
 from fastapi import Depends
@@ -82,14 +79,11 @@ async def get_notifications(
 async def updateNotification(
     notification_id: str,
     request: Request,
+    notification_service: NotificationService = Depends(
+        Provide[ApplicationContainer.notification_service]
+    ),
     response_formatter: ResponseFormatter = Depends(
         Provide[CommonContainer.response_formatter]
-    ),
-    notification_user_repository: SQLAlchemyRepository[NotificationUser] = Depends(
-        Provide[ApplicationContainer.notification_user_repository]
-    ),
-    notification_repository: SQLAlchemyRepository[Notification] = Depends(
-        Provide[ApplicationContainer.notification_repository]
     ),
 ):
     """Mark one notification seen for the calling user.
@@ -105,7 +99,7 @@ async def updateNotification(
     # pass a validity check but Postgres then rejects -- an unbalanced trailing
     # '}' from an unsubstituted URL template among them. Validating one string
     # and querying with another leaves exactly that gap, so the canonical form is
-    # what reaches the repository.
+    # what reaches the service.
     try:
         canonical_id = str(UUID(notification_id))
     except (ValueError, AttributeError, TypeError):
@@ -118,21 +112,16 @@ async def updateNotification(
             ),
         )
 
-    # notification_user.notification_id is a foreign key, so writing a marker for
-    # a notification that does not exist violates it and fails as a 500. Checked
-    # first so a stale or mistyped id is the 404 it should be.
-    if not await notification_repository.find_one(id=canonical_id):
+    updated = await notification_service.mark_seen(
+        notification_id=canonical_id, user_id=request.state.session.user_id
+    )
+    if not updated:
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND,
             content=response_formatter.buildErrorResponse(
                 f'Notification not found: {canonical_id}'
             ),
         )
-
-    current_id = request.state.session.user_id
-    await notification_user_repository.upsert(
-        {'notification_id': canonical_id, 'user_id': current_id}, seen=True
-    )
 
     return JSONResponse(
         status_code=status.HTTP_200_OK,

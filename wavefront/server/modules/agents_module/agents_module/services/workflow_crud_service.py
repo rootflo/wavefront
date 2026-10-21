@@ -36,7 +36,6 @@ from flo_ai import AriumBuilder, Agent
 from agents_module.services.agent_crud_service import AgentCrudService
 from agents_module.services.agent_inference_service import AgentInferenceService
 from tools_module.registry.tool_loader import ToolLoader
-from tools_module.registry.function_node_registry import FUNCTION_NODE_REGISTRY
 
 
 class WorkflowCrudService:
@@ -357,7 +356,7 @@ class WorkflowCrudService:
             arium_instance = AriumBuilder.from_yaml(
                 yaml_str=yaml_content,
                 agents=agents_dict,
-                function_registry=FUNCTION_NODE_REGISTRY,
+                function_registry=self.tool_loader.function_node_registry,
                 access_token=access_token,
                 app_key=app_key,
             ).build()

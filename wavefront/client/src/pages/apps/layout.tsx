@@ -4,13 +4,11 @@ import {
   ChatIcon,
   DatasourcesIcon,
   EmailIcon,
-  ModelInferenceIcon,
   ModelRepositoryIcon,
   PermissionIcon,
   PhoneIcon,
   RagIcon,
   ScheduledJobsIcon,
-  TriggerIcon,
   WorkflowIcon,
 } from '@app/assets/icons';
 import { appEnv } from '@app/config/env';
@@ -18,7 +16,16 @@ import clsx from 'clsx';
 import React from 'react';
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router';
 
-const navItems = [
+interface NavItem {
+  id: string;
+  name: string;
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+  link: string;
+  description: string;
+  alpha?: boolean;
+}
+
+const navItems: NavItem[] = [
   {
     id: 'agents',
     name: 'Agents',
@@ -69,13 +76,6 @@ const navItems = [
     description: 'Register OAuth apps mailboxes connect through',
   },
   {
-    id: 'triggers',
-    name: 'Triggers',
-    icon: TriggerIcon,
-    link: `/apps/:appId/triggers`,
-    description: 'Watch mailboxes and run agents or workflows on inbound email',
-  },
-  {
     id: 'scheduled-jobs',
     name: 'Scheduled Jobs',
     icon: ScheduledJobsIcon,
@@ -102,14 +102,6 @@ const navItems = [
     icon: PermissionIcon,
     link: `/apps/:appId/guardrails`,
     description: 'Configure AI safety policies for your application',
-  },
-  {
-    id: 'model-inference',
-    name: 'Model Inference',
-    icon: ModelInferenceIcon,
-    link: `/apps/:appId/model-inference`,
-    description: 'Manage and configure model inference for this application',
-    alpha: true,
   },
   {
     id: 'knowledge-bases',

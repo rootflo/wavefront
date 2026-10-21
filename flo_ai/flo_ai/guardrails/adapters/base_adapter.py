@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from typing import Any, ClassVar, Dict, Optional
 
 from ..contracts import (
     AssessmentRequest,
@@ -11,6 +11,7 @@ from ..contracts import (
     CheckResult,
     FailureClass,
     PolicyAction,
+    StreamCapability,
 )
 
 
@@ -24,6 +25,15 @@ class BaseAdapter(ABC):
     failures by the engine.
     """
 
+    #: Whether this provider's findings are span-local, and so whether a
+    #: guarded stream may release text before the response is complete.
+    #:
+    #: Defaults to BUFFERED, which is the answer that is never unsafe. An
+    #: adapter written against an older version of this class, or by someone
+    #: who never read this attribute, inherits the conservative behaviour
+    #: rather than silently acquiring permission to leak a prefix.
+    stream_capability: ClassVar[StreamCapability] = StreamCapability.BUFFERED
+
     @property
     @abstractmethod
     def name(self) -> str:
@@ -32,6 +42,19 @@ class BaseAdapter(ABC):
     @abstractmethod
     async def evaluate(self, request: AssessmentRequest) -> CheckResult:
         """Evaluate a payload and return a finding."""
+
+    def stream_capability_for(self, options: Dict[str, Any]) -> StreamCapability:
+        """Capability under one policy's options, defaulting to the class's.
+
+        Separate from the class attribute because capability is not always a
+        property of the provider alone. Presidio's findings are span-local for
+        a credit card and emphatically not for a person's name, and the class
+        attribute cannot see which of the two a policy selected.
+
+        Sync and side-effect-free: the engine calls this while deciding how to
+        run a stream, before the provider has been asked anything.
+        """
+        return self.stream_capability
 
     async def warmup(self) -> None:
         """Build whatever the first evaluation would otherwise build.

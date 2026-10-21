@@ -1,7 +1,6 @@
 import floConsoleService from '@app/api';
 import { GuardrailAdapterListData, GuardrailPolicy, PiiEntityListData } from '@app/api/guardrails-service';
-import { DocumentData, InferenceData, KbData } from '@app/api/knowledge-base-service';
-import { ModelData } from '@app/api/model-inference-service';
+import { DocumentData, KbData, KnowledgeBaseIndexStatusData } from '@app/api/knowledge-base-service';
 import { NamespaceItem } from '@app/api/namespace-service';
 import { AgentApi, AgentListItem } from '@app/types/agent';
 import { ApiServiceItem } from '@app/types/api-service';
@@ -13,7 +12,6 @@ import { ConfigurationListItem, ConfigurationValue } from '@app/types/configurat
 import { Datasource, DynamicQuery, ReadDynamicQueryData } from '@app/types/datasource';
 import { LLMInferenceConfig } from '@app/types/llm-inference-config';
 import { MessageProcessor, MessageProcessorListItem } from '@app/types/message-processor';
-import { Pipeline, PipelineFile, PipelineStatus } from '@app/types/pipeline';
 import { SttConfig } from '@app/types/stt-config';
 import { TelephonyConfig } from '@app/types/telephony-config';
 import { ToolDetails, VoiceAgentTool, VoiceAgentToolWithAssociation } from '@app/types/tool';
@@ -22,7 +20,7 @@ import { IUser } from '@app/types/user';
 import { VoiceAgent } from '@app/types/voice-agent';
 import { ScheduledJob } from '@app/types/scheduled-job';
 import { Trigger } from '@app/types/trigger';
-import { WorkflowListItem, WorkflowPipelineListItem, WorkflowRunListData } from '@app/types/workflow';
+import { WorkflowListItem } from '@app/types/workflow';
 import { EntityVersion } from '@app/types/version';
 
 const SCHEDULED_JOBS_PAGE_SIZE = 20;
@@ -203,22 +201,6 @@ const getLLMConfigsQueryFn = async (): Promise<LLMInferenceConfig[]> => {
   return [];
 };
 
-const getModelsQueryFn = async (): Promise<ModelData[]> => {
-  const response = await floConsoleService.modelInferenceService.listAllModels();
-  if (response.data?.meta?.status === 'success' && response.data.data?.data) {
-    return response.data.data.data;
-  }
-  return [];
-};
-
-const getModelQueryFn = async (modelId: string): Promise<ModelData | null> => {
-  const response = await floConsoleService.modelInferenceService.getModel(modelId);
-  if (response.data?.meta?.status === 'success' && response.data.data?.data) {
-    return response.data.data.data;
-  }
-  return null;
-};
-
 const getKnowledgeBasesQueryFn = async (): Promise<KbData[]> => {
   const response = await floConsoleService.knowledgeBaseService.listKnowledgeBases();
   if (response.data?.meta?.status === 'success' && response.data.data?.resources) {
@@ -243,12 +225,9 @@ const getKnowledgeBaseDocumentsQueryFn = async (kbId: string): Promise<DocumentD
   return [];
 };
 
-const getKnowledgeBaseInferencesQueryFn = async (kbId: string): Promise<InferenceData[]> => {
-  const response = await floConsoleService.knowledgeBaseService.listInferencesForKnowledgeBase(kbId);
-  if (response.data?.data?.resources) {
-    return response.data.data.resources;
-  }
-  return [];
+const getKnowledgeBaseIndexStatusQueryFn = async (kbId: string): Promise<KnowledgeBaseIndexStatusData | null> => {
+  const response = await floConsoleService.knowledgeBaseService.getKnowledgeBaseIndexStatus(kbId);
+  return response.data?.data ?? null;
 };
 
 const getWorkflowsQueryFn = async (namespace?: string): Promise<WorkflowListItem[]> => {
@@ -257,32 +236,6 @@ const getWorkflowsQueryFn = async (namespace?: string): Promise<WorkflowListItem
     return response.data.data.data.workflows;
   }
   return [];
-};
-
-const getWorkflowPipelinesQueryFn = async (): Promise<WorkflowPipelineListItem[]> => {
-  const response = await floConsoleService.workflowService.listWorkflowPipelines();
-  if (response.data?.meta?.status === 'success' && response.data.data?.workflow_pipelines) {
-    return response.data.data.workflow_pipelines;
-  }
-  return [];
-};
-
-const getWorkflowRunsQueryFn = async (
-  workflowPipelineId: string,
-  offset: number = 0,
-  limit: number = 10
-): Promise<WorkflowRunListData> => {
-  const response = await floConsoleService.workflowService.getWorkflowRuns(workflowPipelineId, offset, limit);
-  if (response.data?.meta?.status === 'success' && response.data.data) {
-    return response.data.data;
-  }
-  return {
-    workflow_runs: [],
-    total_count: 0,
-    page_size: limit,
-    page_number: Math.floor(offset / limit),
-    total_pages: 0,
-  };
 };
 
 const getChatbotsQueryFn = async (namespace?: string): Promise<Chatbot[]> => {
@@ -447,35 +400,6 @@ const getLLMConfigQueryFn = async (configId: string): Promise<LLMInferenceConfig
   return null;
 };
 
-const getPipelinesQueryFn = async (statusFilter?: PipelineStatus | 'all'): Promise<Pipeline[]> => {
-  const pipelineService = floConsoleService.dataPipelineService;
-  const response = await (statusFilter === 'all' || !statusFilter
-    ? pipelineService.listPipelines()
-    : pipelineService.listPipelines(statusFilter));
-  if (response.data?.data?.pipelines) {
-    return response.data.data.pipelines;
-  }
-  return [];
-};
-
-const getPipelineQueryFn = async (pipelineId: string): Promise<Pipeline | null> => {
-  const pipelineService = floConsoleService.dataPipelineService;
-  const response = await pipelineService.getPipeline(pipelineId);
-  if (response.data?.data?.pipeline) {
-    return response.data.data.pipeline;
-  }
-  return null;
-};
-
-const getPipelineFilesQueryFn = async (pipelineId: string): Promise<PipelineFile[]> => {
-  const pipelineService = floConsoleService.dataPipelineService;
-  const response = await pipelineService.listFiles(pipelineId);
-  if (response.data?.data?.files) {
-    return response.data.data.files;
-  }
-  return [];
-};
-
 const getAppByIdFn = async (appId: string) => {
   const {
     data: { data },
@@ -576,7 +500,7 @@ export {
   getDatasourceQueryFn,
   getDatasourceResourcesQueryFn,
   getKnowledgeBaseDocumentsQueryFn,
-  getKnowledgeBaseInferencesQueryFn,
+  getKnowledgeBaseIndexStatusQueryFn,
   getKnowledgeBaseQueryFn,
   getKnowledgeBasesQueryFn,
   getLLMConfigQueryFn,
@@ -589,12 +513,7 @@ export {
   getConfigurationQueryFn,
   getConfigurationsQueryFn,
   getMessageProcessorsQueryFn,
-  getModelQueryFn,
-  getModelsQueryFn,
   getNamespacesQueryFn,
-  getPipelineFilesQueryFn,
-  getPipelineQueryFn,
-  getPipelinesQueryFn,
   getSttConfigQueryFn,
   getSttConfigsQueryFn,
   getTelephonyConfigQueryFn,
@@ -607,8 +526,6 @@ export {
   getVoiceAgentToolQueryFn,
   getVoiceAgentToolsQueryFn,
   getVoiceAgentsQueryFn,
-  getWorkflowPipelinesQueryFn,
-  getWorkflowRunsQueryFn,
   getWorkflowsQueryFn,
   readDynamicQueryQueryFn,
   getScheduledJobsQueryFn,

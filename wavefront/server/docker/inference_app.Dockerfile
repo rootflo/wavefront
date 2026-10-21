@@ -1,10 +1,13 @@
-FROM nvidia/cuda:12.6.3-cudnn-devel-ubuntu22.04
+# CPU-only: torch comes from the pytorch-cpu index (see pyproject.toml), so
+# the CUDA base image would only add unused GPU libraries.
+FROM ubuntu:22.04
 
 WORKDIR /app
 
 COPY --from=ghcr.io/astral-sh/uv:0.12.10 /uv /uvx /bin/
 
 RUN apt-get update && apt-get install -y \
+    ca-certificates \
     libpq-dev \
     gcc \
     libgl1 \

@@ -19,3 +19,19 @@ Pillow already raises for unrecognised bytes, so callers need no new handling.
 """
 
 SUPPORTED_PILLOW_FORMATS = ('JPEG', 'PNG', 'GIF', 'WEBP', 'BMP', 'TIFF')
+
+# Mime types for the formats above, for rejecting an upload before its bytes
+# are shipped to a service that decodes with SUPPORTED_PILLOW_FORMATS.
+SUPPORTED_PILLOW_MIME_TYPES = frozenset(
+    {
+        'image/jpeg',
+        'image/jpg',
+        'image/pjpeg',
+        'image/png',
+        'image/gif',
+        'image/webp',
+        'image/bmp',
+        'image/x-ms-bmp',
+        'image/tiff',
+    }
+)

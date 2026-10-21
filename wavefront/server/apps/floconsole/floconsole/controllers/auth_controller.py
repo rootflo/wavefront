@@ -28,11 +28,6 @@ class AuthRequest(BaseModel):
     password: str
 
 
-@auth_router.get('/health')
-def health_check():
-    return {'status': 'ok'}
-
-
 @auth_router.post('/authenticate')
 @inject
 async def authenticate(

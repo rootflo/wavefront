@@ -1,6 +1,6 @@
 """HTTP client for making requests to floware APIs"""
 
-import httpx
+import flo_lib.http as httpx
 from typing import Dict, Any, Optional
 from uuid import UUID
 

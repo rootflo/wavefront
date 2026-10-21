@@ -1,7 +1,10 @@
+from pathlib import Path
+
+from common_module.common_container import CommonContainer
+from common_module.config_loader import load_ini
 from dependency_injector import containers
 from dependency_injector import providers
 
-from flo_cloud.kms import FloKmsService
 from floconsole.db import (
     DatabaseClient,
     DatabaseConfig,
@@ -18,11 +21,17 @@ from floconsole.services.user_service import UserService
 from floconsole.services.app_user_service import AppUserService
 
 
-class ApplicationContainer(containers.DeclarativeContainer):
-    config = providers.Configuration(ini_files=['./config.ini'])
+CONFIG_INI = Path(__file__).resolve().parent.parent / 'config.ini'
 
-    # Common module container (external dependency)
-    common_container = providers.Dependency()
+
+class ApplicationContainer(containers.DeclarativeContainer):
+    config = providers.Configuration(strict=True)
+
+    common = providers.Container(
+        CommonContainer,
+        config=config,
+        cache_manager=providers.Object(None),
+    )
 
     # Database configuration and client
     db_config = providers.Factory(
@@ -66,19 +75,11 @@ class ApplicationContainer(containers.DeclarativeContainer):
         app_user_repository=app_user_repository,
     )
 
-    kms_service = providers.Selector(
-        config.jwt_token.enable_cloud_kms,
-        true=providers.Singleton(
-            FloKmsService, cloud_provider=config.cloud_config.cloud_provider
-        ),
-        false=providers.Object(None),
-    )
-
     token_service = providers.Singleton(
         TokenService,
-        kms_service=kms_service,
-        token_expiry=config.jwt_token.token_expiry,
-        temporary_token_expiry=config.jwt_token.temporary_token_expiry,
+        kms_signer=common.kms_signer,
+        token_expiry=config.jwt_token.token_expiry.as_int(),
+        temporary_token_expiry=config.jwt_token.temporary_token_expiry.as_int(),
         app_env=config.env_config.app_env,
         token_prefix=config.jwt_token.token_prefix,
         issuer=config.jwt_token.issuer,
@@ -94,5 +95,13 @@ class ApplicationContainer(containers.DeclarativeContainer):
         service_issuer=config.jwt_token.issuer,
         app_env=config.env_config.app_env,
         token_prefix=config.jwt_token.token_prefix,
-        temporary_token_expiry=config.jwt_token.temporary_token_expiry,
+        temporary_token_expiry=config.jwt_token.temporary_token_expiry.as_int(),
+        passthrough_secret=config.env_config.passthrough_secret,
     )
+
+
+def create_container() -> ApplicationContainer:
+    container = ApplicationContainer()
+    load_ini(container.config, CONFIG_INI)
+    container.init_resources()
+    return container

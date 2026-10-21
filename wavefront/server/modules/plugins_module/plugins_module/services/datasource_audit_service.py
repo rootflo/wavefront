@@ -24,7 +24,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from common_module.feature.feature_flag import (
     DATASOURCE_AUDIT_ENABLED_FLAG,
-    is_feature_enabled,
+    FeatureFlags,
 )
 from common_module.log.logger import logger
 from common_module.middleware.request_id_middleware import get_current_request_id
@@ -49,6 +49,9 @@ AUDIT_MAX_PAYLOAD_BYTES: Optional[int] = 256 * 1024  # 256 KiB of serialized row
 # caps at ~2704 bytes, so the column cannot simply be widened without dropping
 # that index.
 AUDIT_FILTER_MAX_CHARS = 512
+
+# Audited, but not changes: kept out of the change notification feed.
+READ_OPERATIONS = frozenset({'download'})
 
 # Held module-level: asyncio.create_task keeps only a weak reference to the task,
 # so one with no other referent can be garbage collected mid-await and vanish
@@ -122,10 +125,12 @@ class DatasourceAuditService:
         max_rows: Optional[int] = AUDIT_MAX_ROWS,
         max_payload_bytes: Optional[int] = AUDIT_MAX_PAYLOAD_BYTES,
         change_notification_service=None,
+        feature_flags: FeatureFlags | None = None,
     ) -> None:
         self.audit_log_repository = audit_log_repository
         self.max_rows = max_rows
         self.max_payload_bytes = max_payload_bytes
+        self.feature_flags = feature_flags or FeatureFlags()
         # Optional, and typed loosely, to keep the dependency one-way: the
         # notification service imports from this module, so naming its type here
         # would be a cycle. None means "audit only", which is what every caller
@@ -159,7 +164,7 @@ class DatasourceAuditService:
 
         Does not raise, so callers can put it on a success path unwrapped.
         """
-        if not is_feature_enabled(DATASOURCE_AUDIT_ENABLED_FLAG):
+        if not self.feature_flags.enabled(DATASOURCE_AUDIT_ENABLED_FLAG):
             return
 
         try:
@@ -204,7 +209,7 @@ class DatasourceAuditService:
         batch_id: Optional[uuid.UUID] = None,
     ) -> None:
         """Write the audit rows. Awaitable, for tests and any blocking caller."""
-        if not is_feature_enabled(DATASOURCE_AUDIT_ENABLED_FLAG):
+        if not self.feature_flags.enabled(DATASOURCE_AUDIT_ENABLED_FLAG):
             return
 
         try:
@@ -235,14 +240,18 @@ class DatasourceAuditService:
             # expire_on_commit at its default, so once create_all commits and
             # closes its session these records are expired and detached, and
             # reading .changes off one raises DetachedInstanceError.
-            notification = self._build_change_notification(
-                datasource_id=datasource_id,
-                datasource_type=datasource_type,
-                operation=operation,
-                actor=actor,
-                occurred_at=occurred_at,
-                batch_id=batch_id,
-                records=records,
+            notification = (
+                None
+                if operation in READ_OPERATIONS
+                else self._build_change_notification(
+                    datasource_id=datasource_id,
+                    datasource_type=datasource_type,
+                    operation=operation,
+                    actor=actor,
+                    occurred_at=occurred_at,
+                    batch_id=batch_id,
+                    records=records,
+                )
             )
 
             # create_all opens one session and commits once, so a multi-table

@@ -40,24 +40,15 @@ const getGuardrailPolicyKey = (appId: string, namespace: string) => ['guardrail-
 const getGuardrailAdaptersKey = (appId: string) => ['guardrail-adapters', appId];
 const getGuardrailPiiEntitiesKey = (appId: string) => ['guardrail-pii-entities', appId];
 const getLLMConfigKey = (appId: string, configId: string) => ['llm-config', appId, configId];
-const getModelsKey = (appId: string) => ['models', appId];
-const getModelKey = (appId: string, modelId: string) => ['model', appId, modelId];
 const getKnowledgeBasesKey = (appId: string) => ['knowledge-bases', appId];
 const getKnowledgeBaseKey = (appId: string, kbId: string) => ['knowledge-base', appId, kbId];
 const getKnowledgeBaseDocumentsKey = (appId: string, kbId: string) => ['knowledge-base-documents', appId, kbId];
-const getKnowledgeBaseInferencesKey = (appId: string, kbId: string) => ['knowledge-base-inferences', appId, kbId];
+const getKnowledgeBaseIndexStatusKey = (appId: string, kbId: string) => ['knowledge-base-index-status', appId, kbId];
 const getWorkflowsKey = (appId: string, namespace?: string) => {
   if (namespace) {
     return ['workflows', appId, namespace];
   }
   return ['workflows', appId];
-};
-const getWorkflowPipelinesKey = (appId: string) => ['workflow-pipelines', appId];
-const getWorkflowRunsKey = (appId: string, workflowPipelineId: string, offset?: number, limit?: number) => {
-  const key: (string | number)[] = ['workflow-runs', appId, workflowPipelineId];
-  if (offset !== undefined) key.push('offset', offset);
-  if (limit !== undefined) key.push('limit', limit);
-  return key;
 };
 const getVoiceAgentsKey = (appId: string) => ['voice-agents', appId];
 const getTtsConfigsKey = (appId: string) => ['tts-configs', appId];
@@ -78,14 +69,6 @@ const getConfigurationsKey = (appId: string, namespace?: string) =>
 const getConfigurationKey = (appId: string, namespace: string, key: string) => ['configuration', appId, namespace, key];
 const getMessageProcessorsKey = (appId: string) => ['message-processors', appId];
 const getMessageProcessorKey = (appId: string, processorId: string) => ['message-processor', appId, processorId];
-const getPipelinesKey = (appId: string, statusFilter?: string) => {
-  if (statusFilter) {
-    return ['pipelines', appId, statusFilter];
-  }
-  return ['pipelines', appId];
-};
-const getPipelineKey = (appId: string, pipelineId: string) => ['pipeline', appId, pipelineId];
-const getPipelineFilesKey = (appId: string, pipelineId: string) => ['pipeline-files', appId, pipelineId];
 const getAppByIdKey = (appId: string) => ['app-by-id', appId];
 const getAppUsersKey = (appId: string) => ['app-users', appId];
 const getConsoleUsersKey = () => ['console-users'];
@@ -119,7 +102,7 @@ export {
   getOAuthAppsKey,
   readDynamicQueryKey,
   getKnowledgeBaseDocumentsKey,
-  getKnowledgeBaseInferencesKey,
+  getKnowledgeBaseIndexStatusKey,
   getKnowledgeBaseKey,
   getKnowledgeBasesKey,
   getGuardrailAdaptersKey,
@@ -132,12 +115,7 @@ export {
   getConfigurationsKey,
   getMessageProcessorKey,
   getMessageProcessorsKey,
-  getModelKey,
-  getModelsKey,
   getNamespacesKey,
-  getPipelineFilesKey,
-  getPipelineKey,
-  getPipelinesKey,
   getSttConfigKey,
   getSttConfigsKey,
   getTelephonyConfigKey,
@@ -151,8 +129,6 @@ export {
   getVoiceAgentToolKey,
   getVoiceAgentToolsKey,
   getVoiceAgentsKey,
-  getWorkflowPipelinesKey,
-  getWorkflowRunsKey,
   getWorkflowsKey,
   getAppByIdKey,
   getAppUsersKey,

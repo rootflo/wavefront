@@ -26,7 +26,14 @@ class S3Storage(CloudStorageHandler):
             aws_secret_access_key: AWS secret access key (optional)
             region_name: AWS region name (optional)
         """
-        self.s3_client = boto3.client('s3')
+        client_kwargs = {}
+        if aws_access_key_id is not None:
+            client_kwargs['aws_access_key_id'] = aws_access_key_id
+        if aws_secret_access_key is not None:
+            client_kwargs['aws_secret_access_key'] = aws_secret_access_key
+        if region_name is not None:
+            client_kwargs['region_name'] = region_name
+        self.s3_client = boto3.client('s3', **client_kwargs)
 
     def get_file(self, bucket_name: str, file_path: str) -> bytes:
         """

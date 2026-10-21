@@ -10,7 +10,7 @@ class FloUtils:
         1) Find all balanced `{ … }` blocks via a custom parser
         2) Strip comments and json.loads() each
         3) Merge into one dict (later keys override earlier)
-        4) On strict mode, raise FloException if no JSON found
+        4) In strict mode, raise ValueError without reply contents if no JSON is found
         """
 
         # Custom function to find balanced braces since (?R) is not supported in Python re
@@ -72,8 +72,8 @@ class FloUtils:
                 logger.error(f'Invalid JSON in response: {json_str}, {e}')
 
         if strict and not matches:
-            logger.error(f'No JSON found in strict mode: {data}')
-            raise ValueError(f'No JSON found in strict mode: {data}')
+            logger.error('No JSON found in strict mode')
+            raise ValueError('No JSON found in strict mode')
 
         return merged
 

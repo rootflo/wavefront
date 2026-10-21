@@ -20,7 +20,12 @@ import json
 import inspect
 from types import FunctionType
 from typing import List, Optional, Dict, Any, Callable, Awaitable
-from flo_ai import BaseMessage, TextMessageContent
+from flo_ai import (
+    BaseMessage,
+    ImageMessageContent,
+    TextMessageContent,
+    VideoMessageContent,
+)
 from flo_utils.utils.log import logger
 from flo_ai import FloUtils
 
@@ -235,8 +240,16 @@ def _validate_required_params(
         raise ValueError(error_msg)
 
 
-def _convert_result_to_string(result: Any) -> str:
-    """Convert function result to string."""
+def _convert_result(result: Any) -> str | ImageMessageContent | VideoMessageContent:
+    """Convert a function result to what the node passes on.
+
+    Images and videos (e.g. from datasource_download_file) are returned as-is:
+    FunctionNode wraps the result in a UserMessage, so the next agent receives
+    the media itself and the model sees it. Stringified, it would get only the
+    dataclass repr. Everything else becomes a string, as before.
+    """
+    if isinstance(result, (ImageMessageContent, VideoMessageContent)):
+        return result
     if result is None:
         return ''
     if isinstance(result, str):
@@ -249,7 +262,7 @@ def _convert_result_to_string(result: Any) -> str:
 def create_function_node_adapter(
     original_function: FunctionType,
     function_name: str,
-) -> Callable[..., Awaitable[str]]:
+) -> Callable[..., Awaitable[str | ImageMessageContent | VideoMessageContent]]:
     """
     Create an adapter function that wraps a registry function to work as a function node.
 
@@ -257,7 +270,8 @@ def create_function_node_adapter(
     1. Accepts the function node signature (inputs, variables, **kwargs)
     2. Extracts parameters from inputs/variables
     3. Calls the original function with the extracted parameters
-    4. Converts the result to a string
+    4. Converts the result to a string, except images and videos, which pass
+       through so the next node receives them as media
 
     Args:
         original_function: The original registry function to wrap
@@ -278,7 +292,7 @@ def create_function_node_adapter(
         inputs: Optional[List[BaseMessage]] = None,
         variables: Optional[Dict[str, Any]] = None,
         **kwargs,
-    ) -> str:
+    ) -> str | ImageMessageContent | VideoMessageContent:
         """
         Adapted function that works as a function node.
 
@@ -288,7 +302,7 @@ def create_function_node_adapter(
             **kwargs: Additional keyword arguments
 
         Returns:
-            String result of the function execution
+            The function's result as a string, or the image/video it returned
         """
         try:
             all_params, input_error = _collect_function_params(
@@ -331,7 +345,7 @@ def create_function_node_adapter(
                 if is_async
                 else original_function(**call_kwargs)
             )
-            return _convert_result_to_string(result)
+            return _convert_result(result)
 
         except ValueError:
             raise
@@ -352,23 +366,18 @@ def create_function_node_adapter(
 
 def get_function_node_adapter(
     function_name: str,
-    function_registry: Optional[Dict[str, FunctionType]] = None,
+    function_registry: Dict[str, FunctionType],
 ) -> Optional[Callable]:
     """
     Get a function node adapter for a function from the registry.
 
     Args:
         function_name: Name of the function in the registry
-        function_registry: Optional custom registry dict. If None, uses FUNCTION_REGISTRY
+        function_registry: Registry dict to look the function up in
 
     Returns:
         Adapted function with function node signature, or None if function not found
     """
-    if function_registry is None:
-        from tools_module.registry.function_registry import FUNCTION_REGISTRY
-
-        function_registry = FUNCTION_REGISTRY
-
     original_function = function_registry.get(function_name)
     if original_function is None:
         logger.warning(f"Function '{function_name}' not found in registry")

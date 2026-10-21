@@ -19,7 +19,8 @@ dependencies = [
     "opentelemetry-instrumentation-fastapi>=0.64b0",
     "opentelemetry-instrumentation-sqlalchemy>=0.49b0",
     "opentelemetry-instrumentation-redis>=0.49b0",
-    "opentelemetry-instrumentation-httpx>=0.49b0"
+    "opentelemetry-instrumentation-httpx>=0.49b0",
+    "flo-lib",
 ]
 
 [dependency-groups]
@@ -28,6 +29,9 @@ dev = [
     "pytest-asyncio>=1.0.0,<2.0.0",
     "asyncpg>=0.30.0,<1.0.0",
 ]
+
+[tool.uv.sources]
+flo-lib = { workspace = true }
 
 [tool.uv]
 package = true

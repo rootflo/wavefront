@@ -3,7 +3,6 @@ export { ApiActiveIcon, ApiIcon } from './api-icon';
 export { default as ChatIcon } from './chat-icon';
 export { default as DatasourcesIcon } from './datasources';
 export { default as EmailIcon } from './email-icon';
-export { default as ModelInferenceIcon } from './model-inference-icon';
 export { default as ModelRepositoryIcon } from './model-repository-icon';
 export { default as PermissionIcon } from './permission-icon';
 export { PhoneActiveIcon, PhoneIcon } from './phone-icon';

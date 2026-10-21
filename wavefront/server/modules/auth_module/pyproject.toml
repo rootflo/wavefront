@@ -13,12 +13,14 @@ dependencies = [
     "dependency-injector>=4.42.0,<5.0.0",
     "msgraph-sdk>=1.5.4,<2.0.0",
     "pyjwt[crypto]>=2.9.0",
+    "flo-lib",
 ]
 
 [tool.uv.sources]
 flo-testing = { workspace = true }
 common-module = { workspace = true }
 flo-cloud = { workspace = true }
+flo-lib = { workspace = true }
 
 [dependency-groups]
 dev = [

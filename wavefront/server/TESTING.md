@@ -11,12 +11,10 @@ pytest modules/auth_module     # one module
 pytest -k "reset_password"     # by name
 ```
 
-`APP_ENV=test` and `SUPERSET_FLAG=true` are set by the harness, so no env
-prelude is needed. Both are read at import time -- `APP_ENV` decides whether the
-embedding columns map to pgvector's `Vector` or to `Text`, and `SUPERSET_FLAG`
-decides whether `AuthContainer` even defines `superset_service` -- so the
-harness sets them on plugin import, before any module is imported. An explicit
-value in your environment still wins.
+No env prelude is needed. The harness switches the embedding columns to `Text`
+stand-ins instead of pgvector's `Vector` on plugin import, before any model is
+imported. Feature flags are not environment state: `superset_service` is always
+registered, and tests override `CommonContainer.feature_flags` to turn a flag on.
 
 Postgres has to be on `PATH` (`initdb`, `pg_ctl`). `brew install postgresql@14`
 is enough; no server needs to be running and no database needs to exist.
@@ -161,7 +159,9 @@ pass `include_user_utils=False`.
 The real `user_utils.get_current_user` is sync and returns
 `(role_id, user_id, session_id)` -- role first.
 
-`patch_feature_flag(namespace, enabled)` forces `is_feature_enabled` on or off.
+`patch_feature_flag(namespace, enabled)` overrides the injected `FeatureFlags`
+singleton so every flag reads `enabled`. `namespace` is kept for old call sites
+and ignored.
 
 ## Tests that do not need a database
 

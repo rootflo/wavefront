@@ -1,6 +1,6 @@
 [project]
 name = "flo_ai"
-version = "1.1.14"
+version = "1.1.18"
 description = "A easy way to create structured AI agents"
 authors = [{ name = "rootflo", email = "engineering.tools@rootflo.ai" }]
 requires-python = ">=3.10,<4.0"
@@ -55,8 +55,15 @@ guardrails = [
     "presidio-anonymizer>=2.2.364,<3",
 ]
 
+# Frame sampling for sending video to models without native video input
+# (everything except Gemini/Vertex). Bundles its own FFmpeg build.
+video = [
+    "av>=14.0.0,<20",
+]
+
 [dependency-groups]
 dev = [
+    "av>=14.0.0,<20",
     "db-sqlite3>=0.0.1,<0.0.2",
     "ipykernel>=6.29.5,<7",
     "peewee>=3.17.6,<4",

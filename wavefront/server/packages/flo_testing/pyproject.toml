@@ -20,7 +20,7 @@ dependencies = [
     "sqlalchemy>=2.0.0,<3.0.0",
     "psycopg[binary]>=3.1.0",
     "fastapi>=0.115.2,<1.0.0",
-    "httpx>=0.27.0",
+    "flo-lib",
     "dependency-injector>=4.42.0,<5.0.0",
 ]
 
@@ -28,6 +28,9 @@ dependencies = [
 # by adding one dev dependency, with no conftest to copy.
 [project.entry-points.pytest11]
 flo_testing = "flo_testing.plugin"
+
+[tool.uv.sources]
+flo-lib = { workspace = true }
 
 [tool.uv]
 package = true

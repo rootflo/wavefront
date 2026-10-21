@@ -583,6 +583,33 @@ ENTITY_CATALOG: Dict[str, EntityMeta] = {
     ),
 }
 
+#: Entity types with no useful upper bound on how long an occurrence can be.
+#:
+#: A URL has none at all, and an address-like LOCATION runs to a paragraph.
+#: The rest of the catalog is identifiers: shapes with a fixed or near-fixed
+#: width, the longest being EMAIL_ADDRESS at the RFC 5321 maximum of 320.
+UNBOUNDED_LENGTH: frozenset = frozenset({'URL'}) | NLP_BACKED
+
+#: Entity types a guarded stream may release text incrementally for.
+#:
+#: Incremental release rests on holding back a margin wider than the longest
+#: entity that could straddle the release point: an occurrence starting before
+#: the cut then ends inside the scanned text, so the scan either found it or
+#: it is not there. That argument needs a length bound, and these are the
+#: entities that have one -- see DEFAULT_MARGIN_CHARS in ``stream_guard``,
+#: which is sized against this set.
+#:
+#: Derived from the catalog rather than listed out, which is what makes it
+#: safe to leave alone. An entity type this file has never heard of -- a new
+#: recogniser arriving with a Presidio upgrade -- is absent from
+#: ENTITY_CATALOG, so it is absent from here, so a policy selecting it
+#: buffers. Staleness costs latency, loudly, rather than quietly under-sizing
+#: a margin for something already in use. That is the same reason this is not
+#: an ENTITY_MAX_CHARS table: set membership is the weaker claim to maintain
+#: by hand ("this entity is short" rather than "this entity is at most N"),
+#: and it fails in the direction that does not matter.
+INCREMENTAL_SAFE: frozenset = frozenset(ENTITY_CATALOG) - UNBOUNDED_LENGTH
+
 
 def describe(entity_id: str) -> EntityMeta:
     """Presentation for one entity, with a safe fallback.

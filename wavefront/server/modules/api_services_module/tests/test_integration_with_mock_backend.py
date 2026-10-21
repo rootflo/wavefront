@@ -106,7 +106,7 @@ class MockBackendService:
 
         # Create mock response
         from unittest.mock import Mock
-        import httpx
+        import flo_lib.http as httpx
 
         mock_response = Mock()
         mock_response.status_code = response_config['status_code']
@@ -244,7 +244,7 @@ def mock_httpx_with_backend(configured_mock_backend):
             method, url, headers, **kwargs
         )
 
-    with patch('httpx.AsyncClient') as mock_client_class:
+    with patch('flo_lib.http.AsyncClient') as mock_client_class:
         mock_client = MagicMock()
         mock_client.request.side_effect = mock_request
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -716,7 +716,7 @@ class TestPerformanceIntegration:
     @pytest.mark.asyncio
     async def test_high_throughput_requests(self, api_proxy, performance_mock_backend):
         """Test handling high throughput requests."""
-        with patch('httpx.AsyncClient') as mock_client_class:
+        with patch('flo_lib.http.AsyncClient') as mock_client_class:
             from unittest.mock import MagicMock, AsyncMock
 
             mock_client = MagicMock()

@@ -102,7 +102,7 @@ const PiiPreviewDialog: React.FC<Props> = ({ open, onOpenChange, options, groups
         setError('The server did not return a result.');
       }
     } catch (err) {
-      setError(extractErrorMessage(err) || 'An error occurred');
+      setError(extractErrorMessage(err) || 'Failed to run the preview');
     } finally {
       setRunning(false);
     }

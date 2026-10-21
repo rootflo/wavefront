@@ -107,14 +107,30 @@ def patch_auth(patch_current_user, patch_is_admin):
 
 
 @pytest.fixture
-def patch_feature_flag(monkeypatch):
-    """Force ``is_feature_enabled`` in a controller's namespace on or off."""
+def patch_feature_flag(core_containers):
+    """Turn every feature flag on or off for this test.
+
+    ``namespace`` is unused. Callers used to patch ``is_feature_enabled`` in one
+    module; flags are now one injected object, so the override covers every
+    caller.
+    """
 
     def _patch(namespace: str, enabled: bool) -> None:
-        monkeypatch.setattr(
-            f'{namespace}.is_feature_enabled',
-            lambda flag: enabled,
-            raising=False,
+        del namespace
+        from dependency_injector import providers
+
+        from common_module.feature.feature_flag import FeatureFlags
+
+        core_containers.common.feature_flags.override(
+            providers.Object(
+                FeatureFlags(
+                    allow_non_admin_all_data_access=enabled,
+                    datasource_audit_enabled=enabled,
+                    datasource_change_notification=enabled,
+                    inactive_account_disable=enabled,
+                    superset=enabled,
+                )
+            )
         )
 
     return _patch
