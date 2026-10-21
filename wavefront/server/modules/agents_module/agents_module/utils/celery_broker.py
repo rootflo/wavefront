@@ -13,6 +13,18 @@ class BrokerUnavailable(Exception):
 # LREMs the message whose headers.id is ARGV[1] from any of KEYS. Runs in Redis
 # so the queue isn't shipped to the API, and atomically so no worker can take
 # the task between the match and the LREM.
+#
+# Why not Celery's revoke():
+# - revoke() is a broadcast to workers, and our workers run with
+#   worker_enable_remote_control=False, so it reaches no one. It can't be
+#   enabled: its pidbox keys span hash slots, and any clustered Redis (Azure
+#   Managed Redis included) rejects them with CROSSSLOT errors.
+# - Even when delivered, the revoked id lives only in each running worker's
+#   memory: a worker started after the revoke still runs the task.
+# - It gives no answer, so we couldn't tell "cancelled" from "already picked up".
+# LREM's count gives that answer: 1 means no worker received the task.
+#
+# This ties cancel to a Redis broker and kombu's message layout.
 _REMOVE_BY_TASK_ID = """
 local task_id = ARGV[1]
 local page = 500
