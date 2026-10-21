@@ -118,6 +118,9 @@ class RouterSettingsModel(BaseModel):
     allow_early_exit: Optional[bool] = Field(
         None, description='Allow early exit (for reflection router)'
     )
+    context_description: Optional[str] = Field(
+        None, description='Workflow context for the routing prompt (for smart router)'
+    )
     planner_agent: Optional[str] = Field(
         None, description='Planner agent name (for plan_execute router)'
     )

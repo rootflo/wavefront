@@ -1,7 +1,7 @@
 import asyncio
 import json
 import yaml
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
@@ -22,7 +22,14 @@ from agents_module.utils.cache_utils import (
     get_agent_yaml_cache_key,
     get_agents_list_cache_key,
 )
+from agents_module.models.yaml_validation_schemas import YamlValidationError
 from agents_module.utils.validation_utils import validate_agent_workflow_name
+from agents_module.utils.yaml_validation import (
+    format_validation_errors,
+    missing_tool_error,
+    parse_yaml_document,
+    validate_agent_document,
+)
 from flo_ai import AgentBuilder
 from flo_ai.tool.base_tool import Tool
 from tools_module.utils.api_service_tool_loader import load_api_service_tool
@@ -71,6 +78,85 @@ class AgentCrudService:
             60  # short TTL for name-based version resolution
         )
 
+    async def resolve_tool(
+        self, tool_name: str, tool_available: List[Tool]
+    ) -> Optional[Tool]:
+        """
+        Find a tool an agent YAML refers to by name.
+
+        Looks in the available tools first, then message processors, then API
+        services - the same order agents use when they run.
+
+        Args:
+            tool_name: The tool name as written in the YAML
+            tool_available: List of available tools
+
+        Returns:
+            The Tool, or None if nothing by that name exists
+        """
+        for tool_obj in tool_available:
+            if tool_obj.name == tool_name:
+                return tool_obj
+
+        tool_obj = await self._try_load_message_processor_tool(tool_name)
+        if tool_obj:
+            return tool_obj
+
+        return await self._try_load_api_service_tool(tool_name)
+
+    async def _check_yaml_content(
+        self, yaml_content: str, tool_available: List[Tool]
+    ) -> Tuple[List[YamlValidationError], Dict[str, Tool]]:
+        """
+        Validate agent YAML statically: no LLM is created and nothing is built.
+
+        Runs flo_ai's agent model and the rules the agent build adds, then looks
+        up every tool the agent names.
+
+        Returns:
+            The errors found (empty when valid) and the tools that resolved, keyed
+            by name, ready to hand to AgentBuilder.
+        """
+        yaml_data, errors = parse_yaml_document(yaml_content)
+        if yaml_data is None:
+            return errors, {}
+
+        report = validate_agent_document(yaml_data)
+        errors = list(report.errors)
+
+        resolved: Dict[str, Optional[Tool]] = {}
+        for tool_ref in report.tool_refs:
+            if tool_ref.name not in resolved:
+                resolved[tool_ref.name] = await self.resolve_tool(
+                    tool_ref.name, tool_available
+                )
+            if resolved[tool_ref.name] is None:
+                errors.append(missing_tool_error(tool_ref))
+
+        tool_registry = {
+            name: tool_obj for name, tool_obj in resolved.items() if tool_obj
+        }
+
+        return errors, tool_registry
+
+    async def validate_yaml(
+        self, yaml_content: str, tool_available: List[Tool]
+    ) -> List[YamlValidationError]:
+        """
+        Validate agent YAML without persisting or building anything.
+
+        Args:
+            yaml_content: The YAML content to validate
+            tool_available: List of available tools
+
+        Returns:
+            Every problem found, each with the path of the offending key; empty
+            when the YAML is valid. Unlike create/update this does not construct
+            the LLM client, so it cannot catch a failure that only happens there.
+        """
+        errors, _ = await self._check_yaml_content(yaml_content, tool_available)
+        return errors
+
     async def _validate_yaml_content(
         self,
         yaml_content: str,
@@ -93,42 +179,11 @@ class AgentCrudService:
             ValueError: If YAML is invalid or agent cannot be built
         """
         try:
-            yaml_data = yaml.safe_load(yaml_content)
-            yaml_tools = yaml_data.get('agent', {}).get('tools', None)
-            tool_registry = {}
-            if yaml_tools:
-                for tool in yaml_tools:
-                    tool_name = tool.get('name', None)
-                    if tool_name:
-                        # First, try to find in tool_available list
-                        tool_found = False
-                        for tool_obj in tool_available:
-                            if tool_obj.name == tool_name:
-                                tool_registry[tool_name] = tool_obj
-                                tool_found = True
-                                break
-
-                        # If not found, check if it's a message processor
-                        if not tool_found:
-                            tool_obj = await self._try_load_message_processor_tool(
-                                tool_name
-                            )
-                            if tool_obj:
-                                tool_registry[tool_name] = tool_obj
-                                tool_found = True
-
-                        # If still not found, try loading as API service
-                        if not tool_found:
-                            tool_obj = await self._try_load_api_service_tool(tool_name)
-                            if tool_obj:
-                                tool_registry[tool_name] = tool_obj
-                                tool_found = True
-
-                        # If still not found, log warning (AgentBuilder will fail with better error)
-                        if not tool_found:
-                            logger.warning(
-                                f'Tool {tool_name} not found in available tools, message processors, or API services'
-                            )
+            errors, tool_registry = await self._check_yaml_content(
+                yaml_content, tool_available
+            )
+            if errors:
+                raise ValueError(format_validation_errors(errors))
 
             AgentBuilder.from_yaml(
                 yaml_str=yaml_content,

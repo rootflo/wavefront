@@ -31,6 +31,7 @@ export const NodeCard = ({ title, icon: Icon, children, colorClass, selected, ba
           {badge}
           {onDelete && (
             <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 onDelete();

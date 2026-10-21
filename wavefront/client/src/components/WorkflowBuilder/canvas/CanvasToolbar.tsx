@@ -33,6 +33,7 @@ export const CanvasToolbar = ({
 }: CanvasToolbarProps) => (
   <div className="bg-card/95 border-border absolute top-3 left-4 z-20 flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 shadow-md backdrop-blur-md">
     <Button
+      type="button"
       size="sm"
       variant="outline"
       onClick={onAddAgent}
@@ -41,6 +42,7 @@ export const CanvasToolbar = ({
       <Bot size={13} /> + Agent
     </Button>
     <Button
+      type="button"
       size="sm"
       variant="outline"
       onClick={onAddRouter}
@@ -49,6 +51,7 @@ export const CanvasToolbar = ({
       <GitBranch size={13} /> + Router
     </Button>
     <Button
+      type="button"
       size="sm"
       variant="outline"
       onClick={onAddFunction}
@@ -57,6 +60,7 @@ export const CanvasToolbar = ({
       <Cpu size={13} /> + Function
     </Button>
     <Button
+      type="button"
       size="sm"
       variant="outline"
       onClick={onAddIterator}
@@ -65,6 +69,7 @@ export const CanvasToolbar = ({
       <ArrowRight size={13} /> + Iterator
     </Button>
     <Button
+      type="button"
       size="sm"
       variant="outline"
       onClick={onAddSubworkflow}
@@ -76,6 +81,7 @@ export const CanvasToolbar = ({
     <div className="bg-border mx-1 my-auto h-4 w-[1px]" />
 
     <Button
+      type="button"
       size="sm"
       variant="ghost"
       onClick={onAutoLayout}
@@ -86,6 +92,7 @@ export const CanvasToolbar = ({
     </Button>
 
     <Button
+      type="button"
       size="sm"
       variant={showDataWires ? 'secondary' : 'ghost'}
       onClick={onToggleDataWires}
@@ -100,6 +107,7 @@ export const CanvasToolbar = ({
     </Button>
 
     <Button
+      type="button"
       size="sm"
       variant="ghost"
       onClick={onFitView}

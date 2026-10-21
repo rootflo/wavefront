@@ -2,10 +2,15 @@ import { Handle, Position, NodeProps } from '@xyflow/react';
 import { Cpu, Filter, RotateCcw } from 'lucide-react';
 import React from 'react';
 import { Badge } from '@app/components/ui/badge';
+import { useWorkflowActions } from '../hooks/useWorkflowActions';
 import { NodeCard } from './NodeCard';
 
-export const FunctionNode = React.memo(({ data, selected }: NodeProps) => {
+export const FunctionNode = React.memo(({ id, data, selected }: NodeProps) => {
+  const { startNodeId, deleteNode } = useWorkflowActions();
+  const isStartNode = id === startNodeId;
   const inputFilters = Array.isArray(data.input_filter) ? data.input_filter : [];
+  // The runtime rejects a function node without a registered function name
+  const functionName = (data.function_name as string) || '';
 
   return (
     <>
@@ -17,13 +22,13 @@ export const FunctionNode = React.memo(({ data, selected }: NodeProps) => {
         selected={selected}
         badge={
           <div className="flex items-center gap-1">
-            {Boolean(data.isStartNode) && (
+            {isStartNode && (
               <Badge className="bg-emerald-500 px-1.5 py-0 text-[9px] font-medium text-white shadow-xs">🚀 Start</Badge>
             )}
             {Boolean(data.isEndNode) && (
               <Badge className="bg-purple-600 px-1.5 py-0 text-[9px] font-medium text-white shadow-xs">🏁 End</Badge>
             )}
-            {!data.isStartNode && !data.isEndNode && (
+            {!isStartNode && !data.isEndNode && (
               <Badge variant="outline" className="border-blue-500/20 bg-blue-500/10 py-0 text-[10px] text-blue-500">
                 Function
               </Badge>
@@ -38,7 +43,7 @@ export const FunctionNode = React.memo(({ data, selected }: NodeProps) => {
             )}
           </div>
         }
-        onDelete={data.onDelete as (() => void) | undefined}
+        onDelete={() => deleteNode(id)}
       >
         <div className="text-muted-foreground text-[11px] leading-relaxed">
           {(data.description as string) || 'Executes deterministic logic.'}
@@ -53,9 +58,11 @@ export const FunctionNode = React.memo(({ data, selected }: NodeProps) => {
 
         <div className="border-border/60 text-muted-foreground flex items-center justify-between border-t pt-2 text-[10px]">
           <span className="text-muted-foreground">Registry Name:</span>
-          <span className="text-foreground max-w-[140px] truncate font-semibold">
-            {(data.function_name as string) || 'passthrough'}
-          </span>
+          {functionName ? (
+            <span className="text-foreground max-w-[140px] truncate font-semibold">{functionName}</span>
+          ) : (
+            <span className="text-destructive font-semibold">Not set</span>
+          )}
         </div>
       </NodeCard>
       <Handle type="source" position={Position.Right} className="border-background h-3.5 w-3.5 border-2 bg-blue-500" />

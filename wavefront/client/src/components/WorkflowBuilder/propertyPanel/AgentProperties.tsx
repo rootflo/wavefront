@@ -1,9 +1,33 @@
+import React from 'react';
 import { Node } from '@xyflow/react';
+import { Badge } from '@app/components/ui/badge';
 import { Input } from '@app/components/ui/input';
 import { Label } from '@app/components/ui/label';
 import MultiSelect from '@app/components/MultiSelect';
+import { AgentConfigMethod } from '@app/types/workflow-builder';
 import { ParserBuilder } from '../ParserBuilder';
+import { isExecutableNode } from '../graphUtils';
+import { NumberInput } from './NumberInput';
 import { LlmModelOption, NodePropertiesProps, ParserMode, ToolOption } from './types';
+
+// A tool entry is a registry name or a config object (name plus prefilled_params / name_override / ...)
+type ToolEntry = string | { name?: string; [key: string]: unknown };
+
+const toolName = (tool: ToolEntry): string => (typeof tool === 'string' ? tool : (tool?.name ?? ''));
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const formatParser = (parser: unknown): string => {
+  if (isPlainObject(parser)) return JSON.stringify(parser, null, 2);
+  return typeof parser === 'string' ? parser : '';
+};
+
+const EXTERNAL_CONFIG_LABELS: Partial<Record<AgentConfigMethod, string>> = {
+  reference: 'by reference',
+  yaml_file: 'in a YAML file',
+  yaml_config: 'in inline YAML config',
+};
 
 interface AgentPropertiesProps extends NodePropertiesProps {
   rootfloConfigs: LlmModelOption[];
@@ -15,15 +39,65 @@ interface AgentPropertiesProps extends NodePropertiesProps {
 export const AgentProperties = ({
   selectedNode,
   handleChange,
+  handleChanges,
   nodes,
   rootfloConfigs,
   tools,
   parserMode,
   onParserModeChange,
 }: AgentPropertiesProps) => {
+  // Raw parser JSON is edited as text and only written to the node when it parses to an object,
+  // so a half-typed schema never reaches the YAML as a string
+  const [parserText, setParserText] = React.useState(() => formatParser(selectedNode.data.parser));
+  const [parserError, setParserError] = React.useState<string | null>(null);
+
+  const handleParserTextChange = (text: string) => {
+    setParserText(text);
+    if (!text.trim()) {
+      setParserError(null);
+      handleChange('parser', undefined);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(text);
+      if (!isPlainObject(parsed)) {
+        setParserError('The parser must be a JSON object.');
+        return;
+      }
+      setParserError(null);
+      handleChange('parser', parsed);
+    } catch {
+      setParserError('Invalid JSON. The parser is not updated until this is valid.');
+    }
+  };
+
+  const handleParserModeChange = (mode: ParserMode) => {
+    // Entering raw mode shows the current parser; leaving it drops any unparsed text
+    setParserText(formatParser(selectedNode.data.parser));
+    setParserError(null);
+    onParserModeChange(mode);
+  };
+
+  // Keep config objects (prefilled_params, name_override) for tools that stay selected
+  const handleToolsChange = (ids: string[]) => {
+    const current = (Array.isArray(selectedNode.data.tools) ? selectedNode.data.tools : []) as ToolEntry[];
+    const next = ids.map((id) => current.find((t) => toolName(t) === id) ?? id);
+    handleChange('tools', next.length > 0 ? next : undefined);
+  };
+
+  const configMethod = selectedNode.data.configMethod as AgentConfigMethod | undefined;
+  const externalSource = configMethod ? EXTERNAL_CONFIG_LABELS[configMethod] : undefined;
+  const readOnly = Boolean(externalSource);
+
   return (
     <>
       <div className="space-y-4">
+        {externalSource && (
+          <Badge variant="outline" className="text-[10px] font-normal">
+            Job and model are configured {externalSource}; edit them there.
+          </Badge>
+        )}
+
         <div>
           <Label className="mb-1 block text-xs">Role</Label>
           <Input
@@ -51,10 +125,8 @@ export const AgentProperties = ({
             <select
               className="bg-background border-border focus:border-primary text-foreground w-full rounded-md border px-2 py-1.5 text-xs focus:outline-none"
               value={(selectedNode.data.model_id as string) || ''}
-              onChange={(e) => {
-                handleChange('provider', 'rootflo');
-                handleChange('model_id', e.target.value);
-              }}
+              disabled={readOnly}
+              onChange={(e) => handleChanges({ provider: 'rootflo', model_id: e.target.value })}
             >
               <option value="">Select LLM Model</option>
               {rootfloConfigs.map((model: { id: string; display_name?: string; llm_model?: string }) => (
@@ -69,23 +141,24 @@ export const AgentProperties = ({
         <div className="flex gap-2">
           <div className="flex-1">
             <Label className="mb-1 block text-xs">Temperature</Label>
-            <Input
-              type="number"
+            <NumberInput
               step="0.1"
-              min="0"
-              max="1"
-              value={(selectedNode.data.temperature as string) ?? '0.7'}
-              onChange={(e) => handleChange('temperature', e.target.value)}
+              min={0}
+              max={2}
+              placeholder="0.7"
+              value={selectedNode.data.temperature}
+              onChange={(v) => handleChange('temperature', v)}
               className="bg-background h-8 text-xs"
             />
           </div>
           <div className="flex-1">
             <Label className="mb-1 block text-xs">Max Tokens</Label>
-            <Input
-              type="number"
+            <NumberInput
+              min={1}
+              step={1}
               placeholder="Optional"
-              value={(selectedNode.data.max_tokens as string) || ''}
-              onChange={(e) => handleChange('max_tokens', e.target.value)}
+              value={selectedNode.data.max_tokens}
+              onChange={(v) => handleChange('max_tokens', v)}
               className="bg-background h-8 text-xs"
             />
           </div>
@@ -94,8 +167,9 @@ export const AgentProperties = ({
         <div>
           <Label className="mb-1 block text-xs">Job / System Prompt</Label>
           <textarea
-            className="bg-background border-border focus:border-primary text-foreground h-24 w-full resize-none rounded-md border px-3 py-2 text-xs leading-relaxed focus:outline-none"
+            className="bg-background border-border focus:border-primary text-foreground h-24 w-full resize-none rounded-md border px-3 py-2 text-xs leading-relaxed read-only:opacity-60 focus:outline-none"
             value={(selectedNode.data.job as string) || ''}
+            readOnly={readOnly}
             onChange={(e) => handleChange('job', e.target.value)}
             placeholder="Give this agent instructions on how to process incoming workflow requests..."
           />
@@ -106,7 +180,7 @@ export const AgentProperties = ({
         <div>
           <Label className="mb-1 block text-xs">Input Filter (Upstream Nodes)</Label>
           <MultiSelect
-            items={nodes.filter((n) => n.id !== selectedNode.id)}
+            items={nodes.filter((n) => n.id !== selectedNode.id && isExecutableNode(n))}
             selectedIds={Array.isArray(selectedNode.data.input_filter) ? selectedNode.data.input_filter : []}
             onChange={(ids) => handleChange('input_filter', ids.length > 0 ? ids : undefined)}
             getId={(n: Node) => n.id}
@@ -125,13 +199,9 @@ export const AgentProperties = ({
           <MultiSelect
             items={tools as Array<{ name: string }>}
             selectedIds={
-              Array.isArray(selectedNode.data.tools)
-                ? selectedNode.data.tools.map((t: unknown) =>
-                    typeof t === 'string' ? t : ((t as { name?: string })?.name ?? '')
-                  )
-                : []
+              Array.isArray(selectedNode.data.tools) ? (selectedNode.data.tools as ToolEntry[]).map(toolName) : []
             }
-            onChange={(ids) => handleChange('tools', ids.length > 0 ? ids : undefined)}
+            onChange={handleToolsChange}
             getId={(t: { name: string }) => t.name}
             getLabel={(t: { name: string }) => t.name}
             placeholder="Select tools..."
@@ -148,14 +218,16 @@ export const AgentProperties = ({
             <Label className="block text-xs">Output Parser Schema (JSON / YAML)</Label>
             <div className="bg-muted border-border flex overflow-hidden rounded border">
               <button
+                type="button"
                 className={`px-2 py-0.5 text-[10px] ${parserMode === 'builder' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/80'}`}
-                onClick={() => onParserModeChange('builder')}
+                onClick={() => handleParserModeChange('builder')}
               >
                 Builder
               </button>
               <button
+                type="button"
                 className={`px-2 py-0.5 text-[10px] ${parserMode === 'raw' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/80'}`}
-                onClick={() => onParserModeChange('raw')}
+                onClick={() => handleParserModeChange('raw')}
               >
                 Raw JSON
               </button>
@@ -164,23 +236,16 @@ export const AgentProperties = ({
           {parserMode === 'builder' ? (
             <ParserBuilder value={selectedNode.data.parser} onChange={(val) => handleChange('parser', val)} />
           ) : (
-            <textarea
-              className="bg-background border-border focus:border-primary text-foreground h-48 w-full resize-none rounded-md border px-3 py-2 font-mono text-xs focus:outline-none"
-              value={
-                typeof selectedNode.data.parser === 'object'
-                  ? JSON.stringify(selectedNode.data.parser, null, 2)
-                  : (selectedNode.data.parser as string) || ''
-              }
-              onChange={(e) => {
-                try {
-                  const parsed = JSON.parse(e.target.value);
-                  handleChange('parser', parsed);
-                } catch {
-                  handleChange('parser', e.target.value);
-                }
-              }}
-              placeholder='{\n  "name": "MySchema",\n  "fields": []\n}'
-            />
+            <>
+              <textarea
+                className={`bg-background focus:border-primary text-foreground h-48 w-full resize-none rounded-md border px-3 py-2 font-mono text-xs focus:outline-none ${parserError ? 'border-destructive' : 'border-border'}`}
+                value={parserText}
+                onChange={(e) => handleParserTextChange(e.target.value)}
+                aria-invalid={!!parserError}
+                placeholder='{\n  "name": "MySchema",\n  "fields": []\n}'
+              />
+              {parserError && <p className="text-destructive mt-0.5 text-[10px]">{parserError}</p>}
+            </>
           )}
           <p className="text-muted-foreground mt-1 text-[10px]">
             Forces the agent to produce validated structured schema output.

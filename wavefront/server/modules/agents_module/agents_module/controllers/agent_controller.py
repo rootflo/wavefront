@@ -16,9 +16,11 @@ from agents_module.models.agent_schemas import (
     AgentInferenceRequest,
     AgentInferenceResponse,
 )
+from agents_module.models.yaml_validation_schemas import YamlValidationResult
 from agents_module.utils.input_processing_utils import process_inference_inputs
 from agents_module.utils.auth_utils import extract_auth_credentials
 from agents_module.utils.sse_utils import SSE_HEADERS, format_sse
+from agents_module.utils.yaml_validation import decode_yaml_body
 from llm_inference_config_module.services.llm_inference_config_service import (
     LlmInferenceConfigService,
 )
@@ -341,6 +343,55 @@ async def create_agent(
             {
                 'message': 'Agent created successfully',
                 'data': agent,
+            }
+        ),
+    )
+
+
+# A ':validate' custom method rather than '/agents/validate', which the
+# '/agents/{name}' create route above would shadow and which would reserve the
+# agent name 'validate'
+@agents_router.post('/v1/agent-management/agents:validate')
+@inject
+async def validate_agent(
+    request: Request,
+    agent_crud_service: AgentCrudService = Depends(
+        Provide[AgentsContainer.agent_crud_service]
+    ),
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+    tool_loader: ToolLoader = Depends(Provide[AgentsContainer.tool_loader]),
+):
+    """
+    Validate agent YAML without saving it
+
+    Runs the same checks create and update run, except that no LLM client is
+    constructed, so this makes no network calls. A document with problems is not
+    an error: it answers 200 with valid=false and one entry per problem.
+
+    Args:
+        request: Request containing raw YAML content as text/plain
+
+    Returns:
+        JSONResponse: {valid, errors: [{path, message}]}
+    """
+    yaml_content, errors = decode_yaml_body(await request.body())
+    if yaml_content is not None:
+        errors = await agent_crud_service.validate_yaml(
+            yaml_content, tool_available=tool_loader.load_all_tools()
+        )
+
+    result = YamlValidationResult(valid=not errors, errors=errors)
+    logger.info(f'Validated agent YAML - valid: {result.valid}, errors: {len(errors)}')
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            {
+                'message': 'Agent YAML is valid'
+                if result.valid
+                else f'Agent YAML has {len(errors)} error(s)',
+                'data': result.model_dump(),
             }
         ),
     )

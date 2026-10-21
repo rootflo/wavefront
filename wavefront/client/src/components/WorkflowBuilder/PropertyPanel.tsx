@@ -14,6 +14,7 @@ import { IteratorProperties } from './propertyPanel/IteratorProperties';
 import { RouterProperties } from './propertyPanel/RouterProperties';
 import { SubworkflowProperties } from './propertyPanel/SubworkflowProperties';
 import { ParserMode } from './propertyPanel/types';
+import { isExecutableNode, sanitizeNodeName, validateNodeName } from './graphUtils';
 
 const NODE_TYPE_TITLES: Record<string, string> = {
   [NODE_TYPES.AGENT]: 'Agent Settings',
@@ -28,9 +29,11 @@ const DEFAULT_NODE_TYPE_TITLE = 'Step Settings';
 interface PropertyPanelProps {
   selectedNode: Node | null;
   onClose: () => void;
-  onUpdateNode: (id: string, data: Record<string, unknown>) => void;
+  // Merges `patch` into the node's current data
+  onUpdateNode: (id: string, patch: Record<string, unknown>) => void;
   onRenameNode?: (oldId: string, newId: string) => void;
   nodes?: Node[];
+  startNodeId?: string;
   onSetStartAgent?: (agentId: string) => void;
   onDeleteNode?: (nodeId: string) => void;
 }
@@ -41,6 +44,7 @@ export const PropertyPanel = ({
   onUpdateNode,
   onRenameNode,
   nodes = [],
+  startNodeId,
   onSetStartAgent,
   onDeleteNode,
 }: PropertyPanelProps) => {
@@ -49,35 +53,54 @@ export const PropertyPanel = ({
   const { data: workflows = [] } = useGetWorkflows(appId || '');
   const { data: tools = [] } = useGetTools(appId || '');
 
-  const [nameInput, setNameInput] = React.useState((selectedNode?.data?.label as string) || selectedNode?.id || '');
+  const selectedId = selectedNode?.id ?? '';
+  const [nameInput, setNameInput] = React.useState(selectedId);
+  const [nameError, setNameError] = React.useState<string | null>(null);
   const [parserMode, setParserMode] = React.useState<ParserMode>('builder');
 
+  // Reset the name field when another node is selected or this one is renamed
   React.useEffect(() => {
-    if (selectedNode) {
-      setNameInput((selectedNode.data?.label as string) || selectedNode.id);
-    }
-  }, [selectedNode]);
+    setNameInput(selectedId);
+    setNameError(null);
+  }, [selectedId]);
 
   if (!selectedNode) return null;
 
-  const handleChange = (key: string, value: unknown) => {
-    onUpdateNode(selectedNode.id, { ...selectedNode.data, [key]: value });
-  };
+  const handleChange = (key: string, value: unknown) => onUpdateNode(selectedNode.id, { [key]: value });
 
-  const handleNameChange = (val: string) => {
-    setNameInput(val);
-    const sanitized = val.trim().replace(/\s+/g, '_');
-    if (sanitized && sanitized !== selectedNode.id && !nodes.some((n) => n.id === sanitized)) {
-      onRenameNode?.(selectedNode.id, sanitized);
+  const handleChanges = (patch: Record<string, unknown>) => onUpdateNode(selectedNode.id, patch);
+
+  // Renames are committed on blur / Enter only, so references are never re-keyed to half-typed names.
+  // Returns whether the input now matches the node name.
+  const commitName = (): boolean => {
+    const sanitized = sanitizeNodeName(nameInput);
+    if (sanitized === selectedNode.id) {
+      setNameInput(selectedNode.id);
+      setNameError(null);
+      return true;
     }
+    const error = validateNodeName(sanitized, nodes, selectedNode.id);
+    if (error) {
+      setNameError(error);
+      return false;
+    }
+    setNameError(null);
+    onRenameNode?.(selectedNode.id, sanitized);
+    return true;
   };
 
   const handleNameBlur = () => {
-    const sanitized = nameInput.trim().replace(/\s+/g, '_');
-    if (!sanitized) {
-      setNameInput((selectedNode.data?.label as string) || selectedNode.id);
-    } else if (sanitized !== selectedNode.id) {
-      onRenameNode?.(selectedNode.id, sanitized);
+    // An invalid name is discarded on blur; the error stays visible to explain why
+    if (!commitName()) setNameInput(selectedNode.id);
+  };
+
+  const handleNameKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commitName();
+    } else if (e.key === 'Escape') {
+      setNameInput(selectedNode.id);
+      setNameError(null);
     }
   };
 
@@ -90,38 +113,52 @@ export const PropertyPanel = ({
           <h2 className="text-foreground text-xs font-semibold tracking-wider uppercase">{nodeTypeTitle}</h2>
           <p className="text-muted-foreground max-w-[200px] truncate text-[10px]">{selectedNode.id}</p>
         </div>
-        <button className="text-muted-foreground hover:text-foreground hover:bg-muted rounded p-1" onClick={onClose}>
+        <button
+          type="button"
+          className="text-muted-foreground hover:text-foreground hover:bg-muted rounded p-1"
+          onClick={onClose}
+        >
           <X size={16} />
         </button>
       </div>
 
       <div className="flex-1 space-y-4 overflow-y-auto p-4">
-        {/* ENTRY AGENT STATUS / BUTTON FOR AGENTS */}
-        {selectedNode.type === NODE_TYPES.AGENT && (
-          <EntryAgentStatus selectedNode={selectedNode} onSetStartAgent={onSetStartAgent} />
+        {/* ENTRY STEP STATUS / BUTTON FOR EXECUTABLE STEPS */}
+        {isExecutableNode(selectedNode) && (
+          <EntryAgentStatus
+            selectedNode={selectedNode}
+            isStartNode={selectedNode.id === startNodeId}
+            onSetStartAgent={onSetStartAgent}
+          />
         )}
 
         <div>
           <Label className="mb-1 block text-xs">Identifier (Name)</Label>
           <Input
             value={nameInput}
-            onChange={(e) => handleNameChange(e.target.value)}
-            onBlur={handleNameBlur}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                handleNameBlur();
-              }
+            onChange={(e) => {
+              setNameInput(e.target.value);
+              setNameError(null);
             }}
-            className="bg-background h-8 text-xs font-medium"
+            onBlur={handleNameBlur}
+            onKeyDown={handleNameKeyDown}
+            aria-invalid={!!nameError}
+            className={`bg-background h-8 text-xs font-medium ${nameError ? 'border-destructive' : ''}`}
             placeholder="Unique name (e.g. content_creator)..."
           />
-          <p className="text-muted-foreground mt-0.5 text-[10px]">Used as reference in workflow connections.</p>
+          {nameError ? (
+            <p className="text-destructive mt-0.5 text-[10px]">{nameError}</p>
+          ) : (
+            <p className="text-muted-foreground mt-0.5 text-[10px]">Used as reference in workflow connections.</p>
+          )}
         </div>
 
         {selectedNode.type === NODE_TYPES.AGENT && (
           <AgentProperties
+            key={selectedNode.id}
             selectedNode={selectedNode}
             handleChange={handleChange}
+            handleChanges={handleChanges}
             nodes={nodes}
             rootfloConfigs={rootfloConfigs}
             tools={tools}
@@ -132,25 +169,42 @@ export const PropertyPanel = ({
 
         {selectedNode.type === NODE_TYPES.ROUTER && (
           <RouterProperties
+            key={selectedNode.id}
             selectedNode={selectedNode}
             handleChange={handleChange}
+            handleChanges={handleChanges}
             nodes={nodes}
             rootfloConfigs={rootfloConfigs}
           />
         )}
 
         {selectedNode.type === NODE_TYPES.FUNCTION && (
-          <FunctionProperties selectedNode={selectedNode} handleChange={handleChange} nodes={nodes} tools={tools} />
+          <FunctionProperties
+            key={selectedNode.id}
+            selectedNode={selectedNode}
+            handleChange={handleChange}
+            handleChanges={handleChanges}
+            nodes={nodes}
+            tools={tools}
+          />
         )}
 
         {selectedNode.type === NODE_TYPES.ITERATOR && (
-          <IteratorProperties selectedNode={selectedNode} handleChange={handleChange} nodes={nodes} />
+          <IteratorProperties
+            key={selectedNode.id}
+            selectedNode={selectedNode}
+            handleChange={handleChange}
+            handleChanges={handleChanges}
+            nodes={nodes}
+          />
         )}
 
         {selectedNode.type === NODE_TYPES.SUBWORKFLOW && (
           <SubworkflowProperties
+            key={selectedNode.id}
             selectedNode={selectedNode}
             handleChange={handleChange}
+            handleChanges={handleChanges}
             nodes={nodes}
             workflows={workflows}
           />
@@ -159,6 +213,7 @@ export const PropertyPanel = ({
         {/* DELETE ACTION BUTTON */}
         <div className="border-border border-t pt-4">
           <Button
+            type="button"
             variant="outline"
             size="sm"
             className="text-destructive border-destructive/20 hover:bg-destructive/10 w-full gap-1.5 text-xs"

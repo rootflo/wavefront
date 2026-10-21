@@ -2,9 +2,12 @@ import { Handle, Position, NodeProps } from '@xyflow/react';
 import { Repeat, RotateCcw } from 'lucide-react';
 import React from 'react';
 import { Badge } from '@app/components/ui/badge';
+import { useWorkflowActions } from '../hooks/useWorkflowActions';
 import { NodeCard } from './NodeCard';
 
-export const IteratorNode = React.memo(({ data, selected }: NodeProps) => {
+export const IteratorNode = React.memo(({ id, data, selected }: NodeProps) => {
+  const { startNodeId, deleteNode } = useWorkflowActions();
+  const isStartNode = id === startNodeId;
   const inputFilters = Array.isArray(data.input_filter) ? data.input_filter : [];
 
   return (
@@ -17,13 +20,13 @@ export const IteratorNode = React.memo(({ data, selected }: NodeProps) => {
         selected={selected}
         badge={
           <div className="flex items-center gap-1">
-            {Boolean(data.isStartNode) && (
+            {isStartNode && (
               <Badge className="bg-emerald-500 px-1.5 py-0 text-[9px] font-medium text-white shadow-xs">🚀 Start</Badge>
             )}
             {Boolean(data.isEndNode) && (
               <Badge className="bg-purple-600 px-1.5 py-0 text-[9px] font-medium text-white shadow-xs">🏁 End</Badge>
             )}
-            {!data.isStartNode && !data.isEndNode && (
+            {!isStartNode && !data.isEndNode && (
               <Badge
                 variant="outline"
                 className="flex items-center gap-1 border-indigo-500/30 bg-indigo-500/10 py-0 text-[10px] font-semibold text-indigo-500"
@@ -42,7 +45,7 @@ export const IteratorNode = React.memo(({ data, selected }: NodeProps) => {
             )}
           </div>
         }
-        onDelete={data.onDelete as (() => void) | undefined}
+        onDelete={() => deleteNode(id)}
       >
         <div className="text-muted-foreground text-[11px] leading-relaxed">
           Loops over collection items and executes target step.

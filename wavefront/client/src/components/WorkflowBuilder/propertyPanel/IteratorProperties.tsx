@@ -1,6 +1,7 @@
 import { Node } from '@xyflow/react';
 import { Label } from '@app/components/ui/label';
 import MultiSelect from '@app/components/MultiSelect';
+import { isExecutableNode } from '../graphUtils';
 import { NodePropertiesProps } from './types';
 
 export const IteratorProperties = ({ selectedNode, handleChange, nodes }: NodePropertiesProps) => {
@@ -15,7 +16,7 @@ export const IteratorProperties = ({ selectedNode, handleChange, nodes }: NodePr
         >
           <option value="">Select target node...</option>
           {nodes
-            .filter((n) => n.id !== selectedNode.id)
+            .filter((n) => n.id !== selectedNode.id && isExecutableNode(n))
             .map((n) => (
               <option key={n.id} value={n.id}>
                 {(n.data?.label as string) || n.id} ({n.type?.replace('Node', '')})
@@ -29,7 +30,7 @@ export const IteratorProperties = ({ selectedNode, handleChange, nodes }: NodePr
       <div>
         <Label className="mb-1 block text-xs">Input Filter</Label>
         <MultiSelect
-          items={nodes.filter((n) => n.id !== selectedNode.id)}
+          items={nodes.filter((n) => n.id !== selectedNode.id && isExecutableNode(n))}
           selectedIds={Array.isArray(selectedNode.data.input_filter) ? selectedNode.data.input_filter : []}
           onChange={(ids) => handleChange('input_filter', ids.length > 0 ? ids : undefined)}
           getId={(n: Node) => n.id}

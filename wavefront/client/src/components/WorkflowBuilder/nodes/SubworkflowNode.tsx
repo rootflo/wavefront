@@ -2,9 +2,12 @@ import { Handle, Position, NodeProps } from '@xyflow/react';
 import { Layers, RotateCcw } from 'lucide-react';
 import React from 'react';
 import { Badge } from '@app/components/ui/badge';
+import { useWorkflowActions } from '../hooks/useWorkflowActions';
 import { NodeCard } from './NodeCard';
 
-export const SubworkflowNode = React.memo(({ data, selected }: NodeProps) => {
+export const SubworkflowNode = React.memo(({ id, data, selected }: NodeProps) => {
+  const { startNodeId, deleteNode } = useWorkflowActions();
+  const isStartNode = id === startNodeId;
   const inputFilters = Array.isArray(data.input_filter) ? data.input_filter : [];
 
   return (
@@ -17,13 +20,13 @@ export const SubworkflowNode = React.memo(({ data, selected }: NodeProps) => {
         selected={selected}
         badge={
           <div className="flex items-center gap-1">
-            {Boolean(data.isStartNode) && (
+            {isStartNode && (
               <Badge className="bg-emerald-500 px-1.5 py-0 text-[9px] font-medium text-white shadow-xs">🚀 Start</Badge>
             )}
             {Boolean(data.isEndNode) && (
               <Badge className="bg-purple-600 px-1.5 py-0 text-[9px] font-medium text-white shadow-xs">🏁 End</Badge>
             )}
-            {!data.isStartNode && !data.isEndNode && (
+            {!isStartNode && !data.isEndNode && (
               <Badge variant="outline" className="border-teal-500/20 bg-teal-500/10 py-0 text-[10px] text-teal-500">
                 Arium
               </Badge>
@@ -38,7 +41,7 @@ export const SubworkflowNode = React.memo(({ data, selected }: NodeProps) => {
             )}
           </div>
         }
-        onDelete={data.onDelete as (() => void) | undefined}
+        onDelete={() => deleteNode(id)}
       >
         <div className="text-muted-foreground text-[11px] leading-relaxed">Nested sub-workflow execution block.</div>
         <div className="border-border/60 text-muted-foreground flex flex-col gap-1 border-t pt-2 text-[10px]">
@@ -46,9 +49,9 @@ export const SubworkflowNode = React.memo(({ data, selected }: NodeProps) => {
             <span>Reference / YAML:</span>
             <span
               className="text-foreground max-w-[130px] truncate font-semibold"
-              title={(data.yaml_file as string) || (data.name as string)}
+              title={(data.ref as string) ?? (data.yaml_file as string) ?? (data.name as string)}
             >
-              {(data.yaml_file as string) || (data.name as string) || 'inline'}
+              {(data.ref as string) ?? (data.yaml_file as string) ?? (data.name as string) ?? 'inline'}
             </span>
           </div>
           <div className="flex justify-between">

@@ -63,7 +63,11 @@ const FieldEditor = ({
     <div className="border-border/50 bg-card mt-2 flex flex-col gap-2 rounded-md border p-2 shadow-sm">
       <div className="flex items-center gap-2">
         {hasChildren ? (
-          <button onClick={() => setExpanded(!expanded)} className="text-muted-foreground hover:text-foreground">
+          <button
+            type="button"
+            onClick={() => setExpanded(!expanded)}
+            className="text-muted-foreground hover:text-foreground"
+          >
             {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </button>
         ) : (
@@ -86,7 +90,7 @@ const FieldEditor = ({
             </option>
           ))}
         </select>
-        <button onClick={onDelete} className="text-muted-foreground hover:text-destructive p-1">
+        <button type="button" onClick={onDelete} className="text-muted-foreground hover:text-destructive p-1">
           <Trash2 size={14} />
         </button>
       </div>
@@ -109,6 +113,7 @@ const FieldEditor = ({
             />
           ))}
           <Button
+            type="button"
             variant="ghost"
             size="sm"
             className="mt-2 h-6 gap-1 px-2 text-[10px]"
@@ -139,6 +144,7 @@ export const ParserBuilder = ({ value, onChange }: ParserBuilderProps) => {
       <div className="bg-muted/10 border-border flex flex-col items-center justify-center rounded-md border border-dashed p-4">
         <p className="text-muted-foreground mb-2 text-[10px]">No schema defined.</p>
         <Button
+          type="button"
           variant="outline"
           size="sm"
           className="text-xs"
@@ -204,6 +210,7 @@ export const ParserBuilder = ({ value, onChange }: ParserBuilderProps) => {
         <Label className="mb-2 flex items-center justify-between text-[11px] font-semibold">
           Fields
           <Button
+            type="button"
             variant="ghost"
             size="sm"
             className="h-6 gap-1 px-2 text-[10px]"

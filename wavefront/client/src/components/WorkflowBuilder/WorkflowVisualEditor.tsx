@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ReactFlow,
   ReactFlowProvider,
-  addEdge,
   useNodesState,
   useEdgesState,
   Controls,
@@ -10,21 +9,50 @@ import {
   BackgroundVariant,
   Connection,
   Edge,
+  EdgeChange,
   Node,
+  NodeChange,
   ReactFlowInstance,
+  OnBeforeDelete,
   OnConnectEnd,
+  OnDelete,
+  IsValidConnection,
+  XYPosition,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
-import { AddableNodeType, NODE_TYPES, getNodeTypeDefinition } from '@app/constants/workflow-builder';
+import {
+  AddableNodeType,
+  EDGE_KINDS,
+  NODE_TYPES,
+  getEdgeKind,
+  getNodeTypeDefinition,
+} from '@app/constants/workflow-builder';
 import { Sidebar } from './Sidebar';
 import { PropertyPanel } from './PropertyPanel';
 import { AgentNode, RouterNode, TriggerNode, FunctionNode, IteratorNode, SubworkflowNode } from './nodes';
-import { parseYamlToGraph, serializeGraphToYaml, getLayoutedElements, createIteratorLoopEdges } from './yamlSync';
-import { cleanupDeletedNodeReferences, computeNewEdges, computeNewNodes, computeRemainingEdges } from './graphUtils';
+import { parseYamlToGraph, serializeGraphToYaml } from './yamlSync';
+import {
+  Graph,
+  GraphAction,
+  LOOP_BACK_HANDLE,
+  applyGraphAction,
+  getRoutingOptions,
+  getStartNodeId,
+  isRouteEdge,
+  keepPositions,
+  layoutGraph,
+  needsLayout,
+  nextNodeId,
+  nextNodePosition,
+  normalizeGraph,
+  settleYamlNames,
+  validateConnection,
+} from './graphUtils';
 import { createWorkflowNode } from './nodeFactory';
+import type { GraphIssue } from '@app/types/workflow-builder';
 import { WorkflowTemplate, createLinearTemplate, createRouterTemplate } from './workflowTemplates';
-import { useSyncRouterEdges } from './hooks/useSyncRouterEdges';
+import { WorkflowActions, WorkflowActionsContext } from './hooks/useWorkflowActions';
 import { CanvasToolbar } from './canvas/CanvasToolbar';
 import { CanvasLegend } from './canvas/CanvasLegend';
 import { EmptyCanvasWelcome } from './canvas/EmptyCanvasWelcome';
@@ -50,590 +78,319 @@ const DROPPABLE_NODE_TYPES: string[] = [
   NODE_TYPES.SUBWORKFLOW,
 ];
 
+const FILTER_FOCUS_COLOR = '#3b82f6';
+const FIT_VIEW_OPTIONS = { padding: 0.2, duration: 400 };
+
 interface WorkflowVisualEditorProps {
   yamlContent?: string;
   onChange?: (newYaml: string) => void;
 }
-
-const nextUniqueId = (prefix: string, existing: Node[]) => {
-  const ids = new Set(existing.map((n) => n.id));
-  let i = 1;
-  while (ids.has(`${prefix}_${i}`)) i++;
-  return `${prefix}_${i}`;
-};
 
 export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVisualEditorProps) => {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
-  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  // Only the id is stored: the selected node is always read from the current nodes
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [showDataWires, setShowDataWires] = useState<boolean>(false);
 
   const [addNodeMenu, setAddNodeMenu] = useState<AddNodeMenuState | null>(null);
   const [intentPrompt, setIntentPrompt] = useState<IntentPromptState | null>(null);
 
+  // Latest committed graph, so event handlers never compute from a stale render closure
+  const graphRef = useRef<Graph>({ nodes, edges });
+  graphRef.current = { nodes, edges };
+
+  // The YAML the current graph corresponds to: the last YAML parsed from props or emitted by this editor.
+  // null until the first parse, so the initial yamlContent is always loaded.
+  const currentYamlRef = useRef<string | null>(null);
+
+  // Why the YAML cannot be drawn (syntax error, no `arium` key). While set the canvas is empty and read-only,
+  // so edits can never overwrite the user's YAML.
+  const [yamlError, setYamlError] = useState<string | null>(null);
+  const yamlErrorRef = useRef<string | null>(null);
+  // Problems in the drawn graph that will make the saved workflow fail or run differently
+  const [issues, setIssues] = useState<GraphIssue[]>([]);
+
+  const reportYamlError = useCallback((error: string | null) => {
+    yamlErrorRef.current = error;
+    setYamlError(error);
+  }, []);
+
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
+  const selectedNode = useMemo(() => nodes.find((n) => n.id === selectedNodeId) ?? null, [nodes, selectedNodeId]);
+
+  const startNodeId = useMemo(() => getStartNodeId({ nodes, edges }), [nodes, edges]);
+
   // Filter edges for clean, prettified pipeline visualization
   // Non-execution memory filter edges are hidden by default unless toggled on or when a node is actively selected
   const visibleEdges = useMemo(() => {
+    const touchesSelection = (e: Edge) =>
+      !!selectedNodeId && (e.source === selectedNodeId || e.target === selectedNodeId);
     return edges
-      .filter((e) => {
-        if (!e.id.startsWith('e-filter-')) return true;
-        if (showDataWires) return true;
-        // Focus mode: show filter wires connected to currently selected node
-        if (selectedNode && (e.source === selectedNode.id || e.target === selectedNode.id)) {
-          return true;
-        }
-        return false;
-      })
+      .filter((e) => getEdgeKind(e) !== EDGE_KINDS.FILTER || showDataWires || touchesSelection(e))
       .map((e) => {
-        if (
-          e.id.startsWith('e-filter-') &&
-          selectedNode &&
-          (e.source === selectedNode.id || e.target === selectedNode.id)
-        ) {
+        if (getEdgeKind(e) === EDGE_KINDS.FILTER && touchesSelection(e)) {
           return {
             ...e,
             animated: true,
-            style: { ...e.style, stroke: '#3b82f6', strokeWidth: 2, opacity: 1 },
+            style: { ...e.style, stroke: FILTER_FOCUS_COLOR, strokeWidth: 2, opacity: 1 },
           };
         }
         return e;
       });
-  }, [edges, showDataWires, selectedNode]);
+  }, [edges, showDataWires, selectedNodeId]);
 
-  // Track if we are currently parsing to prevent infinite loops
-  const isParsing = useRef(false);
-
-  // Sync Yaml -> Graph
+  // Sync YAML -> Graph, only for YAML that did not come from this editor
   useEffect(() => {
-    if (!isParsing.current && yamlContent) {
-      const graph = parseYamlToGraph(yamlContent);
-      setNodes(graph.nodes);
-      setEdges(graph.edges);
-    }
-  }, [yamlContent, setNodes, setEdges]);
+    if (yamlContent === currentYamlRef.current) return;
+    currentYamlRef.current = yamlContent;
+    const result = parseYamlToGraph(yamlContent);
+    reportYamlError(result.error ?? null);
+    setIssues([]);
+    const parsed = normalizeGraph(result);
+    const next = needsLayout(parsed) ? layoutGraph(parsed) : keepPositions(parsed, graphRef.current.nodes);
+    graphRef.current = next;
+    setNodes(next.nodes);
+    setEdges(next.edges);
+  }, [yamlContent, setNodes, setEdges, reportYamlError]);
 
-  // Sync Graph -> Yaml
-  const updateYaml = useCallback(
-    (newNodes: Node[], newEdges: Edge[]) => {
-      if (!onChange) return;
-      isParsing.current = true;
-      const newYaml = serializeGraphToYaml(newNodes, newEdges, yamlContent);
-      onChange(newYaml);
-      setTimeout(() => {
-        isParsing.current = false;
-      }, 100);
-    },
-    [onChange, yamlContent]
-  );
-
-  // Find start agent name
-  const startAgentName = useMemo(() => {
-    const startEdge = edges.find((e) => e.source === 'trigger-start');
-    if (startEdge) return startEdge.target;
-    const firstAgent = nodes.find((n) => n.type === NODE_TYPES.AGENT);
-    return firstAgent?.id || '';
-  }, [edges, nodes]);
-
-  // Update a single node's data
-  const onUpdateNode = useCallback(
-    (id: string, data: Record<string, unknown>) => {
-      setNodes((nds) => {
-        const targetNode = nds.find((n) => n.id === id);
-        const isIterator = targetNode?.type === NODE_TYPES.ITERATOR;
-        const oldExecuteNode = isIterator ? (targetNode.data?.execute_node as string) : undefined;
-        const newExecuteNode = isIterator ? (data.execute_node as string) : undefined;
-
-        let updatedNodes = nds.map((node) => {
-          if (node.id === id) {
-            const updated = { ...node, data };
-            if (selectedNode?.id === id) {
-              setSelectedNode(updated);
-            }
-            return updated;
-          }
-          return node;
-        });
-
-        // If iterator execute_node changed, update target node flags and loop edges
-        if (isIterator && oldExecuteNode !== newExecuteNode) {
-          updatedNodes = updatedNodes.map((node) => {
-            if (oldExecuteNode && node.id === oldExecuteNode) {
-              const stillLooped = updatedNodes.some(
-                (other) =>
-                  other.id !== id && other.type === NODE_TYPES.ITERATOR && other.data?.execute_node === oldExecuteNode
-              );
-              if (!stillLooped) {
-                return { ...node, data: { ...node.data, isLoopTarget: false, loopedBy: undefined } };
-              }
-            }
-            if (newExecuteNode && node.id === newExecuteNode) {
-              return { ...node, data: { ...node.data, isLoopTarget: true, loopedBy: id } };
-            }
-            return node;
-          });
-
-          setEdges((eds) => {
-            const filteredEdges = eds.filter(
-              (e) =>
-                !(
-                  e.id.startsWith(`e-loop-exec-${id}-`) ||
-                  (e.id.endsWith(`-${id}`) && e.id.startsWith('e-loop-return-'))
-                )
-            );
-            const loopEdges = newExecuteNode ? createIteratorLoopEdges(id, newExecuteNode) : [];
-            const newEdges = [...filteredEdges, ...loopEdges];
-            updateYaml(updatedNodes, newEdges);
-            return newEdges;
-          });
-        } else {
-          updateYaml(updatedNodes, edges);
+  // Commit a new graph: the single place where canvas state is written and YAML is derived from it.
+  // Returns false (and changes nothing) when the YAML cannot be written.
+  const commitGraph = useCallback(
+    (graph: Graph): boolean => {
+      let next = graph;
+      const emit = onChangeRef.current;
+      if (emit) {
+        const result = serializeGraphToYaml(next.nodes, next.edges, currentYamlRef.current ?? '');
+        if (!result.ok) {
+          reportYamlError(result.error);
+          return false;
         }
-
-        return updatedNodes;
-      });
+        currentYamlRef.current = result.yaml;
+        setIssues(result.issues);
+        emit(result.yaml);
+        // Every node's config is now stored under its current id
+        next = settleYamlNames(next);
+      }
+      graphRef.current = next;
+      setNodes(next.nodes);
+      setEdges(next.edges);
+      return true;
     },
-    [selectedNode, setNodes, setEdges, updateYaml, edges]
+    [setNodes, setEdges, reportYamlError]
   );
 
-  // Rename a node and propagate new ID across edges and router routing_options
+  // Apply one editor action to the latest graph. Returns whether anything changed.
+  const dispatch = useCallback(
+    (action: GraphAction): boolean => {
+      if (yamlErrorRef.current) return false;
+      const prev = graphRef.current;
+      const next = applyGraphAction(prev, action);
+      if (next === prev) return false;
+      return commitGraph(next);
+    },
+    [commitGraph]
+  );
+
+  const fitViewSoon = useCallback(() => {
+    if (!reactFlowInstance) return;
+    setTimeout(() => reactFlowInstance.fitView(FIT_VIEW_OPTIONS), 50);
+  }, [reactFlowInstance]);
+
+  // Merge a partial data patch into a node
+  const onUpdateNode = useCallback(
+    (id: string, patch: Record<string, unknown>) => {
+      dispatch({ type: 'updateNodeData', id, patch });
+    },
+    [dispatch]
+  );
+
+  // Rename a node and every reference to it (edges, routing_options, execute_node, input_filter, flow_pattern, start)
   const onRenameNode = useCallback(
     (oldId: string, newId: string) => {
-      setNodes((nds) => {
-        const newNodes = computeNewNodes(nds, oldId, newId);
-
-        setEdges((eds) => {
-          const newEdges = computeNewEdges(eds, oldId, newId);
-
-          updateYaml(newNodes, newEdges);
-          return newEdges;
-        });
-
-        const updatedSelected = newNodes.find((n) => n.id === newId);
-        if (updatedSelected) {
-          setSelectedNode(updatedSelected);
-        }
-
-        return newNodes;
-      });
+      if (dispatch({ type: 'renameNode', oldId, newId })) {
+        setSelectedNodeId((current) => (current === oldId ? newId : current));
+      }
     },
-    [setNodes, setEdges, updateYaml]
+    [dispatch]
   );
 
-  // Delete a node and all connected edges
+  // Delete a node, its edges and every reference to it
   const handleDeleteNode = useCallback(
     (nodeId: string) => {
-      setNodes((nds) => {
-        const remainingNodes = nds.filter((n) => n.id !== nodeId);
-
-        setEdges((eds) => {
-          const remainingEdges = computeRemainingEdges(eds, nodeId);
-          cleanupDeletedNodeReferences(remainingNodes, nodeId);
-
-          updateYaml(remainingNodes, remainingEdges);
-          return remainingEdges;
-        });
-
-        return remainingNodes;
-      });
-
-      if (selectedNode?.id === nodeId) {
-        setSelectedNode(null);
-      }
+      dispatch({ type: 'deleteElements', nodeIds: [nodeId] });
     },
-    [selectedNode, setNodes, setEdges, updateYaml]
+    [dispatch]
   );
 
-  // Generic helper to insert any node type with horizontal auto-layout
+  // Add a node and select it. connectFrom wires it to an existing step in the same commit.
   const insertNode = useCallback(
-    (newNode: Node, isFirstNode = false) => {
-      const newNodes = [...nodes, newNode];
-      const newEdges = [...edges];
-
-      if (isFirstNode) {
-        const triggerNode: Node = {
-          id: 'trigger-start',
-          type: NODE_TYPES.TRIGGER,
-          position: { x: newNode.position.x - 360, y: newNode.position.y },
-          data: {
-            label: 'Workflow Trigger',
-            description: 'Triggers the execution and hands off input to the entry agent.',
-            type: 'trigger',
-          },
-        };
-        newNodes.unshift(triggerNode);
-        newEdges.push({
-          id: `e-start-${newNode.id}`,
-          source: 'trigger-start',
-          target: newNode.id,
-          type: 'smoothstep',
-          animated: true,
-          style: { stroke: '#a855f7', strokeWidth: 2 },
-        });
-      }
-
-      const layouted = getLayoutedElements(newNodes, newEdges, 'LR');
-      setNodes(layouted.nodes);
-      setEdges(layouted.edges);
-      updateYaml(layouted.nodes, layouted.edges);
-      const created = layouted.nodes.find((n) => n.id === newNode.id);
-      setSelectedNode(created || newNode);
-      if (reactFlowInstance) {
-        setTimeout(() => {
-          reactFlowInstance.fitView({ padding: 0.2, duration: 400 });
-        }, 50);
-      }
+    (newNode: Node, connectFrom?: { source: string; sourceHandle?: string | null }) => {
+      if (!dispatch({ type: 'addNode', node: newNode, connectFrom })) return false;
+      setSelectedNodeId(newNode.id);
+      return true;
     },
-    [nodes, edges, reactFlowInstance, setNodes, setEdges, updateYaml]
+    [dispatch]
   );
 
-  // Add an Agent
-  const handleAddAgent = useCallback(() => {
-    const newId = nextUniqueId('agent', nodes);
-    const isFirstAgent = nodes.filter((n) => n.type === NODE_TYPES.AGENT).length === 0;
+  const buildNode = useCallback((type: AddableNodeType, position?: XYPosition) => {
+    const current = graphRef.current.nodes;
+    const prefix = getNodeTypeDefinition(type)?.prefix ?? 'step';
+    return createWorkflowNode(type, nextNodeId(prefix, current), position ?? nextNodePosition(current));
+  }, []);
 
-    const lastNode = nodes[nodes.length - 1];
-    const position = lastNode ? { x: lastNode.position.x + 360, y: lastNode.position.y } : { x: 250, y: 150 };
+  // Toolbar / sidebar add: place the step to the right of the right-most one and keep every other position
+  const handleAddNode = useCallback(
+    (type: AddableNodeType) => {
+      if (insertNode(buildNode(type))) fitViewSoon();
+    },
+    [buildNode, insertNode, fitViewSoon]
+  );
 
-    insertNode(
-      {
-        id: newId,
-        type: NODE_TYPES.AGENT,
-        position,
-        data: {
-          label: newId,
-          role: 'General Assistant',
-          job: 'Assists with tasks and processes incoming workflow input.',
-          provider: 'openai',
-          model: 'gpt-4o-mini',
-          temperature: 0.7,
-          isStartNode: isFirstAgent,
-          type: 'agent',
-        },
-      },
-      isFirstAgent
-    );
-  }, [nodes, insertNode]);
+  const handleAddAgent = useCallback(() => handleAddNode(NODE_TYPES.AGENT), [handleAddNode]);
+  const handleAddRouter = useCallback(() => handleAddNode(NODE_TYPES.ROUTER), [handleAddNode]);
+  const handleAddFunction = useCallback(() => handleAddNode(NODE_TYPES.FUNCTION), [handleAddNode]);
+  const handleAddIterator = useCallback(() => handleAddNode(NODE_TYPES.ITERATOR), [handleAddNode]);
+  const handleAddSubworkflow = useCallback(() => handleAddNode(NODE_TYPES.SUBWORKFLOW), [handleAddNode]);
 
-  // Add a Router
-  const handleAddRouter = useCallback(() => {
-    const newId = nextUniqueId('router', nodes);
-
-    const lastNode = nodes[nodes.length - 1];
-    const position = lastNode ? { x: lastNode.position.x + 360, y: lastNode.position.y } : { x: 300, y: 150 };
-
-    insertNode({
-      id: newId,
-      type: NODE_TYPES.ROUTER,
-      position,
-      data: {
-        label: newId,
-        strategy: 'smart',
-        provider: 'openai',
-        model: 'gpt-4o-mini',
-        temperature: 0.3,
-        context_description: 'Evaluates requests and directs to the most suitable step.',
-        fallback_strategy: 'first',
-        routing_options: {},
-        type: 'router',
-      },
-    });
-  }, [nodes, insertNode]);
-
-  // Add a Function Node
-  const handleAddFunction = useCallback(() => {
-    const newId = nextUniqueId('function', nodes);
-
-    const lastNode = nodes[nodes.length - 1];
-    const position = lastNode ? { x: lastNode.position.x + 360, y: lastNode.position.y } : { x: 300, y: 150 };
-
-    insertNode({
-      id: newId,
-      type: NODE_TYPES.FUNCTION,
-      position,
-      data: {
-        label: newId,
-        function_name: 'passthrough',
-        description: 'Executes deterministic data transformation.',
-        type: 'function',
-      },
-    });
-  }, [nodes, insertNode]);
-
-  // Add an Iterator Node
-  const handleAddIterator = useCallback(() => {
-    const newId = nextUniqueId('iterator', nodes);
-
-    const lastNode = nodes[nodes.length - 1];
-    const position = lastNode ? { x: lastNode.position.x + 360, y: lastNode.position.y } : { x: 300, y: 150 };
-
-    insertNode({
-      id: newId,
-      type: NODE_TYPES.ITERATOR,
-      position,
-      data: {
-        label: newId,
-        execute_node: '',
-        forward_all_results: false,
-        type: 'iterator',
-      },
-    });
-  }, [nodes, insertNode]);
-
-  // Add a Sub-Workflow Node
-  const handleAddSubworkflow = useCallback(() => {
-    const newId = nextUniqueId('subworkflow', nodes);
-
-    const lastNode = nodes[nodes.length - 1];
-    const position = lastNode ? { x: lastNode.position.x + 360, y: lastNode.position.y } : { x: 300, y: 150 };
-
-    insertNode({
-      id: newId,
-      type: NODE_TYPES.SUBWORKFLOW,
-      position,
-      data: {
-        label: newId,
-        yaml_file: '',
-        inherit_variables: true,
-        type: 'subworkflow',
-      },
-    });
-  }, [nodes, insertNode]);
-
-  // Set Start Agent
+  // Set the workflow entry step
   const handleSetStartAgent = useCallback(
-    (agentId: string) => {
-      setNodes((nds) => {
-        const updatedNodes = nds.map((n) => ({
-          ...n,
-          data: {
-            ...n.data,
-            isStartNode: n.id === agentId,
-          },
-        }));
+    (nodeId: string) => {
+      dispatch({ type: 'setStart', nodeId });
+    },
+    [dispatch]
+  );
 
-        setEdges((eds) => {
-          const filtered = eds.filter((e) => e.source !== 'trigger-start');
-          filtered.unshift({
-            id: `e-start-${agentId}`,
-            source: 'trigger-start',
-            target: agentId,
-            animated: true,
-            style: { stroke: '#a855f7', strokeWidth: 2 },
-          });
+  // Explicit Auto-Layout: positions are canvas-only, so no YAML is emitted
+  const handleAutoLayout = useCallback(() => {
+    const next = layoutGraph(graphRef.current);
+    graphRef.current = next;
+    setNodes(next.nodes);
+    fitViewSoon();
+  }, [setNodes, fitViewSoon]);
 
-          const layouted = getLayoutedElements(updatedNodes, filtered, 'LR');
-          updateYaml(layouted.nodes, layouted.edges);
-          return layouted.edges;
-        });
+  // Node components read delete and start state from context, so node data stays free of callbacks
+  const workflowActions = useMemo<WorkflowActions>(
+    () => ({ startNodeId, deleteNode: handleDeleteNode }),
+    [startNodeId, handleDeleteNode]
+  );
 
-        return updatedNodes;
+  // Deletions are applied by the graph reducer (reference cleanup + YAML), never by React Flow's own remove changes
+  const handleNodesChange = useCallback(
+    (changes: NodeChange[]) => onNodesChange(changes.filter((c) => c.type !== 'remove')),
+    [onNodesChange]
+  );
+
+  const handleEdgesChange = useCallback(
+    (changes: EdgeChange[]) => onEdgesChange(changes.filter((c) => c.type !== 'remove')),
+    [onEdgesChange]
+  );
+
+  // Keyboard deletion: the trigger is owned by the editor and is never deleted
+  const onBeforeDelete: OnBeforeDelete = useCallback(
+    async ({ nodes: toDelete, edges: edgesToDelete }) => ({
+      nodes: toDelete.filter((n) => n.type !== NODE_TYPES.TRIGGER),
+      edges: edgesToDelete,
+    }),
+    []
+  );
+
+  const onDelete: OnDelete = useCallback(
+    ({ nodes: deleted, edges: deletedEdges }) => {
+      dispatch({
+        type: 'deleteElements',
+        nodeIds: deleted.map((n) => n.id),
+        edgeIds: deletedEdges.map((e) => e.id),
       });
     },
-    [setNodes, setEdges, updateYaml]
+    [dispatch]
   );
 
-  // Re-run Auto-Layout
-  const handleAutoLayout = useCallback(() => {
-    const layouted = getLayoutedElements(nodes, edges, 'LR');
-    setNodes([...layouted.nodes]);
-    setEdges([...layouted.edges]);
-    if (reactFlowInstance) {
-      setTimeout(() => {
-        reactFlowInstance.fitView({ padding: 0.2, duration: 400 });
-      }, 50);
-    }
-  }, [nodes, edges, reactFlowInstance, setNodes, setEdges]);
+  const isValidConnection: IsValidConnection = useCallback(
+    (connection) => validateConnection(connection, graphRef.current),
+    []
+  );
 
-  // Attach delete handlers to nodes
-  const nodesWithHandlers = useMemo(() => {
-    return nodes.map((n) => ({
-      ...n,
-      data: {
-        ...n.data,
-        isStartNode: n.id === startAgentName,
-        onDelete: () => handleDeleteNode(n.id),
-      },
-    }));
-  }, [nodes, startAgentName, handleDeleteNode]);
-
-  // Auto-sync visual edges when routing_options change via Property Panel
-  useSyncRouterEdges(nodes, edges, setEdges, updateYaml);
+  const openIntentPrompt = useCallback((routerId: string, targetId: string) => {
+    const router = graphRef.current.nodes.find((n) => n.id === routerId);
+    setIntentPrompt({
+      sourceId: routerId,
+      targetId,
+      currentText: router ? (getRoutingOptions(router)[targetId] ?? '') : '',
+    });
+  }, []);
 
   // Connection handler
   const onConnect = useCallback(
-    (params: Connection | Edge) => {
-      const sourceNode = nodes.find((n) => n.id === params.source);
-      const isRouter = sourceNode?.type === NODE_TYPES.ROUTER;
-      const isIteratorLoop = sourceNode?.type === NODE_TYPES.ITERATOR && params.sourceHandle === 'loop-out';
-
-      if (isIteratorLoop && params.source && params.target) {
-        const iteratorId = params.source;
-        const targetId = params.target;
-        setNodes((nds) => {
-          const updatedNodes = nds.map((node) => {
-            if (node.id === iteratorId) {
-              return { ...node, data: { ...node.data, execute_node: targetId } };
-            }
-            if (node.id === targetId) {
-              return { ...node, data: { ...node.data, isLoopTarget: true, loopedBy: iteratorId } };
-            }
-            return node;
-          });
-          setEdges((eds) => {
-            const filteredEdges = eds.filter(
-              (e) =>
-                !(
-                  e.id.startsWith(`e-loop-exec-${iteratorId}-`) ||
-                  (e.id.endsWith(`-${iteratorId}`) && e.id.startsWith('e-loop-return-'))
-                )
-            );
-            const loopEdges = createIteratorLoopEdges(iteratorId, targetId);
-            const newEdges = [...filteredEdges, ...loopEdges];
-            updateYaml(updatedNodes, newEdges);
-            return newEdges;
-          });
-          return updatedNodes;
-        });
-        return;
-      }
-
-      const isFromIterator = sourceNode?.type === NODE_TYPES.ITERATOR;
-
-      let currentNodes = nodes;
-      if (isRouter && params.source && params.target) {
-        currentNodes = nodes.map((n) => {
-          if (n.id === params.source) {
-            const opts = (n.data.routing_options as Record<string, string>) || {};
-            return {
-              ...n,
-              data: { ...n.data, routing_options: { ...opts, [params.target!]: `Route to ${params.target}` } },
-            };
-          }
-          return n;
-        });
-        setNodes(currentNodes);
-      }
-
-      setEdges((eds) => {
-        const newEdges = addEdge(
-          {
-            ...params,
-            type: 'smoothstep',
-            style: {
-              stroke: isRouter ? '#f97316' : isFromIterator ? '#6366f1' : '#64748b',
-              strokeWidth: 2,
-            },
-            animated: true,
-            label: isFromIterator ? 'On Complete [All]' : undefined,
-            labelStyle: isFromIterator ? { fill: '#6366f1', fontSize: 9, fontWeight: 600 } : undefined,
-            labelBgStyle: isFromIterator ? { fill: 'hsl(var(--card))', stroke: '#6366f1', strokeWidth: 1 } : undefined,
-            labelBgPadding: isFromIterator ? ([6, 3] as [number, number]) : undefined,
-            labelBgBorderRadius: isFromIterator ? 4 : undefined,
-          } as unknown as Edge,
-          eds
-        );
-        updateYaml(currentNodes, newEdges);
-        return newEdges;
-      });
-
-      if (isRouter && params.source && params.target) {
-        setIntentPrompt({
-          sourceId: params.source,
-          targetId: params.target,
-          currentText: '',
-        });
+    (connection: Connection) => {
+      const sourceNode = graphRef.current.nodes.find((n) => n.id === connection.source);
+      if (dispatch({ type: 'connect', connection }) && sourceNode?.type === NODE_TYPES.ROUTER) {
+        setIntentPrompt({ sourceId: connection.source, targetId: connection.target, currentText: '' });
       }
     },
-    [nodes, setNodes, setEdges, updateYaml]
+    [dispatch]
   );
 
+  // Dragging an output handle into empty canvas offers to create the next step there
   const onConnectEnd: OnConnectEnd = useCallback((event, connectionState) => {
-    if (!connectionState.isValid && connectionState.fromNode) {
-      const clientX = 'clientX' in event ? event.clientX : (event.touches[0]?.clientX ?? 0);
-      const clientY = 'clientY' in event ? event.clientY : (event.touches[0]?.clientY ?? 0);
-      setAddNodeMenu({ x: clientX, y: clientY, sourceId: connectionState.fromNode.id });
-    }
+    const { fromNode, fromHandle } = connectionState;
+    if (connectionState.isValid !== null || connectionState.toNode || !fromNode) return;
+    if (fromHandle?.type !== 'source' || fromHandle.id === LOOP_BACK_HANDLE) return;
+    const clientX = 'clientX' in event ? event.clientX : (event.changedTouches[0]?.clientX ?? 0);
+    const clientY = 'clientY' in event ? event.clientY : (event.changedTouches[0]?.clientY ?? 0);
+    setAddNodeMenu({ x: clientX, y: clientY, sourceId: fromNode.id, sourceHandle: fromHandle.id });
   }, []);
 
   const handleQuickAdd = (type: AddableNodeType) => {
     if (!addNodeMenu || !reactFlowInstance) return;
-    const position = reactFlowInstance.screenToFlowPosition({ x: addNodeMenu.x, y: addNodeMenu.y });
-
-    const prefix = getNodeTypeDefinition(type)?.prefix ?? 'step';
-    const newNodeId = nextUniqueId(prefix, nodes);
-
-    const newNode = createWorkflowNode(type, newNodeId, position);
-
-    const newEdge: Edge = {
-      id: `e-${addNodeMenu.sourceId}-${newNodeId}`,
-      source: addNodeMenu.sourceId,
-      target: newNodeId,
-      type: 'smoothstep',
-      style: {
-        stroke: nodes.find((n) => n.id === addNodeMenu.sourceId)?.type === NODE_TYPES.ROUTER ? '#f97316' : '#64748b',
-        strokeWidth: 2,
-      },
-    };
-
-    let currentNodes = [...nodes, newNode];
-    const sourceNode = nodes.find((n) => n.id === addNodeMenu.sourceId);
-    if (sourceNode?.type === NODE_TYPES.ROUTER) {
-      currentNodes = currentNodes.map((n) => {
-        if (n.id === addNodeMenu.sourceId) {
-          const opts = (n.data.routing_options as Record<string, string>) || {};
-          return {
-            ...n,
-            data: { ...n.data, routing_options: { ...opts, [newNodeId]: `Route to ${newNodeId}` } },
-          };
-        }
-        return n;
-      });
-    }
-
-    const newEdges = [...edges, newEdge];
-    const layouted = getLayoutedElements(currentNodes, newEdges, 'LR');
-    setNodes(layouted.nodes);
-    setEdges(layouted.edges);
-    updateYaml(layouted.nodes, layouted.edges);
+    const { sourceId, sourceHandle } = addNodeMenu;
     setAddNodeMenu(null);
-    const created = layouted.nodes.find((n) => n.id === newNodeId);
-    setSelectedNode(created || newNode);
-    if (reactFlowInstance) {
-      setTimeout(() => {
-        reactFlowInstance.fitView({ padding: 0.2, duration: 400 });
-      }, 50);
-    }
+    const position = reactFlowInstance.screenToFlowPosition({ x: addNodeMenu.x, y: addNodeMenu.y });
+    const newNode = buildNode(type, position);
+    if (!insertNode(newNode, { source: sourceId, sourceHandle })) return;
 
-    if (sourceNode?.type === NODE_TYPES.ROUTER) {
-      setTimeout(() => {
-        setIntentPrompt({
-          sourceId: addNodeMenu.sourceId,
-          targetId: newNodeId,
-          currentText: '',
-        });
-      }, 50);
-    }
+    // Ask for the branch condition when the new step became a router branch
+    const router = graphRef.current.nodes.find((n) => n.id === sourceId);
+    const isBranch =
+      router?.type === NODE_TYPES.ROUTER && Object.prototype.hasOwnProperty.call(getRoutingOptions(router), newNode.id);
+    if (isBranch) openIntentPrompt(sourceId, newNode.id);
   };
 
   const handleIntentSave = () => {
     if (!intentPrompt) return;
-    onUpdateNode(intentPrompt.sourceId, {
-      ...nodes.find((n) => n.id === intentPrompt.sourceId)?.data,
-      routing_options: {
-        ...((nodes.find((n) => n.id === intentPrompt.sourceId)?.data?.routing_options as Record<string, string>) || {}),
-        [intentPrompt.targetId]: intentPrompt.currentText || `Route to ${intentPrompt.targetId}`,
-      },
+    dispatch({
+      type: 'setRouteCondition',
+      routerId: intentPrompt.sourceId,
+      targetId: intentPrompt.targetId,
+      condition: intentPrompt.currentText || `Route to ${intentPrompt.targetId}`,
     });
     setIntentPrompt(null);
   };
+
+  const onEdgeClick = useCallback(
+    (_: React.MouseEvent, edge: Edge) => {
+      const sourceNode = graphRef.current.nodes.find((n) => n.id === edge.source);
+      if (isRouteEdge(edge, sourceNode)) openIntentPrompt(edge.source, edge.target);
+    },
+    [openIntentPrompt]
+  );
+
+  const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
+    setSelectedNodeId(node.type === NODE_TYPES.TRIGGER ? null : node.id);
+  }, []);
+
+  const onPaneClick = useCallback(() => setSelectedNodeId(null), []);
 
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
   }, []);
 
+  // Dropped steps land where they were dropped; nothing else moves
   const onDrop = useCallback(
     (event: React.DragEvent) => {
       event.preventDefault();
@@ -641,45 +398,25 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
 
       const type = event.dataTransfer.getData('application/reactflow');
       if (!type || !DROPPABLE_NODE_TYPES.includes(type)) return;
-      const nodeType = type as AddableNodeType;
 
       const position = reactFlowInstance.screenToFlowPosition({
         x: event.clientX,
         y: event.clientY,
       });
-
-      const prefix = getNodeTypeDefinition(nodeType)?.prefix ?? 'node';
-      const newId = nextUniqueId(prefix, nodes);
-
-      const isFirstAgent =
-        nodeType === NODE_TYPES.AGENT && nodes.filter((n) => n.type === NODE_TYPES.AGENT).length === 0;
-
-      // Dropped nodes use a shorter agent job and also carry isStartNode / yaml_file
-      const newNode = createWorkflowNode(nodeType, newId, position, {
-        job: nodeType === NODE_TYPES.AGENT ? 'Processes tasks and inputs.' : undefined,
-        isStartNode: isFirstAgent,
-        yaml_file: nodeType === NODE_TYPES.SUBWORKFLOW ? '' : undefined,
-      });
-
-      insertNode(newNode, isFirstAgent);
+      insertNode(buildNode(type as AddableNodeType, position));
     },
-    [reactFlowInstance, nodes, insertNode]
+    [reactFlowInstance, buildNode, insertNode]
   );
 
   // Replace the canvas with a quick-start template
   const loadTemplate = useCallback(
-    ({ nodes: templateNodes, edges: templateEdges }: WorkflowTemplate) => {
-      const layouted = getLayoutedElements(templateNodes, templateEdges, 'LR');
-      setNodes(layouted.nodes);
-      setEdges(layouted.edges);
-      updateYaml(layouted.nodes, layouted.edges);
-      if (reactFlowInstance) {
-        setTimeout(() => {
-          reactFlowInstance.fitView({ padding: 0.2, duration: 400 });
-        }, 50);
-      }
+    (template: WorkflowTemplate) => {
+      if (yamlErrorRef.current) return;
+      setSelectedNodeId(null);
+      commitGraph(layoutGraph(normalizeGraph(template)));
+      fitViewSoon();
     },
-    [reactFlowInstance, setNodes, setEdges, updateYaml]
+    [commitGraph, fitViewSoon]
   );
 
   // Template loader: Linear
@@ -688,125 +425,151 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
   // Template loader: Router
   const handleLoadRouterTemplate = useCallback(() => loadTemplate(createRouterTemplate()), [loadTemplate]);
 
-  return (
-    <div className="border-border bg-background flex h-full w-full overflow-hidden rounded-lg border">
-      <ReactFlowProvider>
-        {/* ACTIVE WORKFLOW PALETTE & OUTLINE SIDEBAR */}
-        <Sidebar
-          nodes={nodes}
-          selectedNodeId={selectedNode?.id}
-          startAgentName={startAgentName}
-          onSelectNode={(nodeId) => {
-            const found = nodes.find((n) => n.id === nodeId);
-            if (found) {
-              setSelectedNode(found);
-              if (reactFlowInstance) {
-                reactFlowInstance.setCenter(found.position.x + 140, found.position.y + 70, { zoom: 1, duration: 400 });
-              }
-            }
-          }}
-          onDeleteNode={handleDeleteNode}
-          onAddAgent={handleAddAgent}
-          onAddRouter={handleAddRouter}
-          onAddFunction={handleAddFunction}
-          onAddIterator={handleAddIterator}
-          onAddSubworkflow={handleAddSubworkflow}
-          onSetStartAgent={handleSetStartAgent}
-        />
+  const handleSelectFromOutline = useCallback(
+    (nodeId: string) => {
+      const found = graphRef.current.nodes.find((n) => n.id === nodeId);
+      if (!found) return;
+      setSelectedNodeId(found.type === NODE_TYPES.TRIGGER ? null : found.id);
+      reactFlowInstance?.setCenter(found.position.x + 140, found.position.y + 70, { zoom: 1, duration: 400 });
+    },
+    [reactFlowInstance]
+  );
 
-        {/* MAIN CANVAS */}
-        <div className="relative h-full flex-1" ref={reactFlowWrapper}>
-          {/* FLOATING ACTION TOOLBAR AT TOP */}
-          <CanvasToolbar
+  return (
+    <WorkflowActionsContext.Provider value={workflowActions}>
+      <div className="border-border bg-background flex h-full w-full overflow-hidden rounded-lg border">
+        <ReactFlowProvider>
+          {/* ACTIVE WORKFLOW PALETTE & OUTLINE SIDEBAR */}
+          <Sidebar
             nodes={nodes}
-            startAgentName={startAgentName}
-            showDataWires={showDataWires}
+            selectedNodeId={selectedNodeId ?? undefined}
+            startAgentName={startNodeId}
+            onSelectNode={handleSelectFromOutline}
+            onDeleteNode={handleDeleteNode}
             onAddAgent={handleAddAgent}
             onAddRouter={handleAddRouter}
             onAddFunction={handleAddFunction}
             onAddIterator={handleAddIterator}
             onAddSubworkflow={handleAddSubworkflow}
-            onAutoLayout={handleAutoLayout}
-            onToggleDataWires={() => setShowDataWires((prev) => !prev)}
-            onFitView={() => reactFlowInstance?.fitView({ padding: 0.2, duration: 300 })}
+            onSetStartAgent={handleSetStartAgent}
           />
 
-          <ReactFlow
-            nodes={nodesWithHandlers}
-            edges={visibleEdges}
-            onlyRenderVisibleElements={true}
-            // minZoom={0.1}
-            maxZoom={2}
-            defaultEdgeOptions={{
-              type: 'smoothstep',
-            }}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            onConnectEnd={onConnectEnd}
-            onInit={setReactFlowInstance}
-            onDrop={onDrop}
-            onDragOver={onDragOver}
-            onNodeClick={(_, node) => setSelectedNode(node)}
-            onPaneClick={() => setSelectedNode(null)}
-            onEdgeClick={(_, edge) => {
-              const sourceNode = nodes.find((n) => n.id === edge.source);
-              if (sourceNode?.type === NODE_TYPES.ROUTER) {
-                const existingIntent =
-                  (sourceNode.data?.routing_options as Record<string, string>)?.[edge.target] || '';
-                setIntentPrompt({
-                  sourceId: edge.source,
-                  targetId: edge.target,
-                  currentText: existingIntent,
-                });
-              }
-            }}
-            nodeTypes={nodeTypes}
-            fitView
-            className="bg-transparent"
-          >
-            <Background color="hsl(var(--border))" gap={20} size={1} variant={BackgroundVariant.Dots} />
-            <Controls className="bg-card border-border fill-foreground" />
-
-            {/* CANVAS LEGEND */}
-            <CanvasLegend showDataWires={showDataWires} />
-          </ReactFlow>
-
-          {/* EMPTY CANVAS WELCOME & QUICK TEMPLATES */}
-          {nodes.length === 0 && (
-            <EmptyCanvasWelcome
-              onLoadLinearTemplate={handleLoadLinearTemplate}
-              onLoadRouterTemplate={handleLoadRouterTemplate}
-              onAddAgent={handleAddAgent}
-            />
-          )}
-
-          {/* QUICK ADD POPUP (ON DRAGGING EDGE INTO EMPTY CANVAS) */}
-          {addNodeMenu && <AddNodeMenu menu={addNodeMenu} onQuickAdd={handleQuickAdd} />}
-
-          {/* INTENT PROMPT MODAL (ON CONNECTING ROUTER TO AGENT OR CLICKING ROUTE EDGE) */}
-          {intentPrompt && (
-            <IntentPromptModal
-              intentPrompt={intentPrompt}
+          {/* MAIN CANVAS */}
+          <div className="relative h-full flex-1" ref={reactFlowWrapper}>
+            {/* FLOATING ACTION TOOLBAR AT TOP */}
+            <CanvasToolbar
               nodes={nodes}
-              onChange={setIntentPrompt}
-              onSave={handleIntentSave}
-              onSkip={() => setIntentPrompt(null)}
+              startAgentName={startNodeId}
+              showDataWires={showDataWires}
+              onAddAgent={handleAddAgent}
+              onAddRouter={handleAddRouter}
+              onAddFunction={handleAddFunction}
+              onAddIterator={handleAddIterator}
+              onAddSubworkflow={handleAddSubworkflow}
+              onAutoLayout={handleAutoLayout}
+              onToggleDataWires={() => setShowDataWires((prev) => !prev)}
+              onFitView={() => reactFlowInstance?.fitView({ padding: 0.2, duration: 300 })}
             />
-          )}
-        </div>
 
-        {/* RIGHT-HAND PROPERTY INSPECTOR */}
-        <PropertyPanel
-          selectedNode={selectedNode}
-          onClose={() => setSelectedNode(null)}
-          onUpdateNode={onUpdateNode}
-          onRenameNode={onRenameNode}
-          nodes={nodes}
-          onSetStartAgent={handleSetStartAgent}
-          onDeleteNode={handleDeleteNode}
-        />
-      </ReactFlowProvider>
-    </div>
+            <ReactFlow
+              nodes={nodes}
+              edges={visibleEdges}
+              onlyRenderVisibleElements={true}
+              maxZoom={2}
+              defaultEdgeOptions={{
+                type: 'smoothstep',
+              }}
+              onNodesChange={handleNodesChange}
+              onEdgesChange={handleEdgesChange}
+              onBeforeDelete={onBeforeDelete}
+              onDelete={onDelete}
+              isValidConnection={isValidConnection}
+              onConnect={onConnect}
+              onConnectEnd={onConnectEnd}
+              onInit={setReactFlowInstance}
+              onDrop={onDrop}
+              onDragOver={onDragOver}
+              onNodeClick={onNodeClick}
+              onPaneClick={onPaneClick}
+              onEdgeClick={onEdgeClick}
+              nodeTypes={nodeTypes}
+              fitView
+              className="bg-transparent"
+            >
+              <Background color="hsl(var(--border))" gap={20} size={1} variant={BackgroundVariant.Dots} />
+              <Controls className="bg-card border-border fill-foreground" />
+
+              {/* CANVAS LEGEND */}
+              <CanvasLegend showDataWires={showDataWires} />
+            </ReactFlow>
+
+            {/* EMPTY CANVAS WELCOME & QUICK TEMPLATES */}
+            {nodes.length === 0 && !yamlError && (
+              <EmptyCanvasWelcome
+                onLoadLinearTemplate={handleLoadLinearTemplate}
+                onLoadRouterTemplate={handleLoadRouterTemplate}
+                onAddAgent={handleAddAgent}
+              />
+            )}
+
+            {/* YAML THAT CANNOT BE DRAWN: the canvas stays read-only so the YAML is never overwritten */}
+            {yamlError && (
+              <div
+                role="alert"
+                className="border-destructive/30 bg-card text-destructive absolute top-16 left-1/2 z-10 max-w-lg -translate-x-1/2 rounded-lg border px-4 py-3 text-xs shadow-lg"
+              >
+                <p className="font-semibold">The YAML cannot be shown in the visual builder</p>
+                <p className="mt-1 break-words">{yamlError}</p>
+                <p className="text-muted-foreground mt-1">Fix it in the YAML tab, then come back.</p>
+              </div>
+            )}
+
+            {/* PROBLEMS THAT WILL BREAK THE SAVED WORKFLOW */}
+            {!yamlError && issues.length > 0 && (
+              <div
+                role="status"
+                className="border-border bg-card absolute right-4 bottom-4 z-10 max-w-sm rounded-lg border px-3 py-2 text-[11px] shadow-lg"
+              >
+                <p className="text-foreground font-semibold">
+                  {issues.length} {issues.length === 1 ? 'problem' : 'problems'} in this workflow
+                </p>
+                <ul className="text-muted-foreground mt-1 list-disc space-y-0.5 pl-4">
+                  {issues.slice(0, 5).map((issue, i) => (
+                    <li key={`${issue.nodeId ?? ''}-${i}`}>{issue.message}</li>
+                  ))}
+                </ul>
+                {issues.length > 5 && <p className="text-muted-foreground mt-1">and {issues.length - 5} more</p>}
+              </div>
+            )}
+
+            {/* QUICK ADD POPUP (ON DRAGGING EDGE INTO EMPTY CANVAS) */}
+            {addNodeMenu && <AddNodeMenu menu={addNodeMenu} onQuickAdd={handleQuickAdd} />}
+
+            {/* INTENT PROMPT MODAL (ON CONNECTING ROUTER TO AGENT OR CLICKING ROUTE EDGE) */}
+            {intentPrompt && (
+              <IntentPromptModal
+                intentPrompt={intentPrompt}
+                nodes={nodes}
+                onChange={setIntentPrompt}
+                onSave={handleIntentSave}
+                onSkip={() => setIntentPrompt(null)}
+              />
+            )}
+          </div>
+
+          {/* RIGHT-HAND PROPERTY INSPECTOR */}
+          <PropertyPanel
+            selectedNode={selectedNode}
+            onClose={onPaneClick}
+            onUpdateNode={onUpdateNode}
+            onRenameNode={onRenameNode}
+            nodes={nodes}
+            startNodeId={startNodeId}
+            onSetStartAgent={handleSetStartAgent}
+            onDeleteNode={handleDeleteNode}
+          />
+        </ReactFlowProvider>
+      </div>
+    </WorkflowActionsContext.Provider>
   );
 };

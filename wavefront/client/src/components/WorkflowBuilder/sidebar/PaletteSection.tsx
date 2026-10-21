@@ -46,6 +46,7 @@ export const PaletteSection = ({
           </div>
         </div>
         <Button
+          type="button"
           size="icon"
           variant="ghost"
           className="text-muted-foreground h-6 w-6 shrink-0 group-hover:text-emerald-500 hover:bg-emerald-500/10"
@@ -76,6 +77,7 @@ export const PaletteSection = ({
           </div>
         </div>
         <Button
+          type="button"
           size="icon"
           variant="ghost"
           className="text-muted-foreground h-6 w-6 shrink-0 group-hover:text-orange-500 hover:bg-orange-500/10"
@@ -106,6 +108,7 @@ export const PaletteSection = ({
           </div>
         </div>
         <Button
+          type="button"
           size="icon"
           variant="ghost"
           className="text-muted-foreground h-6 w-6 shrink-0 group-hover:text-blue-500 hover:bg-blue-500/10"
@@ -136,6 +139,7 @@ export const PaletteSection = ({
           </div>
         </div>
         <Button
+          type="button"
           size="icon"
           variant="ghost"
           className="text-muted-foreground h-6 w-6 shrink-0 group-hover:text-indigo-500 hover:bg-indigo-500/10"
@@ -166,6 +170,7 @@ export const PaletteSection = ({
           </div>
         </div>
         <Button
+          type="button"
           size="icon"
           variant="ghost"
           className="text-muted-foreground h-6 w-6 shrink-0 group-hover:text-teal-500 hover:bg-teal-500/10"

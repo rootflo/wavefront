@@ -2,13 +2,20 @@ import { Node } from '@xyflow/react';
 import { Input } from '@app/components/ui/input';
 import { Label } from '@app/components/ui/label';
 import MultiSelect from '@app/components/MultiSelect';
+import { isExecutableNode } from '../graphUtils';
 import { NodePropertiesProps, WorkflowOption } from './types';
 
 interface SubworkflowPropertiesProps extends NodePropertiesProps {
   workflows: WorkflowOption[];
 }
 
-export const SubworkflowProperties = ({ selectedNode, handleChange, nodes, workflows }: SubworkflowPropertiesProps) => {
+export const SubworkflowProperties = ({
+  selectedNode,
+  handleChange,
+  handleChanges,
+  nodes,
+  workflows,
+}: SubworkflowPropertiesProps) => {
   return (
     <>
       <div>
@@ -17,10 +24,7 @@ export const SubworkflowProperties = ({ selectedNode, handleChange, nodes, workf
           list="workflows-list"
           className="bg-background border-border focus:border-primary text-foreground w-full rounded-md border px-2 py-1.5 text-xs font-medium focus:outline-none"
           value={(selectedNode.data.yaml_file as string) || (selectedNode.data.ref as string) || ''}
-          onChange={(e) => {
-            handleChange('yaml_file', e.target.value);
-            handleChange('ref', e.target.value);
-          }}
+          onChange={(e) => handleChanges({ yaml_file: e.target.value, ref: e.target.value })}
           placeholder="e.g. riskcovry-bridge/1a_doc_type_classifier"
         />
         <datalist id="workflows-list">
@@ -35,7 +39,7 @@ export const SubworkflowProperties = ({ selectedNode, handleChange, nodes, workf
       <div>
         <Label className="mb-1 block text-xs">Input Filter</Label>
         <MultiSelect
-          items={nodes.filter((n) => n.id !== selectedNode.id)}
+          items={nodes.filter((n) => n.id !== selectedNode.id && isExecutableNode(n))}
           selectedIds={Array.isArray(selectedNode.data.input_filter) ? selectedNode.data.input_filter : []}
           onChange={(ids) => handleChange('input_filter', ids.length > 0 ? ids : undefined)}
           getId={(n: Node) => n.id}

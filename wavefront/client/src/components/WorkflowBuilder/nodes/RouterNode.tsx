@@ -4,10 +4,14 @@ import React from 'react';
 import { useParams } from 'react-router';
 import { Badge } from '@app/components/ui/badge';
 import { useGetLLMConfigs } from '@app/hooks/data/fetch-hooks';
+import { getRouterStrategy } from '../graphUtils';
+import { useWorkflowActions } from '../hooks/useWorkflowActions';
 import { NodeCard } from './NodeCard';
 
-export const RouterNode = React.memo(({ data, selected }: NodeProps) => {
-  const routerType = (data.strategy as string) || (data.type as string) || 'smart';
+export const RouterNode = React.memo(({ id, data, selected }: NodeProps) => {
+  const { startNodeId, deleteNode } = useWorkflowActions();
+  const isStartNode = id === startNodeId;
+  const routerType = getRouterStrategy(data);
   const branches = Object.entries((data.routing_options as Record<string, string>) || {});
   const isFieldMatch = routerType === 'field_match';
   const isReflection = routerType === 'reflection';
@@ -46,13 +50,13 @@ export const RouterNode = React.memo(({ data, selected }: NodeProps) => {
         selected={selected}
         badge={
           <div className="flex items-center gap-1">
-            {Boolean(data.isStartNode) && (
+            {isStartNode && (
               <Badge className="bg-emerald-500 px-1.5 py-0 text-[9px] font-medium text-white shadow-xs">🚀 Start</Badge>
             )}
             {Boolean(data.isEndNode) && (
               <Badge className="bg-purple-600 px-1.5 py-0 text-[9px] font-medium text-white shadow-xs">🏁 End</Badge>
             )}
-            {!data.isStartNode && !data.isEndNode && (
+            {!isStartNode && !data.isEndNode && (
               <Badge
                 variant="outline"
                 className="border-orange-500/20 bg-orange-500/10 py-0 text-[10px] text-orange-500"
@@ -70,7 +74,7 @@ export const RouterNode = React.memo(({ data, selected }: NodeProps) => {
             )}
           </div>
         }
-        onDelete={data.onDelete as (() => void) | undefined}
+        onDelete={() => deleteNode(id)}
       >
         {/* Router Specific Details */}
         {isFieldMatch && (

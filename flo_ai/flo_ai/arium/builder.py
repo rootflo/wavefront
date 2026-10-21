@@ -520,6 +520,9 @@ class AriumBuilder:
             settings = (
                 router.settings.model_dump(exclude_none=True) if router.settings else {}
             )
+            # Only the smart router's prompt takes a workflow description
+            if router_type != 'smart':
+                settings.pop('context_description', None)
 
             # A router is a model call like any other: its prompt embeds the
             # conversation so far and goes to the provider as a user message,

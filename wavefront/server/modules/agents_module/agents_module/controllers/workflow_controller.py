@@ -26,6 +26,8 @@ from agents_module.models.workflow_schemas import (
     WorkflowInferenceRequest,
     WorkflowInferenceResponse,
 )
+from agents_module.models.yaml_validation_schemas import YamlValidationResult
+from agents_module.utils.yaml_validation import decode_yaml_body
 
 workflows_router = APIRouter()
 
@@ -500,6 +502,57 @@ async def create_workflow(
             {
                 'message': 'Workflow created successfully',
                 'data': workflow,
+            }
+        ),
+    )
+
+
+# A ':validate' custom method rather than '/workflows/validate', which the
+# '/workflows/{name}' create route above would shadow and which would reserve the
+# workflow name 'validate'
+@workflows_router.post('/v1/workflow-management/workflows:validate')
+@inject
+async def validate_workflow(
+    request: Request,
+    workflow_crud_service: WorkflowCrudService = Depends(
+        Provide[AgentsContainer.workflow_crud_service]
+    ),
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+):
+    """
+    Validate workflow YAML without saving it
+
+    Runs flo_ai's workflow model and the graph rules the builder enforces (start
+    and end exist, edges point at known nodes, routers match their edge targets,
+    no orphan nodes), and checks that referenced agents, subworkflows, tools and
+    functions exist. No agent is built and no LLM client is constructed, so this
+    makes no network calls. A document with problems is not an error: it answers
+    200 with valid=false and one entry per problem.
+
+    Args:
+        request: Request containing raw YAML content as text/plain
+
+    Returns:
+        JSONResponse: {valid, errors: [{path, message}]}
+    """
+    yaml_content, errors = decode_yaml_body(await request.body())
+    if yaml_content is not None:
+        errors = await workflow_crud_service.validate_yaml(yaml_content)
+
+    result = YamlValidationResult(valid=not errors, errors=errors)
+    logger.info(
+        f'Validated workflow YAML - valid: {result.valid}, errors: {len(errors)}'
+    )
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            {
+                'message': 'Workflow YAML is valid'
+                if result.valid
+                else f'Workflow YAML has {len(errors)} error(s)',
+                'data': result.model_dump(),
             }
         ),
     )

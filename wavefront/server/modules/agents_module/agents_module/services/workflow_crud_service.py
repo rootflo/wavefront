@@ -21,7 +21,14 @@ from agents_module.utils.cache_utils import (
     get_workflow_yaml_cache_key,
     get_workflows_list_cache_key,
 )
+from agents_module.models.yaml_validation_schemas import YamlValidationError
 from agents_module.utils.validation_utils import validate_agent_workflow_name
+from agents_module.utils.yaml_validation import (
+    format_validation_errors,
+    missing_tool_error,
+    parse_yaml_document,
+    validate_arium_document,
+)
 from agents_module.utils.version_reference_utils import (
     parse_versioned_reference,
     resolve_entity_current_version,
@@ -294,6 +301,126 @@ class WorkflowCrudService:
         )
         return yaml_content
 
+    async def _load_inlined_document(
+        self, yaml_content: str
+    ) -> Tuple[Optional[Dict[str, Any]], bool, List[YamlValidationError]]:
+        """
+        Parse workflow YAML and splice every subworkflow reference (at any nesting
+        depth) in as an inline arium, which is the shape the models and the
+        AriumBuilder validate.
+
+        Returns:
+            (document, inlined, errors). ``document`` is None when the YAML could
+            not be parsed or a reference could not be resolved (``errors`` says
+            why); ``inlined`` is True when a reference was spliced in, meaning the
+            YAML string no longer matches the document.
+        """
+        yaml_data, errors = parse_yaml_document(yaml_content)
+        if yaml_data is None:
+            return None, False, errors
+
+        arium_config = yaml_data.get('arium')
+        if not isinstance(arium_config, dict):
+            # Nothing to inline; the models report the missing or malformed arium
+            return yaml_data, False, []
+
+        try:
+            inlined_arium = await inline_subworkflow_references(
+                arium_config, self.get_workflow_yaml_from_bucket
+            )
+        except (ValueError, yaml.YAMLError) as e:
+            return (
+                None,
+                False,
+                [YamlValidationError(path='arium.ariums', message=str(e))],
+            )
+        except (AttributeError, TypeError):
+            # Malformed ariums entries; the models report them with a path
+            return yaml_data, False, []
+
+        if inlined_arium is arium_config:
+            return yaml_data, False, []
+        yaml_data['arium'] = inlined_arium
+        return yaml_data, True, []
+
+    async def _check_document(
+        self, yaml_data: Dict[str, Any]
+    ) -> List[YamlValidationError]:
+        """
+        Validate a parsed, reference-inlined workflow document statically: the
+        models, the graph rules, and that everything it names exists. Nothing is
+        built, so no LLM is created.
+        """
+        report = validate_arium_document(
+            yaml_data, function_names=self.tool_loader.function_node_registry
+        )
+        errors = list(report.errors)
+        if not report.schema_valid:
+            return errors
+
+        # Several nodes can point at one agent; look each reference up once
+        missing_agents: Dict[str, str] = {}
+        for agent_ref in report.agent_refs:
+            if agent_ref.reference not in missing_agents:
+                missing_agents[agent_ref.reference] = await self._find_agent_error(
+                    agent_ref.reference
+                )
+            if missing_agents[agent_ref.reference]:
+                errors.append(
+                    YamlValidationError(
+                        path=agent_ref.path,
+                        message=missing_agents[agent_ref.reference],
+                    )
+                )
+
+        if report.tool_refs:
+            tool_available = self.tool_loader.load_all_tools()
+            found_tools: Dict[str, bool] = {}
+            for tool_ref in report.tool_refs:
+                if tool_ref.name not in found_tools:
+                    found_tools[tool_ref.name] = bool(
+                        await self.agent_crud_service.resolve_tool(
+                            tool_ref.name, tool_available
+                        )
+                    )
+                if not found_tools[tool_ref.name]:
+                    errors.append(missing_tool_error(tool_ref))
+
+        return errors
+
+    async def _find_agent_error(self, agent_ref: str) -> str:
+        """Why a ``namespace/name[@version]`` agent reference cannot be resolved,
+        or an empty string when it can."""
+        namespace, rest = agent_ref.split('/', 1)
+        agent_name, version = parse_versioned_reference(rest)
+        try:
+            await self.agent_crud_service.get_agent_yaml_from_bucket(
+                agent_name, namespace, version=version
+            )
+        except ValueError as e:
+            return str(e)
+        return ''
+
+    async def validate_yaml(self, yaml_content: str) -> List[YamlValidationError]:
+        """
+        Validate workflow YAML without persisting or building anything.
+
+        Subworkflow and agent references are resolved against stored workflows and
+        agents, but no referenced agent is built and no LLM is created.
+
+        Args:
+            yaml_content: The YAML content to validate
+
+        Returns:
+            Every problem found, each with the path of the offending key; empty
+            when the YAML is valid. Unlike create/update this does not construct
+            the agents, so it cannot catch a failure that only happens there.
+        """
+        yaml_data, _, errors = await self._load_inlined_document(yaml_content)
+        if yaml_data is None:
+            return errors
+        return await self._check_document(yaml_data)
+
     async def _validate_yaml_content(
         self,
         yaml_content: str,
@@ -315,14 +442,16 @@ class WorkflowCrudService:
         """
         try:
             # Recursively inline subworkflow references at any nesting depth, then
-            # rebuild the YAML string the AriumBuilder validates.
-            yaml_data = yaml.safe_load(yaml_content) or {}
-            arium_config = yaml_data.get('arium', {}) or {}
-            inlined_arium = await inline_subworkflow_references(
-                arium_config, self.get_workflow_yaml_from_bucket
-            )
-            if inlined_arium is not arium_config:
-                yaml_data['arium'] = inlined_arium
+            # check the document statically before building anything.
+            yaml_data, inlined, errors = await self._load_inlined_document(yaml_content)
+            if yaml_data is not None:
+                errors = await self._check_document(yaml_data)
+            if errors:
+                raise ValueError(format_validation_errors(errors))
+
+            inlined_arium = yaml_data['arium']
+            if inlined:
+                # Rebuild the YAML string the AriumBuilder validates
                 yaml_content = yaml.dump(
                     yaml_data, default_flow_style=False, sort_keys=False
                 )

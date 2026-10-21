@@ -10,6 +10,8 @@ export type WorkflowOption = { namespace?: string; name: string };
 
 export interface NodePropertiesProps {
   selectedNode: Node;
+  // Both merge into the node's current data; use handleChanges when several fields change together
   handleChange: (key: string, value: unknown) => void;
+  handleChanges: (patch: Record<string, unknown>) => void;
   nodes: Node[];
 }

@@ -27,6 +27,7 @@ export const EmptyCanvasWelcome = ({
 
       <div className="flex w-full flex-col gap-2 pt-1">
         <Button
+          type="button"
           size="sm"
           variant="outline"
           onClick={onLoadLinearTemplate}
@@ -36,6 +37,7 @@ export const EmptyCanvasWelcome = ({
           <strong>Linear Pipeline:</strong> Content Creator ➔ Editor
         </Button>
         <Button
+          type="button"
           size="sm"
           variant="outline"
           onClick={onLoadRouterTemplate}
@@ -47,7 +49,7 @@ export const EmptyCanvasWelcome = ({
       </div>
 
       <div className="border-border/60 w-full border-t pt-3">
-        <Button size="sm" onClick={onAddAgent} className="w-full gap-1.5 text-xs font-medium">
+        <Button type="button" size="sm" onClick={onAddAgent} className="w-full gap-1.5 text-xs font-medium">
           <Plus size={13} /> Add Blank Agent
         </Button>
       </div>

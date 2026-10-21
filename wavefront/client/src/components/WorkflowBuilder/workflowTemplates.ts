@@ -1,12 +1,13 @@
 import { Edge, Node } from '@xyflow/react';
-import { NODE_TYPES } from '@app/constants/workflow-builder';
+import { EDGE_KINDS, NODE_TYPES } from '@app/constants/workflow-builder';
 
 export interface WorkflowTemplate {
   nodes: Node[];
   edges: Edge[];
 }
 
-// Factories return fresh objects on every call because auto-layout mutates node positions in place
+// Factories return fresh objects on every call because auto-layout mutates node positions in place.
+// Agents and routers start on RootFlo with no model chosen: the user picks one before saving (the serializer reports it).
 
 // Template: Linear (Content Creator -> Editor)
 export const createLinearTemplate = (): WorkflowTemplate => {
@@ -25,10 +26,9 @@ export const createLinearTemplate = (): WorkflowTemplate => {
         label: 'content_creator',
         role: 'Content Creator',
         job: 'Drafts high quality articles and posts based on inputs.',
-        provider: 'openai',
-        model: 'gpt-4o-mini',
+        provider: 'rootflo',
+        model_id: '',
         temperature: 0.7,
-        isStartNode: true,
         type: 'agent',
       },
     },
@@ -40,8 +40,8 @@ export const createLinearTemplate = (): WorkflowTemplate => {
         label: 'editor',
         role: 'Editor',
         job: 'Polishes, edits, and checks grammar and tone.',
-        provider: 'openai',
-        model: 'gpt-4o-mini',
+        provider: 'rootflo',
+        model_id: '',
         temperature: 0.3,
         type: 'agent',
       },
@@ -55,6 +55,7 @@ export const createLinearTemplate = (): WorkflowTemplate => {
       target: 'content_creator',
       animated: true,
       style: { stroke: '#a855f7', strokeWidth: 2 },
+      data: { kind: EDGE_KINDS.START },
     },
     {
       id: 'e-content_creator-editor',
@@ -62,6 +63,7 @@ export const createLinearTemplate = (): WorkflowTemplate => {
       target: 'editor',
       animated: true,
       style: { stroke: '#888888', strokeWidth: 2 },
+      data: { kind: EDGE_KINDS.FLOW },
     },
   ];
 
@@ -85,10 +87,9 @@ export const createRouterTemplate = (): WorkflowTemplate => {
         label: 'triage_agent',
         role: 'Support Triage',
         job: 'Understands customer inquiry and normalizes details.',
-        provider: 'openai',
-        model: 'gpt-4o-mini',
+        provider: 'rootflo',
+        model_id: '',
         temperature: 0.5,
-        isStartNode: true,
         type: 'agent',
       },
     },
@@ -99,8 +100,8 @@ export const createRouterTemplate = (): WorkflowTemplate => {
       data: {
         label: 'intent_router',
         strategy: 'smart',
-        provider: 'openai',
-        model: 'gpt-4o-mini',
+        provider: 'rootflo',
+        model_id: '',
         temperature: 0.2,
         routing_options: {
           tech_specialist: 'Technical or API troubleshooting',
@@ -117,8 +118,8 @@ export const createRouterTemplate = (): WorkflowTemplate => {
         label: 'tech_specialist',
         role: 'Technical Engineer',
         job: 'Fixes bugs and answers deep technical inquiries.',
-        provider: 'openai',
-        model: 'gpt-4o-mini',
+        provider: 'rootflo',
+        model_id: '',
         temperature: 0.4,
         type: 'agent',
       },
@@ -131,8 +132,8 @@ export const createRouterTemplate = (): WorkflowTemplate => {
         label: 'billing_agent',
         role: 'Billing Specialist',
         job: 'Handles invoices, refunds, and subscriptions.',
-        provider: 'openai',
-        model: 'gpt-4o-mini',
+        provider: 'rootflo',
+        model_id: '',
         temperature: 0.3,
         type: 'agent',
       },
@@ -146,6 +147,7 @@ export const createRouterTemplate = (): WorkflowTemplate => {
       target: 'triage_agent',
       animated: true,
       style: { stroke: '#a855f7', strokeWidth: 2 },
+      data: { kind: EDGE_KINDS.START },
     },
     {
       id: 'e-triage_agent-intent_router',
@@ -153,6 +155,7 @@ export const createRouterTemplate = (): WorkflowTemplate => {
       target: 'intent_router',
       animated: true,
       style: { stroke: '#888888', strokeWidth: 2 },
+      data: { kind: EDGE_KINDS.FLOW },
     },
     {
       id: 'e-intent_router-tech_specialist',
@@ -162,8 +165,9 @@ export const createRouterTemplate = (): WorkflowTemplate => {
       labelStyle: { fill: '#f97316', fontWeight: 600, fontSize: 10 },
       labelBgPadding: [6, 4] as [number, number],
       labelBgBorderRadius: 4,
-      labelBgStyle: { fill: 'hsl(var(--background))', stroke: '#border', strokeWidth: 1 },
+      labelBgStyle: { fill: 'hsl(var(--background))', stroke: 'hsl(var(--border))', strokeWidth: 1 },
       style: { stroke: '#f97316', strokeWidth: 2 },
+      data: { kind: EDGE_KINDS.ROUTE },
     },
     {
       id: 'e-intent_router-billing_agent',
@@ -173,8 +177,9 @@ export const createRouterTemplate = (): WorkflowTemplate => {
       labelStyle: { fill: '#f97316', fontWeight: 600, fontSize: 10 },
       labelBgPadding: [6, 4] as [number, number],
       labelBgBorderRadius: 4,
-      labelBgStyle: { fill: 'hsl(var(--background))', stroke: '#border', strokeWidth: 1 },
+      labelBgStyle: { fill: 'hsl(var(--background))', stroke: 'hsl(var(--border))', strokeWidth: 1 },
       style: { stroke: '#f97316', strokeWidth: 2 },
+      data: { kind: EDGE_KINDS.ROUTE },
     },
   ];
 

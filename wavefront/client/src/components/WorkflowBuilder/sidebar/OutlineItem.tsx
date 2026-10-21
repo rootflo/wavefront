@@ -16,7 +16,16 @@ export const OutlineItem = ({ node, isSelected, isStart, onSelectNode, onDeleteN
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       onClick={() => onSelectNode?.(node.id)}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelectNode?.(node.id);
+        }
+      }}
       className={`flex cursor-pointer items-center justify-between rounded-lg border px-2.5 py-1.5 text-xs transition-colors ${
         isSelected
           ? `${activeBg} text-foreground font-semibold`
@@ -31,11 +40,13 @@ export const OutlineItem = ({ node, isSelected, isStart, onSelectNode, onDeleteN
         )}
       </div>
       <button
+        type="button"
         onClick={(e) => {
           e.stopPropagation();
           onDeleteNode?.(node.id);
         }}
         title="Delete step"
+        aria-label={`Delete ${(node.data?.label as string) || node.id}`}
         className="text-muted-foreground/60 hover:text-destructive hover:bg-background shrink-0 rounded p-0.5"
       >
         <Trash2 size={11} />

@@ -5,6 +5,8 @@ export interface AddNodeMenuState {
   x: number;
   y: number;
   sourceId: string;
+  // Handle the connection was dragged from (e.g. an iterator's loop-out), so the new step is wired the same way
+  sourceHandle?: string | null;
 }
 
 interface QuickAddOption {
@@ -66,7 +68,13 @@ export const AddNodeMenu = ({ menu, onQuickAdd }: AddNodeMenuProps) => (
   >
     <div className="text-muted-foreground px-2 py-1 text-[10px] font-bold tracking-wider uppercase">Quick Add Step</div>
     {QUICK_ADD_OPTIONS.map(({ type, label, icon: Icon, className }) => (
-      <button key={type} className={className} onClick={() => onQuickAdd(type)}>
+      <button
+        type="button"
+        key={type}
+        aria-label={`Add ${label}`}
+        className={className}
+        onClick={() => onQuickAdd(type)}
+      >
         <Icon size={13} /> {label}
       </button>
     ))}
