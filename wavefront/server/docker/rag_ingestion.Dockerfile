@@ -1,7 +1,7 @@
 # Wolfi (Chainguard's glibc-based distro) instead of Debian slim: its packages
 # carry no unpatched CVEs, whereas Debian ships glibc/zlib/util-linux issues it
 # marks no-fix. Pinned by digest; bump with `docker pull` + rescan.
-FROM cgr.dev/chainguard/wolfi-base@sha256:256c88bb066424045021090932d50be93c8e3f2ce3586707702a401b146f3e43
+FROM cgr.dev/chainguard/wolfi-base@sha256:81211e15a86ea1d5357f284482af45730c51de45eaf10ad9ce205d6bfc2df323
 
 # uv is bind-mounted only into the RUN steps that need it (ghcr.io/astral-sh/uv:0.12.24), so the
 # image does not ship the uv binary and the Rust crates it bundles; the app
