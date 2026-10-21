@@ -146,7 +146,6 @@ const LLMInferenceConfigDetail: React.FC = () => {
 
   const changeModel = (modelId: string) => {
     form.setValue('llm_model', modelId, { shouldValidate: true });
-    setParameters((prev) => filterParameters(type, modelId, prev).kept);
   };
 
   const handleSave = async (data: LLMConfigForm) => {

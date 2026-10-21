@@ -51,7 +51,7 @@ from call_processing.services.common.conversation_config import (
 THINKING_FILLER_DELAY_SECS = 0.8
 _MAX_THINKING_DELAY_SECS = 5.0
 # Defaults for agents whose conversation_config does not set these
-DEFAULT_THINKING = True
+DEFAULT_THINKING = False
 DEFAULT_BEFORE_TOOL_CALL = False
 
 PhraseBook = Mapping[str, Sequence[str]]
