@@ -266,7 +266,6 @@ class Agent(BaseAgent):
                     response = await self.llm.generate(
                         messages,
                         functions=formatted_tools,
-                        output_schema=self.output_schema,
                     )
 
                     # Handle ReACT and CoT patterns
@@ -281,6 +280,12 @@ class Agent(BaseAgent):
                                 assistant_message, tool_call_count, messages
                             )
                             if is_final:
+                                if self.output_schema:
+                                    # A tool loop response is only a draft when a
+                                    # parser is configured; break so the final
+                                    # request can apply the schema to the answer.
+                                    break
+
                                 # Ensure act_as is not None (default to 'assistant' if missing)
                                 role = (
                                     self.act_as
@@ -469,15 +474,18 @@ class Agent(BaseAgent):
                             f'Tool execution failed: {analysis}', original_error=e
                         )
 
-                # If no tools were called, return conversation history
-                if tool_call_count == 0:
+                # Without a parser, a direct answer is already complete. With a
+                # parser, continue to the schema-constrained final request even
+                # when the model did not call a tool.
+                if tool_call_count == 0 and not self.output_schema:
                     return self.conversation_history
 
                 # Generate final response if we've hit the tool call limit or exited the loop
-                system_message = SystemMessage(
-                    content='Please provide a final answer based on all the tool results above.'
-                )
-                self.add_to_history(system_message)
+                if tool_call_count:
+                    system_message = SystemMessage(
+                        content='Please provide a final answer based on all the tool results above.'
+                    )
+                    self.add_to_history(system_message)
                 messages = await self._get_message_history(variables)
 
                 final_response = await self.llm.generate(

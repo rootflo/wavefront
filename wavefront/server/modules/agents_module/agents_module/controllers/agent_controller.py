@@ -182,7 +182,9 @@ async def agent_inference_v2(
         stream: Whether to return the run as an SSE stream
 
     Returns:
-        AgentInferenceResponse: Contains the inference result and metadata
+        AgentInferenceResponse: Contains the inference result and metadata.
+        When JSON output is requested but no valid JSON object is found,
+        returns HTTP 502 with an error instead of a successful empty result.
     """
     logger.info(f'Starting v2 inference for agent_id: {agent_id}, stream: {stream}')
 
@@ -256,7 +258,16 @@ async def agent_inference_v2(
         )
 
     if agent_inference_payload.output_json_enabled:
-        result = FloUtils.extract_jsons_from_string(result[-1].content)
+        try:
+            result = FloUtils.extract_jsons_from_string(result[-1].content, strict=True)
+        except ValueError:
+            return JSONResponse(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                content=response_formatter.buildErrorResponse(
+                    'Agent response contains no valid JSON object. '
+                    'Set output_json_enabled=false to receive plain-text output.'
+                ),
+            )
     else:
         result = result[-1].content
 

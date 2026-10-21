@@ -202,3 +202,63 @@ async def test_agent_tool_loop_sends_tool_messages(kind):
         'tool_call_id': 'call_1',
         'content': 'result for x',
     }
+
+
+@pytest.mark.parametrize('kind', ['openai', 'azure'])
+@pytest.mark.asyncio
+async def test_agent_uses_tools_before_structured_final_response(kind):
+    llm = make_llm(kind)
+    tool = lookup_tool()
+    tool.function = AsyncMock(return_value='result for x')
+    output_schema = {
+        'title': 'answer',
+        'type': 'object',
+        'properties': {'answer': {'type': 'string'}},
+        'required': ['answer'],
+    }
+    lookup_requests = 0
+
+    def reply(**kwargs):
+        nonlocal lookup_requests
+        names = [item['function']['name'] for item in kwargs.get('tools', [])]
+        if names == ['lookup']:
+            if lookup_requests == 0:
+                lookup_requests += 1
+                return completion(
+                    tool_calls=[
+                        tool_call(name='lookup', arguments=json.dumps({'query': 'x'}))
+                    ]
+                )
+            return completion('Final Answer: result for x')
+        if names == ['answer']:
+            return completion(
+                tool_calls=[
+                    tool_call(
+                        name='answer',
+                        arguments=json.dumps({'answer': 'result for x'}),
+                    )
+                ]
+            )
+        raise AssertionError(f'Unexpected model tools: {names}')
+
+    llm.client.chat.completions.create = AsyncMock(side_effect=reply)
+    agent = Agent(
+        name='tester',
+        system_prompt='Use tools.',
+        llm=llm,
+        tools=[tool],
+        output_schema=output_schema,
+    )
+
+    await agent.run('look up x')
+
+    calls = llm.client.chat.completions.create.call_args_list
+    assert len(calls) == 3
+    assert [item['function']['name'] for item in calls[0].kwargs['tools']] == ['lookup']
+    assert 'tool_choice' not in calls[0].kwargs
+    assert [item['function']['name'] for item in calls[1].kwargs['tools']] == ['lookup']
+    assert 'tool_choice' not in calls[1].kwargs
+    assert [item['function']['name'] for item in calls[2].kwargs['tools']] == ['answer']
+    assert calls[2].kwargs['tool_choice']['function']['name'] == 'answer'
+    tool.function.assert_awaited_once_with(query='x')
+    assert agent.conversation_history[-1].content == '{"answer": "result for x"}'
