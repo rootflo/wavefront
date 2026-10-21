@@ -60,6 +60,19 @@ class VoiceAgent(Base):
     def get_table_name():
         return (VoiceAgent()).__tablename__
 
+    # Fields returned by list endpoints (table view / room agent picker).
+    LIST_FIELDS = (
+        'id',
+        'name',
+        'description',
+        'status',
+        'supported_languages',
+        'default_language',
+        'is_deleted',
+        'created_at',
+        'updated_at',
+    )
+
     def to_dict(self):
         result = {}
         for column in self.__table__.columns:
@@ -102,3 +115,8 @@ class VoiceAgent(Base):
             else:
                 result[column.name] = value
         return result
+
+    def to_list_dict(self):
+        """Compact representation for list/table views (excludes prompts, params, config IDs)."""
+        full = self.to_dict()
+        return {key: full[key] for key in self.LIST_FIELDS}

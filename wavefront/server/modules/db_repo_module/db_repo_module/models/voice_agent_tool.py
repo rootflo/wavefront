@@ -15,6 +15,8 @@ class ToolType(str, enum.Enum):
 
     API = 'api'
     PYTHON = 'python'
+    # Handled by the browser app: call_processing emits an event and waits for an ack
+    APP = 'app'
 
 
 class VoiceAgentTool(Base):

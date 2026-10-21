@@ -17,7 +17,7 @@ import { SttConfig } from '@app/types/stt-config';
 import { TelephonyConfig } from '@app/types/telephony-config';
 import { ToolDetails, VoiceAgentTool, VoiceAgentToolWithAssociation } from '@app/types/tool';
 import { TtsConfig } from '@app/types/tts-config';
-import { VoiceAgent } from '@app/types/voice-agent';
+import { VoiceAgent, VoiceAgentListItem } from '@app/types/voice-agent';
 import { ScheduledJob } from '@app/types/scheduled-job';
 import { Trigger } from '@app/types/trigger';
 import { WorkflowListItem } from '@app/types/workflow';
@@ -353,7 +353,7 @@ export const useGetWorkflows = (
   return useQueryInit(getWorkflowsKey(appId || '', namespace), () => getWorkflowsQueryFn(namespace), !!appId);
 };
 
-export const useGetVoiceAgents = (appId: string | undefined): UseQueryResult<VoiceAgent[], Error> => {
+export const useGetVoiceAgents = (appId: string | undefined): UseQueryResult<VoiceAgentListItem[], Error> => {
   return useQueryInit(getVoiceAgentsKey(appId || ''), getVoiceAgentsQueryFn, !!appId);
 };
 

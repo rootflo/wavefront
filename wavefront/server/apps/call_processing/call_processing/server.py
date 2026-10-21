@@ -1,7 +1,9 @@
 from flo_lib.http import alias_httpx
 
 alias_httpx()
+import asyncio
 import glob
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
 # ruff: noqa: E402
@@ -16,6 +18,7 @@ import uvicorn
 from call_processing.di import application_container
 from call_processing.middleware import add_middlewares
 from call_processing.router import include_routers
+from call_processing.services.common import smart_turn
 
 config = application_container.config()
 runtime = RuntimeSettings.from_config(config)
@@ -34,7 +37,18 @@ application_container.wire(
 # so a new/unknown APP_ENV value stays closed rather than exposing the surface.
 is_dev = environment == 'dev'
 
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Load the end-of-turn model once, off the loop, before the first call needs it
+    await asyncio.to_thread(smart_turn.warm_up)
+    yield
+    # Close browser (WebRTC) peer connections still open on this instance
+    await application_container.webrtc_session_service().close()
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title='Call Processing API',
     description='Real-time voice call processing with Pipecat',
     version='1.0.0',

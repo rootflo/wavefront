@@ -34,28 +34,16 @@ const LLMConfigCard: React.FC<LLMConfigCardProps> = ({ config, onClick, onDelete
       value: config.type,
       className: `capitalize ${getTypeColor(config.type)}`,
     },
-  ];
-
-  if (config.base_url) {
-    metadata.push({
-      label: 'Base url',
-      value: config.base_url,
+    {
+      label: 'Model',
+      value: config.llm_model,
       className: 'max-w-32 truncate frost-text-muted bg-frost-glass-strong ring-1 ring-frost-border',
-    });
-  }
-
-  if (config.created_at) {
-    metadata.push({
-      label: 'Created',
-      value: new Date(config.created_at).toLocaleDateString(),
-      className: 'frost-text-muted bg-frost-glass-strong ring-1 ring-frost-border',
-    });
-  }
+    },
+  ];
 
   return (
     <ResourceCard
       title={config.display_name}
-      description={config.llm_model}
       metadata={metadata}
       onClick={() => onClick(config.id)}
       onDeleteClick={(e) => onDeleteClick(e, config)}

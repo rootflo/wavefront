@@ -36,25 +36,19 @@ class S3Storage(CloudStorageHandler):
         self.s3_client = boto3.client('s3', **client_kwargs)
 
     def get_file(self, bucket_name: str, file_path: str) -> bytes:
-        """
-        Get file from S3 bucket and return as buffer
+        """Get file from S3 bucket and return as buffer."""
+        content, _ = self.get_file_with_content_type(bucket_name, file_path)
+        return content
 
-        Args:
-            bucket_name (str): Name of the S3 bucket
-            file_path (str): Path to the file in bucket
-
-        Returns:
-            File content as bytes
-
-        Raises:
-            CloudStorageFileNotFoundError: If file not found
-            Exception: If other errors occur
-        """
+    def get_file_with_content_type(
+        self, bucket_name: str, file_path: str
+    ) -> Tuple[bytes, Optional[str]]:
+        """Get file bytes and the object's stored ContentType, if any."""
         try:
             s3_response = self.s3_client.get_object(Bucket=bucket_name, Key=file_path)
             file_content = s3_response['Body'].read()
-
-            return file_content
+            content_type = s3_response.get('ContentType')
+            return file_content, content_type
         except ClientError as e:
             # Check if the error is specifically "NoSuchKey" or "NoSuchBucket"
             if e.response['Error']['Code'] in ['NoSuchKey', 'NoSuchBucket']:

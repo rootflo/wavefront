@@ -345,8 +345,12 @@ class RootFloLLM(BaseLLM):
             # Construct full URL for LLM inference
             full_url = f'{self._base_url}/v1/llm-inference/{self._model_id}'
 
-            # Prepare custom headers for proxy authentication (only if app_key is provided)
-            custom_headers = {'X-Rootflo-Key': self._app_key} if self._app_key else {}
+            # Prepare custom headers for proxy authentication
+            custom_headers = {}
+            if self._app_key:
+                custom_headers['X-Rootflo-Key'] = self._app_key
+            if api_token:
+                custom_headers['Authorization'] = f'Bearer {api_token}'
 
             # Instantiate appropriate SDK wrapper based on llm_provider
             if llm_provider in (LLMProvider.OPENAI, LLMProvider.AZURE_OPENAI):

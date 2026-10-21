@@ -37,4 +37,4 @@ else
 fi
 
 cd /app/apps/floware/floware
-exec uv run --frozen --no-sync server.py
+exec python server.py
