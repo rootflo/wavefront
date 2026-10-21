@@ -9,6 +9,9 @@ import {
   DialogTitle,
 } from '@app/components/ui/dialog';
 import VoiceAgentToolsManager from './VoiceAgentToolsManager';
+import ConversationConfigField from './ConversationConfigField';
+import ConversationConfigGuide from './ConversationConfigGuide';
+import { fromEditorText, toEditorText } from './conversation-config';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Label } from '@app/components/ui/label';
@@ -33,9 +36,6 @@ import { getProviderConfig, getVoiceProviderLabel, groupParamKeys } from '@app/c
 import { TelephonyProvider } from '@app/types/telephony-config';
 import { getBooleanParameterWithDefault, getNumberParameterWithDefault } from '@app/utils/parameter-helpers';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
-import { langs } from '@uiw/codemirror-extensions-langs';
-import CodeMirror from '@uiw/react-codemirror';
 import React, { useEffect, useState } from 'react';
 import { FieldErrors, useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -45,11 +45,11 @@ const E164_REGEX = /^\+[1-9]\d{1,14}$/;
 const FORM_TAB = {
   BASIC: 'basic',
   CONFIGURATIONS: 'configurations',
-  PHONE_NUMBERS: 'phone-numbers',
   LANGUAGES: 'languages',
   BEHAVIOR: 'behavior',
-  ADVANCED: 'advanced',
   TOOLS: 'tools',
+  ADVANCED: 'advanced',
+  GUIDE: 'guide',
 } as const;
 
 type FormTab = (typeof FORM_TAB)[keyof typeof FORM_TAB];
@@ -85,8 +85,8 @@ const FIELD_TAB_MAP: Record<keyof UpdateVoiceAgentInput, FormTab> = {
   stt_config_id: FORM_TAB.CONFIGURATIONS,
   telephony_config_id: FORM_TAB.CONFIGURATIONS,
   tts_voice_ids: FORM_TAB.CONFIGURATIONS,
-  inbound_numbers: FORM_TAB.PHONE_NUMBERS,
-  outbound_numbers: FORM_TAB.PHONE_NUMBERS,
+  inbound_numbers: FORM_TAB.BASIC,
+  outbound_numbers: FORM_TAB.BASIC,
   supported_languages: FORM_TAB.LANGUAGES,
   default_language: FORM_TAB.LANGUAGES,
   system_prompt: FORM_TAB.BEHAVIOR,
@@ -141,7 +141,7 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
       tts_voice_ids: agent.tts_voice_ids,
       system_prompt: agent.system_prompt,
       welcome_message: agent.welcome_message,
-      conversation_config: agent.conversation_config ? JSON.stringify(agent.conversation_config, null, 2) : '{}',
+      conversation_config: toEditorText(agent.conversation_config),
       status: agent.status,
       inbound_numbers: agent.inbound_numbers?.join(', ') || '',
       outbound_numbers: agent.outbound_numbers?.join(', ') || '',
@@ -176,7 +176,7 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
         tts_voice_ids: agent.tts_voice_ids,
         system_prompt: agent.system_prompt,
         welcome_message: agent.welcome_message,
-        conversation_config: agent.conversation_config ? JSON.stringify(agent.conversation_config, null, 2) : '{}',
+        conversation_config: toEditorText(agent.conversation_config),
         status: agent.status,
         inbound_numbers: agent.inbound_numbers?.join(', ') || '',
         outbound_numbers: agent.outbound_numbers?.join(', ') || '',
@@ -237,14 +237,10 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
 
   const onSubmit = async (data: UpdateVoiceAgentInput) => {
     // Validate JSON if provided
-    let conversationConfig = null;
-    if (data.conversation_config?.trim() && data.conversation_config.trim() !== '{}') {
-      try {
-        conversationConfig = JSON.parse(data.conversation_config);
-      } catch {
-        notifyError('Invalid JSON in conversation configuration');
-        return;
-      }
+    const conversationConfig = fromEditorText(data.conversation_config);
+    if (conversationConfig === undefined) {
+      notifyError('Conversation configuration must be a valid JSON object');
+      return;
     }
 
     // Build TTS parameters (filter out empty values + unsupported keys)
@@ -627,14 +623,14 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
               }}
               className="flex min-h-0 flex-1 flex-col overflow-hidden"
             >
-              <TabsList className="grid w-full shrink-0 grid-cols-7">
+              <TabsList className="flex w-full shrink-0 [&>button]:flex-1 [&>button]:px-2">
                 <TabsTrigger value={FORM_TAB.BASIC}>Basic Info</TabsTrigger>
                 <TabsTrigger value={FORM_TAB.BEHAVIOR}>Behavior</TabsTrigger>
                 <TabsTrigger value={FORM_TAB.CONFIGURATIONS}>Configurations</TabsTrigger>
-                <TabsTrigger value={FORM_TAB.PHONE_NUMBERS}>Phone Numbers</TabsTrigger>
                 <TabsTrigger value={FORM_TAB.LANGUAGES}>Languages</TabsTrigger>
-                <TabsTrigger value={FORM_TAB.ADVANCED}>Advanced</TabsTrigger>
                 <TabsTrigger value={FORM_TAB.TOOLS}>Tools</TabsTrigger>
+                <TabsTrigger value={FORM_TAB.ADVANCED}>Advanced</TabsTrigger>
+                <TabsTrigger value={FORM_TAB.GUIDE}>Guide</TabsTrigger>
               </TabsList>
 
               <TabsContent value={FORM_TAB.BASIC} className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto">
@@ -697,6 +693,36 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                     </FormItem>
                   )}
                 />
+
+                <div className="grid grid-cols-2 gap-6">
+                  <FormField
+                    control={form.control}
+                    name="inbound_numbers"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Inbound Phone Numbers</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g., +1234567890, +9876543210" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="outbound_numbers"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Outbound Phone Numbers</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g., +1234567890, +9876543210" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </TabsContent>
 
               <TabsContent value={FORM_TAB.CONFIGURATIONS} className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto">
@@ -862,7 +888,7 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                   <div className="flex items-center gap-1.5">
                     <h4 className="text-base font-semibold tracking-tight">Telephony</h4>
                     <FieldHelp ariaLabel="About telephony">
-                      Provider credentials for calls (numbers are on the Phone Numbers tab)
+                      Provider credentials for calls (numbers are on the Basic Info tab)
                     </FieldHelp>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
@@ -894,38 +920,6 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                     />
                   </div>
                 </section>
-              </TabsContent>
-
-              <TabsContent value={FORM_TAB.PHONE_NUMBERS} className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto">
-                <div className="grid grid-cols-1 gap-6">
-                  <FormField
-                    control={form.control}
-                    name="inbound_numbers"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Inbound Phone Numbers</FormLabel>
-                        <FormControl>
-                          <Input placeholder="e.g., +1234567890, +9876543210" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="outbound_numbers"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Outbound Phone Numbers</FormLabel>
-                        <FormControl>
-                          <Input placeholder="e.g., +1234567890, +9876543210" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
               </TabsContent>
 
               <TabsContent value={FORM_TAB.LANGUAGES} className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto">
@@ -1046,35 +1040,19 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
               </TabsContent>
 
               <TabsContent value={FORM_TAB.ADVANCED} className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto">
-                <FormField
-                  control={form.control}
+                <ConversationConfigField
+                  form={form}
                   name="conversation_config"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Conversation Configuration</FormLabel>
-                      <FormControl>
-                        <div className="w-full min-w-0">
-                          <CodeMirror
-                            value={field.value || '{}'}
-                            onChange={field.onChange}
-                            theme="dark"
-                            height="200px"
-                            width="100%"
-                            maxWidth="100%"
-                            className="w-full min-w-0"
-                            extensions={[langs.json(), ...popupCodeMirrorExtensions]}
-                            placeholder="{}"
-                          />
-                        </div>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                  hasWelcomeMessage={!!form.watch('welcome_message')?.trim()}
                 />
               </TabsContent>
 
               <TabsContent value={FORM_TAB.TOOLS} className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto">
                 <VoiceAgentToolsManager appId={appId} agentId={agent.id} />
+              </TabsContent>
+
+              <TabsContent value={FORM_TAB.GUIDE} className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto">
+                <ConversationConfigGuide />
               </TabsContent>
             </Tabs>
 

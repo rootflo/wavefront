@@ -7,9 +7,11 @@ Provides LLM-callable language detection and switching capabilities
 from typing import Awaitable, Dict, Any, List, Callable, Optional
 from pipecat.services.llm_service import FunctionCallParams
 from call_processing.log.logger import logger
-from call_processing.constants.language_config import LANGUAGE_INSTRUCTIONS
-from call_processing.services.tts_service import TTSServiceFactory
-from call_processing.services.stt_service import STTServiceFactory
+from call_processing.services.common.language_switch import queue_language_update
+from call_processing.services.common.prompts import (
+    language_instruction,
+    unsupported_language_error,
+)
 
 
 class LanguageDetectionToolFactory:
@@ -31,8 +33,8 @@ class LanguageDetectionToolFactory:
         Create language detection tool function with captured context
 
         Args:
-            task_container: Dictionary containing PipelineTask (populated after task creation)
-                           Format: {'task': PipelineTask | None}
+            task_container: Dictionary containing PipelineWorker (populated after task creation)
+                           Format: {'task': PipelineWorker | None}
             tts_provider: TTS provider name (e.g. 'elevenlabs', 'azure')
             stt_provider: STT provider name (e.g. 'deepgram', 'azure')
             tts_voice_ids: Dict mapping language code -> voice ID for TTS
@@ -111,11 +113,8 @@ class LanguageDetectionToolFactory:
                     await params.result_callback(
                         {
                             'success': False,
-                            'error': (
-                                f"'{target_language}' is not a supported language. "
-                                f"Tell the user you're sorry but this language is not supported, "
-                                f"and that you can only converse in: {', '.join(supported_languages)}. "
-                                f"Do not attempt any language switch."
+                            'error': unsupported_language_error(
+                                target_language, supported_languages
                             ),
                             'current_language': current_language,
                             'supported_languages': supported_languages,
@@ -139,25 +138,13 @@ class LanguageDetectionToolFactory:
 
                 # Perform language switch
                 try:
-                    # Queue TTS settings update (voice + language)
-                    tts_frame = TTSServiceFactory.create_language_update_frame(
-                        tts_provider,
-                        target_language,
-                        tts_voice_ids.get(target_language),
+                    tts_frame_queued, stt_frame_queued = await queue_language_update(
+                        task,
+                        tts_provider=tts_provider,
+                        stt_provider=stt_provider,
+                        tts_voice_ids=tts_voice_ids,
+                        language=target_language,
                     )
-                    tts_frame_queued = False
-                    if tts_frame:
-                        await task.queue_frame(tts_frame)
-                        tts_frame_queued = True
-
-                    # Queue STT settings update (language)
-                    stt_frame = STTServiceFactory.create_language_update_frame(
-                        stt_provider, target_language
-                    )
-                    stt_frame_queued = False
-                    if stt_frame:
-                        await task.queue_frame(stt_frame)
-                        stt_frame_queued = True
 
                     log_msg = (
                         f'Language update {current_language} -> {target_language}: '
@@ -168,12 +155,6 @@ class LanguageDetectionToolFactory:
                         logger.info(log_msg)
                     else:
                         logger.error(log_msg)
-
-                    # Update system prompt with language instruction
-                    language_instruction = LANGUAGE_INSTRUCTIONS.get(
-                        target_language,
-                        LANGUAGE_INSTRUCTIONS.get('en', 'Respond in English.'),
-                    )
 
                     # Get base prompt without language instruction (must exist for multi-language)
                     base_prompt = language_state.get('original_system_prompt')
@@ -186,7 +167,9 @@ class LanguageDetectionToolFactory:
                         return
 
                     # Append new language instruction to clean base prompt
-                    updated_content = f'{language_instruction}\n\n{base_prompt}'
+                    updated_content = (
+                        f'{language_instruction(target_language)}\n\n{base_prompt}'
+                    )
 
                     # Mutate the system message in-place on the context object so
                     # the full conversation history (including the current tool

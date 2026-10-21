@@ -107,6 +107,20 @@ class TestCreateLlmInstanceParameters:
             'top_p': 0.9,
         }
 
+    def test_gemini_thinking_level_is_nested_for_the_sdk(self, service):
+        llm = service._create_llm_instance(
+            config(
+                'gemini',
+                {'thinking_level': 'minimal', 'top_p': 0.9},
+                llm_model='gemini-3.6-flash',
+            )
+        )
+
+        assert llm._generation_config_kwargs({}) == {
+            'thinking_config': {'thinking_level': 'minimal'},
+            'top_p': 0.9,
+        }
+
     def test_vllm_receives_its_parameters(self, service):
         """Test vllm receives its parameters."""
         llm = service._create_llm_instance(

@@ -17,7 +17,7 @@ from redis import Redis
 
 from call_processing.di import application_container
 from call_processing.server import app
-from call_processing.services import pipecat_service as pipecat_service_module
+from call_processing.services.webrtc.conversation import WebRTCConversation
 
 PASSTHROUGH = {'X-Passthrough': 'test-passthrough-secret'}
 AGENT_ID = str(uuid.uuid4())
@@ -25,18 +25,14 @@ AGENT_ID = str(uuid.uuid4())
 
 @pytest.fixture
 def pipeline_calls(monkeypatch):
-    """Replace the pipeline with one that records its arguments and waits."""
+    """Replace the pipeline with one that records its conversation and waits."""
     calls = []
 
-    async def fake_run_conversation(self, **kwargs):
-        calls.append(kwargs)
+    async def fake_run(self, transport, configs):
+        calls.append(self)
         await asyncio.Event().wait()  # until the session is cancelled
 
-    monkeypatch.setattr(
-        pipecat_service_module.PipecatService,
-        'run_conversation',
-        fake_run_conversation,
-    )
+    monkeypatch.setattr(WebRTCConversation, 'run', fake_run)
     return calls
 
 
@@ -56,10 +52,14 @@ async def client(pipeline_calls):
     }
     fake_cache = MagicMock()
 
-    async def get_all_agent_configs(agent_id):
+    async def get_all_agent_configs(agent_id, **kwargs):
         return configs
 
+    async def prefetch_agent_configs(agent_ids, **kwargs):
+        return {}
+
     fake_cache.get_all_agent_configs = get_all_agent_configs
+    fake_cache.prefetch_agent_configs = prefetch_agent_configs
 
     application_container.voice_agent_cache_service.override(
         providers.Object(fake_cache)
@@ -71,8 +71,20 @@ async def client(pipeline_calls):
     ) as http_client:
         yield http_client
     await application_container.webrtc_session_service().close()
+    await _cancel_leftover_tasks()
     application_container.voice_agent_cache_service.reset_override()
     application_container.webrtc_session_service.reset()
+
+
+async def _cancel_leftover_tasks():
+    # aioice's Connection.close() doesn't stop a trickle-ICE connect loop
+    # (aiortc's RTCPeerConnection.__connect task): it keeps starting STUN checks
+    # whose retries fire after the test loop closes, logging "Task exception was
+    # never retrieved" into whichever test runs next.
+    leftover = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+    for task in leftover:
+        task.cancel()
+    await asyncio.gather(*leftover, return_exceptions=True)
 
 
 async def _create_room(client):
@@ -131,11 +143,11 @@ async def test_offer_joins_room_runs_16k_pipeline_and_cleans_up(client, pipeline
         await asyncio.sleep(0.5)  # let the session task start the pipeline
         assert len(pipeline_calls) == 1
         call = pipeline_calls[0]
-        assert call['provider'] == 'webrtc'
-        assert call['call_id'] == room['room_id']
-        assert call['audio_in_sample_rate'] == 16000
-        assert call['audio_out_sample_rate'] == 16000
-        assert call['idle_timeout_secs'] == 300
+        assert call.provider == 'webrtc'
+        assert call.call_id == room['room_id']
+        assert call.audio_sample_rate == 16000
+        assert call.stack_options().service_sample_rate == 16000
+        assert call.idle_timeout_secs == 300
 
         session_service = application_container.webrtc_session_service()
         assert session_service.active_sessions == 1

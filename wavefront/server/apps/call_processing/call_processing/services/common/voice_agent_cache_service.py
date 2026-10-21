@@ -14,7 +14,7 @@ from call_processing.cache.cache_utils import (
     get_tools_config_cache_key,
 )
 from call_processing.log.logger import logger
-from call_processing.services.floware_http_client import FlowareHttpClient
+from call_processing.services.common.floware_http_client import FlowareHttpClient
 from fastapi import HTTPException
 
 
@@ -101,7 +101,7 @@ class VoiceAgentCacheService:
             logger.error(f'Error in parallel config fetch: {e}', exc_info=True)
             raise
 
-    def _cache_config(
+    async def _cache_config(
         self, config_type: str, config_id: UUID, config_data: Dict
     ) -> None:
         """Cache a config with appropriate key"""
@@ -116,7 +116,9 @@ class VoiceAgentCacheService:
         cache_key_func = cache_key_funcs.get(config_type)
         if cache_key_func:
             cache_key = cache_key_func(config_id)
-            self.cache_manager.set_json(cache_key, config_data, expiry=self.cache_ttl)
+            await self.cache_manager.aset_json(
+                cache_key, config_data, expiry=self.cache_ttl
+            )
             if config_type == 'tools':
                 logger.info(
                     f'Cached {len(config_data) if config_data else 0} tools for agent {config_id}'
@@ -124,20 +126,24 @@ class VoiceAgentCacheService:
             else:
                 logger.info(f'Cached {config_type} {config_id}')
 
-    async def get_all_agent_configs(self, agent_id: UUID) -> Dict[str, Any]:
+    async def get_all_agent_configs(
+        self, agent_id: UUID, *, require_telephony: bool = True
+    ) -> Dict[str, Any]:
         """
         Fetch voice agent and all related configs from cache, with API fallback
 
         Strategy:
         1. Try fetching voice agent from cache
         2. If voice agent missing, fetch from floware API
-        3. Try fetching all configs from cache
+        3. Try fetching all configs from cache (in parallel, off the event loop)
         4. For any missing configs, fetch them from floware API in parallel
         5. Cache the newly fetched configs for future requests
         6. If any API calls fail, raise HTTPException
 
         Args:
             agent_id: Voice agent UUID
+            require_telephony: When False (browser / WebRTC), telephony config is
+                optional and is not fetched or required.
 
         Returns:
             {
@@ -145,7 +151,7 @@ class VoiceAgentCacheService:
                 'llm_config': {...},
                 'tts_config': {...},
                 'stt_config': {...},
-                'telephony_config': {...},
+                'telephony_config': {...} | None,
                 'tools': {...}
             }
 
@@ -154,7 +160,7 @@ class VoiceAgentCacheService:
         """
         # Fetch voice agent from cache
         agent_key = get_voice_agent_cache_key(agent_id)
-        agent = self.cache_manager.get_json(agent_key)
+        agent = await self.cache_manager.aget_json(agent_key)
 
         # If agent not in cache, fetch from API
         if not agent:
@@ -175,7 +181,9 @@ class VoiceAgentCacheService:
                         detail=f'Voice agent {agent_id} not found in floware API',
                     )
                 # Cache the fetched agent
-                self.cache_manager.set_json(agent_key, agent, expiry=self.cache_ttl)
+                await self.cache_manager.aset_json(
+                    agent_key, agent, expiry=self.cache_ttl
+                )
                 logger.info(f'Cached voice agent {agent_id} from API')
             except Exception as e:
                 logger.error(f'Failed to fetch voice agent {agent_id} from API: {e}')
@@ -196,22 +204,28 @@ class VoiceAgentCacheService:
                 detail=f'Voice agent {agent_id} has incomplete configuration',
             )
 
-        # Try fetching all configs from cache first
-        llm_config = self.cache_manager.get_json(
-            get_llm_config_cache_key(llm_config_id)
-        )
-        tts_config = self.cache_manager.get_json(
-            get_tts_config_cache_key(tts_config_id)
-        )
-        stt_config = self.cache_manager.get_json(
-            get_stt_config_cache_key(stt_config_id)
-        )
-        telephony_config = self.cache_manager.get_json(
-            get_telephony_config_cache_key(telephony_config_id)
-        )
+        # Parallel Redis reads (each offloaded so they do not block the loop)
+        cache_keys = {
+            'llm': get_llm_config_cache_key(llm_config_id),
+            'tts': get_tts_config_cache_key(tts_config_id),
+            'stt': get_stt_config_cache_key(stt_config_id),
+            'tools': get_tools_config_cache_key(agent_id),
+        }
+        fetch_telephony = bool(require_telephony and telephony_config_id)
+        if fetch_telephony:
+            cache_keys['telephony'] = get_telephony_config_cache_key(
+                telephony_config_id
+            )
 
-        # Try fetching tools from cache
-        tools = self.cache_manager.get_json(get_tools_config_cache_key(agent_id))
+        cached = await asyncio.gather(
+            *(self.cache_manager.aget_json(k) for k in cache_keys.values())
+        )
+        by_name = dict(zip(cache_keys.keys(), cached))
+        llm_config = by_name['llm']
+        tts_config = by_name['tts']
+        stt_config = by_name['stt']
+        tools = by_name['tools']
+        telephony_config = by_name.get('telephony') if fetch_telephony else None
 
         # Identify missing configs
         missing_configs = []
@@ -221,7 +235,7 @@ class VoiceAgentCacheService:
             missing_configs.append(('tts_config', tts_config_id))
         if not stt_config:
             missing_configs.append(('stt_config', stt_config_id))
-        if telephony_config_id and not telephony_config:
+        if fetch_telephony and not telephony_config:
             missing_configs.append(('telephony_config', telephony_config_id))
         if tools is None:
             missing_configs.append(('tools', agent_id))
@@ -244,22 +258,28 @@ class VoiceAgentCacheService:
 
                 if config_type == 'llm_inference_config':
                     llm_config = config_data
-                    self._cache_config(config_type, llm_config_id, config_data)
+                    await self._cache_config(config_type, llm_config_id, config_data)
                 elif config_type == 'tts_config':
                     tts_config = config_data
-                    self._cache_config(config_type, tts_config_id, config_data)
+                    await self._cache_config(config_type, tts_config_id, config_data)
                 elif config_type == 'stt_config':
                     stt_config = config_data
-                    self._cache_config(config_type, stt_config_id, config_data)
+                    await self._cache_config(config_type, stt_config_id, config_data)
                 elif config_type == 'telephony_config':
                     telephony_config = config_data
-                    self._cache_config(config_type, telephony_config_id, config_data)
+                    await self._cache_config(
+                        config_type, telephony_config_id, config_data
+                    )
                 elif config_type == 'tools':
                     tools = config_data
-                    self._cache_config(config_type, agent_id, config_data)
+                    await self._cache_config(config_type, agent_id, config_data)
 
-        # Final validation
-        if not all([llm_config, tts_config, stt_config, telephony_config]):
+        # Final validation — telephony only when required (phone path)
+        required_ok = all([llm_config, tts_config, stt_config])
+        if require_telephony:
+            required_ok = required_ok and bool(telephony_config)
+
+        if not required_ok:
             missing = []
             if not llm_config:
                 missing.append(f'LLM config {llm_config_id}')
@@ -267,7 +287,7 @@ class VoiceAgentCacheService:
                 missing.append(f'TTS config {tts_config_id}')
             if not stt_config:
                 missing.append(f'STT config {stt_config_id}')
-            if not telephony_config:
+            if require_telephony and not telephony_config:
                 missing.append(f'Telephony config {telephony_config_id}')
 
             logger.error(f'Still missing configs after API fetch: {", ".join(missing)}')
@@ -291,6 +311,42 @@ class VoiceAgentCacheService:
             'tools': tools,
         }
 
+    async def prefetch_agent_configs(
+        self, agent_ids: List[str], *, require_telephony: bool = False
+    ) -> Dict[str, Dict[str, Any]]:
+        """Warm Redis/API configs for allowlisted swap targets (best-effort)."""
+        warmed: Dict[str, Dict[str, Any]] = {}
+        unique = []
+        seen = set()
+        for raw in agent_ids:
+            try:
+                aid = str(UUID(str(raw)))
+            except ValueError:
+                continue
+            if aid in seen:
+                continue
+            seen.add(aid)
+            unique.append(aid)
+
+        if not unique:
+            return warmed
+
+        results = await asyncio.gather(
+            *[
+                self.get_all_agent_configs(
+                    UUID(aid), require_telephony=require_telephony
+                )
+                for aid in unique
+            ],
+            return_exceptions=True,
+        )
+        for aid, result in zip(unique, results):
+            if isinstance(result, BaseException):
+                logger.warning(f'Prefetch failed for agent {aid}: {result}')
+                continue
+            warmed[aid] = result
+        return warmed
+
     async def get_agent_by_inbound_number(
         self, phone_number: str
     ) -> Optional[Dict[str, Any]]:
@@ -312,7 +368,7 @@ class VoiceAgentCacheService:
         cache_key = f'inbound_number:{phone_number}'
 
         # Try cache first
-        cached_agent_id = self.cache_manager.get_str(cache_key)
+        cached_agent_id = await self.cache_manager.aget_str(cache_key)
         if cached_agent_id:
             logger.info(
                 f'Cache hit for inbound number: {phone_number} -> agent {cached_agent_id}'
@@ -320,7 +376,7 @@ class VoiceAgentCacheService:
 
             # Fetch agent from cache or API
             agent_key = get_voice_agent_cache_key(UUID(cached_agent_id))
-            agent = self.cache_manager.get_json(agent_key)
+            agent = await self.cache_manager.aget_json(agent_key)
 
             if agent:
                 return agent
@@ -333,7 +389,7 @@ class VoiceAgentCacheService:
                         )
                         if agent:
                             # Cache the agent
-                            self.cache_manager.set_json(
+                            await self.cache_manager.aset_json(
                                 agent_key, agent, expiry=self.cache_ttl
                             )
                             return agent
@@ -357,11 +413,18 @@ class VoiceAgentCacheService:
             if agent:
                 agent_id = agent.get('id')
                 # Cache the inbound number -> agent ID mapping
-                self.cache_manager.add(cache_key, str(agent_id), expiry=self.cache_ttl)
+                await asyncio.to_thread(
+                    self.cache_manager.add,
+                    cache_key,
+                    str(agent_id),
+                    expiry=self.cache_ttl,
+                )
 
                 # Cache the agent itself
                 agent_key = get_voice_agent_cache_key(UUID(agent_id))
-                self.cache_manager.set_json(agent_key, agent, expiry=self.cache_ttl)
+                await self.cache_manager.aset_json(
+                    agent_key, agent, expiry=self.cache_ttl
+                )
 
                 logger.info(f'Cached inbound number {phone_number} -> agent {agent_id}')
                 return agent

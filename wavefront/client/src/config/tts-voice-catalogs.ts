@@ -114,17 +114,6 @@ export const DEEPGRAM_TTS_VOICES: VoiceOption[] = [
   { value: 'aura-zeus-en', label: 'aura-zeus-en' },
 ];
 
-/** Sarvam Bulbul v2 speaker names */
-export const SARVAM_V2_SPEAKERS: VoiceOption[] = [
-  { value: 'anushka', label: 'anushka' },
-  { value: 'manisha', label: 'manisha' },
-  { value: 'vidya', label: 'vidya' },
-  { value: 'arya', label: 'arya' },
-  { value: 'abhilash', label: 'abhilash' },
-  { value: 'karun', label: 'karun' },
-  { value: 'hitesh', label: 'hitesh' },
-];
-
 /** Sarvam Bulbul v3 short speaker names */
 export const SARVAM_V3_SPEAKERS: VoiceOption[] = [
   { value: 'shubh', label: 'shubh' },
@@ -513,7 +502,6 @@ function filterDeepgramByLanguage(langCode: string): VoiceOption[] {
 }
 
 function getSarvamSpeakers(model: string | undefined, languageCode?: string): VoiceOption[] {
-  if (model === 'bulbul:v2') return SARVAM_V2_SPEAKERS;
   if (model === 'bulbul:v4-flash') {
     return languageCode ? filterSarvamV4ByLanguage(languageCode) : SARVAM_V4_SPEAKERS;
   }

@@ -31,7 +31,6 @@ class PipecatSettings:
     enable_turn_tracking: bool
     otlp_endpoint: str | None
     tracing_service_name: str
-    enable_filler_phrases_before_tool_call: bool
 
 
 @dataclass(frozen=True)
@@ -75,9 +74,6 @@ class CallProcessingAppSettings:
                 enable_turn_tracking=truthy(pipecat['enable_turn_tracking']),
                 otlp_endpoint=otlp,
                 tracing_service_name=pipecat['tracing_service_name'],
-                enable_filler_phrases_before_tool_call=truthy(
-                    pipecat['enable_filler_phrases_before_tool_call']
-                ),
             ),
             webrtc=WebRTCSettings(
                 signaling_public_url=str(webrtc['signaling_public_url']).rstrip('/'),

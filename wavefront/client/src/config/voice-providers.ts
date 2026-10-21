@@ -179,7 +179,7 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
           model: {
             type: 'string',
             default: 'bulbul:v4-flash',
-            options: ['bulbul:v4-flash', 'bulbul:v3', 'bulbul:v2'],
+            options: ['bulbul:v4-flash', 'bulbul:v3'],
             description: 'TTS model',
           },
           language: {

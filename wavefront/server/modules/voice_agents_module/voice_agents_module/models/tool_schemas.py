@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Optional, Union, Any, Dict
 from enum import Enum
 from datetime import datetime
@@ -344,8 +344,7 @@ class ToolResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AgentToolResponse(BaseModel):
@@ -362,5 +361,4 @@ class AgentToolResponse(BaseModel):
     # Include tool details
     tool: Optional[ToolResponse] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

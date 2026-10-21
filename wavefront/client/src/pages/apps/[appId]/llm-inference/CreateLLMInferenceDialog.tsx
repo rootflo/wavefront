@@ -1,7 +1,9 @@
 import floConsoleService from '@app/api';
-import { Alert, AlertDescription, AlertTitle } from '@app/components/ui/alert';
+import { ModelParameters } from '@app/components/llm/ModelParameters';
+import { ModelSelect } from '@app/components/llm/ModelSelect';
+import { ProviderSelect } from '@app/components/llm/ProviderSelect';
+import { Alert, AlertDescription } from '@app/components/ui/alert';
 import { Button } from '@app/components/ui/button';
-import { Checkbox } from '@app/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -13,48 +15,16 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
-import { Slider } from '@app/components/ui/slider';
-import {
-  cleanParameters,
-  getDefaultBaseUrl,
-  getProviderConfig,
-  initializeParameters,
-  ParameterConfig,
-} from '@app/config/llm-providers';
+import { filterParameters, findModelPreset, getDefaultModelId } from '@app/config/llm-models';
+import { getDefaultBaseUrl, getProviderConfig } from '@app/config/llm-providers';
 import { extractErrorMessage } from '@app/lib/utils';
 import { useDashboardStore, useNotifyStore } from '@app/store';
-import {
-  getBooleanParameterWithDefault,
-  getNumberOrStringParameter,
-  getNumberParameterWithDefault,
-  getStringParameter,
-} from '@app/utils/parameter-helpers';
 import { InferenceEngineType } from '@app/types/llm-inference-config';
 import { zodResolver } from '@hookform/resolvers/zod';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
 import { z } from 'zod';
-
-const INFERENCE_ENGINE_TYPES = [
-  { value: 'openai' as InferenceEngineType, label: 'OpenAI GPT' },
-  { value: 'anthropic' as InferenceEngineType, label: 'Anthropic Claude' },
-  { value: 'gemini' as InferenceEngineType, label: 'Google Gemini' },
-  { value: 'azure_openai' as InferenceEngineType, label: 'Azure OpenAI' },
-  { value: 'ollama' as InferenceEngineType, label: 'Ollama (Local)' },
-  { value: 'vllm' as InferenceEngineType, label: 'vLLM' },
-  { value: 'groq' as InferenceEngineType, label: 'Groq' },
-];
-
-const MODEL_NAME_PLACEHOLDERS: Record<InferenceEngineType, string> = {
-  openai: 'gpt-4, gpt-3.5-turbo',
-  anthropic: 'claude-3-5-sonnet-20241022',
-  gemini: 'gemini-pro, gemini-pro-vision',
-  ollama: 'llama2, mistral',
-  vllm: 'Model name',
-  azure_openai: 'Model name',
-  groq: 'Model name',
-};
 
 const BASE_URL_PLACEHOLDERS: Record<InferenceEngineType, string> = {
   ollama: 'http://localhost:11434',
@@ -66,10 +36,12 @@ const BASE_URL_PLACEHOLDERS: Record<InferenceEngineType, string> = {
   groq: 'https://api.groq.com/openai/v1',
 };
 
+const REQUIRES_API_KEY: InferenceEngineType[] = ['openai', 'anthropic', 'gemini', 'azure_openai', 'groq'];
+
 const createLLMInferenceSchema = z
   .object({
     displayName: z.string().min(1, 'Display name is required'),
-    llmModel: z.string().min(1, 'LLM model name is required'),
+    llmModel: z.string().min(1, 'Choose a model'),
     type: z.enum(['openai', 'anthropic', 'gemini', 'azure_openai', 'ollama', 'vllm', 'groq']),
     modelType: z.enum(['llm', 'embedding']),
     apiKey: z.string().optional(),
@@ -84,9 +56,24 @@ const createLLMInferenceSchema = z
         message: 'API version is required for Azure OpenAI',
       });
     }
+    if ((data.type === 'ollama' || data.type === 'vllm') && !data.baseUrl?.trim()) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['baseUrl'], message: 'Base URL is required' });
+    }
   });
 
 type CreateLLMInferenceInput = z.infer<typeof createLLMInferenceSchema>;
+
+const DEFAULT_TYPE: InferenceEngineType = 'openai';
+
+const emptyForm = (type: InferenceEngineType): CreateLLMInferenceInput => ({
+  displayName: '',
+  llmModel: '',
+  type,
+  modelType: 'llm',
+  apiKey: '',
+  baseUrl: getDefaultBaseUrl(type),
+  apiVersion: type === 'azure_openai' ? '2025-04-01-preview' : '',
+});
 
 interface CreateLLMInferenceDialogProps {
   isOpen: boolean;
@@ -94,6 +81,13 @@ interface CreateLLMInferenceDialogProps {
   appId: string;
   onSuccess?: () => void;
 }
+
+const SectionTitle: React.FC<{ title: string; description?: string }> = ({ title, description }) => (
+  <div>
+    <h3 className="frost-text text-base font-semibold">{title}</h3>
+    {description && <p className="frost-text-muted text-sm">{description}</p>}
+  </div>
+);
 
 const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
   isOpen,
@@ -103,67 +97,53 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
 }) => {
   const navigate = useNavigate();
   const { notifySuccess, notifyError } = useNotifyStore();
-  const [type, setType] = useState<InferenceEngineType>('openai');
   const [parameters, setParameters] = useState<Record<string, unknown>>({});
   const [creating, setCreating] = useState(false);
+  // The display name follows the chosen model until the user types their own.
+  const displayNameEdited = useRef(false);
   const { selectedApp } = useDashboardStore();
 
   const form = useForm<CreateLLMInferenceInput>({
     resolver: zodResolver(createLLMInferenceSchema),
-    defaultValues: {
-      displayName: '',
-      llmModel: '',
-      type: 'openai',
-      modelType: 'llm',
-      apiKey: '',
-      baseUrl: getDefaultBaseUrl('openai'),
-      apiVersion: '',
-    },
+    defaultValues: emptyForm(DEFAULT_TYPE),
   });
 
-  // Initialize parameters when provider type changes
-  const watchedType = form.watch('type');
-  useEffect(() => {
-    if (isOpen && watchedType) {
-      const newType = watchedType as InferenceEngineType;
-      setType(newType);
-      const defaultParams = initializeParameters(newType);
-      setParameters(defaultParams);
+  const type = form.watch('type');
+  const llmModel = form.watch('llmModel');
+  const modelType = form.watch('modelType');
+  const providerConfig = getProviderConfig(type);
 
-      // Set default base URL for the provider
-      const defaultBaseUrl = getDefaultBaseUrl(newType);
-      form.setValue('baseUrl', defaultBaseUrl);
-    }
-  }, [watchedType, isOpen, form]);
-
-  // Reset form when dialog closes
+  // Reset everything when the dialog closes
   useEffect(() => {
     if (!isOpen) {
-      const defaultType = 'openai';
-      form.reset({
-        displayName: '',
-        llmModel: '',
-        type: defaultType,
-        modelType: 'llm',
-        apiKey: '',
-        baseUrl: getDefaultBaseUrl(defaultType),
-        apiVersion: '',
-      });
-      setType(defaultType);
-      setParameters(initializeParameters(defaultType));
+      form.reset(emptyForm(DEFAULT_TYPE));
+      setParameters({});
+      displayNameEdited.current = false;
     }
   }, [isOpen, form]);
 
-  const requiresApiKey = (engineType: InferenceEngineType) => {
-    return ['openai', 'anthropic', 'gemini', 'azure_openai', 'groq'].includes(engineType);
+  const changeProvider = (newType: InferenceEngineType) => {
+    if (newType === type) return;
+    const model = getDefaultModelId(newType);
+    const preset = findModelPreset(newType, model);
+    form.reset({
+      ...emptyForm(newType),
+      llmModel: model,
+      displayName: displayNameEdited.current
+        ? form.getValues('displayName')
+        : preset?.id === model
+          ? preset.label
+          : model,
+    });
+    setParameters({});
   };
 
-  const supportsBaseUrl = (engineType: InferenceEngineType) => {
-    return ['ollama', 'vllm', 'azure_openai', 'openai', 'anthropic', 'gemini', 'groq'].includes(engineType);
-  };
-
-  const setParameter = (key: string, value: unknown) => {
-    setParameters((prev) => ({ ...prev, [key]: value }));
+  const changeModel = (modelId: string) => {
+    form.setValue('llmModel', modelId, { shouldValidate: true });
+    if (!displayNameEdited.current) {
+      const preset = findModelPreset(type, modelId);
+      form.setValue('displayName', preset?.id === modelId ? preset.label : modelId, { shouldValidate: !!modelId });
+    }
   };
 
   const onSubmit = async (data: CreateLLMInferenceInput) => {
@@ -172,19 +152,12 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
       return;
     }
 
-    if (!data.displayName.trim() || !data.llmModel.trim()) {
-      notifyError('Please fill in all required fields');
-      return;
-    }
-
     setCreating(true);
     try {
-      const cleanedParams = cleanParameters(parameters, data.type);
+      const { kept } = filterParameters(data.type, data.llmModel, data.modelType === 'llm' ? parameters : {});
       if (data.type === 'azure_openai' && data.apiVersion) {
-        cleanedParams.api_version = data.apiVersion.trim();
+        kept.api_version = data.apiVersion.trim();
       }
-
-      const finalParams = Object.keys(cleanedParams).length > 0 ? cleanedParams : undefined;
 
       const response = await floConsoleService.llmInferenceService.createLLMConfig({
         display_name: data.displayName.trim(),
@@ -193,28 +166,16 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
         type: data.type,
         model_type: data.modelType,
         base_url: data.baseUrl?.trim() || undefined,
-        parameters: finalParams,
+        parameters: Object.keys(kept).length > 0 ? kept : undefined,
       });
+
+      notifySuccess('Model added to repository successfully');
+      onSuccess?.();
+      onOpenChange(false);
 
       const responseData = response.data?.data;
       if (responseData?.id) {
-        notifySuccess('Model added to repository successfully');
-
-        if (onSuccess) {
-          onSuccess();
-        }
-
-        onOpenChange(false);
-
         navigate(`/apps/${appId}/llm-repository/${responseData.id}`);
-      } else {
-        notifySuccess('Model added to repository successfully');
-
-        if (onSuccess) {
-          onSuccess();
-        }
-
-        onOpenChange(false);
       }
     } catch (error) {
       console.error('Error creating LLM inference config:', error);
@@ -225,224 +186,124 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
     }
   };
 
-  const renderParameterField = (paramKey: string, paramConfig: ParameterConfig) => {
-    if (paramConfig.type === 'number') {
-      const currentValue = getNumberParameterWithDefault(parameters, paramKey, paramConfig.default, paramConfig.min);
-      return (
-        <div className="space-y-2">
-          <Input
-            type="number"
-            value={getNumberOrStringParameter(parameters, paramKey)}
-            onChange={(e) => {
-              const value = e.target.value === '' ? undefined : parseFloat(e.target.value);
-              setParameter(paramKey, value);
-            }}
-            min={paramConfig.min}
-            max={paramConfig.max}
-            step={paramConfig.step}
-            placeholder={paramConfig.placeholder}
-          />
-          {paramConfig.min !== undefined && paramConfig.max !== undefined && (
-            <Slider
-              value={[currentValue]}
-              onValueChange={(values: number[]) => {
-                setParameter(paramKey, values[0]);
-              }}
-              min={paramConfig.min}
-              max={paramConfig.max}
-              step={paramConfig.step}
-              className="w-full"
-            />
-          )}
-        </div>
-      );
-    }
-
-    if (paramConfig.type === 'boolean') {
-      return (
-        <div className="flex items-center gap-3">
-          <Checkbox
-            checked={getBooleanParameterWithDefault(parameters, paramKey, paramConfig.default)}
-            onCheckedChange={(checked) => setParameter(paramKey, checked)}
-          />
-          <label className="frost-text text-sm">Enable</label>
-        </div>
-      );
-    }
-
-    if (paramConfig.type === 'string' && !paramConfig.options) {
-      return (
-        <Input
-          type="text"
-          value={getStringParameter(parameters, paramKey)}
-          onChange={(e) => {
-            const value = e.target.value || undefined;
-            setParameter(paramKey, value);
-          }}
-          placeholder={paramConfig.placeholder}
-        />
-      );
-    }
-
-    if (paramConfig.type === 'select' && paramConfig.options) {
-      const currentValue = parameters[paramKey];
-      return (
-        <Select
-          value={currentValue !== undefined && currentValue !== null ? String(currentValue) : undefined}
-          onValueChange={(value) => setParameter(paramKey, value || undefined)}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Select an option" />
-          </SelectTrigger>
-          <SelectContent>
-            {paramConfig.options.map((option) => (
-              <SelectItem key={String(option.value)} value={String(option.value)}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      );
-    }
-
-    return null;
-  };
-
-  const providerConfig = getProviderConfig(type);
-
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto lg:max-w-4xl">
         <DialogHeader>
-          <DialogTitle>Add LLM to Repository</DialogTitle>
-          <DialogDescription>Add a new LLM to your repository for {selectedApp?.app_name}</DialogDescription>
+          <DialogTitle>Add model</DialogTitle>
+          <DialogDescription>Add a model to the repository for {selectedApp?.app_name}</DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <div className="grid grid-cols-2 gap-6">
-              <FormField
-                control={form.control}
-                name="displayName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      Display Name<span className="text-red-500">*</span>
-                    </FormLabel>
-                    <FormControl>
-                      <Input placeholder="My GPT-4 Configuration" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="type"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      Inference Engine Type<span className="text-red-500">*</span>
-                    </FormLabel>
-                    <Select
-                      onValueChange={(value) => {
-                        field.onChange(value);
-                        const newType = value as InferenceEngineType;
-                        setType(newType);
-                        setParameters(initializeParameters(newType));
-
-                        // Set default base URL for the provider
-                        const defaultBaseUrl = getDefaultBaseUrl(newType);
-                        form.setValue('baseUrl', defaultBaseUrl);
-                      }}
-                      value={field.value}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select engine type" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {INFERENCE_ENGINE_TYPES.map((engineType) => (
-                          <SelectItem key={engineType.value} value={engineType.value}>
-                            {engineType.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="modelType"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      Model Type<span className="text-red-500">*</span>
-                    </FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select model type" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="llm">LLM</SelectItem>
-                        <SelectItem value="embedding">Embedding</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-6">
-              <FormField
-                control={form.control}
-                name="llmModel"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      LLM Model Name<span className="text-red-500">*</span>
-                    </FormLabel>
-                    <FormControl>
-                      <Input placeholder={MODEL_NAME_PLACEHOLDERS[type]} {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {requiresApiKey(type) && (
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-8">
+            <section className="flex flex-col gap-4">
+              <SectionTitle title="Model" />
+              <div className="grid gap-5 sm:grid-cols-2">
                 <FormField
                   control={form.control}
-                  name="apiKey"
+                  name="type"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>API Key{requiresApiKey(type) && <span className="text-red-500">*</span>}</FormLabel>
+                      <FormLabel>Provider</FormLabel>
+                      <ProviderSelect value={field.value} onChange={changeProvider} />
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="llmModel"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{providerConfig?.modelLabel ?? 'Model'}</FormLabel>
+                      <ModelSelect provider={type} value={field.value} onChange={changeModel} />
+                      {type === 'azure_openai' && (
+                        <Input
+                          value={field.value}
+                          onChange={(e) => changeModel(e.target.value)}
+                          placeholder="Deployment name, e.g. gpt-5.4-nano"
+                          aria-label="Deployment name"
+                        />
+                      )}
+                      {providerConfig?.modelHelp && (
+                        <p className="frost-text-muted text-xs">{providerConfig.modelHelp}</p>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="displayName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Display name</FormLabel>
                       <FormControl>
-                        <Input type="password" placeholder="Your API key" {...field} />
+                        <Input
+                          placeholder="Shown wherever this model is picked"
+                          {...field}
+                          onChange={(e) => {
+                            displayNameEdited.current = e.target.value.trim() !== '';
+                            field.onChange(e);
+                          }}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-              )}
 
-              {supportsBaseUrl(type) && (
+                <FormField
+                  control={form.control}
+                  name="modelType"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Used for</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="llm">Chat and voice (LLM)</SelectItem>
+                          <SelectItem value="embedding">Embeddings</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </section>
+
+            <section className="flex flex-col gap-4">
+              <SectionTitle title="Connection" />
+              <div className="grid gap-5 sm:grid-cols-2">
+                {REQUIRES_API_KEY.includes(type) && (
+                  <FormField
+                    control={form.control}
+                    name="apiKey"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>API key</FormLabel>
+                        <FormControl>
+                          <Input type="password" placeholder="Your API key" autoComplete="off" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+
                 <FormField
                   control={form.control}
                   name="baseUrl"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>
-                        Base URL{(type === 'ollama' || type === 'vllm') && <span className="text-red-500">*</span>}
-                      </FormLabel>
+                      <FormLabel>{type === 'azure_openai' ? 'Endpoint' : 'Base URL'}</FormLabel>
                       <FormControl>
                         <Input type="url" placeholder={BASE_URL_PLACEHOLDERS[type]} {...field} />
                       </FormControl>
@@ -450,63 +311,55 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
                     </FormItem>
                   )}
                 />
-              )}
 
-              {type === 'azure_openai' && (
-                <FormField
-                  control={form.control}
-                  name="apiVersion"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>
-                        API Version<span className="text-red-500">*</span>
-                      </FormLabel>
-                      <FormControl>
-                        <Input type="text" placeholder="2024-12-01-preview" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              )}
-            </div>
-
-            {/* Provider-specific Parameters Section */}
-            {providerConfig && Object.keys(providerConfig.parameters).length > 0 && (
-              <div className="frost-glass border-frost-border ring-frost-border space-y-4 rounded-lg border p-6 ring-1">
-                <div>
-                  <h3 className="frost-text text-lg font-semibold">Model Parameters</h3>
-                  <p className="frost-text-muted text-sm">Configure provider-specific parameters for this model</p>
-                </div>
-                <div className="grid grid-cols-4 gap-6">
-                  {Object.entries(providerConfig.parameters).map(
-                    ([paramKey, paramConfig]: [string, ParameterConfig]) => (
-                      <div key={paramKey}>
-                        <label className="frost-text block pb-2 text-sm font-medium">
-                          {paramKey.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
-                        </label>
-                        {renderParameterField(paramKey, paramConfig)}
-                      </div>
-                    )
-                  )}
-                </div>
+                {type === 'azure_openai' && (
+                  <FormField
+                    control={form.control}
+                    name="apiVersion"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>API version</FormLabel>
+                        <FormControl>
+                          <Input type="text" placeholder="2025-04-01-preview" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
               </div>
-            )}
+              <p className="frost-text-muted text-xs">
+                API keys are stored securely and never returned in API responses.
+              </p>
+            </section>
 
-            <Alert variant="info">
-              <AlertTitle>Security Note</AlertTitle>
-              <AlertDescription>
-                API keys are stored securely and are never returned in API responses. Only store API keys for models
-                that require authentication.
-              </AlertDescription>
-            </Alert>
+            {modelType === 'llm' && (
+              <section className="frost-glass border-frost-border ring-frost-border flex flex-col gap-4 rounded-lg border p-5 ring-1">
+                <SectionTitle
+                  title="Settings"
+                  description="Only the settings this model accepts are shown. Leave a field empty to use the provider's default."
+                />
+                {llmModel.trim() ? (
+                  <ModelParameters
+                    provider={type}
+                    modelId={llmModel}
+                    values={parameters}
+                    onChange={(key, value) => setParameters((prev) => ({ ...prev, [key]: value }))}
+                  />
+                ) : (
+                  <Alert variant="default">
+                    <AlertDescription>Choose a model to see its settings.</AlertDescription>
+                  </Alert>
+                )}
+              </section>
+            )}
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
               <Button type="submit" loading={creating || form.formState.isSubmitting}>
-                Add Model
+                Add model
               </Button>
             </DialogFooter>
           </form>

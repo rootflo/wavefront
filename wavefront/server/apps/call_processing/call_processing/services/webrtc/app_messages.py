@@ -1,7 +1,7 @@
 """Browser (WebRTC) app messages for a live voice session.
 
 The browser talks to the running pipeline over Pipecat's RTVI data channel
-(``PipelineTask`` enables RTVI by default):
+(``PipelineWorker`` enables RTVI by default):
 
 Inbound (browser -> pipeline), via ``client.sendClientMessage(type, data)``:
     ``set_context``  {step, field?, language?, instruction?, allowedTools?}
@@ -63,13 +63,20 @@ from pipecat.utils.string import (
     match_endofsentence,
 )
 
-from call_processing.constants.language_config import (
-    LANGUAGE_DISPLAY_NAMES,
-    LANGUAGE_INSTRUCTIONS,
-)
 from call_processing.log.logger import logger
-from call_processing.services.stt_service import STTServiceFactory
-from call_processing.services.tts_service import TTSServiceFactory
+from call_processing.services.common.language_switch import queue_language_update
+from call_processing.services.common.prompts import language_instruction
+from call_processing.services.common.session_events import SessionEvents
+from call_processing.services.webrtc.room_service import (
+    ERR_INVALID_REQUEST,
+    ERR_SWAP_FAILED,
+)
+from call_processing.services.webrtc.prompts import (
+    STEP_OPENER,
+    default_step_instruction,
+    step_heading,
+    step_language_line,
+)
 
 # Inbound message types
 MSG_SET_CONTEXT = 'set_context'
@@ -87,18 +94,11 @@ MSG_AGENT_CHANGED = 'agent_changed'
 MSG_AGENT_SWITCH_FAILED = 'agent_switch_failed'
 MSG_APP_EVENT = 'app_event'
 
-STATE_LISTENING = 'listening'
-STATE_THINKING = 'thinking'
-STATE_SPEAKING = 'speaking'
-
 OVERLAY_START = '<<APP_STEP_CONTEXT>>'
 OVERLAY_END = '<<END_APP_STEP_CONTEXT>>'
 _OVERLAY_RE = re.compile(
     re.escape(OVERLAY_START) + r'.*?' + re.escape(OVERLAY_END), re.S
 )
-
-# Added to the conversation so the agent opens the step it was just moved to
-STEP_OPENER = '[The app moved to a new step. Follow the current step instructions and begin it now.]'
 
 
 # --------------------------------------------------------------------- parsing
@@ -176,14 +176,10 @@ def parse_switch_agent(data: Any) -> Optional[str]:
 def build_step_overlay(ctx: SetContext) -> str:
     """The marked block appended to the system prompt for the current step."""
     where = f'{ctx.step}/{ctx.field}' if ctx.field else ctx.step
-    lines = [f'CURRENT APP STEP: {where}']
+    lines = [step_heading(where)]
     if ctx.language:
-        name = LANGUAGE_DISPLAY_NAMES.get(ctx.language, ctx.language)
-        lines.append(f'Speak only in {name} (language code: {ctx.language}).')
-    lines.append(
-        ctx.instruction
-        or f'You are on step {where}. Only handle this step; do not move on by yourself.'
-    )
+        lines.append(step_language_line(ctx.language))
+    lines.append(ctx.instruction or default_step_instruction(where))
     return f'{OVERLAY_START}\n' + '\n'.join(lines) + f'\n{OVERLAY_END}'
 
 
@@ -292,7 +288,7 @@ class BotCaptionProcessor(FrameProcessor):
 # -------------------------------------------------------------------- messenger
 
 
-class ClientSessionMessenger:
+class ClientSessionMessenger(SessionEvents):
     """Handles client (browser or app) messages for one live pipeline and emits UI events."""
 
     def __init__(
@@ -311,7 +307,7 @@ class ClientSessionMessenger:
         # Room property (kept across agent swaps): the app alone drives the
         # language, so the prompt carries no language instruction prefix.
         self._room_context_language = room_context_language
-        self._task: Any = None  # set via bind_task once the PipelineTask exists
+        self._task: Any = None  # set via bind_task once the PipelineWorker exists
         self._context = context
         self._function_schemas = list(function_schemas)
         self._language_state = language_state
@@ -471,12 +467,12 @@ class ClientSessionMessenger:
                 if agent_id is None:
                     logger.warning(f'Ignoring invalid switch_agent payload: {data!r}')
                     await self.emit_agent_switch_failed(
-                        'invalid_request', 'switch_agent needs an agent_id'
+                        ERR_INVALID_REQUEST, 'switch_agent needs an agent_id'
                     )
                     return
                 if self._on_switch_agent is None:
                     await self.emit_agent_switch_failed(
-                        'swap_failed',
+                        ERR_SWAP_FAILED,
                         'Agent switching is not available in this session',
                     )
                     return
@@ -575,10 +571,7 @@ class ClientSessionMessenger:
                 # The overlay already states the language; no extra instruction
                 content = new_original
             else:
-                instruction = LANGUAGE_INSTRUCTIONS.get(
-                    language, LANGUAGE_INSTRUCTIONS.get('en', 'Respond in English.')
-                )
-                content = f'{instruction}\n\n{new_original}'
+                content = f'{language_instruction(language)}\n\n{new_original}'
             await self._switch_services_language(language)
         else:
             current = ''
@@ -605,16 +598,13 @@ class ClientSessionMessenger:
         current = self._language_state.get('current_language')
         if language == current:
             return
-        tts_frame = TTSServiceFactory.create_language_update_frame(
-            self._tts_provider, language, self._tts_voice_ids.get(language)
+        await queue_language_update(
+            self._task,
+            tts_provider=self._tts_provider,
+            stt_provider=self._stt_provider,
+            tts_voice_ids=self._tts_voice_ids,
+            language=language,
         )
-        if tts_frame:
-            await self._task.queue_frame(tts_frame)
-        stt_frame = STTServiceFactory.create_language_update_frame(
-            self._stt_provider, language
-        )
-        if stt_frame:
-            await self._task.queue_frame(stt_frame)
         self._language_state['current_language'] = language
         self._language_state['switch_count'] = (
             self._language_state.get('switch_count', 0) + 1

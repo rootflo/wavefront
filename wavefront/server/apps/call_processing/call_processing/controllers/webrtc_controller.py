@@ -22,11 +22,11 @@ from call_processing.app_settings import CallProcessingAppSettings
 from call_processing.controllers.cache_controller import verify_passthrough_auth
 from call_processing.di.application_container import ApplicationContainer
 from call_processing.log.logger import logger
-from call_processing.services.webrtc_room_service import (
+from call_processing.services.webrtc.room_service import (
     WebRTCRoomError,
     WebRTCRoomService,
 )
-from call_processing.services.webrtc_session_service import (
+from call_processing.services.webrtc.session_service import (
     OfferRequest,
     WebRTCSessionService,
 )

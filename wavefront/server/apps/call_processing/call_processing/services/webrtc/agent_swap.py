@@ -2,8 +2,8 @@
 
 Why this is not "restart ``run_conversation``": the SmallWebRTC input/output
 transports disconnect the peer connection when they stop or are cancelled, so
-ending the ``PipelineTask`` would drop the browser. The swap therefore happens
-*inside* the running pipeline. The transport, the ``PipelineTask``, RTVI, VAD,
+ending the ``PipelineWorker`` would drop the browser. The swap therefore happens
+*inside* the running pipeline. The transport, the ``PipelineWorker``, RTVI, VAD,
 the idle watchdog and the room session timers are never touched:
 
     transport.input -> SwappableSlot A -> transport.output
@@ -47,12 +47,10 @@ from pipecat.processors.frame_processor import (
 )
 
 from call_processing.log.logger import logger
-from call_processing.services.agent_stack import AgentStack, SharedSession
-from call_processing.services.webrtc_app_messages import (
-    STEP_OPENER,
-    strip_step_overlay,
-)
-from call_processing.services.webrtc_room_service import (
+from call_processing.services.common.agent_stack import AgentStack, SharedSession
+from call_processing.services.webrtc.app_messages import strip_step_overlay
+from call_processing.services.webrtc.prompts import STEP_OPENER, build_handoff_note
+from call_processing.services.webrtc.room_service import (
     ERR_AGENT_NOT_ALLOWED,
     ERR_AGENT_UNAVAILABLE,
     ERR_ALREADY_ACTIVE,
@@ -299,43 +297,6 @@ def build_handoff_history(messages: Sequence[Any]) -> List[Dict[str, str]]:
     return history
 
 
-def build_handoff_note(
-    previous_name: str,
-    new_name: str,
-    *,
-    new_step: bool = False,
-    carry_history: bool = True,
-) -> str:
-    """System-injected user turn after a hot-swap.
-
-    Does not ask the model to say its agent name — that fights prompts like
-    "Don't mention agent name" and produces unnatural handoffs.
-    ``new_name`` is kept in the signature for callers/tests; unused in the text.
-    """
-    del new_name  # reserved for logging/callers; never spoken in the note
-    if not carry_history:
-        # Clean context: there is no earlier conversation to refer to
-        return (
-            '[A conversation with the user is starting now and you have no earlier '
-            'history with them. Briefly greet them and help. '
-            'Do not say your agent name.]'
-        )
-    previous = f' from {previous_name}' if previous_name else ''
-    if new_step:
-        # The app moved on: the earlier topic is finished, not something to pick up again
-        return (
-            f'[You just took over this conversation{previous}. The conversation so far '
-            f'is above for reference only: that step is finished. Do not continue, '
-            f'repeat or finish what was being said before. Start the current step '
-            f'now. Do not say your agent name.]'
-        )
-    return (
-        f'[You just took over this conversation{previous}. The conversation so far '
-        f'is above. Continue helping the user where the conversation left off. '
-        f'Do not repeat earlier answers. Do not say your agent name.]'
-    )
-
-
 # ------------------------------------------------------------------ controller
 
 
@@ -354,11 +315,13 @@ class SwapOptions:
     timeout_secs: float = DEFAULT_SWAP_TIMEOUT_SECS
     # False: the new agent starts with only its own system prompt (set per room)
     carry_history: bool = True
+    # Pre-warmed configs keyed by agent id (filled at room join). Mutated in place.
+    config_cache: Optional[Dict[str, Dict[str, Any]]] = None
 
 
 @dataclass
 class SessionHooks:
-    """Optional hooks for ``PipecatService.run_conversation`` (browser sessions)."""
+    """Optional hooks for ``WebRTCConversation`` (browser sessions)."""
 
     swap: Optional[SwapOptions] = None
     # Called once the pipeline task exists, with the controller (None if swapping
@@ -530,10 +493,19 @@ class AgentSwapController:
         # 4. Cut the old agent's speech and stop its stack (closes STT/TTS sockets).
         await asyncio.shield(self._finish_commit(old_stack, new_stack, old_a, old_b))
 
+    async def _load_configs(self, agent_id: str) -> Dict[str, Any]:
+        cache = self._options.config_cache
+        if cache is not None and agent_id in cache:
+            return cache[agent_id]
+        configs = await self._options.load_agent_configs(UUID(agent_id))
+        if cache is not None and configs:
+            cache[agent_id] = configs
+        return configs
+
     async def _build_and_prepare(self, agent_id: str):
         # 1. Build the new stack off to the side. Nothing live is touched yet.
         try:
-            configs = await self._options.load_agent_configs(UUID(agent_id))
+            configs = await self._load_configs(agent_id)
         except Exception as e:
             logger.warning(f'Could not load agent {agent_id} for swap: {e}')
             raise SwapError(ERR_AGENT_UNAVAILABLE)
