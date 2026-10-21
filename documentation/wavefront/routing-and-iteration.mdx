@@ -1,0 +1,131 @@
+---
+title: "Routing and iteration"
+description: "Choose the next step with routers, and repeat a step for each item with ForEach"
+icon: "code-branch"
+---
+
+## Routers
+
+A router decides which node runs next. Attach it to an edge and list every node it may choose:
+
+```yaml
+routers:
+  - name: by_category
+    type: field_match
+    field: category
+    routes:
+      billing: open_billing_case
+      bug: open_bug_report
+    default: open_bug_report
+
+workflow:
+  start: triage
+  edges:
+    - from: triage
+      to: [open_billing_case, open_bug_report]   # every possible target
+      router: by_category
+  end: [open_billing_case, open_bug_report]
+```
+
+### `field_match`: deterministic routing
+
+`field_match` reads one field of the previous node's JSON output and looks its value up in `routes`. `default` is used when the field is missing or the value is not listed. It makes no model call: the same input always takes the same path.
+
+This is the router to use in most production workflows. Pair it with an agent whose [parser](/wavefront/structured-output) returns that field as an `enum`, or with a function that computes it.
+
+### Pattern: skip what is not there
+
+Route around optional steps instead of letting them fail. For example, check whether a file was uploaded before downloading it (a fragment; the rest of the workflow is omitted):
+
+```yaml
+function_nodes:
+  - name: photo_check            # a function returning {"present": "yes"} or {"present": "no"}
+    function_name: trigger_message_processor
+    prefilled_params: { message_processor_id: <function-id> }
+  - name: photo_download
+    function_name: datasource_download_file
+    input_filter: [photo_check]
+    prefilled_params: { datasource_id: <file-store-id> }
+  - name: photo_skipped
+    function_name: passthrough
+    input_filter: [photo_check]
+routers:
+  - name: photo_route
+    type: field_match
+    field: present
+    routes: { "yes": photo_download, "no": photo_skipped }
+    default: photo_skipped
+workflow:
+  edges:
+    - from: photo_check
+      to: [photo_download, photo_skipped]
+      router: photo_route
+    - from: photo_download
+      to: [inspector]
+    - from: photo_skipped
+      to: [inspector]
+```
+
+<Note>
+Quote `"yes"` and `"no"` (and `"on"`, `"off"`) when they are keys in YAML. Unquoted, YAML reads them as booleans.
+</Note>
+
+### Model-based routers
+
+These routers ask a model to choose, which suits conversational or open-ended flows. Each needs a `model` and its own settings:
+
+| Type | Chooses by | Required key |
+|---|---|---|
+| `smart` | A description of each option | `routing_options: {node: description}` |
+| `task_classifier` | Task categories with keywords and examples | `task_categories` |
+| `conversation_analysis` | Rules about the conversation so far | `routing_logic` |
+| `reflection` | A fixed pattern of steps, such as write → critique → write | `flow_pattern` |
+| `plan_execute` | A plan made by a planner agent, then executed step by step | `agents` |
+
+See the [FloAI routing reference](/flo-ai/advanced/routing) for their options. Prefer `field_match` whenever the decision can be made from data.
+
+## ForEach
+
+A **ForEach** node runs a sub-workflow once per item and can hand all the results to the next node.
+
+```yaml
+arium:
+  ariums:
+    - name: review_one                 # runs once per item
+      function_nodes:
+        - name: check_item
+          function_name: trigger_message_processor
+          input_filter: [input]        # the current item
+          prefilled_params: { message_processor_id: <function-id> }
+      workflow:
+        start: check_item
+        edges: []
+        end: [check_item]
+
+  iterators:
+    - name: each_item
+      execute_node: review_one
+      input_filter: [input]            # what to iterate over
+      forward_all_results: true        # keep every item's result
+
+  function_nodes:
+    - name: summarise
+      function_name: trigger_message_processor
+      input_filter: [each_item]        # receives every result
+      prefilled_params: { message_processor_id: <function-id> }
+
+  workflow:
+    start: each_item
+    edges:
+      - from: each_item
+        to: [summarise]
+    end: [summarise]
+```
+
+How it behaves:
+
+- **Items are messages.** ForEach runs once for each message its `input_filter` selects. Run the workflow above with three input messages and `review_one` runs three times. A single message containing a JSON array is **one** item. To iterate over the elements of a list, send them as separate input messages, or let a node upstream produce one output per element.
+- **The executed node must be a sub-workflow** (declared under `ariums`). Naming a plain function or agent as `execute_node` is rejected, because the validator sees it as an orphan node.
+- **Results:** with `forward_all_results: true`, every item's result is stored under the ForEach node's name, and a function selecting it gets them all in `node_outputs.each_item` (a list, one entry per item). With the default `false`, only the last item's result is kept.
+- **Sequential:** items are processed one after another, not in parallel.
+- `iterators` and `foreach_nodes` are two names for the same list.

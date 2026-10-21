@@ -110,7 +110,7 @@ async def get_tool_details(
 
 
 @tools_router.get(
-    '/{tool_name}',
+    '/by-name/{tool_name}',
     response_model=GenericResponseModel[DataWrapper[ToolMetadataData]],
     dependencies=[Security(bearer_auth)],
 )

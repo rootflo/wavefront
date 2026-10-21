@@ -1,5 +1,8 @@
 import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
+import { ModelParameters } from '@app/components/llm/ModelParameters';
+import { ModelSelect, ModelTags } from '@app/components/llm/ModelSelect';
+import { ProviderSelect } from '@app/components/llm/ProviderSelect';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -9,29 +12,16 @@ import {
   BreadcrumbSeparator,
 } from '@app/components/ui/breadcrumb';
 import { Button } from '@app/components/ui/button';
-import { Checkbox } from '@app/components/ui/checkbox';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
-import { Slider } from '@app/components/ui/slider';
-import {
-  cleanParameters,
-  getDefaultBaseUrl,
-  getProviderConfig,
-  mergeParameters,
-  ParameterConfig,
-} from '@app/config/llm-providers';
 import { Spinner } from '@app/components/ui/spinner';
+import { filterParameters, findModelPreset, getDefaultModelId } from '@app/config/llm-models';
+import { getDefaultBaseUrl, getProviderConfig } from '@app/config/llm-providers';
 import { useGetLLMConfig } from '@app/hooks';
 import { getLLMConfigKey, getLLMConfigsKey } from '@app/hooks/data/query-keys';
 import { extractErrorMessage, formatAppName } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
-import {
-  getBooleanParameterWithDefault,
-  getNumberOrStringParameter,
-  getNumberParameterWithDefault,
-  getStringParameter,
-} from '@app/utils/parameter-helpers';
 import { InferenceEngineType, LLMInferenceConfig, UpdateLLMConfigRequest } from '@app/types/llm-inference-config';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQueryClient } from '@tanstack/react-query';
@@ -41,26 +31,17 @@ import { useForm } from 'react-hook-form';
 import { useNavigate, useParams } from 'react-router';
 import { z } from 'zod';
 
-const INFERENCE_ENGINE_TYPES = [
-  { value: 'openai' as InferenceEngineType, label: 'OpenAI GPT' },
-  { value: 'anthropic' as InferenceEngineType, label: 'Anthropic Claude' },
-  { value: 'gemini' as InferenceEngineType, label: 'Google Gemini' },
-  { value: 'azure_openai' as InferenceEngineType, label: 'Azure OpenAI' },
-  { value: 'ollama' as InferenceEngineType, label: 'Ollama (Local)' },
-  { value: 'vllm' as InferenceEngineType, label: 'vLLM' },
-  { value: 'groq' as InferenceEngineType, label: 'Groq' },
-];
+const REQUIRES_API_KEY: InferenceEngineType[] = ['openai', 'anthropic', 'gemini', 'azure_openai', 'groq'];
 
 const llmConfigFormSchema = z
   .object({
     display_name: z.string().min(1, 'Display name is required'),
-    llm_model: z.string().min(1, 'LLM model is required'),
+    llm_model: z.string().min(1, 'Choose a model'),
     type: z.enum(['openai', 'anthropic', 'gemini', 'azure_openai', 'ollama', 'vllm', 'groq']),
     api_key: z.string().optional(),
     model_type: z.enum(['llm', 'embedding']),
     base_url: z.string().optional(),
     api_version: z.string().optional(),
-    parameters: z.record(z.any()).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.type === 'azure_openai' && !data.api_version?.trim()) {
@@ -80,7 +61,7 @@ type LLMConfigForm = z.infer<typeof llmConfigFormSchema>;
  * field: `form.reset` replaces every value, so a partial payload would silently
  * blank out whatever it left out (e.g. the Azure-only `api_version`).
  */
-const buildFormValues = (config: LLMInferenceConfig, mergedParams: Record<string, unknown>): LLMConfigForm => ({
+const buildFormValues = (config: LLMInferenceConfig): LLMConfigForm => ({
   display_name: config.display_name,
   llm_model: config.llm_model,
   type: config.type,
@@ -88,8 +69,25 @@ const buildFormValues = (config: LLMInferenceConfig, mergedParams: Record<string
   api_key: '', // API key is never returned for security
   base_url: config.base_url || '',
   api_version: (config.parameters?.api_version as string) || '',
-  parameters: mergedParams,
 });
+
+/** The saved settings the saved model accepts. */
+const savedParameters = (config: LLMInferenceConfig) =>
+  filterParameters(config.type, config.llm_model, config.parameters).kept;
+
+const SectionTitle: React.FC<{ title: string; description?: string; children?: React.ReactNode }> = ({
+  title,
+  description,
+  children,
+}) => (
+  <div className="flex items-start justify-between gap-4">
+    <div>
+      <h3 className="frost-text text-lg font-semibold">{title}</h3>
+      {description && <p className="frost-text-muted text-sm">{description}</p>}
+    </div>
+    {children}
+  </div>
+);
 
 const LLMInferenceConfigDetail: React.FC = () => {
   const { app: appId, llmId } = useParams<{ app: string; llmId: string }>();
@@ -97,7 +95,6 @@ const LLMInferenceConfigDetail: React.FC = () => {
   const queryClient = useQueryClient();
   const { notifySuccess, notifyError } = useNotifyStore();
 
-  // Fetch LLM config
   const { data: config, isLoading } = useGetLLMConfig(appId, llmId);
 
   const [editing, setEditing] = useState(false);
@@ -115,71 +112,61 @@ const LLMInferenceConfigDetail: React.FC = () => {
       api_key: '',
       base_url: '',
       api_version: '',
-      parameters: {},
     },
     mode: 'onChange',
   });
 
-  // Update form fields when config loads
-  useEffect(() => {
-    if (config) {
-      // Merge saved parameters with defaults
-      const mergedParams = mergeParameters(config.type, config.parameters);
-      setParameters(mergedParams);
-      form.reset(buildFormValues(config, mergedParams));
-    }
-  }, [config, form]);
+  const resetToSaved = (saved: LLMInferenceConfig) => {
+    form.reset(buildFormValues(saved));
+    setParameters(savedParameters(saved));
+  };
 
-  // Update parameters and base URL when provider type changes in edit mode
-  const watchedType = form.watch('type');
   useEffect(() => {
-    if (editing && config) {
-      const mergedParams = mergeParameters(watchedType, watchedType === config.type ? config.parameters : null);
-      setParameters(mergedParams);
-      form.setValue('parameters', mergedParams);
+    if (config) resetToSaved(config);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config]);
 
-      // Update base URL to the new provider's default when type changes
-      if (watchedType !== config.type) {
-        const defaultBaseUrl = getDefaultBaseUrl(watchedType);
-        form.setValue('base_url', defaultBaseUrl);
-      }
-    }
-  }, [watchedType, editing, config, form]);
+  const type = form.watch('type');
+  const llmModel = form.watch('llm_model');
+  const modelType = form.watch('model_type');
+  const providerConfig = getProviderConfig(type);
+  const preset = findModelPreset(type, llmModel);
+  // Settings saved on this config that the current model rejects; the next save drops them.
+  const dropped = config ? filterParameters(type, llmModel, config.parameters).dropped : [];
 
-  // Sync parameters state with form when parameters change
-  useEffect(() => {
-    if (editing) {
-      form.setValue('parameters', parameters);
-    }
-  }, [parameters, editing, form]);
+  const changeProvider = (newType: InferenceEngineType) => {
+    if (newType === type) return;
+    // The old provider's model means nothing to the new one: pick a sensible one (chat models only)
+    const newModel = modelType === 'llm' ? getDefaultModelId(newType) : '';
+    form.setValue('type', newType, { shouldValidate: true });
+    form.setValue('llm_model', newModel, { shouldValidate: true });
+    form.setValue('base_url', getDefaultBaseUrl(newType));
+    setParameters((prev) => filterParameters(newType, newModel, prev).kept);
+  };
+
+  const changeModel = (modelId: string) => {
+    form.setValue('llm_model', modelId, { shouldValidate: true });
+  };
 
   const handleSave = async (data: LLMConfigForm) => {
     if (!llmId || !config) return;
 
     setSaving(true);
     try {
-      // Clean parameters before sending (remove undefined/null/empty values,
-      // and any left over from a provider this config no longer points at)
-      const cleanedParams = cleanParameters(parameters, data.type);
+      // Only what this model accepts goes out, so a stale or unsupported setting cannot fail requests
+      const { kept } = filterParameters(data.type, data.llm_model, data.model_type === 'llm' ? parameters : {});
       if (data.type === 'azure_openai' && data.api_version) {
-        cleanedParams.api_version = data.api_version.trim();
-      } else {
-        delete cleanedParams.api_version;
+        kept.api_version = data.api_version.trim();
       }
 
-      // Only include fields that have changed or are explicitly set
       const updateData: UpdateLLMConfigRequest = {
         display_name: data.display_name.trim(),
         llm_model: data.llm_model.trim(),
         type: data.type,
         model_type: data.model_type,
-        parameters: Object.keys(cleanedParams).length > 0 ? cleanedParams : null,
+        parameters: Object.keys(kept).length > 0 ? kept : null,
+        base_url: data.base_url?.trim() || null,
       };
-
-      // Only include base_url if it's supported by the engine type
-      if (supportsBaseUrl(data.type)) {
-        updateData.base_url = data.base_url?.trim() || null;
-      }
 
       // Only include API key if it's been entered (since we don't show existing ones)
       if (data.api_key?.trim()) {
@@ -188,11 +175,10 @@ const LLMInferenceConfigDetail: React.FC = () => {
 
       await floConsoleService.llmInferenceService.updateLLMConfig(llmId, updateData);
 
-      // Invalidate queries to refetch updated data
       queryClient.invalidateQueries({ queryKey: getLLMConfigKey(appId || '', llmId || '') });
       queryClient.invalidateQueries({ queryKey: getLLMConfigsKey(appId || '') });
       setEditing(false);
-      form.setValue('api_key', ''); // Clear API key after saving
+      form.setValue('api_key', '');
       notifySuccess('Model updated successfully');
     } catch (error) {
       console.error('Error updating LLM inference config:', error);
@@ -215,17 +201,9 @@ const LLMInferenceConfigDetail: React.FC = () => {
     }
   };
 
-  const requiresApiKey = (engineType: InferenceEngineType) => {
-    return ['openai', 'anthropic', 'gemini', 'azure_openai', 'groq'].includes(engineType);
-  };
-
-  const supportsBaseUrl = (engineType: InferenceEngineType) => {
-    return ['ollama', 'vllm', 'azure_openai', 'openai', 'anthropic', 'gemini', 'groq'].includes(engineType);
-  };
-
   return (
-    <div className="h-full bg-transparent px-8 pt-8 pb-[200px]">
-      <Breadcrumb className="mb-6">
+    <div className="flex h-full flex-col overflow-y-auto bg-transparent px-8 pt-8 pb-8 lg:overflow-hidden">
+      <Breadcrumb className="mb-6 shrink-0">
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
@@ -260,10 +238,18 @@ const LLMInferenceConfigDetail: React.FC = () => {
       ) : !config ? (
         <div className="frost-text-muted flex h-64 items-center justify-center">Model configuration not found</div>
       ) : (
-        <div className="flex w-full flex-col gap-10 pb-5">
-          <div className="flex items-center justify-between">
-            <p className="frost-text text-2xl leading-normal font-semibold">{formatAppName(config?.display_name)}</p>
-            <div className="flex gap-4">
+        <div className="flex w-full flex-col gap-8 lg:min-h-0 lg:flex-1">
+          <div className="flex shrink-0 items-center justify-between gap-4">
+            <div className="flex min-w-0 flex-col gap-1">
+              <p className="frost-text text-2xl leading-normal font-semibold">{formatAppName(config.display_name)}</p>
+              <div className="frost-text-muted flex flex-wrap items-center gap-2 text-sm">
+                <span>{getProviderConfig(config.type)?.name ?? config.type}</span>
+                <span>·</span>
+                <span className="font-mono">{config.llm_model}</span>
+                <ModelTags tags={findModelPreset(config.type, config.llm_model)?.tags} />
+              </div>
+            </div>
+            <div className="flex shrink-0 gap-4">
               {editing ? (
                 <>
                   <Button onClick={form.handleSubmit(handleSave)} loading={saving}>
@@ -273,12 +259,7 @@ const LLMInferenceConfigDetail: React.FC = () => {
                     variant="outline"
                     onClick={() => {
                       setEditing(false);
-                      // Revert changes by resetting form to config data
-                      if (config) {
-                        const mergedParams = mergeParameters(config.type, config.parameters);
-                        form.reset(buildFormValues(config, mergedParams));
-                        setParameters(mergedParams);
-                      }
+                      resetToSaved(config);
                     }}
                   >
                     Cancel
@@ -295,104 +276,107 @@ const LLMInferenceConfigDetail: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex w-full flex-col gap-6">
-            <div className="frost-panel ring-frost-border flex w-full flex-col gap-6 rounded-lg border p-6 ring-1">
-              <h3 className="frost-text text-lg font-semibold">Model Details</h3>
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(handleSave)} className="flex w-full flex-col gap-6">
-                  <div
-                    className={clsx('grid w-full gap-6 lg:grid-cols-2', !editing && 'pointer-events-none opacity-80')}
-                  >
-                    <FormField
-                      control={form.control}
-                      name="display_name"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Display Name</FormLabel>
-                          <FormControl>
-                            <Input disabled={!editing} placeholder="Display name" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="llm_model"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>LLM Model</FormLabel>
-                          <FormControl>
-                            <Input disabled={!editing} placeholder="Model name" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="type"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Inference Engine Type</FormLabel>
-                          <Select
-                            onValueChange={(val) => {
-                              if (val) field.onChange(val);
-                            }}
-                            value={field.value}
-                            disabled={!editing}
-                          >
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select engine type" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {INFERENCE_ENGINE_TYPES.map((engineType) => (
-                                <SelectItem key={engineType.value} value={engineType.value}>
-                                  {engineType.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    {requiresApiKey(form.watch('type')) && (
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(handleSave)} className="flex w-full flex-col lg:min-h-0 lg:flex-1">
+              <div className="flex w-full flex-col gap-6 lg:min-h-0 lg:flex-1 lg:flex-row">
+                <div className="flex min-w-0 flex-1 flex-col gap-6 lg:min-h-0 lg:overflow-y-auto">
+                  <div className="frost-panel ring-frost-border flex w-full shrink-0 flex-col gap-6 rounded-lg border p-6 ring-1">
+                    <SectionTitle title="Model" />
+                    <div className={clsx('grid w-full gap-6 lg:grid-cols-2', !editing && 'opacity-80')}>
                       <FormField
                         control={form.control}
-                        name="api_key"
+                        name="display_name"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>API Key</FormLabel>
+                            <FormLabel>Name</FormLabel>
                             <FormControl>
-                              <Input
-                                type="password"
-                                disabled={!editing}
-                                placeholder="Enter new API key (leave blank to keep current)"
-                                {...field}
-                              />
+                              <Input disabled={!editing} placeholder="Name" {...field} />
                             </FormControl>
                             <FormMessage />
-                            <p className="frost-text-muted text-xs">
-                              Leave blank to keep the current API key. Enter a new key to update it.
-                            </p>
                           </FormItem>
                         )}
                       />
-                    )}
 
-                    {supportsBaseUrl(form.watch('type')) && (
+                      <FormField
+                        control={form.control}
+                        name="model_type"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Type</FormLabel>
+                            <Select
+                              onValueChange={(val) => {
+                                if (val) field.onChange(val);
+                              }}
+                              value={field.value}
+                              disabled={!editing}
+                            >
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="llm">Chat and voice (LLM)</SelectItem>
+                                <SelectItem value="embedding">Embeddings</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="type"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Provider</FormLabel>
+                            <ProviderSelect value={field.value} onChange={changeProvider} disabled={!editing} />
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="llm_model"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{providerConfig?.modelLabel ?? 'Model'}</FormLabel>
+                            <ModelSelect
+                              provider={type}
+                              value={field.value}
+                              onChange={changeModel}
+                              disabled={!editing}
+                            />
+                            {type === 'azure_openai' && editing && (
+                              <Input
+                                value={field.value}
+                                onChange={(e) => changeModel(e.target.value)}
+                                placeholder="Deployment name, e.g. gpt-5.4-nano"
+                                aria-label="Deployment name"
+                              />
+                            )}
+                            {editing && providerConfig?.modelHelp && (
+                              <p className="frost-text-muted text-xs">{providerConfig.modelHelp}</p>
+                            )}
+                            {preset && <p className="frost-text-muted text-xs">{preset.description}</p>}
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="frost-panel ring-frost-border flex w-full shrink-0 flex-col gap-6 rounded-lg border p-6 ring-1">
+                    <SectionTitle title="Connection" />
+                    <div className={clsx('grid w-full gap-6 lg:grid-cols-2', !editing && 'opacity-80')}>
                       <FormField
                         control={form.control}
                         name="base_url"
                         render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Base URL</FormLabel>
+                          <FormItem className="lg:col-span-2">
+                            <FormLabel>{type === 'azure_openai' ? 'Endpoint' : 'Base URL'}</FormLabel>
                             <FormControl>
                               <Input
                                 type="url"
@@ -405,196 +389,73 @@ const LLMInferenceConfigDetail: React.FC = () => {
                           </FormItem>
                         )}
                       />
-                    )}
 
-                    {watchedType === 'azure_openai' && (
-                      <FormField
-                        control={form.control}
-                        name="api_version"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>API Version</FormLabel>
-                            <FormControl>
-                              <Input type="text" disabled={!editing} placeholder="2024-12-01-preview" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    )}
-
-                    <FormField
-                      control={form.control}
-                      name="model_type"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Model Type</FormLabel>
-                          <Select
-                            onValueChange={(val) => {
-                              if (val) field.onChange(val);
-                            }}
-                            value={field.value}
-                            disabled={!editing}
-                          >
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select model type" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value="llm">LLM</SelectItem>
-                              <SelectItem value="embedding">Embedding</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
+                      {REQUIRES_API_KEY.includes(type) && (
+                        <FormField
+                          control={form.control}
+                          name="api_key"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>API key</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="password"
+                                  autoComplete="off"
+                                  disabled={!editing}
+                                  placeholder={editing ? 'Leave blank to keep the current key' : '••••••••'}
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
                       )}
-                    />
-                  </div>
-                </form>
-              </Form>
-            </div>
 
-            {/* Model Parameters Section */}
-            {(() => {
-              const currentType = form.watch('type') || config?.type;
-              const providerConfig = currentType ? getProviderConfig(currentType) : null;
-              if (!providerConfig || !config || Object.keys(providerConfig.parameters).length === 0) {
-                return null;
-              }
-
-              return (
-                <div className="frost-panel ring-frost-border flex w-full flex-col gap-6 rounded-lg border p-6 ring-1">
-                  <h3 className="frost-text text-lg font-semibold">Model Parameters</h3>
-                  <Form {...form}>
-                    <div
-                      className={clsx('grid w-full grid-cols-4 gap-6', !editing && 'pointer-events-none opacity-80')}
-                    >
-                      {Object.entries(providerConfig.parameters).map(
-                        ([paramKey, paramConfig]: [string, ParameterConfig]) => (
-                          <FormField
-                            key={paramKey}
-                            control={form.control}
-                            name={`parameters.${paramKey}`}
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>
-                                  {paramKey.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
-                                </FormLabel>
-                                <FormControl>
-                                  {paramConfig.type === 'number' ? (
-                                    <div className="space-y-2">
-                                      <Input
-                                        type="number"
-                                        value={getNumberOrStringParameter(parameters, paramKey)}
-                                        onChange={(e) => {
-                                          const value = e.target.value === '' ? undefined : parseFloat(e.target.value);
-                                          setParameters((prev) => ({ ...prev, [paramKey]: value }));
-                                          field.onChange(value);
-                                        }}
-                                        min={paramConfig.min}
-                                        max={paramConfig.max}
-                                        step={paramConfig.step}
-                                        placeholder={paramConfig.placeholder}
-                                        disabled={!editing}
-                                      />
-                                      {paramConfig.min !== undefined && paramConfig.max !== undefined && (
-                                        <Slider
-                                          value={[
-                                            getNumberParameterWithDefault(
-                                              parameters,
-                                              paramKey,
-                                              paramConfig.default,
-                                              paramConfig.min
-                                            ),
-                                          ]}
-                                          onValueChange={(values) => {
-                                            const value = values[0];
-                                            setParameters((prev) => ({ ...prev, [paramKey]: value }));
-                                            field.onChange(value);
-                                          }}
-                                          min={paramConfig.min}
-                                          max={paramConfig.max}
-                                          step={paramConfig.step}
-                                          disabled={!editing}
-                                        />
-                                      )}
-                                    </div>
-                                  ) : paramConfig.type === 'boolean' ? (
-                                    <div className="flex items-center space-x-2">
-                                      <Checkbox
-                                        checked={getBooleanParameterWithDefault(
-                                          parameters,
-                                          paramKey,
-                                          paramConfig.default
-                                        )}
-                                        onCheckedChange={(checked) => {
-                                          setParameters((prev) => ({ ...prev, [paramKey]: checked }));
-                                          field.onChange(checked);
-                                        }}
-                                        disabled={!editing}
-                                      />
-                                      <label className="text-sm leading-none font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                                        Enable
-                                      </label>
-                                    </div>
-                                  ) : paramConfig.type === 'select' && paramConfig.options ? (
-                                    <Select
-                                      value={getStringParameter(parameters, paramKey) || ''}
-                                      onValueChange={(value) => {
-                                        if (!value) return;
-                                        const val = value || undefined;
-                                        setParameters((prev) => ({ ...prev, [paramKey]: val }));
-                                        field.onChange(val);
-                                      }}
-                                      disabled={!editing}
-                                    >
-                                      <FormControl>
-                                        <SelectTrigger>
-                                          <SelectValue placeholder="-- Select --" />
-                                        </SelectTrigger>
-                                      </FormControl>
-                                      <SelectContent>
-                                        {paramConfig.options.map((option) => (
-                                          <SelectItem key={String(option.value)} value={String(option.value)}>
-                                            {option.label}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  ) : (
-                                    <Input
-                                      type="text"
-                                      value={getStringParameter(parameters, paramKey)}
-                                      onChange={(e) => {
-                                        const value = e.target.value || undefined;
-                                        setParameters((prev) => ({ ...prev, [paramKey]: value }));
-                                        field.onChange(value);
-                                      }}
-                                      placeholder={paramConfig.placeholder}
-                                      disabled={!editing}
-                                    />
-                                  )}
-                                </FormControl>
-                                {paramConfig.description && (
-                                  <p className="frost-text-muted text-xs">{paramConfig.description}</p>
-                                )}
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        )
+                      {type === 'azure_openai' && (
+                        <FormField
+                          control={form.control}
+                          name="api_version"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>API version</FormLabel>
+                              <FormControl>
+                                <Input type="text" disabled={!editing} placeholder="2025-04-01-preview" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
                       )}
                     </div>
-                  </Form>
+                  </div>
                 </div>
-              );
-            })()}
-          </div>
+
+                {modelType === 'llm' && (
+                  <div className="frost-panel ring-frost-border flex w-full flex-col gap-6 rounded-lg border p-6 ring-1 lg:min-h-0 lg:w-[420px] lg:shrink-0">
+                    <SectionTitle
+                      title="Settings"
+                      description="Only the settings this model accepts are shown. An empty field uses the provider's default."
+                    />
+                    <div className={clsx('lg:min-h-0 lg:flex-1 lg:overflow-y-auto', !editing && 'opacity-80')}>
+                      <ModelParameters
+                        provider={type}
+                        modelId={llmModel}
+                        values={parameters}
+                        onChange={(key, value) => setParameters((prev) => ({ ...prev, [key]: value }))}
+                        disabled={!editing}
+                        droppedKeys={dropped}
+                        compact
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </form>
+          </Form>
         </div>
       )}
 
-      {/* Delete Confirmation Dialog */}
       <DeleteConfirmationDialog
         isOpen={showDeleteConfirm}
         title="Delete Model"

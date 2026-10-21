@@ -75,7 +75,7 @@ export type ToolDetailsResponse = IApiResponse<ToolDetailsData>;
 // TOOLS FOR VOICE AGENTS (Function Calling)
 // ============================================================================
 
-export type ToolType = 'api' | 'python';
+export type ToolType = 'api' | 'python' | 'app';
 
 export type AuthType = 'none' | 'bearer' | 'api_key';
 
@@ -107,6 +107,19 @@ export interface PythonToolConfig {
 }
 
 /**
+ * App Tool Configuration — handled by the browser app (no HTTP call from the agent).
+ */
+export interface AppToolConfig {
+  /** Seconds to wait for the app to acknowledge the event (default 4). */
+  ack_timeout_s?: number;
+  /**
+   * Let the agent speak after a successful call. Default false (stay quiet so the
+   * app's next step can open the conversation).
+   */
+  speak_on_success?: boolean;
+}
+
+/**
  * Voice Agent Tool (database model)
  */
 export interface VoiceAgentTool {
@@ -115,7 +128,7 @@ export interface VoiceAgentTool {
   display_name: string;
   description: string;
   tool_type: ToolType;
-  config: ApiToolConfig | PythonToolConfig;
+  config: ApiToolConfig | PythonToolConfig | AppToolConfig;
   parameter_schema?: Record<string, any>;
   response_template?: string;
   created_by?: string;
@@ -158,7 +171,7 @@ export interface CreateToolRequest {
   display_name: string;
   description: string;
   tool_type: ToolType;
-  config: ApiToolConfig | PythonToolConfig;
+  config: ApiToolConfig | PythonToolConfig | AppToolConfig;
   parameter_schema?: Record<string, any>;
   response_template?: string;
 }
@@ -169,7 +182,7 @@ export interface CreateToolRequest {
 export interface UpdateToolRequest {
   display_name?: string;
   description?: string;
-  config?: ApiToolConfig | PythonToolConfig;
+  config?: ApiToolConfig | PythonToolConfig | AppToolConfig;
   parameter_schema?: Record<string, any>;
   response_template?: string;
 }

@@ -23,7 +23,11 @@ dependencies = [
     "azure-identity>=1.17.0,<2.0.0",
     "tenacity>=8.0.0",
     # Pipecat and voice processing
-    "pipecat-ai[websocket,cartesia,google,silero,deepgram,groq,runner,azure,sarvam,tracing]==0.0.106",
+    "pipecat-ai[websocket,cartesia,google,silero,deepgram,groq,runner,azure,sarvam,tracing,webrtc]==1.12.0",
+    # Required by LocalSmartTurnAnalyzerV3 (imported at startup). Declared
+    # explicitly so Docker/Linux installs are not lost if workspace overrides
+    # rewrite pipecat's transitive onnxruntime requirement.
+    "onnxruntime~=1.24.3",
     "opentelemetry-exporter-otlp-proto-grpc>=1.0.0",
     "opentelemetry-exporter-otlp-proto-http>=1.0.0",
     # Twilio

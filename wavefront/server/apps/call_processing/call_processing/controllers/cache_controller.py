@@ -7,7 +7,9 @@ from pydantic import BaseModel
 from typing import Optional
 
 from call_processing.log.logger import logger
-from call_processing.services.voice_agent_cache_service import VoiceAgentCacheService
+from call_processing.services.common.voice_agent_cache_service import (
+    VoiceAgentCacheService,
+)
 from call_processing.cache.cache_utils import (
     get_voice_agent_cache_key,
     get_llm_config_cache_key,

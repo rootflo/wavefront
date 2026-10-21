@@ -12,10 +12,12 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
+import { Checkbox } from '@app/components/ui/checkbox';
+import { Label } from '@app/components/ui/label';
 import { Textarea } from '@app/components/ui/textarea';
 import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
-import { VoiceAgentTool, ApiToolConfig } from '@app/types/tool';
+import { VoiceAgentTool, ApiToolConfig, AppToolConfig } from '@app/types/tool';
 import { zodResolver } from '@hookform/resolvers/zod';
 import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -29,7 +31,7 @@ const editToolSchema = z.object({
   description: z.string().min(1, 'Description is required'),
   // API Config fields
   method: z.enum(HTTP_METHODS).optional(),
-  url: z.string().url('Must be a valid URL').optional(),
+  url: z.string().url('Must be a valid URL').optional().or(z.literal('')),
   timeout: z.number().min(1).max(300).optional(),
   auth_type: z.enum(AUTH_TYPES).optional(),
   auth_token: z.string().optional(),
@@ -37,6 +39,9 @@ const editToolSchema = z.object({
   api_key_value: z.string().optional(),
   basic_username: z.string().optional(),
   basic_password: z.string().optional(),
+  // App Config fields
+  ack_timeout_s: z.number().gt(0).max(30).optional(),
+  speak_on_success: z.boolean().optional(),
   // Parameter schema as JSON string
   parameter_schema: z.string().optional(),
 });
@@ -68,6 +73,8 @@ const EditToolDialog: React.FC<EditToolDialogProps> = ({ isOpen, onOpenChange, t
       api_key_value: '',
       basic_username: '',
       basic_password: '',
+      ack_timeout_s: 4,
+      speak_on_success: false,
       parameter_schema: '',
     },
   });
@@ -78,6 +85,7 @@ const EditToolDialog: React.FC<EditToolDialogProps> = ({ isOpen, onOpenChange, t
   useEffect(() => {
     if (isOpen && tool) {
       const apiConfig = tool.config as ApiToolConfig;
+      const appConfig = tool.config as AppToolConfig;
 
       form.reset({
         display_name: tool.display_name,
@@ -91,6 +99,8 @@ const EditToolDialog: React.FC<EditToolDialogProps> = ({ isOpen, onOpenChange, t
         api_key_value: '',
         basic_username: apiConfig?.auth_credentials?.username || '',
         basic_password: '',
+        ack_timeout_s: appConfig?.ack_timeout_s ?? 4,
+        speak_on_success: appConfig?.speak_on_success ?? false,
         parameter_schema: tool.parameter_schema ? JSON.stringify(tool.parameter_schema, null, 2) : '',
       });
     }
@@ -134,6 +144,11 @@ const EditToolDialog: React.FC<EditToolDialogProps> = ({ isOpen, onOpenChange, t
           };
         }
         // Otherwise: don't include auth_credentials at all - backend will preserve existing
+      } else if (tool.tool_type === 'app') {
+        config = {
+          ack_timeout_s: data.ack_timeout_s ?? 4,
+          speak_on_success: data.speak_on_success ?? false,
+        };
       }
 
       // Parse parameter schema if provided
@@ -399,6 +414,59 @@ const EditToolDialog: React.FC<EditToolDialogProps> = ({ isOpen, onOpenChange, t
                     />
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* App Configuration */}
+            {tool.tool_type === 'app' && (
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">App Configuration</h3>
+                <p className="frost-text-muted text-sm">
+                  Handled by the browser app — the agent emits an event instead of making an HTTP call.
+                </p>
+
+                <FormField
+                  control={form.control}
+                  name="ack_timeout_s"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Ack timeout (seconds)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.5"
+                          min={0.5}
+                          max={30}
+                          {...field}
+                          value={field.value ?? ''}
+                          onChange={(e) => field.onChange(e.target.value === '' ? undefined : e.target.valueAsNumber)}
+                        />
+                      </FormControl>
+                      <p className="frost-text-muted text-xs">How long to wait for the app to acknowledge the event</p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="speak_on_success"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-start gap-3 space-y-0 rounded-md border p-3">
+                      <FormControl>
+                        <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                        <Label className="cursor-pointer font-medium" onClick={() => field.onChange(!field.value)}>
+                          Speak on success
+                        </Label>
+                        <p className="frost-text-muted text-xs">
+                          Let the agent speak after a successful call. Off by default so the app can open the next turn.
+                        </p>
+                      </div>
+                    </FormItem>
+                  )}
+                />
               </div>
             )}
 

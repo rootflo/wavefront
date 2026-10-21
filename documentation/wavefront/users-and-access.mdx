@@ -1,0 +1,97 @@
+---
+title: "Users and access"
+description: "App users, roles, groups, console access and row-level data permissions"
+icon: "users"
+---
+
+Each app has its own users, separate from Wavefront Console accounts. App users are what your application signs in with (see [Integrating an application](/wavefront/integrating-an-app)).
+
+## Roles
+
+Every app starts with these roles:
+
+| Role | Intended for |
+|---|---|
+| `admin` | Full access: users, datasources, queries, configuration, the audit trail |
+| `manager` | Managing users and day-to-day data operations, without configuration management |
+| `editor` | Changing content, without user or configuration management |
+| `viewer` | Read-only access |
+| `guest` | Minimal access to shared content |
+
+What a non-admin role can actually do is defined by the **resources** attached to it (below). Several operations are **admin-only** regardless: creating and deleting users, adding datasources, saving dynamic queries, and reading the audit trail.
+
+## Managing users
+
+| Action | Request (admin) |
+|---|---|
+| List users | `GET /floware/v1/users` (filters: `search`, `roles`, `limit`, `offset`) |
+| Get one | `GET /floware/v1/users/<id>` |
+| Create | `POST /floware/v1/users` with `email`, `password`, `confirm_password`, `first_name`, `last_name`, `role_id` (a list of role ids), optionally `group_ids` |
+| Update | `PATCH /floware/v1/users` with `user_id` and the fields to change: names, email, password, `add_role_ids` / `delete_role_ids`, `add_group_ids` / `delete_group_ids` |
+| Delete | `DELETE /floware/v1/users?id=<user-id>` |
+| List roles | `GET /floware/v1/access/roles` |
+
+Rules the API enforces:
+
+- **Passwords:** 8–72 characters, with an upper-case letter, a lower-case letter, a digit and one of `@$!%*#?&`; only letters, digits and those symbols.
+- **Names:** letters, spaces, apostrophes and hyphens.
+- **A non-admin user needs at least one console resource** through their roles or groups, or they could not sign in. Creation is refused otherwise.
+- **The last admin cannot delete themselves.**
+- Deleting a user and creating one with the same email again **reactivates** the old account.
+
+Look up role ids by name (`GET /v1/access/roles`) instead of hard-coding them; ids differ between apps.
+
+### Password reset
+
+Users can request a reset email (`POST /floware/v1/user/send-reset-password-email`) and set a new password with the link (`POST /floware/v1/user/reset-password`). Requests are rate-limited per email address.
+
+### Account safety
+
+| Setting | Default | |
+|---|---|---|
+| `MAX_FAILED_ATTEMPTS` | 3 | Failed sign-ins before the account locks |
+| `LOCKOUT_DURATION_HOURS` | 24 | How long it stays locked |
+| `INACTIVE_ACCOUNT_DISABLE_FLAG`, `INACTIVE_DAYS_THRESHOLD` | off, 60 | Disable accounts unused for that many days |
+| `TOKEN_EXPIRY` | 3600 | Session token lifetime, in seconds |
+| `RECAPTCHA_ENABLED` | off | Require reCAPTCHA on sign-in |
+
+Signing in ends the user's other sessions, so one account cannot be used in two places at once.
+
+## Groups
+
+**Groups** bundle users and roles: a user in a group gets the group's roles. Manage them under `/floware/v1/groups` (create, list, get, update, delete, and add or remove members at `/groups/<id>/members`). Admin status counts direct roles and group roles alike.
+
+## Resources and permissions
+
+A **resource** is something a role grants, with a `scope`, a `key` and a `value`:
+
+| Scope | Grants |
+|---|---|
+| `console` | Access to parts of the app's UI. Needed to sign in |
+| `route` | Access to API routes |
+| `dashboard` | Access to dashboards |
+| `data` | Rows of data: see below |
+
+Create resources with `POST /floware/v1/access/resources`, and roles that bundle them with `POST /floware/v1/access/roles` (`name`, `description`, `resources`: a list of resource ids).
+
+### Data permissions
+
+A **data** resource is a row filter. A role holding the resource `key: region`, `value: EU` lets its users read rows where `region` equals `EU`. Several values for one key are combined with OR, and different keys with AND.
+
+For non-admin users:
+
+- reads through **dynamic queries** apply these filters where the query contains **`{{rls}}`**;
+- a user with **no** data resources gets *"Data access not set for non-admin user"*.
+
+<Warning>
+A dynamic query without `{{rls}}` does not apply data permissions: anyone allowed to run it sees every row it selects. Add `AND {{rls}}` to the `WHERE` clause of every query non-admin users run. See [Dynamic queries](/wavefront/dynamic-queries).
+</Warning>
+
+A deployment can turn data permissions off, so every signed-in user reads all data, with the feature flag `ALLOW_NON_ADMIN_ALL_DATA_ACCESS_FLAG=true`. It also lets non-admins read the audit trail and the user directory (names and emails only).
+
+## Good practice
+
+- **One account per person, and one per service.** Signing in elsewhere ends a session, so a shared account keeps logging people out.
+- **Use roles and groups**, not per-user setup, so access stays reviewable.
+- **Keep admins few.** Most people need a role with the right console and data resources.
+- **Put permission checks in your application too** for actions Wavefront leaves open to every user, such as editing [configurations](/wavefront/configurations).

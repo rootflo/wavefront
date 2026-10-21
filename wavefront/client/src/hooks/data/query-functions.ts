@@ -17,7 +17,7 @@ import { TelephonyConfig } from '@app/types/telephony-config';
 import { ToolDetails, VoiceAgentTool, VoiceAgentToolWithAssociation } from '@app/types/tool';
 import { TtsConfig } from '@app/types/tts-config';
 import { IUser } from '@app/types/user';
-import { VoiceAgent } from '@app/types/voice-agent';
+import { VoiceAgent, VoiceAgentListItem } from '@app/types/voice-agent';
 import { ScheduledJob } from '@app/types/scheduled-job';
 import { Trigger } from '@app/types/trigger';
 import { WorkflowListItem } from '@app/types/workflow';
@@ -89,8 +89,8 @@ const readDynamicQueryQueryFn = async (datasourceId: string, queryId: string): P
 
 const getDatasourceResourcesQueryFn = async (datasourceId: string): Promise<string[]> => {
   const response = await floConsoleService.datasourcesService.getDatasourceResources(datasourceId);
-  if (response.data?.data?.data?.resources) {
-    return response.data.data.data.resources;
+  if (response.data?.data?.resources) {
+    return response.data.data.resources;
   }
   return [];
 };
@@ -246,7 +246,7 @@ const getChatbotsQueryFn = async (namespace?: string): Promise<Chatbot[]> => {
   return [];
 };
 
-const getVoiceAgentsQueryFn = async (): Promise<VoiceAgent[]> => {
+const getVoiceAgentsQueryFn = async (): Promise<VoiceAgentListItem[]> => {
   const response = await floConsoleService.voiceAgentService.listAllVoiceAgents();
   if (response.data?.meta?.status === 'success' && response.data.data?.voice_agents) {
     return response.data.data.voice_agents;

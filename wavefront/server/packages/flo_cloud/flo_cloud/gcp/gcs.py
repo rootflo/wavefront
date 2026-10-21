@@ -51,24 +51,19 @@ class GCSStorage(CloudStorageHandler):
             self.client = storage.Client(project=project_id)
 
     def get_file(self, bucket_name: str, file_path: str) -> bytes:
-        """
-        Get file from GCS bucket and return as buffer
+        """Get file from GCS bucket and return as buffer."""
+        content, _ = self.get_file_with_content_type(bucket_name, file_path)
+        return content
 
-        Args:
-            bucket_name (str): Name of the GCS bucket
-            file_path (str): Path to the file in bucket
-
-        Returns:
-            File content as bytes
-
-        Raises:
-            CloudStorageFileNotFoundError: If file not found
-            Exception: If other errors occur
-        """
+    def get_file_with_content_type(
+        self, bucket_name: str, file_path: str
+    ) -> Tuple[bytes, Optional[str]]:
+        """Get file bytes and the blob's stored content_type, if any."""
         try:
             bucket = self.client.bucket(bucket_name)
             blob = bucket.blob(file_path)
-            return blob.download_as_bytes()
+            content = blob.download_as_bytes()
+            return content, blob.content_type
         except NotFound:
             # GCS-specific NotFound exception
             raise CloudStorageFileNotFoundError(bucket_name, file_path)

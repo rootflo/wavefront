@@ -34,6 +34,19 @@ class CloudStorageManager:
         """Return object bytes from ``bucket_name`` / ``file_path``."""
         return self.handler.get_file(bucket_name, file_path)
 
+    def read_file_with_content_type(
+        self, bucket_name: str, file_path: str
+    ) -> Tuple[bytes, Optional[str]]:
+        """Return ``(bytes, content_type)``; content_type may be None.
+
+        Looks up the method on the handler's class (not the instance) so MagicMock
+        handlers used in tests don't falsely report a content-type API.
+        """
+        getter = getattr(type(self.handler), 'get_file_with_content_type', None)
+        if callable(getter):
+            return getter(self.handler, bucket_name, file_path)
+        return self.handler.get_file(bucket_name, file_path), None
+
     def list_files(
         self, bucket_name: str, prefix: str, page_size: int = 50, page_number: int = 1
     ) -> Tuple[List[str], bool]:

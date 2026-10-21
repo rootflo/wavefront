@@ -1,0 +1,99 @@
+---
+title: "Configurations"
+description: "Keep thresholds, rule tables and scoring models as JSON documents that workflows read at run time"
+icon: "sliders"
+---
+
+A **configuration** is a named JSON document stored in the app, addressed by **namespace** and **key**. Workflows read it at run time with the [`fetch_configuration`](/wavefront/function-nodes#fetch_configuration) node, so changing a configuration changes behaviour from the next run, without editing or redeploying the workflow.
+
+Use configurations for anything that decides outcomes and that someone other than a developer should be able to change:
+
+- thresholds ("refer when confidence is below 80");
+- which finding leads to which outcome;
+- required fields and their importance;
+- scoring weights, points and grade bands;
+- lookup tables: abbreviations, synonyms, mappings.
+
+Wavefront stores the document as-is and never interprets it. Its shape is up to you.
+
+## Creating and editing
+
+<Tabs>
+  <Tab title="Console">
+    Go to **Configurations → Create Configuration**, enter a namespace, a key, a description and the JSON value. Open a configuration later to edit its JSON.
+  </Tab>
+  <Tab title="API">
+    ```bash
+    # create (fails with 409 if it exists)
+    curl -X POST "$APP/floware/v1/configurations" \
+      -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+      -d '{"namespace": "claims", "key": "approval-rules",
+           "description": "When a claim is approved, referred or declined",
+           "value": {"refer_below_confidence": 80, "auto_approve_limit": 5000}}'
+
+    # read the document
+    curl "$APP/floware/v1/configurations/claims/approval-rules" -H "Authorization: Bearer $TOKEN"
+
+    # replace it (creates it if missing)
+    curl -X PUT "$APP/floware/v1/configurations/claims/approval-rules" \
+      -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+      -d '{"value": {"refer_below_confidence": 75, "auto_approve_limit": 5000}}'
+    ```
+  </Tab>
+</Tabs>
+
+| Action | Request |
+|---|---|
+| List (metadata only, no values) | `GET /floware/v1/configurations` (optionally `?namespace=`) |
+| Read one | `GET /floware/v1/configurations/<namespace>/<key>`: the response's `data` is the document itself |
+| Create | `POST /floware/v1/configurations` |
+| Replace | `PUT /floware/v1/configurations/<namespace>/<key>` |
+| Delete | `DELETE /floware/v1/configurations/<namespace>/<key>` |
+
+- The namespace must exist; keys may contain letters, digits, `-` and `_`.
+- `PUT` **replaces the whole document**. To change one value, read the document, change it, and write it back.
+- A document cannot be `null`.
+
+## Reading a configuration in a workflow
+
+```yaml
+function_nodes:
+  - name: rules
+    function_name: fetch_configuration
+    prefilled_params: { namespace: claims, key: approval-rules }
+  - name: decide
+    function_name: trigger_message_processor
+    input_filter: [rules, claim_review]
+    prefilled_params: { message_processor_id: <function-id> }
+```
+
+```js
+// the "decide" function
+export default function (input) {
+  const rules = input.node_outputs.rules?.[0];
+  if (!rules) throw new Error('Configuration claims/approval-rules was not loaded');
+  const review = input.node_outputs.claim_review[0];
+  if (review.confidence < rules.refer_below_confidence) return { decision: 'REFER' };
+  return { decision: review.amount <= rules.auto_approve_limit ? 'APPROVE' : 'REFER' };
+}
+```
+
+- A missing configuration stops the run with an error naming it, rather than running without rules.
+- Reads are cached and the cache is cleared on every write, so a change applies from the next run.
+- Read each configuration once, near the start of the workflow, and pass it to the functions that need it.
+
+## Pattern: rules as configuration
+
+A robust setup for decisions that people need to govern:
+
+1. **Keep the defaults in git** as JSON files next to your workflow, and create them at deploy time. Do not overwrite documents that already exist, because people may have edited them.
+2. **Validate in the function.** Check every field you read and throw a clear error (`"approval-rules: refer_below_confidence must be a number"`). A malformed document should stop runs, not quietly change outcomes.
+3. **Record the rules used** in each result. Copy the parts of the configuration that produced a decision (or a version marker you keep inside the document) into the saved result, so every past decision can be explained by the rules that made it, even after the rules change.
+4. **Give it a screen.** An admin page in your application that edits the document through the API, with its own validation and sensible labels, beats asking people to edit JSON.
+
+## Things to know
+
+- **Last write wins.** Two people editing the same document at the same time each replace it whole; the second save discards the first. If that matters, keep a version number inside the document and check it before writing.
+- **No history is kept.** Wavefront stores the current document and its `updated_at`. Keep your own history if you need one (for example, log each saved document to a table).
+- **Key order is not preserved.** Documents are stored as JSON, so object keys may come back in a different order. Compare documents by value, not as text.
+- **Access:** any signed-in user of the app can write configurations. Put your own permission check in front of the API if only some people may change rules.

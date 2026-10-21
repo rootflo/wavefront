@@ -3,15 +3,22 @@ import {
   AllDynamicQueriesResponse,
   Datasource,
   DatasourceData,
+  DatasourceResourceRecordsData,
+  DatasourceResourceRecordsResponse,
   DatasourceResourcesData,
   DatasourceResourcesResponse,
   DatasourceResponse,
+  DeleteDatasourceResourceRowsData,
+  DeleteDatasourceResourceRowsResponse,
   DeleteDynamicQueryResponse,
   ExecuteDynamicQueryResponse,
+  GetDatasourceResourceParams,
   ReadDynamicQueryResponse,
   TestDatasourceData,
   TestDatasourceResponse,
   DynamicQueryResponse,
+  DeleteDatasourceFileResponse,
+  ListDatasourceFilesResponse,
   UploadDatasourceFileResponse,
 } from '@app/types/datasource';
 import { AxiosInstance, AxiosResponse } from 'axios';
@@ -74,6 +81,15 @@ export class DatasourcesService {
     return response;
   }
 
+  async listFiles(
+    datasourceId: string,
+    params: { prefix?: string; page_size?: number; page_number?: number } = {}
+  ): Promise<ListDatasourceFilesResponse> {
+    return this.http.get(`/v1/:appId/floware/v1/datasources/${datasourceId}/files/list`, {
+      params,
+    });
+  }
+
   async uploadFile(datasourceId: string, file: File, path?: string): Promise<UploadDatasourceFileResponse> {
     const formData = new FormData();
     formData.append('file', file);
@@ -95,6 +111,12 @@ export class DatasourcesService {
     });
   }
 
+  async deleteFile(datasourceId: string, path: string): Promise<DeleteDatasourceFileResponse> {
+    return this.http.delete(`/v1/:appId/floware/v1/datasources/${datasourceId}/files`, {
+      params: { path },
+    });
+  }
+
   async getAllDatasources(): Promise<IApiResponse<{ datasources: Datasource[] }>> {
     return this.http.get(`/v1/:appId/floware/v1/datasources`);
   }
@@ -102,6 +124,40 @@ export class DatasourcesService {
   async getDatasourceResources(datasourceId: string): Promise<DatasourceResourcesResponse> {
     const response: IApiResponse<DatasourceResourcesData> = await this.http.get(
       `/v1/:appId/floware/v1/datasources/${datasourceId}/resources`
+    );
+    return response;
+  }
+
+  async getDatasourceResourceData(
+    datasourceId: string,
+    resourceId: string,
+    params: GetDatasourceResourceParams = {}
+  ): Promise<DatasourceResourceRecordsResponse> {
+    const response: IApiResponse<DatasourceResourceRecordsData> = await this.http.get(
+      `/v1/:appId/floware/v1/datasources/${datasourceId}/resources/${encodeURIComponent(resourceId)}`,
+      {
+        params: {
+          limit: params.limit ?? 10,
+          offset: params.offset ?? 0,
+          ...(params.$select ? { $select: params.$select } : {}),
+          ...(params.$filter ? { $filter: params.$filter } : {}),
+          ...(params.$orderby ? { $orderby: params.$orderby } : {}),
+        },
+      }
+    );
+    return response;
+  }
+
+  async deleteDatasourceResourceRows(
+    datasourceId: string,
+    resourceId: string,
+    filter: string
+  ): Promise<DeleteDatasourceResourceRowsResponse> {
+    const response: IApiResponse<DeleteDatasourceResourceRowsData> = await this.http.delete(
+      `/v1/:appId/floware/v1/datasources/${datasourceId}/resources/${encodeURIComponent(resourceId)}`,
+      {
+        data: { filter },
+      }
     );
     return response;
   }

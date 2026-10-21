@@ -1,0 +1,108 @@
+---
+title: "Structured output"
+description: "Make an agent return JSON with the fields and types your code expects"
+icon: "brackets-curly"
+---
+
+Add a `parser` to an agent and it answers with JSON that follows a schema you define, instead of free text. Use a parser whenever code reads the answer: a function in a workflow, a database insert, your application.
+
+## A parser
+
+```yaml
+parser:
+  name: invoice-fields          # any name
+  fields:
+    - name: vendor
+      type: str
+      description: Name of the company that issued the invoice
+    - name: total_amount
+      type: float
+      description: The invoice total, without currency symbols
+    - name: paid
+      type: bool
+      description: True if the invoice is marked as paid
+```
+
+The model sees every field's `description`, so write descriptions as instructions: what the field holds, its format, and what to return when the value is not there.
+
+## Field types
+
+| Type | JSON value | Needs |
+|---|---|---|
+| `str` | string | |
+| `int` | integer | |
+| `float` | number | |
+| `bool` | true / false | |
+| `enum` | one of a fixed set of values | `values`: a list of plain values |
+| `literal` | one of a fixed set of values, each explained to the model | `values`: a list of `{value, description}` objects |
+| `object` | a nested object | `fields`: its own list of fields |
+| `array` | a list | `items`: one field definition describing each element |
+
+### Choosing from a fixed set: `enum` or `literal`
+
+Use **`enum`** when the values speak for themselves:
+
+```yaml
+- name: priority
+  type: enum
+  description: How urgent the request is
+  values: [low, normal, high]
+```
+
+Use **`literal`** when each value needs explaining. The descriptions are added to the field's instructions, which noticeably improves accuracy for judgement calls:
+
+```yaml
+- name: verdict
+  type: literal
+  description: Whether the two photos show the same room
+  values:
+    - value: SAME
+      description: Several distinctive fixed features match and none conflict
+    - value: DIFFERENT
+      description: Fixed features conflict (layout, doors, windows, flooring)
+    - value: UNSURE
+      description: Too little overlap, too dark or too blurred to say
+  default_value_prompt: If you cannot decide, answer UNSURE.
+```
+
+<Warning>
+`literal` values **must** be `{value, description}` objects. A plain list such as `values: [SAME, DIFFERENT]` is rejected with a validation error. Use `enum` for plain values.
+</Warning>
+
+### Objects and lists
+
+```yaml
+- name: line_items
+  type: array
+  description: Each line of the invoice, in order
+  items:
+    name: line_item
+    type: object
+    description: One line
+    fields:
+      - name: description
+        type: str
+        description: What was charged
+      - name: amount
+        type: float
+        description: Amount for this line
+```
+
+An `array` describes one element in `items`. An element can be a primitive (`type: str`) or an `object` with its own `fields`, and objects can nest further.
+
+## Missing values
+
+Every field is requested. Tell the model what to return when a value is absent, in the field description or in the agent's instructions: "Use null if the invoice has no due date", or "Use an empty list if there are no line items". Otherwise models tend to guess.
+
+## Designing a schema code can trust
+
+- **Return evidence, then decide in code.** Ask for `matching_features` and `differing_features`, not just `is_same: bool`. A [function](/wavefront/functions) can then apply your rule, and the reasons are on record.
+- **Use `enum` or `literal` for anything code branches on.** A [`field_match` router](/wavefront/routing-and-iteration) or a function can switch on a closed set of values; free text breaks that.
+- **Ask for a confidence only if you will use it,** and say what the scale means (for example "0.0–1.0, how sure you are of the verdict").
+- **Include an `assessed` flag and a reason** for agents that may not be able to do their job (a missing or unreadable file). Downstream code can then tell "said no" apart from "could not look".
+- **Keep names stable.** Code depends on field names; change them as you would change an API.
+
+## How the output arrives
+
+- **Agent run** through the API: `result` is the parsed object (unless you set `"output_json_enabled": false`).
+- **Inside a workflow:** the JSON becomes the agent node's output. Downstream function nodes receive its fields directly; see [Passing data between nodes](/wavefront/workflow-data-flow).

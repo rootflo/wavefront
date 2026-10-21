@@ -1,4 +1,5 @@
 import collections
+import re
 
 from common_module.utils.validators import is_valid_uuid
 from datasource import (
@@ -17,6 +18,10 @@ from dependency_injector.wiring import Provide
 from fastapi import Depends
 from plugins_module.plugins_container import PluginsContainer
 from plugins_module.utils.helper import AddDatasourcePayload
+
+# Safe SQL identifiers only (optionally schema-qualified). Table names are
+# interpolated into queries, so reject anything outside this shape.
+_RESOURCE_ID_RE = re.compile(r'[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?')
 
 
 async def get_datasource_config(
@@ -57,15 +62,17 @@ async def get_datasource_config(
 
 
 def check_is_valid_resource(resource_id: str) -> bool:
-    if resource_id in [
-        'parsed_data_object',
-        'rf_parsed_data_object',
-        'rf_gold_data_object',
-        'rf_gold_item_details',
-        'rf_gold_auditor_data',
-    ]:
+    """Return True when resource_id is a safe table identifier.
+
+    Accepts plain names (``kyc_live_events``) or schema-qualified names
+    (``public.kyc_live_events``). The legacy alias ``parsed_data_object`` is
+    still accepted for backwards compatibility with older clients.
+    """
+    if not resource_id or len(resource_id) > 512:
+        return False
+    if resource_id == 'parsed_data_object':
         return True
-    return False
+    return bool(_RESOURCE_ID_RE.fullmatch(resource_id))
 
 
 def fetch_data_filters(data_filters: list) -> str:

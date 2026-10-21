@@ -372,7 +372,7 @@ class VoiceAgentService:
             stt_config_id: STT config ID
             telephony_config_id: Telephony config ID
             system_prompt: System prompt for the agent
-            welcome_message: Welcome message text (will be converted to audio)
+            welcome_message: Optional greeting spoken at call start (empty skips it)
             tts_voice_ids: TTS voice identifiers per language
             description: Description of the agent (optional)
             conversation_config: Conversation configuration (optional)
@@ -526,10 +526,10 @@ class VoiceAgentService:
 
     async def list_agents(self) -> List[dict]:
         """
-        List all voice agents (with caching)
+        List all voice agents as table-summary dicts (with caching).
 
-        Returns:
-            List of voice agents as dicts
+        Omits heavy fields (prompts, TTS/STT params, config IDs). Use
+        ``get_agent`` for the full detail payload.
         """
         list_cache_key = get_voice_agents_list_cache_key()
 
@@ -539,12 +539,14 @@ class VoiceAgentService:
             logger.info('Cache hit for voice agents list')
             return json.loads(cached_list_str)
 
-        # Cache miss - fetch from DB
+        # Cache miss - fetch from DB (newest first)
         logger.info('Cache miss - fetching voice agents list from DB')
-        agents = await self.voice_agent_repository.find(is_deleted=False)
+        agents = await self.voice_agent_repository.find(
+            is_deleted=False, order_by=('created_at', 'desc')
+        )
 
-        # Convert to dicts and cache
-        agents_dicts = [agent.to_dict() for agent in agents]
+        # Compact list payloads and cache
+        agents_dicts = [agent.to_list_dict() for agent in agents]
         self.cache_manager.add(
             list_cache_key, json.dumps(agents_dicts), expiry=self.voice_agent_cache_time
         )
