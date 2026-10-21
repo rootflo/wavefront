@@ -1,0 +1,137 @@
+---
+title: "Integrating an application"
+description: "Call a Wavefront app from your own web app or service: sign-in, sessions, CORS, errors and a minimal client"
+icon: "plug"
+---
+
+Your application talks to a Wavefront app directly, over its REST API at `https://<your-app>/floware/…`. This page covers what every integration needs.
+
+## Sign in and tokens
+
+Users of your application sign in with an **app user** (not a console account):
+
+```bash
+curl -X POST "$APP/floware/v1/authenticate" \
+  -H 'Content-Type: application/json' \
+  -d '{"email": "officer@example.com", "password": "…"}'
+```
+
+The token is at `data.user.access_token`. Send it on every call as `Authorization: Bearer <token>`.
+
+| Behaviour | What to do |
+|---|---|
+| Tokens expire after **one hour** by default (`TOKEN_EXPIRY` on the server) | On a `401`, send the user back to sign in |
+| **Signing in ends that user's other sessions** | One person on two devices gets signed out on the first. Give scripts, services and test tools their **own** users, never a person's account |
+| Repeated failed sign-ins **lock the account**: 3 failures lock it for 24 hours by default | Show the message from the response; never retry sign-in automatically |
+| A deployment may require **reCAPTCHA** on sign-in | Send the token your page obtained as `recaptcha_token` |
+
+`POST /floware/v1/logout` ends the current session.
+
+## Calling from a browser: CORS
+
+The API only answers browsers from origins listed in the server's `ALLOWED_ORIGINS` setting (comma-separated). Either:
+
+- add your application's origin to `ALLOWED_ORIGINS` in the deployment, or
+- call the API from your own backend, or, in development, through your dev server's proxy. With Vite, for example:
+
+```ts vite.config.ts
+export default defineConfig({
+  server: {
+    proxy: { '/floware': { target: 'https://your-app.example.com', changeOrigin: true } },
+  },
+});
+```
+
+## Responses and errors
+
+Every response has the same envelope:
+
+```json
+{ "meta": { "status": "success" | "failure", "code": 1 | -1, "error": null | "message" }, "data": … }
+```
+
+- Check `meta.status`; on failure, `meta.error` is the message to show or log.
+- Some routes nest their payload one level deeper (`data.data`), notably agents, workflows and executions. Unwrap per route.
+- A generic *"An unexpected error has occurred…"* means the server logged the real reason; see [Troubleshooting](/wavefront/troubleshooting).
+
+## A minimal client
+
+```ts wavefront.ts
+const BASE = import.meta.env.VITE_WAVEFRONT_URL ?? '';   // '' when using a dev proxy
+
+let token: string | null = localStorage.getItem('wf_token');
+
+export async function signIn(email: string, password: string) {
+  const res = await fetch(`${BASE}/floware/v1/authenticate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  const body = await res.json();
+  if (body.meta?.status !== 'success') throw new Error(body.meta?.error ?? 'Sign-in failed');
+  token = body.data.user.access_token;
+  localStorage.setItem('wf_token', token!);
+}
+
+export async function api(path: string, init: RequestInit = {}) {
+  const res = await fetch(`${BASE}/floware${path}`, {
+    ...init,
+    headers: { ...(init.headers ?? {}), Authorization: `Bearer ${token}` },
+  });
+  if (res.status === 401) { localStorage.removeItem('wf_token'); throw new Error('Session expired'); }
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.meta?.error ?? `Request failed (${res.status})`);
+  }
+  return res;
+}
+
+// Run a dynamic query
+export async function query(datasourceId: string, queryId: string, params: Record<string, string>) {
+  const res = await api(`/v1/${datasourceId}/dynamic-queries/${queryId}/execute?force_fetch=1`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ params }),
+  });
+  return (await res.json()).data;   // { <result set>: { status, error, result: [...] } }
+}
+
+// Start a background workflow run and wait for it
+export async function runWorkflow(workflowId: string, variables: Record<string, string>) {
+  const start = await api(`/v3/workflows/${workflowId}/inference`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ inputs: [{ role: 'user', content: '{}' }], variables }),
+  });
+  const id = (await start.json()).data.data.execution_id;
+  const deadline = Date.now() + 10 * 60_000;
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 4000));
+    const exec = (await (await api(`/v1/agentic-executions/${id}`)).json()).data.data;
+    if (exec.status === 'completed') return (await (await fetch(exec.output_url)).json()).result;
+    if (exec.status === 'failed') throw new Error(exec.error ?? 'Run failed');
+  }
+  throw new Error('Run did not finish in time');
+}
+```
+
+## Files in the browser
+
+Files in [file storage](/wavefront/file-storage) have no public URL. Download them with the user's token and show them from a `blob:` URL:
+
+```ts
+const res = await api(`/v1/datasources/${fileStoreId}/files?path=${encodeURIComponent(ref)}`);
+img.src = URL.createObjectURL(await res.blob());
+```
+
+Allow `blob:` for images and media in your Content-Security-Policy.
+
+## Streaming
+
+Chat replies and agent runs can stream as server-sent events. Read them with `fetch` and a stream reader (an `EventSource` cannot send the `Authorization` header). See [Chatbots](/wavefront/chatbots#streaming-replies) for a parser.
+
+## Checklist
+
+- [ ] A dedicated app user per service or script; people use their own accounts
+- [ ] Origin in `ALLOWED_ORIGINS`, or calls go through your backend
+- [ ] `401` handled by sending the user to sign in
+- [ ] `meta.error` shown or logged on failure
+- [ ] Long runs use background execution with a polling deadline
+- [ ] Results that matter are saved by the workflow, not only read from the output file
