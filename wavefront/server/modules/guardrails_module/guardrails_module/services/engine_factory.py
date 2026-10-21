@@ -47,50 +47,104 @@ def build_guardrails_engine(
     verdict_cache_secret: str | None = None,
     verdict_cache_shared: str | bool | None = None,
     verdict_cache_ttl: str | int | None = None,
+    guardrails_enabled: str | bool | None = None,
+    spacy_model_url: str | None = None,
+    model_cache_dir: str | None = None,
 ):
-    """Build a process-wide engine with whatever providers are available."""
+    """Build a process-wide engine with whatever providers are available.
+
+    For Presidio PII checks (``presidio_pii``), a spaCy model is required.
+    When running the lean Docker image, ``GUARDRAILS_SPACY_MODEL_URL`` must be
+    configured to point to a model archive (HTTP/S3/GCS) so it can be downloaded
+    and cached dynamically. If omitted, the engine falls back to pre-installed
+    packages (e.g. ``en_core_web_lg``) or existing cached models in
+    ``GUARDRAILS_MODEL_CACHE_DIR``. If no model source is available,
+    ``presidio_pii`` is omitted from registered adapters and reported as
+    unavailable in the UI.
+    """
     from flo_ai.guardrails import VERDICT_CACHE_CHAR_BUDGET, GuardrailsEngine
 
     adapters: List[Any] = []
 
-    try:
-        import presidio_analyzer  # noqa: F401
-        import presidio_anonymizer  # noqa: F401
+    is_enabled = cfg_bool(guardrails_enabled, False)
 
-        from flo_ai.guardrails.adapters import PresidioAdapter
-
-        adapters.append(PresidioAdapter())
-        logger.info('Guardrails: Presidio PII adapter registered')
-    except Exception as exc:
-        logger.warning(
-            f'Guardrails: Presidio unavailable, PII checks cannot run ({exc}). '
-            "Install with: uv pip install 'presidio-analyzer' 'presidio-anonymizer' "
-            'and python -m spacy download en_core_web_lg'
-        )
-
-    endpoint = (azure_content_safety_endpoint or '').strip()
-    api_key = (azure_content_safety_key or '').strip()
-    if endpoint and api_key:
-        try:
-            import azure.ai.contentsafety  # noqa: F401
-
-            from flo_ai.guardrails.adapters import AzureContentSafetyAdapter
-
-            adapters.append(
-                AzureContentSafetyAdapter(endpoint=endpoint, api_key=api_key)
-            )
-            logger.info('Guardrails: Azure Content Safety adapter registered')
-        except Exception as exc:
-            logger.warning(
-                f'Guardrails: Azure Content Safety unavailable ({exc}). '
-                "Install with: uv pip install 'azure-ai-contentsafety'"
-            )
-    else:
+    if not is_enabled:
         logger.info(
-            'Guardrails: Azure Content Safety not configured '
-            '(set [guardrails] azure_content_safety_endpoint and '
-            'azure_content_safety_key)'
+            'Guardrails: Subsystem disabled (GUARDRAILS_ENABLED=false); no adapters registered'
         )
+    else:
+        effective_url = (spacy_model_url or '').strip() or None
+        effective_cache_dir = (model_cache_dir or '').strip() or None
+
+        has_spacy_model = False
+        try:
+            from guardrails_module.services.model_loader import (
+                ensure_spacy_model,
+                is_spacy_model_available,
+            )
+
+            has_spacy_model = is_spacy_model_available(
+                model_url=effective_url,
+                cache_dir=effective_cache_dir,
+            )
+        except Exception:
+            has_spacy_model = bool(effective_url)
+
+        if has_spacy_model:
+            try:
+                import presidio_analyzer  # noqa: F401
+                import presidio_anonymizer  # noqa: F401
+
+                from flo_ai.guardrails.adapters import PresidioAdapter
+
+                resolved_model = ensure_spacy_model(
+                    model_url=effective_url,
+                    cache_dir=effective_cache_dir,
+                )
+                adapters.append(
+                    PresidioAdapter(
+                        model=resolved_model,
+                    )
+                )
+                logger.info(
+                    'Guardrails: Presidio PII adapter registered '
+                    f'(model={resolved_model})'
+                )
+            except Exception as exc:
+                logger.warning(
+                    f'Guardrails: Presidio unavailable, PII checks cannot run ({exc}). '
+                    'Configure spacy_model_url or install with: '
+                    "uv pip install 'presidio-analyzer' 'presidio-anonymizer'"
+                )
+        else:
+            logger.info(
+                'Guardrails: Presidio PII not configured '
+                '(set [guardrails] spacy_model_url or install a spaCy model)'
+            )
+
+        endpoint = (azure_content_safety_endpoint or '').strip()
+        api_key = (azure_content_safety_key or '').strip()
+        if endpoint and api_key:
+            try:
+                import azure.ai.contentsafety  # noqa: F401
+
+                from flo_ai.guardrails.adapters import AzureContentSafetyAdapter
+
+                adapters.append(
+                    AzureContentSafetyAdapter(endpoint=endpoint, api_key=api_key)
+                )
+                logger.info('Guardrails: Azure Content Safety adapter registered')
+            except Exception as exc:
+                logger.warning(
+                    f'Guardrails: Azure Content Safety unavailable ({exc}). '
+                    "Install with: uv pip install 'azure-ai-contentsafety'"
+                )
+        else:
+            logger.info(
+                'Guardrails: Azure Content Safety not configured '
+                '(set [guardrails] azure_content_safety_endpoint and '
+                'azure_content_safety_key)'
+            )
 
     cache_chars = _optional_int(verdict_cache_chars, VERDICT_CACHE_CHAR_BUDGET)
     verdict_cache = _build_verdict_cache(

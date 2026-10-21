@@ -192,9 +192,9 @@ const PolicyTestPanel = forwardRef<PolicyTestHandle, Props>(({ isEnabled, mode, 
       }
     } catch (err) {
       setStages(null);
-      const message = extractErrorMessage(err) || 'Failed to run the test';
-      setError(message);
-      notifyError(message);
+      const msg = extractErrorMessage(err) ?? 'Failed to test policy';
+      setError(msg);
+      notifyError(msg);
     } finally {
       setRunning(false);
       // Only below lg, where the two columns stack and the results land off

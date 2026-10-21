@@ -10,7 +10,9 @@ requires-python = ">=3.11"
 dependencies = [
     "common-module",
     "db-repo-module",
-    "flo-ai[guardrails]==1.1.18",
+    "flo-cloud",
+    "flo-lib",
+    "flo-ai[guardrails]==1.1.19",
     "fastapi>=0.100.0",
     "pydantic>=2.0.0",
     "dependency-injector>=4.40.0",
@@ -19,6 +21,8 @@ dependencies = [
 [tool.uv.sources]
 common-module = { workspace = true }
 db-repo-module = { workspace = true }
+flo-cloud = { workspace = true }
+flo-lib = { workspace = true }
 
 [dependency-groups]
 dev = [
