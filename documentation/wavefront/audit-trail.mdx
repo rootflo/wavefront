@@ -1,0 +1,69 @@
+---
+title: "Audit trail"
+description: "A record of every row written and every file read or written through the datasource API"
+icon: "clipboard-list"
+---
+
+When the audit trail is enabled, Wavefront records every change made **through the datasource API**, and every file upload and download, with who did it and when. Your application can show a history for any record, and administrators can answer "who changed this, and when?".
+
+## Enabling it
+
+Set the feature flag `DATASOURCE_AUDIT_ENABLED_FLAG=true` on the API server. Recording starts from that moment; earlier activity is not in the trail.
+
+## What is recorded
+
+One audit entry per request and table:
+
+| Operation | `changes` holds |
+|---|---|
+| `insert` | The rows as submitted (`snapshot: "submitted"`) |
+| `update` | A diff: for each row, its key, and `before` / `after` values of the columns that changed (`snapshot: "diff"`). The requested change is also in `meta.patch` |
+| `delete` | The deleted rows (`snapshot: "deleted"`) |
+| `upload`, `download` | The file's path, size, type and storage location. For files, `table_name` is the file's path |
+
+Every entry also has `datasource_id`, `table_name`, `operation`, the `filter` used (for updates and deletes) and the column/value pairs parsed from it (`filter_params`), `rows_affected`, `user_id` and `role_id`, `request_id` (matches the `X-Flo-Request-ID` header), `batch_id` (shared by the entries of one multi-table request) and `created_at`.
+
+- A request that matched no rows records nothing.
+- Writes made **by workflows** go through the same API and are recorded too. Their `user_id` is a service identity such as `service`, not a person, so you can tell a workflow's writes from a person's.
+- Captured rows are capped per entry, so very large writes are recorded partially; `rows_affected` always holds the true count.
+- Entries are written just after the change commits, in the background. A missing entry means the audit write failed, never that the change did not happen.
+
+<Note>
+Changes made directly in the database, outside Wavefront's API, are not recorded.
+</Note>
+
+## Reading the trail
+
+```bash
+curl "$APP/floware/v1/datasource-audit-logs?datasource_id=<id>&table_name=orders&param.order_id=O-1001" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+| Filter | |
+|---|---|
+| `datasource_id`, `table_name`, `operation`, `user_id`, `request_id`, `batch_id` | Exact match |
+| `filter` | The exact filter text used |
+| `param.<column>=<value>` | Entries whose filter targeted that column with that value, such as every update and delete of order `O-1001`. Several combine with AND |
+| `from_date`, `to_date` | Time range |
+| `offset`, `limit` | Paging; `limit` up to 200 |
+
+Results are newest first, with `changes` included, plus a `total` count. `GET /floware/v1/datasource-audit-logs/<id>` returns one entry. Reading the trail needs an admin user, unless the deployment allows all users to read data.
+
+## Building a record's history
+
+There is no "record" column in the trail, so a record's history is gathered in three ways:
+
+1. **Updates and deletes**: `?table_name=<table>&param.<key column>=<value>`.
+2. **Inserts** have no filter: read the table's `insert` entries since the record was created (`operation=insert&from_date=…`) and keep those whose `changes.rows` contain the record's key.
+3. **Files**: one query per file path (`table_name=<path>`) for each file the record references.
+
+Combine them, sort by `created_at`, and present them as a timeline. Two tips:
+
+- **Group file reads.** Viewing a record opens all its files, so collapse one person's reads within a few minutes into one entry ("viewed 9 files").
+- **Add milestones from the data itself** (when the record was created, when its review completed) using the rows' own timestamps. They show the full lifecycle even for activity from before auditing was switched on.
+
+## Privacy
+
+Audit entries contain the data that was written, so they can hold personal information. Restrict who can read the trail, mask sensitive fields when you display it, and include the trail in your data-retention policy.
+
+A related flag, `DATASOURCE_CHANGE_NOTIFICATION_FLAG`, turns recorded changes into a notification feed (`GET /floware/v1/notifications`).

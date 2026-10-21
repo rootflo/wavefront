@@ -1,0 +1,35 @@
+---
+title: "Running several apps"
+description: "Keep apps isolated when they share Redis, a cluster or a console"
+icon: "boxes-stacked"
+---
+
+Each app is its own floware deployment with its own worker, database and bucket. Apps often share infrastructure: one Kubernetes cluster, one Redis, one Wavefront Console. That works, provided each app's settings keep it separate.
+
+## What must be unique per app
+
+| Setting | Why |
+|---|---|
+| `CELERY_QUEUE_NAME` | Apps on one Redis would otherwise take each other's background runs from the shared `celery` queue. Use the app's name (`orders`, `claims`) on **both** its floware and its worker |
+| `APP_NAME` | Prefixes the app's cache keys and its result stream, so one app's worker results never reach another app |
+| Database (`DB_NAME` or a separate server) | Users, agents, workflows, executions and audit data per app |
+| `APPLICATION_BUCKET` (or a separate prefix) | Definitions and execution files |
+| The secret shared with the console | Each app trusts only requests signed for it |
+
+A worker reads `CELERY_QUEUE_NAME` at start-up, and refuses to start if the value is invalid rather than silently falling back to the default queue.
+
+## Checking isolation
+
+After deploying a second app on shared Redis:
+
+1. Start a background run in app A and watch the logs: only **app A's worker** should pick up the task.
+2. Check that each app's floware consumes its own stream. The result consumer logs its stream key, which should begin with the app's `APP_NAME`.
+3. In Redis, each app's queue key is named after its `CELERY_QUEUE_NAME`.
+
+## Sharing a console
+
+One Wavefront Console can manage every app. Register each app with its own public and private URL; console users see all registered apps. Keep production and non-production apps on separate consoles if different people should manage them.
+
+## Model capacity
+
+Apps that share a model deployment (the same provider key and deployment) share its rate limits. Give apps with heavy image or video workloads their own deployment, or capacity planned for both.

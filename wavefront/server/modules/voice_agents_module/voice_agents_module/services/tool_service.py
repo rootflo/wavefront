@@ -16,6 +16,7 @@ from voice_agents_module.models.tool_schemas import (
     UpdateAgentToolPayload,
     ToolType,
     ApiToolConfig,
+    AppToolConfig,
     PythonToolConfig,
     UNSET,
 )
@@ -258,6 +259,8 @@ class ToolService:
                         ApiToolConfig(**update_data['config'])
                     elif tool_type_value == 'python':
                         PythonToolConfig(**update_data['config'])
+                    elif tool_type_value == 'app':
+                        AppToolConfig(**update_data['config'])
                 except Exception as e:
                     raise ValueError(
                         f'Invalid config for tool type {tool_type_value}: {str(e)}'

@@ -87,7 +87,9 @@ const ToolsPage: React.FC = () => {
   });
 
   const getToolTypeColor = (type: string) => {
-    return type === 'api' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800';
+    if (type === 'api') return 'bg-blue-100 text-blue-800';
+    if (type === 'app') return 'bg-emerald-100 text-emerald-800';
+    return 'bg-purple-100 text-purple-800';
   };
 
   const getApiMethod = (tool: VoiceAgentTool) => {

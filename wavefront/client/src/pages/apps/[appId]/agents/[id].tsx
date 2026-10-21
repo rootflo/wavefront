@@ -32,6 +32,7 @@ import yaml from 'js-yaml';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import EditAgentDialog from './EditAgentDialog';
+import { buildYamlToolsFromSelection, selectedToolsEqual, selectedToolsFromYaml } from './agent-tools';
 import { formatAppName } from '@app/lib/utils';
 
 const AgentDetail: React.FC = () => {
@@ -95,6 +96,10 @@ const AgentDetail: React.FC = () => {
   // Datasource and tool selection state
   const [selectedTools, setSelectedTools] = useState<{ id: string; value: string }[]>([]);
   const isUpdatingYamlRef = useRef(false);
+  // True until selectedTools has been rebuilt from the loaded agent YAML.
+  // Without this, the YAML←selection sync runs with [] and wipes agent.tools.
+  const pendingToolsHydrationRef = useRef(true);
+  const skipNextToolsYamlSyncRef = useRef(false);
 
   // Fetch data using hooks
   const { data: agent, isLoading: agentLoading } = useGetAgent(appId, id, selectedVersion);
@@ -107,18 +112,6 @@ const AgentDetail: React.FC = () => {
 
   // Version currently shown (falls back to the agent's current_version).
   const displayVersion = selectedVersion ?? agent?.current_version;
-
-  // Update yaml content when agent data changes
-  useEffect(() => {
-    if (agent?.yaml_content) {
-      isUpdatingYamlRef.current = true;
-      setYamlContent(agent.yaml_content);
-      // Reset flag after state update
-      setTimeout(() => {
-        isUpdatingYamlRef.current = false;
-      }, 0);
-    }
-  }, [agent]);
 
   // Memoize toolsDetails to prevent unnecessary recreations
   const toolsDetails = useMemo(() => {
@@ -143,6 +136,32 @@ const AgentDetail: React.FC = () => {
     });
   }, [availableTools]);
 
+  // Load YAML when the agent (or selected version) changes. Selection is
+  // hydrated in a follow-up effect once tool details are available.
+  useEffect(() => {
+    if (!agent?.yaml_content) return;
+
+    isUpdatingYamlRef.current = true;
+    pendingToolsHydrationRef.current = true;
+    setYamlContent(agent.yaml_content);
+    setTimeout(() => {
+      isUpdatingYamlRef.current = false;
+    }, 0);
+  }, [agent]);
+
+  // Restore combobox selection from agent.tools. toolsDetails often arrives
+  // after the agent payload; until then the YAML←selection sync must not run.
+  useEffect(() => {
+    if (!pendingToolsHydrationRef.current || !yamlContent || toolsDetails.length === 0) {
+      return;
+    }
+
+    const hydrated = selectedToolsFromYaml(yamlContent, toolsDetails);
+    skipNextToolsYamlSyncRef.current = true;
+    pendingToolsHydrationRef.current = false;
+    setSelectedTools((prev) => (selectedToolsEqual(prev, hydrated) ? prev : hydrated));
+  }, [yamlContent, toolsDetails]);
+
   const handleQuestionEntered = () => {
     if (inferenceInput.trim().length > 0) {
       handleRunInference();
@@ -153,68 +172,46 @@ const AgentDetail: React.FC = () => {
     }
   };
 
+  // Push combobox selection into YAML (user edits only — not hydration).
   useEffect(() => {
-    // Skip if we're updating YAML from agent data or if dependencies are not ready
+    if (pendingToolsHydrationRef.current) return;
+    if (skipNextToolsYamlSyncRef.current) {
+      skipNextToolsYamlSyncRef.current = false;
+      return;
+    }
     if (isUpdatingYamlRef.current || !yamlContent || toolsDetails.length === 0) return;
 
-    const tools = toolsDetails.filter((tool) => selectedTools.some((selected) => selected.value === tool.display_name));
     const parsedYaml = yaml.load(yamlContent) as { agent?: { tools?: unknown[] } } | null;
-    if (parsedYaml && parsedYaml.agent) {
-      if (!parsedYaml.agent.tools) {
-        parsedYaml.agent.tools = [];
-      }
+    if (!parsedYaml?.agent) return;
 
-      // Clear existing tools and add new ones
-      const newTools = tools.map((tool) => {
-        // Merge all prefilled_values objects into a single object
-        const prefilledParams: Record<string, string> | undefined =
-          tool.prefilled_values && tool.prefilled_values.length > 0
-            ? tool.prefilled_values.reduce(
-                (acc: Record<string, string>, obj: { [key: string]: string }) => {
-                  // Each obj is like { datasource_id: "value" }
-                  return { ...acc, ...obj };
-                },
-                {} as Record<string, string>
-              )
-            : undefined;
-
-        return {
-          name: tool.name,
-          prefilled_params: prefilledParams,
-          name_override: tool.name,
-          description_override: tool.description,
+    const existingTools = parsedYaml.agent.tools || [];
+    const newTools = buildYamlToolsFromSelection(selectedTools, toolsDetails);
+    const toolsChanged =
+      existingTools.length !== newTools.length ||
+      existingTools.some((existingTool: unknown, index: number) => {
+        const newTool = newTools[index];
+        if (!newTool) return true;
+        const existing = existingTool as {
+          name?: string;
+          prefilled_params?: Record<string, string>;
         };
+        return (
+          existing.name !== newTool.name ||
+          JSON.stringify(existing.prefilled_params || {}) !== JSON.stringify(newTool.prefilled_params || {})
+        );
       });
 
-      // Compare existing tools with new tools to avoid unnecessary updates
-      const existingTools = parsedYaml.agent.tools || [];
-      const toolsChanged =
-        existingTools.length !== newTools.length ||
-        existingTools.some((existingTool: unknown, index: number) => {
-          const newTool = newTools[index];
-          if (!newTool) return true;
-          const existing = existingTool as { name?: string; prefilled_params?: Record<string, string> };
-          return (
-            existing.name !== newTool.name ||
-            JSON.stringify(existing.prefilled_params || {}) !== JSON.stringify(newTool.prefilled_params || {})
-          );
-        });
+    if (!toolsChanged) return;
 
-      // Only update if tools actually changed
-      if (toolsChanged) {
-        parsedYaml.agent.tools = newTools;
-        const newYamlContent = yaml.dump(parsedYaml);
-        // Only update if the YAML string actually changed
-        if (newYamlContent !== yamlContent) {
-          isUpdatingYamlRef.current = true;
-          setYamlContent(newYamlContent);
-          // Reset flag after state update
-          setTimeout(() => {
-            isUpdatingYamlRef.current = false;
-          }, 0);
-        }
-      }
-    }
+    parsedYaml.agent.tools = newTools;
+    const newYamlContent = yaml.dump(parsedYaml);
+    if (newYamlContent === yamlContent) return;
+
+    isUpdatingYamlRef.current = true;
+    setYamlContent(newYamlContent);
+    setTimeout(() => {
+      isUpdatingYamlRef.current = false;
+    }, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTools, toolsDetails]);
 

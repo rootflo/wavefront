@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Optional, Union, Any, Dict
 from enum import Enum
 from datetime import datetime
@@ -14,6 +14,7 @@ UNSET = object()
 class ToolType(str, Enum):
     API = 'api'
     PYTHON = 'python'
+    APP = 'app'
 
 
 class AuthType(str, Enum):
@@ -96,6 +97,24 @@ class PythonToolConfig(BaseModel):
     )
 
 
+class AppToolConfig(BaseModel):
+    """Configuration for app-type tools (handled by the browser app, no HTTP call)"""
+
+    model_config = {'extra': 'forbid'}
+
+    ack_timeout_s: float = Field(
+        default=4.0,
+        gt=0,
+        le=30,
+        description='Seconds to wait for the app to acknowledge the event',
+    )
+    speak_on_success: bool = Field(
+        default=False,
+        description='Let the agent speak after a successful call (default: stay quiet, '
+        "the app's next step opens the conversation)",
+    )
+
+
 class CreateToolPayload(BaseModel):
     """Payload for creating a new tool"""
 
@@ -113,7 +132,7 @@ class CreateToolPayload(BaseModel):
     description: str = Field(
         ..., min_length=1, description='Description for LLM to decide when to call'
     )
-    tool_type: ToolType = Field(..., description='Type of tool (api or python)')
+    tool_type: ToolType = Field(..., description='Type of tool (api, python or app)')
     config: Dict[str, Any] = Field(..., description='Tool-specific configuration')
     parameter_schema: Optional[Dict[str, Any]] = Field(
         default=None, description='JSON Schema for parameter validation'
@@ -159,6 +178,11 @@ class CreateToolPayload(BaseModel):
                 PythonToolConfig(**v)
             except Exception as e:
                 raise ValueError(f'Invalid Python tool config: {str(e)}')
+        elif tool_type_value == 'app':
+            try:
+                AppToolConfig(**v)
+            except Exception as e:
+                raise ValueError(f'Invalid App tool config: {str(e)}')
         return v
 
     @field_validator('parameter_schema')
@@ -247,6 +271,11 @@ class UpdateToolPayload(BaseModel):
                 PythonToolConfig(**v)
             except Exception as e:
                 raise ValueError(f'Invalid Python tool config: {str(e)}')
+        elif tool_type_value == 'app':
+            try:
+                AppToolConfig(**v)
+            except Exception as e:
+                raise ValueError(f'Invalid App tool config: {str(e)}')
         return v
 
     @field_validator('parameter_schema')
@@ -315,8 +344,7 @@ class ToolResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AgentToolResponse(BaseModel):
@@ -333,5 +361,4 @@ class AgentToolResponse(BaseModel):
     # Include tool details
     tool: Optional[ToolResponse] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

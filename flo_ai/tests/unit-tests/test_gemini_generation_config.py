@@ -110,15 +110,16 @@ class TestClientConstruction:
         http_options = llm.client._api_client._http_options
         assert http_options.base_url == 'https://gateway.invalid'
 
-    def test_the_proxy_gets_an_authorization_header(self):
-        """Test the proxy gets an authorization header."""
+    def test_the_key_does_not_travel_as_an_authorization_header(self):
+        """Google reads `x-goog-api-key`; an Authorization header alongside it
+        makes its frontend demand an OAuth2 principal and fail the request."""
         llm = gemini_llm(base_url='https://gateway.invalid')
 
         headers = llm.client._api_client._http_options.headers or {}
-        assert headers['Authorization'] == 'Bearer test-key-123'
+        assert not any(name.lower() == 'authorization' for name in headers)
 
-    def test_custom_headers_are_merged(self):
-        """Test custom headers are merged."""
+    def test_custom_headers_reach_the_proxy(self):
+        """They identify the caller to the proxy, not to Google."""
         llm = gemini_llm(
             base_url='https://gateway.invalid',
             custom_headers={'X-Rootflo-Key': 'app-key'},
@@ -126,7 +127,26 @@ class TestClientConstruction:
 
         headers = llm.client._api_client._http_options.headers or {}
         assert headers['X-Rootflo-Key'] == 'app-key'
-        assert headers['Authorization'] == 'Bearer test-key-123'
+        assert not any(name.lower() == 'authorization' for name in headers)
+
+    def test_custom_headers_do_not_need_an_api_key_argument(self, monkeypatch):
+        """The proxy key is the caller's identity, not Google's credential.
+
+        Gating it on the api_key argument would drop it from a client keyed
+        from the environment - which the SDK resolves on its own, so the
+        request authenticates to Google and is then rejected by the proxy.
+        """
+        monkeypatch.setenv('GOOGLE_API_KEY', 'env-key')
+
+        llm = Gemini(
+            model='gemini-2.5-flash',
+            api_key=None,
+            base_url='https://gateway.invalid',
+            custom_headers={'X-Rootflo-Key': 'app-key'},
+        )
+
+        headers = llm.client._api_client._http_options.headers or {}
+        assert headers['X-Rootflo-Key'] == 'app-key'
 
     def test_without_a_base_url_the_public_endpoint_applies(self):
         """Test without a base url the public endpoint applies."""

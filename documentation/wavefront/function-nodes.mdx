@@ -1,0 +1,169 @@
+---
+title: "Function nodes"
+description: "Built-in workflow steps: queries, inserts, file downloads, configurations, your functions, API calls, email"
+icon: "cubes"
+---
+
+A **function node** is a workflow step that runs a built-in function instead of a model. Declare it under `function_nodes`:
+
+```yaml
+function_nodes:
+  - name: load_order                      # node name, used in edges and input_filter
+    function_name: datasource_execute_query
+    description: Loads the order to check  # optional, for humans
+    input_filter: [order_params]          # where its other arguments come from
+    prefilled_params:                     # fixed arguments
+      datasource_id: <datasource-id>
+      query_id: order_detail
+```
+
+Arguments come from `prefilled_params`, the run's variables, and the JSON outputs of the nodes in `input_filter`, in that order of priority. See [Passing data between nodes](/wavefront/workflow-data-flow).
+
+| Function | Does |
+|---|---|
+| [`trigger_message_processor`](#trigger_message_processor) | Runs one of your [functions](/wavefront/functions) |
+| [`datasource_execute_query`](#datasource_execute_query) | Runs a saved dynamic query |
+| [`datasource_insert_rows`](#datasource_insert_rows) | Inserts rows into one table |
+| [`datasource_insert_multi`](#datasource_insert_multi) | Inserts into several tables in one transaction |
+| [`datasource_download_file`](#datasource_download_file) | Loads a file from file storage, as media for agents |
+| [`fetch_configuration`](#fetch_configuration) | Reads a configuration document |
+| [`passthrough`](#passthrough) | Re-emits an earlier output |
+| [`trigger_api_service`](#trigger_api_service) | Calls an API defined under API Services |
+| [`send_email`](#send_email) | Sends an email from a connected mailbox |
+
+## trigger_message_processor
+
+Runs a [function](/wavefront/functions) and outputs what it returns.
+
+| Parameter | |
+|---|---|
+| `message_processor_id` | The function's id. Usually prefilled |
+| everything else | Passed to the function as its input: the merged upstream outputs, the variables, and `node_outputs` |
+
+```yaml
+- name: decide
+  function_name: trigger_message_processor
+  input_filter: [load_order, fraud_check]
+  prefilled_params:
+    message_processor_id: <function-id>
+```
+
+`message_processor` is an older name for the same function.
+
+## datasource_execute_query
+
+Runs a [dynamic query](/wavefront/dynamic-queries) saved on a datasource.
+
+| Parameter | Default | |
+|---|---|---|
+| `datasource_id` | | Usually prefilled |
+| `query_id` | | The dynamic query's id. Usually prefilled |
+| `params` | | An object with values for the query's named parameters; every value is sent as a string |
+| `filter` | | Optional OData expression substituted for the query's `{{filters}}` |
+| `limit` | **10** | Rows per result set |
+| `offset` | 0 | |
+| `use_cache` | false | Results can be cached for 2 minutes; off by default so a read after a write in the same run sees the write |
+
+Output: one key per result set in the query, each a list of rows, for example `{"order": [{…}], "lines": [{…}, {…}]}`. An empty list means no match.
+
+<Warning>
+**The default `limit` is 10 rows.** A query that should return more silently stops at 10. Prefill `limit` when you need more.
+</Warning>
+
+## datasource_insert_rows
+
+Inserts rows into one table through the datasource API, which also records them in the [audit trail](/wavefront/audit-trail) when it is enabled.
+
+| Parameter | |
+|---|---|
+| `datasource_id`, `table_name` | Usually prefilled |
+| `data` | A list of row objects, or one object with `single_row: true` |
+
+A common shape is a function that builds the row (and checks it), followed by the insert:
+
+```yaml
+- name: result_row                    # a function that returns {"data": [row, ...]}
+  function_name: trigger_message_processor
+  input_filter: [decide]
+  prefilled_params: { message_processor_id: <function-id> }
+- name: save_result
+  function_name: datasource_insert_rows
+  input_filter: [result_row]
+  prefilled_params: { datasource_id: <datasource-id>, table_name: order_review }
+```
+
+## datasource_insert_multi
+
+Inserts into several tables of one datasource in a single transaction: all succeed or none do. PostgreSQL only.
+
+| Parameter | |
+|---|---|
+| `datasource_id` | |
+| `inserts` | A list of `{"table_name": …, "data": [rows], "single_row": false}` |
+
+<Warning>
+**Known issue** ([#448](https://github.com/rootflo/wavefront/issues/448)): the datasource nodes report failures as their **output text** ("Insert failed (400): …") instead of stopping the run. A run whose insert failed can still finish successfully, and a `passthrough` after it hides the failure. Until this changes, check that writes landed (for example, read the row back in your application, or check the [audit trail](/wavefront/audit-trail)), and validate rows in a function before inserting them.
+</Warning>
+
+## datasource_download_file
+
+Loads one file from a file-storage datasource (S3, GCS, Azure Blob).
+
+| Parameter | |
+|---|---|
+| `datasource_id` | The file store. Usually prefilled |
+| `path` | The `datasource://<datasource-id>/<key>` reference returned by an upload, or a key relative to the store |
+
+Output:
+
+- **Images** (PNG, JPEG, GIF, WebP) and **videos** come out as media. An agent that selects this node with `input_filter` **sees** the image or video.
+- **Other files:** JSON `{"path", "content_type", "size_bytes", "encoding", "content"}`, with the text itself for UTF-8 files and base64 otherwise.
+
+This is the recommended way to give agents files: the workflow decides which files the model sees, and the agent answers in one call. See [Images, documents and video](/wavefront/media).
+
+## fetch_configuration
+
+Reads a [configuration](/wavefront/configurations) document, the JSON your workflow's rules live in.
+
+| Parameter | |
+|---|---|
+| `namespace`, `key` | Which configuration. Usually prefilled |
+
+```yaml
+- name: rules
+  function_name: fetch_configuration
+  prefilled_params: { namespace: claims, key: approval-rules }
+```
+
+Output: the document. A function that lists `rules` in its `input_filter` reads it as `input.node_outputs.rules[0]`. A missing configuration stops the run with an error naming it.
+
+## passthrough
+
+Re-emits the output of the last node in its `input_filter`, unchanged.
+
+```yaml
+- name: result
+  function_name: passthrough
+  input_filter: [decide]
+```
+
+Use it as the final node when the real last step runs for its side effect (saving, sending), so the run still returns the result you want. See [the output of a run](/wavefront/workflow-execution-model#the-output-of-a-run).
+
+## trigger_api_service
+
+Calls an endpoint defined under **API Services**.
+
+| Parameter | |
+|---|---|
+| `api_service_id`, `api_id` | Which service and endpoint. Usually prefilled |
+| `api_version` | Default `v1` |
+| other fields | Become the request: fields of the payload schema go in the body; fields prefixed `path_` and `query_` become path and query parameters |
+
+## send_email
+
+Sends an email from a mailbox connected under **Emails**.
+
+| Parameter | |
+|---|---|
+| `connection_id` | The connected mailbox. Usually prefilled |
+| `email_id`, `email_subject`, `email_body` | Recipient, subject and body |

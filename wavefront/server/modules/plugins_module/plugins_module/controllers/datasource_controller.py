@@ -1564,6 +1564,41 @@ def _stored_content_type(content_type: str | None) -> str | None:
     return content_type
 
 
+def _sniff_media_type(content: bytes) -> str | None:
+    """Best-effort MIME from magic bytes when the object key has no extension."""
+    if content.startswith(b'\xff\xd8\xff'):
+        return 'image/jpeg'
+    if content.startswith(b'\x89PNG\r\n\x1a\n'):
+        return 'image/png'
+    if content.startswith((b'GIF87a', b'GIF89a')):
+        return 'image/gif'
+    if len(content) >= 12 and content.startswith(b'RIFF') and content[8:12] == b'WEBP':
+        return 'image/webp'
+    return None
+
+
+# Stored types that carry no real type information; fall back to filename/magic bytes.
+_GENERIC_STORED_MEDIA_TYPES = frozenset(
+    {'application/octet-stream', 'binary/octet-stream'}
+)
+
+
+def _resolve_download_media_type(
+    filename: str,
+    content: bytes,
+    stored_content_type: str | None = None,
+) -> str:
+    """Prefer stored object metadata, then filename guess, then magic bytes."""
+    if stored_content_type:
+        mime = stored_content_type.split(';', 1)[0].strip().lower()
+        if mime and mime not in _GENERIC_STORED_MEDIA_TYPES:
+            return mime
+    guessed = mimetypes.guess_type(filename)[0]
+    if guessed:
+        return guessed
+    return _sniff_media_type(content) or 'application/octet-stream'
+
+
 def _relative_file_path(path: str, datasource_id: str) -> str:
     """Key relative to base_path; a datasource:// path must name this datasource."""
     parsed = split_datasource_uri(path)
@@ -1613,6 +1648,80 @@ def _upload_target_path(path: str | None, filename: str | None) -> str:
     if not base_name:
         raise ValueError('A path or a file name is required')
     return f'{path or ""}{base_name}'
+
+
+@datasource_router.get('/v1/datasources/{datasource_id}/files/list')
+@inject
+async def list_datasource_files(
+    request: Request,
+    datasource_id: str,
+    prefix: str = Query(
+        '',
+        description='Optional key prefix relative to the datasource base path',
+    ),
+    page_size: int = Query(50, ge=1, le=200),
+    page_number: int = Query(1, ge=1),
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+):
+    """List files under the datasource base path (paginated)."""
+    role_id = request.state.session.role_id
+    is_admin = await check_is_admin(role_id)
+    if not is_admin:
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=response_formatter.buildErrorResponse(
+                'Data access not set for non-admin user'
+            ),
+        )
+
+    datasource_type, datasource_config = await get_datasource_config(datasource_id)
+    if not datasource_config:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse(
+                f'Datasource not found: {datasource_id}'
+            ),
+        )
+    if not is_file_storage_type(datasource_type):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                'File listing is only supported for file storage datasources'
+            ),
+        )
+
+    try:
+        file_storage = FileStoragePlugin(datasource_config)
+        relative_paths, has_next_page = await asyncio.to_thread(
+            file_storage.list_files, prefix, page_size, page_number
+        )
+    except ValueError as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
+
+    files = [
+        {
+            'path': build_datasource_uri(datasource_id, relative_path),
+            'relative_path': relative_path,
+            'name': posixpath.basename(relative_path),
+        }
+        for relative_path in relative_paths
+    ]
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            {
+                'files': files,
+                'page_number': page_number,
+                'page_size': page_size,
+                'has_next_page': has_next_page,
+            }
+        ),
+    )
 
 
 @datasource_router.post('/v1/datasources/{datasource_id}/files')
@@ -1694,6 +1803,87 @@ async def upload_datasource_file(
     )
 
 
+@datasource_router.delete('/v1/datasources/{datasource_id}/files')
+@inject
+async def delete_datasource_file(
+    request: Request,
+    datasource_id: str,
+    path: str = Query(
+        ...,
+        description='datasource://<datasource_id>/<key> or a key relative to base_path',
+    ),
+    response_formatter: ResponseFormatter = Depends(
+        Provide[CommonContainer.response_formatter]
+    ),
+    datasource_audit_service: DatasourceAuditService = Depends(
+        Provide[PluginsContainer.datasource_audit_service]
+    ),
+):
+    role_id = request.state.session.role_id
+    is_admin = await check_is_admin(role_id)
+    if not is_admin:
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=response_formatter.buildErrorResponse(
+                'Data access not set for non-admin user'
+            ),
+        )
+
+    datasource_type, datasource_config = await get_datasource_config(datasource_id)
+    if not datasource_config:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse(
+                f'Datasource not found: {datasource_id}'
+            ),
+        )
+    if not is_file_storage_type(datasource_type):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(
+                'File delete is only supported for file storage datasources'
+            ),
+        )
+
+    try:
+        relative_path = _relative_file_path(path, datasource_id)
+        file_storage = FileStoragePlugin(datasource_config)
+        storage_uri = await asyncio.to_thread(file_storage.delete_file, relative_path)
+    except ValueError as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=response_formatter.buildErrorResponse(str(e)),
+        )
+    except CloudStorageFileNotFoundError:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=response_formatter.buildErrorResponse(f'File not found: {path}'),
+        )
+
+    datasource_path = build_datasource_uri(datasource_id, relative_path)
+    datasource_audit_service.record_from_request(
+        request,
+        datasource_id=datasource_id,
+        datasource_type=datasource_type,
+        operation='delete',
+        entries=[
+            _file_audit_entry(
+                datasource_path,
+                storage_uri,
+                0,
+                None,
+                snapshot='deleted',
+            )
+        ],
+    )
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_formatter.buildSuccessResponse(
+            {'path': datasource_path, 'storage_uri': storage_uri}
+        ),
+    )
+
+
 @datasource_router.get('/v1/datasources/{datasource_id}/files')
 @inject
 async def download_datasource_file(
@@ -1740,8 +1930,8 @@ async def download_datasource_file(
         relative_path = _relative_file_path(path, datasource_id)
         file_storage = FileStoragePlugin(datasource_config)
         key = file_storage.resolve_key(relative_path)
-        file_content = await asyncio.to_thread(
-            file_storage.download_file, relative_path
+        file_content, stored_content_type = await asyncio.to_thread(
+            file_storage.download_file_with_content_type, relative_path
         )
     except ValueError as e:
         return JSONResponse(
@@ -1755,7 +1945,9 @@ async def download_datasource_file(
         )
 
     filename = posixpath.basename(key)
-    media_type = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
+    media_type = _resolve_download_media_type(
+        filename, file_content, stored_content_type
+    )
     datasource_audit_service.record_from_request(
         request,
         datasource_id=datasource_id,

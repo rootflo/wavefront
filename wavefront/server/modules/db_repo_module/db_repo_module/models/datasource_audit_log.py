@@ -47,9 +47,9 @@ class DatasourceAuditLog(Base):
     )
 
     # Free-form, exactly as the caller supplied it (possibly 'schema.table').
-    # Deliberately not an allowlist: the mutation endpoints do not run
-    # check_is_valid_resource, so this table is the only record of a write to a
-    # non-allowlisted table and must be able to name one.
+    # Kept as a plain string so audit rows remain readable after the datasource
+    # is gone, and so names that only mutations historically accepted are still
+    # representable here.
     table_name: Mapped[str] = mapped_column(String(length=512), nullable=False)
 
     operation: Mapped[str] = mapped_column(
