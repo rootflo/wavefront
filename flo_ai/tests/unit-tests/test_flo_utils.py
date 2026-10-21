@@ -120,6 +120,21 @@ class TestFloUtils:
         result = FloUtils.extract_jsons_from_string(input_str)
         assert result == {}
 
+    @pytest.mark.parametrize(
+        'reply', ['Private customer reply 9b31', '{private-invalid}']
+    )
+    def test_strict_failure_does_not_expose_reply(self, reply):
+        """Strict failures must not disclose model output in logs or exceptions."""
+        from unittest.mock import patch
+
+        with patch('flo_ai.utils.flo_utils.logger') as log:
+            with pytest.raises(ValueError) as exc:
+                FloUtils.extract_jsons_from_string(reply, strict=True)
+
+        assert str(exc.value) == 'No JSON found in strict mode'
+        log.error.assert_called_once_with('No JSON found in strict mode')
+        assert reply not in str(exc.value)
+
     def test_extract_jsons_from_string_no_json_strict_mode(self):
         """Test that strict mode raises ValueError when no JSON is found."""
         input_str = 'This is just plain text with no JSON objects'
