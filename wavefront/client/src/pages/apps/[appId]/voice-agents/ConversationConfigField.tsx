@@ -238,7 +238,11 @@ function ConfigOption({ id, option, value, defaultValue, inactiveReason, onChang
           id={id}
           type="number"
           value={typeof value === 'number' ? value : ''}
-          onChange={(e) => onChange(e.target.value === '' ? undefined : Number(e.target.value))}
+          onChange={(e) => {
+            // Empty or non-finite input (e.g. 1e999) falls back to the default
+            const parsed = e.target.value === '' ? NaN : Number(e.target.value);
+            onChange(Number.isFinite(parsed) ? parsed : undefined);
+          }}
           min={option.min}
           max={option.max}
           step={option.step}

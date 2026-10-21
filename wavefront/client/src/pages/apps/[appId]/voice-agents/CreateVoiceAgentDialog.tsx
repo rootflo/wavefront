@@ -856,7 +856,7 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                   <div className="flex items-center gap-1.5">
                     <h4 className="text-base font-semibold tracking-tight">Telephony</h4>
                     <FieldHelp ariaLabel="About telephony">
-                      Provider credentials for calls (numbers are on the Phone Numbers tab)
+                      Provider credentials for calls (numbers are on the Basic Info tab)
                     </FieldHelp>
                   </div>
                   <div className="grid grid-cols-2 gap-4">

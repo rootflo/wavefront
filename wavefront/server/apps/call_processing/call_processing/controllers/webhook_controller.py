@@ -57,7 +57,7 @@ def _stream_twiml(
     response.pause(length=60)
 
     twiml_xml = str(response)
-    logger.info(f'Returning TwiML: {twiml_xml}')
+    logger.debug(f'Returning TwiML: {twiml_xml}')
     return Response(content=twiml_xml, media_type='application/xml')
 
 
