@@ -1,3 +1,19 @@
 # CVEs accepted by the Docker vulnerability scan (.github/workflows/docker-vulnerability-scan.yml).
 # One ID per line, with a comment saying why and until when, e.g.
 # CVE-2026-12345  # no fixed release yet; revisit 2026-12-01
+
+# Fixed only in releases still inside uv's 7-day exclude-newer cooldown
+# (wavefront/server/pyproject.toml). Bump once it passes; the `exp:` makes the
+# scan fail again after that date if they are still unfixed.
+# pillow 12.3.0 -> 13.0.0 (published 2026-10-16); needs a pillow override since pipecat-ai caps <13.
+CVE-2026-112403 exp:2026-10-24
+CVE-2026-112397 exp:2026-10-24
+CVE-2026-112400 exp:2026-10-24
+CVE-2026-112404 exp:2026-10-24
+CVE-2026-112895 exp:2026-10-24
+CVE-2026-112896 exp:2026-10-24
+CVE-2026-112897 exp:2026-10-24
+CVE-2026-112395 exp:2026-10-24
+CVE-2026-112899 exp:2026-10-24
+# certifi 2025.8.3 -> 2026.10.19 (published 2026-10-20): drops emSign roots with compromised intermediates.
+GHSA-6q48-6c7w-9gw2 exp:2026-10-28
