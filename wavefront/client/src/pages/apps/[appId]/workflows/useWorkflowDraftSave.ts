@@ -44,7 +44,8 @@ interface UseWorkflowDraftSaveOptions {
   workflowId?: string;
   draftYaml: string;
   baseVersion?: number;
-  onSaved: (createNewVersion: boolean) => void | Promise<void>;
+  // savedVersion is the version the server wrote: the edited one, or the newly created one
+  onSaved: (createNewVersion: boolean, savedVersion?: number) => void | Promise<void>;
 }
 
 // Validates and saves a workflow draft from the standalone editor tab
@@ -79,10 +80,16 @@ export const useWorkflowDraftSave = ({
           setValidationErrors(toProblems(validation.errors));
           return;
         }
-        await floConsoleService.workflowService.updateWorkflow(workflowId, draftYaml, baseVersion, createNewVersion);
+        const response = await floConsoleService.workflowService.updateWorkflow(
+          workflowId,
+          draftYaml,
+          baseVersion,
+          createNewVersion
+        );
+        const savedVersion = response.data?.meta?.status === 'success' ? response.data.data?.data?.version : undefined;
         // Refetch versions so version metadata stays in sync.
         queryClient.invalidateQueries({ queryKey: getWorkflowVersionsKey(appId || '', workflowId) });
-        await onSaved(createNewVersion);
+        await onSaved(createNewVersion, savedVersion);
         broadcastWorkflowUpdated(workflowId);
         notifySuccess(
           createNewVersion

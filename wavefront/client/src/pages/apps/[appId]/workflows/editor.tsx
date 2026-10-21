@@ -2,14 +2,18 @@ import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { Input } from '@app/components/ui/input';
 import { AGENT_ID_PATTERN, AGENT_ID_PATTERN_MESSAGE } from '@app/constants/workflow-builder';
+import { useGetWorkflowVersions } from '@app/hooks';
+import { getWorkflowVersionsKey } from '@app/hooks/data/query-keys';
 import { useValidateWorkflowYaml } from '@app/hooks/data/yaml-validation-hooks';
 import { useBeforeUnloadGuard } from '@app/hooks/use-before-unload-guard';
 import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { Workflow } from '@app/types/workflow';
-import React, { useCallback, useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { DEFAULT_WORKFLOW_YAML } from './defaultWorkflowYaml';
+import EditorVersionSelect from './EditorVersionSelect';
 import WorkflowEditorWorkspace from './WorkflowEditorWorkspace';
 import { broadcastWorkflowUpdated, toProblems, useWorkflowDraftSave } from './useWorkflowDraftSave';
 import type { Problem } from '@app/components/WorkflowBuilder/ProblemsPanel';
@@ -21,17 +25,26 @@ const DEFAULT_NAMESPACE = 'default';
 const WorkflowEditorPage: React.FC = () => {
   const { app: appId, id } = useParams<{ app: string; id: string }>();
   const isCreate = !id;
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { notifySuccess, notifyError } = useNotifyStore();
+  const queryClient = useQueryClient();
   const versionParam = searchParams.get('version');
   const selectedVersion = versionParam ? Number(versionParam) : undefined;
 
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
   const [savedYaml, setSavedYaml] = useState(isCreate ? DEFAULT_WORKFLOW_YAML : '');
   const [draftYaml, setDraftYaml] = useState(isCreate ? DEFAULT_WORKFLOW_YAML : '');
+  const draftYamlRef = useRef(draftYaml);
+  draftYamlRef.current = draftYaml;
   const [loadError, setLoadError] = useState<string | null>(null);
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
+  // Version the user picked while the draft had unsaved edits; applied once they confirm
+  const [pendingVersion, setPendingVersion] = useState<number | null>(null);
+  const [loadingWorkflow, setLoadingWorkflow] = useState(false);
+  const loadRequestRef = useRef(0);
+
+  const { data: workflowVersions = [] } = useGetWorkflowVersions(appId, id);
 
   // Create mode only
   const [workflowId, setWorkflowId] = useState('');
@@ -43,8 +56,11 @@ const WorkflowEditorPage: React.FC = () => {
 
   const loadWorkflow = useCallback(async () => {
     if (!id) return;
+    const requestId = ++loadRequestRef.current;
     try {
       const response = await floConsoleService.workflowService.getWorkflow(id, selectedVersion);
+      // A newer load (e.g. another version picked meanwhile) supersedes this one
+      if (requestId !== loadRequestRef.current) return;
       const data = response.data?.meta?.status === 'success' ? response.data.data?.data : undefined;
       if (!data) {
         setLoadError('Workflow not found');
@@ -70,10 +86,14 @@ const WorkflowEditorPage: React.FC = () => {
   }, [id, selectedVersion]);
 
   useEffect(() => {
-    loadWorkflow().then((yaml) => {
-      if (yaml !== undefined) setDraftYaml(yaml);
-    });
-  }, [loadWorkflow]);
+    if (!id) return;
+    setLoadingWorkflow(true);
+    loadWorkflow()
+      .then((yaml) => {
+        if (yaml !== undefined) setDraftYaml(yaml);
+      })
+      .finally(() => setLoadingWorkflow(false));
+  }, [id, loadWorkflow]);
 
   useEffect(() => {
     document.title = isCreate ? 'New workflow' : workflow ? `Edit ${workflow.name}` : 'Workflow editor';
@@ -88,15 +108,44 @@ const WorkflowEditorPage: React.FC = () => {
     : workflow !== null && draftYaml !== savedYaml;
   useBeforeUnloadGuard(isDirty);
 
-  const handleSaved = useCallback(async () => {
-    await loadWorkflow();
-  }, [loadWorkflow]);
+  // Version being edited (and overwritten by Save); the server defaults to the current version
+  const editingVersion = selectedVersion ?? workflow?.current_version;
+
+  const showVersion = useCallback(
+    (version: number) => {
+      setPendingVersion(null);
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.set('version', String(version));
+          return next;
+        },
+        { replace: true }
+      );
+    },
+    [setSearchParams]
+  );
+
+  const handleSaved = useCallback(
+    async (createNewVersion: boolean, savedVersion?: number) => {
+      if (createNewVersion && savedVersion !== undefined) {
+        // Continue on the version that was just created; the draft is exactly what was saved
+        setSavedYaml(draftYamlRef.current);
+        // Wait for the versions list to include the new version so the selector never shows a blank value
+        await queryClient.invalidateQueries({ queryKey: getWorkflowVersionsKey(appId || '', id || '') });
+        showVersion(savedVersion);
+        return;
+      }
+      await loadWorkflow();
+    },
+    [loadWorkflow, showVersion, queryClient, appId, id]
+  );
 
   const { saving, submitAction, validationErrors, dismissValidationErrors, save } = useWorkflowDraftSave({
     appId,
     workflowId: id,
     draftYaml,
-    baseVersion: selectedVersion ?? workflow?.current_version,
+    baseVersion: editingVersion,
     onSaved: handleSaved,
   });
 
@@ -152,6 +201,15 @@ const WorkflowEditorPage: React.FC = () => {
 
   const busy = saving || creating;
 
+  const requestVersionChange = (version: number) => {
+    if (version === editingVersion) return;
+    if (isDirty) {
+      setPendingVersion(version);
+      return;
+    }
+    showVersion(version);
+  };
+
   const requestClose = () => {
     if (busy) return;
     if (isDirty) {
@@ -200,6 +258,13 @@ const WorkflowEditorPage: React.FC = () => {
         {fieldErrors.namespace && <span className="text-destructive text-[10px]">{fieldErrors.namespace}</span>}
       </label>
     </div>
+  ) : workflowVersions.length > 0 ? (
+    <EditorVersionSelect
+      versions={workflowVersions}
+      value={editingVersion}
+      disabled={busy || loadingWorkflow}
+      onChange={requestVersionChange}
+    />
   ) : undefined;
 
   return (
@@ -216,16 +281,16 @@ const WorkflowEditorPage: React.FC = () => {
           ) : (
             <>
               {workflow?.name || id} {workflow?.namespace && `(${workflow.namespace})`}
-              {selectedVersion !== undefined && ` · v${selectedVersion}`}
             </>
           )
         }
         headerFields={headerFields}
         yaml={draftYaml}
         onYamlChange={setDraftYaml}
-        saving={busy}
+        saving={busy || loadingWorkflow}
         submitAction={submitAction}
         validationErrors={isCreate ? createErrors : validationErrors}
+        saveHint={editingVersion !== undefined ? `Saves over v${editingVersion}` : undefined}
         onDismissValidationErrors={isCreate ? () => setCreateErrors([]) : dismissValidationErrors}
         cancelLabel="Close"
         onCancel={requestClose}
@@ -251,6 +316,18 @@ const WorkflowEditorPage: React.FC = () => {
         cancelLabel="Keep editing"
         onConfirm={closeEditor}
         onCancel={() => setDiscardConfirmOpen(false)}
+      />
+
+      <DeleteConfirmationDialog
+        isOpen={pendingVersion !== null}
+        title="Discard unsaved changes?"
+        message={`Switching to v${pendingVersion} will replace your unsaved edits with that version.`}
+        confirmLabel="Discard and switch"
+        cancelLabel="Keep editing"
+        onConfirm={() => {
+          if (pendingVersion !== null) showVersion(pendingVersion);
+        }}
+        onCancel={() => setPendingVersion(null)}
       />
     </div>
   );

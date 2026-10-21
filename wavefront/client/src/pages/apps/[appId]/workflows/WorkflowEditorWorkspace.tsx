@@ -23,7 +23,9 @@ interface WorkflowEditorWorkspaceProps {
   onSave?: (createNewVersion: boolean) => void;
   // Create mode: a single Create button
   onCreate?: () => void;
-  // Extra inputs shown after the title, e.g. workflow ID and namespace when creating
+  // Tooltip for Save in edit mode, e.g. which version it overwrites
+  saveHint?: string;
+  // Extra inputs shown after the title: workflow ID and namespace when creating, the version selector when editing
   headerFields?: React.ReactNode;
 }
 
@@ -42,6 +44,7 @@ const WorkflowEditorWorkspace: React.FC<WorkflowEditorWorkspaceProps> = ({
   onSave,
   onCreate,
   headerFields,
+  saveHint,
 }) => (
   <>
     <ProblemsPanel
@@ -112,6 +115,7 @@ const WorkflowEditorWorkspace: React.FC<WorkflowEditorWorkspaceProps> = ({
                 className="h-8 text-xs"
                 disabled={saving}
                 loading={saving && submitAction === 'save'}
+                title={saveHint}
                 onClick={() => onSave(false)}
               >
                 Save
@@ -122,6 +126,7 @@ const WorkflowEditorWorkspace: React.FC<WorkflowEditorWorkspaceProps> = ({
                 className="h-8 text-xs shadow-xs"
                 disabled={saving}
                 loading={saving && submitAction === 'new'}
+                title="Creates a new version from your edits. It is not promoted to current."
                 onClick={() => onSave(true)}
               >
                 Save as new version
