@@ -37,9 +37,6 @@ COPY wavefront/server/background_jobs/celery_worker /app/background_jobs/celery_
 
 RUN uv sync --package celery-worker --frozen --no-dev
 
-
-ENV REGEX_TIMEOUT_SECONDS=2
-
 RUN useradd -m -u 1000 celery && \
     chown -R celery:celery /app
 

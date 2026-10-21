@@ -21,11 +21,11 @@ import threading
 import time
 from typing import Optional, Union
 from urllib.parse import urlparse
-import urllib.request
 
 from common_module.config_loader import is_truthy
 from common_module.log.logger import configure_logging
 from dependency_injector import providers
+import flo_lib.http as http
 
 logger = logging.getLogger('guardrails_model_init')
 
@@ -219,17 +219,13 @@ def get_model_cache_dir_name(url: str) -> str:
 
 def _download_stream_http(url: str, dest_path: Path, timeout_s: int = 120) -> None:
     """Stream download over HTTP/HTTPS in 1MB chunks with progress logging."""
-    req = urllib.request.Request(
-        url, headers={'User-Agent': 'Wavefront-ModelLoader/1.0'}
-    )
-    with urllib.request.urlopen(req, timeout=timeout_s) as response, open(
-        dest_path, 'wb'
-    ) as f:
-        total_header = (
-            getattr(response, 'headers', {}).get('Content-Length')
-            if hasattr(response, 'headers')
-            else None
-        )
+    with http.create_client(
+        timeout=timeout_s,
+        follow_redirects=True,
+        headers={'User-Agent': 'Wavefront-ModelLoader/1.0'},
+    ) as client, client.stream('GET', url) as response, open(dest_path, 'wb') as f:
+        response.raise_for_status()
+        total_header = response.headers.get('Content-Length')
         total_bytes = (
             int(total_header) if total_header and str(total_header).isdigit() else 0
         )
@@ -248,10 +244,7 @@ def _download_stream_http(url: str, dest_path: Path, timeout_s: int = 120) -> No
         last_logged_bytes = 0
         last_logged_time = time.time()
 
-        while True:
-            chunk = response.read(chunk_size)
-            if not chunk:
-                break
+        for chunk in response.iter_bytes(chunk_size=chunk_size):
             f.write(chunk)
             downloaded += len(chunk)
             now = time.time()

@@ -5,6 +5,7 @@ from pathlib import Path
 import tarfile
 from unittest.mock import MagicMock, patch
 
+import flo_lib.http as http
 import pytest
 
 from guardrails_module.services.model_loader import (
@@ -140,16 +141,33 @@ class TestDownloadFile:
 
         dest = tmp_path / 'downloaded.tar.gz'
         fake_content = b'model data chunk 1' * 1000
-        mock_response = MagicMock()
-        mock_response.headers = {'Content-Length': str(len(fake_content))}
-        mock_response.read.side_effect = [fake_content[:5000], fake_content[5000:], b'']
-        mock_response.__enter__.return_value = mock_response
+        transport = http.MockTransport(
+            lambda request: http.Response(200, content=fake_content)
+        )
+        real_create_client = http.create_client
 
-        with patch('urllib.request.urlopen', return_value=mock_response):
+        with patch(
+            'guardrails_module.services.model_loader.http.create_client',
+            side_effect=lambda **kw: real_create_client(transport=transport, **kw),
+        ):
             _download_stream_http('https://example.com/model.tar.gz', dest)
 
         assert dest.exists()
         assert dest.read_bytes() == fake_content
+
+    def test_download_stream_http_raises_on_error_status(self, tmp_path):
+        from guardrails_module.services.model_loader import _download_stream_http
+
+        transport = http.MockTransport(lambda request: http.Response(404))
+        real_create_client = http.create_client
+
+        with patch(
+            'guardrails_module.services.model_loader.http.create_client',
+            side_effect=lambda **kw: real_create_client(transport=transport, **kw),
+        ), pytest.raises(http.HTTPStatusError):
+            _download_stream_http(
+                'https://example.com/model.tar.gz', tmp_path / 'missing.tar.gz'
+            )
 
     def test_download_s3_via_flo_cloud(self, tmp_path):
         dest = tmp_path / 'dest.tar.gz'
