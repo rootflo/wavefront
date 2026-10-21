@@ -20,7 +20,7 @@ export const DEFAULT_CONVERSATION_CONFIG = {
     end_of_turn_timeout_ms: 3000,
   },
   filler_speech: {
-    thinking: true,
+    thinking: false,
     thinking_delay_ms: 800,
     before_tool_call: false,
   },
@@ -30,8 +30,37 @@ export const DEFAULT_CONVERSATION_CONFIG = {
   },
 } as const satisfies ConversationConfig;
 
+/** Built-in phrases from the call-processing service (`constants/filler_phrases.py`). */
+export const BUILT_IN_THINKING_PHRASES: Record<string, string[]> = {
+  en: ['Hmm', 'Okay', 'Right', 'Let me see'],
+  hi: ['हम्म', 'अच्छा', 'ठीक है', 'देखती हूँ'],
+  ta: ['ம்ம்', 'சரி', 'பார்க்கிறேன்'],
+  te: ['హ్మ్', 'సరే', 'చూస్తాను'],
+  ml: ['ഹ്മ്', 'ശരി', 'നോക്കട്ടെ'],
+  kn: ['ಹ್ಮ್', 'ಸರಿ', 'ನೋಡುತ್ತೇನೆ'],
+};
+
+export const BUILT_IN_TOOL_CALL_PHRASES: Record<string, string[]> = {
+  en: ['Please wait a moment', 'Just a second', 'Give me a moment', 'One moment please'],
+  hi: ['कृपया एक पल प्रतीक्षा करें', 'बस एक सेकंड', 'मुझे एक पल दें', 'एक पल रुकिए'],
+  ta: ['தயவுசெய்து ஒரு நிமிடம் காத்திருக்கவும்', 'ஒரு நொடி', 'எனக்கு ஒரு நிமிடம் கொடுங்கள்', 'ஒரு நிமிடம்'],
+  te: ['దయచేసి ఒక్క క్షణం వేచి ఉండండి', 'ఒక్క నిమిషం', 'నాకు ఒక్క క్షణం ఇవ్వండి', 'ఒక్క క్షణం దయచేసి'],
+  ml: ['ദയവായി ഒരു നിമിഷം കാത്തിരിക്കൂ', 'ഒരു സെക്കൻഡ്', 'എനിക്ക് ഒരു നിമിഷം തരൂ', 'ഒരു നിമിഷം ദയവായി'],
+  kn: ['ದಯವಿಟ್ಟು ಒಂದು ಕ್ಷಣ ಕಾಯಿರಿ', 'ಒಂದು ಕ್ಷಣ', 'ನನಗೆ ಒಂದು ಕ್ಷಣ ನೀಡಿ', 'ಒಂದು ಕ್ಷಣ ದಯವಿಟ್ಟು'],
+};
+
 export interface ConfigOptionDoc {
   key: string;
+  label: string;
+  /** Which input edits it: phrases are per-language lists (`{ "en": ["Hmm"] }`). */
+  kind: 'boolean' | 'number' | 'text' | 'phrases';
+  min?: number;
+  max?: number;
+  step?: number;
+  /** Boolean option in the same section that must be on for this one to matter. */
+  requires?: string;
+  /** For phrases: what the service says for languages the bot does not customise. */
+  builtInPhrases?: Record<string, string[]>;
   defaultValue: string;
   range: string;
   description: string;
@@ -52,6 +81,8 @@ export const CONVERSATION_CONFIG_DOCS: ConfigSectionDoc[] = [
     options: [
       {
         key: 'barge_in',
+        label: 'Let the user interrupt (barge-in)',
+        kind: 'boolean',
         defaultValue: 'true',
         range: 'true / false',
         description:
@@ -59,6 +90,12 @@ export const CONVERSATION_CONFIG_DOCS: ConfigSectionDoc[] = [
       },
       {
         key: 'barge_in_min_words',
+        label: 'Words needed to interrupt',
+        kind: 'number',
+        min: 0,
+        max: 10,
+        step: 1,
+        requires: 'barge_in',
         defaultValue: '0',
         range: '0 – 10',
         description:
@@ -66,6 +103,8 @@ export const CONVERSATION_CONFIG_DOCS: ConfigSectionDoc[] = [
       },
       {
         key: 'mute_until_first_bot_complete',
+        label: 'Play the welcome message fully',
+        kind: 'boolean',
         defaultValue: 'false',
         range: 'true / false',
         description:
@@ -73,6 +112,11 @@ export const CONVERSATION_CONFIG_DOCS: ConfigSectionDoc[] = [
       },
       {
         key: 'vad_confidence',
+        label: 'Speech confidence',
+        kind: 'number',
+        min: 0.3,
+        max: 0.95,
+        step: 0.05,
         defaultValue: '0.75',
         range: '0.3 – 0.95',
         description:
@@ -80,12 +124,22 @@ export const CONVERSATION_CONFIG_DOCS: ConfigSectionDoc[] = [
       },
       {
         key: 'vad_min_volume',
+        label: 'Minimum volume',
+        kind: 'number',
+        min: 0,
+        max: 0.95,
+        step: 0.05,
         defaultValue: '0.65',
         range: '0 – 0.95',
         description: 'Audio quieter than this is ignored. Lower for soft-spoken users, higher for noisy environments.',
       },
       {
         key: 'vad_start_ms',
+        label: 'Speech start (ms)',
+        kind: 'number',
+        min: 50,
+        max: 1000,
+        step: 10,
         defaultValue: '200',
         range: '50 – 1000',
         description:
@@ -93,6 +147,11 @@ export const CONVERSATION_CONFIG_DOCS: ConfigSectionDoc[] = [
       },
       {
         key: 'vad_stop_ms',
+        label: 'Speech stop (ms)',
+        kind: 'number',
+        min: 100,
+        max: 2000,
+        step: 10,
         defaultValue: '200',
         range: '100 – 2000',
         description:
@@ -100,6 +159,11 @@ export const CONVERSATION_CONFIG_DOCS: ConfigSectionDoc[] = [
       },
       {
         key: 'end_of_turn_timeout_ms',
+        label: 'End-of-turn timeout (ms)',
+        kind: 'number',
+        min: 500,
+        max: 10000,
+        step: 100,
         defaultValue: '3000',
         range: '500 – 10000',
         description:
@@ -114,19 +178,31 @@ export const CONVERSATION_CONFIG_DOCS: ConfigSectionDoc[] = [
     options: [
       {
         key: 'thinking',
-        defaultValue: 'true',
+        label: 'Say a filler while thinking',
+        kind: 'boolean',
+        defaultValue: 'false',
         range: 'true / false',
         description:
           'Say a short backchannel ("Hmm", "Okay") if the AI is slow to start replying. Fast replies get no filler.',
       },
       {
         key: 'thinking_delay_ms',
+        label: 'Thinking filler delay (ms)',
+        kind: 'number',
+        min: 0,
+        max: 5000,
+        step: 50,
+        requires: 'thinking',
         defaultValue: '800',
         range: '0 – 5000',
         description: 'How long to wait for the reply before saying the thinking filler. Lower plays it more often.',
       },
       {
         key: 'thinking_phrases',
+        label: 'Thinking phrases',
+        kind: 'phrases',
+        requires: 'thinking',
+        builtInPhrases: BUILT_IN_THINKING_PHRASES,
         defaultValue: 'built-in',
         range: '{ "en": ["Hmm"] }',
         description:
@@ -134,12 +210,18 @@ export const CONVERSATION_CONFIG_DOCS: ConfigSectionDoc[] = [
       },
       {
         key: 'before_tool_call',
+        label: 'Say a phrase before tool calls',
+        kind: 'boolean',
         defaultValue: 'false',
         range: 'true / false',
         description: 'Say a short phrase ("One moment please") before running a tool that may take a while.',
       },
       {
         key: 'tool_call_phrases',
+        label: 'Tool-call phrases',
+        kind: 'phrases',
+        requires: 'before_tool_call',
+        builtInPhrases: BUILT_IN_TOOL_CALL_PHRASES,
         defaultValue: 'built-in',
         range: '{ "en": ["One sec"] }',
         description:
@@ -155,6 +237,8 @@ export const CONVERSATION_CONFIG_DOCS: ConfigSectionDoc[] = [
     options: [
       {
         key: 'enabled',
+        label: 'Let the bot end the call',
+        kind: 'boolean',
         defaultValue: 'false',
         range: 'true / false',
         description:
@@ -162,6 +246,9 @@ export const CONVERSATION_CONFIG_DOCS: ConfigSectionDoc[] = [
       },
       {
         key: 'farewell_message',
+        label: 'Farewell message',
+        kind: 'text',
+        requires: 'enabled',
         defaultValue: 'Thank you for using our service! Goodbye!',
         range: 'text',
         description:
@@ -171,7 +258,7 @@ export const CONVERSATION_CONFIG_DOCS: ConfigSectionDoc[] = [
   },
 ];
 
-const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+export const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
 export const isDeepEqual = (a: unknown, b: unknown): boolean => {
@@ -184,23 +271,6 @@ export const isDeepEqual = (a: unknown, b: unknown): boolean => {
     return keys.length === Object.keys(b).length && keys.every((key) => key in b && isDeepEqual(a[key], b[key]));
   }
   return false;
-};
-
-/** Adds every default the config does not set yet; values the user set are kept. */
-export const withDefaults = (
-  config: ConversationConfig,
-  defaults: ConversationConfig = DEFAULT_CONVERSATION_CONFIG
-) => {
-  const merged: ConversationConfig = { ...config };
-  Object.entries(defaults).forEach(([key, defaultValue]) => {
-    const current = merged[key];
-    if (current === undefined) {
-      merged[key] = defaultValue;
-    } else if (isPlainObject(current) && isPlainObject(defaultValue)) {
-      merged[key] = withDefaults(current, defaultValue);
-    }
-  });
-  return merged;
 };
 
 const pretty = (config: ConversationConfig) => JSON.stringify(config, null, 2);

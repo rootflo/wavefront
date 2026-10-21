@@ -171,7 +171,7 @@ class TelephonySessionService:
         try:
             transport_type, call_data = await parse_telephony_websocket(websocket)
             logger.info(f'Auto-detected transport: {transport_type}')
-            logger.info(f'Call data: {call_data}')
+            logger.debug(f'Call data: {call_data}')
 
             if transport_type not in ('twilio', 'exotel', 'smartflo'):
                 logger.error(f'Unknown transport type: {transport_type}')

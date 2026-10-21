@@ -9,6 +9,8 @@ import {
   DialogTitle,
 } from '@app/components/ui/dialog';
 import ConversationConfigField from './ConversationConfigField';
+import ConversationConfigGuide from './ConversationConfigGuide';
+import VoiceAgentToolsManager, { PendingAgentTool } from './VoiceAgentToolsManager';
 import { DEFAULT_EDITOR_TEXT, fromEditorText } from './conversation-config';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
@@ -54,10 +56,11 @@ const E164_REGEX = /^\+[1-9]\d{1,14}$/;
 const FORM_TAB = {
   BASIC: 'basic',
   CONFIGURATIONS: 'configurations',
-  PHONE_NUMBERS: 'phone-numbers',
   LANGUAGES: 'languages',
   BEHAVIOR: 'behavior',
+  TOOLS: 'tools',
   ADVANCED: 'advanced',
+  GUIDE: 'guide',
 } as const;
 
 type FormTab = (typeof FORM_TAB)[keyof typeof FORM_TAB];
@@ -97,8 +100,8 @@ const FIELD_TAB_MAP: Record<keyof CreateVoiceAgentInput, FormTab> = {
   stt_config_id: FORM_TAB.CONFIGURATIONS,
   telephony_config_id: FORM_TAB.CONFIGURATIONS,
   tts_voice_ids: FORM_TAB.CONFIGURATIONS,
-  inbound_numbers: FORM_TAB.PHONE_NUMBERS,
-  outbound_numbers: FORM_TAB.PHONE_NUMBERS,
+  inbound_numbers: FORM_TAB.BASIC,
+  outbound_numbers: FORM_TAB.BASIC,
   supported_languages: FORM_TAB.LANGUAGES,
   default_language: FORM_TAB.LANGUAGES,
   system_prompt: FORM_TAB.BEHAVIOR,
@@ -123,6 +126,7 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
   const [sttParameters, setSttParameters] = useState<Record<string, unknown>>({});
   const [voiceIdState, setVoiceIdState] = useState<Record<string, string>>({ en: '' });
   const [customizeVoicesPerLanguage, setCustomizeVoicesPerLanguage] = useState(false);
+  const [pendingTools, setPendingTools] = useState<PendingAgentTool[]>([]);
 
   // Fetch configs for dropdowns
   const { data: llmConfigs = [] } = useGetLLMConfigs(appId);
@@ -212,6 +216,7 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
       setSttParameters({});
       setVoiceIdState({ en: '' });
       setCustomizeVoicesPerLanguage(false);
+      setPendingTools([]);
       setActiveTab(FORM_TAB.BASIC);
     }
   }, [isOpen, form]);
@@ -310,6 +315,22 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
       const response = await floConsoleService.voiceAgentService.createVoiceAgent(requestData);
 
       if (response.data?.meta?.status === 'success') {
+        const agentId = response.data?.data?.voice_agent_id;
+        if (agentId && pendingTools.length > 0) {
+          const results = await Promise.allSettled(
+            pendingTools.map(({ toolId, isEnabled }) =>
+              floConsoleService.toolService.attachToolToAgent(agentId, {
+                tool_id: toolId,
+                is_enabled: isEnabled,
+                priority: 0,
+              })
+            )
+          );
+          const failed = results.filter((r) => r.status === 'rejected').length;
+          if (failed > 0) {
+            notifyError(`Voice agent created, but ${failed} tool(s) could not be attached. Attach them from Edit.`);
+          }
+        }
         notifySuccess('Voice agent created successfully');
 
         if (onSuccess) {
@@ -570,13 +591,14 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
               }}
               className="flex min-h-0 flex-1 flex-col overflow-hidden"
             >
-              <TabsList className="grid w-full shrink-0 grid-cols-6">
+              <TabsList className="flex w-full shrink-0 [&>button]:flex-1 [&>button]:px-2">
                 <TabsTrigger value={FORM_TAB.BASIC}>Basic Info</TabsTrigger>
                 <TabsTrigger value={FORM_TAB.BEHAVIOR}>Behavior</TabsTrigger>
                 <TabsTrigger value={FORM_TAB.CONFIGURATIONS}>Configurations</TabsTrigger>
-                <TabsTrigger value={FORM_TAB.PHONE_NUMBERS}>Phone Numbers</TabsTrigger>
                 <TabsTrigger value={FORM_TAB.LANGUAGES}>Languages</TabsTrigger>
+                <TabsTrigger value={FORM_TAB.TOOLS}>Tools</TabsTrigger>
                 <TabsTrigger value={FORM_TAB.ADVANCED}>Advanced</TabsTrigger>
+                <TabsTrigger value={FORM_TAB.GUIDE}>Guide</TabsTrigger>
               </TabsList>
 
               <TabsContent value={FORM_TAB.BASIC} className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto">
@@ -639,6 +661,36 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                     </FormItem>
                   )}
                 />
+
+                <div className="grid grid-cols-2 gap-6">
+                  <FormField
+                    control={form.control}
+                    name="inbound_numbers"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Inbound Phone Numbers</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g., +1234567890, +9876543210" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="outbound_numbers"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Outbound Phone Numbers</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g., +1234567890, +9876543210" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </TabsContent>
 
               <TabsContent value={FORM_TAB.CONFIGURATIONS} className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto">
@@ -838,38 +890,6 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                 </section>
               </TabsContent>
 
-              <TabsContent value={FORM_TAB.PHONE_NUMBERS} className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto">
-                <div className="grid grid-cols-1 gap-6">
-                  <FormField
-                    control={form.control}
-                    name="inbound_numbers"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Inbound Phone Numbers</FormLabel>
-                        <FormControl>
-                          <Input placeholder="e.g., +1234567890, +9876543210" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="outbound_numbers"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Outbound Phone Numbers</FormLabel>
-                        <FormControl>
-                          <Input placeholder="e.g., +1234567890, +9876543210" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </TabsContent>
-
               <TabsContent value={FORM_TAB.LANGUAGES} className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto">
                 <FormField
                   control={form.control}
@@ -987,8 +1007,24 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                 />
               </TabsContent>
 
+              <TabsContent value={FORM_TAB.TOOLS} className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto">
+                <VoiceAgentToolsManager
+                  appId={appId}
+                  pendingTools={pendingTools}
+                  onPendingToolsChange={setPendingTools}
+                />
+              </TabsContent>
+
               <TabsContent value={FORM_TAB.ADVANCED} className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto">
-                <ConversationConfigField form={form} name="conversation_config" />
+                <ConversationConfigField
+                  form={form}
+                  name="conversation_config"
+                  hasWelcomeMessage={!!form.watch('welcome_message')?.trim()}
+                />
+              </TabsContent>
+
+              <TabsContent value={FORM_TAB.GUIDE} className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto">
+                <ConversationConfigGuide />
               </TabsContent>
             </Tabs>
 

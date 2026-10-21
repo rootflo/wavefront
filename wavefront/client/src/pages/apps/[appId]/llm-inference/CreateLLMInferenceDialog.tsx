@@ -140,8 +140,6 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
 
   const changeModel = (modelId: string) => {
     form.setValue('llmModel', modelId, { shouldValidate: true });
-    // Keep what was already set where the new model takes it
-    setParameters((prev) => filterParameters(type, modelId, prev).kept);
     if (!displayNameEdited.current) {
       const preset = findModelPreset(type, modelId);
       form.setValue('displayName', preset?.id === modelId ? preset.label : modelId, { shouldValidate: !!modelId });

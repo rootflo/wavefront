@@ -23,7 +23,7 @@ from call_processing.services.common.turn_taking import VADWhenBotSilentStartStr
 def test_agent_without_filler_config_gets_defaults():
     config = FillerSpeechConfig.from_agent_config({})
 
-    assert config.thinking is True
+    assert config.thinking is False
     assert config.before_tool_call is False
     assert config.thinking_delay_secs == THINKING_FILLER_DELAY_SECS
     assert config.thinking_phrases_for('hi') == THINKING_PHRASES['hi']
@@ -34,7 +34,7 @@ def test_agent_conversation_config_overrides_defaults():
     agent = {
         'conversation_config': {
             'filler_speech': {
-                'thinking': False,
+                'thinking': True,
                 'thinking_delay_ms': 1200,
                 'before_tool_call': True,
                 'tool_call_phrases': {'en': ['One sec', '  ', 7]},
@@ -43,16 +43,16 @@ def test_agent_conversation_config_overrides_defaults():
     }
     config = FillerSpeechConfig.from_agent_config(agent)
 
-    assert config.thinking is False
+    assert config.thinking is True
     assert config.thinking_delay_secs == 1.2
     assert config.before_tool_call is True
     assert config.tool_call_phrases_for('en') == ['One sec']
 
 
 def test_conversation_config_stored_as_a_json_string_is_read():
-    agent = {'conversation_config': '{"filler_speech": {"thinking": false}}'}
+    agent = {'conversation_config': '{"filler_speech": {"thinking": true}}'}
 
-    assert FillerSpeechConfig.from_agent_config(agent).thinking is False
+    assert FillerSpeechConfig.from_agent_config(agent).thinking is True
 
 
 def test_custom_phrases_never_put_english_into_another_language():
