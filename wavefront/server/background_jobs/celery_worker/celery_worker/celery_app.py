@@ -30,9 +30,11 @@ app.conf.update(
     task_acks_late=True,  # Only ack after successful processing
     task_reject_on_worker_lost=True,  # Re-queue on worker crash
     worker_prefetch_multiplier=1,  # Fair task distribution
-    task_track_started=True,
     # Must match the producer's queue_name; it separates apps sharing one Redis.
     task_default_queue=celery_queue_key(CELERY_QUEUE_NAME),
+    # Nothing reads task results; status comes from Postgres and the results
+    # stream. Result keys would only take memory from the broker.
+    task_ignore_result=True,
     worker_enable_remote_control=False,
     # An idle worker's result-backend socket gets closed by Azure Redis / the LB
     # after minutes of no traffic, and redis-py only notices on the next command.

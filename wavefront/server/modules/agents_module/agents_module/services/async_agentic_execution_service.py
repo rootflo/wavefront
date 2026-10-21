@@ -21,6 +21,12 @@ from agents_module.models.async_agentic_execution_schemas import (
     AgenticExecutionStatusResponse,
 )
 from celery import Celery
+
+from agents_module.utils.celery_backpressure import (
+    ensure_queue_capacity,
+    queue_is_saturated,
+)
+from agents_module.utils.celery_settings import CeleryProducerSettings
 from agents_module.utils.execution_variable_utils import with_execution_variables
 from agents_module.utils.mime_type_utils import (
     SUPPORTED_DOCUMENT_MIME_TYPES,
@@ -188,12 +194,22 @@ class AsyncAgenticExecutionService:
         cache_manager: CacheManager,
         executions_bucket: str,
         celery_client: Celery,
+        celery_settings: CeleryProducerSettings | None = None,
     ):
         self.repo = async_agentic_execution_repository
         self.cloud_storage = cloud_storage_manager
         self.cache = cache_manager
         self.bucket = executions_bucket
         self.celery = celery_client
+        self.celery_settings = celery_settings or CeleryProducerSettings()
+
+    async def queue_is_saturated(self) -> bool:
+        saturated, _depth = await queue_is_saturated(self.celery, self.celery_settings)
+        return saturated
+
+    @property
+    def backpressure_retry_after_seconds(self) -> int:
+        return self.celery_settings.backpressure_retry_after_seconds
 
     def pre_save_binary_inputs(
         self,
@@ -320,7 +336,12 @@ class AsyncAgenticExecutionService:
         app_key: Optional[str],
         llm_config: Optional[Dict] = None,
         version: Optional[int] = None,
+        enforce_queue_limit: bool = True,
     ) -> AsyncInferenceResponse:
+        # Off for callers inside the worker, whose work is already admitted.
+        if enforce_queue_limit:
+            await ensure_queue_capacity(self.celery, self.celery_settings)
+
         execution_id = uuid.uuid4()
         prefix = f'executions/agents/{agent_id}/{execution_id}/'
 
@@ -355,7 +376,9 @@ class AsyncAgenticExecutionService:
         }
 
         try:
-            result = self.celery.send_task(
+            # send_task is blocking redis-py.
+            result = await asyncio.to_thread(
+                self.celery.send_task,
                 _AGENT_TASK_NAME,
                 kwargs={'payload': payload},
             )
@@ -391,7 +414,11 @@ class AsyncAgenticExecutionService:
         access_token: Optional[str],
         app_key: Optional[str],
         version: Optional[int] = None,
+        enforce_queue_limit: bool = True,
     ) -> AsyncInferenceResponse:
+        if enforce_queue_limit:
+            await ensure_queue_capacity(self.celery, self.celery_settings)
+
         execution_id = uuid.uuid4()
         prefix = f'executions/workflows/{workflow_id}/{execution_id}/'
 
@@ -428,7 +455,9 @@ class AsyncAgenticExecutionService:
         }
 
         try:
-            result = self.celery.send_task(
+            # Off the loop, as in create_and_enqueue_agent above.
+            result = await asyncio.to_thread(
+                self.celery.send_task,
                 _WORKFLOW_TASK_NAME,
                 kwargs={'payload': payload},
             )

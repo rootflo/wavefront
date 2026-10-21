@@ -47,13 +47,22 @@ services:
     networks:
       - floware-network
 
-  # Redis for Floware
+  # Redis for Floware — also the Celery broker. noeviction so queued tasks are
+  # never evicted; at the cap, writes fail and reads keep working.
   redis-floware:
     image: redis:7.4
     container_name: redis-floware
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command:
+      - redis-server
+      - --maxmemory
+      - ${REDIS_MAXMEMORY:-2gb}
+      - --maxmemory-policy
+      - noeviction
+      - --maxmemory-clients
+      - ${REDIS_MAXMEMORY_CLIENTS:-5%}
     ports:
       - '6379:6379'
     healthcheck:
@@ -64,13 +73,21 @@ services:
     networks:
       - floware-network
 
-  # Redis for Call Processing
+  # Redis for Call Processing — a cache only, so a smaller cap.
   redis-call-processing:
     image: redis:7.4
     container_name: redis-call-processing
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command:
+      - redis-server
+      - --maxmemory
+      - ${REDIS_CALL_PROCESSING_MAXMEMORY:-512mb}
+      - --maxmemory-policy
+      - noeviction
+      - --maxmemory-clients
+      - ${REDIS_MAXMEMORY_CLIENTS:-5%}
     ports:
       - '6380:6379'
     healthcheck:
