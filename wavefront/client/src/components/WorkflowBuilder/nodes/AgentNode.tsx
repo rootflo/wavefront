@@ -1,14 +1,15 @@
-import { Handle, Position, NodeProps } from '@xyflow/react';
+import { Handle, NodeProps } from '@xyflow/react';
 import { Bot, Cpu, Filter, FileCode2, RotateCcw, Wrench } from 'lucide-react';
 import React from 'react';
 import { useParams } from 'react-router';
 import { Badge } from '@app/components/ui/badge';
 import { useGetLLMConfigs } from '@app/hooks/data/fetch-hooks';
-import { useWorkflowActions } from '../hooks/useWorkflowActions';
+import { useHandlePositions, useWorkflowActions } from '../hooks/useWorkflowActions';
 import { NodeCard } from './NodeCard';
 
 export const AgentNode = React.memo(({ id, data, selected }: NodeProps) => {
   const { startNodeId, deleteNode } = useWorkflowActions();
+  const handles = useHandlePositions();
   const isStartNode = id === startNodeId;
   const tools = Array.isArray(data.tools) ? data.tools : [];
   const inputFilters = Array.isArray(data.input_filter) ? data.input_filter : [];
@@ -34,7 +35,7 @@ export const AgentNode = React.memo(({ id, data, selected }: NodeProps) => {
     <>
       <Handle
         type="target"
-        position={Position.Left}
+        position={handles.target}
         className="border-background h-3.5 w-3.5 border-2 bg-emerald-500"
       />
       <NodeCard
@@ -143,13 +144,13 @@ export const AgentNode = React.memo(({ id, data, selected }: NodeProps) => {
       </NodeCard>
       <Handle
         type="source"
-        position={Position.Right}
+        position={handles.source}
         className="border-background h-3.5 w-3.5 border-2 bg-emerald-500"
       />
       {Boolean(data.isLoopTarget) && (
         <Handle
           type="source"
-          position={Position.Bottom}
+          position={handles.side}
           id="loop-back"
           className="border-background h-3.5 w-3.5 border-2 bg-indigo-500"
           title="Return to Loop Iterator"

@@ -3,6 +3,7 @@ import type { Edge, Node } from '@xyflow/react';
 import { EDGE_KINDS, NODE_TYPES, getEdgeKind } from '@app/constants/workflow-builder';
 import {
   applyGraphAction,
+  layoutGraph,
   makeFlowEdge,
   makeRouteEdge,
   makeStartEdge,
@@ -228,5 +229,32 @@ describe('rename and delete results', () => {
     const start = next.edges.find((e) => getEdgeKind(e) === EDGE_KINDS.START);
     expect(start?.target).toBe('b');
     expect(next.nodes.find((n) => n.id === 'b')?.data.input_filter).toBeUndefined();
+  });
+});
+
+describe('layoutGraph direction', () => {
+  const chain: Graph = {
+    nodes: [agent('a'), agent('b'), agent('c')],
+    edges: [makeFlowEdge('a', 'b'), makeFlowEdge('b', 'c')],
+  };
+  const positionOf = (graph: Graph, id: string) => graph.nodes.find((n) => n.id === id)!.position;
+
+  it('lays a chain out left to right by default', () => {
+    const laidOut = layoutGraph(chain);
+    expect(positionOf(laidOut, 'b').x).toBeGreaterThan(positionOf(laidOut, 'a').x);
+    expect(positionOf(laidOut, 'c').x).toBeGreaterThan(positionOf(laidOut, 'b').x);
+    expect(positionOf(laidOut, 'b').y).toBe(positionOf(laidOut, 'a').y);
+  });
+
+  it('lays a chain out top to bottom when asked', () => {
+    const laidOut = layoutGraph(chain, 'TB');
+    expect(positionOf(laidOut, 'b').y).toBeGreaterThan(positionOf(laidOut, 'a').y);
+    expect(positionOf(laidOut, 'c').y).toBeGreaterThan(positionOf(laidOut, 'b').y);
+    expect(positionOf(laidOut, 'b').x).toBe(positionOf(laidOut, 'a').x);
+  });
+
+  it('does not move the input nodes', () => {
+    layoutGraph(chain, 'TB');
+    expect(chain.nodes.every((n) => n.position.x === 0 && n.position.y === 0)).toBe(true);
   });
 });

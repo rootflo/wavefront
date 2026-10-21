@@ -15,9 +15,9 @@ import { useNotifyStore } from '@app/store';
 import { WorkflowListItem } from '@app/types/workflow';
 import { useQueryClient } from '@tanstack/react-query';
 import { Copy, Download, Trash2 } from 'lucide-react';
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import CreateWorkflowDialog from './CreateWorkflowDialog';
+import { useWorkflowUpdatedListener } from './useWorkflowDraftSave';
 import { parseUploadedWorkflow } from './workflow-utils';
 
 const formatCreatedAt = (value?: string) => {
@@ -38,7 +38,6 @@ const WorkflowManagement: React.FC = () => {
   const [namespace, setNamespace] = useState('');
   const [deleteItem, setDeleteItem] = useState<WorkflowListItem | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [bulkDownloadOpen, setBulkDownloadOpen] = useState(false);
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -168,11 +167,15 @@ const WorkflowManagement: React.FC = () => {
     }
   };
 
-  const handleCreateSuccess = () => {
-    queryClient.invalidateQueries({
-      queryKey: getWorkflowsKey(appId || '', namespace || undefined),
-    });
-    setCreateDialogOpen(false);
+  // Workflows are created in a separate editor tab; refresh the list when one is created or saved there
+  useWorkflowUpdatedListener(
+    useCallback(() => {
+      queryClient.invalidateQueries({ queryKey: getWorkflowsKey(appId || '', namespace || undefined) });
+    }, [queryClient, appId, namespace])
+  );
+
+  const handleCreateWorkflow = () => {
+    window.open(`/apps/${appId}/workflows/new`, '_blank', 'noopener');
   };
 
   return (
@@ -207,7 +210,9 @@ const WorkflowManagement: React.FC = () => {
         <Button variant="outline" onClick={() => setBulkUploadOpen(true)}>
           Upload
         </Button>
-        <Button onClick={() => setCreateDialogOpen(true)}>Create Workflow</Button>
+        <Button onClick={handleCreateWorkflow} title="Opens the editor in a new tab">
+          Create Workflow
+        </Button>
       </div>
 
       {bulkError ? <ErrorBanner message={bulkError} onDismiss={() => setBulkError('')} /> : null}
@@ -220,7 +225,7 @@ const WorkflowManagement: React.FC = () => {
             title="No workflows found"
             description="Get started by creating your first workflow"
             actionText="Create Workflow"
-            onActionClick={() => setCreateDialogOpen(true)}
+            onActionClick={handleCreateWorkflow}
           />
         </div>
       ) : (
@@ -292,15 +297,6 @@ const WorkflowManagement: React.FC = () => {
         onCancel={() => setDeleteItem(null)}
         loading={deleting}
       />
-
-      {appId && (
-        <CreateWorkflowDialog
-          isOpen={createDialogOpen}
-          onOpenChange={setCreateDialogOpen}
-          appId={appId}
-          onSuccess={handleCreateSuccess}
-        />
-      )}
 
       <BulkDownloadDialog
         isOpen={bulkDownloadOpen}

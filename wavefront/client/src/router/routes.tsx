@@ -29,6 +29,8 @@ import ToolsPage from '@app/pages/apps/[appId]/voice-agents/tools';
 import TtsConfigsPage from '@app/pages/apps/[appId]/voice-agents/tts-configs';
 import WorkflowManagement from '@app/pages/apps/[appId]/workflows';
 import WorkflowDetail from '@app/pages/apps/[appId]/workflows/[id]';
+import WorkflowEditorPage from '@app/pages/apps/[appId]/workflows/editor';
+import { WORKFLOW_EDITOR_NEW_PATH, WORKFLOW_EDITOR_PATH } from './standalone-paths';
 import WorkflowsLayout from '@app/pages/apps/[appId]/workflows/layout';
 import UsersPage from '@app/pages/apps/users';
 import CreateApp from '@app/pages/apps/create';
@@ -213,6 +215,18 @@ const routes = {
     {
       path: '/apps/edit/:appId',
       element: <EditApp />,
+    },
+  ],
+  // Authenticated pages rendered without the dashboard chrome (top bar, scrolling main)
+  fullscreen: [
+    {
+      // The workflow editor always opens in its own browser tab
+      path: WORKFLOW_EDITOR_NEW_PATH,
+      element: <WorkflowEditorPage />,
+    },
+    {
+      path: WORKFLOW_EDITOR_PATH,
+      element: <WorkflowEditorPage />,
     },
   ],
   admin: [],

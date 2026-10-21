@@ -1,6 +1,7 @@
 import { Connection, Edge, MarkerType, Node, XYPosition } from '@xyflow/react';
 import { EDGE_KINDS, EdgeKind, NODE_TYPES, getEdgeKind } from '@app/constants/workflow-builder';
 import { createIteratorLoopEdges, getLayoutedElements } from './yamlSync';
+import { DEFAULT_LAYOUT_DIRECTION, LayoutDirection } from './layoutDirection';
 
 // Pure graph-transform layer for the visual workflow editor.
 // Every structural edit goes through applyGraphAction, which returns new node/edge objects (never mutates its input)
@@ -495,12 +496,12 @@ export const needsLayout = (graph: Graph): boolean =>
 
 // Full dagre layout. Only for the explicit Auto-Layout action, templates and YAML parsed without positions:
 // structural edits keep the user's manual positions.
-export const layoutGraph = (graph: Graph): Graph => {
+export const layoutGraph = (graph: Graph, direction: LayoutDirection = DEFAULT_LAYOUT_DIRECTION): Graph => {
   // getLayoutedElements writes positions onto the nodes it is given, so hand it copies
   const laidOut = getLayoutedElements(
     graph.nodes.map((n) => ({ ...n })),
     graph.edges,
-    'LR'
+    direction
   );
   return { nodes: laidOut.nodes, edges: graph.edges };
 };

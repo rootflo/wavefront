@@ -1,15 +1,16 @@
-import { Handle, Position, NodeProps } from '@xyflow/react';
+import { Handle, NodeProps } from '@xyflow/react';
 import { GitBranch, CornerDownRight, RotateCcw } from 'lucide-react';
 import React from 'react';
 import { useParams } from 'react-router';
 import { Badge } from '@app/components/ui/badge';
 import { useGetLLMConfigs } from '@app/hooks/data/fetch-hooks';
 import { getRouterStrategy } from '../graphUtils';
-import { useWorkflowActions } from '../hooks/useWorkflowActions';
+import { useHandlePositions, useWorkflowActions } from '../hooks/useWorkflowActions';
 import { NodeCard } from './NodeCard';
 
 export const RouterNode = React.memo(({ id, data, selected }: NodeProps) => {
   const { startNodeId, deleteNode } = useWorkflowActions();
+  const handles = useHandlePositions();
   const isStartNode = id === startNodeId;
   const routerType = getRouterStrategy(data);
   const branches = Object.entries((data.routing_options as Record<string, string>) || {});
@@ -42,7 +43,11 @@ export const RouterNode = React.memo(({ id, data, selected }: NodeProps) => {
 
   return (
     <>
-      <Handle type="target" position={Position.Left} className="border-background h-3.5 w-3.5 border-2 bg-orange-500" />
+      <Handle
+        type="target"
+        position={handles.target}
+        className="border-background h-3.5 w-3.5 border-2 bg-orange-500"
+      />
       <NodeCard
         title={(data.label as string) || 'Intent Router'}
         icon={isReflection ? RotateCcw : GitBranch}
@@ -141,13 +146,13 @@ export const RouterNode = React.memo(({ id, data, selected }: NodeProps) => {
       </NodeCard>
       <Handle
         type="source"
-        position={Position.Right}
+        position={handles.source}
         className="border-background h-3.5 w-3.5 border-2 bg-orange-500"
       />
       {Boolean(data.isLoopTarget) && (
         <Handle
           type="source"
-          position={Position.Bottom}
+          position={handles.side}
           id="loop-back"
           className="border-background h-3.5 w-3.5 border-2 bg-indigo-500"
           title="Return to Loop Iterator"

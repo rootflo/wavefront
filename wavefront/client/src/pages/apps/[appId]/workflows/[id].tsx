@@ -1,14 +1,12 @@
 import floConsoleService from '@app/api';
 import ChatBot from '@app/components/ChatBot';
 import StreamToggle from '@app/components/StreamToggle';
-import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import VersionsDialog from '@app/components/VersionsDialog';
 import { Badge } from '@app/components/ui/badge';
 import { Button } from '@app/components/ui/button';
 import { Label } from '@app/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Switch } from '@app/components/ui/switch';
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@app/components/ui/dialog';
 import { appEnv } from '@app/config/env';
 import {
   documentMimeTypeFor,
@@ -17,40 +15,26 @@ import {
   validateImageUpload,
 } from '@app/constants/upload';
 import { useGetWorkflowVersions, usePromoteWorkflowVersion, useDeleteWorkflowVersion } from '@app/hooks';
-import { getWorkflowVersionsKey } from '@app/hooks/data/query-keys';
-import { useValidateWorkflowYaml } from '@app/hooks/data/yaml-validation-hooks';
 import { useNotifyStore } from '@app/store';
 import { ChatMessage, ChatMessageContent } from '@app/types/chat-message';
 import { Workflow, WorkflowEvent } from '@app/types/workflow';
 import { scrollToBottom } from '@app/utils/scroll';
-import { useQueryClient } from '@tanstack/react-query';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@app/components/ui/tabs';
-import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
 import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeMirror from '@uiw/react-codemirror';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useParams } from 'react-router';
 import { formatAppName } from '@app/lib/utils';
-import LazyWorkflowVisualEditor from './LazyWorkflowVisualEditor';
-import { useBeforeUnloadGuard } from '@app/hooks/use-before-unload-guard';
+import { useWorkflowUpdatedListener } from './useWorkflowDraftSave';
 
 type MessageInput = { role: 'user' | 'assistant'; content: ChatMessageContent };
 
 const WorkflowDetail: React.FC = () => {
   const { app: appId, id } = useParams<{ app: string; id: string }>();
   const { notifySuccess, notifyError } = useNotifyStore();
-  const queryClient = useQueryClient();
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
-  // Last saved YAML, shown on the page. Edits live in `draftYaml` until a save succeeds.
+  // Saved YAML shown on the page; editing happens in the standalone editor tab
   const [yamlContent, setYamlContent] = useState('');
-  const [draftYaml, setDraftYaml] = useState('');
-  const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [validationErrors, setValidationErrors] = useState<string[]>([]);
-  const validateYaml = useValidateWorkflowYaml();
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [editSubmitAction, setEditSubmitAction] = useState<'save' | 'new' | null>(null);
   const [versionsDialogOpen, setVersionsDialogOpen] = useState(false);
   // undefined = current_version
   const [selectedVersion, setSelectedVersion] = useState<number | undefined>(undefined);
@@ -300,35 +284,19 @@ const WorkflowDetail: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, selectedVersion]);
 
-  const handleSave = async (createNewVersion: boolean = false) => {
-    if (!id || !workflow) return;
+  // Reload when this workflow is created or saved from an editor tab
+  useWorkflowUpdatedListener(
+    useCallback(
+      (updatedId: string) => {
+        if (updatedId === id) loadWorkflow(selectedVersion);
+      },
+      [id, loadWorkflow, selectedVersion]
+    )
+  );
 
-    setSaving(true);
-    setValidationErrors([]);
-    try {
-      const validation = await validateYaml.mutateAsync({ yamlContent: draftYaml }).catch(() => null);
-      if (validation && !validation.valid) {
-        setValidationErrors(validation.errors.map((e) => (e.path ? `${e.path}: ${e.message}` : e.message)));
-        return;
-      }
-      await floConsoleService.workflowService.updateWorkflow(id, draftYaml, displayVersion, createNewVersion);
-      setEditDialogOpen(false);
-      // Refetch versions and reload the workflow so version metadata stays in sync.
-      queryClient.invalidateQueries({
-        queryKey: getWorkflowVersionsKey(appId || '', id || ''),
-      });
-      await loadWorkflow(selectedVersion);
-      notifySuccess(
-        createNewVersion
-          ? 'New version created (not promoted — promote it from Versions to make it live)'
-          : 'Workflow updated successfully'
-      );
-    } catch (error) {
-      console.error('Error updating workflow:', error);
-    } finally {
-      setSaving(false);
-      setEditSubmitAction(null);
-    }
+  const handleOpenEditor = () => {
+    const versionQuery = selectedVersion !== undefined ? `?version=${selectedVersion}` : '';
+    window.open(`/apps/${appId}/workflows/${id}/editor${versionQuery}`, '_blank', 'noopener');
   };
 
   const handlePromoteVersion = (version: number) => {
@@ -358,35 +326,6 @@ const WorkflowDetail: React.FC = () => {
   const handleViewVersion = (version: number) => {
     setSelectedVersion(version);
     setVersionsDialogOpen(false);
-  };
-
-  const handleEditDialogOpen = () => {
-    setDraftYaml(yamlContent);
-    setEditDialogOpen(true);
-  };
-
-  const isEditDirty = editDialogOpen && draftYaml !== yamlContent;
-
-  useBeforeUnloadGuard(isEditDirty);
-
-  useEffect(() => {
-    setValidationErrors([]);
-  }, [draftYaml]);
-
-  const handleEditDialogClose = () => {
-    setDiscardConfirmOpen(false);
-    setEditDialogOpen(false);
-    setDraftYaml(yamlContent);
-  };
-
-  // Cancel and the dialog's open-change path both come through here so unsaved edits are never dropped silently.
-  const requestCloseEditor = () => {
-    if (saving) return;
-    if (isEditDirty) {
-      setDiscardConfirmOpen(true);
-      return;
-    }
-    handleEditDialogClose();
   };
 
   const handleQuertionEntered = () => {
@@ -752,9 +691,9 @@ const WorkflowDetail: React.FC = () => {
   return (
     <div className="h-full bg-transparent py-5">
       <div className="flex h-full w-full flex-col gap-10">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <p className="frost-text text-2xl leading-normal font-semibold">{formatAppName(workflow?.name)}</p>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center justify-end gap-4">
             <StreamToggle
               enabled={listenEventsEnabled}
               onChange={setListenEventsEnabled}
@@ -787,7 +726,7 @@ const WorkflowDetail: React.FC = () => {
             <Button variant="outline" onClick={() => setVersionsDialogOpen(true)}>
               Versions
             </Button>
-            <Button variant="outline" onClick={handleEditDialogOpen}>
+            <Button variant="outline" onClick={handleOpenEditor} title="Opens the editor in a new tab">
               Edit
             </Button>
           </div>
@@ -847,130 +786,6 @@ const WorkflowDetail: React.FC = () => {
           </div>
         </div>
       </div>
-
-      <Dialog open={editDialogOpen} onOpenChange={(open) => (open ? setEditDialogOpen(true) : requestCloseEditor())}>
-        <DialogContent
-          showCloseButton={false}
-          // Esc and outside clicks stay available to the canvas, menus and prompts; use Cancel to close.
-          onEscapeKeyDown={(event) => event.preventDefault()}
-          onInteractOutside={(event) => event.preventDefault()}
-          className="bg-background !fixed !inset-0 !top-0 !left-0 z-50 flex !h-screen !max-h-none !w-screen !max-w-none min-w-0 !translate-x-0 !translate-y-0 flex-col !gap-0 overflow-hidden !rounded-none !border-0 !p-0"
-        >
-          {validationErrors.length > 0 && (
-            <ul className="border-border bg-card text-destructive absolute top-14 right-4 z-40 max-h-48 max-w-md list-disc space-y-0.5 overflow-y-auto rounded-md border py-2 pr-3 pl-7 text-xs shadow-md">
-              {validationErrors.map((message, index) => (
-                <li key={index}>{message}</li>
-              ))}
-            </ul>
-          )}
-          <Tabs defaultValue="visual" className="flex h-full min-h-0 w-full flex-col">
-            {/* TOP COMMAND BAR */}
-            <div className="border-border bg-card/95 z-30 flex h-14 shrink-0 items-center justify-between gap-4 border-b px-4 backdrop-blur-md">
-              <div className="flex items-center gap-2">
-                <div className="bg-primary/10 text-primary flex h-7 w-7 items-center justify-center rounded-lg text-xs font-bold shadow-xs">
-                  WF
-                </div>
-                <div>
-                  <DialogTitle className="text-foreground text-xs leading-none font-semibold">
-                    Edit Workflow Configuration
-                  </DialogTitle>
-                  <DialogDescription className="sr-only">Visual workflow builder</DialogDescription>
-                  <span className="text-muted-foreground text-[10px]">
-                    {workflow?.name || id} {workflow?.namespace && `(${workflow.namespace})`}
-                  </span>
-                </div>
-              </div>
-
-              {/* Center: Tabs Switcher */}
-              <TabsList className="bg-muted/60 h-8 p-0.5">
-                <TabsTrigger value="visual" className="h-7 px-3 text-xs">
-                  Visual Builder
-                </TabsTrigger>
-                <TabsTrigger value="yaml" className="h-7 px-3 text-xs">
-                  YAML Code
-                </TabsTrigger>
-              </TabsList>
-
-              {/* Right: Actions */}
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-muted-foreground hover:text-foreground h-8 text-xs"
-                  onClick={requestCloseEditor}
-                  disabled={saving}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-xs"
-                  disabled={saving}
-                  loading={saving && editSubmitAction === 'save'}
-                  onClick={() => {
-                    setEditSubmitAction('save');
-                    handleSave(false);
-                  }}
-                >
-                  Save
-                </Button>
-                <Button
-                  size="sm"
-                  className="h-8 text-xs shadow-xs"
-                  disabled={saving}
-                  loading={saving && editSubmitAction === 'new'}
-                  onClick={() => {
-                    setEditSubmitAction('new');
-                    handleSave(true);
-                  }}
-                >
-                  Save as new version
-                </Button>
-              </div>
-            </div>
-
-            {/* TABS CONTENT: 100% REMAINING REAL ESTATE */}
-            <TabsContent
-              value="visual"
-              forceMount
-              className="m-0 h-[calc(100vh-56px)] min-h-0 w-full flex-1 overflow-hidden outline-none data-[state=inactive]:hidden"
-            >
-              <LazyWorkflowVisualEditor yamlContent={draftYaml} onChange={(val) => setDraftYaml(val)} />
-            </TabsContent>
-
-            <TabsContent
-              value="yaml"
-              className="m-0 flex h-[calc(100vh-56px)] min-h-0 w-full flex-1 flex-col gap-2 p-4 outline-none"
-            >
-              <CodeMirror
-                value={draftYaml}
-                editable={true}
-                onChange={(value: string) => setDraftYaml(value)}
-                theme="dark"
-                height="100%"
-                width="100%"
-                maxWidth="100%"
-                className="border-border w-full min-w-0 flex-1 overflow-auto rounded-xl border"
-                extensions={[langs.yaml(), ...popupCodeMirrorExtensions]}
-              />
-              <p className="text-muted-foreground shrink-0 text-xs">
-                Define your workflow configuration in YAML format.
-              </p>
-            </TabsContent>
-          </Tabs>
-        </DialogContent>
-      </Dialog>
-
-      <DeleteConfirmationDialog
-        isOpen={discardConfirmOpen}
-        title="Discard unsaved changes?"
-        message="You have unsaved changes to this workflow. Closing the editor will discard them."
-        confirmLabel="Discard"
-        cancelLabel="Keep editing"
-        onConfirm={handleEditDialogClose}
-        onCancel={() => setDiscardConfirmOpen(false)}
-      />
 
       <VersionsDialog
         isOpen={versionsDialogOpen}

@@ -50,6 +50,8 @@ import {
   validateConnection,
 } from './graphUtils';
 import { createWorkflowNode } from './nodeFactory';
+import { ProblemsPanel } from './ProblemsPanel';
+import { LayoutDirection, readLayoutDirection, saveLayoutDirection } from './layoutDirection';
 import type { GraphIssue } from '@app/types/workflow-builder';
 import { WorkflowTemplate, createLinearTemplate, createRouterTemplate } from './workflowTemplates';
 import { WorkflowActions, WorkflowActionsContext } from './hooks/useWorkflowActions';
@@ -91,6 +93,10 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
+  const [layoutDirection, setLayoutDirection] = useState<LayoutDirection>(readLayoutDirection);
+  // Read inside callbacks/effects that shouldn't re-run when only the direction changes
+  const layoutDirectionRef = useRef(layoutDirection);
+  layoutDirectionRef.current = layoutDirection;
   // Only the id is stored: the selected node is always read from the current nodes
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [showDataWires, setShowDataWires] = useState<boolean>(false);
@@ -112,6 +118,8 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
   const yamlErrorRef = useRef<string | null>(null);
   // Problems in the drawn graph that will make the saved workflow fail or run differently
   const [issues, setIssues] = useState<GraphIssue[]>([]);
+  // Dismissing hides the current warnings; a new set (after the next edit) shows again
+  const [issuesDismissed, setIssuesDismissed] = useState(false);
 
   const reportYamlError = useCallback((error: string | null) => {
     yamlErrorRef.current = error;
@@ -152,7 +160,9 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
     reportYamlError(result.error ?? null);
     setIssues([]);
     const parsed = normalizeGraph(result);
-    const next = needsLayout(parsed) ? layoutGraph(parsed) : keepPositions(parsed, graphRef.current.nodes);
+    const next = needsLayout(parsed)
+      ? layoutGraph(parsed, layoutDirectionRef.current)
+      : keepPositions(parsed, graphRef.current.nodes);
     graphRef.current = next;
     setNodes(next.nodes);
     setEdges(next.edges);
@@ -172,6 +182,7 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
         }
         currentYamlRef.current = result.yaml;
         setIssues(result.issues);
+        setIssuesDismissed(false);
         emit(result.yaml);
         // Every node's config is now stored under its current id
         next = settleYamlNames(next);
@@ -267,16 +278,28 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
 
   // Explicit Auto-Layout: positions are canvas-only, so no YAML is emitted
   const handleAutoLayout = useCallback(() => {
-    const next = layoutGraph(graphRef.current);
+    const next = layoutGraph(graphRef.current, layoutDirectionRef.current);
     graphRef.current = next;
     setNodes(next.nodes);
     fitViewSoon();
   }, [setNodes, fitViewSoon]);
 
+  // Switching direction moves every node's handles, so re-run the layout in the new direction
+  const handleLayoutDirectionChange = useCallback(
+    (direction: LayoutDirection) => {
+      if (direction === layoutDirectionRef.current) return;
+      layoutDirectionRef.current = direction;
+      setLayoutDirection(direction);
+      saveLayoutDirection(direction);
+      handleAutoLayout();
+    },
+    [handleAutoLayout]
+  );
+
   // Node components read delete and start state from context, so node data stays free of callbacks
   const workflowActions = useMemo<WorkflowActions>(
-    () => ({ startNodeId, deleteNode: handleDeleteNode }),
-    [startNodeId, handleDeleteNode]
+    () => ({ startNodeId, deleteNode: handleDeleteNode, layoutDirection }),
+    [startNodeId, handleDeleteNode, layoutDirection]
   );
 
   // Deletions are applied by the graph reducer (reference cleanup + YAML), never by React Flow's own remove changes
@@ -413,7 +436,7 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
     (template: WorkflowTemplate) => {
       if (yamlErrorRef.current) return;
       setSelectedNodeId(null);
-      commitGraph(layoutGraph(normalizeGraph(template)));
+      commitGraph(layoutGraph(normalizeGraph(template), layoutDirectionRef.current));
       fitViewSoon();
     },
     [commitGraph, fitViewSoon]
@@ -467,11 +490,15 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
               onAddIterator={handleAddIterator}
               onAddSubworkflow={handleAddSubworkflow}
               onAutoLayout={handleAutoLayout}
+              layoutDirection={layoutDirection}
+              onLayoutDirectionChange={handleLayoutDirectionChange}
               onToggleDataWires={() => setShowDataWires((prev) => !prev)}
               onFitView={() => reactFlowInstance?.fitView({ padding: 0.2, duration: 300 })}
             />
 
             <ReactFlow
+              // Remount on direction change so React Flow re-measures the moved handles
+              key={layoutDirection}
               nodes={nodes}
               edges={visibleEdges}
               onlyRenderVisibleElements={true}
@@ -525,21 +552,15 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
             )}
 
             {/* PROBLEMS THAT WILL BREAK THE SAVED WORKFLOW */}
-            {!yamlError && issues.length > 0 && (
-              <div
-                role="status"
-                className="border-border bg-card absolute right-4 bottom-4 z-10 max-w-sm rounded-lg border px-3 py-2 text-[11px] shadow-lg"
-              >
-                <p className="text-foreground font-semibold">
-                  {issues.length} {issues.length === 1 ? 'problem' : 'problems'} in this workflow
-                </p>
-                <ul className="text-muted-foreground mt-1 list-disc space-y-0.5 pl-4">
-                  {issues.slice(0, 5).map((issue, i) => (
-                    <li key={`${issue.nodeId ?? ''}-${i}`}>{issue.message}</li>
-                  ))}
-                </ul>
-                {issues.length > 5 && <p className="text-muted-foreground mt-1">and {issues.length - 5} more</p>}
-              </div>
+            {!yamlError && !issuesDismissed && (
+              <ProblemsPanel
+                tone="warning"
+                title={`${issues.length} ${issues.length === 1 ? 'problem' : 'problems'} in this workflow`}
+                problems={issues.map((issue) => ({ message: issue.message }))}
+                maxVisible={5}
+                onDismiss={() => setIssuesDismissed(true)}
+                className="absolute right-4 bottom-4 z-10"
+              />
             )}
 
             {/* QUICK ADD POPUP (ON DRAGGING EDGE INTO EMPTY CANVAS) */}

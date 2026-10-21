@@ -1,10 +1,12 @@
-import { Handle, Position, NodeProps } from '@xyflow/react';
+import { Handle, NodeProps } from '@xyflow/react';
 import { Zap } from 'lucide-react';
 import React from 'react';
 import { Badge } from '@app/components/ui/badge';
+import { useHandlePositions } from '../hooks/useWorkflowActions';
 import { NodeCard } from './NodeCard';
 
 export const TriggerNode = React.memo(({ data, selected }: NodeProps) => {
+  const handles = useHandlePositions();
   return (
     <>
       <NodeCard
@@ -24,7 +26,7 @@ export const TriggerNode = React.memo(({ data, selected }: NodeProps) => {
       </NodeCard>
       <Handle
         type="source"
-        position={Position.Right}
+        position={handles.source}
         className="border-background h-3.5 w-3.5 border-2 bg-purple-500"
       />
     </>

@@ -1,18 +1,23 @@
-import { Handle, Position, NodeProps } from '@xyflow/react';
+import { Handle, NodeProps } from '@xyflow/react';
 import { Repeat, RotateCcw } from 'lucide-react';
 import React from 'react';
 import { Badge } from '@app/components/ui/badge';
-import { useWorkflowActions } from '../hooks/useWorkflowActions';
+import { useHandlePositions, useWorkflowActions } from '../hooks/useWorkflowActions';
 import { NodeCard } from './NodeCard';
 
 export const IteratorNode = React.memo(({ id, data, selected }: NodeProps) => {
   const { startNodeId, deleteNode } = useWorkflowActions();
+  const handles = useHandlePositions();
   const isStartNode = id === startNodeId;
   const inputFilters = Array.isArray(data.input_filter) ? data.input_filter : [];
 
   return (
     <>
-      <Handle type="target" position={Position.Left} className="border-background h-3.5 w-3.5 border-2 bg-indigo-500" />
+      <Handle
+        type="target"
+        position={handles.target}
+        className="border-background h-3.5 w-3.5 border-2 bg-indigo-500"
+      />
       <NodeCard
         title={(data.label as string) || 'Iterator'}
         icon={Repeat}
@@ -81,7 +86,7 @@ export const IteratorNode = React.memo(({ id, data, selected }: NodeProps) => {
       {/* Primary Exit handle (when entire loop completes) */}
       <Handle
         type="source"
-        position={Position.Right}
+        position={handles.source}
         className="border-background h-3.5 w-3.5 border-2 bg-indigo-500"
         title="On Loop Complete"
       />
@@ -90,9 +95,9 @@ export const IteratorNode = React.memo(({ id, data, selected }: NodeProps) => {
       {/* 1. Loop-Out: sends each item to the loop body */}
       <Handle
         type="source"
-        position={Position.Bottom}
+        position={handles.side}
         id="loop-out"
-        style={{ left: '70%' }}
+        style={handles.sideOffset('70%')}
         className="border-background h-3.5 w-3.5 border-2 bg-indigo-600"
         title="Iterate Item (1..N)"
       />
@@ -100,9 +105,9 @@ export const IteratorNode = React.memo(({ id, data, selected }: NodeProps) => {
       {/* 2. Loop-Return: receives the return cycle from the loop body */}
       <Handle
         type="target"
-        position={Position.Bottom}
+        position={handles.side}
         id="loop-return"
-        style={{ left: '30%' }}
+        style={handles.sideOffset('30%')}
         className="border-background h-3.5 w-3.5 border-2 bg-indigo-400"
         title="Loop Return (Next Item)"
       />
@@ -110,9 +115,9 @@ export const IteratorNode = React.memo(({ id, data, selected }: NodeProps) => {
       {Boolean(data.isLoopTarget) && (
         <Handle
           type="source"
-          position={Position.Bottom}
+          position={handles.side}
           id="loop-back"
-          style={{ left: '50%' }}
+          style={handles.sideOffset('50%')}
           className="border-background h-3.5 w-3.5 border-2 bg-indigo-500"
           title="Return to Loop Iterator"
         />

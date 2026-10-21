@@ -73,6 +73,7 @@ const AppRouter = () => {
             {routes.private.map((route) => renderChildren(route))}
             {routes.admin.map((route) => renderChildren(route))}
           </Route>
+          {routes.fullscreen.map((route) => renderChildren(route))}
         </Route>
         <Route path="*" element={<NotFoundPage />} />
       </Routes>

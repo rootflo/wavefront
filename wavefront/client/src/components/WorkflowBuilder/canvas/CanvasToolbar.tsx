@@ -1,7 +1,24 @@
 import { Node } from '@xyflow/react';
-import { Sparkles, Bot, GitBranch, Cpu, ArrowRight, Layers, Maximize2, Filter } from 'lucide-react';
+import {
+  Sparkles,
+  Bot,
+  GitBranch,
+  Cpu,
+  ArrowRight,
+  Layers,
+  Maximize2,
+  Filter,
+  ArrowLeftRight,
+  ArrowUpDown,
+} from 'lucide-react';
 import { Button } from '@app/components/ui/button';
 import { Badge } from '@app/components/ui/badge';
+import { LayoutDirection } from '../layoutDirection';
+
+const LAYOUT_DIRECTION_OPTIONS = [
+  { value: 'LR' as const, label: 'Left to right', icon: ArrowLeftRight },
+  { value: 'TB' as const, label: 'Top to bottom', icon: ArrowUpDown },
+];
 
 interface CanvasToolbarProps {
   nodes: Node[];
@@ -13,6 +30,8 @@ interface CanvasToolbarProps {
   onAddIterator: () => void;
   onAddSubworkflow: () => void;
   onAutoLayout: () => void;
+  layoutDirection: LayoutDirection;
+  onLayoutDirectionChange: (direction: LayoutDirection) => void;
   onToggleDataWires: () => void;
   onFitView: () => void;
 }
@@ -28,6 +47,8 @@ export const CanvasToolbar = ({
   onAddIterator,
   onAddSubworkflow,
   onAutoLayout,
+  layoutDirection,
+  onLayoutDirectionChange,
   onToggleDataWires,
   onFitView,
 }: CanvasToolbarProps) => (
@@ -86,10 +107,29 @@ export const CanvasToolbar = ({
       variant="ghost"
       onClick={onAutoLayout}
       className="text-muted-foreground hover:text-foreground h-7 gap-1 text-xs font-medium"
-      title="Automatically align and organize all blocks horizontally with zero overlap"
+      title="Automatically align and organize all blocks in the selected direction with zero overlap"
     >
       <Sparkles size={13} /> Re-align
     </Button>
+
+    <div role="radiogroup" aria-label="Layout direction" className="bg-muted/60 flex items-center rounded-md p-0.5">
+      {LAYOUT_DIRECTION_OPTIONS.map(({ value, label, icon: Icon }) => (
+        <Button
+          key={value}
+          type="button"
+          size="sm"
+          variant={layoutDirection === value ? 'secondary' : 'ghost'}
+          role="radio"
+          aria-checked={layoutDirection === value}
+          aria-label={label}
+          title={`Lay out ${label.toLowerCase()}`}
+          onClick={() => onLayoutDirectionChange(value)}
+          className="h-6 w-7 p-0"
+        >
+          <Icon size={13} />
+        </Button>
+      ))}
+    </div>
 
     <Button
       type="button"
