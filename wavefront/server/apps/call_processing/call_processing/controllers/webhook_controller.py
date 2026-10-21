@@ -18,8 +18,6 @@ from dependency_injector.wiring import inject, Provide
 from pipecat.runner.types import WebSocketRunnerArguments
 from pipecat.serializers.twilio import TwilioFrameSerializer
 from pipecat.serializers.exotel import ExotelFrameSerializer
-from pipecat.audio.vad.silero import SileroVADAnalyzer
-from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.transports.websocket.fastapi import (
     FastAPIWebsocketTransport,
     FastAPIWebsocketParams,
@@ -301,14 +299,6 @@ async def websocket_endpoint(
                 audio_out_enabled=True,
                 audio_in_passthrough=True,
                 add_wav_header=False,  # Twilio doesn't need WAV header
-                vad_analyzer=SileroVADAnalyzer(
-                    params=VADParams(
-                        confidence=0.7,  # Default is 0.7, can lower to 0.4-0.5 for faster detection
-                        start_secs=0.2,  # Default is 0.2, keep it
-                        stop_secs=0.2,  # KEY: Lower from default 0.8 for faster cutoff (should be 0.2 for smart turn detection)
-                        min_volume=0.6,  # Default is 0.6, adjust based on your audio quality
-                    ),
-                ),  # Voice Activity Detection
                 serializer=serializer,
             ),
         )
@@ -452,14 +442,6 @@ async def exotel_inbound_websocket(
                 audio_out_enabled=True,
                 audio_in_passthrough=True,
                 add_wav_header=False,
-                vad_analyzer=SileroVADAnalyzer(
-                    params=VADParams(
-                        confidence=0.7,
-                        start_secs=0.2,
-                        stop_secs=0.2,
-                        min_volume=0.6,
-                    ),
-                ),
                 serializer=serializer,
             ),
         )

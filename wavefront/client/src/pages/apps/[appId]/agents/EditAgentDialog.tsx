@@ -26,9 +26,10 @@ import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeMirror from '@uiw/react-codemirror';
 import yaml from 'js-yaml';
 import { Check, ChevronsUpDown } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
+import { buildYamlToolsFromSelection, selectedToolsEqual, selectedToolsFromYaml } from './agent-tools';
 
 const editAgentSchema = z.object({
   yamlContent: z.string().min(1, 'YAML content is required'),
@@ -67,6 +68,7 @@ const EditAgentDialog: React.FC<EditAgentDialogProps> = ({
   const [localSelectedTools, setLocalSelectedTools] = useState(initialSelectedTools);
   const [toolsComboboxOpen, setToolsComboboxOpen] = useState(false);
   const [submitAction, setSubmitAction] = useState<'save' | 'new' | null>(null);
+  const skipNextToolsYamlSyncRef = useRef(false);
   const { notifyError } = useNotifyStore();
 
   const form = useForm<EditAgentInput>({
@@ -78,23 +80,31 @@ const EditAgentDialog: React.FC<EditAgentDialogProps> = ({
   });
 
   useEffect(() => {
-    if (isOpen) {
-      form.reset({
-        yamlContent: initialYamlContent,
-        selectedTools: initialSelectedTools,
-      });
-      setLocalYamlContent(initialYamlContent);
-      setLocalSelectedTools(initialSelectedTools);
+    if (!isOpen) return;
+
+    let selected = initialSelectedTools;
+    // Parent may still be hydrating; recover selection from YAML so opening
+    // the dialog never clears agent.tools via the sync effect below.
+    if (selected.length === 0 && initialYamlContent && toolsDetails.length > 0) {
+      selected = selectedToolsFromYaml(initialYamlContent, toolsDetails);
     }
-  }, [initialYamlContent, initialSelectedTools, form, isOpen]);
 
-  // Update YAML when tools change
+    skipNextToolsYamlSyncRef.current = true;
+    form.reset({
+      yamlContent: initialYamlContent,
+      selectedTools: selected,
+    });
+    setLocalYamlContent(initialYamlContent);
+    setLocalSelectedTools(selected);
+  }, [initialYamlContent, initialSelectedTools, form, isOpen, toolsDetails]);
+
+  // Update YAML when tools change (skip the reset/hydration pass).
   useEffect(() => {
-    if (!localYamlContent || toolsDetails.length === 0) return;
-
-    const tools = toolsDetails.filter((tool) =>
-      localSelectedTools.some((selected) => selected.value === tool.display_name)
-    );
+    if (!isOpen || !localYamlContent || toolsDetails.length === 0) return;
+    if (skipNextToolsYamlSyncRef.current) {
+      skipNextToolsYamlSyncRef.current = false;
+      return;
+    }
 
     let parsedYaml: { agent?: { tools?: unknown[] } } | null | undefined;
     try {
@@ -105,34 +115,37 @@ const EditAgentDialog: React.FC<EditAgentDialogProps> = ({
       return;
     }
 
-    if (parsedYaml && parsedYaml.agent) {
-      if (!parsedYaml.agent.tools) {
-        parsedYaml.agent.tools = [];
-      }
+    if (!parsedYaml?.agent) return;
 
-      parsedYaml.agent.tools = tools.map((tool) => {
-        const prefilledParams: Record<string, string> | undefined =
-          tool.prefilled_values && tool.prefilled_values.length > 0
-            ? tool.prefilled_values.reduce(
-                (acc: Record<string, string>, obj: { [key: string]: string }) => {
-                  return { ...acc, ...obj };
-                },
-                {} as Record<string, string>
-              )
-            : undefined;
-
-        return {
-          name: tool.name,
-          prefilled_params: prefilledParams,
-          name_override: tool.name,
-          description_override: tool.description,
+    const existingTools = parsedYaml.agent.tools || [];
+    const newTools = buildYamlToolsFromSelection(localSelectedTools, toolsDetails);
+    const toolsChanged =
+      existingTools.length !== newTools.length ||
+      existingTools.some((existingTool: unknown, index: number) => {
+        const newTool = newTools[index];
+        if (!newTool) return true;
+        const existing = existingTool as {
+          name?: string;
+          prefilled_params?: Record<string, string>;
         };
+        return (
+          existing.name !== newTool.name ||
+          JSON.stringify(existing.prefilled_params || {}) !== JSON.stringify(newTool.prefilled_params || {})
+        );
       });
-      setLocalYamlContent(yaml.dump(parsedYaml));
-      form.setValue('yamlContent', yaml.dump(parsedYaml));
+
+    if (!toolsChanged) return;
+
+    parsedYaml.agent.tools = newTools;
+    const dumped = yaml.dump(parsedYaml);
+    setLocalYamlContent(dumped);
+    form.setValue('yamlContent', dumped);
+    // Keep form selectedTools in sync for submit.
+    if (!selectedToolsEqual(form.getValues('selectedTools') || [], localSelectedTools)) {
+      form.setValue('selectedTools', localSelectedTools);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [localSelectedTools, toolsDetails]);
+  }, [localSelectedTools, toolsDetails, isOpen]);
 
   // createNewVersion is passed in directly by the clicked button (not read from
   // submitAction state), so react-hook-form's async submit can't act on a stale

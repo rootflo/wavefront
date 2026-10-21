@@ -4,7 +4,7 @@ Language Detection Tool for Multi-Language Voice Agents
 Provides LLM-callable language detection and switching capabilities
 """
 
-from typing import Dict, Any, List, Callable
+from typing import Awaitable, Dict, Any, List, Callable, Optional
 from pipecat.services.llm_service import FunctionCallParams
 from call_processing.log.logger import logger
 from call_processing.constants.language_config import LANGUAGE_INSTRUCTIONS
@@ -25,6 +25,7 @@ class LanguageDetectionToolFactory:
         supported_languages: List[str],
         default_language: str,
         language_state: Dict[str, Any],
+        on_language_selected: Optional[Callable[[str], Awaitable[None]]] = None,
     ) -> Callable:
         """
         Create language detection tool function with captured context
@@ -41,10 +42,21 @@ class LanguageDetectionToolFactory:
             default_language: Default language code
             language_state: Dictionary to track current language and switch count
                            Format: {'current_language': str, 'switch_count': int, 'original_system_prompt': str}
+            on_language_selected: Optional async hook called with the language code once the
+                           user's language is settled (switched, or already in use). Browser
+                           sessions use it to tell the app which language the agent picked.
 
         Returns:
             Async function compatible with Pipecat's function calling
         """
+
+        async def notify_selected(language: str) -> None:
+            if on_language_selected is None:
+                return
+            try:
+                await on_language_selected(language)
+            except Exception as e:  # never let a UI notification break the tool
+                logger.warning(f'on_language_selected hook failed: {e}')
 
         async def detect_and_switch_language(params: FunctionCallParams):
             """
@@ -114,6 +126,7 @@ class LanguageDetectionToolFactory:
                 # Validation 2: Check if already in target language
                 if target_language == current_language:
                     logger.info(f'Already using language: {target_language}')
+                    await notify_selected(target_language)
                     await params.result_callback(
                         {
                             'success': True,
@@ -192,6 +205,8 @@ class LanguageDetectionToolFactory:
                     # Update state
                     language_state['current_language'] = target_language
                     language_state['switch_count'] = switch_count + 1
+
+                    await notify_selected(target_language)
 
                     # Return success result
                     await params.result_callback(

@@ -8,6 +8,8 @@ from call_processing.cache.cache_manager import CacheManager
 from call_processing.log.logger import configure_logging
 from call_processing.services.voice_agent_cache_service import VoiceAgentCacheService
 from call_processing.services.floware_http_client import FlowareHttpClient
+from call_processing.services.webrtc_room_service import WebRTCRoomService
+from call_processing.services.webrtc_session_service import WebRTCSessionService
 from common_module.config_loader import load_ini
 
 CONFIG_INI = Path(__file__).resolve().parent.parent / 'config.ini'
@@ -49,6 +51,21 @@ class ApplicationContainer(containers.DeclarativeContainer):
         VoiceAgentCacheService,
         cache_manager=cache_manager,
         floware_http_client=floware_http_client,
+    )
+
+    # Browser (WebRTC) rooms + sessions
+    webrtc_room_service = providers.Singleton(
+        WebRTCRoomService,
+        cache_manager=cache_manager,
+        room_ttl_secs=app_settings.provided.webrtc.room_ttl_secs,
+        max_session_secs=app_settings.provided.webrtc.max_session_secs,
+    )
+
+    webrtc_session_service = providers.Singleton(
+        WebRTCSessionService,
+        room_service=webrtc_room_service,
+        voice_agent_cache_service=voice_agent_cache_service,
+        app_settings=app_settings,
     )
 
 

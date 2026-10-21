@@ -2,6 +2,7 @@ from flo_lib.http import alias_httpx
 
 alias_httpx()
 import glob
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
 # ruff: noqa: E402
@@ -34,7 +35,16 @@ application_container.wire(
 # so a new/unknown APP_ENV value stays closed rather than exposing the surface.
 is_dev = environment == 'dev'
 
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    yield
+    # Close browser (WebRTC) peer connections still open on this instance
+    await application_container.webrtc_session_service().close()
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title='Call Processing API',
     description='Real-time voice call processing with Pipecat',
     version='1.0.0',

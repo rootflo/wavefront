@@ -91,25 +91,27 @@ class AzureBlobStorage(CloudStorageHandler):
     # ------------------------------------------------------------------
 
     def get_file(self, bucket_name: str, file_path: str) -> bytes:
-        """
-        Download a blob from an Azure container.
+        """Download a blob from an Azure container."""
+        content, _ = self.get_file_with_content_type(bucket_name, file_path)
+        return content
 
-        Args:
-            bucket_name: Name of the Azure container (equivalent to S3 bucket).
-            file_path: Path / name of the blob inside the container.
-
-        Returns:
-            File content as bytes.
-
-        Raises:
-            CloudStorageFileNotFoundError: If the blob or container does not exist.
-            Exception: For other errors.
-        """
+    def get_file_with_content_type(
+        self, bucket_name: str, file_path: str
+    ) -> Tuple[bytes, Optional[str]]:
+        """Get blob bytes and the stored content type, if any."""
         try:
             blob_client = self.client.get_blob_client(
                 container=bucket_name, blob=file_path
             )
-            return blob_client.download_blob().readall()
+            downloader = blob_client.download_blob()
+            content = downloader.readall()
+            content_settings = getattr(downloader, 'properties', None)
+            content_type = None
+            if content_settings is not None:
+                settings = getattr(content_settings, 'content_settings', None)
+                if settings is not None:
+                    content_type = settings.content_type
+            return content, content_type
         except ResourceNotFoundError:
             raise CloudStorageFileNotFoundError(bucket_name, file_path)
         except Exception as e:

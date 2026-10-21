@@ -11,6 +11,42 @@ import flo_lib.http as httpx
 
 from call_processing.log.logger import logger
 from pipecat.adapters.schemas.function_schema import FunctionSchema
+from pipecat.frames.frames import FunctionCallResultProperties
+
+
+class AppToolWrapper:
+    """Tool handled by the browser app instead of an HTTP call.
+
+    ``execute`` raises an ``app_event`` on the live session's messenger and waits for
+    the app's ack, so the LLM sees whether the app accepted the call (and can re-ask
+    when it did not). Without a browser attached (e.g. a phone call) it fails with
+    ``no_app``.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        messenger_getter: Optional[Callable[[], Any]] = None,
+        ack_timeout_s: float = 4.0,
+        speak_on_success: bool = False,
+    ):
+        self.name = name
+        self._messenger_getter = messenger_getter or (lambda: None)
+        self.ack_timeout_s = ack_timeout_s
+        self.speak_on_success = speak_on_success
+
+    async def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        messenger = self._messenger_getter()
+        if messenger is None or not hasattr(messenger, 'emit_app_event'):
+            return {'success': False, 'error': 'no_app'}
+        return await messenger.emit_app_event(
+            self.name, dict(params or {}), timeout=float(self.ack_timeout_s)
+        )
+
+    def should_run_llm(self, result: Dict[str, Any]) -> bool:
+        """Success: stay quiet, the app's next step opens the conversation.
+        Failure: let the agent react (usually by asking again)."""
+        return (not result.get('success')) or self.speak_on_success
 
 
 class ApiToolWrapper:
@@ -174,15 +210,19 @@ class ToolWrapperFactory:
     """Factory for creating tool wrapper instances and Pipecat-compatible functions"""
 
     @staticmethod
-    def create_wrapper(tool: Dict[str, Any]):
+    def create_wrapper(
+        tool: Dict[str, Any],
+        messenger_getter: Optional[Callable[[], Any]] = None,
+    ):
         """
         Create appropriate wrapper based on tool type
 
         Args:
             tool: Tool configuration dictionary
+            messenger_getter: Returns the live browser messenger (app tools only)
 
         Returns:
-            ApiToolWrapper or PythonToolWrapper instance
+            ApiToolWrapper, PythonToolWrapper or AppToolWrapper instance
 
         Raises:
             ValueError: If tool type is unsupported
@@ -201,6 +241,13 @@ class ToolWrapperFactory:
             )
         elif tool_type == 'python':
             return PythonToolWrapper(config)
+        elif tool_type == 'app':
+            return AppToolWrapper(
+                name=tool.get('name'),
+                messenger_getter=messenger_getter,
+                ack_timeout_s=config.get('ack_timeout_s', 4.0),
+                speak_on_success=config.get('speak_on_success', False),
+            )
         else:
             raise ValueError(f'Unsupported tool type: {tool_type}')
 
@@ -243,6 +290,7 @@ class ToolWrapperFactory:
             This function is called by Pipecat when the LLM decides to invoke the tool.
             It executes the tool wrapper and returns results to the LLM.
             """
+            result_callback = None
             try:
                 logger.info(
                     f"Executing tool '{tool_name}' with params: {params.arguments if hasattr(params, 'arguments') else params}"
@@ -265,7 +313,15 @@ class ToolWrapperFactory:
 
                 # Return result via callback if available
                 if result_callback:
-                    await result_callback(result)
+                    if isinstance(wrapper, AppToolWrapper):
+                        await result_callback(
+                            result,
+                            properties=FunctionCallResultProperties(
+                                run_llm=wrapper.should_run_llm(result)
+                            ),
+                        )
+                    else:
+                        await result_callback(result)
 
                 return result
 
@@ -292,11 +348,13 @@ class ToolWrapperFactory:
     @staticmethod
     def create_all_tool_functions(
         agent_tools: List[Dict[str, Any]],
+        messenger_getter: Optional[Callable[[], Any]] = None,
     ) -> Tuple[List[FunctionSchema], List[Tuple[str, Callable]]]:
         """
         Create wrapper functions for all tools attached to an agent
 
         Args:
+            messenger_getter: Returns the live browser messenger, for app tools
             agent_tools: List of tool configurations from get_agent_tools()
                         Each dict contains: {id, name, description, tool_type,
                                             config, parameter_schema, is_enabled, association}
@@ -321,12 +379,16 @@ class ToolWrapperFactory:
         for tool in enabled_tools:
             try:
                 # Create wrapper based on tool type
-                wrapper = ToolWrapperFactory.create_wrapper(tool)
+                wrapper = ToolWrapperFactory.create_wrapper(tool, messenger_getter)
 
                 # Apply config overrides if present
                 config_overrides = tool.get('association', {}).get('config_overrides')
                 if config_overrides:
-                    if isinstance(wrapper, ApiToolWrapper):
+                    if isinstance(wrapper, AppToolWrapper):
+                        for key in ('ack_timeout_s', 'speak_on_success'):
+                            if key in config_overrides:
+                                setattr(wrapper, key, config_overrides[key])
+                    elif isinstance(wrapper, ApiToolWrapper):
                         # For ApiToolWrapper, set attributes directly
                         allowed_attrs = {
                             'url',

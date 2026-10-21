@@ -9,7 +9,11 @@ from call_processing.log.logger import logger
 
 # Pipecat STT services and their Settings classes
 from pipecat.services.deepgram.stt import DeepgramSTTService, DeepgramSTTSettings
-from pipecat.services.sarvam.stt import SarvamSTTService, SarvamSTTSettings
+from pipecat.services.sarvam.stt import (
+    MODEL_CONFIGS as SARVAM_STT_MODEL_CONFIGS,
+    SarvamSTTService,
+    SarvamSTTSettings,
+)
 from pipecat.services.elevenlabs.stt import (
     ElevenLabsRealtimeSTTService,
     ElevenLabsRealtimeSTTSettings,
@@ -75,7 +79,7 @@ class STTServiceFactory:
         """Create Deepgram STT service"""
         # Runtime-updatable settings
         settings_kwargs: Dict[str, Any] = {
-            'model': parameters.get('model', 'nova-2'),
+            'model': parameters.get('model', 'nova-3-general'),
             'interim_results': parameters.get('interim_results', True),
         }
 
@@ -140,16 +144,33 @@ class STTServiceFactory:
         if 'high_vad_sensitivity' in parameters:
             settings_kwargs['high_vad_sensitivity'] = parameters['high_vad_sensitivity']
 
-        model = parameters.get('model', 'saarika:v2.5')
+        # Resolve against the installed Pipecat allowlist. 0.0.106 ships
+        # saarika/saaras:v2.5 + saaras:v3; 1.12 ships saaras:v3 + saaras:v4.
+        requested = parameters.get('model', 'saaras:v3')
+        fallbacks = {
+            'saaras:v4': 'saaras:v3',
+            'saaras:v2.5': 'saaras:v3',
+            'saarika:v2.5': 'saaras:v3',
+        }
+        model = requested
+        if model not in SARVAM_STT_MODEL_CONFIGS:
+            fallback = fallbacks.get(model, 'saaras:v3')
+            if fallback not in SARVAM_STT_MODEL_CONFIGS:
+                fallback = next(iter(SARVAM_STT_MODEL_CONFIGS))
+            logger.warning(
+                f"Sarvam STT model '{requested}' not supported by this Pipecat "
+                f"({', '.join(sorted(SARVAM_STT_MODEL_CONFIGS))}); using '{fallback}'"
+            )
+            model = fallback
+        settings_kwargs['model'] = model
         sample_rate = parameters.get('sample_rate', 8000)
 
         logger.info(f'Sarvam STT config: model={model}, sample_rate={sample_rate}')
 
         return SarvamSTTService(
             api_key=api_key,
-            model=model,
             sample_rate=sample_rate,
-            settings=SarvamSTTSettings(**settings_kwargs) if settings_kwargs else None,
+            settings=SarvamSTTSettings(**settings_kwargs),
         )
 
     # Mapping of short language codes to ElevenLabs ISO-639-3 language codes

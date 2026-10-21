@@ -69,6 +69,12 @@ override-dependencies = [
     # CVE-2026-0994. Its frames_pb2 gencode (5.x) loads on the 6.x runtime,
     # which supports gencode one major version back.
     "protobuf>=6.31.1,<7",
+    # Temporary: pipecat-ai[google]>=1.11 needs google-genai>=2.19, but flo-ai
+    # 1.1.18 still caps google-genai<2. Remove once flo-ai widens that cap.
+    "google-genai>=2.19.0,<3",
+    # Pipecat 1.12 wants onnxruntime~=1.24.3, which dropped Intel macOS wheels.
+    "onnxruntime==1.23.2 ; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "onnxruntime~=1.24.3 ; sys_platform != 'darwin' or platform_machine != 'x86_64'",
 ]
 
 # Security floors for packages that mostly arrive indirectly -- via flo-ai,

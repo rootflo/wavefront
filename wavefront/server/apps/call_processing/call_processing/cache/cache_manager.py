@@ -26,6 +26,82 @@ def _is_retryable_redis_error(exc: BaseException) -> bool:
     return isinstance(exc, (RedisError, ConnectionError, TimeoutError))
 
 
+# Consume the join token: validate, flip pending -> joined, drop the token hash.
+# Runs atomically so two concurrent offers cannot both win.
+#
+# KEYS[1] room key
+# ARGV[1] token hash, ARGV[2] voice_agent_id, ARGV[3] joined_at, ARGV[4] joined TTL
+# Returns {'ok'} or {'err', <code>}
+_CONSUME_ROOM_JOIN_SCRIPT = """
+local raw = redis.call('GET', KEYS[1])
+if not raw then
+    return {'err', 'room_expired'}
+end
+local room = cjson.decode(raw)
+if room['status'] == 'ended' then
+    return {'err', 'room_expired'}
+end
+if room['status'] ~= 'pending' then
+    return {'err', 'room_already_joined'}
+end
+if room['voice_agent_id'] ~= ARGV[2] then
+    return {'err', 'invalid_join_token'}
+end
+if (not room['join_token_hash']) or room['join_token_hash'] ~= ARGV[1] then
+    return {'err', 'invalid_join_token'}
+end
+room['status'] = 'joined'
+room['joined_at'] = ARGV[3]
+room['join_token_hash'] = nil
+redis.call('SET', KEYS[1], cjson.encode(room), 'EX', tonumber(ARGV[4]))
+return {'ok'}
+"""
+
+# Attach pc_id / instance_id to a joined room, keeping its TTL.
+# ARGV[1] pc_id, ARGV[2] instance_id
+_ATTACH_ROOM_CONNECTION_SCRIPT = """
+local raw = redis.call('GET', KEYS[1])
+if not raw then
+    return 0
+end
+local room = cjson.decode(raw)
+room['pc_id'] = ARGV[1]
+room['instance_id'] = ARGV[2]
+redis.call('SET', KEYS[1], cjson.encode(room), 'KEEPTTL')
+return 1
+"""
+
+# Record a completed agent swap, keeping the room TTL. Refuses agents that are not
+# on the room's allowlist, so the record can never point outside it.
+# ARGV[1] agent_id
+# Returns {'ok', <swap_count>} or {'err', <code>}
+_RECORD_ROOM_SWAP_SCRIPT = """
+local raw = redis.call('GET', KEYS[1])
+if not raw then
+    return {'err', 'room_expired'}
+end
+local room = cjson.decode(raw)
+if room['status'] ~= 'joined' then
+    return {'err', 'room_expired'}
+end
+local allowed = false
+if type(room['allowed_agent_ids']) == 'table' then
+    for _, id in ipairs(room['allowed_agent_ids']) do
+        if id == ARGV[1] then
+            allowed = true
+        end
+    end
+end
+if not allowed then
+    return {'err', 'agent_not_allowed'}
+end
+room['active_voice_agent_id'] = ARGV[1]
+room['swap_count'] = (tonumber(room['swap_count']) or 0) + 1
+redis.call('SET', KEYS[1], cjson.encode(room), 'KEEPTTL')
+return {'ok', room['swap_count']}
+"""
+
+
 class CacheManager:
     def __init__(
         self,
@@ -53,8 +129,8 @@ class CacheManager:
                 a caller waits up to REDIS_POOL_TIMEOUT (2s) for one to be
                 released, then gets ConnectionError('No connection available.').
         """
-        if pool_size is None:
-            pool_size = 10
+        # config.ini values arrive as strings
+        pool_size = int(pool_size) if pool_size is not None else 10
         self.namespace = namespace
         self.redis_host = redis_host
         self.redis_port = int(redis_port)
@@ -215,6 +291,44 @@ class CacheManager:
         except (RedisError, ConnectionError, TimeoutError) as e:
             logger.error(f'Error getting key: {key} from cache: {e}')
             raise
+
+    def _eval_fixed_script(self, script: str, key: str, args: list[Any]) -> Any:
+        """Run one of this module's fixed Lua scripts on a single namespaced key.
+
+        Private on purpose: callers pick a script via a specific method below and
+        never supply script text.
+        """
+        namespaced = f'{self.namespace}/{key}'
+        try:
+            return self.redis.eval(script, 1, namespaced, *args)
+        except (RedisError, ConnectionError, TimeoutError) as e:
+            logger.error(f'Error running script on key {key}: {e}')
+            raise
+
+    def consume_room_join_token(
+        self,
+        key: str,
+        token_hash: str,
+        voice_agent_id: str,
+        joined_at: str,
+        joined_ttl_secs: int,
+    ) -> Any:
+        """Atomically validate a room's join token and flip it pending -> joined."""
+        return self._eval_fixed_script(
+            _CONSUME_ROOM_JOIN_SCRIPT,
+            key,
+            [token_hash, voice_agent_id, joined_at, joined_ttl_secs],
+        )
+
+    def attach_room_connection(self, key: str, pc_id: str, instance_id: str) -> Any:
+        """Attach pc_id / instance_id to a room record, keeping its TTL."""
+        return self._eval_fixed_script(
+            _ATTACH_ROOM_CONNECTION_SCRIPT, key, [pc_id, instance_id]
+        )
+
+    def record_room_swap(self, key: str, agent_id: str) -> Any:
+        """Atomically record an agent swap if the agent is on the room's allowlist."""
+        return self._eval_fixed_script(_RECORD_ROOM_SWAP_SCRIPT, key, [agent_id])
 
     _INVALIDATE_BATCH = 500
 

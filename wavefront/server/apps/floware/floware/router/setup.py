@@ -90,8 +90,10 @@ FLOWARE_ROUTERS = [
     stt_config_router,
     superset_controller,
     telephony_config_router,
-    tool_router,
+    # Registry tools before voice-agent tool CRUD: static paths like
+    # /v1/tools/tool-details must not be captured by /v1/tools/{tool_id}.
     tools_router,
+    tool_router,
     tts_config_router,
     user_management_router,
     voice_agent_router,

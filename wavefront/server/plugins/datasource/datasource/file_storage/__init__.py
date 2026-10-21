@@ -124,6 +124,56 @@ class FileStoragePlugin(FileStorageABC):
     def download_file(self, path: str) -> bytes:
         return self.storage.read_file(self.bucket_name, self.resolve_key(path))
 
+    def download_file_with_content_type(self, path: str) -> tuple[bytes, Optional[str]]:
+        """Return ``(bytes, stored content-type)`` for ``path`` under ``base_path``."""
+        return self.storage.read_file_with_content_type(
+            self.bucket_name, self.resolve_key(path)
+        )
+
+    def delete_file(self, path: str) -> str:
+        """Delete ``path`` under ``base_path``; return the storage URI that was removed."""
+        key = self.resolve_key(path)
+        self.storage.delete_file(self.bucket_name, key)
+        return self.uri_for(key)
+
+    def list_files(
+        self,
+        prefix: str = '',
+        page_size: int = 50,
+        page_number: int = 1,
+    ) -> tuple[list[str], bool]:
+        """List object keys under ``base_path``, as paths relative to it.
+
+        ``prefix`` is also relative to ``base_path``. Folder placeholder keys
+        (empty name or trailing ``/``) are omitted.
+        """
+        relative_prefix = normalize_storage_path(prefix)
+        if self.base_path and relative_prefix:
+            storage_prefix = f'{self.base_path}/{relative_prefix}'
+        elif self.base_path:
+            storage_prefix = self.base_path
+        else:
+            storage_prefix = relative_prefix
+
+        keys, has_next = self.storage.list_files(
+            self.bucket_name, storage_prefix, page_size, page_number
+        )
+        return [
+            path for key in keys if (path := self._relative_listed_path(key))
+        ], has_next
+
+    def _relative_listed_path(self, key: str) -> Optional[str]:
+        """``key`` relative to ``base_path``, or None if it is not a file under it."""
+        if not key or key.endswith('/'):
+            return None
+        if not self.base_path:
+            return key
+        prefix = f'{self.base_path}/'
+        if not key.startswith(prefix):
+            return None
+        relative = key[len(prefix) :]
+        return relative or None
+
     def uri_for(self, key: str) -> str:
         return f'{self.protocol}://{self.bucket_name}/{key}'
 
