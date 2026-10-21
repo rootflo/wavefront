@@ -210,5 +210,31 @@ class TestTemperaturePrecedence:
         assert llm._llm.temperature == 0.0
 
 
+class TestRootFloProxyAuthHeaders:
+    """The proxy requires the caller's Floware credential in Authorization."""
+
+    async def test_authorization_reaches_gemini_proxy_headers(self):
+        llm = build_llm(access_token='floware-token-123', app_key='app-key')
+        stub_fetch(llm, {}, 'gemini')
+
+        await llm._ensure_initialized()
+
+        headers = llm._llm.client._api_client._http_options.headers or {}
+        assert headers.get('Authorization') == 'Bearer floware-token-123'
+        assert headers.get('X-Rootflo-Key') == 'app-key'
+
+    async def test_authorization_reaches_anthropic_custom_headers(self):
+        llm = build_llm(access_token='floware-token-123', app_key='app-key')
+        stub_fetch(llm, {}, 'anthropic')
+
+        await llm._ensure_initialized()
+
+        assert (
+            llm._llm.client.default_headers.get('Authorization')
+            == 'Bearer floware-token-123'
+        )
+        assert llm._llm.client.default_headers.get('X-Rootflo-Key') == 'app-key'
+
+
 if __name__ == '__main__':
     pytest.main([__file__])

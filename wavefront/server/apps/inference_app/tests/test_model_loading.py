@@ -93,7 +93,13 @@ def save_tiny_clip_like_the_repo(path):
         },
         projection_dim=16,
     )
-    CLIPModel(config).save_pretrained(path, safe_serialization=False)
+    import torch
+
+    model = CLIPModel(config)
+    # transformers 5 always writes safetensors, so pickle the weights ourselves
+    model.save_pretrained(path)
+    (path / 'model.safetensors').unlink()
+    torch.save(model.state_dict(), path / 'pytorch_model.bin')
     (path / 'tf_model.h5').write_bytes(b'tf weights')
     (path / 'flax_model.msgpack').write_bytes(b'flax weights')
 

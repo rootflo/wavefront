@@ -1,0 +1,328 @@
+---
+title: "Quickstart"
+description: "Add a model, build an agent and a workflow, and run it from the Wavefront Console and the API"
+icon: "rocket"
+---
+
+In about fifteen minutes you will build a small **invoice checker**:
+
+1. an **agent** that reads an invoice and returns its fields as JSON,
+2. a **function** that checks the line items add up to the total,
+3. a **workflow** that runs the two in order,
+
+and run it from the Wavefront Console and with `curl`.
+
+You need access to an app in the Wavefront Console, and an API key for one of the supported model providers.
+
+## 1. Add a model
+
+Open your app and go to **LLM Repository → Add LLM**.
+
+| Field | Example |
+|---|---|
+| **Display Name** | `Default chat model` |
+| **Inference Engine Type** | Your provider, for example *OpenAI GPT* or *Azure OpenAI* |
+| **Model Type** | LLM |
+| **LLM Model Name** | The model or deployment name at your provider |
+| **API Key** | Your provider key |
+| **Base URL**, **API Version** | Only for providers that need them (Azure OpenAI, Ollama, vLLM) |
+
+Click **Add Model**, then copy the new entry's **id** from the list. Agents refer to the model by this id, so the key never appears in your YAML.
+
+<Frame>
+  <img src="/images/wavefront/qs-llm-config.png" alt="The Add LLM to Repository dialog" />
+</Frame>
+
+## 2. Create the agent
+
+Go to **Agents → Create Agent**. Enter an **Agent ID** (`invoice-reader`), pick a **Namespace**, and paste this YAML, replacing `<your-model-id>`:
+
+```yaml invoice-reader.yaml
+metadata:
+  name: invoice-reader
+  version: 1.0.0
+  description: Reads an invoice and returns its key fields
+
+agent:
+  name: invoice-reader
+  role: Invoice reader
+  job: |
+    You read invoices and return their key fields exactly as printed.
+    Use null for a field that is not on the invoice. Amounts are numbers
+    without currency symbols or thousands separators.
+  model:
+    provider: rootflo          # use a model from the LLM Repository…
+    model_id: <your-model-id>  # …by its id
+  settings:
+    temperature: 0
+  parser:                      # the shape of the answer
+    name: invoice-fields
+    fields:
+      - name: vendor
+        type: str
+        description: Name of the company that issued the invoice
+      - name: invoice_number
+        type: str
+        description: The invoice number
+      - name: invoice_date
+        type: str
+        description: Invoice date as YYYY-MM-DD
+      - name: total_amount
+        type: float
+        description: The invoice total
+      - name: line_items
+        type: array
+        description: Each line of the invoice
+        items:
+          name: line_item
+          type: object
+          description: One line
+          fields:
+            - name: description
+              type: str
+              description: What was charged
+            - name: amount
+              type: float
+              description: Amount for this line
+```
+
+The `parser` makes the agent return JSON with exactly these fields. Field descriptions matter: the model reads them.
+
+### Try it
+
+Open the agent. The console shows its name in title case (`invoice-reader` becomes *Invoice Reader*). In the **Ask anything** box, paste an invoice and send it:
+
+```text
+ACME Office Supplies Ltd. Invoice INV-2041, dated 3 March 2026.
+1) Printer paper, 10 reams: 2,400.00  2) Toner cartridge: 3,150.00
+3) Delivery: 250.00. Total due: 5,800.00
+```
+
+The reply is structured:
+
+```json
+{
+  "vendor": "ACME Office Supplies Ltd.",
+  "invoice_number": "INV-2041",
+  "invoice_date": "2026-03-03",
+  "total_amount": 5800,
+  "line_items": [
+    { "description": "Printer paper, 10 reams", "amount": 2400 },
+    { "description": "Toner cartridge", "amount": 3150 },
+    { "description": "Delivery", "amount": 250 }
+  ]
+}
+```
+
+You can also attach a photo or a PDF of an invoice instead of pasting text: use **+ → Select Images** or **Select Documents**.
+
+<Frame>
+  <img src="/images/wavefront/qs-agent-chat.png" alt="Testing the invoice-reader agent in its chat panel" />
+</Frame>
+
+## 3. Create the function
+
+The agent reads the invoice; a **function** does the arithmetic. Arithmetic, comparisons and decisions belong in functions: they are exact, testable and cost nothing to run.
+
+Go to **Functions → Create Function**. Name it `check-invoice-total`, paste the YAML below into the editor, and click **Create Processor**:
+
+```yaml check-invoice-total.yaml
+type: javascript
+description: >-
+  Checks that an invoice's line items add up to its total.
+function:
+  code: |
+    export default function (input) {
+      const items = Array.isArray(input.line_items) ? input.line_items : [];
+      const sum = items.reduce((s, item) => s + Number(item.amount || 0), 0);
+      const total = Number(input.total_amount || 0);
+      const difference = Math.round((total - sum) * 100) / 100;
+      return {
+        invoice_number: input.invoice_number || null,
+        vendor: input.vendor || null,
+        total_amount: total,
+        line_items_sum: Math.round(sum * 100) / 100,
+        difference,
+        status: Math.abs(difference) < 0.01 ? 'TOTAL_MATCHES' : 'TOTAL_MISMATCH',
+      };
+    }
+input_schema:
+  required:
+    - total_amount
+  properties:
+    total_amount:
+      type: number
+      description: Invoice total, from the invoice reader
+    line_items:
+      type: array
+      description: Line items, from the invoice reader
+```
+
+Test it from the function page with a sample input, for example the JSON reply from step 2. Copy the function's **id**.
+
+## 4. Create the workflow
+
+Go to **Workflows → Create Workflow**. Enter a **Workflow ID** (`invoice-check`), pick the same namespace, and paste this YAML, replacing `<your-model-id>` and `<your-function-id>`:
+
+```yaml invoice-check.yaml
+metadata:
+  name: invoice-check
+  version: 1.0.0
+  description: Reads an invoice and checks that its line items add up to the total
+
+arium:
+  agents:
+    - name: invoice_reader
+      role: Invoice reader
+      job: |
+        You read invoices and return their key fields exactly as printed.
+        Use null for a field that is not on the invoice. Amounts are numbers
+        without currency symbols or thousands separators.
+      model:
+        provider: rootflo
+        model_id: <your-model-id>
+      settings:
+        temperature: 0
+      parser:
+        name: invoice-fields
+        fields:
+          - name: vendor
+            type: str
+            description: Name of the company that issued the invoice
+          - name: invoice_number
+            type: str
+            description: The invoice number
+          - name: invoice_date
+            type: str
+            description: Invoice date as YYYY-MM-DD
+          - name: total_amount
+            type: float
+            description: The invoice total
+          - name: line_items
+            type: array
+            description: Each line of the invoice
+            items:
+              name: line_item
+              type: object
+              description: One line
+              fields:
+                - name: description
+                  type: str
+                  description: What was charged
+                - name: amount
+                  type: float
+                  description: Amount for this line
+
+  function_nodes:
+    - name: check_total
+      function_name: trigger_message_processor   # runs one of your functions
+      description: Checks the line items against the total
+      input_filter: [invoice_reader]             # receives the agent's answer
+      prefilled_params:
+        message_processor_id: <your-function-id>
+
+  workflow:
+    start: invoice_reader
+    edges:
+      - from: invoice_reader
+        to: [check_total]
+    end: [check_total]
+```
+
+How to read it:
+
+- `agents` and `function_nodes` declare the steps; `workflow` wires them together.
+- `input_filter: [invoice_reader]` hands the agent's JSON to the function. The function sees its fields directly: `input.total_amount`, `input.line_items`.
+- The workflow's output is the output of its last node, `check_total`.
+
+### Run it in the console
+
+Open the workflow. Its YAML is on the left; on the right is the same chat panel as for agents. Paste the invoice text from step 2 into **Ask anything** and send. (This workflow needs no variables; when one does, add them with **+ → Add variables**.) The result:
+
+```json
+{
+  "invoice_number": "INV-2041",
+  "vendor": "ACME Office Supplies Ltd.",
+  "total_amount": 5800,
+  "line_items_sum": 5800,
+  "difference": 0,
+  "status": "TOTAL_MATCHES"
+}
+```
+
+Change a line amount in the input and run again to see `TOTAL_MISMATCH`.
+
+<Frame>
+  <img src="/images/wavefront/qs-workflow-run.png" alt="Running the invoice-check workflow in the console" />
+</Frame>
+
+## 5. Run it from the API
+
+Your application calls the app directly, with an **app user** (not your console account). Sign in to get a token:
+
+```bash
+APP=https://your-app.example.com
+
+TOKEN=$(curl -s -X POST "$APP/floware/v1/authenticate" \
+  -H 'Content-Type: application/json' \
+  -d '{"email": "builder@example.com", "password": "…"}' \
+  | jq -r '.data.user.access_token')
+```
+
+Then run the workflow by its id (shown on the workflow page):
+
+```bash
+curl -s -X POST "$APP/floware/v2/workflows/<workflow-id>/inference" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "inputs": [{ "role": "user", "content": "ACME Office Supplies Ltd. Invoice INV-2041 … Total due: 5,800.00" }],
+    "variables": {}
+  }'
+```
+
+```json Response
+{
+  "meta": { "status": "success", "code": 1, "error": null },
+  "data": {
+    "message": "Workflow inference completed successfully",
+    "data": {
+      "result": "{\"difference\": 0, \"invoice_number\": \"INV-2041\", … \"status\": \"TOTAL_MATCHES\"}",
+      "workflow_id": "invoice-check",
+      "execution_time": 2.38,
+      "variables": {}
+    }
+  }
+}
+```
+
+<Note>
+A workflow's `result` is a **string** containing the last node's output; parse it as JSON. An agent run through `POST /floware/v2/agents/<agent-id>/inference` returns `result` as an object when the agent has a parser.
+</Note>
+
+Every response uses the same envelope: `meta.status` is `success` or `failure`, and on failure `meta.error` says why.
+
+<Warning>
+Signing in again with the same app user ends that user's other sessions. Give each script or service its own user.
+</Warning>
+
+## What you built
+
+You used the pattern most Wavefront features follow: **an agent gathers the facts, a function makes the call, a workflow runs them in order.**
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Workflows in depth" icon="diagram-project" href="/wavefront/workflows">
+    Routers, sub-workflows, iterators and versions.
+  </Card>
+  <Card title="Read and write your data" icon="database" href="/wavefront/datasources">
+    Load the record to check from a database and save the result.
+  </Card>
+  <Card title="Rules as configuration" icon="sliders" href="/wavefront/configurations">
+    Move the tolerance into a configuration admins can edit.
+  </Card>
+  <Card title="Run in the background" icon="clock" href="/wavefront/running-workflows">
+    Queue long runs and poll for their result.
+  </Card>
+</CardGroup>

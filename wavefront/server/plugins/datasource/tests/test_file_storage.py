@@ -262,6 +262,40 @@ class TestUploadDownload:
         with pytest.raises(CloudStorageFileNotFoundError):
             plugin.download_file('a')
 
+    def test_delete_file(self, s3_handler):
+        _, handler = s3_handler
+        plugin = FileStoragePlugin(S3FileStorageConfig('bkt', base_path='in'))
+
+        uri = plugin.delete_file('docs/a.pdf')
+
+        assert uri == 's3://bkt/in/docs/a.pdf'
+        handler.delete_file.assert_called_once_with('bkt', 'in/docs/a.pdf')
+
+    def test_list_files_strips_base_path(self, s3_handler):
+        _, handler = s3_handler
+        handler.list_files.return_value = (
+            ['in/docs/a.pdf', 'in/docs/', 'in/test/vishnu'],
+            False,
+        )
+        plugin = FileStoragePlugin(S3FileStorageConfig('bkt', base_path='in'))
+
+        paths, has_next = plugin.list_files(page_size=50, page_number=1)
+
+        assert paths == ['docs/a.pdf', 'test/vishnu']
+        assert has_next is False
+        handler.list_files.assert_called_once_with('bkt', 'in', 50, 1)
+
+    def test_list_files_with_relative_prefix(self, s3_handler):
+        _, handler = s3_handler
+        handler.list_files.return_value = (['in/docs/a.pdf'], True)
+        plugin = FileStoragePlugin(S3FileStorageConfig('bkt', base_path='in'))
+
+        paths, has_next = plugin.list_files('docs', page_size=10, page_number=2)
+
+        assert paths == ['docs/a.pdf']
+        assert has_next is True
+        handler.list_files.assert_called_once_with('bkt', 'in/docs', 10, 2)
+
 
 def test_gcs_storage_accepts_credentials_info():
     from flo_cloud.gcp import gcs

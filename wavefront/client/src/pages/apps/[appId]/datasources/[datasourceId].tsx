@@ -29,6 +29,7 @@ import { useNavigate, useParams } from 'react-router';
 import { DATASOURCE_TYPE_LABELS, isFileStorageType } from './datasource-types';
 import EditDatasourceDialog from './EditDatasourceDialog';
 import FileStoragePanel from './FileStoragePanel';
+import DatasourceOperations from './DatasourceOperations';
 import DynamicQueryCreation from './DynamicQueryCreation';
 import DynamicQueries from './DynamicQueries';
 import DynamicQueryView from './DynamicQueryView';
@@ -377,9 +378,14 @@ const DatasourceDetail: React.FC = () => {
                 Files
               </TabsTrigger>
             ) : (
-              <TabsTrigger className="cursor-pointer" value="dynamic-queries">
-                Dynamic Queries
-              </TabsTrigger>
+              <>
+                <TabsTrigger className="cursor-pointer" value="operations">
+                  Operations
+                </TabsTrigger>
+                <TabsTrigger className="cursor-pointer" value="dynamic-queries">
+                  Dynamic Queries
+                </TabsTrigger>
+              </>
             )}
           </TabsList>
 
@@ -444,6 +450,13 @@ const DatasourceDetail: React.FC = () => {
               <FileStoragePanel datasourceId={datasourceId} />
             </TabsContent>
           )}
+
+          <TabsContent
+            value="operations"
+            className="mt-6 min-h-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col"
+          >
+            {datasourceId && <DatasourceOperations datasourceId={datasourceId} />}
+          </TabsContent>
 
           <TabsContent
             value="dynamic-queries"

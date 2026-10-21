@@ -1,0 +1,40 @@
+---
+title: "Upgrades"
+description: "Upgrade the server, the worker and the FloAI engine without surprises"
+icon: "arrow-up-right-dots"
+---
+
+A Wavefront deployment runs three things that change together: the **floware** server, the **Celery worker**, and the **FloAI** engine both of them use. Upgrade them as one release.
+
+## Before you upgrade
+
+- Read the release notes for changes to workflow YAML, parser fields and API responses.
+- Note the version of FloAI pinned by the server and the worker (`flo-ai` in their `pyproject.toml` and lock file). They must use the same version: the worker builds the same workflows the API validates.
+- Make sure you can roll back: keep the previous images, and back up floware's database (migrations run on start-up).
+
+## Order
+
+1. **Database migrations** run when floware starts; start one replica first and check its log.
+2. **floware**, then the **worker**, so the worker never runs a newer engine than the API that validated the workflows.
+3. **Wavefront Console**, last.
+
+## After you upgrade
+
+Run a smoke test against each app:
+
+1. Sign in with a test user.
+2. Run a dynamic query.
+3. Run a small workflow **synchronously** (`/v2/…/inference`).
+4. Run the same workflow **in the background** (`/v3/…/inference`) and poll it to `completed`. This proves the worker, the queue, storage and the result stream all work.
+5. If your apps use them: an agent with an image, a function, a file download, a chatbot message.
+
+Keep these as a script, together with a few business test cases with known outcomes (see [Deploying from git](/wavefront/deploy-as-code#good-practice)).
+
+## Things that have changed between releases
+
+Behaviour does change. Two examples from recent releases:
+
+- Curly braces in agent instructions used to make workflow creation fail; they now work.
+- The default Celery queue became configurable (`CELERY_QUEUE_NAME`).
+
+When a release changes behaviour you rely on, add a case to your smoke test so the next upgrade checks it.

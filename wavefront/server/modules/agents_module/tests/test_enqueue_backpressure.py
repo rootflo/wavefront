@@ -135,6 +135,22 @@ async def test_enqueue_proceeds_when_there_is_capacity(service, has_capacity, uu
     assert result.status == 'pending'
 
 
+@pytest.mark.parametrize('entity', ['agent', 'workflow'])
+async def test_task_id_is_saved_with_the_row_and_sent_as_is(
+    service, has_capacity, uuid4, entity
+):
+    if entity == 'agent':
+        await service.create_and_enqueue_agent(agent_id=uuid4, **AGENT_KWARGS)
+    else:
+        await service.create_and_enqueue_workflow(workflow_id=uuid4, **WORKFLOW_KWARGS)
+
+    row = service.repo.create.call_args.kwargs
+    sent_task_id = service.celery.send_task.call_args.kwargs['task_id']
+    assert row['celery_task_id'] == sent_task_id
+    assert sent_task_id != str(row['id'])
+    service.repo.find_one_and_update.assert_not_awaited()
+
+
 async def test_service_passes_its_configured_settings_to_the_gate(uuid4):
     """The limit that applies is the one from config.ini, not a default."""
     from agents_module.utils.celery_settings import CeleryProducerSettings

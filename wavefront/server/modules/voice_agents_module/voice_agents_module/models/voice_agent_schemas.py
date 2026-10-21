@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
 from typing import Optional, Union, Any, Dict, List
 from enum import Enum
 from datetime import datetime
@@ -27,8 +27,18 @@ class CreateVoiceAgentPayload(BaseModel):
         None, description='Conversation configuration settings (optional)'
     )
     welcome_message: str = Field(
-        ...,
-        description='Welcome message to play at call start (will be converted to audio)',
+        '',
+        description='Optional welcome message spoken at call start (empty skips greeting)',
+    )
+    # Must be declared before tts_voice_ids so the voice-id validator can read it
+    # (field validators only see already-validated fields via info.data).
+    supported_languages: Optional[List[str]] = Field(
+        None,
+        description='List of supported language codes (ISO 639-1, e.g., ["en", "hi", "te"])',
+    )
+    default_language: str = Field(
+        'en',
+        description='Default language if detection fails (must be in supported_languages)',
     )
     tts_voice_ids: Dict[str, str] = Field(
         ...,
@@ -52,20 +62,13 @@ class CreateVoiceAgentPayload(BaseModel):
         None,
         description='Phone numbers for making outbound calls (E.164 format)',
     )
-    supported_languages: Optional[List[str]] = Field(
-        None,
-        description='List of supported language codes (ISO 639-1, e.g., ["en", "hi", "te"])',
-    )
-    default_language: str = Field(
-        'en',
-        description='Default language if detection fails (must be in supported_languages)',
-    )
 
-    @validator('tts_voice_ids')
-    def validate_tts_voice_ids_keys(cls, v, values):
+    @field_validator('tts_voice_ids')
+    @classmethod
+    def validate_tts_voice_ids_keys(cls, v, info: ValidationInfo):
         """Validate that tts_voice_ids has voice IDs for all supported languages."""
         # Get supported languages, default to ['en'] if not provided
-        supported_langs = values.get('supported_languages') or ['en']
+        supported_langs = info.data.get('supported_languages') or ['en']
 
         if not isinstance(v, dict):
             raise ValueError('tts_voice_ids must be a dictionary')
@@ -117,7 +120,23 @@ class UpdateVoiceAgentPayload(BaseModel):
     default_language: Union[str, Any] = Field(default=UNSET)
 
 
+class VoiceAgentListItem(BaseModel):
+    """Compact voice agent fields for table / list views."""
+
+    id: uuid.UUID
+    name: str
+    description: Optional[str]
+    status: str
+    supported_languages: List[str]
+    default_language: str
+    is_deleted: bool
+    created_at: datetime
+    updated_at: datetime
+
+
 class VoiceAgentResponse(BaseModel):
+    """Full voice agent detail (edit / operations / runtime)."""
+
     id: uuid.UUID
     name: str
     description: Optional[str]
@@ -146,4 +165,32 @@ class InitiateCallPayload(BaseModel):
     from_number: Optional[str] = Field(
         None,
         description='Source phone number (optional, defaults to first configured number)',
+    )
+
+
+class CreateWebRTCRoomPayload(BaseModel):
+    allowed_agent_ids: Optional[List[uuid.UUID]] = Field(
+        None,
+        description=(
+            'Narrow the agents this browser room may hot-swap to. Only active '
+            'agents ever qualify; this can remove agents, never add them. '
+            'Omit to allow every active agent.'
+        ),
+    )
+    room_context_handles_language: bool = Field(
+        False,
+        description=(
+            'When true, the app drives the conversation language through the room '
+            'context (set_context.language): the agent gets no language-switching '
+            'rules and no detect_and_switch_language tool. Default false keeps the '
+            "agent's native language switching."
+        ),
+    )
+    carry_history_on_swap: bool = Field(
+        True,
+        description=(
+            'When the room hot-swaps to another agent, carry the conversation '
+            'so far (user/assistant turns) over to the new agent. Default true. '
+            'Set false to start each swapped-in agent with a clean context.'
+        ),
     )

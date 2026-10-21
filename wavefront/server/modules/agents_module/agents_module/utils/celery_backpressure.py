@@ -3,7 +3,8 @@
 import asyncio
 import threading
 import time
-from typing import NamedTuple, Optional, Tuple
+from contextlib import contextmanager
+from typing import Iterator, NamedTuple, Optional, Tuple
 
 from celery import Celery
 from common_module.log.logger import logger
@@ -54,8 +55,9 @@ _depth_lock = threading.Lock()
 _reading: Optional[_Reading] = None
 
 
-def measure_queue_depth(app: Celery, settings: CeleryProducerSettings) -> int:
-    """Ready tasks on the queue `app` publishes to. Blocking."""
+@contextmanager
+def broker_connection(app: Celery, settings: CeleryProducerSettings) -> Iterator:
+    """A pooled, connected broker connection, released on exit. Blocking."""
     timeout = settings.broker_socket_timeout_seconds
     try:
         conn = app.pool.acquire(block=True, timeout=timeout)
@@ -66,11 +68,17 @@ def measure_queue_depth(app: Celery, settings: CeleryProducerSettings) -> int:
     try:
         # Single attempt; kombu otherwise retries the connect for ~6s.
         conn.ensure_connection(max_retries=0)
+        yield conn
+    finally:
+        conn.release()
+
+
+def measure_queue_depth(app: Celery, settings: CeleryProducerSettings) -> int:
+    """Ready tasks on the queue `app` publishes to. Blocking."""
+    with broker_connection(app, settings) as conn:
         # passive=True would raise on an empty queue.
         queue = app.conf.task_default_queue
         return conn.default_channel.queue_declare(queue=queue).message_count
-    finally:
-        conn.release()
 
 
 _probe_failing = False

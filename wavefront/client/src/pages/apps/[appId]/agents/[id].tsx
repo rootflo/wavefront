@@ -31,6 +31,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import EditAgentDialog from './EditAgentDialog';
+import { selectedToolsEqual, selectedToolsFromYaml } from './agent-tools';
 import { formatAppName } from '@app/lib/utils';
 
 const AgentDetail: React.FC = () => {
@@ -93,6 +94,8 @@ const AgentDetail: React.FC = () => {
 
   // Datasource and tool selection state
   const [selectedTools, setSelectedTools] = useState<{ id: string; value: string }[]>([]);
+  // True until selectedTools has been rebuilt from the loaded agent YAML.
+  const pendingToolsHydrationRef = useRef(true);
 
   // Fetch data using hooks
   const { data: agent, isLoading: agentLoading } = useGetAgent(appId, id, selectedVersion);
@@ -105,13 +108,6 @@ const AgentDetail: React.FC = () => {
 
   // Version currently shown (falls back to the agent's current_version).
   const displayVersion = selectedVersion ?? agent?.current_version;
-
-  // Update yaml content when agent data changes
-  useEffect(() => {
-    if (agent?.yaml_content) {
-      setYamlContent(agent.yaml_content);
-    }
-  }, [agent]);
 
   // Memoize toolsDetails to prevent unnecessary recreations
   const toolsDetails = useMemo(() => {
@@ -135,6 +131,27 @@ const AgentDetail: React.FC = () => {
       };
     });
   }, [availableTools]);
+
+  // Load YAML when the agent (or selected version) changes. Selection is
+  // hydrated in a follow-up effect once tool details are available.
+  useEffect(() => {
+    if (!agent?.yaml_content) return;
+
+    pendingToolsHydrationRef.current = true;
+    setYamlContent(agent.yaml_content);
+  }, [agent]);
+
+  // Restore combobox selection from agent.tools. toolsDetails often arrives
+  // after the agent payload; selection is hydrated once both are available.
+  useEffect(() => {
+    if (!pendingToolsHydrationRef.current || !yamlContent || toolsDetails.length === 0) {
+      return;
+    }
+
+    const hydrated = selectedToolsFromYaml(yamlContent, toolsDetails);
+    pendingToolsHydrationRef.current = false;
+    setSelectedTools((prev) => (selectedToolsEqual(prev, hydrated) ? prev : hydrated));
+  }, [yamlContent, toolsDetails]);
 
   const handleQuestionEntered = () => {
     if (inferenceInput.trim().length > 0) {

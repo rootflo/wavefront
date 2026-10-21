@@ -19,6 +19,7 @@ from plugins_module.plugins_container import PluginsContainer
 
 DATASOURCE_ID = '11111111-1111-1111-1111-111111111111'
 FILES_URL = f'/v1/datasources/{DATASOURCE_ID}/files'
+FILES_LIST_URL = f'/v1/datasources/{DATASOURCE_ID}/files/list'
 S3_CONFIG = S3FileStorageConfig(bucket_name='bkt')
 PG_CONFIG = PostgresConfig('h', 5432, 'db', 'u', 'p')
 AUDIT_SERVICE = MagicMock()
@@ -89,7 +90,81 @@ def plugin():
         instance.resolve_key.side_effect = lambda path: path
         instance.uri_for.side_effect = lambda key: f's3://bkt/{key}'
         instance.download_file.return_value = b'%PDF-1.4'
+        instance.download_file_with_content_type.return_value = (b'%PDF-1.4', None)
+        instance.list_files.return_value = (['docs/a.pdf', 'test/vishnu'], False)
+        instance.delete_file.side_effect = lambda path: f's3://bkt/{path}'
         yield instance
+
+
+class TestDelete:
+    def test_deletes_and_audits(self, client, admin, datasource_config, plugin, audit):
+        response = client.delete(FILES_URL, params={'path': 'docs/a.pdf'})
+        assert response.status_code == 200
+        assert response.json()['data'] == {
+            'path': f'datasource://{DATASOURCE_ID}/docs/a.pdf',
+            'storage_uri': 's3://bkt/docs/a.pdf',
+        }
+        plugin.delete_file.assert_called_once_with('docs/a.pdf')
+        entry = _audited(audit, 'delete')
+        assert entry.snapshot == 'deleted'
+
+    def test_datasource_uri(self, client, admin, datasource_config, plugin):
+        response = client.delete(
+            FILES_URL, params={'path': f'datasource://{DATASOURCE_ID}/docs/a.pdf'}
+        )
+        assert response.status_code == 200
+        plugin.delete_file.assert_called_once_with('docs/a.pdf')
+
+    def test_not_found(self, client, admin, datasource_config, plugin, audit):
+        plugin.delete_file.side_effect = CloudStorageFileNotFoundError('bkt', 'missing')
+        response = client.delete(FILES_URL, params={'path': 'missing.txt'})
+        assert response.status_code == 404
+        audit.assert_not_called()
+
+    def test_rejects_sql_datasource(self, client, admin, datasource_config, plugin):
+        datasource_config.return_value = (DataSourceType.POSTGRES, PG_CONFIG)
+        response = client.delete(FILES_URL, params={'path': 'a.txt'})
+        assert response.status_code == 400
+        plugin.delete_file.assert_not_called()
+
+
+class TestListFiles:
+    def test_returns_relative_and_datasource_paths(
+        self, client, admin, datasource_config, plugin
+    ):
+        response = client.get(FILES_LIST_URL)
+        assert response.status_code == 200
+        body = response.json()['data']
+        assert body['has_next_page'] is False
+        assert body['page_number'] == 1
+        assert body['files'] == [
+            {
+                'path': f'datasource://{DATASOURCE_ID}/docs/a.pdf',
+                'relative_path': 'docs/a.pdf',
+                'name': 'a.pdf',
+            },
+            {
+                'path': f'datasource://{DATASOURCE_ID}/test/vishnu',
+                'relative_path': 'test/vishnu',
+                'name': 'vishnu',
+            },
+        ]
+        plugin.list_files.assert_called_once_with('', 50, 1)
+
+    def test_forwards_prefix_and_pagination(
+        self, client, admin, datasource_config, plugin
+    ):
+        response = client.get(
+            FILES_LIST_URL, params={'prefix': 'docs', 'page_size': 10, 'page_number': 2}
+        )
+        assert response.status_code == 200
+        plugin.list_files.assert_called_once_with('docs', 10, 2)
+
+    def test_rejects_sql_datasource(self, client, admin, datasource_config, plugin):
+        datasource_config.return_value = (DataSourceType.POSTGRES, PG_CONFIG)
+        response = client.get(FILES_LIST_URL)
+        assert response.status_code == 400
+        plugin.list_files.assert_not_called()
 
 
 class TestUpload:
@@ -194,12 +269,33 @@ class TestDownload:
         assert response.content == b'%PDF-1.4'
         assert response.headers['content-type'] == 'application/pdf'
         assert 'a.pdf' in response.headers['content-disposition']
-        plugin.download_file.assert_called_once_with('docs/a.pdf')
+        plugin.download_file_with_content_type.assert_called_once_with('docs/a.pdf')
 
     def test_plain_key(self, client, admin, datasource_config, plugin):
         response = client.get(FILES_URL, params={'path': 'docs/a.pdf'})
         assert response.status_code == 200
-        plugin.download_file.assert_called_once_with('docs/a.pdf')
+        plugin.download_file_with_content_type.assert_called_once_with('docs/a.pdf')
+
+    def test_extensionless_uses_stored_content_type(
+        self, client, admin, datasource_config, plugin
+    ):
+        jpeg = b'\xff\xd8\xff\xe0' + b'\x00' * 16
+        plugin.download_file_with_content_type.return_value = (jpeg, 'image/jpeg')
+        response = client.get(
+            FILES_URL, params={'path': f'datasource://{DATASOURCE_ID}/test/vishnu'}
+        )
+        assert response.status_code == 200
+        assert response.headers['content-type'] == 'image/jpeg'
+        assert response.content == jpeg
+
+    def test_extensionless_sniffs_jpeg_when_no_stored_type(
+        self, client, admin, datasource_config, plugin
+    ):
+        jpeg = b'\xff\xd8\xff\xe0' + b'\x00' * 16
+        plugin.download_file_with_content_type.return_value = (jpeg, None)
+        response = client.get(FILES_URL, params={'path': 'test/vishnu'})
+        assert response.status_code == 200
+        assert response.headers['content-type'] == 'image/jpeg'
 
     def test_datasource_id_case_insensitive(
         self, client, admin, datasource_config, plugin
@@ -230,16 +326,18 @@ class TestDownload:
         response = client.get(FILES_URL, params={'path': path})
         assert response.status_code == 400
         assert 'belongs to datasource' in response.text
-        plugin.download_file.assert_not_called()
+        plugin.download_file_with_content_type.assert_not_called()
         audit.assert_not_called()
 
     def test_malformed_datasource_uri(self, client, admin, datasource_config, plugin):
         response = client.get(FILES_URL, params={'path': 'datasource://only-id'})
         assert response.status_code == 400
-        plugin.download_file.assert_not_called()
+        plugin.download_file_with_content_type.assert_not_called()
 
     def test_not_found(self, client, admin, datasource_config, plugin, audit):
-        plugin.download_file.side_effect = CloudStorageFileNotFoundError('bkt', 'a')
+        plugin.download_file_with_content_type.side_effect = (
+            CloudStorageFileNotFoundError('bkt', 'a')
+        )
         response = client.get(FILES_URL, params={'path': 'missing.txt'})
         assert response.status_code == 404
         audit.assert_not_called()
@@ -383,6 +481,26 @@ class TestUpdateFileStorageDatasource:
 )
 def test_stored_content_type(content_type, expected):
     assert datasource_controller._stored_content_type(content_type) == expected
+
+
+@pytest.mark.parametrize(
+    'filename, content, stored, expected',
+    [
+        ('vishnu', b'\xff\xd8\xff\xe0xx', 'image/jpeg', 'image/jpeg'),
+        ('vishnu', b'\xff\xd8\xff\xe0xx', None, 'image/jpeg'),
+        ('vishnu', b'\x89PNG\r\n\x1a\nxx', None, 'image/png'),
+        ('photo.jpg', b'not-an-image', None, 'image/jpeg'),
+        ('blob', b'plain', 'application/octet-stream', 'application/octet-stream'),
+        ('blob', b'plain', None, 'application/octet-stream'),
+        ('photo.jpg', b'not-an-image', 'binary/octet-stream', 'image/jpeg'),
+        ('vishnu', b'\xff\xd8\xff\xe0xx', 'binary/octet-stream', 'image/jpeg'),
+    ],
+)
+def test_resolve_download_media_type(filename, content, stored, expected):
+    assert (
+        datasource_controller._resolve_download_media_type(filename, content, stored)
+        == expected
+    )
 
 
 def test_upload_stores_html_as_octet_stream(client, admin, datasource_config, plugin):

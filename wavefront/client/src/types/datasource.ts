@@ -35,6 +35,30 @@ export interface UploadDatasourceFileData {
 
 export type UploadDatasourceFileResponse = IApiResponse<UploadDatasourceFileData>;
 
+export interface DatasourceFileEntry {
+  /** datasource://<datasource_id>/<key> */
+  path: string;
+  /** Key relative to the datasource base path */
+  relative_path: string;
+  name: string;
+}
+
+export interface ListDatasourceFilesData {
+  files: DatasourceFileEntry[];
+  page_number: number;
+  page_size: number;
+  has_next_page: boolean;
+}
+
+export type ListDatasourceFilesResponse = IApiResponse<ListDatasourceFilesData>;
+
+export interface DeleteDatasourceFileData {
+  path: string;
+  storage_uri: string;
+}
+
+export type DeleteDatasourceFileResponse = IApiResponse<DeleteDatasourceFileData>;
+
 export interface DatasourceData {
   status: 'success' | 'error';
   data: {
@@ -51,10 +75,24 @@ export interface DatasourceListData {
 }
 
 export interface DatasourceResourcesData {
-  status: 'success' | 'error';
-  data: {
-    resources: string[];
-  };
+  resources: string[];
+}
+
+export interface DatasourceResourceRecordsData {
+  records: Record<string, unknown>[];
+}
+
+export interface GetDatasourceResourceParams {
+  limit?: number;
+  offset?: number;
+  $select?: string;
+  $filter?: string;
+  $orderby?: string;
+}
+
+export interface DeleteDatasourceResourceRowsData {
+  message: string;
+  deleted_rows: number;
 }
 export interface DynamicQueryDataSource {
   status: 'success' | 'error';
@@ -96,6 +134,8 @@ export type TestDatasourceResponse = IApiResponse<TestDatasourceData>;
 export type DatasourceResponse = IApiResponse<DatasourceData>;
 export type DatasourceListResponse = IApiResponse<DatasourceListData>;
 export type DatasourceResourcesResponse = IApiResponse<DatasourceResourcesData>;
+export type DatasourceResourceRecordsResponse = IApiResponse<DatasourceResourceRecordsData>;
+export type DeleteDatasourceResourceRowsResponse = IApiResponse<DeleteDatasourceResourceRowsData>;
 export type DynamicQueryResponse = IApiResponse<DynamicQueryDataSource>;
 export type AllDynamicQueriesResponse = IApiResponse<AllDynamicQueriesData>;
 export type ReadDynamicQueryResponse = IApiResponse<ReadDynamicQueryData>;

@@ -16,7 +16,84 @@
           {
             "group": "Getting started",
             "pages": [
-              "index"
+              "index",
+              "wavefront/overview",
+              "wavefront/concepts",
+              "wavefront/console-tour",
+              "wavefront/quickstart"
+            ]
+          },
+          {
+            "group": "Models and agents",
+            "pages": [
+              "wavefront/llm-configs",
+              "wavefront/agents",
+              "wavefront/structured-output",
+              "wavefront/tools",
+              "wavefront/media"
+            ]
+          },
+          {
+            "group": "Workflows",
+            "pages": [
+              "wavefront/workflows",
+              "wavefront/workflow-execution-model",
+              "wavefront/workflow-data-flow",
+              "wavefront/sub-workflows",
+              "wavefront/routing-and-iteration",
+              "wavefront/function-nodes",
+              "wavefront/versions"
+            ]
+          },
+          {
+            "group": "Functions",
+            "pages": [
+              "wavefront/functions"
+            ]
+          },
+          {
+            "group": "Data, files and configuration",
+            "pages": [
+              "wavefront/datasources",
+              "wavefront/dynamic-queries",
+              "wavefront/file-storage",
+              "wavefront/configurations",
+              "wavefront/audit-trail"
+            ]
+          },
+          {
+            "group": "Run and integrate",
+            "pages": [
+              "wavefront/running-workflows",
+              "wavefront/integrating-an-app",
+              "wavefront/users-and-access",
+              "wavefront/chatbots",
+              "wavefront/deploy-as-code"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/document-verification",
+              "guides/rules-and-scoring",
+              "guides/record-chat-assistant",
+              "guides/review-dashboard"
+            ]
+          },
+          {
+            "group": "Patterns and troubleshooting",
+            "pages": [
+              "wavefront/patterns",
+              "wavefront/troubleshooting"
+            ]
+          },
+          {
+            "group": "Operations",
+            "pages": [
+              "operations/architecture",
+              "operations/environment",
+              "operations/multi-app",
+              "operations/upgrades"
             ]
           }
         ]

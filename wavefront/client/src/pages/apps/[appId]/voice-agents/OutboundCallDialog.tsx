@@ -25,9 +25,19 @@ interface OutboundCallDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   agent: VoiceAgent;
+  /** When true, render panel content only (parent owns the Dialog shell). */
+  embedded?: boolean;
+  /** Disable Make Call until agent detail (e.g. outbound numbers) has loaded. */
+  actionsDisabled?: boolean;
 }
 
-const OutboundCallDialog: React.FC<OutboundCallDialogProps> = ({ isOpen, onOpenChange, agent }) => {
+const OutboundCallDialog: React.FC<OutboundCallDialogProps> = ({
+  isOpen,
+  onOpenChange,
+  agent,
+  embedded = false,
+  actionsDisabled = false,
+}) => {
   const { notifySuccess, notifyError } = useNotifyStore();
   const [toNumber, setToNumber] = useState('');
   const [fromNumber, setFromNumber] = useState('');
@@ -37,6 +47,7 @@ const OutboundCallDialog: React.FC<OutboundCallDialogProps> = ({ isOpen, onOpenC
   const availablePhoneNumbers = agent.outbound_numbers || [];
 
   const handleInitiateCall = async () => {
+    if (actionsDisabled) return;
     if (!toNumber.trim()) {
       notifyError('Please enter a destination phone number');
       return;
@@ -82,6 +93,83 @@ const OutboundCallDialog: React.FC<OutboundCallDialogProps> = ({ isOpen, onOpenC
     onOpenChange(false);
   };
 
+  const body = (
+    <div className="space-y-4 py-4">
+      <div className="space-y-2">
+        <Label htmlFor="to-number">
+          To Number <span className="text-red-500">*</span>
+        </Label>
+        <Input
+          id="to-number"
+          type="text"
+          value={toNumber}
+          onChange={(e) => setToNumber(e.target.value)}
+          placeholder="+14155559999"
+        />
+        <p className="frost-text-muted text-xs">Destination phone number in E.164 format</p>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="from-number">From Number (Optional)</Label>
+        {availablePhoneNumbers.length > 0 ? (
+          <Select value={fromNumber || undefined} onValueChange={setFromNumber}>
+            <SelectTrigger id="from-number">
+              <SelectValue placeholder="Auto-select (use first configured number)" />
+            </SelectTrigger>
+            <SelectContent>
+              {availablePhoneNumbers.map((phone) => (
+                <SelectItem key={phone} value={phone}>
+                  {phone}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <Input
+            id="from-number"
+            type="text"
+            value={fromNumber}
+            onChange={(e) => setFromNumber(e.target.value)}
+            placeholder="+14155551234"
+          />
+        )}
+        <p className="frost-text-muted text-xs">
+          {availablePhoneNumbers.length > 0
+            ? 'Select from configured phone numbers or leave empty for auto-select'
+            : 'Source phone number in E.164 format (leave empty to use first configured number)'}
+        </p>
+      </div>
+    </div>
+  );
+
+  const footer = (
+    <div className="mt-auto flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+      {!embedded && (
+        <Button type="button" variant="outline" onClick={handleClose} disabled={callLoading}>
+          Cancel
+        </Button>
+      )}
+      <Button
+        type="button"
+        onClick={handleInitiateCall}
+        disabled={actionsDisabled || callLoading}
+        loading={callLoading}
+      >
+        Make Call
+      </Button>
+    </div>
+  );
+
+  if (embedded) {
+    if (!isOpen) return null;
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        {body}
+        {footer}
+      </div>
+    );
+  }
+
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
@@ -91,64 +179,8 @@ const OutboundCallDialog: React.FC<OutboundCallDialogProps> = ({ isOpen, onOpenC
             Make an outbound call using <strong>{agent.name}</strong>
           </DialogDescription>
         </DialogHeader>
-
-        <div className="space-y-4 py-4">
-          {/* To Number */}
-          <div className="space-y-2">
-            <Label htmlFor="to-number">
-              To Number <span className="text-red-500">*</span>
-            </Label>
-            <Input
-              id="to-number"
-              type="text"
-              value={toNumber}
-              onChange={(e) => setToNumber(e.target.value)}
-              placeholder="+14155559999"
-            />
-            <p className="frost-text-muted text-xs">Destination phone number in E.164 format</p>
-          </div>
-
-          {/* From Number */}
-          <div className="space-y-2">
-            <Label htmlFor="from-number">From Number (Optional)</Label>
-            {availablePhoneNumbers.length > 0 ? (
-              <Select value={fromNumber || undefined} onValueChange={setFromNumber}>
-                <SelectTrigger id="from-number">
-                  <SelectValue placeholder="Auto-select (use first configured number)" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availablePhoneNumbers.map((phone) => (
-                    <SelectItem key={phone} value={phone}>
-                      {phone}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <Input
-                id="from-number"
-                type="text"
-                value={fromNumber}
-                onChange={(e) => setFromNumber(e.target.value)}
-                placeholder="+14155551234"
-              />
-            )}
-            <p className="frost-text-muted text-xs">
-              {availablePhoneNumbers.length > 0
-                ? 'Select from configured phone numbers or leave empty for auto-select'
-                : 'Source phone number in E.164 format (leave empty to use first configured number)'}
-            </p>
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={handleClose} disabled={callLoading}>
-            Cancel
-          </Button>
-          <Button type="button" onClick={handleInitiateCall} disabled={callLoading} loading={callLoading}>
-            Make Call
-          </Button>
-        </DialogFooter>
+        {body}
+        <DialogFooter>{footer}</DialogFooter>
       </DialogContent>
     </Dialog>
   );

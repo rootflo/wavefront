@@ -26,6 +26,7 @@ from agents_module.utils.celery_backpressure import (
     ensure_queue_capacity,
     queue_is_saturated,
 )
+from agents_module.utils.celery_broker import remove_queued_task
 from agents_module.utils.celery_settings import CeleryProducerSettings
 from agents_module.utils.execution_variable_utils import with_execution_variables
 from agents_module.utils.mime_type_utils import (
@@ -71,6 +72,14 @@ GENERIC_EXECUTION_ERROR = (
 
 def _cache_key(execution_id: UUID) -> str:
     return f'async_agentic_exec:status:{execution_id}'
+
+
+class ExecutionNotCancellable(Exception):
+    """Not a ValueError: the controller maps ValueError to 404."""
+
+
+class CancellationIncomplete(Exception):
+    """The task left the queue, but the row could not be marked cancelled."""
 
 
 # For the storage *key* only. Anything outside this set becomes '_', so the
@@ -343,6 +352,8 @@ class AsyncAgenticExecutionService:
             await ensure_queue_capacity(self.celery, self.celery_settings)
 
         execution_id = uuid.uuid4()
+        # Saved with the row, so cancel can always find the task.
+        celery_task_id = str(uuid.uuid4())
         prefix = f'executions/agents/{agent_id}/{execution_id}/'
 
         clean_inputs, stored_files = await asyncio.to_thread(
@@ -353,6 +364,7 @@ class AsyncAgenticExecutionService:
             id=execution_id,
             entity_type='agent',
             entity_id=agent_id,
+            celery_task_id=celery_task_id,
             status='pending',
             input_bucket=self.bucket,
             inputs=json.dumps(clean_inputs),
@@ -377,10 +389,11 @@ class AsyncAgenticExecutionService:
 
         try:
             # send_task is blocking redis-py.
-            result = await asyncio.to_thread(
+            await asyncio.to_thread(
                 self.celery.send_task,
                 _AGENT_TASK_NAME,
                 kwargs={'payload': payload},
+                task_id=celery_task_id,
             )
         except Exception as exc:
             await self.repo.find_one_and_update(
@@ -389,11 +402,9 @@ class AsyncAgenticExecutionService:
             logger.error(f'Failed to enqueue agent execution {execution_id}: {exc}')
             raise
 
-        await self.repo.find_one_and_update(
-            {'id': execution_id}, celery_task_id=result.id
+        logger.info(
+            f'Enqueued agent execution {execution_id}, celery task {celery_task_id}'
         )
-
-        logger.info(f'Enqueued agent execution {execution_id}, celery task {result.id}')
         return AsyncInferenceResponse(
             execution_id=execution_id,
             status='pending',
@@ -420,6 +431,7 @@ class AsyncAgenticExecutionService:
             await ensure_queue_capacity(self.celery, self.celery_settings)
 
         execution_id = uuid.uuid4()
+        celery_task_id = str(uuid.uuid4())
         prefix = f'executions/workflows/{workflow_id}/{execution_id}/'
 
         clean_inputs, stored_files = await asyncio.to_thread(
@@ -430,6 +442,7 @@ class AsyncAgenticExecutionService:
             id=execution_id,
             entity_type='workflow',
             entity_id=workflow_id,
+            celery_task_id=celery_task_id,
             status='pending',
             input_bucket=self.bucket,
             inputs=json.dumps(clean_inputs),
@@ -456,10 +469,11 @@ class AsyncAgenticExecutionService:
 
         try:
             # Off the loop, as in create_and_enqueue_agent above.
-            result = await asyncio.to_thread(
+            await asyncio.to_thread(
                 self.celery.send_task,
                 _WORKFLOW_TASK_NAME,
                 kwargs={'payload': payload},
+                task_id=celery_task_id,
             )
         except Exception as exc:
             await self.repo.find_one_and_update(
@@ -468,12 +482,8 @@ class AsyncAgenticExecutionService:
             logger.error(f'Failed to enqueue workflow execution {execution_id}: {exc}')
             raise
 
-        await self.repo.find_one_and_update(
-            {'id': execution_id}, celery_task_id=result.id
-        )
-
         logger.info(
-            f'Enqueued workflow execution {execution_id}, celery task {result.id}'
+            f'Enqueued workflow execution {execution_id}, celery task {celery_task_id}'
         )
         return AsyncInferenceResponse(
             execution_id=execution_id,
@@ -603,12 +613,100 @@ class AsyncAgenticExecutionService:
         status = record_dict['status']
         ttl = (
             _STATUS_CACHE_TTL_TERMINAL
-            if status in ('completed', 'failed')
+            if status in ('completed', 'failed', 'cancelled')
             else _STATUS_CACHE_TTL_ACTIVE
         )
-        await asyncio.to_thread(self.cache.add, cache_key, json.dumps(record_dict), ttl)
+        # nx: a value written since the read (e.g. by cancel) is newer than ours.
+        await asyncio.to_thread(
+            self.cache.add, cache_key, json.dumps(record_dict), ttl, nx=True
+        )
 
         return self._build_status_response(record_dict, include_error=include_error)
+
+    async def cancel_execution(
+        self, execution_id: UUID
+    ) -> AgenticExecutionStatusResponse:
+        """Withdraw an execution no worker has picked up yet.
+
+        The queue decides, not the row: a row still reads `pending` briefly
+        after a worker takes the task. So the task is removed first, and the
+        row is marked `cancelled` only if that succeeded.
+        """
+        record = await self.repo.find_one(id=execution_id)
+        if not record:
+            raise ValueError(f'Execution not found: {execution_id}')
+
+        if record.status != 'pending':
+            raise ExecutionNotCancellable(
+                f'Execution {execution_id} is {record.status}; only pending '
+                'executions can be cancelled'
+            )
+
+        # Only older rows whose post-send save failed lack one.
+        task_id = record.celery_task_id
+        if not task_id:
+            raise ExecutionNotCancellable(
+                f'Execution {execution_id} has no recorded task id, so its task '
+                'cannot be located on the queue'
+            )
+
+        removed = await asyncio.to_thread(
+            remove_queued_task, self.celery, task_id, self.celery_settings
+        )
+        if not removed:
+            raise ExecutionNotCancellable(
+                f'Execution {execution_id} is not on the queue: a worker has '
+                'already picked it up, or it is still being enqueued'
+            )
+
+        # The task is gone for good now, so failures below must say so.
+        try:
+            cancelled = await self.repo.find_one_and_update(
+                {'id': execution_id, 'status': 'pending'},
+                refresh=True,
+                status='cancelled',
+                completed_at=datetime.now(),
+            )
+        except Exception as exc:
+            logger.error(
+                f'Task {task_id} of execution {execution_id} was removed from the '
+                f'queue but the row could not be marked cancelled: {exc}'
+            )
+            raise CancellationIncomplete(
+                f'Execution {execution_id} was removed from the queue and will not '
+                'run, but its status could not be updated'
+            ) from exc
+
+        if cancelled is None:
+            logger.error(
+                f'Task {task_id} of execution {execution_id} was removed from the '
+                'queue but the row was no longer pending'
+            )
+            raise CancellationIncomplete(
+                f'Execution {execution_id} was removed from the queue, but its '
+                'status changed before it could be marked cancelled'
+            )
+
+        record_dict = cancelled.to_dict()
+        # Written rather than removed, so a concurrent poll can't re-cache `pending`.
+        try:
+            await asyncio.to_thread(
+                self.cache.add,
+                _cache_key(execution_id),
+                json.dumps(record_dict),
+                _STATUS_CACHE_TTL_TERMINAL,
+            )
+        except Exception as exc:
+            logger.warning(
+                f'Cancellation persisted for execution {execution_id}, '
+                f'but the status cache could not be updated: {exc}'
+            )
+
+        logger.info(
+            f'Cancelled execution {execution_id}, '
+            f'task {task_id} removed from the queue'
+        )
+        return self._build_status_response(record_dict, generate_urls=False)
 
     async def list_executions(
         self,
