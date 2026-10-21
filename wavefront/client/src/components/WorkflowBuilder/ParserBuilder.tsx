@@ -10,6 +10,15 @@ interface ParserBuilderProps {
   onChange: (val: any) => void;
 }
 
+const FIELD_TYPE_OPTIONS = [
+  { value: 'str', label: 'String' },
+  { value: 'int', label: 'Integer' },
+  { value: 'float', label: 'Float' },
+  { value: 'bool', label: 'Boolean' },
+  { value: 'object', label: 'Object' },
+  { value: 'array', label: 'Array' },
+];
+
 const FieldEditor = ({
   field,
   onChange,
@@ -23,6 +32,29 @@ const FieldEditor = ({
 
   const updateField = (key: string, val: any) => {
     onChange({ ...field, [key]: val });
+  };
+
+  const handleTypeChange = (newType: string) => {
+    const newField = { ...field, type: newType };
+    if (newType === 'object' && !newField.fields) {
+      newField.fields = [];
+    }
+    if (newType === 'array' && !newField.items) {
+      newField.items = { type: 'str' };
+    }
+    onChange(newField);
+  };
+
+  const handleNestedFieldChange = (idx: number, newF: any) => {
+    const newFields = [...(field.fields || [])];
+    newFields[idx] = newF;
+    updateField('fields', newFields);
+  };
+
+  const handleNestedFieldDelete = (idx: number) => {
+    const newFields = [...(field.fields || [])];
+    newFields.splice(idx, 1);
+    updateField('fields', newFields);
   };
 
   const hasChildren = field.type === 'object' || field.type === 'array';
@@ -45,25 +77,14 @@ const FieldEditor = ({
         />
         <select
           value={field.type || 'str'}
-          onChange={(e) => {
-            const newType = e.target.value;
-            const newField = { ...field, type: newType };
-            if (newType === 'object' && !newField.fields) {
-              newField.fields = [];
-            }
-            if (newType === 'array' && !newField.items) {
-              newField.items = { type: 'str' };
-            }
-            onChange(newField);
-          }}
+          onChange={(e) => handleTypeChange(e.target.value)}
           className="bg-background border-border focus:border-primary h-7 rounded border px-1.5 text-xs focus:outline-none"
         >
-          <option value="str">String</option>
-          <option value="int">Integer</option>
-          <option value="float">Float</option>
-          <option value="bool">Boolean</option>
-          <option value="object">Object</option>
-          <option value="array">Array</option>
+          {FIELD_TYPE_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
         </select>
         <button onClick={onDelete} className="text-muted-foreground hover:text-destructive p-1">
           <Trash2 size={14} />
@@ -83,16 +104,8 @@ const FieldEditor = ({
             <FieldEditor
               key={idx}
               field={f}
-              onChange={(newF) => {
-                const newFields = [...(field.fields || [])];
-                newFields[idx] = newF;
-                updateField('fields', newFields);
-              }}
-              onDelete={() => {
-                const newFields = [...(field.fields || [])];
-                newFields.splice(idx, 1);
-                updateField('fields', newFields);
-              }}
+              onChange={(newF) => handleNestedFieldChange(idx, newF)}
+              onDelete={() => handleNestedFieldDelete(idx)}
             />
           ))}
           <Button
@@ -139,6 +152,18 @@ export const ParserBuilder = ({ value, onChange }: ParserBuilderProps) => {
 
   const updateRoot = (key: string, val: any) => {
     onChange({ ...value, [key]: val });
+  };
+
+  const handleFieldChange = (idx: number, newF: any) => {
+    const newFields = [...(value.fields || [])];
+    newFields[idx] = newF;
+    updateRoot('fields', newFields);
+  };
+
+  const handleFieldDelete = (idx: number) => {
+    const newFields = [...(value.fields || [])];
+    newFields.splice(idx, 1);
+    updateRoot('fields', newFields);
   };
 
   return (
@@ -193,16 +218,8 @@ export const ParserBuilder = ({ value, onChange }: ParserBuilderProps) => {
             <FieldEditor
               key={idx}
               field={f}
-              onChange={(newF) => {
-                const newFields = [...(value.fields || [])];
-                newFields[idx] = newF;
-                updateRoot('fields', newFields);
-              }}
-              onDelete={() => {
-                const newFields = [...(value.fields || [])];
-                newFields.splice(idx, 1);
-                updateRoot('fields', newFields);
-              }}
+              onChange={(newF) => handleFieldChange(idx, newF)}
+              onDelete={() => handleFieldDelete(idx)}
             />
           ))}
           {(!value.fields || value.fields.length === 0) && (
