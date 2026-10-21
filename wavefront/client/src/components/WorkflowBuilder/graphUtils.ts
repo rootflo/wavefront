@@ -1,6 +1,7 @@
 import { Connection, Edge, MarkerType, Node, XYPosition } from '@xyflow/react';
 import { EDGE_KINDS, EdgeKind, NODE_TYPES, getEdgeKind } from '@app/constants/workflow-builder';
-import { createIteratorLoopEdges, getLayoutedElements } from './yamlSync';
+import { createIteratorLoopEdges } from './yamlSync';
+import { getLayoutedElements } from './autoLayout';
 import { DEFAULT_LAYOUT_DIRECTION, LayoutDirection } from './layoutDirection';
 
 // Pure graph-transform layer for the visual workflow editor.
@@ -503,7 +504,7 @@ export const layoutGraph = (graph: Graph, direction: LayoutDirection = DEFAULT_L
     graph.edges,
     direction
   );
-  return { nodes: laidOut.nodes, edges: graph.edges };
+  return { nodes: laidOut.nodes, edges: laidOut.edges };
 };
 
 // Keep the positions of nodes that already exist on the canvas when the graph is rebuilt from YAML

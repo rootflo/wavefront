@@ -8,7 +8,9 @@ interface CanvasLegendProps {
 export const CanvasLegend = ({ showDataWires }: CanvasLegendProps) => (
   <Panel
     position="bottom-left"
-    className="bg-card/95 border-border mb-4 ml-4 flex max-w-[220px] flex-col gap-1.5 rounded-xl border p-3 shadow-lg backdrop-blur-md"
+    // Inline: React Flow's unlayered panel margin beats Tailwind v4's layered utilities. Clears the zoom controls.
+    style={{ marginLeft: 64 }}
+    className="bg-card/95 border-border flex max-w-[220px] flex-col gap-1.5 rounded-xl border p-3 shadow-lg backdrop-blur-md"
   >
     <h4 className="text-foreground mb-0.5 text-[11px] font-semibold tracking-wider uppercase">Flow Legend</h4>
     <div className="text-muted-foreground flex items-center gap-2 text-[10px]">

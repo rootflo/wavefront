@@ -1,4 +1,5 @@
 import { ProblemsPanel, type Problem } from '@app/components/WorkflowBuilder/ProblemsPanel';
+import ThemeToggle from '@app/components/ThemeToggle';
 import { Button } from '@app/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@app/components/ui/tabs';
 import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
@@ -84,6 +85,7 @@ const WorkflowEditorWorkspace: React.FC<WorkflowEditorWorkspaceProps> = ({
 
         {/* Right: Actions (never shrink, so Close / Save stay visible) */}
         <div className="flex shrink-0 items-center gap-2">
+          <ThemeToggle />
           <Button
             type="button"
             variant="ghost"

@@ -21,3 +21,5 @@ export const useWorkflowActions = () => useContext(WorkflowActionsContext);
 
 // Where a node's handles sit for the current canvas direction
 export const useHandlePositions = () => getHandlePositions(useWorkflowActions().layoutDirection);
+
+export const useLayoutDirection = () => useWorkflowActions().layoutDirection;

@@ -4,6 +4,7 @@ import {
   ReactFlowProvider,
   useNodesState,
   useEdgesState,
+  useNodesInitialized,
   Controls,
   Background,
   BackgroundVariant,
@@ -52,6 +53,8 @@ import {
 import { createWorkflowNode } from './nodeFactory';
 import { ProblemsPanel } from './ProblemsPanel';
 import { LayoutDirection, readLayoutDirection, saveLayoutDirection } from './layoutDirection';
+import { ROUTED_EDGE_TYPE } from './autoLayout';
+import { RoutedEdge } from './canvas/RoutedEdge';
 import type { GraphIssue } from '@app/types/workflow-builder';
 import { WorkflowTemplate, createLinearTemplate, createRouterTemplate } from './workflowTemplates';
 import { WorkflowActions, WorkflowActionsContext } from './hooks/useWorkflowActions';
@@ -71,6 +74,8 @@ const nodeTypes = {
   [NODE_TYPES.SUBWORKFLOW]: SubworkflowNode,
 };
 
+const edgeTypes = { [ROUTED_EDGE_TYPE]: RoutedEdge };
+
 // Node types accepted when dropped from the sidebar palette
 const DROPPABLE_NODE_TYPES: string[] = [
   NODE_TYPES.AGENT,
@@ -82,6 +87,22 @@ const DROPPABLE_NODE_TYPES: string[] = [
 
 const FILTER_FOCUS_COLOR = '#3b82f6';
 const FIT_VIEW_OPTIONS = { padding: 0.2, duration: 400 };
+
+// Runs the layout again once every card has been rendered and measured, so no block is placed from a guessed height
+interface RelayoutOnMeasureProps {
+  pending: React.MutableRefObject<boolean>;
+  onMeasured: () => void;
+}
+
+const RelayoutOnMeasure = ({ pending, onMeasured }: RelayoutOnMeasureProps) => {
+  const initialized = useNodesInitialized();
+  useEffect(() => {
+    if (!initialized || !pending.current) return;
+    pending.current = false;
+    onMeasured();
+  }, [initialized, pending, onMeasured]);
+  return null;
+};
 
 interface WorkflowVisualEditorProps {
   yamlContent?: string;
@@ -107,6 +128,9 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
   // Latest committed graph, so event handlers never compute from a stale render closure
   const graphRef = useRef<Graph>({ nodes, edges });
   graphRef.current = { nodes, edges };
+
+  // Set when positions came from estimated card sizes; the next time every node is measured they are redone
+  const relayoutOnMeasureRef = useRef(false);
 
   // The YAML the current graph corresponds to: the last YAML parsed from props or emitted by this editor.
   // null until the first parse, so the initial yamlContent is always loaded.
@@ -160,9 +184,15 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
     reportYamlError(result.error ?? null);
     setIssues([]);
     const parsed = normalizeGraph(result);
-    const next = needsLayout(parsed)
-      ? layoutGraph(parsed, layoutDirectionRef.current)
-      : keepPositions(parsed, graphRef.current.nodes);
+    // A graph that shares no node with the canvas is a fresh load: lay it out in the chosen direction
+    const previous = graphRef.current.nodes;
+    const isFreshLoad = !parsed.nodes.some((n) => previous.some((p) => p.id === n.id));
+    const next =
+      needsLayout(parsed) || isFreshLoad
+        ? layoutGraph(parsed, layoutDirectionRef.current)
+        : keepPositions(parsed, previous);
+    // Real card heights are only known once rendered: lay out again from them
+    relayoutOnMeasureRef.current = isFreshLoad && next.nodes.length > 0;
     graphRef.current = next;
     setNodes(next.nodes);
     setEdges(next.edges);
@@ -281,8 +311,9 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
     const next = layoutGraph(graphRef.current, layoutDirectionRef.current);
     graphRef.current = next;
     setNodes(next.nodes);
+    setEdges(next.edges);
     fitViewSoon();
-  }, [setNodes, fitViewSoon]);
+  }, [setNodes, setEdges, fitViewSoon]);
 
   // Switching direction moves every node's handles, so re-run the layout in the new direction
   const handleLayoutDirectionChange = useCallback(
@@ -436,6 +467,7 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
     (template: WorkflowTemplate) => {
       if (yamlErrorRef.current) return;
       setSelectedNodeId(null);
+      relayoutOnMeasureRef.current = true;
       commitGraph(layoutGraph(normalizeGraph(template), layoutDirectionRef.current));
       fitViewSoon();
     },
@@ -520,10 +552,13 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
               onPaneClick={onPaneClick}
               onEdgeClick={onEdgeClick}
               nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
+              minZoom={0.1}
               fitView
               className="bg-transparent"
             >
               <Background color="hsl(var(--border))" gap={20} size={1} variant={BackgroundVariant.Dots} />
+              <RelayoutOnMeasure pending={relayoutOnMeasureRef} onMeasured={handleAutoLayout} />
               <Controls className="bg-card border-border fill-foreground" />
 
               {/* CANVAS LEGEND */}

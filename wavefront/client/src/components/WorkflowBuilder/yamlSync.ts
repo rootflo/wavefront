@@ -1,6 +1,5 @@
 import yaml from 'js-yaml';
 import { Node, Edge, MarkerType } from '@xyflow/react';
-import dagre from 'dagre';
 import { EDGE_KINDS, NODE_TYPES, getEdgeKind } from '@app/constants/workflow-builder';
 import {
   AgentConfigMethod,
@@ -17,9 +16,7 @@ import {
   ParseGraphResult,
   SerializeGraphResult,
 } from '@app/types/workflow-builder';
-
-const nodeWidth = 320;
-const nodeHeight = 180;
+import { getLayoutedElements } from './autoLayout';
 
 const TRIGGER_NODE_ID = 'trigger-start';
 // flo_ai sentinels: `to: [end]` is skipped by the runtime, `input` in input_filter means the user input
@@ -149,53 +146,6 @@ const getAgentConfigMethod = (agent: AriumAgentConfig): AgentConfigMethod => {
 };
 
 const getRouterType = (data: Data): string => (data.strategy as string) || (data.type as string) || 'smart';
-
-export const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'LR') => {
-  const dagreGraph = new dagre.graphlib.Graph();
-  dagreGraph.setDefaultEdgeLabel(() => ({}));
-
-  dagreGraph.setGraph({
-    rankdir: direction,
-    nodesep: 80,
-    ranksep: 120,
-    marginx: 50,
-    marginy: 50,
-  });
-
-  const nodeIds = new Set(nodes.map((n) => n.id));
-
-  nodes.forEach((node) => {
-    dagreGraph.setNode(node.id, { width: nodeWidth, height: nodeHeight });
-  });
-
-  // Only layout primary execution edges, NOT memory filters, reflection back-loops, or iterator loop returns.
-  // Including data-dependency or cyclic return edges destroys the linear sequential pipeline.
-  edges.forEach((edge) => {
-    const kind = getEdgeKind(edge);
-    if (kind === EDGE_KINDS.FILTER || kind === EDGE_KINDS.REFLECT || kind === EDGE_KINDS.LOOP_RETURN) {
-      return;
-    }
-    if (nodeIds.has(edge.source) && nodeIds.has(edge.target)) {
-      dagreGraph.setEdge(edge.source, edge.target);
-    }
-  });
-
-  dagre.layout(dagreGraph);
-
-  const layoutedNodes = nodes.map((node) => {
-    const nodeWithPosition = dagreGraph.node(node.id);
-    if (!nodeWithPosition) return node;
-    return {
-      ...node,
-      position: {
-        x: Math.round(nodeWithPosition.x - nodeWidth / 2),
-        y: Math.round(nodeWithPosition.y - nodeHeight / 2),
-      },
-    };
-  });
-
-  return { nodes: layoutedNodes, edges };
-};
 
 export const createIteratorLoopEdges = (iteratorName: string, executeNode: string): Edge[] => [
   {
