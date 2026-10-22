@@ -8,6 +8,8 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@app/components/ui/breadcrumb';
+import DetailActions from '@app/components/DetailActions';
+import MobileBackButton from '@app/components/MobileBackButton';
 import { Button } from '@app/components/ui/button';
 import { Checkbox } from '@app/components/ui/checkbox';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
@@ -595,9 +597,22 @@ const ApiServiceDetail: React.FC = () => {
     );
   };
 
+  const handleCancelEdit = () => {
+    setEditing(false);
+    // Revert changes by resetting form to service data
+    if (service) {
+      const parsed = service.yaml_content ? parseYaml(service.yaml_content) : mapServiceToForm(service);
+      if (parsed) {
+        form.reset(parsed);
+        const yaml = generateYaml(parsed);
+        setYamlContent(yaml);
+      }
+    }
+  };
+
   return (
-    <div className="h-full bg-transparent px-8 pt-8 pb-[200px]">
-      <Breadcrumb className="mb-6">
+    <div className="h-full bg-transparent px-4 pt-4 pb-[200px] sm:px-8 sm:pt-8">
+      <Breadcrumb className="mb-6 hidden md:block">
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
@@ -626,43 +641,21 @@ const ApiServiceDetail: React.FC = () => {
       </Breadcrumb>
 
       <div className="flex w-full flex-col gap-10 pb-5">
-        <div className="flex items-center justify-between">
-          <p className="frost-text text-2xl leading-normal font-semibold">
-            {formatAppName(service?.name || service?.service_id)}
-          </p>
-          <div className="flex gap-4">
-            {editing ? (
-              <>
-                <Button onClick={form.handleSubmit(handleSave)} loading={saving}>
-                  Save
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setEditing(false);
-                    // Revert changes by resetting form to service data
-                    if (service) {
-                      const parsed = service.yaml_content ? parseYaml(service.yaml_content) : mapServiceToForm(service);
-                      if (parsed) {
-                        form.reset(parsed);
-                        const yaml = generateYaml(parsed);
-                        setYamlContent(yaml);
-                      }
-                    }
-                  }}
-                >
-                  Cancel
-                </Button>
-              </>
-            ) : (
-              <Button variant="outline" onClick={() => setEditing(true)}>
-                Edit
-              </Button>
-            )}
-            <Button variant="destructive" onClick={() => setShowDeleteConfirm(true)}>
-              Delete
-            </Button>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <MobileBackButton to={`/apps/${appId}/api-services`} label="Back to api services" />
+            <p className="frost-text min-w-0 truncate text-xl leading-normal font-semibold sm:text-2xl">
+              {formatAppName(service?.name || service?.service_id)}
+            </p>
           </div>
+          <DetailActions
+            editing={editing}
+            onEdit={() => setEditing(true)}
+            onDelete={() => setShowDeleteConfirm(true)}
+            onSave={form.handleSubmit(handleSave)}
+            onCancel={handleCancelEdit}
+            saving={saving}
+          />
         </div>
 
         <div className="flex w-full flex-col gap-6">

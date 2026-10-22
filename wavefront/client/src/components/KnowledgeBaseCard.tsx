@@ -1,3 +1,4 @@
+import { BookOpen } from 'lucide-react';
 import { KbData } from '@app/api/knowledge-base-service';
 import React from 'react';
 import ResourceCard, { ResourceCardMetadata } from './ResourceCard';
@@ -21,6 +22,7 @@ const KnowledgeBaseCard: React.FC<KnowledgeBaseCardProps> = ({ kb, onClick, onDe
 
   return (
     <ResourceCard
+      icon={BookOpen}
       title={kb.name}
       description={kb.description || 'No description provided.'}
       metadata={metadata}

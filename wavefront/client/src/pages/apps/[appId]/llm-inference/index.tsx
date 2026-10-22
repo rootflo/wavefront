@@ -1,3 +1,5 @@
+import { LLM_PROVIDERS_CONFIG } from '@app/config/llm-providers';
+import ListHeader, { FilterSelect } from '@app/components/ListHeader';
 import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
@@ -10,8 +12,6 @@ import {
   BreadcrumbList,
   BreadcrumbSeparator,
 } from '@app/components/ui/breadcrumb';
-import { Button } from '@app/components/ui/button';
-import { Input } from '@app/components/ui/input';
 import { useGetLLMConfigs } from '@app/hooks';
 import { getLLMConfigsKey } from '@app/hooks/data/query-keys';
 import { extractErrorMessage } from '@app/lib/utils';
@@ -30,6 +30,7 @@ const LLMInferenceConfigsManagement: React.FC = () => {
   const { selectedApp } = useDashboardStore();
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [providerFilter, setProviderFilter] = useState('all');
   const [deleteItem, setDeleteItem] = useState<LLMInferenceConfig | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -39,11 +40,16 @@ const LLMInferenceConfigsManagement: React.FC = () => {
 
   const filteredConfigs = configs.filter(
     (config) =>
-      config.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      config.llm_model.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      config.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      config.type.toLowerCase().includes(searchTerm.toLowerCase())
+      (providerFilter === 'all' || config.type === providerFilter) &&
+      (config.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        config.llm_model.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        config.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        config.type.toLowerCase().includes(searchTerm.toLowerCase()))
   );
+
+  const providerOptions = Array.from(new Set(configs.map((config) => config.type)))
+    .sort()
+    .map((type) => ({ value: type, label: LLM_PROVIDERS_CONFIG[type]?.name ?? type }));
 
   const handleCreateConfig = () => {
     setCreateDialogOpen(true);
@@ -88,8 +94,8 @@ const LLMInferenceConfigsManagement: React.FC = () => {
   };
 
   return (
-    <div className="flex h-full w-full flex-col p-8">
-      <Breadcrumb className="mb-4">
+    <div className="flex h-full w-full flex-col p-4 sm:p-8">
+      <Breadcrumb className="mb-4 hidden md:block">
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
@@ -113,23 +119,25 @@ const LLMInferenceConfigsManagement: React.FC = () => {
         </BreadcrumbList>
       </Breadcrumb>
 
-      <div className="mb-8 flex w-full items-start justify-between">
-        <div>
-          <h1 className="animate-fade-in frost-text text-3xl font-bold">LLM Repository</h1>
-          <p className="animate-fade-in frost-text-muted mt-2">Manage LLMs for {selectedApp?.app_name}</p>
-        </div>
-        <div className="animate-fade-in flex items-center gap-4">
-          <Input
-            className="w-[180px]"
-            type="text"
-            placeholder="Search"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-          <Button onClick={handleCreateConfig}>Add LLM</Button>
-        </div>
-      </div>
-      <div className="grid w-full gap-6 px-1 pt-2 pb-10 sm:grid-cols-2 lg:grid-cols-3">
+      <ListHeader
+        title="LLM Repository"
+        count={filteredConfigs.length || undefined}
+        subtitle={<>Manage LLMs for {selectedApp?.app_name}</>}
+        search={{ value: searchTerm, onChange: setSearchTerm, placeholder: 'Search llm repository' }}
+        filters={
+          providerOptions.length > 1 ? (
+            <FilterSelect
+              label="Provider"
+              value={providerFilter}
+              onValueChange={setProviderFilter}
+              allValue="all"
+              options={[{ value: 'all', label: 'All' }, ...providerOptions]}
+            />
+          ) : undefined
+        }
+        primary={{ label: 'Add LLM', onClick: handleCreateConfig }}
+      />
+      <div className="grid w-full gap-3 px-1 pt-2 pb-24 sm:grid-cols-2 sm:gap-6 sm:pb-10 lg:grid-cols-3">
         {loading ? (
           <>
             {Array.from({ length: 6 }).map((_, index) => (

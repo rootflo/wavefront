@@ -37,7 +37,7 @@ const ChatbotFormFields: React.FC<ChatbotFormFieldsProps> = ({
     <div className="space-y-6">
       <div className="space-y-4">
         <h3 className="text-sm font-semibold">Basic Information</h3>
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
           <FormField
             control={form.control}
             name="name"
@@ -153,7 +153,7 @@ const ChatbotFormFields: React.FC<ChatbotFormFieldsProps> = ({
 
       <div className="space-y-4">
         <h3 className="text-sm font-semibold">Model</h3>
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
           <FormField
             control={form.control}
             name="llm_config_id"

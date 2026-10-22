@@ -72,7 +72,7 @@ const IndexStatusSummary: React.FC<IndexStatusSummaryProps> = ({ status, loading
               and upload again to retry.
             </DialogDescription>
           </DialogHeader>
-          <Table className="table-fixed">
+          <Table className="min-w-0 table-fixed">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[35%]">Document</TableHead>

@@ -211,7 +211,7 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
             {key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
             {paramConfig.required && <span className="text-red-500">*</span>}
           </label>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {Object.entries(paramConfig.fields).map(([nestedKey, nestedConfig]) => (
               <div key={nestedKey}>
                 <label className="frost-text mb-1 block text-xs font-medium">
@@ -375,7 +375,7 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
               <FormField
                 control={form.control}
                 name="authName"
@@ -452,7 +452,7 @@ const CreateAuthenticatorDialog: React.FC<CreateAuthenticatorDialogProps> = ({
             {config && (
               <div className="frost-glass border-frost-border ring-frost-border space-y-4 rounded-lg border p-6 ring-1">
                 <h3 className="frost-text text-lg font-semibold">Configuration</h3>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   {Object.keys(config.parameters).map((key) => (
                     <div key={key}>{renderParameterField(key)}</div>
                   ))}

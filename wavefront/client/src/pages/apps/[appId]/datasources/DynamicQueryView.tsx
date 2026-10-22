@@ -198,7 +198,7 @@ const DynamicQueryView = ({
               className="flex flex-col gap-6"
             >
               {queryParameters && Object.keys(queryParameters).length > 0 && (
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                   {Object.keys(queryParameters).map((parameter) => {
                     const parameterType = queryParameters[parameter];
                     const hasError = !!formErrors[parameter];

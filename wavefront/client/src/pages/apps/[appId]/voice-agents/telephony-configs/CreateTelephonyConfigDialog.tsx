@@ -265,7 +265,7 @@ const CreateTelephonyConfigDialog: React.FC<CreateTelephonyConfigDialogProps> = 
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
               <FormField
                 control={form.control}
                 name="display_name"
@@ -329,7 +329,7 @@ const CreateTelephonyConfigDialog: React.FC<CreateTelephonyConfigDialogProps> = 
               )}
             />
 
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
               <FormField
                 control={form.control}
                 name="connection_type"
@@ -360,7 +360,7 @@ const CreateTelephonyConfigDialog: React.FC<CreateTelephonyConfigDialogProps> = 
 
             {/* Provider-specific credential fields */}
             {watchedProvider === 'twilio' && (
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                 <FormField
                   control={form.control}
                   name="account_sid"
@@ -397,7 +397,7 @@ const CreateTelephonyConfigDialog: React.FC<CreateTelephonyConfigDialogProps> = 
 
             {watchedProvider === 'exotel' && (
               <div className="space-y-6">
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                   <FormField
                     control={form.control}
                     name="api_key"
@@ -431,7 +431,7 @@ const CreateTelephonyConfigDialog: React.FC<CreateTelephonyConfigDialogProps> = 
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                   <FormField
                     control={form.control}
                     name="exotel_account_sid"
@@ -488,7 +488,7 @@ const CreateTelephonyConfigDialog: React.FC<CreateTelephonyConfigDialogProps> = 
             {showSipConfig && (
               <div className="frost-glass border-frost-border ring-frost-border rounded-lg border p-4 ring-1">
                 <h3 className="frost-text mb-4 font-medium">SIP Configuration</h3>
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                   <FormField
                     control={form.control}
                     name="sip_domain"

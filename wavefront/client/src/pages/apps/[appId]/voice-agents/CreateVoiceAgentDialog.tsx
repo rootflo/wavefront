@@ -602,7 +602,7 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
               </TabsList>
 
               <TabsContent value={FORM_TAB.BASIC} className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto">
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                   <FormField
                     control={form.control}
                     name="name"
@@ -662,7 +662,7 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                   )}
                 />
 
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                   <FormField
                     control={form.control}
                     name="inbound_numbers"
@@ -701,7 +701,7 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                     <FieldHelp ariaLabel="About speech input">How the agent hears the caller</FieldHelp>
                   </div>
                   <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                       <FormField
                         control={form.control}
                         name="stt_config_id"
@@ -731,12 +731,12 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                       {sttParamGroups?.compact.map((key) => renderSttParameterField(key))}
                     </div>
                     {sttParamGroups && sttParamGroups.sliders.length > 0 && (
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         {sttParamGroups.sliders.map((key) => renderSttParameterField(key))}
                       </div>
                     )}
                     {sttParamGroups && sttParamGroups.booleans.length > 0 && (
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         {sttParamGroups.booleans.map((key) => renderSttParameterField(key))}
                       </div>
                     )}
@@ -749,7 +749,7 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                     <h4 className="text-base font-semibold tracking-tight">Intelligence</h4>
                     <FieldHelp ariaLabel="About intelligence">The model that decides what to say</FieldHelp>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <FormField
                       control={form.control}
                       name="llm_config_id"
@@ -786,7 +786,7 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                     <FieldHelp ariaLabel="About speech output">How the agent speaks back</FieldHelp>
                   </div>
                   <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                       <FormField
                         control={form.control}
                         name="tts_config_id"
@@ -816,12 +816,12 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                       {ttsParamGroups?.compact.map((key) => renderTtsParameterField(key))}
                     </div>
                     {ttsParamGroups && ttsParamGroups.sliders.length > 0 && (
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-8">
+                      <div className="grid grid-cols-1 gap-x-4 gap-y-8 sm:grid-cols-2">
                         {ttsParamGroups.sliders.map((key) => renderTtsParameterField(key))}
                       </div>
                     )}
                     {ttsParamGroups && ttsParamGroups.booleans.length > 0 && (
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         {ttsParamGroups.booleans.map((key) => renderTtsParameterField(key))}
                       </div>
                     )}
@@ -859,7 +859,7 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                       Provider credentials for calls (numbers are on the Basic Info tab)
                     </FieldHelp>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <FormField
                       control={form.control}
                       name="telephony_config_id"
@@ -900,7 +900,7 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                         Supported Languages<span className="text-red-500">*</span>
                       </FormLabel>
                       <div className="rounded-md border p-4">
-                        <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
                           {SUPPORTED_LANGUAGES.map((lang) => (
                             <div key={lang.code} className="flex items-center space-x-2">
                               <Checkbox

@@ -130,7 +130,7 @@ const PiiPreviewDialog: React.FC<Props> = ({ open, onOpenChange, options, groups
           <div>
             <div className="flex items-center justify-between">
               <Label className="text-sm font-medium">Sample text</Label>
-              <span className={`text-xs ${text.length > MAX_CHARS ? 'text-red-600' : 'text-gray-400'}`}>
+              <span className={`text-xs ${text.length > MAX_CHARS ? 'text-red-600' : 'frost-text-subtle'}`}>
                 {text.length} / {MAX_CHARS}
               </span>
             </div>
@@ -141,15 +141,19 @@ const PiiPreviewDialog: React.FC<Props> = ({ open, onOpenChange, options, groups
             />
           </div>
 
-          {error && <p className="rounded-md border border-red-300 bg-red-50 p-3 text-xs text-red-800">{error}</p>}
+          {error && (
+            <p className="rounded-md border border-red-400/50 bg-red-500/10 p-3 text-xs text-red-800 dark:text-red-300">
+              {error}
+            </p>
+          )}
 
           {result && (
             <div className="flex flex-col gap-3">
               <div>
-                <Label className="text-xs font-medium text-gray-500">Detected</Label>
-                <div className="mt-1.5 rounded-md border border-gray-200 p-3 text-xs leading-relaxed whitespace-pre-wrap">
+                <Label className="frost-text-subtle text-xs font-medium">Detected</Label>
+                <div className="border-frost-border mt-1.5 rounded-md border p-3 text-xs leading-relaxed whitespace-pre-wrap">
                   {result.findings.length === 0 ? (
-                    <span className="text-gray-500">
+                    <span className="frost-text-subtle">
                       Nothing was detected. Either this text contains none of the selected types, or the identifiers in
                       it failed their checksum.
                     </span>
@@ -172,8 +176,8 @@ const PiiPreviewDialog: React.FC<Props> = ({ open, onOpenChange, options, groups
               </div>
 
               <div>
-                <Label className="text-xs font-medium text-gray-500">What the model would receive</Label>
-                <div className="mt-1.5 rounded-md border border-gray-200 bg-gray-50 p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">
+                <Label className="frost-text-subtle text-xs font-medium">What the model would receive</Label>
+                <div className="border-frost-border bg-frost-glass mt-1.5 rounded-md border p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">
                   {result.redacted_text}
                 </div>
               </div>
@@ -181,7 +185,7 @@ const PiiPreviewDialog: React.FC<Props> = ({ open, onOpenChange, options, groups
               {result.findings.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                   {Object.entries(counts).map(([entity, count]) => (
-                    <span key={entity} className="rounded bg-gray-100 px-2 py-0.5 text-[11px] text-gray-700">
+                    <span key={entity} className="bg-frost-glass frost-text-muted rounded px-2 py-0.5 text-[11px]">
                       {labels.get(entity) ?? entity} × {count}
                     </span>
                   ))}

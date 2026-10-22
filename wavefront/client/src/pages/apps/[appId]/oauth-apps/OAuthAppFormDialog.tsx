@@ -145,7 +145,7 @@ const OAuthAppFormDialog: React.FC<OAuthAppFormDialogProps> = ({
         </DialogHeader>
 
         <div className="space-y-6">
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
             <div>
               <label className="frost-text mb-1 block text-sm font-medium">
                 Name<span className="text-red-500">*</span>
@@ -190,7 +190,7 @@ const OAuthAppFormDialog: React.FC<OAuthAppFormDialogProps> = ({
           {config && (
             <div className="frost-glass border-frost-border ring-frost-border space-y-4 rounded-lg border p-6 ring-1">
               <h3 className="frost-text text-lg font-semibold">Configuration</h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 {Object.entries(config.parameters).map(([key, paramConfig]) => (
                   <div key={key}>
                     <label className="frost-text mb-1 block text-sm font-medium">

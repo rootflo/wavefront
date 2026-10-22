@@ -8,6 +8,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@app/components/ui/breadcrumb';
+import MobileBackButton from '@app/components/MobileBackButton';
 import { Button } from '@app/components/ui/button';
 import {
   Dialog,
@@ -100,8 +101,8 @@ const KnowledgeBaseDetailPage: React.FC = () => {
   };
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-transparent px-8 pt-8 pb-8">
-      <Breadcrumb className="mb-6 shrink-0">
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-transparent px-4 pt-4 pb-4 sm:px-8 sm:pt-8 sm:pb-8">
+      <Breadcrumb className="mb-6 hidden shrink-0 md:block">
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
@@ -131,9 +132,12 @@ const KnowledgeBaseDetailPage: React.FC = () => {
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-6">
         <div className="flex shrink-0 items-center justify-between">
-          <p className="frost-text text-2xl leading-normal font-semibold">
-            {formatAppName(knowledgeBase?.name) || 'N/A'}
-          </p>
+          <div className="flex min-w-0 items-center gap-2">
+            <MobileBackButton to={`/apps/${appId}/knowledge-bases`} label="Back to knowledge bases" />
+            <p className="frost-text min-w-0 truncate text-xl leading-normal font-semibold sm:text-2xl">
+              {formatAppName(knowledgeBase?.name) || 'N/A'}
+            </p>
+          </div>
         </div>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-6">
           <div className="flex min-h-0 min-w-0 flex-col gap-3">
@@ -158,7 +162,7 @@ const KnowledgeBaseDetailPage: React.FC = () => {
               </div>
             ) : (
               <div className="frost-table-panel border-frost-border ring-frost-border min-h-0 min-w-0 flex-1 overflow-auto rounded-lg border ring-1">
-                <Table className="table-fixed">
+                <Table cards className="table-fixed">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-[40%]">Document Name</TableHead>

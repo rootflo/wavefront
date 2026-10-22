@@ -124,7 +124,7 @@ const CreateConfigurationDialog: React.FC<CreateConfigurationDialogProps> = ({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <div className="grid grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
               <FormField
                 control={form.control}
                 name="namespace"

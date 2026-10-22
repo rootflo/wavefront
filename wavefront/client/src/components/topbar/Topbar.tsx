@@ -9,23 +9,36 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@app/components/ui/dropdown-menu';
+import { isLiveStatus } from '@app/lib/app-status';
 import { formatAppName } from '@app/lib/utils';
 import { IUser } from '@app/pages/types';
 import { useAuthStore } from '@app/store';
 import { useDashboardStore } from '@app/store/dashboard-store';
 import { useThemeStore } from '@app/store/theme-store';
 import { App } from '@app/types/app';
-import { LogOut, Settings, UserIcon } from 'lucide-react';
+import { ChevronRight, ChevronsUpDown, LogOut, Menu, Settings } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 
 const Topbar = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
-  const { selectedApp, setSelectedApp } = useDashboardStore();
+  const { selectedApp, setSelectedApp, setMobileNavOpen } = useDashboardStore();
   const { authenticated } = useAuthStore();
   const theme = useThemeStore((state) => state.theme);
   const navigate = useNavigate();
   const location = useLocation();
   const [appPickerOpen, setAppPickerOpen] = useState(false);
+
+  // The workspace menu only exists inside an app's pages (/apps/:appId/<section>).
+  const pathParts = location.pathname.split('/');
+  const hasWorkspaceMenu = pathParts[1] === 'apps' && Boolean(pathParts[3]) && pathParts[2] !== 'edit';
+
+  // The section of the app being viewed, e.g. "Agents", shown after the app switcher.
+  const sectionName = pathParts[3]
+    ? pathParts[3]
+        .split('-')
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ')
+    : '';
 
   const handleLogout = () => {
     navigate('/logout');
@@ -54,45 +67,53 @@ const Topbar = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
   }, [apps, setSelectedApp]);
 
   return (
-    <header className="relative z-20 h-14 shrink-0 overflow-hidden">
-      <div aria-hidden className="frost-wash pointer-events-none absolute inset-0">
-        <div className="frost-blob-a absolute -top-16 left-0 h-40 w-56 rounded-full blur-3xl" />
-        <div className="frost-blob-b absolute -top-10 left-1/3 h-36 w-52 rounded-full blur-3xl" />
-        <div className="frost-blob-c absolute right-8 -bottom-16 h-40 w-56 rounded-full blur-3xl" />
-        <div className="frost-nav-overlay absolute inset-0" />
-      </div>
-
-      <div className="frost-glass relative flex h-full items-stretch">
-        <a
-          className="flex w-[200px] shrink-0 cursor-pointer items-center justify-center px-4 transition-colors hover:bg-white/20 dark:hover:bg-white/5"
-          onClick={handleNavIconClick}
-        >
-          <img
-            src="/wavefront.png"
-            alt="Wavefront"
-            className={`object-contain ${theme === 'dark' ? 'brightness-0 invert' : ''}`}
-            width={120}
-          />
+    <header className="relative z-20 h-14 shrink-0">
+      <div className="frost-glass border-frost-border relative flex h-full items-center border-b">
+        {hasWorkspaceMenu ? (
+          <button
+            type="button"
+            aria-label="Open navigation menu"
+            onClick={() => setMobileNavOpen(true)}
+            className="frost-text hover:bg-frost-glass flex w-11 shrink-0 cursor-pointer items-center justify-center md:hidden"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+        ) : null}
+        <a className="flex shrink-0 cursor-pointer items-center px-3 sm:px-4 md:w-[208px]" onClick={handleNavIconClick}>
+          <span className="relative inline-flex shrink-0 items-end gap-1.5">
+            <img
+              src="/wavefront.png"
+              alt="Wavefront"
+              className={`object-contain ${theme === 'dark' ? 'brightness-0 invert' : ''}`}
+              width={110}
+            />
+            <span className="frost-text-subtle absolute -right-12 -bottom-2 mb-px hidden items-center gap-1 text-[8.5px] tracking-[0.1em] lg:flex">
+              by
+              <RootfloIcon height={11} width={30} color={theme === 'dark' ? '#e2e8f0' : undefined} />
+            </span>
+          </span>
         </a>
 
-        <div className="flex min-w-0 flex-1 items-center justify-between gap-4 pr-8 pl-5">
-          <div className="flex min-w-0 items-center gap-6">
-            <div className="flex shrink-0 items-center gap-1.5">
-              <p className="frost-text-subtle text-[10px] font-semibold tracking-[0.14em] uppercase">Powered by</p>
-              <RootfloIcon height={14} width={38} color={theme === 'dark' ? '#e2e8f0' : undefined} />
-            </div>
-
+        <div className="flex min-w-0 flex-1 items-center justify-between gap-2 pr-3 pl-2 sm:gap-4 sm:pr-8 sm:pl-5">
+          <div className="flex min-w-0 items-center gap-3 sm:gap-6">
             {apps.length > 0 ? (
               <>
                 <button
                   type="button"
                   aria-label="Select app"
                   onClick={() => setAppPickerOpen(true)}
-                  className="frost-text hover:bg-frost-glass flex h-8 max-w-[200px] cursor-pointer items-center gap-1.5 rounded-full border border-slate-300 bg-transparent px-3 transition-colors outline-none dark:border-slate-500"
+                  className="frost-glass-strong frost-text border-frost-border flex h-[38px] max-w-[160px] cursor-pointer items-center gap-2 rounded-xl border pr-1.5 pl-1.5 transition-colors outline-none hover:opacity-90 sm:max-w-[240px] sm:pr-2.5"
                 >
-                  <span className="min-w-0 flex-1 truncate text-left text-[13px] font-medium lowercase">
+                  <span className="flex size-[26px] shrink-0 items-center justify-center rounded-lg bg-[linear-gradient(135deg,#2f6df6,#8b5cf6)] text-xs font-extrabold text-white uppercase">
+                    {selectedApp ? formatAppName(selectedApp.app_name).charAt(0) : '?'}
+                  </span>
+                  <span className="hidden min-w-0 flex-1 truncate text-left text-[13.5px] font-semibold sm:block">
                     {selectedApp ? formatAppName(selectedApp.app_name) : 'Select an app'}
                   </span>
+                  {selectedApp?.status && isLiveStatus(selectedApp.status) ? (
+                    <span className="hidden size-[7px] shrink-0 rounded-full bg-emerald-500 sm:block" aria-hidden />
+                  ) : null}
+                  <ChevronsUpDown className="frost-text-muted size-3.5 shrink-0" />
                 </button>
 
                 <SelectAppDialog
@@ -104,25 +125,29 @@ const Topbar = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
                 />
               </>
             ) : null}
+            {sectionName ? (
+              <span className="frost-text-muted hidden items-center gap-1.5 text-[13px] md:flex">
+                <ChevronRight className="size-3.5" />
+                <b className="frost-text font-semibold">{sectionName}</b>
+              </span>
+            ) : null}
           </div>
 
-          <div className="flex items-center gap-6">
+          <div className="flex shrink-0 items-center gap-3 sm:gap-6">
             <ThemeToggle />
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  className="frost-glass-strong frost-text border-frost-border ring-frost-border flex h-8 w-[160px] cursor-pointer items-center gap-1.5 rounded-md border px-2 ring-1 transition-colors hover:opacity-90"
+                  aria-label="Account menu"
+                  className="flex size-9 cursor-pointer items-center justify-center rounded-full bg-[linear-gradient(135deg,#8b5cf6,#2f6df6)] text-[13px] font-bold text-white uppercase ring-2 ring-[var(--frost-border)] transition-opacity outline-none hover:opacity-90"
                 >
-                  <UserIcon className="frost-text-muted h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate text-[13px] font-medium capitalize">
-                    {user.first_name} {user.last_name}
-                  </span>
+                  {(user.first_name?.[0] ?? '') + (user.last_name?.[0] ?? '') || '?'}
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent
-                className="frost-dialog border-frost-border ring-frost-border w-[160px] min-w-0 p-1.5 ring-1"
+                className="frost-dialog border-frost-border ring-frost-border w-[200px] min-w-0 rounded-xl p-1.5 ring-1"
                 align="end"
                 sideOffset={8}
               >

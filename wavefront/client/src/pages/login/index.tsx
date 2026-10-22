@@ -71,18 +71,23 @@ const Login = () => {
   }, []);
 
   return (
-    <div id="login__page" className="relative flex h-full w-full flex-col items-center justify-center gap-12">
-      <div className="absolute top-5 right-5">
+    <div
+      id="login__page"
+      className="relative flex min-h-full w-full flex-col items-center justify-center gap-6 overflow-y-auto px-4 py-10 sm:gap-10"
+    >
+      <div className="absolute top-4 right-4 sm:top-5 sm:right-5">
         <ThemeToggle />
       </div>
-      <div className="flex h-[100px] w-[100px] animate-[spin_3s_linear_infinite] items-center justify-center rounded-[50%]">
+      <div className="flex size-16 shrink-0 animate-[spin_3s_linear_infinite] items-center justify-center rounded-[50%] sm:size-[100px]">
         <img src={aiCircle} alt="" className="rounded-full" />
       </div>
-      <div className="frost-card ring-frost-border flex w-full max-w-[320px] flex-col items-center justify-center gap-8 rounded-2xl border p-8 ring-1 sm:max-w-[480px]">
+      <div className="frost-card ring-frost-border flex w-full max-w-[480px] flex-col items-center justify-center gap-6 rounded-2xl border p-5 ring-1 sm:gap-8 sm:p-8">
         <RootfloIcon color={theme === 'dark' ? '#e2e8f0' : undefined} />
         <div className="flex w-full flex-col items-center justify-center">
           <p className="frost-text text-2xl font-medium">Welcome back!</p>
-          <p className="frost-text-muted text-base font-normal">Enter your credentials to access your account</p>
+          <p className="frost-text-muted text-center text-sm font-normal sm:text-base">
+            Enter your credentials to access your account
+          </p>
         </div>
         <Form {...form}>
           <form className="flex w-full flex-col gap-6" onSubmit={form.handleSubmit(handleLogin)}>
@@ -98,7 +103,7 @@ const Login = () => {
                           type="email"
                           placeholder="Enter email"
                           autoComplete="off"
-                          className="frost-text w-full border-0 bg-transparent text-base font-medium shadow-none ring-0 outline-none focus-visible:ring-0"
+                          className="frost-text h-auto min-w-0 flex-1 rounded-none border-0 bg-transparent! p-0 text-base font-medium shadow-none! ring-0 [backdrop-filter:none]! outline-none focus-visible:ring-0"
                           {...field}
                         />
                       </div>
@@ -119,7 +124,7 @@ const Login = () => {
                           type={showPassword ? 'text' : 'password'}
                           placeholder="Enter password"
                           autoComplete="off"
-                          className="frost-text w-full border-0 bg-transparent text-base font-medium shadow-none ring-0 outline-none focus-visible:ring-0"
+                          className="frost-text h-auto min-w-0 flex-1 rounded-none border-0 bg-transparent! p-0 text-base font-medium shadow-none! ring-0 [backdrop-filter:none]! outline-none focus-visible:ring-0"
                           {...field}
                         />
                         <button
@@ -142,7 +147,7 @@ const Login = () => {
           </form>
         </Form>
       </div>
-      <div className="flex gap-2 text-base">
+      <div className="flex flex-wrap justify-center gap-x-2 text-sm sm:text-base">
         <p className="frost-text-muted font-normal">Forgot your password?</p>
         <Link to="/forgot-password" className="text-brand font-medium hover:underline">
           Reset here

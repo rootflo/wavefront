@@ -1,3 +1,4 @@
+import ListHeader from '@app/components/ListHeader';
 import floConsoleService from '@app/api';
 import AuthenticatorCard from '@app/components/AuthenticatorCard';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
@@ -10,8 +11,6 @@ import {
   BreadcrumbList,
   BreadcrumbSeparator,
 } from '@app/components/ui/breadcrumb';
-import { Button } from '@app/components/ui/button';
-import { Input } from '@app/components/ui/input';
 import { useGetAuthenticators } from '@app/hooks';
 import { getAuthenticatorsKey } from '@app/hooks/data/query-keys';
 import { extractErrorMessage } from '@app/lib/utils';
@@ -83,8 +82,8 @@ const AuthenticatorsPage: React.FC = () => {
   });
 
   return (
-    <div className="flex h-full w-full flex-col p-8">
-      <Breadcrumb className="mb-4">
+    <div className="flex h-full w-full flex-col p-4 sm:p-8">
+      <Breadcrumb className="mb-4 hidden md:block">
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
@@ -108,29 +107,14 @@ const AuthenticatorsPage: React.FC = () => {
         </BreadcrumbList>
       </Breadcrumb>
 
-      <div className="mb-8 flex w-full items-start justify-between">
-        <div>
-          <h1 className="animate-fade-in frost-text text-3xl font-bold">Authenticators</h1>
-          <p className="animate-fade-in frost-text-muted mt-2">
-            Manage authentication provider configurations for {selectedApp?.app_name}
-          </p>
-        </div>
-        <div className="animate-fade-in flex items-center gap-4">
-          <Input
-            className="w-[180px]"
-            type="text"
-            placeholder="Search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-          <div className="flex items-center gap-3">
-            <Button onClick={handleCreateAuthenticator}>
-              <p className="text-sm">Create Authenticator</p>
-            </Button>
-          </div>
-        </div>
-      </div>
-      <div className="grid w-full gap-6 px-1 pt-2 pb-10 sm:grid-cols-2 lg:grid-cols-3">
+      <ListHeader
+        title="Authenticators"
+        count={filteredAuthenticators.length || undefined}
+        subtitle={<>Manage authentication provider configurations for {selectedApp?.app_name}</>}
+        search={{ value: searchQuery, onChange: setSearchQuery, placeholder: 'Search authenticators' }}
+        primary={{ label: 'Create authenticator', onClick: handleCreateAuthenticator }}
+      />
+      <div className="grid w-full gap-3 px-1 pt-2 pb-24 sm:grid-cols-2 sm:gap-6 sm:pb-10 lg:grid-cols-3">
         {authenticatorsLoading ? (
           <>
             {Array.from({ length: 6 }).map((_, index) => (

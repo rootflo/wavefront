@@ -492,7 +492,7 @@ export const WorkflowVisualEditor = ({ yamlContent = '', onChange }: WorkflowVis
 
   return (
     <WorkflowActionsContext.Provider value={workflowActions}>
-      <div className="border-border bg-background flex h-full w-full overflow-hidden rounded-lg border">
+      <div className="border-border bg-background relative flex h-full w-full overflow-hidden rounded-lg border">
         <ReactFlowProvider>
           {/* ACTIVE WORKFLOW PALETTE & OUTLINE SIDEBAR */}
           <Sidebar

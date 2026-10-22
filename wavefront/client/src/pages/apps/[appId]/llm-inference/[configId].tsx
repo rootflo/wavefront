@@ -1,5 +1,7 @@
 import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
+import DetailActions from '@app/components/DetailActions';
+import MobileBackButton from '@app/components/MobileBackButton';
 import { ModelParameters } from '@app/components/llm/ModelParameters';
 import { ModelSelect, ModelTags } from '@app/components/llm/ModelSelect';
 import { ProviderSelect } from '@app/components/llm/ProviderSelect';
@@ -11,7 +13,6 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@app/components/ui/breadcrumb';
-import { Button } from '@app/components/ui/button';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
@@ -242,8 +243,8 @@ const LLMInferenceConfigDetail: React.FC = () => {
   };
 
   return (
-    <div className="flex h-full flex-col overflow-y-auto bg-transparent px-8 pt-8 pb-8 lg:overflow-hidden">
-      <Breadcrumb className="mb-6 shrink-0">
+    <div className="flex h-full flex-col overflow-y-auto bg-transparent px-4 pt-4 pb-4 sm:px-8 sm:pt-8 sm:pb-8 lg:overflow-hidden">
+      <Breadcrumb className="mb-6 hidden shrink-0 md:block">
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
@@ -279,9 +280,14 @@ const LLMInferenceConfigDetail: React.FC = () => {
         <div className="frost-text-muted flex h-64 items-center justify-center">Model configuration not found</div>
       ) : (
         <div className="flex w-full flex-col gap-8 lg:min-h-0 lg:flex-1">
-          <div className="flex shrink-0 items-center justify-between gap-4">
-            <div className="flex min-w-0 flex-col gap-1">
-              <p className="frost-text text-2xl leading-normal font-semibold">{formatAppName(config.display_name)}</p>
+          <div className="flex shrink-0 items-start justify-between gap-3">
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <div className="flex min-w-0 items-center gap-2">
+                <MobileBackButton to={`/apps/${appId}/llm-repository`} label="Back to llm repository" />
+                <p className="frost-text min-w-0 truncate text-xl leading-normal font-semibold sm:text-2xl">
+                  {formatAppName(config.display_name)}
+                </p>
+              </div>
               <div className="frost-text-muted flex flex-wrap items-center gap-2 text-sm">
                 <span>{getProviderConfig(config.type)?.name ?? config.type}</span>
                 <span>·</span>
@@ -289,31 +295,17 @@ const LLMInferenceConfigDetail: React.FC = () => {
                 <ModelTags tags={findModelPreset(config.type, config.llm_model)?.tags} />
               </div>
             </div>
-            <div className="flex shrink-0 gap-4">
-              {editing ? (
-                <>
-                  <Button onClick={form.handleSubmit(handleSave)} loading={saving}>
-                    Save
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setEditing(false);
-                      resetToSaved(config);
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                </>
-              ) : (
-                <Button variant="outline" onClick={() => setEditing(true)}>
-                  Edit
-                </Button>
-              )}
-              <Button variant="destructive" onClick={() => setShowDeleteConfirm(true)}>
-                Delete
-              </Button>
-            </div>
+            <DetailActions
+              editing={editing}
+              onEdit={() => setEditing(true)}
+              onDelete={() => setShowDeleteConfirm(true)}
+              onSave={form.handleSubmit(handleSave)}
+              onCancel={() => {
+                setEditing(false);
+                resetToSaved(config);
+              }}
+              saving={saving}
+            />
           </div>
 
           <Form {...form}>

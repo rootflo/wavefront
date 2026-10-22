@@ -56,7 +56,7 @@ const WorkflowEditorWorkspace: React.FC<WorkflowEditorWorkspaceProps> = ({
     />
     <Tabs defaultValue="visual" className="flex h-full min-h-0 w-full flex-col">
       {/* TOP COMMAND BAR */}
-      <div className="border-border bg-card/95 z-30 flex h-14 shrink-0 items-center justify-between gap-4 border-b px-4 backdrop-blur-md">
+      <div className="border-border bg-card/95 z-30 flex h-auto min-h-14 shrink-0 flex-wrap items-center justify-between gap-2 border-b px-4 py-2 backdrop-blur-md md:h-14 md:flex-nowrap md:gap-4 md:py-0">
         <div className="flex min-w-0 items-center gap-2 overflow-x-auto">
           <div className="bg-primary/10 text-primary flex h-7 w-7 items-center justify-center rounded-lg text-xs font-bold shadow-xs">
             WF

@@ -1,3 +1,4 @@
+import { ShieldCheck } from 'lucide-react';
 import { AUTHENTICATOR_PROVIDERS_CONFIG, getProviderBadge } from '@app/config/authenticators';
 import { Authenticator } from '@app/types/authenticator';
 import clsx from 'clsx';
@@ -30,13 +31,14 @@ const AuthenticatorCard: React.FC<AuthenticatorCardProps> = ({ authenticator, on
       label: 'Status',
       value: authenticator.is_enabled ? 'Enabled' : 'Disabled',
       className: authenticator.is_enabled
-        ? 'bg-emerald-400/15 text-emerald-800 ring-1 ring-emerald-400/20'
+        ? 'bg-emerald-400/15 text-emerald-800 dark:text-emerald-300 ring-1 ring-emerald-400/20'
         : 'bg-frost-glass-strong text-frost-text-subtle ring-1 ring-frost-border',
     },
   ];
 
   return (
     <ResourceCard
+      icon={ShieldCheck}
       title={authenticator.auth_name}
       description={authenticator.auth_desc || undefined}
       metadata={metadata}

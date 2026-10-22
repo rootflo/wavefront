@@ -1,3 +1,6 @@
+import ListHeader, { FilterSelect } from '@app/components/ListHeader';
+import ResourceCard from '@app/components/ResourceCard';
+import { Zap, Play, Pause, RotateCcw } from 'lucide-react';
 import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
@@ -10,8 +13,6 @@ import {
   BreadcrumbSeparator,
 } from '@app/components/ui/breadcrumb';
 import { Button } from '@app/components/ui/button';
-import { Input } from '@app/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
 import { TRIGGER_STATUS_BADGE_CLASS, TRIGGER_STATUS_OPTIONS } from '@app/constants/trigger';
 import { useGetAgents, useGetEmailConnections, useGetTriggers, useGetWorkflows } from '@app/hooks';
@@ -156,8 +157,8 @@ const TriggersPage: React.FC = () => {
   };
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden p-8">
-      <Breadcrumb className="mb-4">
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden p-4 max-md:overflow-y-auto sm:p-8">
+      <Breadcrumb className="mb-4 hidden md:block">
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
@@ -181,36 +182,22 @@ const TriggersPage: React.FC = () => {
         </BreadcrumbList>
       </Breadcrumb>
 
-      <div className="mb-8 flex w-full shrink-0 items-start justify-between">
-        <div>
-          <h1 className="frost-text text-3xl font-bold">Triggers</h1>
-          <p className="frost-text-muted mt-2">
-            Run agents and workflows from inbound email for {selectedApp?.app_name}
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Input
-            className="w-[200px]"
-            type="text"
-            placeholder="Search"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+      <ListHeader
+        title="Triggers"
+        count={filteredTriggers.length || undefined}
+        subtitle={<>Run agents and workflows from inbound email for {selectedApp?.app_name}</>}
+        search={{ value: searchTerm, onChange: setSearchTerm, placeholder: 'Search triggers' }}
+        filters={
+          <FilterSelect
+            label="Status"
+            value={statusFilter}
+            onValueChange={setStatusFilter}
+            allValue="all"
+            options={TRIGGER_STATUS_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
           />
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[150px]">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              {TRIGGER_STATUS_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button onClick={() => setFormOpen(true)}>Create Trigger</Button>
-        </div>
-      </div>
+        }
+        primary={{ label: 'Create trigger', onClick: () => setFormOpen(true) }}
+      />
 
       {isLoading ? (
         <p className="frost-text-muted text-sm">Loading triggers...</p>
@@ -224,94 +211,148 @@ const TriggersPage: React.FC = () => {
           />
         </div>
       ) : (
-        <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-xl border ring-1">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Status</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Mailbox</TableHead>
-                <TableHead>Target</TableHead>
-                <TableHead>Filter</TableHead>
-                <TableHead>Updated</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredTriggers.map((trigger) => {
-                const mailbox =
-                  getMailboxEmail(trigger) || connectionLabelById.get(trigger.connection_id) || trigger.connection_id;
-                const entityName = entityLabelById.get(trigger.entity_id) || trigger.entity_id;
-                const subjectRegex = getSubjectRegex(trigger);
-                const canPauseResume = trigger.status === 'active' || trigger.status === 'paused';
-                const canRetry = trigger.status === 'error';
+        <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-xl border ring-1 max-md:flex-none">
+          <div data-mobile-cards className="flex flex-col gap-3 pb-24 md:hidden">
+            {filteredTriggers.map((trigger) => {
+              const mailbox =
+                getMailboxEmail(trigger) || connectionLabelById.get(trigger.connection_id) || trigger.connection_id;
+              const entityName = entityLabelById.get(trigger.entity_id) || trigger.entity_id;
+              const subjectRegex = getSubjectRegex(trigger);
+              const canPauseResume = trigger.status === 'active' || trigger.status === 'paused';
+              const canRetry = trigger.status === 'error';
+              return (
+                <ResourceCard
+                  key={trigger.id}
+                  icon={Zap}
+                  title={trigger.name}
+                  description={trigger.last_error || `Runs ${entityName} (${trigger.entity_type})`}
+                  metadata={[
+                    {
+                      label: 'Status',
+                      value: trigger.status.replace('_', ' '),
+                      className: cn('capitalize', TRIGGER_STATUS_BADGE_CLASS[trigger.status] || ''),
+                    },
+                    { label: 'Mailbox', value: mailbox },
+                    { label: 'Filter', value: subjectRegex || 'All subjects', isMono: true },
+                    { label: 'Updated', value: formatDateTime(trigger.updated_at) },
+                  ]}
+                  onDeleteClick={() => setDeleteTrigger(trigger)}
+                  deleteTitle="Delete trigger"
+                  extraActions={[
+                    ...(canPauseResume
+                      ? [
+                          {
+                            label: trigger.status === 'paused' ? 'Resume' : 'Pause',
+                            icon: trigger.status === 'paused' ? Play : Pause,
+                            disabled: actionTriggerId === trigger.id,
+                            onClick: () => void handlePauseResume(trigger),
+                          },
+                        ]
+                      : []),
+                    ...(canRetry
+                      ? [
+                          {
+                            label: 'Retry',
+                            icon: RotateCcw,
+                            disabled: actionTriggerId === trigger.id,
+                            onClick: () => void handleRetry(trigger),
+                          },
+                        ]
+                      : []),
+                  ]}
+                />
+              );
+            })}
+          </div>
+          <div className="max-md:hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Mailbox</TableHead>
+                  <TableHead>Target</TableHead>
+                  <TableHead>Filter</TableHead>
+                  <TableHead>Updated</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredTriggers.map((trigger) => {
+                  const mailbox =
+                    getMailboxEmail(trigger) || connectionLabelById.get(trigger.connection_id) || trigger.connection_id;
+                  const entityName = entityLabelById.get(trigger.entity_id) || trigger.entity_id;
+                  const subjectRegex = getSubjectRegex(trigger);
+                  const canPauseResume = trigger.status === 'active' || trigger.status === 'paused';
+                  const canRetry = trigger.status === 'error';
 
-                return (
-                  <TableRow key={trigger.id}>
-                    <TableCell>
-                      <Badge
-                        variant="secondary"
-                        className={cn('font-normal capitalize', TRIGGER_STATUS_BADGE_CLASS[trigger.status] || '')}
-                      >
-                        {trigger.status.replace('_', ' ')}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="max-w-[180px]">
-                      <div className="truncate font-medium" title={trigger.name}>
-                        {trigger.name}
-                      </div>
-                      <div className="text-xs text-[#878787] capitalize">{trigger.provider}</div>
-                    </TableCell>
-                    <TableCell className="max-w-[180px] truncate text-sm" title={mailbox}>
-                      {mailbox}
-                    </TableCell>
-                    <TableCell className="max-w-[180px]">
-                      <div className="truncate text-sm" title={entityName}>
-                        {entityName}
-                      </div>
-                      <div className="text-xs text-[#878787] capitalize">{trigger.entity_type}</div>
-                    </TableCell>
-                    <TableCell className="max-w-[160px] truncate font-mono text-xs" title={subjectRegex || undefined}>
-                      {subjectRegex || 'All subjects'}
-                    </TableCell>
-                    <TableCell className="text-sm whitespace-nowrap">{formatDateTime(trigger.updated_at)}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        {canPauseResume ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={actionTriggerId === trigger.id}
-                            onClick={() => void handlePauseResume(trigger)}
-                          >
-                            {trigger.status === 'paused' ? 'Resume' : 'Pause'}
+                  return (
+                    <TableRow key={trigger.id}>
+                      <TableCell>
+                        <Badge
+                          variant="secondary"
+                          className={cn('font-normal capitalize', TRIGGER_STATUS_BADGE_CLASS[trigger.status] || '')}
+                        >
+                          {trigger.status.replace('_', ' ')}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="max-w-[180px]">
+                        <div className="truncate font-medium" title={trigger.name}>
+                          {trigger.name}
+                        </div>
+                        <div className="text-xs text-[#878787] capitalize">{trigger.provider}</div>
+                      </TableCell>
+                      <TableCell className="max-w-[180px] truncate text-sm" title={mailbox}>
+                        {mailbox}
+                      </TableCell>
+                      <TableCell className="max-w-[180px]">
+                        <div className="truncate text-sm" title={entityName}>
+                          {entityName}
+                        </div>
+                        <div className="text-xs text-[#878787] capitalize">{trigger.entity_type}</div>
+                      </TableCell>
+                      <TableCell className="max-w-[160px] truncate font-mono text-xs" title={subjectRegex || undefined}>
+                        {subjectRegex || 'All subjects'}
+                      </TableCell>
+                      <TableCell className="text-sm whitespace-nowrap">{formatDateTime(trigger.updated_at)}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          {canPauseResume ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={actionTriggerId === trigger.id}
+                              onClick={() => void handlePauseResume(trigger)}
+                            >
+                              {trigger.status === 'paused' ? 'Resume' : 'Pause'}
+                            </Button>
+                          ) : null}
+                          {canRetry ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={actionTriggerId === trigger.id}
+                              onClick={() => void handleRetry(trigger)}
+                            >
+                              Retry
+                            </Button>
+                          ) : null}
+                          <Button variant="destructive" size="sm" onClick={() => setDeleteTrigger(trigger)}>
+                            Delete
                           </Button>
+                        </div>
+                        {trigger.last_error ? (
+                          <p className="mt-1 max-w-[240px] truncate text-xs text-red-500" title={trigger.last_error}>
+                            {trigger.last_error}
+                          </p>
                         ) : null}
-                        {canRetry ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={actionTriggerId === trigger.id}
-                            onClick={() => void handleRetry(trigger)}
-                          >
-                            Retry
-                          </Button>
-                        ) : null}
-                        <Button variant="destructive" size="sm" onClick={() => setDeleteTrigger(trigger)}>
-                          Delete
-                        </Button>
-                      </div>
-                      {trigger.last_error ? (
-                        <p className="mt-1 max-w-[240px] truncate text-xs text-red-500" title={trigger.last_error}>
-                          {trigger.last_error}
-                        </p>
-                      ) : null}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       )}
 

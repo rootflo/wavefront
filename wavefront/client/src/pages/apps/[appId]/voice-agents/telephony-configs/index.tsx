@@ -1,8 +1,9 @@
+import ListHeader from '@app/components/ListHeader';
+import ResourceCard from '@app/components/ResourceCard';
 import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
 import { Button } from '@app/components/ui/button';
-import { Input } from '@app/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
 import { useGetTelephonyConfigs } from '@app/hooks';
 import { getTelephonyConfigsKey } from '@app/hooks/data/query-keys';
@@ -10,7 +11,7 @@ import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { TelephonyConfig } from '@app/types/telephony-config';
 import { useQueryClient } from '@tanstack/react-query';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Trash2, PhoneCall } from 'lucide-react';
 import React, { useState } from 'react';
 import { useParams } from 'react-router';
 import CreateTelephonyConfigDialog from './CreateTelephonyConfigDialog';
@@ -86,23 +87,12 @@ const TelephonyConfigsPage: React.FC = () => {
   });
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
-      <div className="mb-6 flex shrink-0 items-center justify-end">
-        <div className="flex items-center gap-4">
-          <Input
-            type="text"
-            placeholder="Search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-[180px]"
-          />
-          <div className="flex items-center gap-3">
-            <Button onClick={handleCreateTelephonyConfig}>
-              <p className="text-sm">Create Telephony Config</p>
-            </Button>
-          </div>
-        </div>
-      </div>
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden max-md:overflow-y-auto">
+      <ListHeader
+        search={{ value: searchQuery, onChange: setSearchQuery, placeholder: 'Search' }}
+        primary={{ label: 'Create telephony config', onClick: handleCreateTelephonyConfig }}
+        className="md:justify-end"
+      />
 
       {configsLoading ? (
         <div className="flex justify-center py-10">
@@ -122,40 +112,60 @@ const TelephonyConfigsPage: React.FC = () => {
           />
         </div>
       ) : (
-        <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-xl border ring-1">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Display Name</TableHead>
-                <TableHead>Provider</TableHead>
-                <TableHead>Connection Type</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredConfigs.map((config) => (
-                <TableRow key={config.id}>
-                  <TableCell className="font-medium">{config.display_name}</TableCell>
-                  <TableCell>{config.provider}</TableCell>
-                  <TableCell>{config.connection_type}</TableCell>
-                  <TableCell className="max-w-md truncate">{config.description || '-'}</TableCell>
-                  <TableCell>{new Date(config.created_at).toLocaleDateString()}</TableCell>
-                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-2">
-                      <Button variant="ghost" size="sm" onClick={(e) => handleEditClick(e, config)} title="Edit">
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={(e) => handleDeleteClick(e, config)} title="Delete">
-                        <Trash2 className="h-4 w-4 text-red-600" />
-                      </Button>
-                    </div>
-                  </TableCell>
+        <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-xl border ring-1 max-md:flex-none">
+          <div data-mobile-cards className="flex flex-col gap-3 pb-24 md:hidden">
+            {filteredConfigs.map((config) => (
+              <ResourceCard
+                key={config.id}
+                icon={PhoneCall}
+                title={config.display_name}
+                description={config.description || undefined}
+                metadata={[
+                  { label: 'Provider', value: config.provider },
+                  { label: 'Connection type', value: config.connection_type },
+                  { label: 'Created', value: new Date(config.created_at).toLocaleDateString() },
+                ]}
+                onEditClick={(e) => handleEditClick(e, config)}
+                onDeleteClick={(e) => handleDeleteClick(e, config)}
+                deleteTitle="Delete config"
+              />
+            ))}
+          </div>
+          <div className="max-md:hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Display Name</TableHead>
+                  <TableHead>Provider</TableHead>
+                  <TableHead>Connection Type</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead>Created</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filteredConfigs.map((config) => (
+                  <TableRow key={config.id}>
+                    <TableCell className="font-medium">{config.display_name}</TableCell>
+                    <TableCell>{config.provider}</TableCell>
+                    <TableCell>{config.connection_type}</TableCell>
+                    <TableCell className="max-w-md truncate">{config.description || '-'}</TableCell>
+                    <TableCell>{new Date(config.created_at).toLocaleDateString()}</TableCell>
+                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-2">
+                        <Button variant="ghost" size="sm" onClick={(e) => handleEditClick(e, config)} title="Edit">
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={(e) => handleDeleteClick(e, config)} title="Delete">
+                          <Trash2 className="h-4 w-4 text-red-600" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       )}
 

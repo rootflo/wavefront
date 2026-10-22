@@ -22,29 +22,31 @@ function ConversationConfigGuide() {
             </h4>
             <p className="frost-text-muted text-xs">{section.summary}</p>
           </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[210px]">Option</TableHead>
-                <TableHead className="w-[90px]">Default</TableHead>
-                <TableHead className="w-[130px]">Allowed</TableHead>
-                <TableHead>What it does</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {section.options.map((option) => (
-                <TableRow key={option.key}>
-                  <TableCell className="align-top text-xs">
-                    <div className="font-medium">{option.label}</div>
-                    <code className="frost-text-muted">{option.key}</code>
-                  </TableCell>
-                  <TableCell className="align-top text-xs">{option.defaultValue}</TableCell>
-                  <TableCell className="align-top text-xs">{option.range}</TableCell>
-                  <TableCell className="align-top text-xs whitespace-normal">{option.description}</TableCell>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[210px]">Option</TableHead>
+                  <TableHead className="w-[90px]">Default</TableHead>
+                  <TableHead className="w-[130px]">Allowed</TableHead>
+                  <TableHead>What it does</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {section.options.map((option) => (
+                  <TableRow key={option.key}>
+                    <TableCell className="align-top text-xs">
+                      <div className="font-medium">{option.label}</div>
+                      <code className="frost-text-muted">{option.key}</code>
+                    </TableCell>
+                    <TableCell className="align-top text-xs">{option.defaultValue}</TableCell>
+                    <TableCell className="align-top text-xs">{option.range}</TableCell>
+                    <TableCell className="align-top text-xs whitespace-normal">{option.description}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       ))}
 

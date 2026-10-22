@@ -107,7 +107,7 @@ export const PropertyPanel = ({
   const nodeTypeTitle = (selectedNode.type && NODE_TYPE_TITLES[selectedNode.type]) || DEFAULT_NODE_TYPE_TITLE;
 
   return (
-    <aside className="border-border bg-card z-10 flex h-full w-96 shrink-0 flex-col border-l shadow-[-2px_0_10px_rgba(0,0,0,0.05)]">
+    <aside className="border-border bg-card z-10 flex h-full w-96 max-w-[100vw] shrink-0 flex-col border-l shadow-[-2px_0_10px_rgba(0,0,0,0.05)] max-md:fixed max-md:inset-y-0 max-md:right-0 max-md:z-50">
       <div className="border-border bg-muted/10 flex h-14 shrink-0 items-center justify-between border-b px-4">
         <div>
           <h2 className="text-foreground text-xs font-semibold tracking-wider uppercase">{nodeTypeTitle}</h2>
