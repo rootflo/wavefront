@@ -13,10 +13,13 @@ from pipecat.services.elevenlabs.stt import (
     ElevenLabsRealtimeSTTService,
     ElevenLabsRealtimeSTTSettings,
 )
-from pipecat.services.sarvam.stt import SarvamSTTService, SarvamSTTSettings
+from pipecat.services.sarvam.stt import SarvamSTTSettings
 
 from call_processing.log.logger import logger
 from call_processing.services.common.providers.provider_types import STTProvider
+from call_processing.services.common.providers.sarvam_stt import (
+    ReconnectingSarvamSTTService,
+)
 from call_processing.services.common.providers.provider_utils import (
     AZURE_LANGUAGES,
     ELEVENLABS_STT_LANGUAGES,
@@ -121,7 +124,7 @@ def _create_sarvam_stt(api_key: str, parameters: Dict[str, Any]):
 
     logger.info(f'Sarvam STT config: model={model}, sample_rate={sample_rate}')
 
-    return SarvamSTTService(
+    return ReconnectingSarvamSTTService(
         api_key=api_key,
         sample_rate=sample_rate,
         settings=SarvamSTTSettings(**settings),
