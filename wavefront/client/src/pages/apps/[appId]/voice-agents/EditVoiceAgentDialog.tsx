@@ -848,7 +848,7 @@ const EditVoiceAgentDialog: React.FC<EditVoiceAgentDialogProps> = ({
                       {ttsParamGroups?.compact.map((key) => renderTtsParameterField(key))}
                     </div>
                     {ttsParamGroups && ttsParamGroups.sliders.length > 0 && (
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-8">
                         {ttsParamGroups.sliders.map((key) => renderTtsParameterField(key))}
                       </div>
                     )}

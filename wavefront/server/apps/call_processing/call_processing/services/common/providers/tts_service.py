@@ -4,6 +4,7 @@ TTS (Text-to-Speech) service factory
 Supports ElevenLabs, Deepgram, Cartesia, Sarvam and Azure.
 """
 
+import unicodedata
 from dataclasses import replace
 from typing import Any, Dict, Optional
 
@@ -17,6 +18,8 @@ from pipecat.services.sarvam.tts import (
     SarvamTTSService,
     SarvamTTSSettings,
 )
+from pipecat.utils.text.base_text_filter import BaseTextFilter
+from pipecat.utils.text.markdown_text_filter import MarkdownTextFilter
 
 from call_processing.log.logger import logger
 from call_processing.services.common.providers.provider_types import TTSProvider
@@ -35,6 +38,48 @@ _BULBUL_V4_FLASH = 'bulbul:v4-flash'
 if _BULBUL_V4_FLASH not in TTS_MODEL_CONFIGS:
     _base = TTS_MODEL_CONFIGS.get('bulbul:v3') or TTS_MODEL_CONFIGS['bulbul:v2']
     TTS_MODEL_CONFIGS[_BULBUL_V4_FLASH] = replace(_base)
+
+# Emoji, pictographs and the joiners/selectors that glue them together
+_UNSPEAKABLE_CATEGORIES = ('So', 'Sk', 'Cs', 'Co')
+_UNSPEAKABLE_CHARS = {'‍', '︎', '️'}
+
+
+class UnspeakableTextFilter(BaseTextFilter):
+    """Drops emoji and returns '' when no letters or digits remain.
+
+    Sarvam rejects a chunk like "😊" with a 400 ("Text must contain at least
+    one character from the allowed languages") and closes the socket; an empty
+    result makes Pipecat skip the chunk instead of sending it.
+    """
+
+    async def update_settings(self, settings):
+        pass
+
+    async def filter(self, text: str) -> str:
+        text = ''.join(
+            ch
+            for ch in text
+            if ch not in _UNSPEAKABLE_CHARS
+            and unicodedata.category(ch) not in _UNSPEAKABLE_CATEGORIES
+        )
+        if not any(ch.isalnum() for ch in text):
+            return ''
+        return text
+
+    async def handle_interruption(self):
+        pass
+
+    async def reset_interruption(self):
+        pass
+
+
+def _text_filters(*extra: BaseTextFilter) -> list:
+    """Fresh filters per service (they hold per-stream state).
+
+    Markdown goes first, whatever the prompt asks for: LLMs still emit
+    ``**bold**``, lists and backticks, which TTS reads aloud or stumbles on.
+    """
+    return [MarkdownTextFilter(), *extra]
 
 
 class TTSServiceFactory:
@@ -137,7 +182,9 @@ def _create_elevenlabs_tts(api_key: str, voice_id: str, parameters: Dict[str, An
     )
 
     return ElevenLabsTTSService(
-        api_key=api_key, settings=ElevenLabsTTSSettings(**settings)
+        api_key=api_key,
+        settings=ElevenLabsTTSSettings(**settings),
+        text_filters=_text_filters(),
     )
 
 
@@ -149,7 +196,11 @@ def _create_deepgram_tts(api_key: str, voice_id: str, parameters: Dict[str, Any]
 
     logger.info(f'Deepgram TTS config: voice={voice_id}')
 
-    return DeepgramTTSService(**kwargs, settings=DeepgramTTSSettings(voice=voice_id))
+    return DeepgramTTSService(
+        **kwargs,
+        settings=DeepgramTTSSettings(voice=voice_id),
+        text_filters=_text_filters(),
+    )
 
 
 def _create_cartesia_tts(api_key: str, voice_id: str, parameters: Dict[str, Any]):
@@ -162,7 +213,11 @@ def _create_cartesia_tts(api_key: str, voice_id: str, parameters: Dict[str, Any]
 
     logger.info(f'Cartesia TTS config: voice={voice_id}, model={model}')
 
-    return CartesiaTTSService(api_key=api_key, settings=CartesiaTTSSettings(**settings))
+    return CartesiaTTSService(
+        api_key=api_key,
+        settings=CartesiaTTSSettings(**settings),
+        text_filters=_text_filters(),
+    )
 
 
 def _create_sarvam_tts(api_key: str, voice_id: str, parameters: Dict[str, Any]):
@@ -186,6 +241,8 @@ def _create_sarvam_tts(api_key: str, voice_id: str, parameters: Dict[str, Any]):
         api_key=api_key,
         sample_rate=parameters.get('sample_rate'),
         settings=SarvamTTSSettings(**settings),
+        # Emoji check after markdown, so "**😊**" is judged on what is left
+        text_filters=_text_filters(UnspeakableTextFilter()),
     )
 
 
@@ -213,7 +270,9 @@ def _create_azure_tts(
 
     logger.info(f'Azure TTS config: voice={voice_id}, region={region}')
 
-    return AzureTTSService(**kwargs, settings=AzureTTSSettings(**settings))
+    return AzureTTSService(
+        **kwargs, settings=AzureTTSSettings(**settings), text_filters=_text_filters()
+    )
 
 
 _CREATORS = {
