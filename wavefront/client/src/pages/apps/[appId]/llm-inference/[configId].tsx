@@ -177,6 +177,12 @@ const LLMInferenceConfigDetail: React.FC = () => {
         return;
       }
     }
+    // Leaving Bedrock: the stored key is an AWS secret, never a valid key for the new provider
+    const leavingBedrock = config.type === 'bedrock' && data.type !== 'bedrock';
+    if (leavingBedrock && !secret && REQUIRES_API_KEY.includes(data.type)) {
+      form.setError('api_key', { message: `Enter the API key for ${getProviderConfig(data.type)?.name ?? data.type}` });
+      return;
+    }
 
     setSaving(true);
     try {
@@ -202,8 +208,8 @@ const LLMInferenceConfigDetail: React.FC = () => {
       // Only include API key if it's been entered (since we don't show existing ones)
       if (secret) {
         updateData.api_key = secret;
-      } else if (data.type === 'bedrock' && !keyId) {
-        // Ambient AWS credentials: clear any stored secret, including the previous provider's key
+      } else if ((data.type === 'bedrock' && !keyId) || leavingBedrock) {
+        // Ambient AWS credentials, or a keyless provider after Bedrock: clear the stored secret
         updateData.api_key = null;
       }
 
