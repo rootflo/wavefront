@@ -161,6 +161,23 @@ const LLMInferenceConfigDetail: React.FC = () => {
   const handleSave = async (data: LLMConfigForm) => {
     if (!llmId || !config) return;
 
+    // The access key ID and secret are one credential: save both, keep the saved pair
+    // untouched, or clear both. The secret is never returned, so a blank secret only
+    // means "keep" when the ID is the one already saved on this Bedrock config.
+    const keyId = data.type === 'bedrock' ? data.aws_access_key_id?.trim() || '' : '';
+    const secret = data.api_key?.trim() || '';
+    const savedKeyId = config.type === 'bedrock' ? (config.parameters?.aws_access_key_id as string) || '' : '';
+    if (data.type === 'bedrock') {
+      if (secret && !keyId) {
+        form.setError('aws_access_key_id', { message: 'Enter the access key ID for this secret' });
+        return;
+      }
+      if (!secret && keyId && keyId !== savedKeyId) {
+        form.setError('api_key', { message: 'Enter the secret access key for this access key ID' });
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       // Only what this model accepts goes out, so a stale or unsupported setting cannot fail requests
@@ -170,7 +187,7 @@ const LLMInferenceConfigDetail: React.FC = () => {
       }
       if (data.type === 'bedrock') {
         kept.aws_region = data.aws_region?.trim();
-        if (data.aws_access_key_id?.trim()) kept.aws_access_key_id = data.aws_access_key_id.trim();
+        if (keyId) kept.aws_access_key_id = keyId;
       }
 
       const updateData: UpdateLLMConfigRequest = {
@@ -183,8 +200,11 @@ const LLMInferenceConfigDetail: React.FC = () => {
       };
 
       // Only include API key if it's been entered (since we don't show existing ones)
-      if (data.api_key?.trim()) {
-        updateData.api_key = data.api_key.trim();
+      if (secret) {
+        updateData.api_key = secret;
+      } else if (data.type === 'bedrock' && !keyId) {
+        // Ambient AWS credentials: clear any stored secret, including the previous provider's key
+        updateData.api_key = null;
       }
 
       await floConsoleService.llmInferenceService.updateLLMConfig(llmId, updateData);
