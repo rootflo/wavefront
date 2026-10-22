@@ -314,3 +314,139 @@ audio::-webkit-media-controls-panel {
     @apply bg-background text-foreground;
   }
 }
+
+/* Tables opted in with <Table cards> become a stack of cards on phones: one card per row, header text as the label. */
+@media (max-width: 767px) {
+  .frost-table-panel:has(table[data-cards]),
+  .frost-panel:has(> div > table[data-cards]),
+  .frost-table-panel:has(> [data-mobile-cards]),
+  .frost-panel:has(> [data-mobile-cards]) {
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
+  }
+  table[data-cards],
+  table[data-cards] tbody {
+    display: block;
+    min-width: 0;
+    width: 100%;
+  }
+  table[data-cards] thead {
+    display: none;
+  }
+  table[data-cards] tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  table[data-cards] tbody tr {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.875rem;
+    border: 1px solid var(--frost-border);
+    border-radius: 1rem;
+    background-color: var(--frost-glass);
+    box-shadow: var(--frost-inset-shadow);
+  }
+  table[data-cards] tbody td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    max-width: none;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+  }
+  table[data-cards] tbody td::before {
+    content: attr(data-label);
+    flex: none;
+    color: var(--frost-text-muted);
+    font-size: 11px;
+    font-weight: 500;
+  }
+  /* The first column is the card's title, and a column with no header is its actions. */
+  table[data-cards] tbody td:first-child {
+    font-size: 15px;
+    font-weight: 600;
+  }
+  table[data-cards] tbody td:first-child::before,
+  table[data-cards] tbody td[data-label='']::before,
+  table[data-cards] tbody td[data-label='Actions']::before {
+    display: none;
+  }
+  table[data-cards] tbody td[data-label=''],
+  table[data-cards] tbody td[data-label='Actions'] {
+    justify-content: flex-end;
+  }
+  /* Values wrap rather than truncate, and sit against the right edge opposite their label. */
+  table[data-cards] tbody td {
+    overflow: visible;
+    text-align: right;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  table[data-cards] tbody td:first-child {
+    text-align: left;
+  }
+  table[data-cards] tbody td > * {
+    min-width: 0;
+  }
+}
+
+/* Entrance and status-light animations for the few-apps showcase on the apps home page. */
+@keyframes app-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes app-ping {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.9;
+  }
+  80%,
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+.app-rise {
+  animation: app-rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.app-ping {
+  animation: app-ping 2s ease-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-rise,
+  .app-ping {
+    animation: none;
+  }
+}
+
+/* A slow shimmer across the greeting name on the apps home header. */
+@keyframes hero-shimmer {
+  from {
+    background-position: 0% 0;
+  }
+  to {
+    background-position: 100% 0;
+  }
+}
+.hero-shimmer {
+  background-size: 200% 100%;
+  animation: hero-shimmer 7s ease-in-out infinite alternate;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-shimmer {
+    animation: none;
+  }
+}

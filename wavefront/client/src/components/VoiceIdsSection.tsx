@@ -152,7 +152,7 @@ export function VoiceIdsSection({
       </div>
 
       {customizePerLanguage && (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {languages.map((langCode) => (
             <div key={langCode} className="flex min-w-0 flex-col gap-1.5">
               <Label className="frost-text-muted text-sm font-medium">{getLanguageDisplayName(langCode)}</Label>

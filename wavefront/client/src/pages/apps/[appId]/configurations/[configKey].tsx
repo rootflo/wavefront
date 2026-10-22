@@ -7,7 +7,8 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@app/components/ui/breadcrumb';
-import { Button } from '@app/components/ui/button';
+import MobileBackButton from '@app/components/MobileBackButton';
+import DetailActions from '@app/components/DetailActions';
 import { Input } from '@app/components/ui/input';
 import { Label } from '@app/components/ui/label';
 import { useGetConfiguration, useGetConfigurations } from '@app/hooks';
@@ -95,8 +96,8 @@ const ConfigurationDetail: React.FC = () => {
   const loading = loadingValue || loadingMetadata;
 
   return (
-    <div className="flex h-full w-full flex-col p-8">
-      <Breadcrumb className="mb-4">
+    <div className="flex h-full w-full flex-col p-4 sm:p-8">
+      <Breadcrumb className="mb-4 hidden md:block">
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
@@ -124,19 +125,22 @@ const ConfigurationDetail: React.FC = () => {
         </BreadcrumbList>
       </Breadcrumb>
 
-      <div className="mb-8 flex w-full items-start justify-between">
+      <div className="mb-8 flex w-full flex-col items-start gap-4 sm:flex-row sm:justify-between">
         <div>
-          <h1 className="animate-fade-in frost-text text-3xl font-bold">{formatAppName(configKey)}</h1>
+          <div className="flex min-w-0 items-center gap-2">
+            <MobileBackButton to={`/apps/${appId}/configurations`} label="Back to configurations" />
+            <h1 className="animate-fade-in frost-text text-2xl font-bold sm:text-3xl">{formatAppName(configKey)}</h1>
+          </div>
           <p className="animate-fade-in frost-text-muted mt-2 font-mono text-sm">{namespace}</p>
         </div>
-        <div className="animate-fade-in flex items-center gap-4">
-          <Button variant="outline" onClick={() => navigate(`/apps/${appId}/configurations`)}>
-            Back
-          </Button>
-          <Button onClick={handleSave} loading={saving} disabled={!!parseError || loading}>
-            Save
-          </Button>
-        </div>
+        <DetailActions
+          editing
+          cancelLabel="Back"
+          onCancel={() => navigate(`/apps/${appId}/configurations`)}
+          onSave={handleSave}
+          saving={saving}
+          saveDisabled={!!parseError || loading}
+        />
       </div>
 
       <div className="flex flex-col gap-6 overflow-y-auto">

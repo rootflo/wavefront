@@ -1,3 +1,5 @@
+import { FlaskConical, Save } from 'lucide-react';
+import ListHeader, { FilterSelect } from '@app/components/ListHeader';
 import floConsoleService from '@app/api';
 import {
   EnforcementMode,
@@ -187,8 +189,8 @@ const GuardrailsManagement: React.FC = () => {
   const namespaceOptions = namespaces.length ? namespaces.map((item) => item.name) : ['default'];
 
   return (
-    <div className="flex h-full w-full flex-col p-8">
-      <Breadcrumb className="mb-6">
+    <div className="flex h-full w-full flex-col p-4 max-md:overflow-y-auto sm:p-8">
+      <Breadcrumb className="mb-6 hidden md:block">
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
@@ -212,55 +214,53 @@ const GuardrailsManagement: React.FC = () => {
         </BreadcrumbList>
       </Breadcrumb>
 
-      <div className="mb-8 flex w-full items-start justify-between">
-        <div>
-          <h1 className="animate-fade-in text-3xl font-bold text-gray-900">Guardrails &amp; Security</h1>
-          <p className="animate-fade-in mt-2 text-gray-600">AI safety policy for {selectedApp?.app_name}</p>
-        </div>
-        <div className="animate-fade-in flex items-center gap-4">
-          <Select value={namespace} onValueChange={setNamespace}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Namespace" />
-            </SelectTrigger>
-            <SelectContent>
-              {namespaceOptions.map((name) => (
-                <SelectItem key={name} value={name}>
-                  {name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {/*
-            The panel sits below the list of checks, which is long enough that
-            it is off screen on load. This header is outside the scroll
-            container, so it is the one place a jump-to control is always
-            reachable.
-          */}
-          <Button variant="outline" onClick={() => testPanelRef.current?.focus()} disabled={isLoading}>
-            Test policy
-          </Button>
-          {/*
-            Next to Save, not near the edit that caused it: the test panel runs
-            the draft, so a policy can be built, verified and left unsaved
-            without anything contradicting you. This header stays on screen
-            while the form scrolls, so the reminder is visible from wherever
-            the last edit was made.
-          */}
-          {hasUnsavedChanges && (
-            <span
-              role="status"
-              title="These settings are not live yet. Agents and workflows in this namespace keep using the saved policy until you save."
-              className="flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800"
-            >
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden="true" />
-              Unsaved changes
-            </span>
-          )}
-          <Button onClick={handleSave} disabled={saving || isLoading}>
-            {saving ? 'Saving...' : 'Save policy'}
-          </Button>
-        </div>
-      </div>
+      <ListHeader
+        title="Guardrails & Security"
+        subtitle={<>AI safety policy for {selectedApp?.app_name}</>}
+        filters={
+          <>
+            <FilterSelect
+              label="Namespace"
+              value={namespace}
+              onValueChange={setNamespace}
+              options={namespaceOptions.map((name) => ({ value: name, label: name }))}
+            />
+            {/*
+              Next to Save, not near the edit that caused it: the test panel runs
+              the draft, so a policy can be built, verified and left unsaved
+              without anything contradicting you. This header stays on screen
+              while the form scrolls, so the reminder is visible from wherever
+              the last edit was made.
+            */}
+            {hasUnsavedChanges && (
+              <span
+                role="status"
+                title="These settings are not live yet. Agents and workflows in this namespace keep using the saved policy until you save."
+                className="flex shrink-0 items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800"
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden="true" />
+                Unsaved changes
+              </span>
+            )}
+          </>
+        }
+        // The panel sits below the list of checks, which is long enough that it is off screen on load. This header
+        // is outside the scroll container, so it is the one place a jump-to control is always reachable.
+        secondary={[
+          {
+            label: 'Test policy',
+            icon: FlaskConical,
+            onClick: () => testPanelRef.current?.focus(),
+            disabled: isLoading,
+          },
+        ]}
+        primary={{
+          label: saving ? 'Saving...' : 'Save policy',
+          icon: Save,
+          onClick: handleSave,
+          disabled: saving || isLoading,
+        }}
+      />
 
       {isLoading ? (
         <div className="flex flex-col gap-4">
@@ -269,7 +269,7 @@ const GuardrailsManagement: React.FC = () => {
           <Skeleton className="h-40 w-full" />
         </div>
       ) : (
-        <div className="overflow-y-auto pb-8">
+        <div className="pb-8 max-md:flex-none md:overflow-y-auto">
           {/*
             Two columns once there is room for them. The policy-wide switches
             are short and the list of checks is very long, so the left column is

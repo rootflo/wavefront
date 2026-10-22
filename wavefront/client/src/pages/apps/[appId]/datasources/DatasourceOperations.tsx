@@ -317,7 +317,7 @@ const DatasourceOperations: React.FC<DatasourceOperationsProps> = ({ datasourceI
               (tableNames.length === 0 ? (
                 <p className="frost-text-muted text-sm">Run the operation to list table names.</p>
               ) : (
-                <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-lg border ring-1">
+                <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-lg border ring-1 max-md:flex-none">
                   <Table>
                     <TableHeader>
                       <TableRow>

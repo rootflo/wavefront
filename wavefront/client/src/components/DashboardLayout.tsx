@@ -93,9 +93,9 @@ const DashboardLayout = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
   return (
     <div className="frost-canvas relative flex h-full w-full overflow-hidden">
       <div aria-hidden className="frost-card-glow pointer-events-none absolute inset-0" />
-      <div className="relative flex h-full min-h-0 flex-1 flex-col">
+      <div className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col">
         <Topbar user={user} apps={apps} />
-        <main className="min-h-0 flex-1 overflow-auto">
+        <main className="min-h-0 min-w-0 flex-1 overflow-auto">
           <Outlet />
         </main>
       </div>

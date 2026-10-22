@@ -8,6 +8,8 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@app/components/ui/breadcrumb';
+import DetailActions from '@app/components/DetailActions';
+import MobileBackButton from '@app/components/MobileBackButton';
 import { Button } from '@app/components/ui/button';
 import { Label } from '@app/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@app/components/ui/tabs';
@@ -322,8 +324,8 @@ const DatasourceDetail: React.FC = () => {
   };
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden px-6 pt-6 pb-6">
-      <Breadcrumb className="mb-6 shrink-0">
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden p-4 max-md:overflow-y-auto sm:p-8">
+      <Breadcrumb className="mb-6 hidden shrink-0 md:block">
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
@@ -352,20 +354,16 @@ const DatasourceDetail: React.FC = () => {
       </Breadcrumb>
 
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-hidden">
-        <div className="flex shrink-0 items-center justify-between">
-          <div className="flex flex-col gap-3">
-            <p className="frost-text text-2xl leading-normal font-semibold">
-              {formatAppName(datasource?.name || datasourceId)}
-            </p>
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-1 flex-col gap-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <MobileBackButton to={`/apps/${appId}/datasources`} label="Back to datasources" />
+              <p className="frost-text min-w-0 truncate text-xl leading-normal font-semibold sm:text-2xl">
+                {formatAppName(datasource?.name || datasourceId)}
+              </p>
+            </div>
           </div>
-          <div className="flex gap-4">
-            <Button onClick={() => setEditDialogOpen(true)} variant="outline">
-              Edit
-            </Button>
-            <Button onClick={() => setShowDeleteConfirm(true)} variant="destructive">
-              Delete
-            </Button>
-          </div>
+          <DetailActions onEdit={() => setEditDialogOpen(true)} onDelete={() => setShowDeleteConfirm(true)} />
         </div>
 
         <Tabs defaultValue="configuration" className="flex min-h-0 flex-1 flex-col overflow-hidden">

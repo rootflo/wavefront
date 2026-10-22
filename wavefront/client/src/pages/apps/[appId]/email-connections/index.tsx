@@ -1,3 +1,6 @@
+import ListHeader from '@app/components/ListHeader';
+import ResourceCard from '@app/components/ResourceCard';
+import { Mail, ShieldCheck, KeyRound, Star } from 'lucide-react';
 import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
@@ -10,7 +13,6 @@ import {
   BreadcrumbSeparator,
 } from '@app/components/ui/breadcrumb';
 import { Button } from '@app/components/ui/button';
-import { Input } from '@app/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
 import { EMAIL_CAPABILITIES, EMAIL_PROVIDERS_CONFIG, getConnectionStatusBadge } from '@app/config/email-providers';
 import { useGetEmailConnections } from '@app/hooks';
@@ -128,8 +130,8 @@ const EmailConnectionsPage: React.FC = () => {
   });
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden p-8">
-      <Breadcrumb className="mb-4 shrink-0">
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden p-4 max-md:overflow-y-auto sm:p-8">
+      <Breadcrumb className="mb-4 hidden shrink-0 md:block">
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
@@ -153,24 +155,13 @@ const EmailConnectionsPage: React.FC = () => {
         </BreadcrumbList>
       </Breadcrumb>
 
-      <div className="mb-8 flex w-full shrink-0 items-start justify-between">
-        <div>
-          <h1 className="animate-fade-in frost-text text-3xl font-bold">Emails</h1>
-          <p className="animate-fade-in frost-text-muted mt-2">
-            Mailboxes {selectedApp?.app_name} can read and send on behalf of
-          </p>
-        </div>
-        <div className="animate-fade-in flex items-center gap-4">
-          <Input
-            className="w-[180px]"
-            type="text"
-            placeholder="Search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-          <Button onClick={() => setConnectOpen(true)}>Connect Mailbox</Button>
-        </div>
-      </div>
+      <ListHeader
+        title="Emails"
+        count={filteredConnections.length || undefined}
+        subtitle={<>Mailboxes {selectedApp?.app_name} can read and send on behalf of</>}
+        search={{ value: searchQuery, onChange: setSearchQuery, placeholder: 'Search emails' }}
+        primary={{ label: 'Connect mailbox', onClick: () => setConnectOpen(true) }}
+      />
 
       {isLoading ? (
         <p className="frost-text-muted text-sm">Loading emails...</p>
@@ -188,89 +179,140 @@ const EmailConnectionsPage: React.FC = () => {
           />
         </div>
       ) : (
-        <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-xl border ring-1">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Mailbox</TableHead>
-                <TableHead>Provider</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Capabilities</TableHead>
-                <TableHead>Platform sender</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredConnections.map((connection) => {
-                const statusBadge = getConnectionStatusBadge(connection.status);
-                const capabilities = grantedCapabilities(connection);
-                const providerName = EMAIL_PROVIDERS_CONFIG[connection.provider]?.name || connection.provider;
+        <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-xl border ring-1 max-md:flex-none">
+          <div data-mobile-cards className="flex flex-col gap-3 pb-24 md:hidden">
+            {filteredConnections.map((connection) => {
+              const statusBadge = getConnectionStatusBadge(connection.status);
+              const capabilities = grantedCapabilities(connection);
+              const providerName = EMAIL_PROVIDERS_CONFIG[connection.provider]?.name || connection.provider;
+              return (
+                <ResourceCard
+                  key={connection.id}
+                  icon={Mail}
+                  title={formatAppName(connection.name)}
+                  description={connection.last_error || connection.mailbox_email}
+                  metadata={[
+                    { label: 'Provider', value: providerName },
+                    { label: 'Status', value: statusBadge.label, className: cn(statusBadge.bg, statusBadge.text) },
+                    ...(capabilities.length > 0 ? [{ label: 'Capabilities', value: capabilities.join(', ') }] : []),
+                    ...(connection.is_primary ? [{ label: 'Platform sender', value: 'Primary' }] : []),
+                  ]}
+                  onDeleteClick={() => setDeleteItem(connection)}
+                  deleteTitle="Delete connection"
+                  extraActions={[
+                    {
+                      label: 'Verify',
+                      icon: ShieldCheck,
+                      disabled: connection.status === 'pending_auth' || busyKey === `${connection.id}:verify`,
+                      onClick: () => void handleVerify(connection),
+                    },
+                    {
+                      label: connection.status === 'active' ? 'Re-consent' : 'Authorize',
+                      icon: KeyRound,
+                      disabled: busyKey === `${connection.id}:authorize`,
+                      onClick: () => void handleReauthorize(connection),
+                    },
+                    {
+                      label: 'Set as Primary',
+                      icon: Star,
+                      disabled:
+                        connection.is_primary ||
+                        connection.status !== 'active' ||
+                        busyKey === `${connection.id}:primary`,
+                      onClick: () => void handleSetPrimary(connection),
+                    },
+                  ]}
+                />
+              );
+            })}
+          </div>
+          <div className="max-md:hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Mailbox</TableHead>
+                  <TableHead>Provider</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Capabilities</TableHead>
+                  <TableHead>Platform sender</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredConnections.map((connection) => {
+                  const statusBadge = getConnectionStatusBadge(connection.status);
+                  const capabilities = grantedCapabilities(connection);
+                  const providerName = EMAIL_PROVIDERS_CONFIG[connection.provider]?.name || connection.provider;
 
-                return (
-                  <TableRow key={connection.id}>
-                    <TableCell className="max-w-[200px] truncate font-medium" title={connection.name}>
-                      {formatAppName(connection.name)}
-                    </TableCell>
-                    <TableCell className="max-w-[240px] truncate" title={connection.mailbox_email}>
-                      {connection.mailbox_email}
-                      {connection.last_error ? (
-                        <p className="mt-0.5 max-w-[240px] truncate text-xs text-red-500" title={connection.last_error}>
-                          {connection.last_error}
-                        </p>
-                      ) : null}
-                    </TableCell>
-                    <TableCell className="frost-text-muted">{providerName}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="secondary"
-                        className={cn(statusBadge.bg, statusBadge.text, 'border-0 font-normal')}
-                      >
-                        {statusBadge.label}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="frost-text-muted">
-                      {capabilities.length > 0 ? capabilities.join(', ') : '—'}
-                    </TableCell>
-                    <TableCell className="frost-text-muted">{connection.is_primary ? 'Primary' : '—'}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={connection.status === 'pending_auth'}
-                          loading={busyKey === `${connection.id}:verify`}
-                          onClick={() => void handleVerify(connection)}
+                  return (
+                    <TableRow key={connection.id}>
+                      <TableCell className="max-w-[200px] truncate font-medium" title={connection.name}>
+                        {formatAppName(connection.name)}
+                      </TableCell>
+                      <TableCell className="max-w-[240px] truncate" title={connection.mailbox_email}>
+                        {connection.mailbox_email}
+                        {connection.last_error ? (
+                          <p
+                            className="mt-0.5 max-w-[240px] truncate text-xs text-red-500"
+                            title={connection.last_error}
+                          >
+                            {connection.last_error}
+                          </p>
+                        ) : null}
+                      </TableCell>
+                      <TableCell className="frost-text-muted">{providerName}</TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="secondary"
+                          className={cn(statusBadge.bg, statusBadge.text, 'border-0 font-normal')}
                         >
-                          Verify
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          loading={busyKey === `${connection.id}:authorize`}
-                          onClick={() => void handleReauthorize(connection)}
-                        >
-                          {connection.status === 'active' ? 'Re-consent' : 'Authorize'}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={connection.is_primary || connection.status !== 'active'}
-                          loading={busyKey === `${connection.id}:primary`}
-                          onClick={() => void handleSetPrimary(connection)}
-                        >
-                          Set as Primary
-                        </Button>
-                        <Button variant="destructive" size="sm" onClick={() => setDeleteItem(connection)}>
-                          Delete
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+                          {statusBadge.label}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="frost-text-muted">
+                        {capabilities.length > 0 ? capabilities.join(', ') : '—'}
+                      </TableCell>
+                      <TableCell className="frost-text-muted">{connection.is_primary ? 'Primary' : '—'}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={connection.status === 'pending_auth'}
+                            loading={busyKey === `${connection.id}:verify`}
+                            onClick={() => void handleVerify(connection)}
+                          >
+                            Verify
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            loading={busyKey === `${connection.id}:authorize`}
+                            onClick={() => void handleReauthorize(connection)}
+                          >
+                            {connection.status === 'active' ? 'Re-consent' : 'Authorize'}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={connection.is_primary || connection.status !== 'active'}
+                            loading={busyKey === `${connection.id}:primary`}
+                            onClick={() => void handleSetPrimary(connection)}
+                          >
+                            Set as Primary
+                          </Button>
+                          <Button variant="destructive" size="sm" onClick={() => setDeleteItem(connection)}>
+                            Delete
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       )}
 

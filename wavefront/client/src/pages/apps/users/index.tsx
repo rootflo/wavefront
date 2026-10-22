@@ -1,8 +1,10 @@
+import AppsBackdrop from '@app/components/AppsBackdrop';
+import ListHeader from '@app/components/ListHeader';
+import ResourceCard from '@app/components/ResourceCard';
 import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
 import { Button } from '@app/components/ui/button';
-import { Input } from '@app/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
 import { useGetConsoleUsers, useGetCurrentUser } from '@app/hooks';
 import { getConsoleUsersKey } from '@app/hooks/data/query-keys';
@@ -10,7 +12,7 @@ import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { IUser } from '@app/types/user';
 import { useQueryClient } from '@tanstack/react-query';
-import { Pencil, Trash2, Shield } from 'lucide-react';
+import { Pencil, Trash2, Shield, User } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import CreateUserDialog from './CreateUserDialog';
 import EditUserDialog from './EditUserDialog';
@@ -109,27 +111,15 @@ const UsersPage: React.FC = () => {
   });
 
   return (
-    <div className="h-full w-full overflow-hidden p-8">
-      <div className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="frost-text text-3xl font-bold">Users</h1>
-          <p className="frost-text-muted mt-2">Manage user accounts</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <Input
-            type="text"
-            placeholder="Search users..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-[220px]"
-          />
-          {isOwner && (
-            <Button onClick={handleCreateUser}>
-              <p className="text-sm">Create User</p>
-            </Button>
-          )}
-        </div>
-      </div>
+    <div className="relative isolate h-full w-full overflow-hidden p-4 max-md:overflow-y-auto sm:p-8">
+      <AppsBackdrop />
+      <ListHeader
+        title="Users"
+        count={filteredUsers.length || undefined}
+        subtitle={<>Manage user accounts</>}
+        search={{ value: searchQuery, onChange: setSearchQuery, placeholder: 'Search users...' }}
+        primary={isOwner ? { label: 'Create user', onClick: handleCreateUser } : undefined}
+      />
 
       {consoleUsersLoading ? (
         <div className="flex justify-center py-10">
@@ -154,60 +144,90 @@ const UsersPage: React.FC = () => {
           )}
         </div>
       ) : (
-        <div className="frost-panel ring-frost-border rounded-xl border ring-1">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Email</TableHead>
-                <TableHead>First Name</TableHead>
-                <TableHead>Last Name</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredUsers.map((user) => (
-                <TableRow key={user.id}>
-                  <TableCell className="font-medium">{user.email}</TableCell>
-                  <TableCell>{user.first_name}</TableCell>
-                  <TableCell>{user.last_name}</TableCell>
-                  <TableCell>
-                    <span
-                      className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
-                        user.role === 'owner' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
-                      }`}
-                    >
-                      {user.role}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      {isOwner && user.role === 'app_admin' && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => handleManageAppsClick(e, user)}
-                          title="Manage App Access"
-                        >
-                          <Shield className="h-4 w-4 text-blue-600" />
-                        </Button>
-                      )}
-                      {canEditUser(user) && (
-                        <Button variant="ghost" size="sm" onClick={(e) => handleEditClick(e, user)} title="Edit">
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                      )}
-                      {canDeleteUser(user) && (
-                        <Button variant="ghost" size="sm" onClick={(e) => handleDeleteClick(e, user)} title="Delete">
-                          <Trash2 className="h-4 w-4 text-red-600" />
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
+        <div className="frost-panel ring-frost-border overflow-x-auto rounded-xl border ring-1">
+          <div data-mobile-cards className="flex flex-col gap-3 pb-24 md:hidden">
+            {filteredUsers.map((user) => (
+              <ResourceCard
+                key={user.id}
+                icon={User}
+                title={user.email}
+                description={`${user.first_name} ${user.last_name}`.trim() || undefined}
+                metadata={[
+                  {
+                    label: 'Role',
+                    value: user.role,
+                    className:
+                      user.role === 'owner'
+                        ? 'bg-purple-500/15 text-purple-700 dark:text-purple-300'
+                        : 'bg-blue-500/15 text-blue-700 dark:text-blue-300',
+                  },
+                ]}
+                onEditClick={canEditUser(user) ? (e) => handleEditClick(e, user) : undefined}
+                onDeleteClick={canDeleteUser(user) ? (e) => handleDeleteClick(e, user) : undefined}
+                deleteTitle="Delete user"
+                extraActions={
+                  isOwner && user.role === 'app_admin'
+                    ? [{ label: 'Manage app access', icon: Shield, onClick: (e) => handleManageAppsClick(e, user) }]
+                    : []
+                }
+              />
+            ))}
+          </div>
+          <div className="max-md:hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Email</TableHead>
+                  <TableHead>First Name</TableHead>
+                  <TableHead>Last Name</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filteredUsers.map((user) => (
+                  <TableRow key={user.id}>
+                    <TableCell className="font-medium">{user.email}</TableCell>
+                    <TableCell>{user.first_name}</TableCell>
+                    <TableCell>{user.last_name}</TableCell>
+                    <TableCell>
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
+                          user.role === 'owner' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
+                        }`}
+                      >
+                        {user.role}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {isOwner && user.role === 'app_admin' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => handleManageAppsClick(e, user)}
+                            title="Manage App Access"
+                          >
+                            <Shield className="h-4 w-4 text-blue-600" />
+                          </Button>
+                        )}
+                        {canEditUser(user) && (
+                          <Button variant="ghost" size="sm" onClick={(e) => handleEditClick(e, user)} title="Edit">
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {canDeleteUser(user) && (
+                          <Button variant="ghost" size="sm" onClick={(e) => handleDeleteClick(e, user)} title="Delete">
+                            <Trash2 className="h-4 w-4 text-red-600" />
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       )}
 

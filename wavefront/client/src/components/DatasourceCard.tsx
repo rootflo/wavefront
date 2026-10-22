@@ -1,3 +1,4 @@
+import { Database } from 'lucide-react';
 import { Datasource } from '@app/types/datasource';
 import dayjs from 'dayjs';
 import React from 'react';
@@ -73,6 +74,7 @@ const DatasourceCard: React.FC<DatasourceCardProps> = ({ datasource, onClick, on
 
   return (
     <ResourceCard
+      icon={Database}
       title={datasource.name}
       description={datasource.description || 'No description available'}
       metadata={metadata}

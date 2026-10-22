@@ -1,8 +1,9 @@
+import ListHeader from '@app/components/ListHeader';
+import ResourceCard from '@app/components/ResourceCard';
 import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
 import { Button } from '@app/components/ui/button';
-import { Input } from '@app/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
 import { useGetVoiceAgents } from '@app/hooks';
 import { getVoiceAgentsKey } from '@app/hooks/data/query-keys';
@@ -11,7 +12,7 @@ import { useNotifyStore } from '@app/store';
 import { VoiceAgent, VoiceAgentListItem } from '@app/types/voice-agent';
 import { getLanguageName } from '@app/constants/languages';
 import { useQueryClient } from '@tanstack/react-query';
-import { Copy, Pencil, Phone, Trash2 } from 'lucide-react';
+import { Copy, Pencil, Phone, Trash2, Mic } from 'lucide-react';
 import React, { useState } from 'react';
 import { useParams } from 'react-router';
 import CreateVoiceAgentDialog from './CreateVoiceAgentDialog';
@@ -121,23 +122,12 @@ const VoiceAgentsPage: React.FC = () => {
   });
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
-      <div className="mb-6 flex shrink-0 items-center justify-end">
-        <div className="flex items-center gap-4">
-          <Input
-            type="text"
-            placeholder="Search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-[180px]"
-          />
-          <div className="flex items-center gap-3">
-            <Button onClick={handleCreateVoiceAgent}>
-              <p className="text-sm">Create Voice Agent</p>
-            </Button>
-          </div>
-        </div>
-      </div>
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden max-md:overflow-y-auto">
+      <ListHeader
+        search={{ value: searchQuery, onChange: setSearchQuery, placeholder: 'Search' }}
+        primary={{ label: 'Create voice agent', onClick: handleCreateVoiceAgent }}
+        className="md:justify-end"
+      />
 
       {agentsLoading ? (
         <div className="flex justify-center py-10">
@@ -155,85 +145,121 @@ const VoiceAgentsPage: React.FC = () => {
           />
         </div>
       ) : (
-        <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-xl border ring-1">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>ID</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Languages</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredAgents.map((agent) => (
-                <TableRow key={agent.id}>
-                  <TableCell className="font-medium">{agent.name}</TableCell>
-                  <TableCell className="max-w-[260px]" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center gap-1">
-                      <span className="truncate font-mono text-xs" title={agent.id}>
-                        {agent.id}
-                      </span>
-                      <Button variant="ghost" size="sm" title="Copy ID" onClick={() => void handleCopyId(agent.id)}>
-                        <Copy className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                  <TableCell className="max-w-md truncate">{agent.description || '-'}</TableCell>
-                  <TableCell>
-                    <span
-                      className="frost-text-muted text-sm"
-                      title={agent.supported_languages?.map(getLanguageName).join(', ')}
-                    >
-                      {agent.supported_languages?.length || 1} ({agent.default_language || 'en'})
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <span
-                      className={`rounded-full px-2 py-1 text-xs font-medium ${
-                        agent.status === 'active'
-                          ? 'bg-emerald-400/15 text-emerald-700 dark:text-emerald-400'
-                          : 'bg-frost-glass-strong frost-text-muted'
-                      }`}
-                    >
-                      {agent.status.toUpperCase()}
-                    </span>
-                  </TableCell>
-                  <TableCell>{new Date(agent.created_at).toLocaleDateString()}</TableCell>
-                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => void handleEditClick(e, agent)}
-                        title="Edit"
-                        disabled={editLoadingId === agent.id}
-                        loading={editLoadingId === agent.id}
+        <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-xl border ring-1 max-md:flex-none">
+          <div data-mobile-cards className="flex flex-col gap-3 pb-24 md:hidden">
+            {filteredAgents.map((agent) => (
+              <ResourceCard
+                key={agent.id}
+                icon={Mic}
+                title={agent.name}
+                description={agent.description || undefined}
+                metadata={[
+                  { label: 'Id', value: agent.id, isMono: true, isCopyable: true },
+                  {
+                    label: 'Status',
+                    value: agent.status.toUpperCase(),
+                    className:
+                      agent.status === 'active'
+                        ? 'bg-emerald-400/15 text-emerald-700 dark:text-emerald-400'
+                        : 'bg-frost-glass-strong frost-text-muted',
+                  },
+                  {
+                    label: 'Languages',
+                    value: `${agent.supported_languages?.length || 1} (${agent.default_language || 'en'})`,
+                  },
+                  { label: 'Created', value: new Date(agent.created_at).toLocaleDateString() },
+                ]}
+                onEditClick={(e) => void handleEditClick(e, agent)}
+                onDeleteClick={(e) => handleDeleteClick(e, agent)}
+                deleteTitle="Delete voice agent"
+                extraActions={
+                  agent.status === 'active'
+                    ? [{ label: 'Talk to agent', icon: Phone, onClick: (e) => handleOperationsClick(e, agent) }]
+                    : []
+                }
+              />
+            ))}
+          </div>
+          <div className="max-md:hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead>Languages</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Created</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredAgents.map((agent) => (
+                  <TableRow key={agent.id}>
+                    <TableCell className="font-medium">{agent.name}</TableCell>
+                    <TableCell className="max-w-[260px]" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center gap-1">
+                        <span className="truncate font-mono text-xs" title={agent.id}>
+                          {agent.id}
+                        </span>
+                        <Button variant="ghost" size="sm" title="Copy ID" onClick={() => void handleCopyId(agent.id)}>
+                          <Copy className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                    <TableCell className="max-w-md truncate">{agent.description || '-'}</TableCell>
+                    <TableCell>
+                      <span
+                        className="frost-text-muted text-sm"
+                        title={agent.supported_languages?.map(getLanguageName).join(', ')}
                       >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      {agent.status === 'active' && (
+                        {agent.supported_languages?.length || 1} ({agent.default_language || 'en'})
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span
+                        className={`rounded-full px-2 py-1 text-xs font-medium ${
+                          agent.status === 'active'
+                            ? 'bg-emerald-400/15 text-emerald-700 dark:text-emerald-400'
+                            : 'bg-frost-glass-strong frost-text-muted'
+                        }`}
+                      >
+                        {agent.status.toUpperCase()}
+                      </span>
+                    </TableCell>
+                    <TableCell>{new Date(agent.created_at).toLocaleDateString()}</TableCell>
+                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-2">
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={(e) => handleOperationsClick(e, agent)}
-                          title="Talk to agent"
+                          onClick={(e) => void handleEditClick(e, agent)}
+                          title="Edit"
+                          disabled={editLoadingId === agent.id}
+                          loading={editLoadingId === agent.id}
                         >
-                          <Phone className="h-4 w-4" />
+                          <Pencil className="h-4 w-4" />
                         </Button>
-                      )}
-                      <Button variant="ghost" size="sm" onClick={(e) => handleDeleteClick(e, agent)} title="Delete">
-                        <Trash2 className="h-4 w-4 text-red-600" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                        {agent.status === 'active' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => handleOperationsClick(e, agent)}
+                            title="Talk to agent"
+                          >
+                            <Phone className="h-4 w-4" />
+                          </Button>
+                        )}
+                        <Button variant="ghost" size="sm" onClick={(e) => handleDeleteClick(e, agent)} title="Delete">
+                          <Trash2 className="h-4 w-4 text-red-600" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       )}
 

@@ -1,8 +1,9 @@
+import ListHeader from '@app/components/ListHeader';
+import ResourceCard from '@app/components/ResourceCard';
 import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
 import { Button } from '@app/components/ui/button';
-import { Input } from '@app/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
 import { Badge } from '@app/components/ui/badge';
 import { useGetVoiceAgentTools } from '@app/hooks';
@@ -11,7 +12,7 @@ import { extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { VoiceAgentTool } from '@app/types/tool';
 import { useQueryClient } from '@tanstack/react-query';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Trash2, Wrench } from 'lucide-react';
 import React, { useState } from 'react';
 import { useParams } from 'react-router';
 import CreateToolDialog from './CreateToolDialog';
@@ -107,23 +108,12 @@ const ToolsPage: React.FC = () => {
   };
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
-      <div className="mb-6 flex shrink-0 items-center justify-end">
-        <div className="flex items-center gap-4">
-          <Input
-            type="text"
-            placeholder="Search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-[180px]"
-          />
-          <div className="flex items-center gap-3">
-            <Button onClick={handleCreateTool}>
-              <p className="text-sm">Create Tool</p>
-            </Button>
-          </div>
-        </div>
-      </div>
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden max-md:overflow-y-auto">
+      <ListHeader
+        search={{ value: searchQuery, onChange: setSearchQuery, placeholder: 'Search' }}
+        primary={{ label: 'Create tool', onClick: handleCreateTool }}
+        className="md:justify-end"
+      />
 
       {isError ? (
         <div className="mt-10 flex justify-center">
@@ -150,44 +140,65 @@ const ToolsPage: React.FC = () => {
           />
         </div>
       ) : (
-        <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-xl border ring-1">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Display Name</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Method</TableHead>
-                <TableHead>URL</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredTools.map((tool) => (
-                <TableRow key={tool.id}>
-                  <TableCell className="font-mono text-sm">{tool.name}</TableCell>
-                  <TableCell className="font-medium">{tool.display_name}</TableCell>
-                  <TableCell>
-                    <Badge className={getToolTypeColor(tool.tool_type)}>{tool.tool_type.toUpperCase()}</Badge>
-                  </TableCell>
-                  <TableCell className="font-mono text-xs">{getApiMethod(tool)}</TableCell>
-                  <TableCell className="max-w-xs truncate text-xs">{getApiUrl(tool)}</TableCell>
-                  <TableCell className="max-w-md truncate">{tool.description || '-'}</TableCell>
-                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-2">
-                      <Button variant="ghost" size="sm" onClick={(e) => handleEditClick(e, tool)} title="Edit">
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={(e) => handleDeleteClick(e, tool)} title="Delete">
-                        <Trash2 className="h-4 w-4 text-red-600" />
-                      </Button>
-                    </div>
-                  </TableCell>
+        <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-xl border ring-1 max-md:flex-none">
+          <div data-mobile-cards className="flex flex-col gap-3 pb-24 md:hidden">
+            {filteredTools.map((tool) => (
+              <ResourceCard
+                key={tool.id}
+                icon={Wrench}
+                title={tool.display_name}
+                description={tool.description || undefined}
+                metadata={[
+                  { label: 'Name', value: tool.name },
+                  { label: 'Type', value: tool.tool_type.toUpperCase(), className: getToolTypeColor(tool.tool_type) },
+                  ...(getApiMethod(tool) ? [{ label: 'Method', value: getApiMethod(tool), isMono: true }] : []),
+                  ...(getApiUrl(tool) ? [{ label: 'URL', value: getApiUrl(tool), isMono: true }] : []),
+                ]}
+                onEditClick={(e) => handleEditClick(e, tool)}
+                onDeleteClick={(e) => handleDeleteClick(e, tool)}
+                deleteTitle="Delete tool"
+              />
+            ))}
+          </div>
+          <div className="max-md:hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Display Name</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Method</TableHead>
+                  <TableHead>URL</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filteredTools.map((tool) => (
+                  <TableRow key={tool.id}>
+                    <TableCell className="text-sm">{tool.name}</TableCell>
+                    <TableCell className="font-medium">{tool.display_name}</TableCell>
+                    <TableCell>
+                      <Badge className={getToolTypeColor(tool.tool_type)}>{tool.tool_type.toUpperCase()}</Badge>
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">{getApiMethod(tool)}</TableCell>
+                    <TableCell className="max-w-xs truncate text-xs">{getApiUrl(tool)}</TableCell>
+                    <TableCell className="max-w-md truncate">{tool.description || '-'}</TableCell>
+                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-2">
+                        <Button variant="ghost" size="sm" onClick={(e) => handleEditClick(e, tool)} title="Edit">
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={(e) => handleDeleteClick(e, tool)} title="Delete">
+                          <Trash2 className="h-4 w-4 text-red-600" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       )}
 

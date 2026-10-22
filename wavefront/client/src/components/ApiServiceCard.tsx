@@ -1,3 +1,4 @@
+import { Plug } from 'lucide-react';
 import { ApiServiceItem } from '@app/types/api-service';
 import React from 'react';
 import ResourceCard, { ResourceCardMetadata } from './ResourceCard';
@@ -21,12 +22,13 @@ const ApiServiceCard: React.FC<ApiServiceCardProps> = ({ service, onClick, onDel
     metadata.push({
       label: 'Version',
       value: service.version,
-      className: 'bg-sky-400/15 text-sky-800 ring-1 ring-sky-400/20',
+      className: 'bg-sky-400/15 text-sky-800 dark:text-sky-300 ring-1 ring-sky-400/20',
     });
   }
 
   return (
     <ResourceCard
+      icon={Plug}
       title={service.name || service.service_id}
       description={service.description}
       metadata={metadata}

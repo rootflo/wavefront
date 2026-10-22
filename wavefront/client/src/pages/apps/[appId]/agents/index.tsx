@@ -1,3 +1,4 @@
+import ListHeader, { FilterSelect } from '@app/components/ListHeader';
 import AgentCard from '@app/components/AgentCard';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
@@ -9,9 +10,6 @@ import {
   BreadcrumbList,
   BreadcrumbSeparator,
 } from '@app/components/ui/breadcrumb';
-import { Button } from '@app/components/ui/button';
-import { Input } from '@app/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import { useDeleteAgent, useGetAgents, useGetNamespaces } from '@app/hooks';
 import { useDashboardStore } from '@app/store';
 import { AgentListItem } from '@app/types/agent';
@@ -73,8 +71,8 @@ const AgentManagement: React.FC = () => {
   };
 
   return (
-    <div className="flex h-full w-full flex-col p-8">
-      <Breadcrumb className="mb-4">
+    <div className="flex h-full w-full flex-col p-4 sm:p-8">
+      <Breadcrumb className="mb-4 hidden md:block">
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
@@ -98,39 +96,26 @@ const AgentManagement: React.FC = () => {
         </BreadcrumbList>
       </Breadcrumb>
 
-      <div className="mb-8 flex w-full items-start justify-between">
-        <div>
-          <h1 className="frost-text text-3xl font-bold">Agents</h1>
-          <p className="frost-text-muted mt-2">Manage AI agents for {selectedApp?.app_name}</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <Input
-            className="w-[180px]"
-            type="text"
-            placeholder="Search"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+      <ListHeader
+        title="Agents"
+        count={filteredAgents.length || undefined}
+        subtitle={<>Manage AI agents for {selectedApp?.app_name}</>}
+        search={{ value: searchTerm, onChange: setSearchTerm, placeholder: 'Search agents' }}
+        filters={
+          <FilterSelect
+            label="Namespace"
+            value={namespace}
+            onValueChange={handleNamespaceChange}
+            allValue="all"
+            options={[
+              { value: 'all', label: 'All namespaces' },
+              ...namespaces.map((ns) => ({ value: ns.name, label: ns.name })),
+            ]}
           />
-
-          <Select value={namespace} onValueChange={handleNamespaceChange}>
-            <SelectTrigger className="w-48 cursor-pointer">
-              <SelectValue placeholder="Select namespace" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem className="cursor-pointer" value="all">
-                All Namespaces
-              </SelectItem>
-              {namespaces.map((ns) => (
-                <SelectItem className="cursor-pointer" key={ns.name} value={ns.name}>
-                  {ns.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button onClick={handleCreateAgent}>Create Agent</Button>
-        </div>
-      </div>
-      <div className="grid w-full gap-6 px-1 pt-2 pb-10 sm:grid-cols-2 lg:grid-cols-3">
+        }
+        primary={{ label: 'Create agent', onClick: handleCreateAgent }}
+      />
+      <div className="grid w-full gap-3 px-1 pt-2 pb-24 sm:grid-cols-2 sm:gap-6 sm:pb-10 lg:grid-cols-3">
         {agentsLoading ? (
           <>
             {Array.from({ length: 6 }).map((_, index) => (

@@ -26,7 +26,8 @@ import { useNavigate } from 'react-router';
 import { useGetLLMConfigs } from '@app/hooks/data/fetch-hooks';
 import { useValidateAgentYaml } from '@app/hooks/data/yaml-validation-hooks';
 import { useBeforeUnloadGuard } from '@app/hooks/use-before-unload-guard';
-import AgentFormFields from './AgentFormFields';
+import AgentFormFields, { type AgentFormSection } from './AgentFormFields';
+import { SECTION_OF_FIELD } from './agentFormSections';
 import { EMPTY_AGENT_FORM_VALUES, isSameYamlDocument, syncAgentIdentity } from './agentYamlMapper';
 import { createAgentSchema, type CreateAgentInput } from './schemas';
 import { useAgentYamlForm } from './useAgentYamlForm';
@@ -78,6 +79,26 @@ const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
   });
 
   const { activeTab, handleTabChange, resetFromYaml, handleSubmit } = useAgentYamlForm(form);
+  // Each form section is its own tab, followed by the YAML. All three sections count as the hook's "visual" tab.
+  const [section, setSection] = useState<AgentFormSection>('identity');
+  const currentTab = activeTab === 'yaml' ? 'yaml' : section;
+
+  const handleSectionChange = (value: string) => {
+    if (value === 'yaml') {
+      handleTabChange('yaml');
+      return;
+    }
+    setSection(value as AgentFormSection);
+    // Coming back from the YAML re-derives the fields from it first, and stays there if it cannot be read.
+    if (activeTab === 'yaml') handleTabChange('visual');
+  };
+
+  // A failed save reports the first invalid field; open the tab that has it so its message is visible.
+  const firstErrorField = Object.keys(form.formState.errors)[0];
+  useEffect(() => {
+    if (!firstErrorField || firstErrorField === 'yamlContent') return;
+    setSection(SECTION_OF_FIELD[firstErrorField] ?? 'identity');
+  }, [firstErrorField, form.formState.submitCount]);
 
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
@@ -157,7 +178,7 @@ const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
   };
 
   const identityFields = (
-    <div className="grid grid-cols-2 gap-6">
+    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
       <FormField
         control={form.control}
         name="agentId"
@@ -167,7 +188,7 @@ const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
               Agent Name <span className="text-red-500">*</span>
             </FormLabel>
             <FormControl>
-              <Input placeholder="my-agent" className="frost-control" {...field} />
+              <Input placeholder="my-agent" {...field} />
             </FormControl>
             <FormMessage />
           </FormItem>
@@ -182,7 +203,7 @@ const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
             <FormLabel className="frost-text">Namespace</FormLabel>
             <Select onValueChange={field.onChange} value={field.value}>
               <FormControl>
-                <SelectTrigger className="frost-control">
+                <SelectTrigger>
                   <SelectValue placeholder="Select namespace" />
                 </SelectTrigger>
               </FormControl>
@@ -212,54 +233,74 @@ const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
           onInteractOutside={(event) => {
             if (isDirty) event.preventDefault();
           }}
-          className="frost-dialog border-frost-border ring-frost-border flex max-h-[90vh] min-w-0 flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl lg:max-w-4xl"
+          className="flex h-[760px] max-h-[calc(100dvh-2rem)] min-w-0 flex-col overflow-hidden sm:max-w-3xl lg:max-w-4xl"
         >
-          <DialogHeader className="border-frost-border border-b p-6 pb-4">
-            <DialogTitle className="frost-text">Create New Agent</DialogTitle>
-            <DialogDescription className="frost-text-muted">
-              Create a new AI agent for {selectedApp?.app_name}
-            </DialogDescription>
+          <DialogHeader>
+            <DialogTitle>Create New Agent</DialogTitle>
+            <DialogDescription>Create a new AI agent for {selectedApp?.app_name}</DialogDescription>
           </DialogHeader>
 
           <Form {...form}>
-            <form onSubmit={handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
-              <Tabs value={activeTab} onValueChange={handleTabChange} className="flex min-h-0 flex-1 flex-col">
-                <div className="px-6">
-                  <TabsList className="border-frost-border flex h-auto w-full justify-start gap-6 rounded-none border-b bg-transparent p-0">
+            <form onSubmit={handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col gap-4">
+              <Tabs value={currentTab} onValueChange={handleSectionChange} className="flex min-h-0 flex-1 flex-col">
+                <div>
+                  <TabsList className="border-frost-border flex h-auto w-full max-w-none justify-start gap-6 overflow-visible rounded-none border-0 border-b bg-transparent! p-0 shadow-none! ring-0 sm:justify-start">
                     <TabsTrigger
-                      value="visual"
-                      className="data-[state=active]:border-primary frost-text -mb-px rounded-none border-b-2 border-transparent px-0 py-3 data-[state=active]:bg-transparent data-[state=active]:shadow-none [&_[data-tab-underline]]:!hidden"
+                      value="identity"
+                      className="frost-text data-[state=active]:border-brand -mb-px h-auto flex-none rounded-none border-0 border-b-2 border-transparent bg-transparent! px-0 py-3 shadow-none! data-[state=active]:bg-transparent! data-[state=active]:shadow-none! [&_[data-tab-underline]]:hidden!"
                     >
-                      Agent Builder
+                      Identity
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="model"
+                      className="frost-text data-[state=active]:border-brand -mb-px h-auto flex-none rounded-none border-0 border-b-2 border-transparent bg-transparent! px-0 py-3 shadow-none! data-[state=active]:bg-transparent! data-[state=active]:shadow-none! [&_[data-tab-underline]]:hidden!"
+                    >
+                      Model
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="advanced"
+                      className="frost-text data-[state=active]:border-brand -mb-px h-auto flex-none rounded-none border-0 border-b-2 border-transparent bg-transparent! px-0 py-3 shadow-none! data-[state=active]:bg-transparent! data-[state=active]:shadow-none! [&_[data-tab-underline]]:hidden!"
+                    >
+                      Advanced
                     </TabsTrigger>
                     <TabsTrigger
                       value="yaml"
-                      className="data-[state=active]:border-primary frost-text -mb-px rounded-none border-b-2 border-transparent px-0 py-3 data-[state=active]:bg-transparent data-[state=active]:shadow-none [&_[data-tab-underline]]:!hidden"
+                      className="frost-text data-[state=active]:border-brand -mb-px h-auto flex-none rounded-none border-0 border-b-2 border-transparent bg-transparent! px-0 py-3 shadow-none! data-[state=active]:bg-transparent! data-[state=active]:shadow-none! [&_[data-tab-underline]]:hidden!"
                     >
                       YAML Code
                     </TabsTrigger>
                   </TabsList>
                 </div>
 
-                <div className="min-h-[400px] flex-1 overflow-y-auto p-6">
-                  <TabsContent value="visual" className="m-0 space-y-8 outline-none">
-                    <AgentFormFields appId={appId} llmConfigs={llmConfigs} identityFields={identityFields} />
-                  </TabsContent>
+                <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pt-5 pb-2">
+                  {(['identity', 'model', 'advanced'] as const).map((id) => (
+                    <TabsContent key={id} value={id} className="m-0 space-y-8 outline-none">
+                      <AgentFormFields
+                        appId={appId}
+                        llmConfigs={llmConfigs}
+                        identityFields={identityFields}
+                        section={id}
+                      />
+                    </TabsContent>
+                  ))}
 
-                  <TabsContent value="yaml" className="m-0 h-full outline-none">
+                  <TabsContent
+                    value="yaml"
+                    className="m-0 min-h-0 flex-1 outline-none data-[state=active]:flex data-[state=active]:flex-col"
+                  >
                     <FormField
                       control={form.control}
                       name="yamlContent"
                       render={({ field }) => (
-                        <FormItem className="flex h-full flex-col">
+                        <FormItem className="flex min-h-0 flex-1 flex-col">
                           <FormControl>
-                            <div className="frost-control border-frost-border w-full min-w-0 flex-1 overflow-hidden rounded-md border">
+                            <div className="frost-control border-frost-border flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden rounded-md border">
                               <CodeMirror
                                 value={field.value}
                                 onChange={field.onChange}
                                 theme="dark"
                                 height="100%"
-                                className="h-full min-h-[400px] w-full"
+                                className="min-h-0 w-full flex-1 [&_.cm-editor]:h-full [&_.cm-scroller]:overflow-auto"
                                 extensions={[langs.yaml(), ...popupCodeMirrorExtensions]}
                                 placeholder="Enter your agent YAML configuration..."
                               />
@@ -273,19 +314,14 @@ const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
                 </div>
 
                 {validationErrors.length > 0 && (
-                  <ul className="border-frost-border text-destructive max-h-32 list-disc space-y-0.5 overflow-y-auto border-t px-6 py-3 pl-11 text-xs">
+                  <ul className="text-destructive max-h-32 list-disc space-y-0.5 overflow-y-auto pl-5 text-xs">
                     {validationErrors.map((message, index) => (
                       <li key={index}>{message}</li>
                     ))}
                   </ul>
                 )}
-                <DialogFooter className="border-frost-border bg-frost-dialog/50 border-t p-4 backdrop-blur-md">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="frost-control border-frost-border"
-                    onClick={requestClose}
-                  >
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={requestClose}>
                     Cancel
                   </Button>
                   <Button type="submit" loading={form.formState.isSubmitting}>

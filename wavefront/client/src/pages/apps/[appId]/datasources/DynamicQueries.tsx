@@ -1,14 +1,14 @@
+import ListHeader from '@app/components/ListHeader';
 import BulkDownloadDialog from '@app/components/BulkDownloadDialog';
 import BulkUploadDialog, { MAX_BULK_UPLOAD_FILES } from '@app/components/BulkUploadDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
 import { ErrorBanner } from '@app/components/Banner';
 import { Button } from '@app/components/ui/button';
-import { Input } from '@app/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
 import { copyToClipboard } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { DynamicQuery } from '@app/types/datasource';
-import { Copy, Download, Pencil, Trash2 } from 'lucide-react';
+import { Copy, Download, Pencil, Trash2, Upload } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { getDynamicQueryIdFromFileName, parseUploadedDynamicQuery } from './dynamic-query-utils';
 
@@ -82,23 +82,21 @@ const DynamicQueries = ({
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="mb-4 flex w-full shrink-0 items-center justify-end gap-3">
-        <Input
-          className="w-[200px]"
-          type="text"
-          placeholder="Search"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-        <Button variant="outline" onClick={() => setBulkDownloadOpen(true)} disabled={dynamicQueries.length === 0}>
-          Download
-        </Button>
-        <Button variant="outline" onClick={() => setBulkUploadOpen(true)}>
-          Upload
-        </Button>
-        <Button onClick={onCreate}>Create Dynamic Query</Button>
-      </div>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden max-md:overflow-y-auto">
+      <ListHeader
+        className="md:justify-end"
+        search={{ value: searchTerm, onChange: setSearchTerm, placeholder: 'Search queries' }}
+        secondary={[
+          {
+            label: 'Download',
+            icon: Download,
+            onClick: () => setBulkDownloadOpen(true),
+            disabled: dynamicQueries.length === 0,
+          },
+          { label: 'Upload', icon: Upload, onClick: () => setBulkUploadOpen(true) },
+        ]}
+        primary={{ label: 'Create dynamic query', onClick: onCreate }}
+      />
 
       {bulkError ? <ErrorBanner message={bulkError} onDismiss={() => setBulkError('')} /> : null}
 
@@ -114,8 +112,8 @@ const DynamicQueries = ({
           />
         </div>
       ) : (
-        <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-xl border ring-1">
-          <Table>
+        <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-xl border ring-1 max-md:flex-none">
+          <Table cards>
             <TableHeader>
               <TableRow>
                 <TableHead>Version</TableHead>

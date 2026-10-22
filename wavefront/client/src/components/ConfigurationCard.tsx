@@ -1,3 +1,4 @@
+import { SlidersHorizontal } from 'lucide-react';
 import { ConfigurationListItem } from '@app/types/configuration';
 import React from 'react';
 import ResourceCard, { ResourceCardMetadata } from './ResourceCard';
@@ -19,6 +20,7 @@ const ConfigurationCard: React.FC<ConfigurationCardProps> = ({ configuration, on
 
   return (
     <ResourceCard
+      icon={SlidersHorizontal}
       title={configuration.key}
       description={configuration.description}
       metadata={metadata}

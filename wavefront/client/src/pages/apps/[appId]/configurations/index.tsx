@@ -1,3 +1,4 @@
+import ListHeader from '@app/components/ListHeader';
 import floConsoleService from '@app/api';
 import ConfigurationCard from '@app/components/ConfigurationCard';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
@@ -10,8 +11,6 @@ import {
   BreadcrumbList,
   BreadcrumbSeparator,
 } from '@app/components/ui/breadcrumb';
-import { Button } from '@app/components/ui/button';
-import { Input } from '@app/components/ui/input';
 import { useGetConfigurations } from '@app/hooks';
 import { getConfigurationsKey } from '@app/hooks/data/query-keys';
 import { useNotifyStore } from '@app/store';
@@ -88,8 +87,8 @@ const ConfigurationsManagement: React.FC = () => {
   };
 
   return (
-    <div className="flex h-full w-full flex-col p-8">
-      <Breadcrumb className="mb-4">
+    <div className="flex h-full w-full flex-col p-4 sm:p-8">
+      <Breadcrumb className="mb-4 hidden md:block">
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
@@ -113,23 +112,14 @@ const ConfigurationsManagement: React.FC = () => {
         </BreadcrumbList>
       </Breadcrumb>
 
-      <div className="mb-8 flex w-full items-start justify-between">
-        <div>
-          <h1 className="animate-fade-in frost-text text-3xl font-bold">Configurations</h1>
-          <p className="animate-fade-in frost-text-muted mt-2">Static reference data workflows read at runtime</p>
-        </div>
-        <div className="animate-fade-in flex items-center gap-4">
-          <Input
-            className="w-[180px]"
-            type="text"
-            placeholder="Search"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-          <Button onClick={handleCreateConfiguration}>Create Configuration</Button>
-        </div>
-      </div>
-      <div className="grid w-full gap-6 px-1 pt-2 pb-10 sm:grid-cols-2 lg:grid-cols-3">
+      <ListHeader
+        title="Configurations"
+        count={filteredConfigurations.length || undefined}
+        subtitle={<>Static reference data workflows read at runtime</>}
+        search={{ value: searchTerm, onChange: setSearchTerm, placeholder: 'Search configurations' }}
+        primary={{ label: 'Create configuration', onClick: handleCreateConfiguration }}
+      />
+      <div className="grid w-full gap-3 px-1 pt-2 pb-24 sm:grid-cols-2 sm:gap-6 sm:pb-10 lg:grid-cols-3">
         {loading ? (
           <>
             {Array.from({ length: 6 }).map((_, index) => (

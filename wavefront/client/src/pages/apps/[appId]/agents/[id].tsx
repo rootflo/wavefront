@@ -13,6 +13,12 @@ import {
 } from '@app/components/ui/breadcrumb';
 import { Badge } from '@app/components/ui/badge';
 import { Button } from '@app/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@app/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
 import {
   documentMimeTypeFor,
@@ -20,6 +26,7 @@ import {
   validateDocumentUpload,
   validateImageUpload,
 } from '@app/constants/upload';
+import { ArrowLeft, MoreVertical } from 'lucide-react';
 import { useDeleteAgent, usePromoteAgentVersion, useDeleteAgentVersion } from '@app/hooks';
 import { useGetAgent, useGetAgentVersions, useGetLLMConfigs, useGetTools } from '@app/hooks/data/fetch-hooks';
 import { getAgentKey, getAgentVersionsKey } from '@app/hooks/data/query-keys';
@@ -591,8 +598,8 @@ const AgentDetail: React.FC = () => {
   }, []);
 
   return (
-    <div className="flex h-full flex-col bg-transparent p-8">
-      <Breadcrumb className="mb-6">
+    <div className="flex h-full min-h-0 flex-col bg-transparent p-3 sm:p-8">
+      <Breadcrumb className="mb-6 hidden md:block">
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
@@ -626,75 +633,115 @@ const AgentDetail: React.FC = () => {
         <div className="flex items-center justify-center p-8 text-red-600 dark:text-red-400">Agent not found</div>
       ) : (
         <>
-          <div className="flex w-full flex-1 flex-col gap-10">
-            <div className="flex items-start justify-between">
-              <p className="frost-text text-2xl leading-normal font-semibold">{formatAppName(agent.name)}</p>
-              <div className="flex items-center gap-4">
-                <StreamToggle enabled={listenEventsEnabled} onChange={setListenEventsEnabled} subject="reply" />
-                {agentVersions.length > 0 && (
-                  <Select
-                    value={displayVersion !== undefined ? String(displayVersion) : ''}
-                    onValueChange={(val) => setSelectedVersion(Number(val))}
-                  >
-                    <SelectTrigger className="w-[150px]">
-                      <SelectValue placeholder="Version" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {[...agentVersions]
-                        .sort((a, b) => a.version - b.version)
-                        .map((v) => (
-                          <SelectItem key={v.id} value={String(v.version)}>
-                            v{v.version}
-                            {v.is_current ? ' (current)' : ''}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                )}
+          <div className="flex w-full shrink-0 flex-col gap-3 pb-3 md:flex-row md:items-center md:justify-between md:pb-6">
+            <div className="flex min-w-0 items-center gap-2">
+              <button
+                type="button"
+                aria-label="Back to agents"
+                onClick={() => navigate(`/apps/${appId}/agents`)}
+                className="frost-text hover:bg-frost-glass -ml-1 flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full md:hidden"
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </button>
+              <div className="min-w-0 flex-1">
+                <p className="frost-text truncate text-lg leading-tight font-semibold md:text-2xl md:leading-normal">
+                  {formatAppName(agent.name)}
+                </p>
                 {agent.current_version !== undefined && (
-                  <Badge variant="secondary">Current: v{agent.current_version}</Badge>
+                  <p className="frost-text-muted text-xs md:hidden">Current: v{agent.current_version}</p>
                 )}
-                <Button variant="outline" onClick={() => setVersionsDialogOpen(true)}>
-                  Versions
-                </Button>
-                <Button variant="outline" onClick={() => setEditDialogOpen(true)}>
-                  Edit
-                </Button>
-                <Button variant="destructive" onClick={handleDeleteClick}>
-                  Delete
-                </Button>
               </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Agent actions"
+                    className="frost-text hover:bg-frost-glass flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full md:hidden"
+                  >
+                    <MoreVertical className="h-5 w-5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => setVersionsDialogOpen(true)}>Versions</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setEditDialogOpen(true)}>Edit</DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-red-600 focus:text-red-600 dark:text-red-400"
+                    onClick={handleDeleteClick}
+                  >
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 md:gap-4">
+              <StreamToggle enabled={listenEventsEnabled} onChange={setListenEventsEnabled} subject="reply" />
+              {agentVersions.length > 0 && (
+                <Select
+                  value={displayVersion !== undefined ? String(displayVersion) : ''}
+                  onValueChange={(val) => setSelectedVersion(Number(val))}
+                >
+                  <SelectTrigger className="min-w-0 flex-1 md:w-[150px] md:flex-none">
+                    <SelectValue placeholder="Version" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[...agentVersions]
+                      .sort((a, b) => a.version - b.version)
+                      .map((v) => (
+                        <SelectItem key={v.id} value={String(v.version)}>
+                          v{v.version}
+                          {v.is_current ? ' (current)' : ''}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {agent.current_version !== undefined && (
+                <Badge variant="secondary" className="hidden md:inline-flex">
+                  Current: v{agent.current_version}
+                </Badge>
+              )}
+              <Button variant="outline" className="hidden md:inline-flex" onClick={() => setVersionsDialogOpen(true)}>
+                Versions
+              </Button>
+              <Button variant="outline" className="hidden md:inline-flex" onClick={() => setEditDialogOpen(true)}>
+                Edit
+              </Button>
+              <Button variant="destructive" className="hidden md:inline-flex" onClick={handleDeleteClick}>
+                Delete
+              </Button>
             </div>
           </div>
 
-          <ChatBot
-            chatHistory={chatHistory}
-            runningInference={runningInference}
-            selectedLLMConfigId={selectedLLMConfigId}
-            setSelectedLLMConfigId={setSelectedLLMConfigId}
-            loadingConfigs={loadingConfigs}
-            llmConfigs={llmConfigs}
-            uploadedImages={uploadedImages}
-            uploadedDocuments={uploadedDocuments}
-            handleRemoveImage={handleRemoveImage}
-            handleRemoveDocument={handleRemoveDocument}
-            showUploadMenu={showUploadMenu}
-            setShowUploadMenu={setShowUploadMenu}
-            inferenceInput={inferenceInput}
-            setInferenceInput={setInferenceInput}
-            inferenceVariables={inferenceVariables}
-            setInferenceVariables={setInferenceVariables}
-            showVariablesInput={showVariablesInput}
-            setShowVariablesInput={setShowVariablesInput}
-            handleQuestionEntered={handleQuestionEntered}
-            handleImageUpload={handleImageUpload}
-            handleDocumentUpload={handleDocumentUpload}
-            uploadingImage={uploadingImage}
-            uploadingDocument={uploadingDocument}
-            streamingEvents={streamingEvents}
-            isStreaming={isStreaming}
-            eventsContainerRef={eventsContainerRef}
-          />
+          <div className="min-h-0 flex-1">
+            <ChatBot
+              chatHistory={chatHistory}
+              runningInference={runningInference}
+              selectedLLMConfigId={selectedLLMConfigId}
+              setSelectedLLMConfigId={setSelectedLLMConfigId}
+              loadingConfigs={loadingConfigs}
+              llmConfigs={llmConfigs}
+              uploadedImages={uploadedImages}
+              uploadedDocuments={uploadedDocuments}
+              handleRemoveImage={handleRemoveImage}
+              handleRemoveDocument={handleRemoveDocument}
+              showUploadMenu={showUploadMenu}
+              setShowUploadMenu={setShowUploadMenu}
+              inferenceInput={inferenceInput}
+              setInferenceInput={setInferenceInput}
+              inferenceVariables={inferenceVariables}
+              setInferenceVariables={setInferenceVariables}
+              showVariablesInput={showVariablesInput}
+              setShowVariablesInput={setShowVariablesInput}
+              handleQuestionEntered={handleQuestionEntered}
+              handleImageUpload={handleImageUpload}
+              handleDocumentUpload={handleDocumentUpload}
+              uploadingImage={uploadingImage}
+              uploadingDocument={uploadingDocument}
+              streamingEvents={streamingEvents}
+              isStreaming={isStreaming}
+              eventsContainerRef={eventsContainerRef}
+            />
+          </div>
 
           {/* Edit Agent Dialog */}
           <EditAgentDialog

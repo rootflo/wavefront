@@ -504,7 +504,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
     endKey: string,
     onEndKeyChange: (next: string) => void
   ) => (
-    <div className="grid grid-cols-3 gap-3">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
       <div>
         <p className="mb-1 text-xs text-[#878787]">Dynamic date range (optional)</p>
         <Select
@@ -560,7 +560,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
           </TabsList>
 
           <TabsContent value={FORM_TAB.SCHEDULE} className="mt-4 min-h-0 flex-1 space-y-5 overflow-y-auto">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <p className="mb-1 text-xs text-[#878787]">Cron expression</p>
                 <Input value={cronExpr} onChange={(e) => setCronExpr(e.target.value)} placeholder={DEFAULT_CRON_EXPR} />
@@ -571,7 +571,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <p className="mb-1 text-xs text-[#878787]">Datasource</p>
                 <Select
@@ -644,7 +644,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
 
               {jobDefaultsExpanded ? (
                 <div className="border-frost-border space-y-4 border-t px-4 py-4">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
                       <p className="mb-1 text-xs text-[#878787]">Row limit</p>
                       <Input
@@ -681,7 +681,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
                     setEndDateParamKey
                   )}
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
                       <p className="mb-1 text-xs text-[#878787]">Query params (optional JSON)</p>
                       <Textarea
@@ -826,7 +826,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
                             </Select>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             <div>
                               <p className="mb-1 text-xs text-[#878787]">Row limit override</p>
                               <Input
@@ -863,7 +863,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
                             (next) => updateQueryConfigOverrides(config.key, { end_date_param: next })
                           )}
 
-                          <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             <div>
                               <p className="mb-1 text-xs text-[#878787]">Params override (optional JSON)</p>
                               <Textarea

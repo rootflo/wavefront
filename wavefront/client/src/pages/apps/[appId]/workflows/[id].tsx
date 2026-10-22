@@ -1,4 +1,5 @@
 import floConsoleService from '@app/api';
+import MobileBackButton from '@app/components/MobileBackButton';
 import ChatBot from '@app/components/ChatBot';
 import StreamToggle from '@app/components/StreamToggle';
 import VersionsDialog from '@app/components/VersionsDialog';
@@ -689,11 +690,16 @@ const WorkflowDetail: React.FC = () => {
   };
 
   return (
-    <div className="h-full bg-transparent py-5">
-      <div className="flex h-full w-full flex-col gap-10">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <p className="frost-text text-2xl leading-normal font-semibold">{formatAppName(workflow?.name)}</p>
-          <div className="flex flex-wrap items-center justify-end gap-4">
+    <div className="h-full bg-transparent py-2 md:py-5">
+      <div className="flex h-full w-full flex-col gap-6 md:gap-10">
+        <div className="flex flex-wrap items-center justify-between gap-3 md:gap-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <MobileBackButton to={`/apps/${appId}/workflows`} label="Back to workflows" />
+            <p className="frost-text min-w-0 truncate text-xl leading-normal font-semibold md:text-2xl">
+              {formatAppName(workflow?.name)}
+            </p>
+          </div>
+          <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:justify-end md:gap-4">
             <StreamToggle
               enabled={listenEventsEnabled}
               onChange={setListenEventsEnabled}
@@ -705,7 +711,7 @@ const WorkflowDetail: React.FC = () => {
                 value={displayVersion !== undefined ? String(displayVersion) : ''}
                 onValueChange={(val) => setSelectedVersion(Number(val))}
               >
-                <SelectTrigger className="w-[150px]">
+                <SelectTrigger className="min-w-0 flex-1 md:w-[150px] md:flex-none">
                   <SelectValue placeholder="Version" />
                 </SelectTrigger>
                 <SelectContent>
@@ -732,7 +738,7 @@ const WorkflowDetail: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex w-full flex-1 gap-10 pb-5">
+        <div className="flex w-full flex-1 flex-col gap-6 pb-5 md:flex-row md:gap-10">
           <div className="flex h-full w-full flex-col gap-10">
             <div className="flex h-full flex-col gap-3">
               <p className="frost-text text-lg leading-4 font-medium">Configuration</p>
@@ -740,49 +746,51 @@ const WorkflowDetail: React.FC = () => {
                 value={yamlContent}
                 editable={false}
                 theme="dark"
-                className="h-full max-h-[600px] w-full max-w-[800px]"
+                className="h-full max-h-[320px] w-full max-w-[800px] md:max-h-[600px]"
                 height="100%"
                 extensions={[langs.yaml()]}
               />
             </div>
           </div>
 
-          <div className="flex w-full flex-col gap-2">
+          <div className="order-first flex h-[75dvh] min-h-[28rem] w-full flex-col gap-2 md:order-none md:h-auto">
             <div className="flex items-center justify-between pb-2">
               <Label htmlFor="output-json-toggle" className="frost-text text-sm">
                 JSON output
               </Label>
               <Switch id="output-json-toggle" checked={outputJsonEnabled} onCheckedChange={setOutputJsonEnabled} />
             </div>
-            <ChatBot
-              chatHistory={chatHistory}
-              runningInference={runningInference}
-              selectedLLMConfigId={selectedLLMConfigId}
-              setSelectedLLMConfigId={setSelectedLLMConfigId}
-              loadingConfigs={false}
-              llmConfigs={[]}
-              uploadedImages={uploadedImages}
-              uploadedDocuments={uploadedDocuments}
-              handleRemoveImage={handleRemoveImage}
-              handleRemoveDocument={handleRemoveDocument}
-              showUploadMenu={showUploadMenu}
-              setShowUploadMenu={setShowUploadMenu}
-              inferenceInput={inferenceInput}
-              setInferenceInput={setInferenceInput}
-              inferenceVariables={inferenceVariables}
-              setInferenceVariables={setInferenceVariables}
-              showVariablesInput={showVariablesInput}
-              setShowVariablesInput={setShowVariablesInput}
-              handleQuestionEntered={handleQuertionEntered}
-              handleImageUpload={handleImageUpload}
-              handleDocumentUpload={handleDocumentUpload}
-              uploadingImage={uploadingImage}
-              uploadingDocument={uploadingDocument}
-              isModelSwitchEnabled={false}
-              streamingEvents={streamingEvents}
-              isStreaming={isStreaming}
-              eventsContainerRef={eventsContainerRef}
-            />
+            <div className="min-h-0 flex-1">
+              <ChatBot
+                chatHistory={chatHistory}
+                runningInference={runningInference}
+                selectedLLMConfigId={selectedLLMConfigId}
+                setSelectedLLMConfigId={setSelectedLLMConfigId}
+                loadingConfigs={false}
+                llmConfigs={[]}
+                uploadedImages={uploadedImages}
+                uploadedDocuments={uploadedDocuments}
+                handleRemoveImage={handleRemoveImage}
+                handleRemoveDocument={handleRemoveDocument}
+                showUploadMenu={showUploadMenu}
+                setShowUploadMenu={setShowUploadMenu}
+                inferenceInput={inferenceInput}
+                setInferenceInput={setInferenceInput}
+                inferenceVariables={inferenceVariables}
+                setInferenceVariables={setInferenceVariables}
+                showVariablesInput={showVariablesInput}
+                setShowVariablesInput={setShowVariablesInput}
+                handleQuestionEntered={handleQuertionEntered}
+                handleImageUpload={handleImageUpload}
+                handleDocumentUpload={handleDocumentUpload}
+                uploadingImage={uploadingImage}
+                uploadingDocument={uploadingDocument}
+                isModelSwitchEnabled={false}
+                streamingEvents={streamingEvents}
+                isStreaming={isStreaming}
+                eventsContainerRef={eventsContainerRef}
+              />
+            </div>
           </div>
         </div>
       </div>

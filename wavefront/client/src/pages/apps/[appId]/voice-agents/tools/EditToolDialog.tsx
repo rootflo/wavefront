@@ -242,7 +242,7 @@ const EditToolDialog: React.FC<EditToolDialogProps> = ({ isOpen, onOpenChange, t
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold">API Configuration</h3>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <FormField
                     control={form.control}
                     name="method"
@@ -346,7 +346,7 @@ const EditToolDialog: React.FC<EditToolDialogProps> = ({ isOpen, onOpenChange, t
                 )}
 
                 {watchAuthType === 'api_key' && (
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <FormField
                       control={form.control}
                       name="api_key_name"
@@ -381,7 +381,7 @@ const EditToolDialog: React.FC<EditToolDialogProps> = ({ isOpen, onOpenChange, t
                 )}
 
                 {watchAuthType === 'basic' && (
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <FormField
                       control={form.control}
                       name="basic_username"

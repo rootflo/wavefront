@@ -1,3 +1,5 @@
+import ListHeader from '@app/components/ListHeader';
+import ResourceCard from '@app/components/ResourceCard';
 import floConsoleService from '@app/api';
 import BulkDownloadDialog from '@app/components/BulkDownloadDialog';
 import BulkUploadDialog, { MAX_BULK_UPLOAD_FILES } from '@app/components/BulkUploadDialog';
@@ -12,7 +14,6 @@ import {
   BreadcrumbSeparator,
 } from '@app/components/ui/breadcrumb';
 import { Button } from '@app/components/ui/button';
-import { Input } from '@app/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
 import { useGetMessageProcessors } from '@app/hooks';
 import { getMessageProcessorsKey } from '@app/hooks/data/query-keys';
@@ -20,7 +21,7 @@ import { copyToClipboard, createZipBlob, downloadBlobFile, downloadTextFile, get
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { MessageProcessorListItem } from '@app/types/message-processor';
 import { useQueryClient } from '@tanstack/react-query';
-import { Copy, Download, Trash2 } from 'lucide-react';
+import { Copy, Download, Trash2, Braces, Upload } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import CreateFunctionDialog from './CreateFunctionDialog';
@@ -187,8 +188,8 @@ const FunctionsManagement: React.FC = () => {
   };
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden p-8">
-      <Breadcrumb className="mb-4 shrink-0">
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden p-4 max-md:overflow-y-auto sm:p-8">
+      <Breadcrumb className="mb-4 hidden shrink-0 md:block">
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
@@ -212,28 +213,22 @@ const FunctionsManagement: React.FC = () => {
         </BreadcrumbList>
       </Breadcrumb>
 
-      <div className="mb-8 flex w-full shrink-0 items-start justify-between">
-        <div>
-          <h1 className="frost-text text-3xl font-bold">Functions</h1>
-          <p className="frost-text-muted mt-2">Manage and configure functions for {selectedApp?.app_name}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Input
-            className="w-[200px]"
-            type="text"
-            placeholder="Search"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-          <Button variant="outline" onClick={() => setBulkDownloadOpen(true)} disabled={processors.length === 0}>
-            Download
-          </Button>
-          <Button variant="outline" onClick={() => setBulkUploadOpen(true)}>
-            Upload
-          </Button>
-          <Button onClick={handleCreateProcessor}>Create Function</Button>
-        </div>
-      </div>
+      <ListHeader
+        title="Functions"
+        count={filteredProcessors.length || undefined}
+        subtitle={<>Manage and configure functions for {selectedApp?.app_name}</>}
+        search={{ value: searchTerm, onChange: setSearchTerm, placeholder: 'Search functions' }}
+        secondary={[
+          {
+            label: 'Download',
+            icon: Download,
+            onClick: () => setBulkDownloadOpen(true),
+            disabled: processors.length === 0,
+          },
+          { label: 'Upload', icon: Upload, onClick: () => setBulkUploadOpen(true) },
+        ]}
+        primary={{ label: 'Create function', onClick: handleCreateProcessor }}
+      />
 
       {bulkError ? <ErrorBanner message={bulkError} onDismiss={() => setBulkError('')} /> : null}
 
@@ -249,61 +244,93 @@ const FunctionsManagement: React.FC = () => {
           />
         </div>
       ) : (
-        <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-xl border ring-1">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>ID</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredProcessors.map((processor) => (
-                <TableRow
-                  key={processor.id}
-                  className="cursor-pointer"
-                  onClick={() => handleProcessorClick(processor.id)}
-                >
-                  <TableCell className="max-w-[220px] truncate font-medium" title={processor.name}>
-                    {processor.name}
-                  </TableCell>
-                  <TableCell className="max-w-[240px]" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center gap-1">
-                      <span className="truncate font-mono text-xs" title={processor.id}>
-                        {processor.id}
-                      </span>
-                      <Button variant="ghost" size="sm" title="Copy ID" onClick={() => void handleCopyId(processor.id)}>
-                        <Copy className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                  <TableCell className="max-w-[280px] truncate text-sm" title={processor.description || ''}>
-                    {processor.description || '—'}
-                  </TableCell>
-                  <TableCell className="text-sm whitespace-nowrap">{formatCreatedAt(processor.created_at)}</TableCell>
-                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        title="Download"
-                        loading={downloadingId === processor.id}
-                        onClick={() => void handleFunctionDownload(processor)}
-                      >
-                        <Download className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" title="Delete" onClick={() => setDeleteItem(processor)}>
-                        <Trash2 className="h-4 w-4 text-red-600" />
-                      </Button>
-                    </div>
-                  </TableCell>
+        <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-xl border ring-1 max-md:flex-none">
+          <div data-mobile-cards className="flex flex-col gap-3 pb-24 md:hidden">
+            {filteredProcessors.map((processor) => (
+              <ResourceCard
+                key={processor.id}
+                icon={Braces}
+                title={processor.name}
+                description={processor.description || undefined}
+                metadata={[
+                  { label: 'Id', value: processor.id, isMono: true, isCopyable: true },
+                  { label: 'Created', value: formatCreatedAt(processor.created_at) },
+                ]}
+                onClick={() => handleProcessorClick(processor.id)}
+                onDeleteClick={() => setDeleteItem(processor)}
+                deleteTitle="Delete function"
+                extraActions={[
+                  {
+                    label: 'Download',
+                    icon: Download,
+                    disabled: downloadingId === processor.id,
+                    onClick: () => void handleFunctionDownload(processor),
+                  },
+                ]}
+              />
+            ))}
+          </div>
+          <div className="max-md:hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead>Created</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filteredProcessors.map((processor) => (
+                  <TableRow
+                    key={processor.id}
+                    className="cursor-pointer"
+                    onClick={() => handleProcessorClick(processor.id)}
+                  >
+                    <TableCell className="max-w-[220px] truncate font-medium" title={processor.name}>
+                      {processor.name}
+                    </TableCell>
+                    <TableCell className="max-w-[240px]" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center gap-1">
+                        <span className="truncate font-mono text-xs" title={processor.id}>
+                          {processor.id}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="Copy ID"
+                          onClick={() => void handleCopyId(processor.id)}
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                    <TableCell className="max-w-[280px] truncate text-sm" title={processor.description || ''}>
+                      {processor.description || '—'}
+                    </TableCell>
+                    <TableCell className="text-sm whitespace-nowrap">{formatCreatedAt(processor.created_at)}</TableCell>
+                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="Download"
+                          loading={downloadingId === processor.id}
+                          onClick={() => void handleFunctionDownload(processor)}
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" title="Delete" onClick={() => setDeleteItem(processor)}>
+                          <Trash2 className="h-4 w-4 text-red-600" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       )}
 
