@@ -34,6 +34,11 @@ def test_placeholders_become_pyformat():
         ('SELECT 1 -- :id\nWHERE id = :id', 'SELECT 1 -- :id\nWHERE id = %(id)s'),
         ('SELECT /* :id */ 1 WHERE id = :id', 'SELECT /* :id */ 1 WHERE id = %(id)s'),
         ('SELECT t::text WHERE id = :id', 'SELECT t::text WHERE id = %(id)s'),
+        (
+            "SELECT E'it\\'s :id' WHERE id = :id",
+            "SELECT E'it\\'s :id' WHERE id = %(id)s",
+        ),
+        ('SELECT $q1$a:id$q1$ WHERE id = :id', 'SELECT $q1$a:id$q1$ WHERE id = %(id)s'),
     ],
 )
 def test_colons_in_literals_comments_and_casts_are_kept(query, expected):
@@ -57,3 +62,11 @@ def test_a_query_without_params_is_unchanged():
     query = "SELECT to_char(t, 'HH24:MI'), 'abc%'"
     assert convert(query, None) == query
     assert convert(query, {}) == query
+
+
+def test_existing_pyformat_placeholders_and_escaped_percents_are_kept():
+    # list_tables() and the other metadata queries already use %(name)s.
+    query = "SELECT * FROM t WHERE table_schema = %(table_schema)s AND n % 2 = :r AND name LIKE 'a%%'"
+    assert convert(query, {'table_schema': 'public', 'r': 0}) == (
+        "SELECT * FROM t WHERE table_schema = %(table_schema)s AND n %% 2 = %(r)s AND name LIKE 'a%%'"
+    )
