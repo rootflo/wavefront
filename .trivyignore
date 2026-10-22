@@ -6,6 +6,7 @@
 # (wavefront/server/pyproject.toml). Bump once it passes; the `exp:` makes the
 # scan fail again after that date if they are still unfixed.
 # pillow 12.3.0 -> 13.0.0 (published 2026-10-16); needs a pillow override since pipecat-ai caps <13.
+CVE-2026-112393 exp:2026-10-24
 CVE-2026-112403 exp:2026-10-24
 CVE-2026-112397 exp:2026-10-24
 CVE-2026-112400 exp:2026-10-24
