@@ -1,3 +1,4 @@
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@app/components/ui/dialog';
 import { FlaskConical, Save } from 'lucide-react';
 import ListHeader, { FilterSelect } from '@app/components/ListHeader';
 import floConsoleService from '@app/api';
@@ -31,10 +32,10 @@ import { getGuardrailPoliciesKey, getGuardrailPolicyKey } from '@app/hooks/data/
 import { extractErrorMessage } from '@app/lib/utils';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { useQueryClient } from '@tanstack/react-query';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import AdapterCard from './AdapterCard';
-import PolicyTestPanel, { PolicyTestHandle } from './PolicyTestPanel';
+import PolicyTestPanel from './PolicyTestPanel';
 import { ADAPTER_META, DEFAULT_UNAVAILABLE_HINT, adapterLabel } from './adapter-meta';
 
 /**
@@ -82,7 +83,7 @@ const GuardrailsManagement: React.FC = () => {
   const [adapters, setAdapters] = useState<GuardrailAdapterConfig[]>([]);
   const [stream, setStream] = useState<StreamPreference>('BUFFERED');
   const [saving, setSaving] = useState(false);
-  const testPanelRef = useRef<PolicyTestHandle>(null);
+  const [testOpen, setTestOpen] = useState(false);
 
   const { data: namespaces = [] } = useGetNamespaces(appId);
   const { data: adapterInfo } = useGetGuardrailAdapters(appId);
@@ -190,7 +191,7 @@ const GuardrailsManagement: React.FC = () => {
 
   return (
     <div className="flex h-full w-full flex-col p-4 max-md:overflow-y-auto sm:p-8">
-      <Breadcrumb className="mb-6 hidden md:block">
+      <Breadcrumb className="mb-4 hidden md:block">
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
@@ -236,7 +237,7 @@ const GuardrailsManagement: React.FC = () => {
               <span
                 role="status"
                 title="These settings are not live yet. Agents and workflows in this namespace keep using the saved policy until you save."
-                className="flex shrink-0 items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800"
+                className="flex shrink-0 items-center gap-1.5 rounded-full border border-amber-400/50 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-800 dark:text-amber-300"
               >
                 <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden="true" />
                 Unsaved changes
@@ -250,7 +251,7 @@ const GuardrailsManagement: React.FC = () => {
           {
             label: 'Test policy',
             icon: FlaskConical,
-            onClick: () => testPanelRef.current?.focus(),
+            onClick: () => setTestOpen(true),
             disabled: isLoading,
           },
         ]}
@@ -269,7 +270,7 @@ const GuardrailsManagement: React.FC = () => {
           <Skeleton className="h-40 w-full" />
         </div>
       ) : (
-        <div className="pb-8 max-md:flex-none md:overflow-y-auto">
+        <div className="pb-8 max-md:flex-none md:min-h-0 md:flex-1 md:overflow-y-auto">
           {/*
             Two columns once there is room for them. The policy-wide switches
             are short and the list of checks is very long, so the left column is
@@ -277,14 +278,14 @@ const GuardrailsManagement: React.FC = () => {
             scrolling a long entity selection, which is exactly when you want to
             flip back to Monitor.
           */}
-          <div className="grid max-w-[1400px] grid-cols-1 items-start gap-6 lg:grid-cols-[340px_minmax(0,1fr)]">
-            <section className="rounded-lg border border-gray-200 p-6 lg:sticky lg:top-0 lg:self-start">
+          <div className="grid max-w-[1400px] grid-cols-1 items-start gap-6 lg:min-h-full lg:grid-cols-[340px_minmax(0,1fr)]">
+            <section className="frost-card ring-frost-border rounded-2xl border p-6 ring-1 lg:self-stretch">
               <div>
                 <div className="flex items-center justify-between gap-3">
-                  <Label className="text-base font-semibold">Enable guardrails</Label>
+                  <Label className="frost-text text-base font-semibold">Enable guardrails</Label>
                   <Switch checked={isEnabled} onCheckedChange={setIsEnabled} />
                 </div>
-                <p className="mt-1.5 text-sm text-gray-600">
+                <p className="frost-text-muted mt-1.5 text-sm">
                   The master switch for <span className="font-medium">{namespace}</span>. While off, none of the checks
                   below run.
                 </p>
@@ -294,7 +295,7 @@ const GuardrailsManagement: React.FC = () => {
 
               <div>
                 <div className="flex items-center justify-between gap-3">
-                  <Label className="text-base font-semibold">Enforcement mode</Label>
+                  <Label className="frost-text text-base font-semibold">Enforcement mode</Label>
                   <Select value={mode} onValueChange={(value) => setMode(value as EnforcementMode)}>
                     <SelectTrigger className="w-[130px]" disabled={!isEnabled}>
                       <SelectValue />
@@ -305,7 +306,7 @@ const GuardrailsManagement: React.FC = () => {
                     </SelectContent>
                   </Select>
                 </div>
-                <p className="mt-1.5 text-sm text-gray-600">
+                <p className="frost-text-muted mt-1.5 text-sm">
                   {mode === 'MONITOR'
                     ? 'Monitor records what the policy would have done without blocking or redacting anything. Start here to measure false positives against real traffic.'
                     : 'Enforce blocks prompts and redacts responses. Switch here once monitor mode shows an acceptable false-positive rate.'}
@@ -316,14 +317,14 @@ const GuardrailsManagement: React.FC = () => {
 
               <div>
                 <div className="flex items-center justify-between gap-3">
-                  <Label className="text-base font-semibold">Stream responses</Label>
+                  <Label className="frost-text text-base font-semibold">Stream responses</Label>
                   <Switch
                     checked={stream === 'INCREMENTAL'}
                     disabled={!isEnabled}
                     onCheckedChange={(checked) => setStream(checked ? 'INCREMENTAL' : 'BUFFERED')}
                   />
                 </div>
-                <p className="mt-1.5 text-sm text-gray-600">
+                <p className="frost-text-muted mt-1.5 text-sm">
                   {stream === 'INCREMENTAL'
                     ? 'Responses appear as they are written, with the end held back until it has been checked. Only providers whose findings are span-local support this; if any configured check does not, the whole response is withheld regardless of this setting.'
                     : 'Responses are withheld until the whole of them has been checked, so nothing reaches the user before the verdict. Turning this on trades some of that delay for text appearing as it is written.'}
@@ -332,14 +333,9 @@ const GuardrailsManagement: React.FC = () => {
             </section>
 
             <div>
-              {/*
-                Opaque background and a z-index, not just `sticky`: the check
-                cards scroll underneath this, and a transparent header would let
-                their text show through it.
-              */}
-              <div className="bg-frost-glass sticky top-0 z-10 -mt-4 pt-4 pb-4 shadow-[inset_0_-1px_0_0_var(--frost-border)] backdrop-blur-md">
-                <h2 className="text-lg font-semibold">Safety checks</h2>
-                <p className="mt-1 text-sm text-gray-600">
+              <div className="mb-4">
+                <h2 className="frost-text text-lg font-semibold">Safety checks</h2>
+                <p className="frost-text-muted mt-1 text-sm">
                   Each check runs at the stages you select. Checks not enabled here are never called.
                 </p>
               </div>
@@ -356,7 +352,7 @@ const GuardrailsManagement: React.FC = () => {
                   />
                 ))}
                 {supportedAdapters.length === 0 && (
-                  <p className="text-sm text-gray-500">
+                  <p className="frost-text-subtle text-sm">
                     No safety checks are available on this deployment. Enabling guardrails without a working check would
                     block all traffic for this namespace, so none can be selected here.
                   </p>
@@ -364,13 +360,13 @@ const GuardrailsManagement: React.FC = () => {
                 {strandedAdapters.map((name) => (
                   <div
                     key={name}
-                    className="flex items-center justify-between gap-4 rounded-lg border border-red-300 bg-red-50 p-4"
+                    className="flex items-center justify-between gap-4 rounded-lg border border-red-400/50 bg-red-500/10 p-4"
                   >
                     <div>
-                      <p className="text-sm font-medium text-red-900">
+                      <p className="text-sm font-medium text-red-800 dark:text-red-300">
                         {adapterLabel(name)} — not available on this deployment
                       </p>
-                      <p className="mt-1 text-sm text-red-700">
+                      <p className="mt-1 text-sm text-red-800 dark:text-red-300">
                         This check is saved in the policy but cannot run, so in Enforce mode it blocks every request for
                         this namespace. Remove it, or switch back to Monitor while you fix the deployment.
                       </p>
@@ -381,22 +377,22 @@ const GuardrailsManagement: React.FC = () => {
                   </div>
                 ))}
                 {unavailableAdapters.map((name) => (
-                  <div key={name} className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4">
+                  <div key={name} className="border-frost-border bg-frost-glass rounded-lg border border-dashed p-4">
                     <div className="flex items-start justify-between gap-4">
                       <div>
-                        <p className="text-sm font-medium text-gray-700">
+                        <p className="frost-text-muted text-sm font-medium">
                           {adapterLabel(name)}
-                          <span className="ml-2 rounded bg-gray-200 px-2 py-0.5 text-xs font-normal text-gray-600">
+                          <span className="bg-frost-glass-strong frost-text-muted ml-2 rounded px-2 py-0.5 text-xs font-normal">
                             Not available
                           </span>
                         </p>
                         {ADAPTER_META[name]?.description && (
-                          <p className="mt-1 text-sm text-gray-500">{ADAPTER_META[name].description}</p>
+                          <p className="frost-text-subtle mt-1 text-sm">{ADAPTER_META[name].description}</p>
                         )}
                       </div>
                       <Switch checked={false} disabled />
                     </div>
-                    <p className="mt-3 text-sm text-gray-600">
+                    <p className="frost-text-muted mt-3 text-sm">
                       {ADAPTER_META[name]?.unavailableHint ?? DEFAULT_UNAVAILABLE_HINT}
                     </p>
                   </div>
@@ -404,11 +400,20 @@ const GuardrailsManagement: React.FC = () => {
               </div>
             </div>
           </div>
+        </div>
+      )}
 
-          <div className="max-w-[1400px]">
-            <Separator className="my-6" />
+      <Dialog open={testOpen} onOpenChange={setTestOpen}>
+        <DialogContent className="flex h-[760px] max-h-[calc(100dvh-2rem)] max-w-5xl min-w-0 flex-col overflow-hidden lg:max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>Test this policy</DialogTitle>
+            <DialogDescription>
+              Runs the settings on this page, saved or not, through the real engine. Nothing is stored.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto pt-2 lg:overflow-hidden">
             <PolicyTestPanel
-              ref={testPanelRef}
+              hideHeading
               isEnabled={isEnabled}
               mode={mode}
               adapters={adapters}
@@ -416,8 +421,8 @@ const GuardrailsManagement: React.FC = () => {
               piiGroups={piiEntities?.groups}
             />
           </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -20,8 +20,6 @@ import { useNotifyStore } from '@app/store';
 import { ChatMessage, ChatMessageContent } from '@app/types/chat-message';
 import { Workflow, WorkflowEvent } from '@app/types/workflow';
 import { scrollToBottom } from '@app/utils/scroll';
-import { langs } from '@uiw/codemirror-extensions-langs';
-import CodeMirror from '@uiw/react-codemirror';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useParams } from 'react-router';
@@ -35,7 +33,6 @@ const WorkflowDetail: React.FC = () => {
   const { notifySuccess, notifyError } = useNotifyStore();
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
   // Saved YAML shown on the page; editing happens in the standalone editor tab
-  const [yamlContent, setYamlContent] = useState('');
   const [versionsDialogOpen, setVersionsDialogOpen] = useState(false);
   // undefined = current_version
   const [selectedVersion, setSelectedVersion] = useState<number | undefined>(undefined);
@@ -115,7 +112,6 @@ const WorkflowDetail: React.FC = () => {
             current_version: response.data.data.data.current_version,
           };
           setWorkflow(workflowData);
-          setYamlContent(response.data.data.data.yaml_content || '');
         }
       } catch (error) {
         console.error('Error loading workflow:', error);
@@ -690,8 +686,8 @@ const WorkflowDetail: React.FC = () => {
   };
 
   return (
-    <div className="h-full bg-transparent py-2 md:py-5">
-      <div className="flex h-full w-full flex-col gap-6 md:gap-10">
+    <div className="h-full bg-transparent py-2">
+      <div className="flex h-full w-full flex-col gap-4 md:gap-6">
         <div className="flex flex-wrap items-center justify-between gap-3 md:gap-4">
           <div className="flex min-w-0 items-center gap-2">
             <MobileBackButton to={`/apps/${appId}/workflows`} label="Back to workflows" />
@@ -700,6 +696,13 @@ const WorkflowDetail: React.FC = () => {
             </p>
           </div>
           <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:justify-end md:gap-4">
+            <Label
+              htmlFor="output-json-toggle"
+              className="frost-control ring-frost-border flex h-9 cursor-pointer items-center gap-2 rounded-md px-3 ring-1"
+            >
+              <span className="frost-text text-[13px] font-medium">JSON output</span>
+              <Switch id="output-json-toggle" checked={outputJsonEnabled} onCheckedChange={setOutputJsonEnabled} />
+            </Label>
             <StreamToggle
               enabled={listenEventsEnabled}
               onChange={setListenEventsEnabled}
@@ -738,28 +741,8 @@ const WorkflowDetail: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex w-full flex-1 flex-col gap-6 pb-5 md:flex-row md:gap-10">
-          <div className="flex h-full w-full flex-col gap-10">
-            <div className="flex h-full flex-col gap-3">
-              <p className="frost-text text-lg leading-4 font-medium">Configuration</p>
-              <CodeMirror
-                value={yamlContent}
-                editable={false}
-                theme="dark"
-                className="h-full max-h-[320px] w-full max-w-[800px] md:max-h-[600px]"
-                height="100%"
-                extensions={[langs.yaml()]}
-              />
-            </div>
-          </div>
-
-          <div className="order-first flex h-[75dvh] min-h-[28rem] w-full flex-col gap-2 md:order-none md:h-auto">
-            <div className="flex items-center justify-between pb-2">
-              <Label htmlFor="output-json-toggle" className="frost-text text-sm">
-                JSON output
-              </Label>
-              <Switch id="output-json-toggle" checked={outputJsonEnabled} onCheckedChange={setOutputJsonEnabled} />
-            </div>
+        <div className="min-h-0 w-full flex-1 pb-2">
+          <div className="flex h-full min-h-[28rem] w-full flex-col">
             <div className="min-h-0 flex-1">
               <ChatBot
                 chatHistory={chatHistory}
@@ -786,6 +769,9 @@ const WorkflowDetail: React.FC = () => {
                 uploadingImage={uploadingImage}
                 uploadingDocument={uploadingDocument}
                 isModelSwitchEnabled={false}
+                emptyTitle="Run this workflow"
+                emptyDescription="Enter an input below to run it and see the result of each step."
+                inputPlaceholder="Enter input for the workflow"
                 streamingEvents={streamingEvents}
                 isStreaming={isStreaming}
                 eventsContainerRef={eventsContainerRef}

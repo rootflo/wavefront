@@ -97,6 +97,10 @@ interface ChatBotProps {
   uploadingImage: boolean;
   uploadingDocument: boolean;
   isModelSwitchEnabled?: boolean;
+  /** Wording for the empty chat and the input, for callers that are not a conversation (e.g. a workflow run). */
+  emptyTitle?: string;
+  emptyDescription?: string;
+  inputPlaceholder?: string;
   streamingEvents?: StreamEvent[];
   isStreaming?: boolean;
   eventsContainerRef?: RefObject<HTMLDivElement | null>;
@@ -130,6 +134,9 @@ const ChatBot = ({
   isStreaming,
   eventsContainerRef,
   isModelSwitchEnabled = true,
+  emptyTitle = 'Start a conversation',
+  emptyDescription = 'Send a message below to try this out.',
+  inputPlaceholder = 'Ask anything',
 }: ChatBotProps) => {
   const variablesModalRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
@@ -167,8 +174,8 @@ const ChatBot = ({
               <div className="bg-brand/15 text-brand flex h-12 w-12 items-center justify-center rounded-full">
                 <Sparkles className="h-6 w-6" />
               </div>
-              <p className="frost-text text-base font-semibold">Start a conversation</p>
-              <p className="frost-text-muted max-w-xs text-sm">Send a message below to try this out.</p>
+              <p className="frost-text text-base font-semibold">{emptyTitle}</p>
+              <p className="frost-text-muted max-w-xs text-sm">{emptyDescription}</p>
             </div>
           )}
           {chatHistory.map((chat, index) => {
@@ -439,7 +446,7 @@ const ChatBot = ({
                   }}
                   rows={1}
                   className="max-h-32 min-h-9 flex-1 resize-none rounded-none border-0 bg-transparent! px-0 py-2 shadow-none! ring-0 [backdrop-filter:none] outline-none focus-visible:ring-0"
-                  placeholder="Ask anything"
+                  placeholder={inputPlaceholder}
                 />
                 <button
                   type="button"

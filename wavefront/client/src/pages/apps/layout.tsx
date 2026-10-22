@@ -151,7 +151,8 @@ const NAV_GROUPS: { title: string; ids: string[] }[] = [
   { title: 'Build', ids: ['agents', 'workflows', 'voice-agents', 'chatbots', 'functions'] },
   { title: 'Data', ids: ['datasources', 'knowledge-bases', 'configurations', 'api-services'] },
   { title: 'Connect', ids: ['llm-repository', 'email-connections', 'oauth-apps', 'authenticators'] },
-  { title: 'Operate', ids: ['scheduled-jobs', 'guardrails'] },
+  { title: 'AI Governance', ids: ['guardrails'] },
+  { title: 'Others', ids: ['scheduled-jobs'] },
 ];
 // Sizes of the sidebar pieces in px, used to work out how many groups fit without measuring the DOM.
 const NAV_ITEM_HEIGHT = 34;
