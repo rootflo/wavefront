@@ -12,6 +12,23 @@ from psycopg2 import sql
 logger = logging.getLogger(__name__)
 
 
+# One scan over the query for :name placeholders. Literals, quoted identifiers,
+# dollar-quoted strings, comments and :: casts are matched first and kept as they
+# are, so a ':MI' inside 'HH24:MI' is not a placeholder. A bare % is matched too:
+# psycopg2 formats the whole query when params are given, so it must become %%.
+_NAMED_PARAM_SCAN = re.compile(
+    r"(?P<keep>'(?:[^']|'')*'"
+    r'|"(?:[^"]|"")*"'
+    r'|--[^\n]*'
+    r'|/\*.*?\*/'
+    r'|(?P<tag>\$[A-Za-z_]*\$).*?(?P=tag)'
+    r'|::)'
+    r'|:(?P<name>[A-Za-z_][A-Za-z0-9_]*)'
+    r'|(?P<percent>%)',
+    re.DOTALL,
+)
+
+
 class NoRowsMatchedError(Exception):
     """An atomic multi-table update had an entry whose filter matched nothing.
 
@@ -158,8 +175,17 @@ class PostgresClient:
         """Convert :name style placeholders to %(name)s for psycopg2."""
         if not params:
             return query, params
-        converted = re.sub(r'(?<!:):([A-Za-z_][A-Za-z0-9_]*)', r'%(\1)s', query)
-        return converted, params
+
+        def replace(match: re.Match) -> str:
+            name = match.group('name')
+            if name is not None:
+                # Only names the caller passes are placeholders.
+                return f'%({name})s' if name in params else match.group(0)
+            if match.group('percent') is not None:
+                return '%%'
+            return match.group('keep').replace('%', '%%')
+
+        return _NAMED_PARAM_SCAN.sub(replace, query), params
 
     @contextmanager
     def get_connection(self):
