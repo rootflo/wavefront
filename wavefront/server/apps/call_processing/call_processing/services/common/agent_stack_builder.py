@@ -181,6 +181,8 @@ def build_agent_stack(
             stt_config_lang['parameters'] = {}
         stt_config_lang['parameters']['language'] = default_language
         stt = STTServiceFactory.create_stt_service(stt_config_lang)
+        stt_config_with_params = stt_config_lang
+        tts_config_with_params = tts_config_lang
 
     else:
         logger.info('Single language mode - no language detection needed')
@@ -459,4 +461,6 @@ def build_agent_stack(
         tts_voice_ids=tts_voice_ids_dict,
         welcome_message=(agent_config.get('welcome_message') or '').strip(),
         filler=filler,
+        stt_config=stt_config_with_params,
+        tts_config=tts_config_with_params,
     )

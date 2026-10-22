@@ -6,20 +6,23 @@ ending the ``PipelineWorker`` would drop the browser. The swap therefore happens
 *inside* the running pipeline. The transport, the ``PipelineWorker``, RTVI, VAD,
 the idle watchdog and the room session timers are never touched:
 
-    transport.input -> SwappableSlot A -> transport.output
-                                          -> BotCaptionProcessor -> SwappableSlot B
+    transport.input -> Slot STT -> Slot A -> Slot TTS -> transport.output
+                                          -> BotCaptionProcessor -> Slot B
 
-Slot A hosts the agent's STT -> user aggregator -> LLM -> TTS, slot B its
-assistant aggregator (which must stay after ``transport.output()``). Each slot
-wraps its processors in an inner ``Pipeline`` that can be replaced.
+Slot A hosts the agent's user aggregator -> LLM -> fillers, slot B its
+assistant aggregator (which must stay after ``transport.output()``). STT and TTS
+have slots of their own: when the new agent's STT (or TTS) config is identical
+to the live one, that slot is left alone and its websocket stays connected.
+Each slot wraps its processors in an inner ``Pipeline`` that can be replaced.
 
 Swap order (``AgentSwapController``): build the new stack off to the side
 (a failure leaves the old agent untouched), start the new inner pipelines,
-commit both slots in one synchronous step (no frame can fall between the old
-and the new stack), cut the old agent's speech, stop the old stack (closing its
-STT/TTS websockets) and let the new agent introduce itself with the carried
-conversation history (rooms created with ``carry_history_on_swap=False`` start
-the new agent with a clean context instead).
+commit the swapped slots in one synchronous step (no frame can fall between the
+old and the new stack), cut the old agent's speech, stop the old pipelines
+(closing any replaced STT/TTS websockets) and let the new agent introduce itself
+with the carried conversation history (rooms created with
+``carry_history_on_swap=False`` start the new agent with a clean context
+instead).
 """
 
 from __future__ import annotations
@@ -28,7 +31,17 @@ import asyncio
 import copy
 import time
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence, Set
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+)
 from uuid import UUID
 
 from pipecat.frames.frames import (
@@ -300,6 +313,32 @@ def build_handoff_history(messages: Sequence[Any]) -> List[Dict[str, str]]:
 # ------------------------------------------------------------------ controller
 
 
+def _service_change_reason(
+    new_config: Dict[str, Any], old_config: Dict[str, Any]
+) -> Optional[str]:
+    """Why a live STT/TTS cannot serve ``new_config`` (None if it can).
+
+    Names the differing keys only: the configs hold credentials.
+    """
+    if not new_config or not old_config:
+        return 'no config to compare'
+    if new_config == old_config:
+        return None
+    keys = sorted(
+        k
+        for k in new_config.keys() | old_config.keys()
+        if k != 'parameters' and new_config.get(k) != old_config.get(k)
+    )
+    new_params = new_config.get('parameters') or {}
+    old_params = old_config.get('parameters') or {}
+    keys += sorted(
+        f'parameters.{k}'
+        for k in new_params.keys() | old_params.keys()
+        if new_params.get(k) != old_params.get(k)
+    )
+    return f'config differs in {", ".join(keys)}'
+
+
 @dataclass
 class SwapOptions:
     """Policy and collaborators for hot-swapping, provided by the session."""
@@ -333,7 +372,9 @@ class AgentSwapController:
     def __init__(
         self,
         *,
+        slot_stt: SwappableSlot,
         slot_a: SwappableSlot,
+        slot_tts: SwappableSlot,
         slot_b: SwappableSlot,
         task: Any,
         messenger: Any,
@@ -343,7 +384,9 @@ class AgentSwapController:
         options: SwapOptions,
         clock: Callable[[], float] = time.monotonic,
     ):
+        self._slot_stt = slot_stt
         self._slot_a = slot_a
+        self._slot_tts = slot_tts
         self._slot_b = slot_b
         self._task = task
         self._messenger = messenger
@@ -444,7 +487,7 @@ class AgentSwapController:
             logger.error(f'Agent swap to {agent_id} failed: {e}', exc_info=True)
             await self._fail(ERR_SWAP_FAILED)
         finally:
-            self._slot_a.gate_audio(False)
+            self._slot_stt.gate_audio(False)
             self._swapping = False
             self._last_swap_end = self._clock()
             if not self._closed:
@@ -462,25 +505,20 @@ class AgentSwapController:
         old_stack = self._stack
         # The timeout covers everything up to the commit. After it the swap is
         # irreversible and runs to completion.
-        new_stack, prepared_a, prepared_b = await asyncio.wait_for(
+        new_stack, prepared = await asyncio.wait_for(
             self._build_and_prepare(agent_id), self._options.timeout_secs
         )
 
         # 3. Commit. From here on there is no way back, and nothing awaits
-        #    between swapping the two slots, so no frame sees a half-swap.
+        #    between swapping the slots, so no frame sees a half-swap.
         try:
             if self._options.carry_history:
                 self._seed_context(new_stack, old_stack)
-            old_a = self._slot_a.commit(prepared_a)
-            old_b = self._slot_b.commit(prepared_b)
+            replaced = [(slot, slot.commit(inner)) for slot, inner in prepared]
         except BaseException:
-            await asyncio.gather(
-                self._slot_a.retire(prepared_a),
-                self._slot_b.retire(prepared_b),
-                return_exceptions=True,
-            )
+            await self._retire_all(prepared)
             raise
-        self._slot_a.gate_audio(False)
+        self._slot_stt.gate_audio(False)
         self._stack = new_stack
         self._shared.active_stack = new_stack
         self._swap_count += 1
@@ -491,7 +529,7 @@ class AgentSwapController:
         )
 
         # 4. Cut the old agent's speech and stop its stack (closes STT/TTS sockets).
-        await asyncio.shield(self._finish_commit(old_stack, new_stack, old_a, old_b))
+        await asyncio.shield(self._finish_commit(old_stack, new_stack, replaced))
 
     async def _load_configs(self, agent_id: str) -> Dict[str, Any]:
         cache = self._options.config_cache
@@ -513,36 +551,108 @@ class AgentSwapController:
         if agent.get('status', 'active') != 'active':
             raise SwapError(ERR_AGENT_UNAVAILABLE)
         try:
-            new_stack = self._build_stack(configs)
+            new_stack = self._build_stack(self._carry_language(configs))
         except Exception as e:
             logger.error(
                 f'Could not build agent {agent_id} for swap: {e}', exc_info=True
             )
             raise SwapError(ERR_SWAP_FAILED)
 
-        # 2. Start the new stack in both slots while the old one still serves.
+        # 2. Start the new stack in its slots while the old one still serves.
         #    The user's audio is gated so the old agent starts no new turn.
-        self._slot_a.gate_audio(True)
-        prepared_a, prepared_b = await self._prepare_both(new_stack)
+        self._slot_stt.gate_audio(True)
+        prepared = await self._prepare_all(self._slots_to_swap(new_stack))
 
-        return new_stack, prepared_a, prepared_b
+        return new_stack, prepared
+
+    def _carry_language(self, configs: Dict[str, Any]) -> Dict[str, Any]:
+        """Start the new agent in the language the conversation is in.
+
+        When the live language (picked by the user, the app or the language
+        tool) is one the new agent supports, it becomes the new agent's default
+        for this call: its prompt, STT and TTS start there, so the caller is not
+        switched back to another language, and STT/TTS built for the same
+        language can be kept instead of reconnecting twice (new default, then
+        the switch back).
+        """
+        language = self._stack.language_state.get('current_language')
+        agent = configs.get('agent') or {}
+        supported = agent.get('supported_languages') or []
+        if (
+            not language
+            or language not in supported
+            or language == agent.get('default_language')
+        ):
+            return configs
+        logger.info(f'Agent swap carries the conversation language {language!r}')
+        # The configs may be cached for the room: never mutate them
+        return {**configs, 'agent': {**agent, 'default_language': language}}
+
+    @staticmethod
+    def _live_service_config(
+        stack: AgentStack, config: Dict[str, Any], *, tts: bool
+    ) -> Dict[str, Any]:
+        """``config`` as the live service runs it, after any language switch.
+
+        A runtime switch (``queue_language_update``) moves the language and,
+        for TTS, the voice to that language's voice, if one is configured.
+        """
+        language = stack.language_state.get('current_language')
+        parameters = config.get('parameters') or {}
+        if not language or parameters.get('language') in (None, language):
+            return config
+        live = {**config, 'parameters': {**parameters, 'language': language}}
+        if tts and stack.tts_voice_ids.get(language):
+            live['voice_id'] = stack.tts_voice_ids[language]
+        return live
+
+    def _slots_to_swap(
+        self, new_stack: AgentStack
+    ) -> List[Tuple[SwappableSlot, List[Any]]]:
+        """The slots the new stack needs, keeping a live STT/TTS where possible.
+
+        A service is kept when the new agent would create it from the config the
+        live one is running with (provider, credentials, voice, parameters,
+        sample rate and current language). The new stack then adopts the live
+        service, so the next swap compares against it too.
+        """
+        old_stack = self._stack
+
+        def keep(kind: str, new_config: Dict[str, Any], old_config: Dict[str, Any]):
+            live_config = self._live_service_config(
+                old_stack, old_config, tts=kind == 'TTS'
+            )
+            reason = _service_change_reason(new_config, live_config)
+            if reason is None:
+                logger.info(f'Agent swap keeps the live {kind} service')
+                return True
+            logger.info(f'Agent swap replaces the {kind} service: {reason}')
+            return False
+
+        slots: List[Tuple[SwappableSlot, List[Any]]] = []
+        if keep('STT', new_stack.stt_config, old_stack.stt_config):
+            new_stack.stt = old_stack.stt
+        else:
+            slots.append((self._slot_stt, [new_stack.stt]))
+        slots.append((self._slot_a, new_stack.slot_a_processors))
+        if keep('TTS', new_stack.tts_config, old_stack.tts_config):
+            new_stack.tts = old_stack.tts
+        else:
+            slots.append((self._slot_tts, [new_stack.tts]))
+        slots.append((self._slot_b, new_stack.slot_b_processors))
+        return slots
 
     async def _finish_commit(
         self,
         old_stack: AgentStack,
         new_stack: AgentStack,
-        old_a: _Inner,
-        old_b: _Inner,
+        replaced: List[Tuple[SwappableSlot, _Inner]],
     ) -> None:
         try:
             await self._messenger.interrupt()
         except Exception as e:
             logger.warning(f'Could not interrupt old agent speech: {e}')
-        await asyncio.gather(
-            self._slot_a.retire(old_a),
-            self._slot_b.retire(old_b),
-            return_exceptions=True,
-        )
+        await self._retire_all(replaced)
 
         # 5. Rebind the shared pieces to the new stack.
         self._messenger.rebind(
@@ -593,26 +703,35 @@ class AgentSwapController:
             f'(swap #{self._swap_count})'
         )
 
-    async def _prepare_both(self, new_stack: AgentStack):
+    async def _prepare_all(
+        self, slots: List[Tuple[SwappableSlot, List[Any]]]
+    ) -> List[Tuple[SwappableSlot, _Inner]]:
         results = await asyncio.gather(
-            self._slot_a.prepare(new_stack.slot_a_processors),
-            self._slot_b.prepare(new_stack.slot_b_processors),
+            *(slot.prepare(processors) for slot, processors in slots),
             return_exceptions=True,
         )
-        prepared_a, prepared_b = results
+        prepared = [
+            (slot, result)
+            for (slot, _), result in zip(slots, results)
+            if not isinstance(result, BaseException)
+        ]
         failures = [r for r in results if isinstance(r, BaseException)]
         if failures:
             # Do not leave a half-started stack behind
-            if not isinstance(prepared_a, BaseException):
-                await self._slot_a.retire(prepared_a)
-            if not isinstance(prepared_b, BaseException):
-                await self._slot_b.retire(prepared_b)
+            await self._retire_all(prepared)
             first = failures[0]
             if isinstance(first, asyncio.CancelledError):
                 raise first
             logger.error(f'New agent stack failed to start: {first}')
             raise SwapError(ERR_SWAP_FAILED)
-        return prepared_a, prepared_b
+        return prepared
+
+    @staticmethod
+    async def _retire_all(inners: List[Tuple[SwappableSlot, _Inner]]) -> None:
+        await asyncio.gather(
+            *(slot.retire(inner) for slot, inner in inners),
+            return_exceptions=True,
+        )
 
     @staticmethod
     def _seed_context(new_stack: AgentStack, old_stack: AgentStack) -> None:
