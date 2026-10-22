@@ -1,11 +1,13 @@
 """
 LLM (Language Model) service factory
 
-Supports OpenAI (and OpenAI-compatible endpoints), Azure OpenAI, Gemini and Groq.
+Supports OpenAI (and OpenAI-compatible endpoints), Azure OpenAI, Gemini, Groq
+and AWS Bedrock.
 """
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
+from pipecat.services.aws.llm import AWSBedrockLLMService
 from pipecat.services.azure.llm import AzureLLMService
 from pipecat.services.google.llm import GoogleLLMService
 from pipecat.services.groq.llm import GroqLLMService
@@ -36,6 +38,9 @@ GOOGLE_SETTINGS_KEYS = ('temperature', 'max_tokens', 'top_p', 'top_k')
 
 # Gemini 3+ takes a thinking level, 2.5 a token budget (0 = off on Flash)
 GOOGLE_THINKING_KEYS = ('thinking_level', 'thinking_budget')
+
+# Bedrock Converse inferenceConfig, plus its performanceConfig latency mode
+BEDROCK_SETTINGS_KEYS = ('temperature', 'max_tokens', 'top_p', 'latency')
 
 
 def _openai_settings(parameters: Dict[str, Any]) -> Dict[str, Any]:
@@ -80,6 +85,8 @@ class LLMServiceFactory:
             return _create_google_llm(api_key, model, parameters)
         if llm_type == LLMProvider.GROQ:
             return _create_groq_llm(api_key, model, parameters)
+        if llm_type == LLMProvider.BEDROCK:
+            return _create_bedrock_llm(api_key, model, parameters)
         raise ValueError(f'Unsupported LLM type: {llm_type}')
 
 
@@ -158,4 +165,34 @@ def _create_google_llm(api_key: str, model: str, parameters: Dict[str, Any]):
     return GoogleLLMService(
         api_key=api_key,
         settings=GoogleLLMService.Settings(model=model, **settings),
+    )
+
+
+def _create_bedrock_llm(
+    secret_key: Optional[str], model: str, parameters: Dict[str, Any]
+):
+    region = parameters.get('aws_region')
+    if not region:
+        raise ValueError('AWS Bedrock requires aws_region to be configured')
+    access_key = parameters.get('aws_access_key_id')
+    # Both or neither: with neither, pipecat falls back to the ambient AWS
+    # credential chain (env vars, instance/task role)
+    if bool(access_key) != bool(secret_key):
+        raise ValueError(
+            'AWS Bedrock requires both aws_access_key_id and the secret access '
+            'key, or neither to use the ambient AWS credentials'
+        )
+    settings = pick(parameters, BEDROCK_SETTINGS_KEYS)
+    _log_settings(
+        'AWS Bedrock',
+        model,
+        settings,
+        region=region,
+        credentials='explicit' if access_key else 'ambient',
+    )
+    return AWSBedrockLLMService(
+        aws_access_key=access_key or None,
+        aws_secret_key=secret_key or None,
+        aws_region=region,
+        settings=AWSBedrockLLMService.Settings(model=model, **settings),
     )

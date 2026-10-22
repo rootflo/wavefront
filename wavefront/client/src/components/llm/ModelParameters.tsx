@@ -68,6 +68,13 @@ export function ModelParameters({
             </AlertDescription>
           </Alert>
         )}
+        {providerConfig?.chatSupported === false && (
+          <Alert variant="info">
+            <AlertDescription>
+              Chatbots and agents can&apos;t use {providerConfig.name} yet. It works for voice agents.
+            </AlertDescription>
+          </Alert>
+        )}
         {preset?.note && (
           <Alert variant="info">
             <AlertDescription>{preset.note}</AlertDescription>

@@ -102,3 +102,50 @@ def test_no_extra_params_when_none_configured():
 
     assert 'reasoning_effort' not in request
     assert llm._settings.extra == {}
+
+
+def _bedrock(parameters, api_key='test-secret'):
+    return LLMServiceFactory.create_llm_service(
+        {
+            'type': 'bedrock',
+            'api_key': api_key,
+            'llm_model': 'global.anthropic.claude-haiku-5-5',
+            'parameters': parameters,
+        }
+    )
+
+
+def test_bedrock_settings_and_credentials():
+    llm = _bedrock(
+        {
+            'aws_access_key_id': 'AKIATEST',
+            'aws_region': 'us-east-1',
+            'temperature': 0.3,
+            'max_tokens': 300,
+            'latency': 'optimized',
+        }
+    )
+
+    assert llm._settings.model == 'global.anthropic.claude-haiku-5-5'
+    assert llm._settings.latency == 'optimized'
+    assert llm._build_inference_config() == {'maxTokens': 300, 'temperature': 0.3}
+    assert llm._aws_params['aws_access_key_id'] == 'AKIATEST'
+    assert llm._aws_params['aws_secret_access_key'] == 'test-secret'
+    assert llm._aws_params['region_name'] == 'us-east-1'
+
+
+def test_bedrock_unset_sampling_is_not_sent():
+    # Claude 5.x on Bedrock rejects temperature / top_p
+    llm = _bedrock({'aws_access_key_id': 'AKIATEST', 'aws_region': 'us-east-1'})
+
+    assert llm._build_inference_config() == {}
+
+
+def test_bedrock_requires_region():
+    with pytest.raises(ValueError, match='aws_region'):
+        _bedrock({'aws_access_key_id': 'AKIATEST'})
+
+
+def test_bedrock_rejects_half_a_key_pair():
+    with pytest.raises(ValueError, match='aws_access_key_id'):
+        _bedrock({'aws_region': 'us-east-1'})

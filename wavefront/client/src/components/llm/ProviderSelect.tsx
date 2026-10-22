@@ -27,6 +27,9 @@ export function ProviderSelect({ value, onChange, disabled }: ProviderSelectProp
               {!LLM_PROVIDERS_CONFIG[type].voiceSupported && (
                 <span className="frost-text-muted text-xs">· chatbots and agents only</span>
               )}
+              {LLM_PROVIDERS_CONFIG[type].chatSupported === false && (
+                <span className="frost-text-muted text-xs">· voice agents only</span>
+              )}
             </span>
           </SelectItem>
         ))}

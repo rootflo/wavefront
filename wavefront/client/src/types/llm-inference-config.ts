@@ -1,6 +1,14 @@
 import { IApiResponse } from '@app/lib/axios';
 
-export type InferenceEngineType = 'gemini' | 'openai' | 'ollama' | 'vllm' | 'anthropic' | 'azure_openai' | 'groq';
+export type InferenceEngineType =
+  | 'gemini'
+  | 'openai'
+  | 'ollama'
+  | 'vllm'
+  | 'anthropic'
+  | 'azure_openai'
+  | 'groq'
+  | 'bedrock';
 
 export interface LLMInferenceConfig {
   id: string;

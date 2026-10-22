@@ -17,6 +17,7 @@ class InferenceEngineType(str, Enum):
     ANTHROPIC = 'anthropic'
     AZURE_OPENAI = 'azure_openai'
     GROQ = 'groq'
+    BEDROCK = 'bedrock'
 
 
 class CreateLlmInferenceConfigPayload(BaseModel):

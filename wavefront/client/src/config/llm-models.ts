@@ -9,6 +9,7 @@
  */
 
 import {
+  BEDROCK_CONNECTION_KEYS,
   getProviderConfig,
   type InferenceEngineType,
   type ParameterConfig,
@@ -504,12 +505,164 @@ const ANTHROPIC_MODELS: ModelGroup[] = [
   },
 ];
 
+// ---- AWS Bedrock (voice agents) -----------------------------------------------------
+
+// Model IDs as the bedrock-runtime Converse API takes them (AWS model cards, October 2026).
+// Claude and GPT-5.6+/6 have no in-Region ID there, only cross-Region inference
+// profiles: global.* works from any source Region. gpt-oss and Qwen are in-Region only.
+
+// Converse API inferenceConfig. Claude 5.x rejects sampling there as it does on the Claude API.
+const BEDROCK_SAMPLING = ['temperature', 'max_tokens', 'top_p'];
+
+const ENABLE_ACCESS = 'Model access must be enabled for it in your AWS account.';
+
+const bedrockClaude = (id: string, label: string, description: string, tags: ModelTag[] = []): ModelPreset => ({
+  ...claudeNoSampling(id, label, description, tags),
+  note: `This model rejects temperature and top P, so they are hidden. ${ENABLE_ACCESS}`,
+});
+
+const bedrockClaude4 = (id: string, label: string, description: string, max: number): ModelPreset => ({
+  id,
+  label,
+  description,
+  tags: ['legacy'],
+  params: BEDROCK_SAMPLING,
+  overrides: { max_tokens: maxOut(max) },
+  note: ENABLE_ACCESS,
+});
+
+// GPT-5.6+/6 reason on every request at their default effort (medium). The Converse
+// field for changing it isn't documented, so only the output cap is offered.
+const bedrockGpt = (id: string, label: string, description: string): ModelPreset => ({
+  id,
+  label,
+  description,
+  tags: ['reasoning'],
+  params: ['max_tokens'],
+  overrides: { max_tokens: maxOut(128000) },
+  note: `Runs at its default reasoning effort (medium), which adds latency to every voice turn. ${ENABLE_ACCESS}`,
+});
+
+const inRegion = (
+  id: string,
+  label: string,
+  description: string,
+  max: number,
+  regions: string,
+  tags: ModelTag[] = []
+): ModelPreset => ({
+  id,
+  label,
+  description,
+  tags,
+  params: BEDROCK_SAMPLING,
+  overrides: { max_tokens: maxOut(max) },
+  note: `Served in-Region only, in ${regions} among others: set Region to one of them. ${ENABLE_ACCESS}`,
+});
+
+const nova = (
+  id: string,
+  label: string,
+  description: string,
+  tags: ModelTag[] = [],
+  params: string[] = []
+): ModelPreset => ({
+  id,
+  label,
+  description,
+  tags,
+  params: [...BEDROCK_SAMPLING, ...params],
+  overrides: { max_tokens: maxOut(10000) },
+});
+
+const BEDROCK_MODELS: ModelGroup[] = [
+  {
+    label: 'Amazon Nova',
+    models: [
+      nova('us.amazon.nova-lite-v1:0', 'Nova Lite', 'Low-cost and fast; a good voice default', ['voice', 'fast']),
+      nova('us.amazon.nova-micro-v1:0', 'Nova Micro', 'Text only, lowest latency and cost', ['fast']),
+      nova(
+        'us.amazon.nova-pro-v1:0',
+        'Nova Pro',
+        'Most capable Nova v1; offers latency-optimized inference',
+        [],
+        ['latency']
+      ),
+    ],
+  },
+  {
+    label: 'Anthropic Claude',
+    models: [
+      bedrockClaude('global.anthropic.claude-haiku-5-5', 'Claude Haiku 5.5', 'Fastest and cheapest Claude', ['fast']),
+      bedrockClaude(
+        'global.anthropic.claude-sonnet-5-5',
+        'Claude Sonnet 5.5',
+        'Speed and capability for everyday work'
+      ),
+      bedrockClaude('global.anthropic.claude-opus-5-5', 'Claude Opus 5.5', 'Most capable Opus; slower for voice'),
+      bedrockClaude4('global.anthropic.claude-sonnet-4-6', 'Claude Sonnet 4.6', 'Previous Sonnet', 64000),
+      bedrockClaude4('global.anthropic.claude-haiku-4-5-20251001-v1:0', 'Claude Haiku 4.5', 'Previous Haiku', 64000),
+    ],
+  },
+  {
+    label: 'OpenAI',
+    models: [
+      inRegion(
+        'openai.gpt-oss-120b-1:0',
+        'gpt-oss-120b',
+        'Open-weight; strong reasoning at low cost',
+        16000,
+        'us-east-1, us-west-2, eu-west-1 and ap-south-1'
+      ),
+      inRegion(
+        'openai.gpt-oss-20b-1:0',
+        'gpt-oss-20b',
+        'Small open-weight model; fastest OpenAI option',
+        16000,
+        'us-east-1, us-west-2, eu-west-1 and ap-south-1',
+        ['fast']
+      ),
+      bedrockGpt('global.openai.gpt-6-luna', 'GPT-6 Luna', 'Fast, low-cost GPT-6 for high volume'),
+      bedrockGpt('global.openai.gpt-5.6-luna', 'GPT-5.6 Luna', "OpenAI's lowest-cost GPT-5.6"),
+      bedrockGpt('global.openai.gpt-6.1-sol', 'GPT-6.1 Sol', 'Near-Astra quality; slow for voice'),
+    ],
+  },
+  {
+    label: 'Qwen',
+    models: [
+      inRegion(
+        'qwen.qwen3-next-80b-a3b',
+        'Qwen3 Next 80B A3B',
+        'Mixture-of-experts with 3B active; fast and cheap',
+        8000,
+        'us-east-1, us-west-2, eu-west-1 and ap-south-1',
+        ['fast']
+      ),
+      inRegion(
+        'qwen.qwen3-32b-v1:0',
+        'Qwen3 32B',
+        'Dense 32B; 32K context',
+        8000,
+        'us-east-1, us-west-2, eu-west-1 and ap-south-1'
+      ),
+      inRegion(
+        'qwen.qwen3-235b-a22b-2507-v1:0',
+        'Qwen3 235B A22B',
+        'Largest general Qwen3; not in us-east-1',
+        8000,
+        'us-east-2, us-west-2, eu-central-1 and ap-south-1'
+      ),
+    ],
+  },
+];
+
 export const LLM_MODEL_CATALOG: Record<InferenceEngineType, ModelGroup[]> = {
   openai: OPENAI_MODELS,
   azure_openai: AZURE_MODELS,
   gemini: GEMINI_MODELS,
   groq: GROQ_MODELS,
   anthropic: ANTHROPIC_MODELS,
+  bedrock: BEDROCK_MODELS,
   ollama: [],
   vllm: [],
 };
@@ -612,6 +765,8 @@ export function isParameterActive(
   return effective !== undefined && String(effective) === when.equals;
 }
 
+const CONNECTION_KEYS = new Set<string>(['api_version', ...BEDROCK_CONNECTION_KEYS]);
+
 export function filterParameters(
   provider: InferenceEngineType,
   modelId: string | undefined,
@@ -624,8 +779,8 @@ export function filterParameters(
     if (value === undefined || value === null || value === '') return;
     const config = allowed.get(key);
     if (!config) {
-      // api_version is Azure's connection setting, kept in parameters but not a model setting.
-      if (key !== 'api_version') dropped.push(key);
+      // Connection settings kept in parameters but not model settings: Azure's api_version, Bedrock's AWS keys.
+      if (!CONNECTION_KEYS.has(key)) dropped.push(key);
       return;
     }
     if (config.type === 'select' && config.options && !config.options.some((o) => String(o.value) === String(value))) {

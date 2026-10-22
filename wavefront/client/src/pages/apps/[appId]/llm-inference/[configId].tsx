@@ -37,11 +37,13 @@ const llmConfigFormSchema = z
   .object({
     display_name: z.string().min(1, 'Display name is required'),
     llm_model: z.string().min(1, 'Choose a model'),
-    type: z.enum(['openai', 'anthropic', 'gemini', 'azure_openai', 'ollama', 'vllm', 'groq']),
+    type: z.enum(['openai', 'anthropic', 'gemini', 'azure_openai', 'ollama', 'vllm', 'groq', 'bedrock']),
     api_key: z.string().optional(),
     model_type: z.enum(['llm', 'embedding']),
     base_url: z.string().optional(),
     api_version: z.string().optional(),
+    aws_access_key_id: z.string().optional(),
+    aws_region: z.string().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.type === 'azure_openai' && !data.api_version?.trim()) {
@@ -50,6 +52,9 @@ const llmConfigFormSchema = z
         path: ['api_version'],
         message: 'API version is required for Azure OpenAI',
       });
+    }
+    if (data.type === 'bedrock' && !data.aws_region?.trim()) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['aws_region'], message: 'Region is required' });
     }
   });
 
@@ -69,6 +74,8 @@ const buildFormValues = (config: LLMInferenceConfig): LLMConfigForm => ({
   api_key: '', // API key is never returned for security
   base_url: config.base_url || '',
   api_version: (config.parameters?.api_version as string) || '',
+  aws_access_key_id: (config.parameters?.aws_access_key_id as string) || '',
+  aws_region: (config.parameters?.aws_region as string) || '',
 });
 
 /** The saved settings the saved model accepts. */
@@ -112,6 +119,8 @@ const LLMInferenceConfigDetail: React.FC = () => {
       api_key: '',
       base_url: '',
       api_version: '',
+      aws_access_key_id: '',
+      aws_region: '',
     },
     mode: 'onChange',
   });
@@ -141,6 +150,7 @@ const LLMInferenceConfigDetail: React.FC = () => {
     form.setValue('type', newType, { shouldValidate: true });
     form.setValue('llm_model', newModel, { shouldValidate: true });
     form.setValue('base_url', getDefaultBaseUrl(newType));
+    if (newType === 'bedrock' && !form.getValues('aws_region')) form.setValue('aws_region', 'us-east-1');
     setParameters((prev) => filterParameters(newType, newModel, prev).kept);
   };
 
@@ -158,6 +168,10 @@ const LLMInferenceConfigDetail: React.FC = () => {
       if (data.type === 'azure_openai' && data.api_version) {
         kept.api_version = data.api_version.trim();
       }
+      if (data.type === 'bedrock') {
+        kept.aws_region = data.aws_region?.trim();
+        if (data.aws_access_key_id?.trim()) kept.aws_access_key_id = data.aws_access_key_id.trim();
+      }
 
       const updateData: UpdateLLMConfigRequest = {
         display_name: data.display_name.trim(),
@@ -165,7 +179,7 @@ const LLMInferenceConfigDetail: React.FC = () => {
         type: data.type,
         model_type: data.model_type,
         parameters: Object.keys(kept).length > 0 ? kept : null,
-        base_url: data.base_url?.trim() || null,
+        base_url: (data.type !== 'bedrock' && data.base_url?.trim()) || null,
       };
 
       // Only include API key if it's been entered (since we don't show existing ones)
@@ -371,32 +385,70 @@ const LLMInferenceConfigDetail: React.FC = () => {
                   <div className="frost-panel ring-frost-border flex w-full shrink-0 flex-col gap-6 rounded-lg border p-6 ring-1">
                     <SectionTitle title="Connection" />
                     <div className={clsx('grid w-full gap-6 lg:grid-cols-2', !editing && 'opacity-80')}>
-                      <FormField
-                        control={form.control}
-                        name="base_url"
-                        render={({ field }) => (
-                          <FormItem className="lg:col-span-2">
-                            <FormLabel>{type === 'azure_openai' ? 'Endpoint' : 'Base URL'}</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="url"
-                                disabled={!editing}
-                                placeholder="Base URL for the API endpoint"
-                                {...field}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
+                      {type !== 'bedrock' && (
+                        <FormField
+                          control={form.control}
+                          name="base_url"
+                          render={({ field }) => (
+                            <FormItem className="lg:col-span-2">
+                              <FormLabel>{type === 'azure_openai' ? 'Endpoint' : 'Base URL'}</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="url"
+                                  disabled={!editing}
+                                  placeholder="Base URL for the API endpoint"
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      )}
 
-                      {REQUIRES_API_KEY.includes(type) && (
+                      {type === 'bedrock' && (
+                        <>
+                          <FormField
+                            control={form.control}
+                            name="aws_region"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Region</FormLabel>
+                                <FormControl>
+                                  <Input disabled={!editing} placeholder="us-east-1" {...field} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name="aws_access_key_id"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Access key ID</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    disabled={!editing}
+                                    autoComplete="off"
+                                    placeholder="Empty uses the server's AWS credentials"
+                                    {...field}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </>
+                      )}
+
+                      {(REQUIRES_API_KEY.includes(type) || type === 'bedrock') && (
                         <FormField
                           control={form.control}
                           name="api_key"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>API key</FormLabel>
+                              <FormLabel>{type === 'bedrock' ? 'Secret access key' : 'API key'}</FormLabel>
                               <FormControl>
                                 <Input
                                   type="password"

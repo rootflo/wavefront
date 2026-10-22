@@ -17,6 +17,7 @@ const getTypeColor = (type: InferenceEngineType) => {
     vllm: 'text-rose-800 bg-rose-400/15 ring-1 ring-rose-400/20',
     azure_openai: 'text-cyan-800 bg-cyan-400/15 ring-1 ring-cyan-400/20',
     groq: 'text-pink-800 bg-pink-400/15 ring-1 ring-pink-400/20',
+    bedrock: 'text-orange-800 bg-orange-400/15 ring-1 ring-orange-400/20',
   };
   return colors[type] || 'frost-text bg-frost-glass-strong ring-1 ring-frost-border';
 };

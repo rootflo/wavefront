@@ -212,11 +212,6 @@ export const VOICE_PROVIDERS_CONFIG: VoiceProvidersConfig = {
             step: 0.01,
             description: 'Volume (0.1-3.0)',
           },
-          enable_preprocessing: {
-            type: 'boolean',
-            default: true,
-            description: 'Enable text preprocessing',
-          },
           temperature: {
             type: 'number',
             default: 0.6,
@@ -548,7 +543,7 @@ export interface ParamKeyGroups {
 
 /**
  * Parameter keys grouped for 2-col layout: compact fields, then sliders,
- * then checkboxes (enable_preprocessing first). Each group starts a new row.
+ * then checkboxes. Each group starts a new row.
  */
 export function groupParamKeys(parameters: Record<string, ParameterConfig>): ParamKeyGroups {
   const keys = Object.keys(parameters).filter((key) => key !== 'language');
@@ -565,13 +560,11 @@ export function groupParamKeys(parameters: Record<string, ParameterConfig>): Par
   return {
     compact: compact.includes('model') ? ['model', ...compact.filter((key) => key !== 'model')] : compact,
     sliders,
-    booleans: booleans.includes('enable_preprocessing')
-      ? ['enable_preprocessing', ...booleans.filter((key) => key !== 'enable_preprocessing')]
-      : booleans,
+    booleans,
   };
 }
 
-/** Flat order: compact → sliders → booleans (enable_preprocessing first among booleans). */
+/** Flat order: compact → sliders → booleans. */
 export function orderedParamKeys(parameters: Record<string, ParameterConfig>): string[] {
   const { compact, sliders, booleans } = groupParamKeys(parameters);
   return [...compact, ...sliders, ...booleans];

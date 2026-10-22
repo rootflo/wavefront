@@ -11,6 +11,7 @@ class LLMProvider(str, Enum):
     AZURE_OPENAI = 'azure_openai'
     GEMINI = 'gemini'
     GROQ = 'groq'
+    BEDROCK = 'bedrock'
 
 
 class STTProvider(str, Enum):

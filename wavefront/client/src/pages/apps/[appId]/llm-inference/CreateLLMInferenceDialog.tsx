@@ -34,6 +34,7 @@ const BASE_URL_PLACEHOLDERS: Record<InferenceEngineType, string> = {
   anthropic: 'https://api.anthropic.com',
   gemini: 'https://generativelanguage.googleapis.com',
   groq: 'https://api.groq.com/openai/v1',
+  bedrock: '',
 };
 
 const REQUIRES_API_KEY: InferenceEngineType[] = ['openai', 'anthropic', 'gemini', 'azure_openai', 'groq'];
@@ -42,11 +43,13 @@ const createLLMInferenceSchema = z
   .object({
     displayName: z.string().min(1, 'Display name is required'),
     llmModel: z.string().min(1, 'Choose a model'),
-    type: z.enum(['openai', 'anthropic', 'gemini', 'azure_openai', 'ollama', 'vllm', 'groq']),
+    type: z.enum(['openai', 'anthropic', 'gemini', 'azure_openai', 'ollama', 'vllm', 'groq', 'bedrock']),
     modelType: z.enum(['llm', 'embedding']),
     apiKey: z.string().optional(),
     baseUrl: z.string().optional(),
     apiVersion: z.string().optional(),
+    awsAccessKeyId: z.string().optional(),
+    awsRegion: z.string().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.type === 'azure_openai' && !data.apiVersion?.trim()) {
@@ -58,6 +61,20 @@ const createLLMInferenceSchema = z
     }
     if ((data.type === 'ollama' || data.type === 'vllm') && !data.baseUrl?.trim()) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['baseUrl'], message: 'Base URL is required' });
+    }
+    if (data.type === 'bedrock') {
+      if (!data.awsRegion?.trim()) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['awsRegion'], message: 'Region is required' });
+      }
+      const hasKeyId = !!data.awsAccessKeyId?.trim();
+      const hasSecret = !!data.apiKey?.trim();
+      if (hasKeyId !== hasSecret) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [hasKeyId ? 'apiKey' : 'awsAccessKeyId'],
+          message: "Enter both keys, or neither to use the server's AWS credentials",
+        });
+      }
     }
   });
 
@@ -73,6 +90,8 @@ const emptyForm = (type: InferenceEngineType): CreateLLMInferenceInput => ({
   apiKey: '',
   baseUrl: getDefaultBaseUrl(type),
   apiVersion: type === 'azure_openai' ? '2025-04-01-preview' : '',
+  awsAccessKeyId: '',
+  awsRegion: type === 'bedrock' ? 'us-east-1' : '',
 });
 
 interface CreateLLMInferenceDialogProps {
@@ -158,6 +177,10 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
       if (data.type === 'azure_openai' && data.apiVersion) {
         kept.api_version = data.apiVersion.trim();
       }
+      if (data.type === 'bedrock') {
+        kept.aws_region = data.awsRegion?.trim();
+        if (data.awsAccessKeyId?.trim()) kept.aws_access_key_id = data.awsAccessKeyId.trim();
+      }
 
       const response = await floConsoleService.llmInferenceService.createLLMConfig({
         display_name: data.displayName.trim(),
@@ -165,7 +188,7 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
         api_key: data.apiKey?.trim() || undefined,
         type: data.type,
         model_type: data.modelType,
-        base_url: data.baseUrl?.trim() || undefined,
+        base_url: (data.type !== 'bedrock' && data.baseUrl?.trim()) || undefined,
         parameters: Object.keys(kept).length > 0 ? kept : undefined,
       });
 
@@ -298,19 +321,65 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
                   />
                 )}
 
-                <FormField
-                  control={form.control}
-                  name="baseUrl"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{type === 'azure_openai' ? 'Endpoint' : 'Base URL'}</FormLabel>
-                      <FormControl>
-                        <Input type="url" placeholder={BASE_URL_PLACEHOLDERS[type]} {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {type === 'bedrock' && (
+                  <>
+                    <FormField
+                      control={form.control}
+                      name="awsAccessKeyId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Access key ID</FormLabel>
+                          <FormControl>
+                            <Input placeholder="AKIA..." autoComplete="off" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="apiKey"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Secret access key</FormLabel>
+                          <FormControl>
+                            <Input type="password" placeholder="Your secret access key" autoComplete="off" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="awsRegion"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Region</FormLabel>
+                          <FormControl>
+                            <Input placeholder="us-east-1" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </>
+                )}
+
+                {type !== 'bedrock' && (
+                  <FormField
+                    control={form.control}
+                    name="baseUrl"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{type === 'azure_openai' ? 'Endpoint' : 'Base URL'}</FormLabel>
+                        <FormControl>
+                          <Input type="url" placeholder={BASE_URL_PLACEHOLDERS[type]} {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
 
                 {type === 'azure_openai' && (
                   <FormField
@@ -329,7 +398,9 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
                 )}
               </div>
               <p className="frost-text-muted text-xs">
-                API keys are stored securely and never returned in API responses.
+                {type === 'bedrock'
+                  ? 'The secret access key is stored securely and never returned in API responses. Leave both keys empty to use the AWS credentials of the server running voice agents.'
+                  : 'API keys are stored securely and never returned in API responses.'}
               </p>
             </section>
 

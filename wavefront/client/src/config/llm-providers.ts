@@ -3,7 +3,8 @@
  *
  * Every setting a provider can take, as the backends read it from a config's
  * `parameters`: call_processing (pipecat, llm_service.py) for voice agents and
- * flo_ai for chatbots and agents. Which of these a given model accepts lives
+ * flo_ai for chatbots and agents. Bedrock also keeps its AWS access key ID and
+ * region there (see BEDROCK_CONNECTION_KEYS). Which of these a given model accepts lives
  * in llm-models.ts.
  *
  * Nothing is pre-filled: an unset setting is left out of the request, so the
@@ -40,6 +41,8 @@ export interface ProviderConfig {
   baseUrl?: string;
   /** Voice agents (call_processing) can run this provider. */
   voiceSupported: boolean;
+  /** Chatbots and agents (flo_ai) can run this provider. Defaults to true. */
+  chatSupported?: boolean;
   /** What the model field holds for this provider. */
   modelLabel: string;
   modelHelp?: string;
@@ -52,7 +55,18 @@ export interface ProviderConfig {
  */
 export const UNSET_SELECT_VALUE = '__unset__';
 
-export type InferenceEngineType = 'gemini' | 'openai' | 'ollama' | 'vllm' | 'anthropic' | 'azure_openai' | 'groq';
+/** Bedrock connection settings stored in `parameters`; the secret access key goes in `api_key`. */
+export const BEDROCK_CONNECTION_KEYS = ['aws_access_key_id', 'aws_region'] as const;
+
+export type InferenceEngineType =
+  | 'gemini'
+  | 'openai'
+  | 'ollama'
+  | 'vllm'
+  | 'anthropic'
+  | 'azure_openai'
+  | 'groq'
+  | 'bedrock';
 
 const temperature = (max: number, description?: string): ParameterConfig => ({
   type: 'number',
@@ -243,6 +257,28 @@ export const LLM_PROVIDERS_CONFIG: Record<InferenceEngineType, ProviderConfig> =
       service_tier: serviceTier,
     },
   },
+  bedrock: {
+    name: 'AWS Bedrock',
+    voiceSupported: true,
+    chatSupported: false,
+    modelLabel: 'Model ID',
+    modelHelp: 'A Bedrock model ID or inference profile ID, e.g. us.amazon.nova-lite-v1:0',
+    parameters: {
+      temperature: temperature(1),
+      max_tokens: maxTokens(128000),
+      top_p: topP,
+      latency: {
+        type: 'select',
+        label: 'Latency',
+        description: 'Optimized uses latency-optimized inference where the model and region offer it',
+        options: [
+          { value: 'standard', label: 'Standard' },
+          { value: 'optimized', label: 'Optimized' },
+        ],
+        advanced: true,
+      },
+    },
+  },
   anthropic: {
     name: 'Anthropic Claude',
     baseUrl: 'https://api.anthropic.com',
@@ -288,6 +324,7 @@ export const INFERENCE_ENGINE_TYPES: InferenceEngineType[] = [
   'azure_openai',
   'gemini',
   'groq',
+  'bedrock',
   'anthropic',
   'ollama',
   'vllm',
