@@ -387,6 +387,11 @@ def build_agent_stack(
     async def on_user_turn_stopped(
         aggregator, strategy, message: UserTurnStoppedMessage
     ):
+        if not (message.content or '').strip():
+            # Speech without a transcript (e.g. the STT was reconnecting): the
+            # LLM does not run, so a thinking filler would be all the caller hears
+            await shared.events.emit_agent_state(STATE_LISTENING)
+            return
         call_stats['user_turns'] += 1
         transcript_log.append(
             {

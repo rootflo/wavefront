@@ -8,7 +8,7 @@ audio while the socket is down and reconnects with a backoff instead.
 """
 
 import asyncio
-from typing import AsyncGenerator, Optional, Sequence
+from typing import AsyncGenerator, Optional, Sequence, Set
 
 from pipecat.frames.frames import CancelFrame, EndFrame, ErrorFrame, Frame
 from pipecat.services.sarvam.stt import SarvamSTTService
@@ -22,6 +22,11 @@ RECONNECT_DELAYS_SECS: Sequence[float] = (1.0, 2.0, 4.0, 8.0, 15.0)
 
 
 class ReconnectingSarvamSTTService(SarvamSTTService):
+    # Services of this process holding an open Sarvam stream. Logged on every
+    # connect / disconnect: a count that keeps growing across calls is a leak,
+    # and Sarvam rate-limits a key with too many concurrent streams.
+    _open_streams: Set[int] = set()
+
     def __init__(
         self,
         *args,
@@ -50,6 +55,24 @@ class ReconnectingSarvamSTTService(SarvamSTTService):
                 yield None
             else:
                 yield frame
+
+    async def _connect(self):
+        await super()._connect()
+        if self._socket_client is not None:
+            self._open_streams.add(id(self))
+            logger.info(
+                f'Sarvam STT stream open (open in this process: '
+                f'{len(self._open_streams)})'
+            )
+
+    async def _disconnect(self):
+        await super()._disconnect()
+        if id(self) in self._open_streams:
+            self._open_streams.discard(id(self))
+            logger.info(
+                f'Sarvam STT stream closed (open in this process: '
+                f'{len(self._open_streams)})'
+            )
 
     async def _handle_message(self, message):
         self._drops = 0
