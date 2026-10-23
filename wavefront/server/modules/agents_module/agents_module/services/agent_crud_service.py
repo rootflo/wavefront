@@ -23,7 +23,10 @@ from agents_module.utils.cache_utils import (
     get_agents_list_cache_key,
 )
 from agents_module.models.yaml_validation_schemas import YamlValidationError
-from agents_module.utils.validation_utils import validate_agent_workflow_name
+from agents_module.utils.validation_utils import (
+    InvalidDefinitionError,
+    validate_agent_workflow_name,
+)
 from agents_module.utils.yaml_validation import (
     format_validation_errors,
     missing_tool_error,
@@ -198,7 +201,7 @@ class AgentCrudService:
             logger.error(
                 f'YAML validation failed for namespace: {namespace}, agent: {agent_name}: {str(e)}'
             )
-            raise ValueError(f'Invalid agent YAML configuration: {str(e)}')
+            raise InvalidDefinitionError(f'Invalid agent YAML configuration: {str(e)}')
 
     async def _try_load_message_processor_tool(self, tool_name: str) -> Optional[Tool]:
         """
