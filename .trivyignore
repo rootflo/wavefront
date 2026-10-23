@@ -34,5 +34,19 @@ CVE-2026-112899 exp:2026-10-24
 CVE-2026-112900 exp:2026-10-24
 CVE-2026-112901 exp:2026-10-24
 CVE-2026-112902 exp:2026-10-24
+# Additional pillow 12.3.0 advisories surfaced after Trivy DB update; same 13.0.0 fix.
+CVE-2026-96636 exp:2026-10-31
+CVE-2026-96637 exp:2026-10-31
+CVE-2026-96638 exp:2026-10-31
+CVE-2026-96639 exp:2026-10-31
+CVE-2026-96640 exp:2026-10-31
+CVE-2026-96641 exp:2026-10-31
+CVE-2026-96642 exp:2026-10-31
+CVE-2026-96643 exp:2026-10-31
+CVE-2026-96644 exp:2026-10-31
+CVE-2026-96778 exp:2026-10-31
+GHSA-78g4-xqwv-q3g8 exp:2026-10-31
+# opentelemetry-api 1.44.0 -> 1.45.1 (published 2026-10-06): tracestate header DoS.
+CVE-2026-114603 exp:2026-10-31
 # certifi 2025.8.3 -> 2026.10.19 (published 2026-10-20): drops emSign roots with compromised intermediates.
 GHSA-6q48-6c7w-9gw2 exp:2026-10-28
