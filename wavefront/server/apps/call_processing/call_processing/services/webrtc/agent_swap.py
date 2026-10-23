@@ -62,7 +62,7 @@ from pipecat.processors.frame_processor import (
 from call_processing.log.logger import logger
 from call_processing.services.common.agent_stack import AgentStack, SharedSession
 from call_processing.services.webrtc.app_messages import strip_step_overlay
-from call_processing.services.webrtc.prompts import STEP_OPENER, build_handoff_note
+from call_processing.services.webrtc.prompts import build_handoff_note, is_step_opener
 from call_processing.services.webrtc.room_service import (
     ERR_AGENT_NOT_ALLOWED,
     ERR_AGENT_UNAVAILABLE,
@@ -304,7 +304,7 @@ def build_handoff_history(messages: Sequence[Any]) -> List[Dict[str, str]]:
         if message.get('tool_calls') or message.get('function_call'):
             continue
         text = strip_step_overlay(_message_text(message.get('content'))).strip()
-        if not text or text == STEP_OPENER:
+        if not text or is_step_opener(text):
             continue
         history.append({'role': role, 'content': text})
     return history

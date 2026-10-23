@@ -33,7 +33,11 @@ from call_processing.services.webrtc.agent_swap import (
     build_handoff_history,
 )
 from call_processing.services.webrtc.app_messages import OVERLAY_END, OVERLAY_START
-from call_processing.services.webrtc.prompts import STEP_OPENER, build_handoff_note
+from call_processing.services.webrtc.prompts import (
+    STEP_OPENER,
+    build_handoff_note,
+    build_step_opener,
+)
 from call_processing.services.webrtc.room_service import (
     ERR_AGENT_NOT_ALLOWED,
     ERR_AGENT_UNAVAILABLE,
@@ -254,6 +258,7 @@ def test_handoff_history_strips_overlay_tools_and_system():
         {'role': 'system', 'content': 'old prompt'},
         {'role': 'assistant', 'content': 'Welcome!'},
         {'role': 'user', 'content': STEP_OPENER},
+        {'role': 'user', 'content': build_step_opener('Say hello.')},
         {'role': 'user', 'content': f'Hi {OVERLAY_START}\nstep\n{OVERLAY_END}'},
         {
             'role': 'assistant',
@@ -851,4 +856,11 @@ def test_live_service_config_follows_a_runtime_language_switch():
     # Single-language services carry no language: unchanged
     assert AgentSwapController._live_service_config(stack, SAME_STT, tts=False) is (
         SAME_STT
+    )
+
+
+def test_step_opener_carries_the_instruction():
+    assert build_step_opener(None) == STEP_OPENER
+    assert build_step_opener('Say you are verifying the photo.') == (
+        f'{STEP_OPENER}\nSay you are verifying the photo.'
     )
