@@ -197,11 +197,21 @@ class AgentCrudService:
             logger.info(
                 f'YAML validation successful for namespace: {namespace}, agent: {agent_name}'
             )
-        except Exception as e:
+        except ValueError as e:
             logger.error(
                 f'YAML validation failed for namespace: {namespace}, agent: {agent_name}: {str(e)}'
             )
-            raise InvalidDefinitionError(f'Invalid agent YAML configuration: {str(e)}')
+            raise InvalidDefinitionError(
+                f'Invalid agent YAML configuration: {str(e)}'
+            ) from e
+        except Exception as e:
+            # Not a validation error: keep the details in the log, out of the response
+            logger.exception(
+                f'YAML validation failed unexpectedly for namespace: {namespace}, agent: {agent_name}'
+            )
+            raise InvalidDefinitionError(
+                'Invalid agent YAML configuration: unknown reason'
+            ) from e
 
     async def _try_load_message_processor_tool(self, tool_name: str) -> Optional[Tool]:
         """

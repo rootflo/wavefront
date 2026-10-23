@@ -13,7 +13,7 @@ the DI wiring the same way the other tests in this package do.
 
 import json
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 from uuid import uuid4
 
 import pytest
@@ -138,3 +138,60 @@ async def test_other_value_errors_are_not_turned_into_400(formatter, tool_loader
 def test_a_bad_name_is_an_invalid_definition(name):
     with pytest.raises(InvalidDefinitionError):
         validate_agent_workflow_name(name)
+
+
+SECRET = 'connection to db at 10.0.0.5 refused (password=hunter2)'
+
+
+def agent_crud_service():
+    from agents_module.services.agent_crud_service import AgentCrudService
+
+    crud = object.__new__(AgentCrudService)
+    crud._check_yaml_content = AsyncMock(return_value=([], {}))
+    return crud
+
+
+def workflow_crud_service(build_error):
+    from agents_module.services.workflow_crud_service import WorkflowCrudService
+
+    crud = object.__new__(WorkflowCrudService)
+    crud._load_inlined_document = AsyncMock(
+        return_value=({'arium': {'agents': [{'name': 'a', 'job': 'x'}]}}, False, [])
+    )
+    crud._check_document = AsyncMock(return_value=[])
+    crud.agent_inference_service = SimpleNamespace(
+        create_agent_from_yaml=AsyncMock(side_effect=build_error)
+    )
+    return crud
+
+
+async def test_agent_value_error_keeps_its_reason():
+    crud = agent_crud_service()
+    with patch('agents_module.services.agent_crud_service.AgentBuilder') as builder:
+        builder.from_yaml.return_value.build.side_effect = ValueError('bad model')
+        with pytest.raises(InvalidDefinitionError, match='bad model'):
+            await crud._validate_yaml_content('agent: {}', 'default', 'a', [])
+
+
+async def test_agent_unexpected_error_does_not_leak_its_message():
+    crud = agent_crud_service()
+    with patch('agents_module.services.agent_crud_service.AgentBuilder') as builder:
+        builder.from_yaml.return_value.build.side_effect = RuntimeError(SECRET)
+        with pytest.raises(InvalidDefinitionError) as info:
+            await crud._validate_yaml_content('agent: {}', 'default', 'a', [])
+    assert str(info.value) == 'Invalid agent YAML configuration: unknown reason'
+
+
+async def test_workflow_value_error_from_an_inline_agent_keeps_its_reason():
+    crud = workflow_crud_service(ValueError('bad model'))
+    with pytest.raises(
+        InvalidDefinitionError, match='Failed to build inline agent a: bad model'
+    ):
+        await crud._validate_yaml_content('arium: {}', 'default', 'w')
+
+
+async def test_workflow_unexpected_error_does_not_leak_its_message():
+    crud = workflow_crud_service(RuntimeError(SECRET))
+    with pytest.raises(InvalidDefinitionError) as info:
+        await crud._validate_yaml_content('arium: {}', 'default', 'w')
+    assert str(info.value) == 'Invalid workflow YAML configuration: unknown reason'

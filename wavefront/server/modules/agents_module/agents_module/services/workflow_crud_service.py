@@ -146,11 +146,14 @@ class WorkflowCrudService:
                 agents_dict[agent_ref] = agent
                 logger.info(f'Successfully built agent for validation: {agent_ref}')
 
-            except Exception as e:
+            except ValueError as e:
                 logger.error(f'Error building referenced agent {agent_ref}: {str(e)}')
                 raise ValueError(
                     f'Failed to build referenced agent {agent_ref}: {str(e)}'
-                )
+                ) from e
+            except Exception:
+                logger.exception(f'Error building referenced agent {agent_ref}')
+                raise
 
         return agents_dict
 
@@ -205,9 +208,14 @@ class WorkflowCrudService:
 
                 agents_dict[agent_name] = agent
 
-            except Exception as e:
+            except ValueError as e:
                 logger.error(f'Error building inline agent {agent_name}: {str(e)}')
-                raise ValueError(f'Failed to build inline agent {agent_name}: {str(e)}')
+                raise ValueError(
+                    f'Failed to build inline agent {agent_name}: {str(e)}'
+                ) from e
+            except Exception:
+                logger.exception(f'Error building inline agent {agent_name}')
+                raise
 
         return agents_dict
 
@@ -499,13 +507,21 @@ class WorkflowCrudService:
             logger.info(
                 f'YAML validation successful for namespace: {namespace}, workflow: {workflow_name}'
             )
-        except Exception as e:
+        except ValueError as e:
             logger.error(
                 f'YAML validation failed for namespace: {namespace}, workflow: {workflow_name}: {str(e)}'
             )
             raise InvalidDefinitionError(
                 f'Invalid workflow YAML configuration: {str(e)}'
+            ) from e
+        except Exception as e:
+            # Not a validation error: keep the details in the log, out of the response
+            logger.exception(
+                f'YAML validation failed unexpectedly for namespace: {namespace}, workflow: {workflow_name}'
             )
+            raise InvalidDefinitionError(
+                'Invalid workflow YAML configuration: unknown reason'
+            ) from e
 
     async def create_workflow(
         self,
