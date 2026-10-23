@@ -33,7 +33,11 @@ from call_processing.services.webrtc.agent_swap import (
     build_handoff_history,
 )
 from call_processing.services.webrtc.app_messages import OVERLAY_END, OVERLAY_START
-from call_processing.services.webrtc.prompts import STEP_OPENER, build_handoff_note
+from call_processing.services.webrtc.prompts import (
+    STEP_OPENER,
+    build_handoff_note,
+    build_step_opener,
+)
 from call_processing.services.webrtc.room_service import (
     ERR_AGENT_NOT_ALLOWED,
     ERR_AGENT_UNAVAILABLE,
@@ -254,6 +258,7 @@ def test_handoff_history_strips_overlay_tools_and_system():
         {'role': 'system', 'content': 'old prompt'},
         {'role': 'assistant', 'content': 'Welcome!'},
         {'role': 'user', 'content': STEP_OPENER},
+        {'role': 'user', 'content': build_step_opener('Say hello.')},
         {'role': 'user', 'content': f'Hi {OVERLAY_START}\nstep\n{OVERLAY_END}'},
         {
             'role': 'assistant',
@@ -320,7 +325,12 @@ class FakeMessenger:
 
 
 def make_stack(
-    agent_id: str, name: str, log: List[tuple], fail_start=False
+    agent_id: str,
+    name: str,
+    log: List[tuple],
+    fail_start=False,
+    stt_config: Optional[Dict[str, Any]] = None,
+    tts_config: Optional[Dict[str, Any]] = None,
 ) -> AgentStack:
     tagger = Tagger(name, log, fail_start=fail_start)
     assistant = Tagger(f'{name}-asst', log)
@@ -344,6 +354,9 @@ def make_stack(
         tts_voice_ids={},
         welcome_message='hi',
         filler=Passthrough(name=f'{name}-filler'),
+        # Distinct per agent unless a test shares them
+        stt_config=stt_config or {'provider': 'x', 'model': name},
+        tts_config=tts_config or {'provider': 'x', 'voice_id': name},
     )
 
 
@@ -359,8 +372,16 @@ class ControllerHarness:
         fail_start=False,
         slow_build: Optional[asyncio.Event] = None,
         carry_history: bool = True,
+        service_configs: Optional[Dict[str, tuple]] = None,
+        languages: Optional[Dict[str, tuple]] = None,
     ):
         self.log: List[tuple] = []
+        # agent name -> (stt_config, tts_config)
+        self.service_configs = service_configs or {}
+        # agent name -> (supported_languages, default_language)
+        self.languages = languages or {}
+        # default_language each swapped-in stack was built with
+        self.built_defaults: List[Optional[str]] = []
         self.messenger = FakeMessenger()
         self.switched: List[str] = []
         self.names = {A_ID: 'alpha', B_ID: 'beta', C_ID: 'gamma', D_ID: 'delta'}
@@ -376,19 +397,20 @@ class ControllerHarness:
             if agent_id not in self.names:
                 raise KeyError(agent_id)
             status = 'inactive' if agent_id in self.inactive else 'active'
-            return {
-                'agent': {
-                    'id': agent_id,
-                    'name': self.names[agent_id],
-                    'status': status,
-                }
-            }
+            agent = {'id': agent_id, 'name': self.names[agent_id], 'status': status}
+            if self.names[agent_id] in self.languages:
+                supported, default = self.languages[self.names[agent_id]]
+                agent['supported_languages'] = supported
+                agent['default_language'] = default
+            return {'agent': agent}
 
         def build(cfg):
             agent_id = cfg['agent']['id']
             if agent_id == self.fail_build:
                 raise RuntimeError('cannot build')
-            return make_stack(agent_id, self.names[agent_id], self.log, self.fail_start)
+            default = cfg['agent'].get('default_language')
+            self.built_defaults.append(default)
+            return self._make_stack(agent_id, self.fail_start, default)
 
         self.options = SwapOptions(
             allowed_agent_ids={A_ID, B_ID, C_ID},
@@ -399,12 +421,22 @@ class ControllerHarness:
             timeout_secs=timeout,
             carry_history=carry_history,
         )
-        self.stack = make_stack(A_ID, 'alpha', self.log)
+        self.stack = self._make_stack(A_ID)
+        self.slot_stt = SwappableSlot([self.stack.stt], name='STT')
         self.slot_a = SwappableSlot(self.stack.slot_a_processors, name='A')
+        self.slot_tts = SwappableSlot([self.stack.tts], name='TTS')
         self.slot_b = SwappableSlot(self.stack.slot_b_processors, name='B')
         self.collector = Collector()
         self.task = PipelineWorker(
-            Pipeline([self.slot_a, self.collector, self.slot_b]),
+            Pipeline(
+                [
+                    self.slot_stt,
+                    self.slot_a,
+                    self.slot_tts,
+                    self.collector,
+                    self.slot_b,
+                ]
+            ),
             params=PipelineParams(),
             cancel_on_idle_timeout=False,
         )
@@ -421,7 +453,9 @@ class ControllerHarness:
         )
         self.shared.active_stack = self.stack
         self.controller = AgentSwapController(
+            slot_stt=self.slot_stt,
             slot_a=self.slot_a,
+            slot_tts=self.slot_tts,
             slot_b=self.slot_b,
             task=self.task,
             messenger=self.messenger,
@@ -430,6 +464,44 @@ class ControllerHarness:
             stack=self.stack,
             options=self.options,
         )
+
+    def _make_stack(
+        self,
+        agent_id: str,
+        fail_start: bool = False,
+        language: Optional[str] = None,
+    ) -> AgentStack:
+        name = self.names[agent_id]
+        stt_config, tts_config = self.service_configs.get(name, (None, None))
+        if name not in self.languages:
+            return make_stack(
+                agent_id,
+                name,
+                self.log,
+                fail_start,
+                stt_config=stt_config,
+                tts_config=tts_config,
+            )
+        # Multi-language: like the builder, services start in the default language
+        supported, default = self.languages[name]
+        language = language or default
+
+        def in_language(config):
+            parameters = {**(config.get('parameters') or {}), 'language': language}
+            return {**config, 'parameters': parameters}
+
+        stack = make_stack(
+            agent_id,
+            name,
+            self.log,
+            fail_start,
+            stt_config=in_language(stt_config or {'provider': 'x'}),
+            tts_config=in_language(tts_config or {'provider': 'x'}),
+        )
+        stack.agent_config['default_language'] = language
+        stack.language_state['current_language'] = language
+        stack.supported_languages = supported
+        return stack
 
     async def __aenter__(self):
         self.run = asyncio.create_task(_run(self.task))
@@ -676,3 +748,119 @@ async def test_input_frames_are_not_lost_into_the_old_stack_after_swap():
             lambda: len([t for t in h.collector.texts if t.startswith('beta:')]) == 5
         )
         assert not [t for t in h.collector.texts if t.startswith('alpha:')]
+
+
+SAME_STT = {
+    'provider': 'deepgram',
+    'api_key': 'k',
+    'parameters': {'sample_rate': 16000},
+}
+
+
+async def test_swap_keeps_live_stt_when_config_is_identical():
+    configs = {
+        'alpha': (SAME_STT, {'provider': 'x', 'voice_id': 'a'}),
+        'beta': (dict(SAME_STT), {'provider': 'x', 'voice_id': 'b'}),
+    }
+    async with ControllerHarness(service_configs=configs) as h:
+        old_stt = h.stack.stt
+        old_tts = h.stack.tts
+
+        await h.switch(B_ID)
+
+        new_stack = h.shared.active_stack
+        assert new_stack.agent_id == B_ID
+        # The STT (the tagger) is the live one: never restarted or cleaned up
+        assert new_stack.stt is old_stt
+        assert h.log.count(('start', 'alpha')) == 1
+        assert ('cancel', 'alpha') not in h.log
+        assert ('cleanup', 'alpha') not in h.log
+        assert ('start', 'beta') not in h.log
+        # The rest of the agent was swapped, TTS included (different voice)
+        assert new_stack.tts is not old_tts
+        assert ('cleanup', 'alpha-asst') in h.log
+
+        await h.task.queue_frame(TextFrame('after'))
+        await _until(lambda: 'alpha:after' in h.collector.texts)
+        assert h.collector.starts == 1
+        assert h.collector.cancels == 0
+
+
+def _sarvam(language: str) -> Dict[str, Any]:
+    return {'provider': 'sarvam', 'api_key': 'k', 'parameters': {'language': language}}
+
+
+SARVAM_TTS = {'provider': 'sarvam', 'api_key': 'k', 'voice_id': 'simran'}
+MULTI = (['en', 'hi'], 'hi')
+
+
+async def test_swap_carries_the_live_language_and_keeps_stt_and_tts():
+    configs = {'alpha': (SAME_STT, SARVAM_TTS), 'beta': (SAME_STT, SARVAM_TTS)}
+    languages = {'alpha': MULTI, 'beta': MULTI}
+    async with ControllerHarness(service_configs=configs, languages=languages) as h:
+        # The app (or the user) moved the call to English at runtime
+        h.stack.language_state['current_language'] = 'en'
+        old_stt, old_tts = h.stack.stt, h.stack.tts
+
+        await h.switch(B_ID)
+
+        new_stack = h.shared.active_stack
+        # beta starts in English (not its default Hindi), so nothing reconnects
+        assert h.built_defaults == ['en']
+        assert new_stack.language_state['current_language'] == 'en'
+        assert new_stack.stt is old_stt
+        assert new_stack.tts is old_tts
+        assert ('cleanup', 'alpha') not in h.log
+        # The cached configs were not touched
+        assert h.options.config_cache is None or all(
+            c['agent'].get('default_language') == 'hi'
+            for c in h.options.config_cache.values()
+        )
+
+
+async def test_swap_keeps_the_default_when_the_new_agent_lacks_the_language():
+    configs = {'alpha': (SAME_STT, None), 'beta': (SAME_STT, None)}
+    languages = {'alpha': (['en', 'ta'], 'en'), 'beta': MULTI}
+    async with ControllerHarness(service_configs=configs, languages=languages) as h:
+        h.stack.language_state['current_language'] = 'ta'
+        old_stt = h.stack.stt
+
+        await h.switch(B_ID)
+
+        # beta has no Tamil: it starts in Hindi, so the STT is rebuilt
+        assert h.built_defaults == ['hi']
+        assert h.shared.active_stack.stt is not old_stt
+        assert ('cleanup', 'alpha') in h.log
+        await h.task.queue_frame(TextFrame('after'))
+        await _until(lambda: 'beta:after' in h.collector.texts)
+
+
+def test_live_service_config_follows_a_runtime_language_switch():
+    stack = make_stack(A_ID, 'alpha', [])
+    stack.language_state['current_language'] = 'en'
+    stack.tts_voice_ids = {'hi': 'v-hi', 'en': 'v-en'}
+    tts = {'provider': 'sarvam', 'voice_id': 'v-hi', 'parameters': {'language': 'hi'}}
+
+    live = AgentSwapController._live_service_config(stack, tts, tts=True)
+    assert live == {
+        'provider': 'sarvam',
+        'voice_id': 'v-en',
+        'parameters': {'language': 'en'},
+    }
+    assert tts['parameters']['language'] == 'hi'  # not mutated
+    # STT: only the language moves
+    stt = _sarvam('hi')
+    assert AgentSwapController._live_service_config(stack, stt, tts=False) == (
+        _sarvam('en')
+    )
+    # Single-language services carry no language: unchanged
+    assert AgentSwapController._live_service_config(stack, SAME_STT, tts=False) is (
+        SAME_STT
+    )
+
+
+def test_step_opener_carries_the_instruction():
+    assert build_step_opener(None) == STEP_OPENER
+    assert build_step_opener('Say you are verifying the photo.') == (
+        f'{STEP_OPENER}\nSay you are verifying the photo.'
+    )

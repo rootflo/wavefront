@@ -5,8 +5,11 @@ Supports OpenAI (and OpenAI-compatible endpoints), Azure OpenAI, Gemini, Groq
 and AWS Bedrock.
 """
 
-from typing import Any, Dict, Optional
+import dataclasses
+import re
+from typing import Any, Dict, Optional, Sequence
 
+from pipecat.frames.frames import FunctionCallFromLLM
 from pipecat.services.aws.llm import AWSBedrockLLMService
 from pipecat.services.azure.llm import AzureLLMService
 from pipecat.services.google.llm import GoogleLLMService
@@ -42,6 +45,10 @@ GOOGLE_THINKING_KEYS = ('thinking_level', 'thinking_budget')
 # Bedrock Converse inferenceConfig, plus its performanceConfig latency mode
 BEDROCK_SETTINGS_KEYS = ('temperature', 'max_tokens', 'top_p', 'latency')
 
+# What Bedrock / OpenAI accept as a tool name: ^[a-zA-Z0-9_-]{1,64}$
+_INVALID_TOOL_NAME_CHARS = re.compile(r'[^a-zA-Z0-9_-]')
+_MAX_TOOL_NAME_LEN = 64
+
 
 def _openai_settings(parameters: Dict[str, Any]) -> Dict[str, Any]:
     settings = pick(parameters, OPENAI_SETTINGS_KEYS)
@@ -61,33 +68,72 @@ class LLMServiceFactory:
         Reads ``type`` (an ``LLMProvider``), ``api_key``, ``llm_model``, an
         optional ``base_url`` (required for Azure) and provider ``parameters``.
         """
-        llm_type = llm_config['type']
-        api_key = llm_config['api_key']
-        model = llm_config['llm_model']
-        base_url = llm_config.get('base_url')
-        parameters = llm_config.get('parameters') or {}
+        llm = _create_llm_service(llm_config)
+        _guard_tool_call_names(llm)
+        return llm
 
-        logger.info(f'Creating LLM service: {llm_type} / {model}')
 
-        if llm_type == LLMProvider.OPENAI:
-            if base_url and base_url != OPENAI_DEFAULT_BASE_URL:
-                return _create_openai_compatible_llm(
-                    api_key, model, parameters, base_url
+def _create_llm_service(llm_config: Dict[str, Any]):
+    llm_type = llm_config['type']
+    api_key = llm_config['api_key']
+    model = llm_config['llm_model']
+    base_url = llm_config.get('base_url')
+    parameters = llm_config.get('parameters') or {}
+
+    logger.info(f'Creating LLM service: {llm_type} / {model}')
+
+    if llm_type == LLMProvider.OPENAI:
+        if base_url and base_url != OPENAI_DEFAULT_BASE_URL:
+            return _create_openai_compatible_llm(api_key, model, parameters, base_url)
+        return _create_openai_llm(api_key, model, parameters)
+    if llm_type == LLMProvider.AZURE_OPENAI:
+        if not base_url:
+            raise ValueError(
+                'Azure OpenAI requires base_url (endpoint) to be configured'
+            )
+        return _create_azure_llm(api_key, model, parameters, base_url)
+    if llm_type == LLMProvider.GEMINI:
+        return _create_google_llm(api_key, model, parameters)
+    if llm_type == LLMProvider.GROQ:
+        return _create_groq_llm(api_key, model, parameters)
+    if llm_type == LLMProvider.BEDROCK:
+        return _create_bedrock_llm(api_key, model, parameters)
+    raise ValueError(f'Unsupported LLM type: {llm_type}')
+
+
+def sanitize_tool_name(name: str) -> str:
+    """A tool name the provider accepts, e.g. ``submit_identity游戏副本`` ->
+    ``submit_identity``. Valid names are returned unchanged."""
+    cleaned = _INVALID_TOOL_NAME_CHARS.sub('', name or '')[:_MAX_TOOL_NAME_LEN]
+    return cleaned or 'unknown_function'
+
+
+def _guard_tool_call_names(llm: Any) -> None:
+    """Repair malformed tool names the model emits before they are dispatched.
+
+    Models occasionally glue stray tokens onto a tool name. Pipecat answers an
+    unknown name with "not available" and records the call in the context, and
+    Bedrock / OpenAI then reject every later request whose history holds a name
+    outside ``[a-zA-Z0-9_-]``: the conversation is stuck. Repairing the name
+    here keeps the history valid and, when the repaired name is a registered
+    tool (the usual case), runs the call the model meant.
+    """
+    run_function_calls = llm.run_function_calls
+
+    async def run_guarded(function_calls: Sequence[FunctionCallFromLLM]):
+        repaired = []
+        for call in function_calls:
+            name = sanitize_tool_name(call.function_name)
+            if name != call.function_name:
+                logger.warning(
+                    f'LLM emitted malformed tool name {call.function_name!r}, '
+                    f'using {name!r}'
                 )
-            return _create_openai_llm(api_key, model, parameters)
-        if llm_type == LLMProvider.AZURE_OPENAI:
-            if not base_url:
-                raise ValueError(
-                    'Azure OpenAI requires base_url (endpoint) to be configured'
-                )
-            return _create_azure_llm(api_key, model, parameters, base_url)
-        if llm_type == LLMProvider.GEMINI:
-            return _create_google_llm(api_key, model, parameters)
-        if llm_type == LLMProvider.GROQ:
-            return _create_groq_llm(api_key, model, parameters)
-        if llm_type == LLMProvider.BEDROCK:
-            return _create_bedrock_llm(api_key, model, parameters)
-        raise ValueError(f'Unsupported LLM type: {llm_type}')
+                call = dataclasses.replace(call, function_name=name)
+            repaired.append(call)
+        await run_function_calls(repaired)
+
+    llm.run_function_calls = run_guarded
 
 
 def _log_settings(label: str, model: str, settings: Dict[str, Any], **extra) -> None:

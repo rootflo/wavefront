@@ -44,6 +44,10 @@ class AgentStack:
     welcome_message: str
     # Between LLM and TTS: speaks thinking / tool-call fillers
     filler: Any
+    # The exact configs the STT/TTS services were created from. A swap keeps the
+    # live service when the new agent's config is identical (no reconnect).
+    stt_config: Dict[str, Any] = field(default_factory=dict)
+    tts_config: Dict[str, Any] = field(default_factory=dict)
 
     @property
     def agent_id(self) -> str:
@@ -56,13 +60,11 @@ class AgentStack:
 
     @property
     def slot_a_processors(self) -> List[Any]:
-        """Everything between ``transport.input()`` and ``transport.output()``."""
+        """Everything between the STT and the TTS."""
         return [
-            self.stt,
             self.context_aggregator.user(),
             self.llm,
             self.filler,
-            self.tts,
         ]
 
     @property
