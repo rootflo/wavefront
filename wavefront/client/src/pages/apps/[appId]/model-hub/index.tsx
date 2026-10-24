@@ -3,7 +3,7 @@ import ListHeader, { FilterSelect } from '@app/components/ListHeader';
 import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
-import LLMConfigCard from '@app/components/LLMConfigCard';
+import ModelCard from '@app/components/ModelCard';
 import { ResourceCardSkeleton } from '@app/components/ResourceCard';
 import {
   Breadcrumb,
@@ -20,9 +20,9 @@ import { LLMInferenceConfig } from '@app/types/llm-inference-config';
 import { useQueryClient } from '@tanstack/react-query';
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import CreateLLMInferenceDialog from './CreateLLMInferenceDialog';
+import CreateModelDialog from './CreateModelDialog';
 
-const LLMInferenceConfigsManagement: React.FC = () => {
+const ModelHub: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -35,7 +35,7 @@ const LLMInferenceConfigsManagement: React.FC = () => {
   const [deleting, setDeleting] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
-  // Fetch LLM configs
+  // Fetch the models
   const { data: configs = [], isLoading: loading } = useGetLLMConfigs(appId);
 
   const filteredConfigs = configs.filter(
@@ -60,8 +60,8 @@ const LLMInferenceConfigsManagement: React.FC = () => {
     setCreateDialogOpen(false);
   };
 
-  const handleConfigClick = (llmId: string) => {
-    navigate(`/apps/${appId}/llm-repository/${llmId}`);
+  const handleConfigClick = (modelId: string) => {
+    navigate(`/apps/${appId}/model-hub/${modelId}`);
   };
 
   const handleDeleteClick = (e: React.MouseEvent, config: LLMInferenceConfig) => {
@@ -81,7 +81,7 @@ const LLMInferenceConfigsManagement: React.FC = () => {
       });
       setDeleteItem(null);
     } catch (error) {
-      console.error('Error deleting LLM inference config:', error);
+      console.error('Error deleting model:', error);
       const errorMessage = extractErrorMessage(error);
       notifyError(errorMessage || 'Failed to delete model');
     } finally {
@@ -109,10 +109,10 @@ const LLMInferenceConfigsManagement: React.FC = () => {
             <BreadcrumbLink asChild>
               <button
                 type="button"
-                onClick={() => navigate(`/apps/${appId}/llm-repository`)}
+                onClick={() => navigate(`/apps/${appId}/model-hub`)}
                 className="hover:text-foreground cursor-pointer"
               >
-                LLM Repository
+                Model Hub
               </button>
             </BreadcrumbLink>
           </BreadcrumbItem>
@@ -120,10 +120,10 @@ const LLMInferenceConfigsManagement: React.FC = () => {
       </Breadcrumb>
 
       <ListHeader
-        title="LLM Repository"
+        title="Model Hub"
         count={filteredConfigs.length || undefined}
-        subtitle={<>Manage LLMs for {selectedApp?.app_name}</>}
-        search={{ value: searchTerm, onChange: setSearchTerm, placeholder: 'Search llm repository' }}
+        subtitle={<>Manage models for {selectedApp?.app_name}</>}
+        search={{ value: searchTerm, onChange: setSearchTerm, placeholder: 'Search models' }}
         filters={
           providerOptions.length > 1 ? (
             <FilterSelect
@@ -135,7 +135,7 @@ const LLMInferenceConfigsManagement: React.FC = () => {
             />
           ) : undefined
         }
-        primary={{ label: 'Add LLM', onClick: handleCreateConfig }}
+        primary={{ label: 'Add model', onClick: handleCreateConfig }}
       />
       <div className="grid w-full gap-3 px-1 pt-2 pb-24 sm:grid-cols-2 sm:gap-6 sm:pb-10 lg:grid-cols-3">
         {loading ? (
@@ -147,16 +147,16 @@ const LLMInferenceConfigsManagement: React.FC = () => {
         ) : filteredConfigs.length === 0 ? (
           <div className="col-span-full mt-10 flex justify-center">
             <EmptyStateCard
-              title="No LLMs found"
-              description="Get started by adding your first LLM to the repository"
-              actionText="Add LLM"
+              title="No models found"
+              description="Get started by adding your first model to the Model Hub"
+              actionText="Add model"
               onActionClick={handleCreateConfig}
             />
           </div>
         ) : (
           <>
             {filteredConfigs.map((config) => (
-              <LLMConfigCard
+              <ModelCard
                 key={config.id}
                 config={config}
                 onClick={handleConfigClick}
@@ -170,16 +170,16 @@ const LLMInferenceConfigsManagement: React.FC = () => {
       {/* Delete Confirmation Dialog */}
       <DeleteConfirmationDialog
         isOpen={!!deleteItem}
-        title="Delete LLM"
+        title="Delete model"
         message={`Are you sure you want to delete "${deleteItem?.display_name}"? This action cannot be undone.`}
         onConfirm={handleDeleteConfirm}
         onCancel={handleDeleteCancel}
         loading={deleting}
       />
 
-      {/* Create LLM Dialog */}
+      {/* Add model dialog */}
       {appId && (
-        <CreateLLMInferenceDialog
+        <CreateModelDialog
           isOpen={createDialogOpen}
           onOpenChange={setCreateDialogOpen}
           appId={appId}
@@ -190,4 +190,4 @@ const LLMInferenceConfigsManagement: React.FC = () => {
   );
 };
 
-export default LLMInferenceConfigsManagement;
+export default ModelHub;

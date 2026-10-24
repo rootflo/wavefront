@@ -98,10 +98,10 @@ const navItems: NavItem[] = [
     description: 'Create, manage, and execute functions',
   },
   {
-    id: 'llm-repository',
-    name: 'LLM Repository',
+    id: 'model-hub',
+    name: 'Model Hub',
     icon: BrainCircuit,
-    link: `/apps/:appId/llm-repository`,
+    link: `/apps/:appId/model-hub`,
     description: 'Manage and configure LLMs for your application',
   },
   {
@@ -150,7 +150,7 @@ finalNavItems.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivi
 const NAV_GROUPS: { title: string; ids: string[] }[] = [
   { title: 'Build', ids: ['agents', 'workflows', 'voice-agents', 'chatbots', 'functions'] },
   { title: 'Data', ids: ['datasources', 'knowledge-bases', 'configurations', 'api-services'] },
-  { title: 'Connect', ids: ['llm-repository', 'email-connections', 'oauth-apps', 'authenticators'] },
+  { title: 'Connect', ids: ['model-hub', 'email-connections', 'oauth-apps', 'authenticators'] },
   { title: 'AI Governance', ids: ['guardrails'] },
   { title: 'Others', ids: ['scheduled-jobs'] },
 ];
@@ -292,7 +292,7 @@ const AppLayout: React.FC = () => {
                       <span
                         className={clsx(
                           'min-w-0 flex-1 truncate text-[13.5px] leading-none',
-                          isActive ? 'font-semibold' : 'font-medium'
+                          isActive ? 'font-medium' : 'font-normal'
                         )}
                       >
                         {item.name}

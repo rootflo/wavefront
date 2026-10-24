@@ -39,7 +39,7 @@ const BASE_URL_PLACEHOLDERS: Record<InferenceEngineType, string> = {
 
 const REQUIRES_API_KEY: InferenceEngineType[] = ['openai', 'anthropic', 'gemini', 'azure_openai', 'groq'];
 
-const createLLMInferenceSchema = z
+const createModelSchema = z
   .object({
     displayName: z.string().min(1, 'Display name is required'),
     llmModel: z.string().min(1, 'Choose a model'),
@@ -78,11 +78,11 @@ const createLLMInferenceSchema = z
     }
   });
 
-type CreateLLMInferenceInput = z.infer<typeof createLLMInferenceSchema>;
+type CreateModelInput = z.infer<typeof createModelSchema>;
 
 const DEFAULT_TYPE: InferenceEngineType = 'openai';
 
-const emptyForm = (type: InferenceEngineType): CreateLLMInferenceInput => ({
+const emptyForm = (type: InferenceEngineType): CreateModelInput => ({
   displayName: '',
   llmModel: '',
   type,
@@ -94,7 +94,7 @@ const emptyForm = (type: InferenceEngineType): CreateLLMInferenceInput => ({
   awsRegion: type === 'bedrock' ? 'us-east-1' : '',
 });
 
-interface CreateLLMInferenceDialogProps {
+interface CreateModelDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   appId: string;
@@ -108,12 +108,7 @@ const SectionTitle: React.FC<{ title: string; description?: string }> = ({ title
   </div>
 );
 
-const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
-  isOpen,
-  onOpenChange,
-  appId,
-  onSuccess,
-}) => {
+const CreateModelDialog: React.FC<CreateModelDialogProps> = ({ isOpen, onOpenChange, appId, onSuccess }) => {
   const navigate = useNavigate();
   const { notifySuccess, notifyError } = useNotifyStore();
   const [parameters, setParameters] = useState<Record<string, unknown>>({});
@@ -122,8 +117,8 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
   const displayNameEdited = useRef(false);
   const { selectedApp } = useDashboardStore();
 
-  const form = useForm<CreateLLMInferenceInput>({
-    resolver: zodResolver(createLLMInferenceSchema),
+  const form = useForm<CreateModelInput>({
+    resolver: zodResolver(createModelSchema),
     defaultValues: emptyForm(DEFAULT_TYPE),
   });
 
@@ -165,9 +160,9 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
     }
   };
 
-  const onSubmit = async (data: CreateLLMInferenceInput) => {
+  const onSubmit = async (data: CreateModelInput) => {
     if (!appId) {
-      notifyError('LLM inference config service not available');
+      notifyError('Model service not available');
       return;
     }
 
@@ -192,18 +187,18 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
         parameters: Object.keys(kept).length > 0 ? kept : undefined,
       });
 
-      notifySuccess('Model added to repository successfully');
+      notifySuccess('Model added to the Model Hub');
       onSuccess?.();
       onOpenChange(false);
 
       const responseData = response.data?.data;
       if (responseData?.id) {
-        navigate(`/apps/${appId}/llm-repository/${responseData.id}`);
+        navigate(`/apps/${appId}/model-hub/${responseData.id}`);
       }
     } catch (error) {
-      console.error('Error creating LLM inference config:', error);
+      console.error('Error adding model:', error);
       const errorMessage = extractErrorMessage(error);
-      notifyError(errorMessage || 'Failed to add model to repository');
+      notifyError(errorMessage || 'Failed to add model');
     } finally {
       setCreating(false);
     }
@@ -214,7 +209,7 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
       <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto lg:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Add model</DialogTitle>
-          <DialogDescription>Add a model to the repository for {selectedApp?.app_name}</DialogDescription>
+          <DialogDescription>Add a model to the Model Hub for {selectedApp?.app_name}</DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
@@ -440,4 +435,4 @@ const CreateLLMInferenceDialog: React.FC<CreateLLMInferenceDialogProps> = ({
   );
 };
 
-export default CreateLLMInferenceDialog;
+export default CreateModelDialog;

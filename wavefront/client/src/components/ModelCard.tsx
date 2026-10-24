@@ -4,7 +4,7 @@ import React from 'react';
 import { LLM_PROVIDERS_CONFIG } from '@app/config/llm-providers';
 import ResourceCard, { ResourceCardMetadata } from './ResourceCard';
 
-interface LLMConfigCardProps {
+interface ModelCardProps {
   config: LLMInferenceConfig;
   onClick: (configId: string) => void;
   onDeleteClick: (e: React.MouseEvent, config: LLMInferenceConfig) => void;
@@ -24,7 +24,7 @@ export const getTypeColor = (type: InferenceEngineType) => {
   return colors[type] || 'frost-text bg-frost-glass-strong ring-1 ring-frost-border';
 };
 
-const LLMConfigCard: React.FC<LLMConfigCardProps> = ({ config, onClick, onDeleteClick }) => {
+const ModelCard: React.FC<ModelCardProps> = ({ config, onClick, onDeleteClick }) => {
   const metadata: ResourceCardMetadata[] = [
     {
       label: 'Id',
@@ -47,9 +47,9 @@ const LLMConfigCard: React.FC<LLMConfigCardProps> = ({ config, onClick, onDelete
       chips={[{ label: LLM_PROVIDERS_CONFIG[config.type]?.name ?? config.type, className: getTypeColor(config.type) }]}
       onClick={() => onClick(config.id)}
       onDeleteClick={(e) => onDeleteClick(e, config)}
-      deleteTitle="Delete LLM"
+      deleteTitle="Delete model"
     />
   );
 };
 
-export default LLMConfigCard;
+export default ModelCard;

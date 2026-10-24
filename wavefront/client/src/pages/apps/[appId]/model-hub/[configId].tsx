@@ -34,7 +34,7 @@ import { z } from 'zod';
 
 const REQUIRES_API_KEY: InferenceEngineType[] = ['openai', 'anthropic', 'gemini', 'azure_openai', 'groq'];
 
-const llmConfigFormSchema = z
+const modelFormSchema = z
   .object({
     display_name: z.string().min(1, 'Display name is required'),
     llm_model: z.string().min(1, 'Choose a model'),
@@ -59,7 +59,7 @@ const llmConfigFormSchema = z
     }
   });
 
-type LLMConfigForm = z.infer<typeof llmConfigFormSchema>;
+type ModelForm = z.infer<typeof modelFormSchema>;
 
 /**
  * Build the complete set of form values from a saved config.
@@ -67,7 +67,7 @@ type LLMConfigForm = z.infer<typeof llmConfigFormSchema>;
  * field: `form.reset` replaces every value, so a partial payload would silently
  * blank out whatever it left out (e.g. the Azure-only `api_version`).
  */
-const buildFormValues = (config: LLMInferenceConfig): LLMConfigForm => ({
+const buildFormValues = (config: LLMInferenceConfig): ModelForm => ({
   display_name: config.display_name,
   llm_model: config.llm_model,
   type: config.type,
@@ -97,21 +97,21 @@ const SectionTitle: React.FC<{ title: string; description?: string; children?: R
   </div>
 );
 
-const LLMInferenceConfigDetail: React.FC = () => {
-  const { app: appId, llmId } = useParams<{ app: string; llmId: string }>();
+const ModelDetail: React.FC = () => {
+  const { app: appId, modelId } = useParams<{ app: string; modelId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { notifySuccess, notifyError } = useNotifyStore();
 
-  const { data: config, isLoading } = useGetLLMConfig(appId, llmId);
+  const { data: config, isLoading } = useGetLLMConfig(appId, modelId);
 
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [parameters, setParameters] = useState<Record<string, unknown>>({});
 
-  const form = useForm<LLMConfigForm>({
-    resolver: zodResolver(llmConfigFormSchema),
+  const form = useForm<ModelForm>({
+    resolver: zodResolver(modelFormSchema),
     defaultValues: {
       display_name: '',
       llm_model: '',
@@ -159,8 +159,8 @@ const LLMInferenceConfigDetail: React.FC = () => {
     form.setValue('llm_model', modelId, { shouldValidate: true });
   };
 
-  const handleSave = async (data: LLMConfigForm) => {
-    if (!llmId || !config) return;
+  const handleSave = async (data: ModelForm) => {
+    if (!modelId || !config) return;
 
     // The access key ID and secret are one credential: save both, keep the saved pair
     // untouched, or clear both. The secret is never returned, so a blank secret only
@@ -214,15 +214,15 @@ const LLMInferenceConfigDetail: React.FC = () => {
         updateData.api_key = null;
       }
 
-      await floConsoleService.llmInferenceService.updateLLMConfig(llmId, updateData);
+      await floConsoleService.llmInferenceService.updateLLMConfig(modelId, updateData);
 
-      queryClient.invalidateQueries({ queryKey: getLLMConfigKey(appId || '', llmId || '') });
+      queryClient.invalidateQueries({ queryKey: getLLMConfigKey(appId || '', modelId || '') });
       queryClient.invalidateQueries({ queryKey: getLLMConfigsKey(appId || '') });
       setEditing(false);
       form.setValue('api_key', '');
       notifySuccess('Model updated successfully');
     } catch (error) {
-      console.error('Error updating LLM inference config:', error);
+      console.error('Error updating model:', error);
       const errorMessage = extractErrorMessage(error);
       notifyError(errorMessage || 'Failed to update model');
     } finally {
@@ -231,14 +231,14 @@ const LLMInferenceConfigDetail: React.FC = () => {
   };
 
   const handleDelete = async () => {
-    if (!llmId || !config || !appId) return;
+    if (!modelId || !config || !appId) return;
     try {
-      await floConsoleService.llmInferenceService.deleteLLMConfig(llmId);
-      queryClient.invalidateQueries({ queryKey: getLLMConfigKey(appId, llmId) });
+      await floConsoleService.llmInferenceService.deleteLLMConfig(modelId);
+      queryClient.invalidateQueries({ queryKey: getLLMConfigKey(appId, modelId) });
       notifySuccess('Model deleted successfully');
-      navigate(`/apps/${appId}/llm-repository`);
+      navigate(`/apps/${appId}/model-hub`);
     } catch (error) {
-      console.error('Error deleting LLM inference config:', error);
+      console.error('Error deleting model:', error);
     }
   };
 
@@ -258,16 +258,16 @@ const LLMInferenceConfigDetail: React.FC = () => {
             <BreadcrumbLink asChild>
               <button
                 type="button"
-                onClick={() => navigate(`/apps/${appId}/llm-repository`)}
+                onClick={() => navigate(`/apps/${appId}/model-hub`)}
                 className="hover:text-foreground cursor-pointer"
               >
-                LLM Repository
+                Model Hub
               </button>
             </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
-            <BreadcrumbPage>{config?.display_name || llmId}</BreadcrumbPage>
+            <BreadcrumbPage>{config?.display_name || modelId}</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
@@ -283,7 +283,7 @@ const LLMInferenceConfigDetail: React.FC = () => {
           <div className="flex shrink-0 items-start justify-between gap-3">
             <div className="flex min-w-0 flex-1 flex-col gap-1">
               <div className="flex min-w-0 items-center gap-2">
-                <MobileBackButton to={`/apps/${appId}/llm-repository`} label="Back to llm repository" />
+                <MobileBackButton to={`/apps/${appId}/model-hub`} label="Back to Model Hub" />
                 <p className="frost-text min-w-0 truncate text-xl leading-normal font-semibold sm:text-2xl">
                   {formatAppName(config.display_name)}
                 </p>
@@ -537,4 +537,4 @@ const LLMInferenceConfigDetail: React.FC = () => {
   );
 };
 
-export default LLMInferenceConfigDetail;
+export default ModelDetail;

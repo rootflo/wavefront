@@ -160,12 +160,12 @@ const ChatbotFormFields: React.FC<ChatbotFormFieldsProps> = ({
             render={({ field }) => (
               <FormItem>
                 <FormLabel>
-                  LLM Configuration<span className="text-red-500">*</span>
+                  Model<span className="text-red-500">*</span>
                 </FormLabel>
                 <Select onValueChange={field.onChange} value={field.value}>
                   <FormControl>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select LLM configuration" />
+                      <SelectValue placeholder="Select a model" />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
@@ -183,7 +183,7 @@ const ChatbotFormFields: React.FC<ChatbotFormFieldsProps> = ({
                 </Select>
                 {llmConfigs.length === 0 && (
                   <FormDescription className="text-amber-600">
-                    No LLM configurations found. Create one first.
+                    No models in the Model Hub yet. Add one first.
                   </FormDescription>
                 )}
                 {selectedConfigMissing && llmConfigs.length > 0 && (

@@ -70,7 +70,7 @@ const isFormTab = (value: string): value is FormTab => Object.values(FORM_TAB).i
 const createVoiceAgentSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100, 'Name must be 100 characters or less'),
   description: z.string().max(500, 'Description must be 500 characters or less').optional(),
-  llm_config_id: z.string().min(1, 'LLM configuration is required'),
+  llm_config_id: z.string().min(1, 'Model is required'),
   tts_config_id: z.string().min(1, 'TTS configuration is required'),
   stt_config_id: z.string().min(1, 'STT configuration is required'),
   telephony_config_id: z.string().min(1, 'Telephony configuration is required'),
@@ -761,7 +761,7 @@ const CreateVoiceAgentDialog: React.FC<CreateVoiceAgentDialogProps> = ({ isOpen,
                           <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>
                               <SelectTrigger>
-                                <SelectValue placeholder="Select LLM configuration" />
+                                <SelectValue placeholder="Select a model" />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>

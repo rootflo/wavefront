@@ -124,7 +124,7 @@ const ModelField = ({ appId, llmConfigs }: { appId?: string; llmConfigs: LLMInfe
                   clearErrors('modelId');
                 }}
               >
-                Use a RootFlo LLM config instead
+                Use a model from the Model Hub instead
               </Button>
             </div>
             <p className="frost-text-muted text-xs">Edit provider settings for this model in the YAML tab.</p>
@@ -155,7 +155,7 @@ const ModelField = ({ appId, llmConfigs }: { appId?: string; llmConfigs: LLMInfe
               </FormControl>
               <SelectContent>
                 {field.value && !isKnownConfig && (
-                  <SelectItem value={field.value}>Unavailable LLM config ({field.value})</SelectItem>
+                  <SelectItem value={field.value}>Unavailable model ({field.value})</SelectItem>
                 )}
                 {llmConfigs.map((config) => (
                   <SelectItem key={config.id} value={config.id}>
@@ -166,10 +166,10 @@ const ModelField = ({ appId, llmConfigs }: { appId?: string; llmConfigs: LLMInfe
             </Select>
             {llmConfigs.length === 0 && (
               <p className="frost-text-muted text-xs">
-                No LLM configs in this app yet.{' '}
+                No models in the Model Hub yet.{' '}
                 {appId && (
-                  <Link to={`/apps/${appId}/llm-repository`} className="text-primary underline">
-                    Create one
+                  <Link to={`/apps/${appId}/model-hub`} className="text-primary underline">
+                    Add one
                   </Link>
                 )}
               </p>
