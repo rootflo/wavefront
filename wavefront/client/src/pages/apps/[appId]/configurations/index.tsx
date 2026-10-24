@@ -119,7 +119,7 @@ const ConfigurationsManagement: React.FC = () => {
         search={{ value: searchTerm, onChange: setSearchTerm, placeholder: 'Search configurations' }}
         primary={{ label: 'Create configuration', onClick: handleCreateConfiguration }}
       />
-      <div className="grid w-full gap-3 px-1 pt-2 pb-24 sm:grid-cols-2 sm:gap-6 sm:pb-10 lg:grid-cols-3">
+      <div className="-mx-1 -mt-2 grid gap-3 px-1 pt-2 pb-24 sm:grid-cols-2 sm:gap-6 sm:pb-10 lg:grid-cols-3">
         {loading ? (
           <>
             {Array.from({ length: 6 }).map((_, index) => (

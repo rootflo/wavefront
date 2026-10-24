@@ -27,7 +27,7 @@ import CreateAgentDialog from './CreateAgentDialog';
 const AgentManagement: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();
   const navigate = useNavigate();
-  const [view, setView] = useListView();
+  const [view, setView] = useListView('agents');
   const { notifySuccess, notifyError } = useNotifyStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [namespace, setNamespace] = useState('');
@@ -134,7 +134,7 @@ const AgentManagement: React.FC = () => {
         primary={{ label: 'Create agent', onClick: handleCreateAgent }}
       />
       {agentsLoading || filteredAgents.length === 0 ? (
-        <div className="grid w-full gap-3 px-1 pt-2 pb-24 sm:grid-cols-2 sm:gap-6 sm:pb-10 lg:grid-cols-3">
+        <div className="-mx-1 -mt-2 grid gap-3 px-1 pt-2 pb-24 sm:grid-cols-2 sm:gap-6 sm:pb-10 lg:grid-cols-3">
           {agentsLoading ? (
             Array.from({ length: 6 }).map((_, index) => <ResourceCardSkeleton key={index} metadataCount={2} />)
           ) : (

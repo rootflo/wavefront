@@ -1,6 +1,6 @@
 import ListHeader from '@app/components/ListHeader';
 import ResourceCard from '@app/components/ResourceCard';
-import ResourceList, { ListViewToggle } from '@app/components/ResourceList';
+import ResourceList, { ListViewToggle, ResourceListSkeleton } from '@app/components/ResourceList';
 import { useListView } from '@app/lib/list-view';
 import floConsoleService from '@app/api';
 import BulkDownloadDialog from '@app/components/BulkDownloadDialog';
@@ -39,7 +39,7 @@ const formatCreatedAt = (value?: string) => {
 const FunctionsManagement: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();
   const navigate = useNavigate();
-  const [view, setView] = useListView();
+  const [view, setView] = useListView('functions');
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [deleteItem, setDeleteItem] = useState<MessageProcessorListItem | null>(null);
@@ -237,7 +237,7 @@ const FunctionsManagement: React.FC = () => {
       {bulkError ? <ErrorBanner message={bulkError} onDismiss={() => setBulkError('')} /> : null}
 
       {loading ? (
-        <p className="frost-text-muted text-sm">Loading functions...</p>
+        <ResourceListSkeleton view={view} />
       ) : filteredProcessors.length === 0 ? (
         <div className="mt-10 flex justify-center">
           <EmptyStateCard

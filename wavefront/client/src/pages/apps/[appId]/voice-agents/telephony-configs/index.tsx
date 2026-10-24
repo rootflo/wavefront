@@ -1,6 +1,6 @@
 import ListHeader from '@app/components/ListHeader';
 import ResourceCard from '@app/components/ResourceCard';
-import ResourceList, { ListViewToggle } from '@app/components/ResourceList';
+import ResourceList, { ListViewToggle, ResourceListSkeleton } from '@app/components/ResourceList';
 import { useListView } from '@app/lib/list-view';
 import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
@@ -21,7 +21,7 @@ import EditTelephonyConfigDialog from './EditTelephonyConfigDialog';
 
 const TelephonyConfigsPage: React.FC = () => {
   const { app } = useParams<{ app: string }>();
-  const [view, setView] = useListView();
+  const [view, setView] = useListView('telephony-configs');
   const queryClient = useQueryClient();
   const { notifySuccess, notifyError } = useNotifyStore();
 
@@ -99,9 +99,7 @@ const TelephonyConfigsPage: React.FC = () => {
       />
 
       {configsLoading ? (
-        <div className="flex justify-center py-10">
-          <div className="frost-text-muted">Loading telephony configurations...</div>
-        </div>
+        <ResourceListSkeleton view={view} />
       ) : filteredConfigs.length === 0 ? (
         <div className="mt-10 flex justify-center">
           <EmptyStateCard

@@ -1,6 +1,6 @@
 import ListHeader, { FilterSelect } from '@app/components/ListHeader';
 import ResourceCard from '@app/components/ResourceCard';
-import ResourceList, { ListViewToggle } from '@app/components/ResourceList';
+import ResourceList, { ListViewToggle, ResourceListSkeleton } from '@app/components/ResourceList';
 import { useListView } from '@app/lib/list-view';
 import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
@@ -32,7 +32,7 @@ import { formatTemperature } from './schemas';
 const ChatbotsPage: React.FC = () => {
   const { app } = useParams<{ app: string }>();
   const navigate = useNavigate();
-  const [view, setView] = useListView();
+  const [view, setView] = useListView('chatbots');
   const queryClient = useQueryClient();
   const { notifySuccess, notifyError } = useNotifyStore();
   const { selectedApp } = useDashboardStore();
@@ -172,9 +172,7 @@ const ChatbotsPage: React.FC = () => {
         />
 
         {isLoading ? (
-          <div className="flex justify-center py-10">
-            <div className="text-gray-500">Loading chatbots...</div>
-          </div>
+          <ResourceListSkeleton view={view} />
         ) : filteredChatbots.length === 0 ? (
           <div className="mt-10 flex justify-center">
             <EmptyStateCard

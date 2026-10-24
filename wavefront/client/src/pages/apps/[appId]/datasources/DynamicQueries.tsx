@@ -1,4 +1,5 @@
 import ListHeader from '@app/components/ListHeader';
+import { ResourceListSkeleton } from '@app/components/ResourceList';
 import BulkDownloadDialog from '@app/components/BulkDownloadDialog';
 import BulkUploadDialog, { MAX_BULK_UPLOAD_FILES } from '@app/components/BulkUploadDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
@@ -101,7 +102,7 @@ const DynamicQueries = ({
       {bulkError ? <ErrorBanner message={bulkError} onDismiss={() => setBulkError('')} /> : null}
 
       {isLoading ? (
-        <p className="frost-text-muted text-sm">Loading dynamic queries...</p>
+        <ResourceListSkeleton view="table" />
       ) : filteredQueries.length === 0 ? (
         <div className="mt-10 flex justify-center">
           <EmptyStateCard

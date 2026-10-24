@@ -1,3 +1,5 @@
+import { ResourceCardSkeleton } from '@app/components/ResourceCard';
+import { Skeleton } from '@app/components/ui/skeleton';
 import { cn } from '@app/lib/utils';
 import { LayoutGrid, List } from 'lucide-react';
 import { ListView } from '@app/lib/list-view';
@@ -52,8 +54,8 @@ interface ResourceListProps {
 /** A Build page's items as a card grid or a table. */
 const ResourceList = ({ view, cards, table }: ResourceListProps) =>
   view === 'cards' ? (
-    <div className="min-h-0 flex-1 overflow-y-auto max-md:flex-none">
-      <div className="grid w-full gap-3 px-1 pt-2 pb-24 sm:grid-cols-2 sm:gap-6 sm:pb-10 lg:grid-cols-3">{cards}</div>
+    <div className="-mx-1 -mt-2 min-h-0 flex-1 overflow-y-auto max-md:flex-none">
+      <div className="grid gap-3 px-1 pt-2 pb-24 sm:grid-cols-2 sm:gap-6 sm:pb-10 lg:grid-cols-3">{cards}</div>
     </div>
   ) : (
     <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-xl border ring-1 max-md:flex-none">
@@ -63,5 +65,31 @@ const ResourceList = ({ view, cards, table }: ResourceListProps) =>
       <div className="max-md:hidden">{table}</div>
     </div>
   );
+
+// Column widths for the placeholder table: a name, an id, then a few short values and the actions.
+const SKELETON_COLUMNS = ['w-32', 'w-48', 'w-20', 'w-16', 'w-24'];
+
+/** Placeholders shaped like the list about to load: cards in card view, rows in table view (cards on a phone). */
+export const ResourceListSkeleton = ({ view, count = 6 }: { view: ListView; count?: number }) => {
+  const cards = Array.from({ length: count }).map((_, index) => <ResourceCardSkeleton key={index} showDescription />);
+  return (
+    <ResourceList
+      view={view}
+      cards={cards}
+      table={
+        <div aria-label="Loading" className="flex flex-col">
+          {Array.from({ length: count + 1 }).map((_, row) => (
+            <div key={row} className="border-frost-border flex items-center gap-8 border-b px-4 py-4 last:border-b-0">
+              {SKELETON_COLUMNS.map((width, column) => (
+                <Skeleton key={column} className={cn(row === 0 ? 'h-3 opacity-60' : 'h-4', width)} />
+              ))}
+              <Skeleton className={cn('ml-auto w-14', row === 0 ? 'h-3 opacity-60' : 'h-4')} />
+            </div>
+          ))}
+        </div>
+      }
+    />
+  );
+};
 
 export default ResourceList;

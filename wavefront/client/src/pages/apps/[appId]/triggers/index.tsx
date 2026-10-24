@@ -1,4 +1,5 @@
 import ListHeader, { FilterSelect } from '@app/components/ListHeader';
+import { ResourceListSkeleton } from '@app/components/ResourceList';
 import ResourceCard from '@app/components/ResourceCard';
 import { Zap, Play, Pause, RotateCcw } from 'lucide-react';
 import floConsoleService from '@app/api';
@@ -200,7 +201,7 @@ const TriggersPage: React.FC = () => {
       />
 
       {isLoading ? (
-        <p className="frost-text-muted text-sm">Loading triggers...</p>
+        <ResourceListSkeleton view="table" />
       ) : filteredTriggers.length === 0 ? (
         <div className="mt-10 flex justify-center">
           <EmptyStateCard

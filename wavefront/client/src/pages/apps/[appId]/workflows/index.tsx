@@ -1,6 +1,6 @@
 import ListHeader, { FilterSelect } from '@app/components/ListHeader';
 import ResourceCard from '@app/components/ResourceCard';
-import ResourceList, { ListViewToggle } from '@app/components/ResourceList';
+import ResourceList, { ListViewToggle, ResourceListSkeleton } from '@app/components/ResourceList';
 import { useListView } from '@app/lib/list-view';
 import floConsoleService from '@app/api';
 import BulkDownloadDialog from '@app/components/BulkDownloadDialog';
@@ -34,7 +34,7 @@ const ALL_NAMESPACES = '__all__';
 const WorkflowManagement: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();
   const navigate = useNavigate();
-  const [view, setView] = useListView();
+  const [view, setView] = useListView('workflows');
   const queryClient = useQueryClient();
   const { notifySuccess, notifyError } = useNotifyStore();
   const [searchTerm, setSearchTerm] = useState('');
@@ -214,7 +214,7 @@ const WorkflowManagement: React.FC = () => {
       {bulkError ? <ErrorBanner message={bulkError} onDismiss={() => setBulkError('')} /> : null}
 
       {loading ? (
-        <p className="frost-text-muted text-sm">Loading workflows...</p>
+        <ResourceListSkeleton view={view} />
       ) : filteredWorkflows.length === 0 ? (
         <div className="mt-10 flex justify-center">
           <EmptyStateCard

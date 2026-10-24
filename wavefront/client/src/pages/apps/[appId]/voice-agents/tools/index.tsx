@@ -1,6 +1,6 @@
 import ListHeader from '@app/components/ListHeader';
 import ResourceCard from '@app/components/ResourceCard';
-import ResourceList, { ListViewToggle } from '@app/components/ResourceList';
+import ResourceList, { ListViewToggle, ResourceListSkeleton } from '@app/components/ResourceList';
 import { useListView } from '@app/lib/list-view';
 import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
@@ -22,7 +22,7 @@ import EditToolDialog from './EditToolDialog';
 
 const ToolsPage: React.FC = () => {
   const { app } = useParams<{ app: string }>();
-  const [view, setView] = useListView();
+  const [view, setView] = useListView('voice-agent-tools');
   const queryClient = useQueryClient();
   const { notifySuccess, notifyError } = useNotifyStore();
 
@@ -129,9 +129,7 @@ const ToolsPage: React.FC = () => {
           />
         </div>
       ) : toolsLoading ? (
-        <div className="flex justify-center py-10">
-          <div className="frost-text-muted">Loading tools...</div>
-        </div>
+        <ResourceListSkeleton view={view} />
       ) : filteredTools.length === 0 ? (
         <div className="mt-10 flex justify-center">
           <EmptyStateCard

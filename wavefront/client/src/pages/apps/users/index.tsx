@@ -1,4 +1,5 @@
 import AppsBackdrop from '@app/components/AppsBackdrop';
+import { ResourceListSkeleton } from '@app/components/ResourceList';
 import ListHeader from '@app/components/ListHeader';
 import ResourceCard from '@app/components/ResourceCard';
 import floConsoleService from '@app/api';
@@ -122,9 +123,7 @@ const UsersPage: React.FC = () => {
       />
 
       {consoleUsersLoading ? (
-        <div className="flex justify-center py-10">
-          <div className="frost-text-muted">Loading users...</div>
-        </div>
+        <ResourceListSkeleton view="table" />
       ) : filteredUsers.length === 0 ? (
         <div className="mt-10 flex justify-center">
           {isOwner ? (

@@ -114,7 +114,7 @@ const AuthenticatorsPage: React.FC = () => {
         search={{ value: searchQuery, onChange: setSearchQuery, placeholder: 'Search authenticators' }}
         primary={{ label: 'Create authenticator', onClick: handleCreateAuthenticator }}
       />
-      <div className="grid w-full gap-3 px-1 pt-2 pb-24 sm:grid-cols-2 sm:gap-6 sm:pb-10 lg:grid-cols-3">
+      <div className="-mx-1 -mt-2 grid gap-3 px-1 pt-2 pb-24 sm:grid-cols-2 sm:gap-6 sm:pb-10 lg:grid-cols-3">
         {authenticatorsLoading ? (
           <>
             {Array.from({ length: 6 }).map((_, index) => (
