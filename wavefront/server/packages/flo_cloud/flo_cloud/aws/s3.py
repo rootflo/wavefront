@@ -4,7 +4,7 @@ import io
 from typing import Optional, List, Tuple, IO, ContextManager
 from contextlib import contextmanager
 from botocore.exceptions import ClientError
-from .._types import CloudStorageHandler
+from .._types import CloudStorageHandler, FolderListing, StorageObject
 from ..exceptions import CloudStorageFileNotFoundError
 import re
 
@@ -196,6 +196,52 @@ class S3Storage(CloudStorageHandler):
                 raise Exception(f'Error listing files from S3: {str(e)}')
         except Exception as e:
             raise Exception(f'Error listing files from S3: {str(e)}')
+
+    def list_folder(
+        self,
+        bucket_name: str,
+        prefix: str,
+        page_size: int = 100,
+        page_token: Optional[str] = None,
+        delimiter: str = '/',
+    ) -> FolderListing:
+        """One level under ``prefix``, using S3's Delimiter and ContinuationToken."""
+        try:
+            if page_size < 1:
+                raise ValueError('page_size must be >= 1')
+
+            request = {
+                'Bucket': bucket_name,
+                'Prefix': prefix,
+                'Delimiter': delimiter,
+                'MaxKeys': page_size,
+            }
+            if page_token:
+                request['ContinuationToken'] = page_token
+            response = self.s3_client.list_objects_v2(**request)
+
+            files = [
+                StorageObject(
+                    key=item['Key'],
+                    size=item.get('Size'),
+                    updated_at=item.get('LastModified'),
+                )
+                for item in response.get('Contents', [])
+            ]
+            folders = [entry['Prefix'] for entry in response.get('CommonPrefixes', [])]
+            return FolderListing(
+                folders=sorted(folders),
+                files=files,
+                next_page_token=response.get('NextContinuationToken')
+                if response.get('IsTruncated')
+                else None,
+            )
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'NoSuchBucket':
+                raise Exception(f'Bucket {bucket_name} not found')
+            raise Exception(f'Error listing folder from S3: {str(e)}')
+        except Exception as e:
+            raise Exception(f'Error listing folder from S3: {str(e)}')
 
     def delete_file(self, bucket_name: str, file_path: str) -> None:
         """

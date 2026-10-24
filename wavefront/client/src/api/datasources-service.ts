@@ -25,6 +25,9 @@ import {
   DynamicQueryResponse,
   DeleteDatasourceFileResponse,
   ListDatasourceFilesResponse,
+  BrowseDatasourceFilesResponse,
+  CreateDatasourceFolderResponse,
+  BatchUploadDatasourceFilesResponse,
   UploadDatasourceFileResponse,
 } from '@app/types/datasource';
 import { AxiosInstance, AxiosResponse } from 'axios';
@@ -98,6 +101,36 @@ export class DatasourcesService {
       `/v1/:appId/floware/v1/datasources/${datasourceId}/test-connection`
     );
     return response;
+  }
+
+  /** One folder level (sub-folders + files directly in it), paged by the token the last page returned. */
+  async browseFiles(
+    datasourceId: string,
+    params: { prefix?: string; page_size?: number; page_token?: string } = {}
+  ): Promise<BrowseDatasourceFilesResponse> {
+    return this.http.get(`/v1/:appId/floware/v1/datasources/${datasourceId}/files/browse`, {
+      params,
+    });
+  }
+
+  /** Upload several files in one request; `path` is each file's key relative to the base path. */
+  async uploadFilesBatch(
+    datasourceId: string,
+    items: { file: File; path: string }[]
+  ): Promise<BatchUploadDatasourceFilesResponse> {
+    const formData = new FormData();
+    items.forEach(({ file, path }) => {
+      formData.append('files', file);
+      formData.append('paths', path);
+    });
+    return this.http.post(`/v1/:appId/floware/v1/datasources/${datasourceId}/files/batch`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  }
+
+  /** Create an empty folder at `path`, relative to the datasource base path. */
+  async createFolder(datasourceId: string, path: string): Promise<CreateDatasourceFolderResponse> {
+    return this.http.post(`/v1/:appId/floware/v1/datasources/${datasourceId}/files/folders`, { path });
   }
 
   async listFiles(

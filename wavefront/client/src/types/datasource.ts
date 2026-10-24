@@ -52,6 +52,58 @@ export interface ListDatasourceFilesData {
 
 export type ListDatasourceFilesResponse = IApiResponse<ListDatasourceFilesData>;
 
+/** A sub-folder in a browse listing. */
+export interface DatasourceFolderEntry {
+  name: string;
+  /** Relative to the datasource base path, ending in '/'. */
+  prefix: string;
+}
+
+/** A file in a browse listing: a list entry plus what the provider reports about it. */
+export interface DatasourceBrowseFileEntry extends DatasourceFileEntry {
+  size: number | null;
+  /** Not reported by S3 when listing. */
+  content_type: string | null;
+  updated_at: string | null;
+}
+
+/** One folder level from `files/browse`: its sub-folders and the files directly in it. */
+export interface BrowseDatasourceFilesData {
+  prefix: string;
+  folders: DatasourceFolderEntry[];
+  files: DatasourceBrowseFileEntry[];
+  /** Pass back as `page_token` for the next page; null on the last. */
+  next_page_token: string | null;
+}
+
+export type BrowseDatasourceFilesResponse = IApiResponse<BrowseDatasourceFilesData>;
+
+export interface CreateDatasourceFolderData {
+  /** datasource://<datasource_id>/<folder>/ */
+  path: string;
+  /** Relative to the base path, ending in '/'. */
+  prefix: string;
+  storage_uri: string;
+}
+
+export type CreateDatasourceFolderResponse = IApiResponse<CreateDatasourceFolderData>;
+
+/** One file's outcome in a batch upload, in request order: its paths, or why it failed. */
+export interface BatchUploadResult {
+  index: number;
+  path?: string;
+  storage_uri?: string;
+  error?: string;
+}
+
+export interface BatchUploadDatasourceFilesData {
+  uploaded: number;
+  failed: number;
+  results: BatchUploadResult[];
+}
+
+export type BatchUploadDatasourceFilesResponse = IApiResponse<BatchUploadDatasourceFilesData>;
+
 export interface DeleteDatasourceFileData {
   path: string;
   storage_uri: string;

@@ -1,5 +1,29 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from datetime import datetime
 from typing import List, Tuple, Optional, IO, ContextManager
+
+
+@dataclass
+class StorageObject:
+    """One object from a listing, with what the provider's list call already returns about it."""
+
+    key: str
+    size: Optional[int] = None
+    # S3 doesn't return the content type when listing, only on a HEAD; it stays None there.
+    content_type: Optional[str] = None
+    updated_at: Optional[datetime] = None
+
+
+@dataclass
+class FolderListing:
+    """One level of a bucket: the folders and objects directly under a prefix."""
+
+    # Full prefixes of the immediate sub-folders, each ending in the delimiter.
+    folders: List[str] = field(default_factory=list)
+    files: List[StorageObject] = field(default_factory=list)
+    # Pass back to get the next page; None on the last one.
+    next_page_token: Optional[str] = None
 
 
 class CloudStorageHandler(ABC):
@@ -87,6 +111,34 @@ class CloudStorageHandler(ABC):
     ) -> str:
         """ """
         pass
+
+    def list_folder(
+        self,
+        bucket_name: str,
+        prefix: str,
+        page_size: int = 100,
+        page_token: Optional[str] = None,
+        delimiter: str = '/',
+    ) -> FolderListing:
+        """
+        List one level under ``prefix``: its immediate folders and the objects directly in it.
+
+        Unlike ``list_files`` this does not descend into sub-folders, and it pages with the
+        provider's own continuation token, so every page costs one list call however deep it is.
+
+        Args:
+            bucket_name: Name of the bucket
+            prefix: Folder to list, ending in ``delimiter`` (or '' for the bucket root)
+            page_size: Most objects to return in one page
+            page_token: ``next_page_token`` from the previous page, or None for the first
+            delimiter: What separates folder names in a key
+
+        Returns:
+            FolderListing for this page.
+        """
+        raise NotImplementedError(
+            f'{type(self).__name__} does not support folder listing'
+        )
 
     @abstractmethod
     def list_files(

@@ -1,6 +1,7 @@
 """Upload/download endpoints and the SQL-only guard for file storage datasources."""
 
 import json
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -9,6 +10,7 @@ from datasource import PostgresConfig, S3FileStorageConfig
 from datasource.types import DataSourceType
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
+from flo_cloud._types import FolderListing, StorageObject
 from flo_cloud.exceptions import CloudStorageFileNotFoundError
 
 from common_module.common_container import CommonContainer
@@ -20,6 +22,9 @@ from plugins_module.plugins_container import PluginsContainer
 DATASOURCE_ID = '11111111-1111-1111-1111-111111111111'
 FILES_URL = f'/v1/datasources/{DATASOURCE_ID}/files'
 FILES_LIST_URL = f'/v1/datasources/{DATASOURCE_ID}/files/list'
+FILES_BROWSE_URL = f'/v1/datasources/{DATASOURCE_ID}/files/browse'
+FILES_BATCH_URL = f'/v1/datasources/{DATASOURCE_ID}/files/batch'
+FOLDERS_URL = f'/v1/datasources/{DATASOURCE_ID}/files/folders'
 S3_CONFIG = S3FileStorageConfig(bucket_name='bkt')
 PG_CONFIG = PostgresConfig('h', 5432, 'db', 'u', 'p')
 AUDIT_SERVICE = MagicMock()
@@ -93,6 +98,19 @@ def plugin():
         instance.download_file_with_content_type.return_value = (b'%PDF-1.4', None)
         instance.list_files.return_value = (['docs/a.pdf', 'test/vishnu'], False)
         instance.delete_file.side_effect = lambda path: f's3://bkt/{path}'
+        instance.create_folder.side_effect = lambda path: f's3://bkt/{path}/'
+        instance.list_folder.return_value = FolderListing(
+            folders=['docs/2025/'],
+            files=[
+                StorageObject(
+                    'docs/a.pdf',
+                    12,
+                    'application/pdf',
+                    datetime(2025, 10, 1, tzinfo=timezone.utc),
+                )
+            ],
+            next_page_token='tok-2',
+        )
         yield instance
 
 
@@ -358,6 +376,161 @@ class TestDownload:
     def test_sql_datasource_rejected(self, client, admin, datasource_config, plugin):
         datasource_config.return_value = (DataSourceType.POSTGRES, PG_CONFIG)
         response = client.get(FILES_URL, params={'path': 'a.txt'})
+        assert response.status_code == 400
+
+
+class TestBrowse:
+    def test_returns_one_level_with_details(
+        self, client, admin, datasource_config, plugin
+    ):
+        response = client.get(
+            FILES_BROWSE_URL, params={'prefix': 'docs/', 'page_token': 'tok-1'}
+        )
+        assert response.status_code == 200
+        assert response.json()['data'] == {
+            'prefix': 'docs/',
+            'folders': [{'name': '2025', 'prefix': 'docs/2025/'}],
+            'files': [
+                {
+                    'path': f'datasource://{DATASOURCE_ID}/docs/a.pdf',
+                    'relative_path': 'docs/a.pdf',
+                    'name': 'a.pdf',
+                    'size': 12,
+                    'content_type': 'application/pdf',
+                    'updated_at': '2025-10-01T00:00:00+00:00',
+                }
+            ],
+            'next_page_token': 'tok-2',
+        }
+        plugin.list_folder.assert_called_once_with('docs/', 100, 'tok-1')
+
+    def test_invalid_prefix(self, client, admin, datasource_config, plugin):
+        plugin.list_folder.side_effect = ValueError('bad path')
+        response = client.get(FILES_BROWSE_URL, params={'prefix': '../x'})
+        assert response.status_code == 400
+
+    def test_rejects_sql_datasource(self, client, admin, datasource_config, plugin):
+        datasource_config.return_value = (DataSourceType.POSTGRES, PG_CONFIG)
+        response = client.get(FILES_BROWSE_URL)
+        assert response.status_code == 400
+        plugin.list_folder.assert_not_called()
+
+    def test_non_admin_forbidden(self, client, admin, datasource_config, plugin):
+        admin.return_value = False
+        response = client.get(FILES_BROWSE_URL)
+        assert response.status_code == 403
+
+
+class TestCreateFolder:
+    def test_creates_and_audits(self, client, admin, datasource_config, plugin, audit):
+        response = client.post(FOLDERS_URL, json={'path': '/reports/2025/'})
+        assert response.status_code == 201
+        assert response.json()['data'] == {
+            'path': f'datasource://{DATASOURCE_ID}/reports/2025/',
+            'prefix': 'reports/2025/',
+            'storage_uri': 's3://bkt/reports/2025/',
+        }
+        plugin.create_folder.assert_called_once_with('reports/2025')
+        entry = _audited(audit, 'upload')
+        assert entry.rows[0]['size_bytes'] == 0
+
+    @pytest.mark.parametrize('path', ['', '/', '../up'])
+    def test_rejects_bad_path(
+        self, client, admin, datasource_config, plugin, audit, path
+    ):
+        response = client.post(FOLDERS_URL, json={'path': path})
+        assert response.status_code == 400
+        plugin.create_folder.assert_not_called()
+        audit.assert_not_called()
+
+    def test_non_admin_forbidden(self, client, admin, datasource_config, plugin):
+        admin.return_value = False
+        response = client.post(FOLDERS_URL, json={'path': 'x'})
+        assert response.status_code == 403
+
+
+class TestBatchUpload:
+    def test_uploads_each_file_to_its_path(
+        self, client, admin, datasource_config, plugin, audit
+    ):
+        response = client.post(
+            FILES_BATCH_URL,
+            files=[
+                ('files', ('a.txt', b'aa', 'text/plain')),
+                ('files', ('b.png', b'bb', 'image/png')),
+            ],
+            data={'paths': ['photos/a.txt', 'photos/2025/']},
+        )
+        assert response.status_code == 200
+        assert response.json()['data'] == {
+            'uploaded': 2,
+            'failed': 0,
+            'results': [
+                {
+                    'index': 0,
+                    'path': f'datasource://{DATASOURCE_ID}/photos/a.txt',
+                    'storage_uri': 's3://bkt/photos/a.txt',
+                },
+                {
+                    'index': 1,
+                    'path': f'datasource://{DATASOURCE_ID}/photos/2025/b.png',
+                    'storage_uri': 's3://bkt/photos/2025/b.png',
+                },
+            ],
+        }
+        audit.assert_called_once()
+        assert len(audit.call_args.kwargs['entries']) == 2
+
+    def test_one_failure_does_not_stop_the_rest(
+        self, client, admin, datasource_config, plugin, audit
+    ):
+        def upload(content, path, content_type):
+            if path == 'bad.txt':
+                raise RuntimeError('storage down')
+            return f's3://bkt/{path}'
+
+        plugin.upload_file.side_effect = upload
+        response = client.post(
+            FILES_BATCH_URL,
+            files=[
+                ('files', ('bad.txt', b'x', 'text/plain')),
+                ('files', ('ok.txt', b'y', 'text/plain')),
+            ],
+            data={'paths': ['bad.txt', 'ok.txt']},
+        )
+        body = response.json()['data']
+        assert response.status_code == 200
+        assert (body['uploaded'], body['failed']) == (1, 1)
+        assert body['results'][0] == {'index': 0, 'error': 'Upload failed'}
+        assert body['results'][1]['path'].endswith('/ok.txt')
+        assert len(audit.call_args.kwargs['entries']) == 1
+
+    def test_paths_must_match_files(self, client, admin, datasource_config, plugin):
+        response = client.post(
+            FILES_BATCH_URL,
+            files=[('files', ('a.txt', b'a', 'text/plain'))],
+            data={'paths': ['a.txt', 'b.txt']},
+        )
+        assert response.status_code == 400
+        plugin.upload_file.assert_not_called()
+
+    def test_too_many_files(self, client, admin, datasource_config, plugin):
+        count = datasource_controller.MAX_BATCH_UPLOAD_FILES + 1
+        response = client.post(
+            FILES_BATCH_URL,
+            files=[('files', (f'{i}.txt', b'x', 'text/plain')) for i in range(count)],
+            data={'paths': [f'{i}.txt' for i in range(count)]},
+        )
+        assert response.status_code == 400
+        plugin.upload_file.assert_not_called()
+
+    def test_rejects_sql_datasource(self, client, admin, datasource_config, plugin):
+        datasource_config.return_value = (DataSourceType.POSTGRES, PG_CONFIG)
+        response = client.post(
+            FILES_BATCH_URL,
+            files=[('files', ('a.txt', b'a', 'text/plain'))],
+            data={'paths': ['a.txt']},
+        )
         assert response.status_code == 400
 
 
