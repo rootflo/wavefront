@@ -3,6 +3,7 @@ import AppsBackdrop from '@app/components/AppsBackdrop';
 import AppCompactCard from '@app/components/AppCompactCard';
 import AppShowcaseCard from '@app/components/AppShowcaseCard';
 import AppsHero from '@app/components/AppsHero';
+import ColumnsToggle from '@app/components/ColumnsToggle';
 import { FilterSelect } from '@app/components/ListHeader';
 import { ResourceCardSkeleton } from '@app/components/ResourceCard';
 import { Button } from '@app/components/ui/button';
@@ -204,7 +205,6 @@ const Dashboard: React.FC = () => {
         <AppsHero
           firstName={currentUser?.first_name}
           apps={sortedApps}
-          onOpenApp={handleAppClick}
           onCreate={handleCreateApp}
           search={apps.length > 3 ? { value: searchTerm, onChange: setSearchTerm } : undefined}
           filters={
@@ -220,21 +220,13 @@ const Dashboard: React.FC = () => {
           }
           extras={
             !isFew ? (
-              <FilterSelect
-                label="Per row"
-                value={String(columns)}
-                onValueChange={(value) => chooseColumns(Number(value))}
-                options={COLUMN_CHOICES.map((choice) => ({
-                  value: String(choice),
-                  label: choice >= COMPACT_FROM ? `${choice}` : String(choice),
-                }))}
-              />
+              <ColumnsToggle value={columns} choices={COLUMN_CHOICES} onChange={chooseColumns} className="w-full" />
             ) : undefined
           }
         />
 
         <div
-          className="no-scrollbar -mx-2 -mt-3 min-h-0 flex-1 overflow-y-auto px-2 pt-3 pb-24 sm:pb-10"
+          className="no-scrollbar -mx-2 mt-4 min-h-0 flex-1 overflow-y-auto px-2 pt-3 pb-24 sm:pb-10"
           onMouseOver={handleCardHover}
           onMouseLeave={() => setGlow(null)}
         >

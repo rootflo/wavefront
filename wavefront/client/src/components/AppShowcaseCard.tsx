@@ -7,21 +7,22 @@ import {
   DropdownMenuTrigger,
 } from '@app/components/ui/dropdown-menu';
 import { isLiveStatus, shortAgo } from '@app/lib/app-status';
+import { tintFor } from '@app/lib/app-tints';
 import { cn, formatAppName } from '@app/lib/utils';
 import { App } from '@app/types/app';
 import dayjs from 'dayjs';
 import {
   ArrowRight,
   ArrowUpRight,
-  Box,
-  Code2,
-  GitBranch,
-  Mic,
+  AudioLines,
+  Bot,
+  Braces,
   MoreVertical,
   Pencil,
   Pin,
   PinOff,
   Trash2,
+  Workflow,
 } from 'lucide-react';
 import React from 'react';
 
@@ -38,14 +39,11 @@ interface AppShowcaseCardProps {
   onDeleteClick: (app: App) => void;
 }
 
-// RGB triplets so one tint drives the banner, glow, avatar and button.
-const TINTS = ['47 109 246', '139 92 246', '20 184 166'];
-
 const SECTIONS = [
-  { id: 'agents', label: 'Agents', icon: Box },
-  { id: 'workflows', label: 'Flows', icon: GitBranch },
-  { id: 'voice-agents', label: 'Voice', icon: Mic },
-  { id: 'functions', label: 'Functions', icon: Code2 },
+  { id: 'agents', label: 'Agents', icon: Bot },
+  { id: 'workflows', label: 'Flows', icon: Workflow },
+  { id: 'voice-agents', label: 'Voice', icon: AudioLines },
+  { id: 'functions', label: 'Functions', icon: Braces },
 ];
 
 const menuItemClass = 'frost-text cursor-pointer gap-2.5 rounded-lg px-2.5 py-2.5 text-[13.5px]';
@@ -65,7 +63,7 @@ const AppShowcaseCard: React.FC<AppShowcaseCardProps> = ({
   const live = isLiveStatus(app.status);
   const publicUrl = app.public_url?.replace(/^https?:\/\//, '');
   const updated = dayjs(app.updated_at || app.created_at);
-  const tint = TINTS[index % TINTS.length];
+  const tint = tintFor(index);
 
   const facts = [
     {
@@ -218,14 +216,16 @@ const AppShowcaseCard: React.FC<AppShowcaseCardProps> = ({
           ) : null}
         </div>
 
-        <div className="grid grid-cols-3 gap-2.5">
-          {facts.map((fact) => (
-            <div key={fact.label} className="frost-control ring-frost-border min-w-0 rounded-xl px-3 py-2 ring-1">
-              <p className="frost-text-subtle text-[10.5px] font-semibold tracking-wider uppercase">{fact.label}</p>
-              <p className="frost-text truncate text-[13px] font-semibold">{fact.value}</p>
-            </div>
-          ))}
-        </div>
+        {wide ? (
+          <div className="hidden grid-cols-3 gap-2.5 md:grid">
+            {facts.map((fact) => (
+              <div key={fact.label} className="frost-control ring-frost-border min-w-0 rounded-xl px-3 py-2 ring-1">
+                <p className="frost-text-subtle text-[10.5px] font-semibold tracking-wider uppercase">{fact.label}</p>
+                <p className="frost-text truncate text-[13px] font-semibold">{fact.value}</p>
+              </div>
+            ))}
+          </div>
+        ) : null}
 
         <div className="grid grid-cols-4 gap-2">
           {SECTIONS.map(({ id, label, icon: Icon }) => (

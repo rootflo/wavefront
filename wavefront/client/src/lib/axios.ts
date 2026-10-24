@@ -1,5 +1,6 @@
 import { appEnv } from '@app/config/env';
 import { TOKEN_KEY } from '@app/lib/constants';
+import { clearSession } from '@app/lib/session';
 import { useAuthStore, useNotifyStore } from '@app/store';
 import axios, { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 
@@ -53,7 +54,7 @@ axiosInstance.interceptors.response.use(
     });
     const errCode = err.response?.status;
     if (errCode === 401) {
-      localStorage.clear();
+      clearSession();
       useAuthStore.setState({
         authenticated: false,
       });

@@ -96,7 +96,7 @@ const Topbar = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
 
         <div className="flex min-w-0 flex-1 items-center justify-between gap-2 pr-3 pl-2 sm:gap-4 sm:pr-8 sm:pl-5">
           <div className="flex min-w-0 items-center gap-3 sm:gap-6">
-            {apps.length > 0 ? (
+            {hasWorkspaceMenu && apps.length > 0 ? (
               <>
                 <button
                   type="button"
@@ -125,7 +125,7 @@ const Topbar = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
                 />
               </>
             ) : null}
-            {sectionName ? (
+            {hasWorkspaceMenu && sectionName ? (
               <span className="frost-text-muted hidden items-center gap-1.5 text-[13px] md:flex">
                 <ChevronRight className="size-3.5" />
                 <b className="frost-text font-semibold">{sectionName}</b>

@@ -7,9 +7,21 @@ import {
   DropdownMenuTrigger,
 } from '@app/components/ui/dropdown-menu';
 import { isLiveStatus } from '@app/lib/app-status';
+import { tintFor } from '@app/lib/app-tints';
 import { cn, formatAppName } from '@app/lib/utils';
 import { App } from '@app/types/app';
-import { ArrowUpRight, Box, Code2, GitBranch, Mic, MoreVertical, Pencil, Pin, PinOff, Trash2 } from 'lucide-react';
+import {
+  ArrowUpRight,
+  AudioLines,
+  Bot,
+  Braces,
+  MoreVertical,
+  Pencil,
+  Pin,
+  PinOff,
+  Trash2,
+  Workflow,
+} from 'lucide-react';
 import React from 'react';
 
 interface AppCompactCardProps {
@@ -22,16 +34,13 @@ interface AppCompactCardProps {
   onDeleteClick: (app: App) => void;
 }
 
-// Same colours as the large cards, as RGB triplets so one tint drives the avatar, glow and pin.
-const TINTS = ['47 109 246', '139 92 246', '20 184 166'];
-
 const menuItemClass = 'frost-text cursor-pointer gap-2.5 rounded-lg px-2.5 py-2.5 text-[13.5px]';
 
 const SECTIONS = [
-  { id: 'agents', label: 'Agents', icon: Box },
-  { id: 'workflows', label: 'Flows', icon: GitBranch },
-  { id: 'voice-agents', label: 'Voice', icon: Mic },
-  { id: 'functions', label: 'Functions', icon: Code2 },
+  { id: 'agents', label: 'Agents', icon: Bot },
+  { id: 'workflows', label: 'Flows', icon: Workflow },
+  { id: 'voice-agents', label: 'Voice', icon: AudioLines },
+  { id: 'functions', label: 'Functions', icon: Braces },
 ];
 
 /** The small tile used when many cards share a row: avatar, name, domain and a status light. */
@@ -47,7 +56,7 @@ const AppCompactCard: React.FC<AppCompactCardProps> = ({
   const displayName = formatAppName(app.app_name);
   const live = isLiveStatus(app.status);
   const publicUrl = app.public_url?.replace(/^https?:\/\//, '');
-  const tint = TINTS[index % TINTS.length];
+  const tint = tintFor(index);
 
   return (
     <article

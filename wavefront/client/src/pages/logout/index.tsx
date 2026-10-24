@@ -1,4 +1,5 @@
 import floConsoleService from '@app/api';
+import { clearSession } from '@app/lib/session';
 import { useAuthStore, useNotifyStore } from '@app/store';
 import { useDashboardStore } from '@app/store';
 import { useQueryClient } from '@tanstack/react-query';
@@ -17,7 +18,7 @@ const Logout = () => {
 
   const onLogout = () => {
     resetAllStores();
-    localStorage.clear();
+    clearSession();
     queryClient.clear();
     navigate('/login');
   };

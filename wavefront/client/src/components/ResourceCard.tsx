@@ -246,10 +246,14 @@ const ResourceCard: React.FC<ResourceCardProps> = ({
               title={copied ? 'Copied to clipboard' : 'Copy ID'}
               aria-label={copied ? 'Copied to clipboard' : 'Copy ID'}
               onClick={(e) => void handleCopy(e)}
-              className="frost-control hover:text-frost-text text-frost-text-muted inline-flex max-w-[60%] cursor-pointer items-center gap-1.5 rounded-full px-2 py-0.5 font-mono text-[11px] transition-colors"
+              className="frost-control hover:text-frost-text text-frost-text-muted inline-flex max-w-[35%] cursor-pointer items-center gap-1 rounded-full px-1.5 py-px font-mono text-[10px] transition-colors"
             >
               <span className="truncate">{copyable.value}</span>
-              {copied ? <Check className="size-3 shrink-0 text-emerald-600" /> : <Copy className="size-3 shrink-0" />}
+              {copied ? (
+                <Check className="size-2.5 shrink-0 text-emerald-600" />
+              ) : (
+                <Copy className="size-2.5 shrink-0" />
+              )}
             </button>
           ) : (
             <span />
