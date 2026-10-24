@@ -30,7 +30,7 @@ interface ListHeaderProps {
   search?: { value: string; onChange: (value: string) => void; placeholder?: string };
   /** Filter controls; use {@link FilterSelect} so they look right as chips on a phone. */
   filters?: React.ReactNode;
-  /** Desktop-only controls shown after the filters, such as a view switcher. */
+  /** Desktop-only controls shown right before the primary button, such as a view switcher. */
   extras?: React.ReactNode;
   /** Download, Upload and the like: ghost buttons on desktop, the ⋯ menu on a phone. */
   secondary?: ListHeaderAction[];
@@ -67,7 +67,7 @@ const ListHeader = ({
       {search || secondary?.length ? (
         <div className="flex items-center gap-2">
           {search ? (
-            <div className="relative min-w-0 flex-1 md:w-60 md:flex-none">
+            <div className="relative min-w-0 flex-1 md:w-48 md:flex-none">
               <Search className="frost-text-subtle pointer-events-none absolute top-1/2 left-3.5 z-10 size-4 -translate-y-1/2" />
               <Input
                 type="text"
@@ -117,7 +117,6 @@ const ListHeader = ({
       ) : null}
 
       <div className="hidden items-center gap-2.5 md:flex">
-        {extras}
         {secondary?.map((action) => (
           <Button
             key={action.label}
@@ -131,6 +130,7 @@ const ListHeader = ({
             {action.label}
           </Button>
         ))}
+        {extras}
         {primary ? (
           <Button
             type="button"
@@ -213,19 +213,22 @@ interface FilterSelectProps {
 /** A labelled dropdown that reads "Namespace: default" and sits in the header's filter row. */
 export const FilterSelect = ({ label, value, onValueChange, options, allValue, placeholder }: FilterSelectProps) => {
   const active = allValue !== undefined && value !== allValue && value !== '';
+  const selected = options.find((option) => option.value === value)?.label;
   return (
     <Select value={value} onValueChange={onValueChange}>
       <SelectTrigger
         aria-label={label}
+        title={selected ? `${label}: ${selected}` : label}
         className={cn(
-          'h-8 w-auto shrink-0 cursor-pointer gap-1.5 rounded-full px-3 text-[13px] font-medium md:h-10 md:min-w-44 md:rounded-[10px]',
+          'h-8 w-auto max-w-56 shrink-0 cursor-pointer gap-1.5 rounded-full px-3 text-[13px] font-medium md:h-10 md:w-44 md:max-w-none md:rounded-[10px]',
           active && 'bg-brand/12 text-brand ring-brand/30 border-transparent'
         )}
       >
-        <span className="flex items-center gap-1.5">
+        {/* A div, not a span: the trigger clamps its span children, which would undo the ellipsis. */}
+        <div className="min-w-0 flex-1 truncate text-left">
           <span className={cn('mr-1.5 font-normal', active ? 'text-brand/80' : 'frost-text-muted')}>{label}:</span>
           <SelectValue placeholder={placeholder ?? 'All'} />
-        </span>
+        </div>
       </SelectTrigger>
       <SelectContent>
         {options.map((option) => (

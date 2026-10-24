@@ -1,5 +1,7 @@
 import ListHeader from '@app/components/ListHeader';
 import ResourceCard from '@app/components/ResourceCard';
+import ResourceList, { ListViewToggle } from '@app/components/ResourceList';
+import { useListView } from '@app/lib/list-view';
 import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
@@ -19,6 +21,7 @@ import EditSttConfigDialog from './EditSttConfigDialog';
 
 const SttConfigsPage: React.FC = () => {
   const { app } = useParams<{ app: string }>();
+  const [view, setView] = useListView();
   const queryClient = useQueryClient();
   const { notifySuccess, notifyError } = useNotifyStore();
 
@@ -88,6 +91,7 @@ const SttConfigsPage: React.FC = () => {
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden max-md:overflow-y-auto">
       <ListHeader
+        extras={<ListViewToggle view={view} onChange={setView} />}
         search={{ value: searchQuery, onChange: setSearchQuery, placeholder: 'Search' }}
         primary={{ label: 'Create STT config', onClick: handleCreateSttConfig }}
         className="md:justify-end"
@@ -111,25 +115,28 @@ const SttConfigsPage: React.FC = () => {
           />
         </div>
       ) : (
-        <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-xl border ring-1 max-md:flex-none">
-          <div data-mobile-cards className="flex flex-col gap-3 pb-24 md:hidden">
-            {filteredConfigs.map((config) => (
-              <ResourceCard
-                key={config.id}
-                icon={AudioLines}
-                title={config.display_name}
-                description={config.description || undefined}
-                metadata={[
-                  { label: 'Provider', value: config.provider },
-                  { label: 'Created', value: new Date(config.created_at).toLocaleDateString() },
-                ]}
-                onEditClick={(e) => handleEditClick(e, config)}
-                onDeleteClick={(e) => handleDeleteClick(e, config)}
-                deleteTitle="Delete config"
-              />
-            ))}
-          </div>
-          <div className="max-md:hidden">
+        <ResourceList
+          view={view}
+          cards={
+            <>
+              {filteredConfigs.map((config) => (
+                <ResourceCard
+                  key={config.id}
+                  icon={AudioLines}
+                  title={config.display_name}
+                  description={config.description || undefined}
+                  metadata={[
+                    { label: 'Provider', value: config.provider },
+                    { label: 'Created', value: new Date(config.created_at).toLocaleDateString() },
+                  ]}
+                  onEditClick={(e) => handleEditClick(e, config)}
+                  onDeleteClick={(e) => handleDeleteClick(e, config)}
+                  deleteTitle="Delete config"
+                />
+              ))}
+            </>
+          }
+          table={
             <Table>
               <TableHeader>
                 <TableRow>
@@ -161,8 +168,8 @@ const SttConfigsPage: React.FC = () => {
                 ))}
               </TableBody>
             </Table>
-          </div>
-        </div>
+          }
+        />
       )}
 
       {/* Delete Confirmation Dialog */}

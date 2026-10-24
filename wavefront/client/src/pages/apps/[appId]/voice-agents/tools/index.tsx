@@ -1,5 +1,7 @@
 import ListHeader from '@app/components/ListHeader';
 import ResourceCard from '@app/components/ResourceCard';
+import ResourceList, { ListViewToggle } from '@app/components/ResourceList';
+import { useListView } from '@app/lib/list-view';
 import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
@@ -20,6 +22,7 @@ import EditToolDialog from './EditToolDialog';
 
 const ToolsPage: React.FC = () => {
   const { app } = useParams<{ app: string }>();
+  const [view, setView] = useListView();
   const queryClient = useQueryClient();
   const { notifySuccess, notifyError } = useNotifyStore();
 
@@ -110,6 +113,7 @@ const ToolsPage: React.FC = () => {
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden max-md:overflow-y-auto">
       <ListHeader
+        extras={<ListViewToggle view={view} onChange={setView} />}
         search={{ value: searchQuery, onChange: setSearchQuery, placeholder: 'Search' }}
         primary={{ label: 'Create tool', onClick: handleCreateTool }}
         className="md:justify-end"
@@ -140,27 +144,30 @@ const ToolsPage: React.FC = () => {
           />
         </div>
       ) : (
-        <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-xl border ring-1 max-md:flex-none">
-          <div data-mobile-cards className="flex flex-col gap-3 pb-24 md:hidden">
-            {filteredTools.map((tool) => (
-              <ResourceCard
-                key={tool.id}
-                icon={Wrench}
-                title={tool.display_name}
-                description={tool.description || undefined}
-                metadata={[
-                  { label: 'Name', value: tool.name },
-                  { label: 'Type', value: tool.tool_type.toUpperCase(), className: getToolTypeColor(tool.tool_type) },
-                  ...(getApiMethod(tool) ? [{ label: 'Method', value: getApiMethod(tool), isMono: true }] : []),
-                  ...(getApiUrl(tool) ? [{ label: 'URL', value: getApiUrl(tool), isMono: true }] : []),
-                ]}
-                onEditClick={(e) => handleEditClick(e, tool)}
-                onDeleteClick={(e) => handleDeleteClick(e, tool)}
-                deleteTitle="Delete tool"
-              />
-            ))}
-          </div>
-          <div className="max-md:hidden">
+        <ResourceList
+          view={view}
+          cards={
+            <>
+              {filteredTools.map((tool) => (
+                <ResourceCard
+                  key={tool.id}
+                  icon={Wrench}
+                  title={tool.display_name}
+                  description={tool.description || undefined}
+                  metadata={[
+                    { label: 'Name', value: tool.name },
+                    { label: 'Type', value: tool.tool_type.toUpperCase(), className: getToolTypeColor(tool.tool_type) },
+                    ...(getApiMethod(tool) ? [{ label: 'Method', value: getApiMethod(tool), isMono: true }] : []),
+                    ...(getApiUrl(tool) ? [{ label: 'URL', value: getApiUrl(tool), isMono: true }] : []),
+                  ]}
+                  onEditClick={(e) => handleEditClick(e, tool)}
+                  onDeleteClick={(e) => handleDeleteClick(e, tool)}
+                  deleteTitle="Delete tool"
+                />
+              ))}
+            </>
+          }
+          table={
             <Table>
               <TableHeader>
                 <TableRow>
@@ -198,8 +205,8 @@ const ToolsPage: React.FC = () => {
                 ))}
               </TableBody>
             </Table>
-          </div>
-        </div>
+          }
+        />
       )}
 
       {/* Delete Confirmation Dialog */}

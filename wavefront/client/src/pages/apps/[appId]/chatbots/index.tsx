@@ -1,5 +1,7 @@
 import ListHeader, { FilterSelect } from '@app/components/ListHeader';
 import ResourceCard from '@app/components/ResourceCard';
+import ResourceList, { ListViewToggle } from '@app/components/ResourceList';
+import { useListView } from '@app/lib/list-view';
 import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
@@ -30,6 +32,7 @@ import { formatTemperature } from './schemas';
 const ChatbotsPage: React.FC = () => {
   const { app } = useParams<{ app: string }>();
   const navigate = useNavigate();
+  const [view, setView] = useListView();
   const queryClient = useQueryClient();
   const { notifySuccess, notifyError } = useNotifyStore();
   const { selectedApp } = useDashboardStore();
@@ -148,6 +151,7 @@ const ChatbotsPage: React.FC = () => {
 
       <div className="min-w-0">
         <ListHeader
+          extras={<ListViewToggle view={view} onChange={setView} />}
           title="Chatbots"
           count={filteredChatbots.length || undefined}
           subtitle={<>Manage chatbots for {selectedApp?.app_name}</>}
@@ -183,45 +187,46 @@ const ChatbotsPage: React.FC = () => {
             />
           </div>
         ) : (
-          // Nine columns including a full uuid: let the table scroll inside its
-          // own box rather than pushing the page sideways on a narrow window.
-          <div className="overflow-x-auto rounded-md border">
-            <div data-mobile-cards className="flex flex-col gap-3 pb-24 md:hidden">
-              {filteredChatbots.map((chatbot) => (
-                <ResourceCard
-                  key={chatbot.id}
-                  icon={MessageSquare}
-                  title={chatbot.name}
-                  description={chatbot.description || undefined}
-                  metadata={[
-                    { label: 'Id', value: chatbot.id, isMono: true, isCopyable: true },
-                    { label: 'Namespace', value: chatbot.namespace },
-                    { label: 'Model', value: describeModel(chatbot.llm_config_id) },
-                    { label: 'Temperature', value: `Temp ${formatTemperature(chatbot.config)}` },
-                    {
-                      label: 'Status',
-                      value: chatbot.enabled ? 'Enabled' : 'Disabled',
-                      className: chatbot.enabled
-                        ? 'bg-emerald-400/15 text-emerald-800 dark:text-emerald-300'
-                        : 'bg-frost-glass-strong frost-text-subtle',
-                    },
-                    { label: 'Created', value: new Date(chatbot.created_at).toLocaleDateString() },
-                  ]}
-                  onEditClick={() => setEditItem(chatbot)}
-                  onDeleteClick={() => setDeleteItem(chatbot)}
-                  deleteTitle="Delete chatbot"
-                  extraActions={[
-                    {
-                      label: chatbot.enabled ? 'Disable' : 'Enable',
-                      icon: Power,
-                      disabled: togglingId === chatbot.id,
-                      onClick: () => handleToggleEnabled(chatbot, !chatbot.enabled),
-                    },
-                  ]}
-                />
-              ))}
-            </div>
-            <div className="max-md:hidden">
+          <ResourceList
+            view={view}
+            cards={
+              <>
+                {filteredChatbots.map((chatbot) => (
+                  <ResourceCard
+                    key={chatbot.id}
+                    icon={MessageSquare}
+                    title={chatbot.name}
+                    description={chatbot.description || undefined}
+                    metadata={[
+                      { label: 'Id', value: chatbot.id, isMono: true, isCopyable: true },
+                      { label: 'Namespace', value: chatbot.namespace },
+                      { label: 'Model', value: describeModel(chatbot.llm_config_id) },
+                      { label: 'Temperature', value: `Temp ${formatTemperature(chatbot.config)}` },
+                      {
+                        label: 'Status',
+                        value: chatbot.enabled ? 'Enabled' : 'Disabled',
+                        className: chatbot.enabled
+                          ? 'bg-emerald-400/15 text-emerald-800 dark:text-emerald-300'
+                          : 'bg-frost-glass-strong frost-text-subtle',
+                      },
+                      { label: 'Created', value: new Date(chatbot.created_at).toLocaleDateString() },
+                    ]}
+                    onEditClick={() => setEditItem(chatbot)}
+                    onDeleteClick={() => setDeleteItem(chatbot)}
+                    deleteTitle="Delete chatbot"
+                    extraActions={[
+                      {
+                        label: chatbot.enabled ? 'Disable' : 'Enable',
+                        icon: Power,
+                        disabled: togglingId === chatbot.id,
+                        onClick: () => handleToggleEnabled(chatbot, !chatbot.enabled),
+                      },
+                    ]}
+                  />
+                ))}
+              </>
+            }
+            table={
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -287,8 +292,8 @@ const ChatbotsPage: React.FC = () => {
                   ))}
                 </TableBody>
               </Table>
-            </div>
-          </div>
+            }
+          />
         )}
 
         <DeleteConfirmationDialog

@@ -1,5 +1,7 @@
 import ListHeader from '@app/components/ListHeader';
 import ResourceCard from '@app/components/ResourceCard';
+import ResourceList, { ListViewToggle } from '@app/components/ResourceList';
+import { useListView } from '@app/lib/list-view';
 import floConsoleService from '@app/api';
 import BulkDownloadDialog from '@app/components/BulkDownloadDialog';
 import BulkUploadDialog, { MAX_BULK_UPLOAD_FILES } from '@app/components/BulkUploadDialog';
@@ -37,6 +39,7 @@ const formatCreatedAt = (value?: string) => {
 const FunctionsManagement: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();
   const navigate = useNavigate();
+  const [view, setView] = useListView();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [deleteItem, setDeleteItem] = useState<MessageProcessorListItem | null>(null);
@@ -214,6 +217,7 @@ const FunctionsManagement: React.FC = () => {
       </Breadcrumb>
 
       <ListHeader
+        extras={<ListViewToggle view={view} onChange={setView} />}
         title="Functions"
         count={filteredProcessors.length || undefined}
         subtitle={<>Manage and configure functions for {selectedApp?.app_name}</>}
@@ -244,33 +248,36 @@ const FunctionsManagement: React.FC = () => {
           />
         </div>
       ) : (
-        <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-xl border ring-1 max-md:flex-none">
-          <div data-mobile-cards className="flex flex-col gap-3 pb-24 md:hidden">
-            {filteredProcessors.map((processor) => (
-              <ResourceCard
-                key={processor.id}
-                icon={Braces}
-                title={processor.name}
-                description={processor.description || undefined}
-                metadata={[
-                  { label: 'Id', value: processor.id, isMono: true, isCopyable: true },
-                  { label: 'Created', value: formatCreatedAt(processor.created_at) },
-                ]}
-                onClick={() => handleProcessorClick(processor.id)}
-                onDeleteClick={() => setDeleteItem(processor)}
-                deleteTitle="Delete function"
-                extraActions={[
-                  {
-                    label: 'Download',
-                    icon: Download,
-                    disabled: downloadingId === processor.id,
-                    onClick: () => void handleFunctionDownload(processor),
-                  },
-                ]}
-              />
-            ))}
-          </div>
-          <div className="max-md:hidden">
+        <ResourceList
+          view={view}
+          cards={
+            <>
+              {filteredProcessors.map((processor) => (
+                <ResourceCard
+                  key={processor.id}
+                  icon={Braces}
+                  title={processor.name}
+                  description={processor.description || undefined}
+                  metadata={[
+                    { label: 'Id', value: processor.id, isMono: true, isCopyable: true },
+                    { label: 'Created', value: formatCreatedAt(processor.created_at) },
+                  ]}
+                  onClick={() => handleProcessorClick(processor.id)}
+                  onDeleteClick={() => setDeleteItem(processor)}
+                  deleteTitle="Delete function"
+                  extraActions={[
+                    {
+                      label: 'Download',
+                      icon: Download,
+                      disabled: downloadingId === processor.id,
+                      onClick: () => void handleFunctionDownload(processor),
+                    },
+                  ]}
+                />
+              ))}
+            </>
+          }
+          table={
             <Table>
               <TableHeader>
                 <TableRow>
@@ -330,8 +337,8 @@ const FunctionsManagement: React.FC = () => {
                 ))}
               </TableBody>
             </Table>
-          </div>
-        </div>
+          }
+        />
       )}
 
       <DeleteConfirmationDialog

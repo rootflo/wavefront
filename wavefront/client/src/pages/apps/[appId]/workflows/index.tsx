@@ -1,5 +1,7 @@
 import ListHeader, { FilterSelect } from '@app/components/ListHeader';
 import ResourceCard from '@app/components/ResourceCard';
+import ResourceList, { ListViewToggle } from '@app/components/ResourceList';
+import { useListView } from '@app/lib/list-view';
 import floConsoleService from '@app/api';
 import BulkDownloadDialog from '@app/components/BulkDownloadDialog';
 import BulkUploadDialog, { MAX_BULK_UPLOAD_FILES } from '@app/components/BulkUploadDialog';
@@ -32,6 +34,7 @@ const ALL_NAMESPACES = '__all__';
 const WorkflowManagement: React.FC = () => {
   const { app: appId } = useParams<{ app: string }>();
   const navigate = useNavigate();
+  const [view, setView] = useListView();
   const queryClient = useQueryClient();
   const { notifySuccess, notifyError } = useNotifyStore();
   const [searchTerm, setSearchTerm] = useState('');
@@ -181,6 +184,7 @@ const WorkflowManagement: React.FC = () => {
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden max-md:overflow-y-auto">
       <ListHeader
+        extras={<ListViewToggle view={view} onChange={setView} />}
         search={{ value: searchTerm, onChange: setSearchTerm, placeholder: 'Search workflows' }}
         filters={
           <FilterSelect
@@ -221,36 +225,39 @@ const WorkflowManagement: React.FC = () => {
           />
         </div>
       ) : (
-        <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-xl border ring-1 max-md:flex-none">
-          <div data-mobile-cards className="flex flex-col gap-3 pb-24 md:hidden">
-            {filteredWorkflows.map((workflow) => (
-              <ResourceCard
-                key={workflow.id}
-                icon={Workflow}
-                title={workflow.name}
-                metadata={[
-                  { label: 'Id', value: workflow.id, isMono: true, isCopyable: true },
-                  ...(workflow.namespace ? [{ label: 'Namespace', value: workflow.namespace }] : []),
-                  ...(workflow.current_version !== undefined
-                    ? [{ label: 'Version', value: `v${workflow.current_version}` }]
-                    : []),
-                  { label: 'Created', value: formatCreatedAt(workflow.created_at) },
-                ]}
-                onClick={() => navigate(`/apps/${appId}/workflows/${workflow.id}`)}
-                onDeleteClick={() => setDeleteItem(workflow)}
-                deleteTitle="Delete workflow"
-                extraActions={[
-                  {
-                    label: 'Download',
-                    icon: Download,
-                    disabled: downloadingId === workflow.id,
-                    onClick: () => void handleWorkflowDownload(workflow),
-                  },
-                ]}
-              />
-            ))}
-          </div>
-          <div className="max-md:hidden">
+        <ResourceList
+          view={view}
+          cards={
+            <>
+              {filteredWorkflows.map((workflow) => (
+                <ResourceCard
+                  key={workflow.id}
+                  icon={Workflow}
+                  title={workflow.name}
+                  metadata={[
+                    { label: 'Id', value: workflow.id, isMono: true, isCopyable: true },
+                    ...(workflow.namespace ? [{ label: 'Namespace', value: workflow.namespace }] : []),
+                    ...(workflow.current_version !== undefined
+                      ? [{ label: 'Version', value: `v${workflow.current_version}` }]
+                      : []),
+                    { label: 'Created', value: formatCreatedAt(workflow.created_at) },
+                  ]}
+                  onClick={() => navigate(`/apps/${appId}/workflows/${workflow.id}`)}
+                  onDeleteClick={() => setDeleteItem(workflow)}
+                  deleteTitle="Delete workflow"
+                  extraActions={[
+                    {
+                      label: 'Download',
+                      icon: Download,
+                      disabled: downloadingId === workflow.id,
+                      onClick: () => void handleWorkflowDownload(workflow),
+                    },
+                  ]}
+                />
+              ))}
+            </>
+          }
+          table={
             <Table>
               <TableHeader>
                 <TableRow>
@@ -312,8 +319,8 @@ const WorkflowManagement: React.FC = () => {
                 ))}
               </TableBody>
             </Table>
-          </div>
-        </div>
+          }
+        />
       )}
 
       <DeleteConfirmationDialog
