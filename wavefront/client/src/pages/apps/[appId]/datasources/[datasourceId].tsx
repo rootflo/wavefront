@@ -1,4 +1,5 @@
 import floConsoleService from '@app/api';
+import { DynamicQueryRunOptions } from '@app/api/datasources-service';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import {
   Breadcrumb,
@@ -10,9 +11,9 @@ import {
 } from '@app/components/ui/breadcrumb';
 import DetailActions from '@app/components/DetailActions';
 import MobileBackButton from '@app/components/MobileBackButton';
+import { PageActionsContext } from '@app/components/PageActionsContext';
 import PageTitle from '@app/components/PageTitle';
 import { Button } from '@app/components/ui/button';
-import { Label } from '@app/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@app/components/ui/tabs';
 import { useGetAllDynamicQueries, useGetDatasource, useReadDynamicQuery } from '@app/hooks/data/fetch-hooks';
 import { getAllDynamicQueriesKey, getDatasourceKey, readDynamicQueryKey } from '@app/hooks/data/query-keys';
@@ -20,30 +21,28 @@ import {
   copyToClipboard,
   createZipBlob,
   downloadBlobFile,
+  cn,
+  extractErrorMessage,
   validateDynamicQueryYaml,
   formatAppName,
 } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { DynamicQuery, DynamicQueryItem } from '@app/types/datasource';
 import { useQueryClient } from '@tanstack/react-query';
-import { Copy } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { DATASOURCE_TYPE_LABELS, isFileStorageType } from './datasource-types';
+import { isFileStorageType } from './datasource-types';
 import EditDatasourceDialog from './EditDatasourceDialog';
 import FileStoragePanel from './FileStoragePanel';
+import { useConnectionTest } from './connection-test';
+import DatasourceActivity from './DatasourceActivity';
+import DatasourceDataBrowser from './DatasourceDataBrowser';
+import DatasourceInfo from './DatasourceInfo';
 import DatasourceOperations from './DatasourceOperations';
 import DynamicQueryCreation from './DynamicQueryCreation';
 import DynamicQueries from './DynamicQueries';
 import DynamicQueryView from './DynamicQueryView';
 import { buildDynamicQueryYaml, downloadTextFile, getDynamicQueryYamlFilename } from './dynamic-query-utils';
-
-const formatDatasourceDate = (value?: string) => {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleString();
-};
 
 const DatasourceDetail: React.FC = () => {
   const { app: appId, datasourceId } = useParams<{
@@ -66,6 +65,9 @@ const DatasourceDetail: React.FC = () => {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedQuery, setSelectedQuery] = useState<string | null>(null);
   const [executing, setExecuting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  // Where the active tab's ListHeader puts its controls, beside the tab bar.
+  const [tabActionsSlot, setTabActionsSlot] = useState<HTMLElement | null>(null);
 
   const queryId = useMemo(() => {
     if (!selectedQuery) return undefined;
@@ -97,6 +99,7 @@ const DatasourceDetail: React.FC = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const [testingConnection, setTestingConnection] = useState(false);
+  const [lastTest, recordTest] = useConnectionTest(datasourceId);
 
   const [queryCreation, setQueryCreation] = useState<boolean>(false);
   const [queryContent, setQueryContent] = useState<string>('');
@@ -247,7 +250,7 @@ const DatasourceDetail: React.FC = () => {
     return { filename: getDynamicQueryYamlFilename(query.file), content: yamlContent };
   };
 
-  const handleDynamicQueryExecute = async (params: Record<string, string>) => {
+  const handleDynamicQueryExecute = async (params: Record<string, string>, options: DynamicQueryRunOptions) => {
     try {
       setExecuting(true);
       if (!datasourceId || !selectedQuery) return;
@@ -255,7 +258,8 @@ const DatasourceDetail: React.FC = () => {
       const response = await floConsoleService.datasourcesService.executeDynamicQuery(
         datasourceId,
         selectedQueryId,
-        params
+        params,
+        options
       );
       const responseCode = response?.data.meta?.code;
       if (responseCode === 1) {
@@ -268,6 +272,31 @@ const DatasourceDetail: React.FC = () => {
       notifyError('Error while executing dynamic query');
     } finally {
       setExecuting(false);
+    }
+  };
+
+  const handleDynamicQueryExport = async (params: Record<string, string>, options: DynamicQueryRunOptions) => {
+    if (!datasourceId || !selectedQuery) return;
+    setExporting(true);
+    try {
+      const response = await floConsoleService.datasourcesService.exportDynamicQuery(
+        datasourceId,
+        selectedQuery.split('.')[0],
+        params,
+        options
+      );
+      const exportUrl = response.data?.data?.export_url;
+      if (!exportUrl) {
+        notifyError('No export link was returned');
+        return;
+      }
+      // A presigned link to the stored CSV; opening it downloads the file.
+      window.open(exportUrl, '_blank', 'noopener');
+      notifySuccess('Export ready, downloading CSV');
+    } catch (error) {
+      notifyError(extractErrorMessage(error) || 'Failed to export the query');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -312,12 +341,14 @@ const DatasourceDetail: React.FC = () => {
       // Based on updated API, test-connection now returns boolean directly
       const isConnected = (result.data as unknown) === true;
 
+      recordTest(isConnected);
       if (isConnected) {
         notifySuccess('Connection test successful');
       } else {
         notifyError('Connection test failed');
       }
     } catch {
+      recordTest(false);
       notifyError('Failed to test connection');
     } finally {
       setTestingConnection(false);
@@ -362,115 +393,127 @@ const DatasourceDetail: React.FC = () => {
               <PageTitle loading={datasourceLoading}>{formatAppName(datasource?.name || datasourceId)}</PageTitle>
             </div>
           </div>
-          <DetailActions onEdit={() => setEditDialogOpen(true)} onDelete={() => setShowDeleteConfirm(true)} />
+          <DetailActions
+            onEdit={() => setEditDialogOpen(true)}
+            onDelete={() => setShowDeleteConfirm(true)}
+            leading={
+              <Button
+                variant="outline"
+                onClick={() => void handleTestConnection()}
+                loading={testingConnection}
+                disabled={testingConnection || !datasource}
+                title={
+                  lastTest
+                    ? `${lastTest.ok ? 'Connected' : 'Connection failed'} when last tested, ${new Date(lastTest.at).toLocaleString()}`
+                    : 'Not tested yet'
+                }
+              >
+                {testingConnection ? null : (
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'size-2 rounded-full',
+                      !lastTest ? 'bg-frost-text-subtle' : lastTest.ok ? 'bg-emerald-500' : 'bg-rose-500'
+                    )}
+                  />
+                )}
+                Test connection
+              </Button>
+            }
+          />
         </div>
 
-        <Tabs defaultValue="configuration" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <TabsList className="shrink-0 self-start">
-            <TabsTrigger className="cursor-pointer" value="configuration">
-              Info
-            </TabsTrigger>
-            {isFileStorage ? (
-              <TabsTrigger className="cursor-pointer" value="files">
-                Files
-              </TabsTrigger>
-            ) : (
-              <>
-                <TabsTrigger className="cursor-pointer" value="operations">
-                  Operations
+        <PageActionsContext.Provider value={{ element: tabActionsSlot }}>
+          <Tabs defaultValue="configuration" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            {/* The tab bar doubles as the header row: a tab's search and buttons (Dynamic Queries) sit on its right. */}
+            <div className="flex shrink-0 flex-col gap-3 md:flex-row md:items-center md:justify-between md:gap-4">
+              <TabsList className="shrink-0">
+                <TabsTrigger className="cursor-pointer" value="configuration">
+                  Info
                 </TabsTrigger>
-                <TabsTrigger className="cursor-pointer" value="dynamic-queries">
-                  Dynamic Queries
+                {isFileStorage ? (
+                  <TabsTrigger className="cursor-pointer" value="files">
+                    Files
+                  </TabsTrigger>
+                ) : (
+                  <>
+                    <TabsTrigger className="cursor-pointer" value="data">
+                      Data
+                    </TabsTrigger>
+                    <TabsTrigger className="cursor-pointer" value="operations">
+                      Operations
+                    </TabsTrigger>
+                    <TabsTrigger className="cursor-pointer" value="dynamic-queries">
+                      Dynamic Queries
+                    </TabsTrigger>
+                  </>
+                )}
+                <TabsTrigger className="cursor-pointer" value="activity">
+                  Activity
                 </TabsTrigger>
-              </>
-            )}
-          </TabsList>
-
-          <TabsContent value="configuration" className="mt-6 min-h-0 flex-1 overflow-auto">
-            <div className="grid w-full gap-6 lg:grid-cols-3">
-              <div className="flex flex-col gap-6 lg:col-span-2">
-                <div className="flex flex-col gap-2">
-                  <Label>Description</Label>
-                  <p className="frost-text text-sm">{datasource?.description || '—'}</p>
-                </div>
-                <div>
-                  <Button onClick={handleTestConnection} loading={testingConnection} disabled={testingConnection}>
-                    Test Connection
-                  </Button>
-                </div>
-              </div>
-
-              {datasource && (
-                <div className="frost-panel ring-frost-border rounded-xl border ring-1">
-                  <div className="border-b border-[#EFF0F1] px-6 py-4">
-                    <h2 className="frost-text text-lg font-semibold">Metadata</h2>
-                  </div>
-                  <dl className="space-y-4 p-6">
-                    <div>
-                      <dt className="frost-text-muted text-xs font-medium">Datasource ID</dt>
-                      <dd className="mt-1 flex items-center gap-1">
-                        <span className="frost-text truncate font-mono text-sm" title={datasource.id}>
-                          {datasource.id}
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          title="Copy ID"
-                          onClick={() => void handleCopyId(datasource.id)}
-                        >
-                          <Copy className="h-3.5 w-3.5" />
-                        </Button>
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="frost-text-muted text-xs font-medium">Type</dt>
-                      <dd className="frost-text mt-1 text-sm">
-                        {DATASOURCE_TYPE_LABELS[datasource.type] || datasource.type || '—'}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="frost-text-muted text-xs font-medium">Created At</dt>
-                      <dd className="frost-text mt-1 text-sm">{formatDatasourceDate(datasource.created_at)}</dd>
-                    </div>
-                    <div>
-                      <dt className="frost-text-muted text-xs font-medium">Updated At</dt>
-                      <dd className="frost-text mt-1 text-sm">{formatDatasourceDate(datasource.updated_at)}</dd>
-                    </div>
-                  </dl>
-                </div>
-              )}
+              </TabsList>
+              <div ref={setTabActionsSlot} className="min-w-0 md:shrink-0" />
             </div>
-          </TabsContent>
 
-          {isFileStorage && datasource && datasourceId && (
-            <TabsContent value="files" className="mt-6 min-h-0 flex-1 overflow-auto">
-              <FileStoragePanel datasourceId={datasourceId} />
+            <TabsContent value="configuration" className="mt-6 min-h-0 flex-1 overflow-auto">
+              {datasource && (
+                <DatasourceInfo
+                  datasource={datasource}
+                  isFileStorage={isFileStorage}
+                  dynamicQueryCount={dynamicQueries.length}
+                  lastTest={lastTest}
+                  testing={testingConnection}
+                  onTest={() => void handleTestConnection()}
+                  onCopyId={(id) => void handleCopyId(id)}
+                />
+              )}
             </TabsContent>
-          )}
 
-          <TabsContent
-            value="operations"
-            className="mt-6 min-h-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col"
-          >
-            {datasourceId && <DatasourceOperations datasourceId={datasourceId} />}
-          </TabsContent>
+            {!isFileStorage && (
+              <TabsContent
+                value="data"
+                className="mt-6 min-h-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col"
+              >
+                {datasourceId && <DatasourceDataBrowser datasourceId={datasourceId} />}
+              </TabsContent>
+            )}
 
-          <TabsContent
-            value="dynamic-queries"
-            className="mt-6 min-h-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col"
-          >
-            <DynamicQueries
-              dynamicQueries={dynamicQueries}
-              isLoading={dynamicQueriesLoading}
-              onCreate={() => setQueryCreation(true)}
-              onDownload={handleDynamicQueryDownload}
-              onDownloadMany={handleDynamicQueryDownloadMany}
-              onUploadMany={handleDynamicQueryUploadMany}
-              setQueryCrud={setQueryCrud}
-              setSelectedQuery={setSelectedQuery}
-            />
-          </TabsContent>
-        </Tabs>
+            {isFileStorage && datasource && datasourceId && (
+              <TabsContent value="files" className="mt-6 min-h-0 flex-1 overflow-auto">
+                <FileStoragePanel datasourceId={datasourceId} />
+              </TabsContent>
+            )}
+
+            <TabsContent
+              value="operations"
+              className="mt-6 min-h-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col"
+            >
+              {datasourceId && <DatasourceOperations datasourceId={datasourceId} />}
+            </TabsContent>
+
+            <TabsContent
+              value="dynamic-queries"
+              className="mt-6 min-h-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col"
+            >
+              <DynamicQueries
+                dynamicQueries={dynamicQueries}
+                isLoading={dynamicQueriesLoading}
+                onCreate={() => setQueryCreation(true)}
+                onDownload={handleDynamicQueryDownload}
+                onDownloadMany={handleDynamicQueryDownloadMany}
+                onUploadMany={handleDynamicQueryUploadMany}
+                setQueryCrud={setQueryCrud}
+                setSelectedQuery={setSelectedQuery}
+              />
+            </TabsContent>
+            <TabsContent
+              value="activity"
+              className="mt-6 min-h-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col"
+            >
+              {datasourceId && <DatasourceActivity datasourceId={datasourceId} />}
+            </TabsContent>
+          </Tabs>
+        </PageActionsContext.Provider>
       </div>
 
       {/* Edit Datasource Dialog */}
@@ -517,6 +560,8 @@ const DatasourceDetail: React.FC = () => {
         handleDynamicQueryEdit={handleDynamicQueryEdit}
         handleClose={handleClose}
         handleDynamicQueryExecute={handleDynamicQueryExecute}
+        handleDynamicQueryExport={handleDynamicQueryExport}
+        exporting={exporting}
         executeResult={executeResult}
         setExecuteResult={setExecuteResult}
         executing={executing}

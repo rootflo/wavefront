@@ -88,6 +88,74 @@ export interface GetDatasourceResourceParams {
   $select?: string;
   $filter?: string;
   $orderby?: string;
+  $groupby?: string;
+  $expand?: string;
+  $join?: string;
+}
+
+/** Insert, update and the multi-table variants all answer with a message, plus a count where the backend has one. */
+export interface DatasourceRowsMutationData {
+  message: string;
+  updated_rows?: number;
+}
+
+/** One table's share of an atomic multi-table insert. `data` is one row when `single_row`, else a list of rows. */
+export interface DatasourceTableInsert {
+  table_name: string;
+  data: Record<string, unknown> | Record<string, unknown>[];
+  single_row?: boolean;
+}
+
+/** One table's share of an atomic multi-table update. */
+export interface DatasourceTableUpdate {
+  table_name: string;
+  filter: string;
+  data: Record<string, unknown>;
+}
+
+export interface ExportDynamicQueryData {
+  export_url: string;
+}
+
+export type DatasourceAuditOperation = 'insert' | 'update' | 'delete' | 'upload' | 'download';
+
+export interface DatasourceAuditLog {
+  id: string;
+  batch_id: string | null;
+  datasource_id: string;
+  datasource_type: string;
+  table_name: string | null;
+  operation: DatasourceAuditOperation;
+  filter: string | null;
+  filter_params: Record<string, unknown> | null;
+  changes: unknown;
+  meta: Record<string, unknown> | null;
+  rows_affected: number | null;
+  user_id: string | null;
+  role_id: string | null;
+  request_id: string | null;
+  created_at: string;
+}
+
+export interface ListDatasourceAuditLogsParams {
+  datasource_id?: string;
+  table_name?: string;
+  operation?: DatasourceAuditOperation;
+  user_id?: string;
+  from_date?: string;
+  to_date?: string;
+  /** Columns of the changed row, matched against the filter each change named its rows by. */
+  filter_params?: Record<string, string>;
+  offset?: number;
+  limit?: number;
+}
+
+export interface DatasourceAuditLogsData {
+  logs: DatasourceAuditLog[];
+  count: number;
+  total: number;
+  offset: number;
+  limit: number;
 }
 
 export interface DeleteDatasourceResourceRowsData {
@@ -141,3 +209,6 @@ export type AllDynamicQueriesResponse = IApiResponse<AllDynamicQueriesData>;
 export type ReadDynamicQueryResponse = IApiResponse<ReadDynamicQueryData>;
 export type DeleteDynamicQueryResponse = IApiResponse<DeleteDynamicQueryData>;
 export type ExecuteDynamicQueryResponse = IApiResponse<ExecuteDynamicQueryData>;
+export type DatasourceRowsMutationResponse = IApiResponse<DatasourceRowsMutationData>;
+export type ExportDynamicQueryResponse = IApiResponse<ExportDynamicQueryData>;
+export type DatasourceAuditLogsResponse = IApiResponse<DatasourceAuditLogsData>;

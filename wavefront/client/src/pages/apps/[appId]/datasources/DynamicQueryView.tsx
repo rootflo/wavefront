@@ -1,13 +1,23 @@
 import { Button } from '@app/components/ui/button';
+import { Download, Loader2, Play, Rows3 } from 'lucide-react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@app/components/ui/dialog';
-import { Input } from '@app/components/ui/input';
+import { cn } from '@app/lib/utils';
 import { DynamicQueryItem } from '@app/types/datasource';
-import { removeUnderscoreAndSentenceCase } from '@app/utils/string-formatting';
 import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
 import { langs } from '@uiw/codemirror-extensions-langs';
 import CodeMirror from '@uiw/react-codemirror';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { buildDynamicQueryYaml } from './dynamic-query-utils';
+import DynamicQueryResults from './DynamicQueryResults';
+import QueryInputs from './QueryInputs';
+import { collectParameters, undeclaredPlaceholders, usesFilters } from './query-params';
+import { DynamicQueryRunOptions } from '@app/api/datasources-service';
+
+const isEmptyResult = (result: unknown) =>
+  result === null ||
+  result === undefined ||
+  (Array.isArray(result) && result.length === 0) ||
+  (typeof result === 'object' && Object.keys(result as object).length === 0);
 
 const DynamicQueryView = ({
   queryItems,
@@ -17,6 +27,8 @@ const DynamicQueryView = ({
   handleDynamicQueryEdit,
   handleClose,
   handleDynamicQueryExecute,
+  handleDynamicQueryExport,
+  exporting,
   executeResult,
   setExecuteResult,
   executing,
@@ -44,44 +56,33 @@ const DynamicQueryView = ({
   queryName: string;
   handleDynamicQueryEdit: (queryContent: string) => void;
   handleClose: () => void;
-  handleDynamicQueryExecute: (params: Record<string, string>) => void;
+  handleDynamicQueryExecute: (params: Record<string, string>, options: DynamicQueryRunOptions) => void;
+  /** Runs the query with the same parameters and downloads the result as a CSV. */
+  handleDynamicQueryExport: (params: Record<string, string>, options: DynamicQueryRunOptions) => void;
+  exporting: boolean;
   executeResult: Record<string, unknown>[];
   setExecuteResult: React.Dispatch<React.SetStateAction<Record<string, unknown>[]>>;
   executing: boolean;
 }) => {
   const [queryContent, setQueryContent] = useState('');
-  const [queryParameters, setQueryParameters] = useState<Record<string, 'string' | 'number' | 'boolean' | 'date'>>({});
   const [parameterValues, setParameterValues] = useState<Record<string, string>>({});
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [runFilter, setRunFilter] = useState('');
+  const [runLimit, setRunLimit] = useState('100');
+  const [runOffset, setRunOffset] = useState('0');
 
-  const generateQueryParameters = () => {
-    if (selectedQuery && queryItems.length > 0) {
-      const allParameters: Record<string, 'string' | 'number' | 'boolean' | 'date'> = {};
+  const parameters = useMemo(() => collectParameters(queryItems), [queryItems]);
+  const undeclared = useMemo(() => undeclaredPlaceholders(queryItems), [queryItems]);
+  const takesFilter = useMemo(() => usesFilters(queryItems), [queryItems]);
 
-      const uniqueParametersSet = new Set<string>();
-
-      queryItems.forEach((query) => {
-        const queryParametersList = query.parameters;
-        if (queryParametersList && queryParametersList.length > 0) {
-          queryParametersList.forEach(({ name, type }) => {
-            if (!uniqueParametersSet.has(name)) {
-              allParameters[name] = type as 'string' | 'number' | 'boolean' | 'date';
-              uniqueParametersSet.add(name);
-            }
-          });
-        }
-      });
-
-      setQueryParameters(allParameters);
-
-      const initialValues: Record<string, string> = {};
-      Object.keys(allParameters).forEach((key) => {
-        initialValues[key] = '';
-      });
-      setParameterValues(initialValues);
-      setFormErrors({});
-    }
-  };
+  // A different query starts from empty inputs.
+  useEffect(() => {
+    setParameterValues({});
+    setFormErrors({});
+    setRunFilter('');
+    setRunLimit('100');
+    setRunOffset('0');
+  }, [queryItems]);
 
   const handleParameterChange = (parameterName: string, value: string) => {
     setParameterValues((prev) => ({
@@ -99,47 +100,35 @@ const DynamicQueryView = ({
 
   const validateForm = (): boolean => {
     const errors: Record<string, string> = {};
-    let isValid = true;
 
-    Object.keys(queryParameters).forEach((parameterName) => {
-      const value = parameterValues[parameterName]?.trim();
-      const parameterType = queryParameters[parameterName];
-
-      if (!value) {
-        errors[parameterName] = 'This field is required';
-        isValid = false;
-      } else {
-        switch (parameterType) {
-          case 'number':
-            if (isNaN(Number(value))) {
-              errors[parameterName] = 'Must be a valid number';
-              isValid = false;
-            }
-            break;
-          case 'date':
-            if (isNaN(Date.parse(value))) {
-              errors[parameterName] = 'Must be a valid date (YYYY-MM-DD)';
-              isValid = false;
-            }
-            break;
-          case 'boolean':
-            if (!['true', 'false', '1', '0'].includes(value.toLowerCase())) {
-              errors[parameterName] = 'Must be true/false or 1/0';
-              isValid = false;
-            }
-            break;
-        }
-      }
+    parameters.forEach(({ name, type }) => {
+      const value = parameterValues[name]?.trim();
+      if (!value) errors[name] = 'Required';
+      else if (type === 'number' && isNaN(Number(value))) errors[name] = 'Must be a number';
+      else if (type === 'date' && isNaN(Date.parse(value))) errors[name] = 'Must be a date';
+      else if (type === 'boolean' && !['true', 'false', '1', '0'].includes(value.toLowerCase()))
+        errors[name] = 'Must be true or false';
     });
+    if (!Number.isInteger(Number(runLimit)) || Number(runLimit) < 1)
+      errors.__limit = 'Rows must be a whole number above 0';
+    if (!Number.isInteger(Number(runOffset)) || Number(runOffset) < 0) errors.__offset = 'Skip must be 0 or more';
 
     setFormErrors(errors);
-    return isValid;
+    return Object.keys(errors).length === 0;
   };
+
+  const hasResults = !isEmptyResult(executeResult);
+
+  const runOptions = (): DynamicQueryRunOptions => ({
+    filter: takesFilter ? runFilter.trim() || undefined : undefined,
+    limit: Number(runLimit),
+    offset: Number(runOffset),
+  });
 
   const handleExecuteQuery = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (validateForm()) {
-      handleDynamicQueryExecute(parameterValues);
+      handleDynamicQueryExecute(parameterValues, runOptions());
       setExecuteResult([]);
     }
   };
@@ -147,10 +136,6 @@ const DynamicQueryView = ({
   useEffect(() => {
     setQueryContent(buildDynamicQueryYaml(selectedQuery, queryName, queryItems));
   }, [selectedQuery, queryName, queryItems]);
-
-  useEffect(() => {
-    generateQueryParameters();
-  }, [queryItems]);
 
   const isOpen =
     (queryCrud.view || queryCrud.edit || queryCrud.execute) && (queryItems.length > 0 || queryCrud.execute);
@@ -169,9 +154,19 @@ const DynamicQueryView = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto lg:max-w-4xl">
-        <DialogHeader>
+      <DialogContent
+        className={cn(
+          'max-h-[90vh] max-w-4xl min-w-0 overflow-y-auto lg:max-w-4xl',
+          // Executing is a fixed-size workspace: inputs on the left, results on the right, each scrolling alone.
+          queryCrud.execute &&
+            'flex h-[calc(100dvh-2rem)] max-h-none flex-col gap-0 overflow-hidden p-0 sm:h-[88dvh] sm:w-[96vw] sm:max-w-[96vw] sm:p-0 lg:max-w-6xl'
+        )}
+      >
+        <DialogHeader className={cn(queryCrud.execute && 'border-frost-border border-b px-5 py-4 pr-12')}>
           <DialogTitle>{getDialogTitle()}</DialogTitle>
+          {queryCrud.execute && (queryName || selectedQuery) ? (
+            <p className="frost-text-muted truncate font-mono text-xs">{queryName || selectedQuery}</p>
+          ) : null}
         </DialogHeader>
         {(queryCrud.view || queryCrud.edit) && (
           <div className="border-frost-border w-full min-w-0 rounded-xl border">
@@ -190,64 +185,81 @@ const DynamicQueryView = ({
           </div>
         )}
         {queryCrud.execute && (
-          <div className="flex flex-col gap-6">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
+            {/* Inputs: what the query needs, with the run buttons always at the bottom of the pane. */}
             <form
               onSubmit={(e) => {
                 handleExecuteQuery(e);
               }}
-              className="flex flex-col gap-6"
+              className="border-frost-border flex min-h-0 shrink-0 flex-col border-b max-md:max-h-[50%] md:w-[340px] md:border-r md:border-b-0"
             >
-              {queryParameters && Object.keys(queryParameters).length > 0 && (
-                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                  {Object.keys(queryParameters).map((parameter) => {
-                    const parameterType = queryParameters[parameter];
-                    const hasError = !!formErrors[parameter];
-
-                    return (
-                      <div key={parameter} className="flex flex-col gap-3">
-                        <label className="text-base leading-normal font-normal text-[#282828]">
-                          {removeUnderscoreAndSentenceCase(parameter)}
-                          <span className="ml-1 text-red-500">*</span>
-                          <span className="ml-2 text-sm text-[#878787]">({parameterType})</span>
-                        </label>
-                        <Input
-                          type={parameterType === 'date' ? 'date' : parameterType === 'number' ? 'number' : 'text'}
-                          value={parameterValues[parameter] || ''}
-                          onChange={(e) => handleParameterChange(parameter, e.target.value)}
-                          className={hasError ? 'border-red-500 focus:border-red-500' : ''}
-                          placeholder={
-                            parameterType === 'date'
-                              ? 'YYYY-MM-DD'
-                              : parameterType === 'boolean'
-                                ? 'true/false'
-                                : parameterType === 'number'
-                                  ? 'Enter a number'
-                                  : 'Enter value'
-                          }
-                        />
-                        {hasError && <span className="text-sm text-red-500">{formErrors[parameter]}</span>}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              <div className="flex flex-col gap-4">
-                <h3 className="frost-text text-lg leading-4 font-medium">Query Results</h3>
-                <div className="frost-glass border-frost-border max-h-[300px] overflow-auto rounded-xl border p-4">
-                  <pre className="frost-text text-sm font-normal whitespace-pre-wrap">
-                    {JSON.stringify(executeResult, null, 2)}
-                  </pre>
-                </div>
+              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+                <QueryInputs
+                  key={selectedQuery ?? undefined}
+                  parameters={parameters}
+                  values={parameterValues}
+                  errors={formErrors}
+                  onValueChange={handleParameterChange}
+                  undeclared={undeclared}
+                  takesFilter={takesFilter}
+                  filter={runFilter}
+                  onFilterChange={setRunFilter}
+                  limit={runLimit}
+                  onLimitChange={setRunLimit}
+                  offset={runOffset}
+                  onOffsetChange={setRunOffset}
+                  multipleQueries={queryItems.length > 1}
+                />
+                {formErrors.__limit || formErrors.__offset ? (
+                  <p className="mt-2 text-xs text-red-500">{formErrors.__limit || formErrors.__offset}</p>
+                ) : null}
               </div>
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={handleClose}>
-                  Cancel
+              <div className="border-frost-border flex shrink-0 gap-2 border-t px-5 py-3">
+                <Button type="submit" className="flex-1" loading={executing} disabled={exporting}>
+                  <Play className="size-4" />
+                  {hasResults && !executing ? 'Run again' : 'Execute'}
                 </Button>
-                <Button type="submit" loading={executing}>
-                  Execute Query
+                <Button
+                  type="button"
+                  variant="outline"
+                  loading={exporting}
+                  disabled={executing}
+                  title="Run with these inputs and download the result as CSV"
+                  onClick={() => {
+                    if (validateForm()) handleDynamicQueryExport(parameterValues, runOptions());
+                  }}
+                >
+                  <Download className="size-4" />
+                  CSV
                 </Button>
-              </DialogFooter>
+              </div>
             </form>
+
+            {/* Results: the rest of the dialog, so tables get room to breathe. */}
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto p-5">
+                {executing ? (
+                  <div className="frost-text-muted m-auto flex flex-col items-center gap-3 text-sm">
+                    <Loader2 className="text-brand size-6 animate-spin" />
+                    Running the query…
+                  </div>
+                ) : hasResults ? (
+                  <DynamicQueryResults results={executeResult} />
+                ) : (
+                  <div className="m-auto flex max-w-xs flex-col items-center gap-3 text-center">
+                    <span className="bg-brand/12 text-brand flex size-12 items-center justify-center rounded-2xl">
+                      <Rows3 className="size-5" />
+                    </span>
+                    <p className="frost-text text-sm font-medium">No results yet</p>
+                    <p className="frost-text-muted text-xs">
+                      {parameters.length > 0
+                        ? 'Fill in the parameters on the left, then execute. The results appear here.'
+                        : 'Execute the query to see its results here.'}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
