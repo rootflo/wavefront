@@ -2,6 +2,7 @@ import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import DetailActions from '@app/components/DetailActions';
 import MobileBackButton from '@app/components/MobileBackButton';
+import PageTitle from '@app/components/PageTitle';
 import { ModelParameters } from '@app/components/llm/ModelParameters';
 import { ModelSelect, ModelTags } from '@app/components/llm/ModelSelect';
 import { ProviderSelect } from '@app/components/llm/ProviderSelect';
@@ -244,7 +245,7 @@ const ModelDetail: React.FC = () => {
 
   return (
     <div className="flex h-full flex-col overflow-y-auto bg-transparent px-4 pt-4 pb-4 sm:px-8 sm:pt-8 sm:pb-8 lg:overflow-hidden">
-      <Breadcrumb className="mb-6 hidden shrink-0 md:block">
+      <Breadcrumb className="mb-4 hidden shrink-0 md:block">
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
@@ -267,14 +268,20 @@ const ModelDetail: React.FC = () => {
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
-            <BreadcrumbPage>{config?.display_name || modelId}</BreadcrumbPage>
+            <BreadcrumbPage loading={isLoading}>{config?.display_name || modelId}</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
 
       {isLoading ? (
-        <div className="flex h-64 items-center justify-center">
-          <Spinner className="frost-text-muted h-8 w-8" />
+        <div className="flex w-full flex-col gap-8">
+          <div className="flex min-w-0 items-center gap-2">
+            <MobileBackButton to={`/apps/${appId}/model-hub`} label="Back to Model Hub" />
+            <PageTitle loading />
+          </div>
+          <div className="flex h-64 items-center justify-center">
+            <Spinner className="frost-text-muted h-8 w-8" />
+          </div>
         </div>
       ) : !config ? (
         <div className="frost-text-muted flex h-64 items-center justify-center">Model configuration not found</div>
@@ -284,9 +291,7 @@ const ModelDetail: React.FC = () => {
             <div className="flex min-w-0 flex-1 flex-col gap-1">
               <div className="flex min-w-0 items-center gap-2">
                 <MobileBackButton to={`/apps/${appId}/model-hub`} label="Back to Model Hub" />
-                <p className="frost-text min-w-0 truncate text-xl leading-normal font-semibold sm:text-2xl">
-                  {formatAppName(config.display_name)}
-                </p>
+                <PageTitle>{formatAppName(config.display_name)}</PageTitle>
               </div>
               <div className="frost-text-muted flex flex-wrap items-center gap-2 text-sm">
                 <span>{getProviderConfig(config.type)?.name ?? config.type}</span>

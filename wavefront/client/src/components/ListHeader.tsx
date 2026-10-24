@@ -11,6 +11,7 @@ import { cn } from '@app/lib/utils';
 import { MoreHorizontal, Plus, Search } from 'lucide-react';
 import React, { useContext } from 'react';
 import { createPortal } from 'react-dom';
+import PageTitle from './PageTitle';
 import { PageActionsContext } from './PageActionsContext';
 import FloatingCreateButton from './FloatingCreateButton';
 
@@ -181,7 +182,7 @@ const ListHeader = ({
       {title ? (
         <div className="min-w-0">
           <div className="flex items-center gap-2.5">
-            <h1 className="frost-text text-2xl leading-tight font-bold tracking-tight md:text-[28px]">{title}</h1>
+            <PageTitle>{title}</PageTitle>
             {count !== undefined ? (
               <span className="frost-control frost-text-muted ring-frost-border rounded-full px-2.5 py-0.5 text-xs font-semibold tabular-nums ring-1">
                 {count}

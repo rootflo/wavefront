@@ -1,5 +1,6 @@
 import floConsoleService from '@app/api';
 import ChatBot from '@app/components/ChatBot';
+import PageTitle from '@app/components/PageTitle';
 import StreamToggle from '@app/components/StreamToggle';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import VersionsDialog from '@app/components/VersionsDialog';
@@ -599,7 +600,7 @@ const AgentDetail: React.FC = () => {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-transparent p-3 sm:p-8">
-      <Breadcrumb className="mb-6 hidden md:block">
+      <Breadcrumb className="mb-4 hidden md:block">
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
@@ -622,13 +623,26 @@ const AgentDetail: React.FC = () => {
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
-            <BreadcrumbPage>{agent?.name}</BreadcrumbPage>
+            <BreadcrumbPage loading={agentLoading}>{agent?.name}</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
 
       {agentLoading ? (
-        <div className="frost-text-muted flex items-center justify-center p-8">Loading agent...</div>
+        <>
+          <div className="flex min-w-0 items-center gap-2 pb-3 md:pb-6">
+            <button
+              type="button"
+              aria-label="Back to agents"
+              onClick={() => navigate(`/apps/${appId}/agents`)}
+              className="frost-text hover:bg-frost-glass -ml-1 flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full md:hidden"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+            <PageTitle loading />
+          </div>
+          <div className="frost-text-muted flex items-center justify-center p-8">Loading agent...</div>
+        </>
       ) : !agent ? (
         <div className="flex items-center justify-center p-8 text-red-600 dark:text-red-400">Agent not found</div>
       ) : (
@@ -644,9 +658,7 @@ const AgentDetail: React.FC = () => {
                 <ArrowLeft className="h-5 w-5" />
               </button>
               <div className="min-w-0 flex-1">
-                <p className="frost-text truncate text-lg leading-tight font-semibold md:text-2xl md:leading-normal">
-                  {formatAppName(agent.name)}
-                </p>
+                <PageTitle>{formatAppName(agent.name)}</PageTitle>
                 {agent.current_version !== undefined && (
                   <p className="frost-text-muted text-xs md:hidden">Current: v{agent.current_version}</p>
                 )}

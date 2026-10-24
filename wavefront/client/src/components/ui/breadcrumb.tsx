@@ -45,8 +45,21 @@ const BreadcrumbLink = React.forwardRef<
 });
 BreadcrumbLink.displayName = 'BreadcrumbLink';
 
-const BreadcrumbPage = React.forwardRef<HTMLSpanElement, React.ComponentPropsWithoutRef<'span'>>(
-  ({ className, children, ...props }, ref) => (
+const BreadcrumbPage = React.forwardRef<
+  HTMLSpanElement,
+  React.ComponentPropsWithoutRef<'span'> & {
+    /** While the page's resource loads, a placeholder bar stands in for its name. */
+    loading?: boolean;
+  }
+>(({ className, children, loading, ...props }, ref) =>
+  loading ? (
+    <span
+      ref={ref}
+      aria-label="Loading"
+      className={cn('bg-primary/10 inline-block h-3.5 w-24 animate-pulse rounded align-middle', className)}
+      {...props}
+    />
+  ) : (
     <span
       ref={ref}
       role="link"

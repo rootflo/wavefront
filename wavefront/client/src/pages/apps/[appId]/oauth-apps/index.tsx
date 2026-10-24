@@ -1,10 +1,9 @@
 import ListHeader from '@app/components/ListHeader';
-import ResourceCard from '@app/components/ResourceCard';
+import ResourceCard, { ResourceCardSkeleton } from '@app/components/ResourceCard';
 import { KeyRound, Power } from 'lucide-react';
 import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
-import { Badge } from '@app/components/ui/badge';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -12,12 +11,10 @@ import {
   BreadcrumbList,
   BreadcrumbSeparator,
 } from '@app/components/ui/breadcrumb';
-import { Button } from '@app/components/ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
 import { EMAIL_PROVIDERS_CONFIG } from '@app/config/email-providers';
 import { useGetOAuthApps } from '@app/hooks';
 import { getOAuthAppsKey } from '@app/hooks/data/query-keys';
-import { cn, extractErrorMessage, formatAppName } from '@app/lib/utils';
+import { extractErrorMessage, formatAppName } from '@app/lib/utils';
 import { useDashboardStore, useNotifyStore } from '@app/store';
 import { OAuthApp } from '@app/types/oauth-app';
 import { useQueryClient } from '@tanstack/react-query';
@@ -102,7 +99,7 @@ const OAuthAppsPage: React.FC = () => {
   });
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden p-4 max-md:overflow-y-auto sm:p-8">
+    <div className="flex h-full w-full flex-col p-4 sm:p-8">
       <Breadcrumb className="mb-4 hidden shrink-0 md:block">
         <BreadcrumbList>
           <BreadcrumbItem>
@@ -135,24 +132,26 @@ const OAuthAppsPage: React.FC = () => {
         primary={{ label: 'Register app', onClick: handleCreateClick }}
       />
 
-      {isLoading ? (
-        <p className="frost-text-muted text-sm">Loading OAuth apps...</p>
-      ) : filteredApps.length === 0 ? (
-        <div className="mt-10 flex justify-center">
-          <EmptyStateCard
-            title="No OAuth apps found"
-            description={
-              searchQuery
-                ? 'No OAuth apps found matching your search.'
-                : 'Register an OAuth app before connecting a mailbox'
-            }
-            actionText="Register App"
-            onActionClick={handleCreateClick}
-          />
-        </div>
-      ) : (
-        <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-xl border ring-1 max-md:flex-none">
-          <div data-mobile-cards className="flex flex-col gap-3 pb-24 md:hidden">
+      <div className="grid w-full gap-3 px-1 pt-2 pb-24 sm:grid-cols-2 sm:gap-6 sm:pb-10 lg:grid-cols-3">
+        {isLoading ? (
+          Array.from({ length: 6 }).map((_, index) => (
+            <ResourceCardSkeleton key={index} showDescription metadataCount={3} />
+          ))
+        ) : filteredApps.length === 0 ? (
+          <div className="col-span-full mt-10 flex justify-center">
+            <EmptyStateCard
+              title="No OAuth apps found"
+              description={
+                searchQuery
+                  ? 'No OAuth apps found matching your search.'
+                  : 'Register an OAuth app before connecting a mailbox'
+              }
+              actionText="Register App"
+              onActionClick={handleCreateClick}
+            />
+          </div>
+        ) : (
+          <>
             {filteredApps.map((oauthApp) => {
               const providerName = EMAIL_PROVIDERS_CONFIG[oauthApp.provider]?.name || oauthApp.provider;
               return (
@@ -192,84 +191,9 @@ const OAuthAppsPage: React.FC = () => {
                 />
               );
             })}
-          </div>
-          <div className="max-md:hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Provider</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Client secret</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredApps.map((oauthApp) => {
-                  const providerName = EMAIL_PROVIDERS_CONFIG[oauthApp.provider]?.name || oauthApp.provider;
-
-                  return (
-                    <TableRow key={oauthApp.id}>
-                      <TableCell className="max-w-[200px] truncate font-medium" title={oauthApp.name}>
-                        {formatAppName(oauthApp.name)}
-                      </TableCell>
-                      <TableCell className="frost-text-muted max-w-[280px] truncate" title={oauthApp.description || ''}>
-                        {oauthApp.description || '—'}
-                      </TableCell>
-                      <TableCell className="frost-text-muted">{providerName}</TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="secondary"
-                          className={cn(
-                            'border-0 font-normal',
-                            oauthApp.is_enabled
-                              ? 'bg-emerald-400/15 text-emerald-800'
-                              : 'bg-frost-glass-strong frost-text-subtle'
-                          )}
-                        >
-                          {oauthApp.is_enabled ? 'Enabled' : 'Disabled'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="secondary"
-                          className={cn(
-                            'border-0 font-normal',
-                            oauthApp.has_client_secret
-                              ? 'bg-emerald-400/15 text-emerald-800'
-                              : 'bg-rose-400/15 text-rose-800'
-                          )}
-                        >
-                          {oauthApp.has_client_secret ? 'Stored' : 'Missing'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            loading={busyId === oauthApp.id}
-                            onClick={() => void handleToggleEnabled(oauthApp)}
-                          >
-                            {oauthApp.is_enabled ? 'Disable' : 'Enable'}
-                          </Button>
-                          <Button variant="outline" size="sm" onClick={() => void handleEditClick(oauthApp)}>
-                            Edit
-                          </Button>
-                          <Button variant="destructive" size="sm" onClick={() => setDeleteItem(oauthApp)}>
-                            Delete
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </div>
 
       <DeleteConfirmationDialog
         isOpen={!!deleteItem}

@@ -1,10 +1,9 @@
 import ListHeader from '@app/components/ListHeader';
-import ResourceCard from '@app/components/ResourceCard';
+import ResourceCard, { ResourceCardSkeleton } from '@app/components/ResourceCard';
 import { Mail, ShieldCheck, KeyRound, Star } from 'lucide-react';
 import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import { EmptyStateCard } from '@app/components/EmptyCard';
-import { Badge } from '@app/components/ui/badge';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -12,8 +11,6 @@ import {
   BreadcrumbList,
   BreadcrumbSeparator,
 } from '@app/components/ui/breadcrumb';
-import { Button } from '@app/components/ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@app/components/ui/table';
 import { EMAIL_CAPABILITIES, EMAIL_PROVIDERS_CONFIG, getConnectionStatusBadge } from '@app/config/email-providers';
 import { useGetEmailConnections } from '@app/hooks';
 import { getEmailConnectionsKey } from '@app/hooks/data/query-keys';
@@ -130,7 +127,7 @@ const EmailConnectionsPage: React.FC = () => {
   });
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden p-4 max-md:overflow-y-auto sm:p-8">
+    <div className="flex h-full w-full flex-col p-4 sm:p-8">
       <Breadcrumb className="mb-4 hidden shrink-0 md:block">
         <BreadcrumbList>
           <BreadcrumbItem>
@@ -163,24 +160,26 @@ const EmailConnectionsPage: React.FC = () => {
         primary={{ label: 'Connect mailbox', onClick: () => setConnectOpen(true) }}
       />
 
-      {isLoading ? (
-        <p className="frost-text-muted text-sm">Loading emails...</p>
-      ) : filteredConnections.length === 0 ? (
-        <div className="mt-10 flex justify-center">
-          <EmptyStateCard
-            title="No emails found"
-            description={
-              searchQuery
-                ? 'No emails found matching your search.'
-                : 'Connect a mailbox so agents, triggers and scheduled jobs can use it'
-            }
-            actionText="Connect Mailbox"
-            onActionClick={() => setConnectOpen(true)}
-          />
-        </div>
-      ) : (
-        <div className="frost-table-panel ring-frost-border min-h-0 flex-1 overflow-auto rounded-xl border ring-1 max-md:flex-none">
-          <div data-mobile-cards className="flex flex-col gap-3 pb-24 md:hidden">
+      <div className="grid w-full gap-3 px-1 pt-2 pb-24 sm:grid-cols-2 sm:gap-6 sm:pb-10 lg:grid-cols-3">
+        {isLoading ? (
+          Array.from({ length: 6 }).map((_, index) => (
+            <ResourceCardSkeleton key={index} showDescription metadataCount={3} />
+          ))
+        ) : filteredConnections.length === 0 ? (
+          <div className="col-span-full mt-10 flex justify-center">
+            <EmptyStateCard
+              title="No emails found"
+              description={
+                searchQuery
+                  ? 'No emails found matching your search.'
+                  : 'Connect a mailbox so agents, triggers and scheduled jobs can use it'
+              }
+              actionText="Connect Mailbox"
+              onActionClick={() => setConnectOpen(true)}
+            />
+          </div>
+        ) : (
+          <>
             {filteredConnections.map((connection) => {
               const statusBadge = getConnectionStatusBadge(connection.status);
               const capabilities = grantedCapabilities(connection);
@@ -225,96 +224,9 @@ const EmailConnectionsPage: React.FC = () => {
                 />
               );
             })}
-          </div>
-          <div className="max-md:hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Mailbox</TableHead>
-                  <TableHead>Provider</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Capabilities</TableHead>
-                  <TableHead>Platform sender</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredConnections.map((connection) => {
-                  const statusBadge = getConnectionStatusBadge(connection.status);
-                  const capabilities = grantedCapabilities(connection);
-                  const providerName = EMAIL_PROVIDERS_CONFIG[connection.provider]?.name || connection.provider;
-
-                  return (
-                    <TableRow key={connection.id}>
-                      <TableCell className="max-w-[200px] truncate font-medium" title={connection.name}>
-                        {formatAppName(connection.name)}
-                      </TableCell>
-                      <TableCell className="max-w-[240px] truncate" title={connection.mailbox_email}>
-                        {connection.mailbox_email}
-                        {connection.last_error ? (
-                          <p
-                            className="mt-0.5 max-w-[240px] truncate text-xs text-red-500"
-                            title={connection.last_error}
-                          >
-                            {connection.last_error}
-                          </p>
-                        ) : null}
-                      </TableCell>
-                      <TableCell className="frost-text-muted">{providerName}</TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="secondary"
-                          className={cn(statusBadge.bg, statusBadge.text, 'border-0 font-normal')}
-                        >
-                          {statusBadge.label}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="frost-text-muted">
-                        {capabilities.length > 0 ? capabilities.join(', ') : '—'}
-                      </TableCell>
-                      <TableCell className="frost-text-muted">{connection.is_primary ? 'Primary' : '—'}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={connection.status === 'pending_auth'}
-                            loading={busyKey === `${connection.id}:verify`}
-                            onClick={() => void handleVerify(connection)}
-                          >
-                            Verify
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            loading={busyKey === `${connection.id}:authorize`}
-                            onClick={() => void handleReauthorize(connection)}
-                          >
-                            {connection.status === 'active' ? 'Re-consent' : 'Authorize'}
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={connection.is_primary || connection.status !== 'active'}
-                            loading={busyKey === `${connection.id}:primary`}
-                            onClick={() => void handleSetPrimary(connection)}
-                          >
-                            Set as Primary
-                          </Button>
-                          <Button variant="destructive" size="sm" onClick={() => setDeleteItem(connection)}>
-                            Delete
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </div>
 
       <DeleteConfirmationDialog
         isOpen={!!deleteItem}

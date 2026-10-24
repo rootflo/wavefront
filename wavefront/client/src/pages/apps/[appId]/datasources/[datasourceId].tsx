@@ -10,6 +10,7 @@ import {
 } from '@app/components/ui/breadcrumb';
 import DetailActions from '@app/components/DetailActions';
 import MobileBackButton from '@app/components/MobileBackButton';
+import PageTitle from '@app/components/PageTitle';
 import { Button } from '@app/components/ui/button';
 import { Label } from '@app/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@app/components/ui/tabs';
@@ -54,7 +55,7 @@ const DatasourceDetail: React.FC = () => {
   const { notifySuccess, notifyError } = useNotifyStore();
 
   // Use hooks for GET requests
-  const { data: datasource } = useGetDatasource(appId, datasourceId);
+  const { data: datasource, isLoading: datasourceLoading } = useGetDatasource(appId, datasourceId);
   const isFileStorage = isFileStorageType(datasource?.type);
   // File storage datasources have no SQL surface, so skip the dynamic queries fetch.
   const { data: dynamicQueries = [], isLoading: dynamicQueriesLoading } = useGetAllDynamicQueries(
@@ -325,7 +326,7 @@ const DatasourceDetail: React.FC = () => {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden p-4 max-md:overflow-y-auto sm:p-8">
-      <Breadcrumb className="mb-6 hidden shrink-0 md:block">
+      <Breadcrumb className="mb-4 hidden shrink-0 md:block">
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
@@ -348,7 +349,7 @@ const DatasourceDetail: React.FC = () => {
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
-            <BreadcrumbPage>{datasource?.name || datasourceId}</BreadcrumbPage>
+            <BreadcrumbPage loading={datasourceLoading}>{datasource?.name || datasourceId}</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
@@ -358,9 +359,7 @@ const DatasourceDetail: React.FC = () => {
           <div className="flex min-w-0 flex-1 flex-col gap-3">
             <div className="flex min-w-0 items-center gap-2">
               <MobileBackButton to={`/apps/${appId}/datasources`} label="Back to datasources" />
-              <p className="frost-text min-w-0 truncate text-xl leading-normal font-semibold sm:text-2xl">
-                {formatAppName(datasource?.name || datasourceId)}
-              </p>
+              <PageTitle loading={datasourceLoading}>{formatAppName(datasource?.name || datasourceId)}</PageTitle>
             </div>
           </div>
           <DetailActions onEdit={() => setEditDialogOpen(true)} onDelete={() => setShowDeleteConfirm(true)} />

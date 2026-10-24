@@ -9,6 +9,7 @@ import {
   BreadcrumbSeparator,
 } from '@app/components/ui/breadcrumb';
 import MobileBackButton from '@app/components/MobileBackButton';
+import PageTitle from '@app/components/PageTitle';
 import { Button } from '@app/components/ui/button';
 import {
   Dialog,
@@ -47,7 +48,7 @@ const KnowledgeBaseDetailPage: React.FC = () => {
   const [documentToDelete, setDocumentToDelete] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
 
-  const { data: knowledgeBase } = useGetKnowledgeBase(appId, kbId);
+  const { data: knowledgeBase, isLoading: knowledgeBaseLoading } = useGetKnowledgeBase(appId, kbId);
   const { data: documents = [], isLoading: loadingDocs } = useGetKnowledgeBaseDocuments(appId, kbId);
   const { data: indexStatus, isLoading: loadingIndexStatus } = useGetKnowledgeBaseIndexStatus(appId, kbId);
 
@@ -102,7 +103,7 @@ const KnowledgeBaseDetailPage: React.FC = () => {
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-transparent px-4 pt-4 pb-4 sm:px-8 sm:pt-8 sm:pb-8">
-      <Breadcrumb className="mb-6 hidden shrink-0 md:block">
+      <Breadcrumb className="mb-4 hidden shrink-0 md:block">
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
@@ -125,7 +126,7 @@ const KnowledgeBaseDetailPage: React.FC = () => {
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
-            <BreadcrumbPage>{knowledgeBase?.name || kbId}</BreadcrumbPage>
+            <BreadcrumbPage loading={knowledgeBaseLoading}>{knowledgeBase?.name || kbId}</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
@@ -134,9 +135,7 @@ const KnowledgeBaseDetailPage: React.FC = () => {
         <div className="flex shrink-0 items-center justify-between">
           <div className="flex min-w-0 items-center gap-2">
             <MobileBackButton to={`/apps/${appId}/knowledge-bases`} label="Back to knowledge bases" />
-            <p className="frost-text min-w-0 truncate text-xl leading-normal font-semibold sm:text-2xl">
-              {formatAppName(knowledgeBase?.name) || 'N/A'}
-            </p>
+            <PageTitle loading={knowledgeBaseLoading}>{formatAppName(knowledgeBase?.name) || 'N/A'}</PageTitle>
           </div>
         </div>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-6">

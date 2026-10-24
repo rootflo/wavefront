@@ -1,4 +1,5 @@
 import { PageActionsContext } from '@app/components/PageActionsContext';
+import PageTitle from '@app/components/PageTitle';
 import React, { useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import clsx from 'clsx';
@@ -59,9 +60,7 @@ const WorkflowsLayout: React.FC = () => {
           <div className={clsx('border-frost-border px-4 sm:px-8', isListPage ? 'max-md:pt-4' : 'hidden')}>
             <div className="mb-6 flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between xl:gap-5">
               <div className="min-w-0">
-                <h1 className="animate-fade-in frost-text text-2xl leading-tight font-bold tracking-tight md:text-[28px]">
-                  Workflows
-                </h1>
+                <PageTitle className="animate-fade-in">Workflows</PageTitle>
                 <p className="animate-fade-in frost-text-muted mt-1 text-[13.5px] md:mt-2 md:text-sm">
                   Manage AI workflows for your application
                 </p>

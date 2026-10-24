@@ -10,6 +10,7 @@ import {
 } from '@app/components/ui/breadcrumb';
 import DetailActions from '@app/components/DetailActions';
 import MobileBackButton from '@app/components/MobileBackButton';
+import PageTitle from '@app/components/PageTitle';
 import { Button } from '@app/components/ui/button';
 import { Checkbox } from '@app/components/ui/checkbox';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
@@ -156,7 +157,7 @@ const ApiServiceDetail: React.FC = () => {
   const queryClient = useQueryClient();
   const { notifySuccess, notifyError } = useNotifyStore();
 
-  const { data: service } = useGetApiService(appId, id);
+  const { data: service, isLoading: serviceLoading } = useGetApiService(appId, id);
 
   const form = useForm<ApiServiceForm>({
     resolver: zodResolver(apiServiceFormSchema),
@@ -612,7 +613,7 @@ const ApiServiceDetail: React.FC = () => {
 
   return (
     <div className="h-full bg-transparent px-4 pt-4 pb-[200px] sm:px-8 sm:pt-8">
-      <Breadcrumb className="mb-6 hidden md:block">
+      <Breadcrumb className="mb-4 hidden md:block">
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
@@ -635,7 +636,7 @@ const ApiServiceDetail: React.FC = () => {
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
-            <BreadcrumbPage>{service?.name || service?.service_id || id}</BreadcrumbPage>
+            <BreadcrumbPage loading={serviceLoading}>{service?.name || service?.service_id || id}</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
@@ -644,9 +645,7 @@ const ApiServiceDetail: React.FC = () => {
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
             <MobileBackButton to={`/apps/${appId}/api-services`} label="Back to api services" />
-            <p className="frost-text min-w-0 truncate text-xl leading-normal font-semibold sm:text-2xl">
-              {formatAppName(service?.name || service?.service_id)}
-            </p>
+            <PageTitle loading={serviceLoading}>{formatAppName(service?.name || service?.service_id)}</PageTitle>
           </div>
           <DetailActions
             editing={editing}

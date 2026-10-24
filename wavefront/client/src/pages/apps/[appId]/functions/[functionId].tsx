@@ -9,6 +9,7 @@ import {
 } from '@app/components/ui/breadcrumb';
 import DetailActions from '@app/components/DetailActions';
 import MobileBackButton from '@app/components/MobileBackButton';
+import PageTitle from '@app/components/PageTitle';
 import { Button } from '@app/components/ui/button';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@app/components/ui/form';
 import { Input } from '@app/components/ui/input';
@@ -40,7 +41,7 @@ const FunctionDetail: React.FC = () => {
   const { notifySuccess, notifyError } = useNotifyStore();
 
   // Fetch message processor
-  const { data: processor } = useGetMessageProcessor(appId, functionId);
+  const { data: processor, isLoading: processorLoading } = useGetMessageProcessor(appId, functionId);
 
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -158,7 +159,7 @@ const FunctionDetail: React.FC = () => {
 
   return (
     <div className="h-full bg-transparent px-4 pt-4 pb-[200px] sm:px-8 sm:pt-8">
-      <Breadcrumb className="mb-6 hidden md:block">
+      <Breadcrumb className="mb-4 hidden md:block">
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
@@ -181,7 +182,7 @@ const FunctionDetail: React.FC = () => {
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
-            <BreadcrumbPage>{processor?.name || functionId}</BreadcrumbPage>
+            <BreadcrumbPage loading={processorLoading}>{processor?.name || functionId}</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
@@ -190,9 +191,7 @@ const FunctionDetail: React.FC = () => {
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
             <MobileBackButton to={`/apps/${appId}/functions`} label="Back to functions" />
-            <p className="frost-text min-w-0 truncate text-xl leading-normal font-semibold sm:text-2xl">
-              {formatAppName(processor?.name || functionId)}
-            </p>
+            <PageTitle loading={processorLoading}>{formatAppName(processor?.name || functionId)}</PageTitle>
           </div>
           <DetailActions
             editing={editing}

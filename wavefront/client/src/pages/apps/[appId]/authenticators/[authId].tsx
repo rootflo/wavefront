@@ -2,6 +2,7 @@ import floConsoleService from '@app/api';
 import DeleteConfirmationDialog from '@app/components/DeleteConfirmationDialog';
 import DetailActions from '@app/components/DetailActions';
 import MobileBackButton from '@app/components/MobileBackButton';
+import PageTitle from '@app/components/PageTitle';
 import { Badge } from '@app/components/ui/badge';
 import {
   Breadcrumb,
@@ -360,13 +361,19 @@ const AuthenticatorDetailPage: React.FC = () => {
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
-            <BreadcrumbPage>{authenticator?.auth_name || authId}</BreadcrumbPage>
+            <BreadcrumbPage loading={authenticatorLoading}>{authenticator?.auth_name || authId}</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
 
       {authenticatorLoading ? (
-        <p className="frost-text-muted text-sm">Loading authenticator...</p>
+        <>
+          <div className="mb-6 flex min-w-0 items-center gap-2 sm:mb-8">
+            <MobileBackButton to={`/apps/${app}/authenticators`} label="Back to authenticators" />
+            <PageTitle loading />
+          </div>
+          <p className="frost-text-muted text-sm">Loading authenticator...</p>
+        </>
       ) : !authenticator ? (
         <p className="text-sm text-red-500">Authenticator not found</p>
       ) : (
@@ -375,9 +382,7 @@ const AuthenticatorDetailPage: React.FC = () => {
             <div className="flex min-w-0 flex-1 flex-col gap-2 sm:gap-3">
               <div className="flex min-w-0 items-center gap-2">
                 <MobileBackButton to={`/apps/${app}/authenticators`} label="Back to authenticators" />
-                <h1 className="frost-text min-w-0 truncate text-xl font-bold sm:text-3xl">
-                  {formatAppName(authenticator.auth_name)}
-                </h1>
+                <PageTitle>{formatAppName(authenticator.auth_name)}</PageTitle>
               </div>
               <div className="flex flex-wrap items-center gap-3 max-md:pl-1">
                 {badge && (

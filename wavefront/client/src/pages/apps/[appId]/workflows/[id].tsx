@@ -1,6 +1,7 @@
 import floConsoleService from '@app/api';
 import MobileBackButton from '@app/components/MobileBackButton';
 import ChatBot from '@app/components/ChatBot';
+import PageTitle from '@app/components/PageTitle';
 import StreamToggle from '@app/components/StreamToggle';
 import VersionsDialog from '@app/components/VersionsDialog';
 import { Badge } from '@app/components/ui/badge';
@@ -32,6 +33,7 @@ const WorkflowDetail: React.FC = () => {
   const { app: appId, id } = useParams<{ app: string; id: string }>();
   const { notifySuccess, notifyError } = useNotifyStore();
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
+  const [workflowLoading, setWorkflowLoading] = useState(true);
   // Saved YAML shown on the page; editing happens in the standalone editor tab
   const [versionsDialogOpen, setVersionsDialogOpen] = useState(false);
   // undefined = current_version
@@ -115,6 +117,8 @@ const WorkflowDetail: React.FC = () => {
         }
       } catch (error) {
         console.error('Error loading workflow:', error);
+      } finally {
+        setWorkflowLoading(false);
       }
     },
     [id]
@@ -691,9 +695,7 @@ const WorkflowDetail: React.FC = () => {
         <div className="flex flex-wrap items-center justify-between gap-3 md:gap-4">
           <div className="flex min-w-0 items-center gap-2">
             <MobileBackButton to={`/apps/${appId}/workflows`} label="Back to workflows" />
-            <p className="frost-text min-w-0 truncate text-xl leading-normal font-semibold md:text-2xl">
-              {formatAppName(workflow?.name)}
-            </p>
+            <PageTitle loading={!workflow && workflowLoading}>{formatAppName(workflow?.name)}</PageTitle>
           </div>
           <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:justify-end md:gap-4">
             <Label
