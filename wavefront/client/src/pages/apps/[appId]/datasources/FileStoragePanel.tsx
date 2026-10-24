@@ -597,6 +597,8 @@ const FileStoragePanel: React.FC<FileStoragePanelProps> = ({ datasourceId }) => 
   };
 
   const locationLabel = currentPrefix ? currentPrefix.replace(/\/$/, '') : '/';
+  // The file being previewed, known from the click even before its bytes arrive.
+  const previewEntry = preview?.entry ?? current?.files.find((entry) => entry.path === previewLoadingPath) ?? null;
   const loadingAny = Object.values(cache).some((state) => state.loading);
 
   return (
@@ -1135,60 +1137,70 @@ const FileStoragePanel: React.FC<FileStoragePanelProps> = ({ datasourceId }) => 
           if (!open) clearPreview();
         }}
       >
-        <DialogContent className="flex max-h-[90vh] max-w-3xl min-w-0 flex-col overflow-hidden lg:max-w-3xl">
+        {/* A fixed size, so the dialog doesn't jump from a spinner to a big image or a page of text. */}
+        <DialogContent className="flex h-[80dvh] max-h-[80dvh] max-w-3xl min-w-0 flex-col overflow-hidden lg:max-w-4xl">
           <DialogHeader>
-            <DialogTitle className="truncate pr-6">
-              {preview?.entry.name ||
-                current?.files.find((entry) => entry.path === previewLoadingPath)?.name ||
-                'File preview'}
-            </DialogTitle>
+            <DialogTitle className="truncate pr-6">{previewEntry?.name || 'File preview'}</DialogTitle>
             <DialogDescription className="truncate font-mono text-xs">
-              {preview?.entry.relative_path ||
-                current?.files.find((entry) => entry.path === previewLoadingPath)?.relative_path ||
-                'Loading…'}
+              {previewEntry?.relative_path}
+              {preview ? (
+                <span className="frost-text-subtle ml-2 font-sans">
+                  {preview.contentType} · {formatBytes(preview.sizeBytes)}
+                </span>
+              ) : null}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="min-h-0 flex-1 overflow-auto py-2">
+          <div className="bg-muted/30 border-frost-border flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg border">
             {previewLoadingPath && !preview ? (
-              <p className="frost-text-muted text-sm">Loading preview…</p>
+              <div className="frost-text-muted flex flex-col items-center gap-3 text-sm">
+                <Loader2 className="text-brand size-7 animate-spin" />
+                Loading preview…
+              </div>
             ) : preview?.kind === 'image' && preview.objectUrl ? (
-              <img
-                src={preview.objectUrl}
-                alt={preview.entry.name}
-                className="mx-auto max-h-[60vh] max-w-full rounded-md object-contain"
-              />
+              <img src={preview.objectUrl} alt={preview.entry.name} className="max-h-full max-w-full object-contain" />
             ) : preview?.kind === 'video' && preview.objectUrl ? (
-              <video src={preview.objectUrl} controls className="mx-auto max-h-[60vh] max-w-full rounded-md" />
+              <video src={preview.objectUrl} controls className="max-h-full max-w-full" />
             ) : preview?.kind === 'text' ? (
-              <pre className="frost-text bg-muted/40 max-h-[60vh] overflow-auto rounded-md p-4 text-xs break-words whitespace-pre-wrap">
+              <pre className="frost-text h-full w-full overflow-auto p-4 text-xs break-words whitespace-pre-wrap">
                 {preview.text}
               </pre>
             ) : preview ? (
-              <div className="frost-text-muted flex flex-col gap-2 text-sm">
-                <p>Preview is not available for this file type.</p>
-                <p className="font-mono text-xs">
-                  {preview.contentType || 'application/octet-stream'} · {formatBytes(preview.sizeBytes)}
+              <div className="frost-text-muted flex flex-col items-center gap-3 px-6 text-center text-sm">
+                <span className="bg-brand/12 text-brand flex size-12 items-center justify-center rounded-2xl">
+                  {React.createElement(fileIconFor(preview.entry.name), { className: 'size-5' })}
+                </span>
+                <p>
+                  {preview.sizeBytes > TEXT_PREVIEW_MAX_BYTES && previewKindFor(preview.contentType) === 'text'
+                    ? 'This file is too large to preview here.'
+                    : 'Preview is not available for this file type.'}
                 </p>
+                <p className="text-xs">Download it to open it on your computer.</p>
               </div>
             ) : null}
           </div>
 
-          {preview && (
-            <DialogFooter>
-              <Button variant="outline" onClick={clearPreview}>
-                Close
-              </Button>
-              <Button variant="destructive" disabled={deleting} onClick={() => setFilePendingDelete(preview.entry)}>
-                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                Delete
-              </Button>
-              <Button onClick={() => void handleDownload(preview.entry)}>
-                <Download className="mr-1.5 h-3.5 w-3.5" />
-                Download
-              </Button>
-            </DialogFooter>
-          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={clearPreview}>
+              Close
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deleting || !preview}
+              onClick={() => preview && setFilePendingDelete(preview.entry)}
+            >
+              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+              Delete
+            </Button>
+            <Button
+              disabled={!previewEntry || downloadingPath === previewEntry.path}
+              loading={Boolean(previewEntry && downloadingPath === previewEntry.path)}
+              onClick={() => previewEntry && void handleDownload(previewEntry)}
+            >
+              <Download className="mr-1.5 h-3.5 w-3.5" />
+              Download
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
