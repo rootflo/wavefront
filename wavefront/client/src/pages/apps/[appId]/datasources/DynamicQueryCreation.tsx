@@ -10,7 +10,7 @@ import {
 import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
 import { validateDynamicQueryYaml } from '@app/lib/utils';
 import { langs } from '@uiw/codemirror-extensions-langs';
-import CodeMirror from '@uiw/react-codemirror';
+import CodeEditor from '@app/components/CodeEditor';
 import clsx from 'clsx';
 import { useEffect, useState } from 'react';
 
@@ -75,7 +75,7 @@ const DynamicQueryCreation: React.FC<DynamicQueryCreationProps> = ({
         </DialogHeader>
 
         <div className="flex min-w-0 flex-col gap-3">
-          <CodeMirror
+          <CodeEditor
             className="frost-glass border-frost-border frost-text w-full min-w-0 rounded-xl border p-4 font-mono text-sm font-normal outline-none"
             value={queryContent}
             height="500px"
@@ -83,7 +83,6 @@ const DynamicQueryCreation: React.FC<DynamicQueryCreationProps> = ({
             maxWidth="100%"
             extensions={[langs.yaml(), ...popupCodeMirrorExtensions]}
             onChange={(value: string) => setQueryContent(value)}
-            theme="dark"
           />
         </div>
 

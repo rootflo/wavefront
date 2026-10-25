@@ -429,7 +429,7 @@ const AuthenticatorDetailPage: React.FC = () => {
 
               {config && (
                 <div className="frost-panel ring-frost-border rounded-xl border ring-1">
-                  <div className="border-b border-[#EFF0F1] px-4 py-3 sm:px-6 sm:py-4">
+                  <div className="border-frost-border border-b px-4 py-3 sm:px-6 sm:py-4">
                     <h2 className="frost-text text-lg font-semibold">Configuration</h2>
                   </div>
                   <div className="grid grid-cols-1 gap-5 p-4 sm:gap-6 sm:p-6 md:grid-cols-2">
@@ -442,7 +442,7 @@ const AuthenticatorDetailPage: React.FC = () => {
             </div>
 
             <div className="frost-panel ring-frost-border min-w-0 rounded-xl border ring-1">
-              <div className="border-b border-[#EFF0F1] px-4 py-3 sm:px-6 sm:py-4">
+              <div className="border-frost-border border-b px-4 py-3 sm:px-6 sm:py-4">
                 <h2 className="frost-text text-lg font-semibold">Metadata</h2>
               </div>
               <dl className="space-y-4 p-4 sm:p-6">

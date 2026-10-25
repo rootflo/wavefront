@@ -19,7 +19,7 @@ import { useDashboardStore, useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
 import { langs } from '@uiw/codemirror-extensions-langs';
-import CodeMirror from '@uiw/react-codemirror';
+import CodeEditor from '@app/components/CodeEditor';
 import React, { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
@@ -295,10 +295,9 @@ const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
                         <FormItem className="flex min-h-0 flex-1 flex-col">
                           <FormControl>
                             <div className="frost-control border-frost-border flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden rounded-md border">
-                              <CodeMirror
+                              <CodeEditor
                                 value={field.value}
                                 onChange={field.onChange}
-                                theme="dark"
                                 height="100%"
                                 className="min-h-0 w-full flex-1 [&_.cm-editor]:h-full [&_.cm-scroller]:overflow-auto"
                                 extensions={[langs.yaml(), ...popupCodeMirrorExtensions]}

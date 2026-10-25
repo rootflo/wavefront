@@ -1,4 +1,5 @@
 import AppsBackdrop from '@app/components/AppsBackdrop';
+import { toneClass } from '@app/lib/tones';
 import { ResourceListSkeleton } from '@app/components/ResourceList';
 import ListHeader from '@app/components/ListHeader';
 import ResourceCard from '@app/components/ResourceCard';
@@ -192,7 +193,7 @@ const UsersPage: React.FC = () => {
                     <TableCell>
                       <span
                         className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
-                          user.role === 'owner' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
+                          user.role === 'owner' ? toneClass.violet : toneClass.info
                         }`}
                       >
                         {user.role}

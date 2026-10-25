@@ -506,7 +506,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
   ) => (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
       <div>
-        <p className="mb-1 text-xs text-[#878787]">Dynamic date range (optional)</p>
+        <p className="frost-text-muted mb-1 text-xs">Dynamic date range (optional)</p>
         <Select
           value={value}
           onValueChange={(next) => {
@@ -526,11 +526,11 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
         </Select>
       </div>
       <div>
-        <p className="mb-1 text-xs text-[#878787]">Start date param key</p>
+        <p className="frost-text-muted mb-1 text-xs">Start date param key</p>
         <Input value={startKey} onChange={(e) => onStartKeyChange(e.target.value)} />
       </div>
       <div>
-        <p className="mb-1 text-xs text-[#878787]">End date param key</p>
+        <p className="frost-text-muted mb-1 text-xs">End date param key</p>
         <Input value={endKey} onChange={(e) => onEndKeyChange(e.target.value)} />
       </div>
     </div>
@@ -562,18 +562,18 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
           <TabsContent value={FORM_TAB.SCHEDULE} className="mt-4 min-h-0 flex-1 space-y-5 overflow-y-auto">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <p className="mb-1 text-xs text-[#878787]">Cron expression</p>
+                <p className="frost-text-muted mb-1 text-xs">Cron expression</p>
                 <Input value={cronExpr} onChange={(e) => setCronExpr(e.target.value)} placeholder={DEFAULT_CRON_EXPR} />
               </div>
               <div>
-                <p className="mb-1 text-xs text-[#878787]">Timezone</p>
+                <p className="frost-text-muted mb-1 text-xs">Timezone</p>
                 <Input value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder={DEFAULT_TIMEZONE} />
               </div>
             </div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <p className="mb-1 text-xs text-[#878787]">Datasource</p>
+                <p className="frost-text-muted mb-1 text-xs">Datasource</p>
                 <Select
                   value={datasourceId}
                   onValueChange={(value) => {
@@ -597,7 +597,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
                 </Select>
               </div>
               <div>
-                <p className="mb-1 text-xs text-[#878787]">Max retries</p>
+                <p className="frost-text-muted mb-1 text-xs">Max retries</p>
                 <Input
                   value={maxRetries}
                   onChange={(e) => setMaxRetries(e.target.value)}
@@ -607,9 +607,9 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
             </div>
 
             <div>
-              <p className="mb-2 text-xs text-[#878787]">Selected queries</p>
+              <p className="frost-text-muted mb-2 text-xs">Selected queries</p>
               {selectedQueryIds.length === 0 ? (
-                <p className="text-sm text-[#878787]">No queries selected yet. Choose them on the Query tab.</p>
+                <p className="frost-text-muted text-sm">No queries selected yet. Choose them on the Query tab.</p>
               ) : (
                 <div className="frost-glass border-frost-border flex max-h-28 flex-wrap gap-2 overflow-y-auto rounded-md border p-3">
                   {selectedQueryIds.map((queryId) => (
@@ -636,7 +636,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
                 />
                 <div className="min-w-0">
                   <p className="frost-text truncate text-sm font-medium">Job-level query defaults</p>
-                  <p className="truncate text-xs text-[#878787]">
+                  <p className="frost-text-muted truncate text-xs">
                     Applied to every selected query unless overridden on the Query tab.
                   </p>
                 </div>
@@ -646,7 +646,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
                 <div className="border-frost-border space-y-4 border-t px-4 py-4">
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
-                      <p className="mb-1 text-xs text-[#878787]">Row limit</p>
+                      <p className="frost-text-muted mb-1 text-xs">Row limit</p>
                       <Input
                         value={queryLimit}
                         onChange={(e) => setQueryLimit(e.target.value)}
@@ -654,7 +654,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
                       />
                     </div>
                     <div>
-                      <p className="mb-1 text-xs text-[#878787]">Offset</p>
+                      <p className="frost-text-muted mb-1 text-xs">Offset</p>
                       <Input
                         value={queryOffset}
                         onChange={(e) => setQueryOffset(e.target.value)}
@@ -664,7 +664,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
                   </div>
 
                   <div>
-                    <p className="mb-1 text-xs text-[#878787]">Filter expression (optional)</p>
+                    <p className="frost-text-muted mb-1 text-xs">Filter expression (optional)</p>
                     <Input
                       value={filterExpr}
                       onChange={(e) => setFilterExpr(e.target.value)}
@@ -683,7 +683,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
 
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
-                      <p className="mb-1 text-xs text-[#878787]">Query params (optional JSON)</p>
+                      <p className="frost-text-muted mb-1 text-xs">Query params (optional JSON)</p>
                       <Textarea
                         value={queryParamsJson}
                         onChange={(e) => setQueryParamsJson(e.target.value)}
@@ -692,7 +692,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
                       />
                     </div>
                     <div>
-                      <p className="mb-1 text-xs text-[#878787]">Column styles (optional JSON)</p>
+                      <p className="frost-text-muted mb-1 text-xs">Column styles (optional JSON)</p>
                       <Textarea
                         value={columnStylesJson}
                         onChange={(e) => setColumnStylesJson(e.target.value)}
@@ -710,7 +710,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="frost-text text-sm font-medium">Query configurations</p>
-                <p className="text-xs text-[#878787]">
+                <p className="frost-text-muted text-xs">
                   Add a query, then optionally override job-level defaults. Leave fields empty to inherit.
                 </p>
               </div>
@@ -732,11 +732,11 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
             </div>
 
             {!datasourceId ? (
-              <p className="text-sm text-[#878787]">Select a datasource on the Job setup tab to load queries.</p>
+              <p className="frost-text-muted text-sm">Select a datasource on the Job setup tab to load queries.</p>
             ) : dynamicQueriesLoading ? (
-              <p className="text-sm text-[#878787]">Loading queries...</p>
+              <p className="frost-text-muted text-sm">Loading queries...</p>
             ) : availableQueryIds.length === 0 ? (
-              <p className="text-sm text-[#878787]">No dynamic queries found for this datasource.</p>
+              <p className="frost-text-muted text-sm">No dynamic queries found for this datasource.</p>
             ) : queryConfigs.length === 0 ? (
               <button
                 type="button"
@@ -784,7 +784,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
                       {isExpanded ? (
                         <div className="border-frost-border space-y-3 border-t px-4 py-4">
                           <div>
-                            <p className="mb-1 text-xs text-[#878787]">Query</p>
+                            <p className="frost-text-muted mb-1 text-xs">Query</p>
                             <Select
                               value={config.queryId || undefined}
                               onValueChange={(value) => updateQueryConfig(config.key, { queryId: value })}
@@ -803,7 +803,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
                           </div>
 
                           <div>
-                            <p className="mb-1 text-xs text-[#878787]">Datasource override (optional)</p>
+                            <p className="frost-text-muted mb-1 text-xs">Datasource override (optional)</p>
                             <Select
                               value={overrides.datasource_id || '__inherit__'}
                               onValueChange={(value) =>
@@ -828,7 +828,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
 
                           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             <div>
-                              <p className="mb-1 text-xs text-[#878787]">Row limit override</p>
+                              <p className="frost-text-muted mb-1 text-xs">Row limit override</p>
                               <Input
                                 value={overrides.limit ?? ''}
                                 onChange={(e) => updateQueryConfigOverrides(config.key, { limit: e.target.value })}
@@ -836,7 +836,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
                               />
                             </div>
                             <div>
-                              <p className="mb-1 text-xs text-[#878787]">Offset override</p>
+                              <p className="frost-text-muted mb-1 text-xs">Offset override</p>
                               <Input
                                 value={overrides.offset ?? ''}
                                 onChange={(e) => updateQueryConfigOverrides(config.key, { offset: e.target.value })}
@@ -846,7 +846,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
                           </div>
 
                           <div>
-                            <p className="mb-1 text-xs text-[#878787]">Filter override (optional)</p>
+                            <p className="frost-text-muted mb-1 text-xs">Filter override (optional)</p>
                             <Input
                               value={overrides.filter ?? ''}
                               onChange={(e) => updateQueryConfigOverrides(config.key, { filter: e.target.value })}
@@ -865,7 +865,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
 
                           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             <div>
-                              <p className="mb-1 text-xs text-[#878787]">Params override (optional JSON)</p>
+                              <p className="frost-text-muted mb-1 text-xs">Params override (optional JSON)</p>
                               <Textarea
                                 value={overrides.paramsJson ?? ''}
                                 onChange={(e) => updateQueryConfigOverrides(config.key, { paramsJson: e.target.value })}
@@ -874,7 +874,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
                               />
                             </div>
                             <div>
-                              <p className="mb-1 text-xs text-[#878787]">Column styles override (optional JSON)</p>
+                              <p className="frost-text-muted mb-1 text-xs">Column styles override (optional JSON)</p>
                               <Textarea
                                 value={overrides.columnStylesJson ?? ''}
                                 onChange={(e) =>
@@ -906,12 +906,12 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
 
           <TabsContent value={FORM_TAB.EMAIL} className="mt-4 min-h-0 flex-1 space-y-5 overflow-y-auto">
             <div>
-              <p className="mb-1 text-xs text-[#878787]">Subject (optional)</p>
+              <p className="frost-text-muted mb-1 text-xs">Subject (optional)</p>
               <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Daily report" />
             </div>
 
             <div>
-              <p className="mb-1 text-xs text-[#878787]">Send from</p>
+              <p className="frost-text-muted mb-1 text-xs">Send from</p>
               <Select value={emailConnectionId || undefined} onValueChange={handleSenderChange}>
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select a mailbox" />
@@ -927,7 +927,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
             </div>
 
             <div>
-              <p className="mb-1 text-xs text-[#878787]">Email content (optional)</p>
+              <p className="frost-text-muted mb-1 text-xs">Email content (optional)</p>
               <Textarea
                 value={emailContent}
                 onChange={(e) => setEmailContent(e.target.value)}
@@ -937,7 +937,7 @@ const ScheduledJobFormDialog: React.FC<ScheduledJobFormDialogProps> = ({
             </div>
 
             <div>
-              <p className="mb-1 text-xs text-[#878787]">Recipient users</p>
+              <p className="frost-text-muted mb-1 text-xs">Recipient users</p>
               <MultiSelect
                 items={appUsers}
                 selectedIds={selectedRecipientUserIds}

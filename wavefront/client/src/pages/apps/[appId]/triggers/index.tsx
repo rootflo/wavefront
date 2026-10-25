@@ -301,7 +301,7 @@ const TriggersPage: React.FC = () => {
                         <div className="truncate font-medium" title={trigger.name}>
                           {trigger.name}
                         </div>
-                        <div className="text-xs text-[#878787] capitalize">{trigger.provider}</div>
+                        <div className="frost-text-muted text-xs capitalize">{trigger.provider}</div>
                       </TableCell>
                       <TableCell className="max-w-[180px] truncate text-sm" title={mailbox}>
                         {mailbox}
@@ -310,7 +310,7 @@ const TriggersPage: React.FC = () => {
                         <div className="truncate text-sm" title={entityName}>
                           {entityName}
                         </div>
-                        <div className="text-xs text-[#878787] capitalize">{trigger.entity_type}</div>
+                        <div className="frost-text-muted text-xs capitalize">{trigger.entity_type}</div>
                       </TableCell>
                       <TableCell className="max-w-[160px] truncate font-mono text-xs" title={subjectRegex || undefined}>
                         {subjectRegex || 'All subjects'}

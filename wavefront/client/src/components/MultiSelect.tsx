@@ -171,7 +171,7 @@ function MultiSelect<T>({
               <div className="flex items-center justify-end gap-3 border-b px-3 py-1.5">
                 <button
                   type="button"
-                  className="cursor-pointer text-xs font-medium text-[#282828] no-underline hover:underline disabled:cursor-not-allowed disabled:opacity-40"
+                  className="frost-text cursor-pointer text-xs font-medium no-underline hover:underline disabled:cursor-not-allowed disabled:opacity-40"
                   disabled={visibleUnselectedItems.length === 0}
                   onClick={selectVisible}
                 >
@@ -179,7 +179,7 @@ function MultiSelect<T>({
                 </button>
                 <button
                   type="button"
-                  className="cursor-pointer text-xs font-medium text-[#282828] no-underline hover:underline disabled:cursor-not-allowed disabled:opacity-40"
+                  className="frost-text cursor-pointer text-xs font-medium no-underline hover:underline disabled:cursor-not-allowed disabled:opacity-40"
                   disabled={selectedIds.length === 0}
                   onClick={clearAll}
                 >

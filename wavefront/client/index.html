@@ -1,33 +1,36 @@
 <!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="/config.js"></script>
+    <meta name="theme-color" content="#f6fafd" />
+    <script>
+      // Apply the saved theme before first paint to avoid a flash; mirrors src/store/theme-store.ts.
+      (function () {
+        try {
+          var pref = localStorage.getItem('wavefront-theme-preference');
+          if (pref !== 'light' && pref !== 'dark') pref = 'system';
+          var theme =
+            pref === 'system'
+              ? window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light'
+              : pref;
+          document.documentElement.classList.toggle('dark', theme === 'dark');
+          document.documentElement.style.colorScheme = theme;
+          document
+            .querySelector('meta[name="theme-color"]')
+            .setAttribute('content', theme === 'dark' ? '#0b1220' : '#f6fafd');
+        } catch (e) {}
+      })();
+    </script>
+    <title>Rootflo Console</title>
+  </head>
 
-<head>
-  <meta charset="UTF-8" />
-  <link rel="icon" type="image/png" href="/favicon.png" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <script src="/config.js"></script>
-  <script>
-    (function () {
-      try {
-        var hour = new Date().getHours();
-        var theme = hour >= 18 || hour < 6 ? 'dark' : 'light';
-        localStorage.setItem('wavefront-theme', theme);
-        if (theme === 'dark') {
-          document.documentElement.classList.add('dark');
-          document.documentElement.style.colorScheme = 'dark';
-        } else {
-          document.documentElement.classList.remove('dark');
-          document.documentElement.style.colorScheme = 'light';
-        }
-      } catch (e) { }
-    })();
-  </script>
-  <title>Rootflo Console</title>
-</head>
-
-<body>
-  <div id="root"></div>
-  <script type="module" src="/src/main.tsx"></script>
-</body>
-
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>

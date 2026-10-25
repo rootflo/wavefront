@@ -139,16 +139,16 @@ const CreateTriggerDialog: React.FC<CreateTriggerDialogProps> = ({ isOpen, appId
 
         <div className="space-y-5">
           <div>
-            <p className="mb-1 text-xs text-[#878787]">Name</p>
+            <p className="frost-text-muted mb-1 text-xs">Name</p>
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Invoice intake" />
           </div>
 
           <div>
             <div className="mb-1 flex items-center gap-1.5">
-              <p className="text-xs text-[#878787]">Mailbox to watch</p>
+              <p className="frost-text-muted text-xs">Mailbox to watch</p>
             </div>
             {readableConnections.length === 0 ? (
-              <p className="text-sm text-[#878787]">
+              <p className="frost-text-muted text-sm">
                 No active Gmail connections.{' '}
                 <Link to={`/apps/${appId}/email-connections`} className="hover:text-foreground underline">
                   Connect a mailbox
@@ -172,7 +172,7 @@ const CreateTriggerDialog: React.FC<CreateTriggerDialogProps> = ({ isOpen, appId
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <p className="mb-1 text-xs text-[#878787]">Run</p>
+              <p className="frost-text-muted mb-1 text-xs">Run</p>
               <Select value={entityType} onValueChange={handleEntityTypeChange}>
                 <SelectTrigger>
                   <SelectValue />
@@ -187,7 +187,7 @@ const CreateTriggerDialog: React.FC<CreateTriggerDialogProps> = ({ isOpen, appId
               </Select>
             </div>
             <div>
-              <p className="mb-1 text-xs text-[#878787]">{entityType === 'agent' ? 'Agent' : 'Workflow'}</p>
+              <p className="frost-text-muted mb-1 text-xs">{entityType === 'agent' ? 'Agent' : 'Workflow'}</p>
               <Select value={entityId || undefined} onValueChange={setEntityId} disabled={entitiesLoading}>
                 <SelectTrigger>
                   <SelectValue placeholder={entitiesLoading ? 'Loading...' : `Select ${entityType}`} />
@@ -206,14 +206,14 @@ const CreateTriggerDialog: React.FC<CreateTriggerDialogProps> = ({ isOpen, appId
 
           <div>
             <div className="mb-1 flex items-center gap-1.5">
-              <p className="text-xs text-[#878787]">Namespace (optional)</p>
+              <p className="frost-text-muted text-xs">Namespace (optional)</p>
             </div>
             <Input value={namespace} onChange={(e) => setNamespace(e.target.value)} placeholder="production" />
           </div>
 
           <div>
             <div className="mb-1 flex items-center gap-1.5">
-              <p className="text-xs text-[#878787]">Subject regex (optional)</p>
+              <p className="frost-text-muted text-xs">Subject regex (optional)</p>
             </div>
             <Input
               value={subjectRegex}
@@ -225,7 +225,7 @@ const CreateTriggerDialog: React.FC<CreateTriggerDialogProps> = ({ isOpen, appId
 
           <div>
             <div className="mb-2 flex items-center gap-1.5">
-              <p className="text-xs text-[#878787]">Allowed attachment types (optional)</p>
+              <p className="frost-text-muted text-xs">Allowed attachment types (optional)</p>
             </div>
             <div className="frost-glass border-frost-border flex max-h-40 flex-wrap gap-2 overflow-y-auto rounded-md border p-3">
               {TRIGGER_MIME_TYPE_OPTIONS.map((option) => {

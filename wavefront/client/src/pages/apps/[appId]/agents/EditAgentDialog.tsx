@@ -25,7 +25,7 @@ import { useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
 import { langs } from '@uiw/codemirror-extensions-langs';
-import CodeMirror from '@uiw/react-codemirror';
+import CodeEditor from '@app/components/CodeEditor';
 import { Check, ChevronsUpDown, X } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
@@ -381,10 +381,9 @@ const EditAgentDialog: React.FC<EditAgentDialogProps> = ({
                         <FormItem className="flex min-h-0 flex-1 flex-col">
                           <FormControl>
                             <div className="frost-control border-frost-border flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden rounded-md border">
-                              <CodeMirror
+                              <CodeEditor
                                 value={field.value}
                                 onChange={field.onChange}
-                                theme="dark"
                                 height="100%"
                                 className="min-h-0 w-full flex-1 [&_.cm-editor]:h-full [&_.cm-scroller]:overflow-auto"
                                 extensions={[langs.yaml(), ...popupCodeMirrorExtensions]}

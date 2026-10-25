@@ -259,14 +259,14 @@ const ChatbotsPage: React.FC = () => {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <span className="text-sm text-gray-600">{chatbot.namespace}</span>
+                        <span className="frost-text-muted text-sm">{chatbot.namespace}</span>
                       </TableCell>
                       <TableCell className="max-w-xs truncate">{chatbot.description || '-'}</TableCell>
                       <TableCell>
-                        <span className="text-sm text-gray-600">{describeModel(chatbot.llm_config_id)}</span>
+                        <span className="frost-text-muted text-sm">{describeModel(chatbot.llm_config_id)}</span>
                       </TableCell>
                       <TableCell>
-                        <span className="text-sm text-gray-600">{formatTemperature(chatbot.config)}</span>
+                        <span className="frost-text-muted text-sm">{formatTemperature(chatbot.config)}</span>
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <Switch

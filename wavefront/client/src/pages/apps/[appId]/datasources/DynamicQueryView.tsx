@@ -5,7 +5,7 @@ import { cn } from '@app/lib/utils';
 import { DynamicQueryItem } from '@app/types/datasource';
 import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
 import { langs } from '@uiw/codemirror-extensions-langs';
-import CodeMirror from '@uiw/react-codemirror';
+import CodeEditor from '@app/components/CodeEditor';
 import { useEffect, useMemo, useState } from 'react';
 import { buildDynamicQueryYaml } from './dynamic-query-utils';
 import DynamicQueryResults from './DynamicQueryResults';
@@ -170,7 +170,7 @@ const DynamicQueryView = ({
         </DialogHeader>
         {(queryCrud.view || queryCrud.edit) && (
           <div className="border-frost-border w-full min-w-0 rounded-xl border">
-            <CodeMirror
+            <CodeEditor
               className="frost-glass frost-text w-full min-w-0 rounded-xl p-4 font-mono text-sm font-normal outline-none"
               value={queryContent}
               height="400px"
@@ -180,7 +180,6 @@ const DynamicQueryView = ({
               onChange={(value: string) => setQueryContent(value)}
               editable={queryCrud.edit}
               placeholder="Enter your dynamic query here..."
-              theme="dark"
             />
           </div>
         )}

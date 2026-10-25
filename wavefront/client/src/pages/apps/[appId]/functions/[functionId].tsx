@@ -19,7 +19,7 @@ import { useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQueryClient } from '@tanstack/react-query';
 import { langs } from '@uiw/codemirror-extensions-langs';
-import CodeMirror from '@uiw/react-codemirror';
+import CodeEditor from '@app/components/CodeEditor';
 import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate, useParams } from 'react-router';
@@ -247,12 +247,11 @@ const FunctionDetail: React.FC = () => {
                       </FormLabel>
                       <FormControl>
                         <div className="frost-control ring-frost-border overflow-hidden rounded-lg border ring-1">
-                          <CodeMirror
+                          <CodeEditor
                             value={field.value}
                             height="400px"
                             extensions={[langs.yaml()]}
                             onChange={field.onChange}
-                            theme="dark"
                             editable={editing}
                           />
                         </div>
@@ -277,12 +276,11 @@ const FunctionDetail: React.FC = () => {
                       Input Data (JSON) <span className="text-red-500">*</span>
                     </label>
                     <div className="frost-control ring-frost-border overflow-hidden rounded-lg border ring-1">
-                      <CodeMirror
+                      <CodeEditor
                         value={executionInput}
                         height="150px"
                         extensions={[langs.json()]}
                         onChange={(value) => setExecutionInput(value)}
-                        theme="dark"
                       />
                     </div>
                   </div>
@@ -292,12 +290,11 @@ const FunctionDetail: React.FC = () => {
                       Execution Context (optional)
                     </label>
                     <div className="frost-control ring-frost-border overflow-hidden rounded-lg border ring-1">
-                      <CodeMirror
+                      <CodeEditor
                         value={executionContext}
                         height="150px"
                         extensions={[langs.json()]}
                         onChange={(value) => setExecutionContext(value)}
-                        theme="dark"
                       />
                     </div>
                   </div>
@@ -306,12 +303,11 @@ const FunctionDetail: React.FC = () => {
                 <div className="flex flex-1 flex-col">
                   <label className="frost-text block pb-2 text-sm font-medium">Result</label>
                   <div className="frost-control ring-frost-border flex-1 overflow-hidden rounded-lg border ring-1">
-                    <CodeMirror
+                    <CodeEditor
                       value={JSON.stringify(executionResult, null, 2)}
                       extensions={[langs.json()]}
                       height="100%"
                       editable={false}
-                      theme="dark"
                       className="h-full"
                     />
                   </div>

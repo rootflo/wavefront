@@ -1,4 +1,5 @@
 import floConsoleService from '@app/api';
+import { toneClass } from '@app/lib/tones';
 import { Button } from '@app/components/ui/button';
 import { Switch } from '@app/components/ui/switch';
 import { Badge } from '@app/components/ui/badge';
@@ -118,9 +119,9 @@ const VoiceAgentToolsManager: React.FC<VoiceAgentToolsManagerProps> = (props) =>
   };
 
   const getToolTypeColor = (type: string) => {
-    if (type === 'api') return 'bg-blue-100 text-blue-800';
-    if (type === 'app') return 'bg-emerald-100 text-emerald-800';
-    return 'bg-purple-100 text-purple-800';
+    if (type === 'api') return toneClass.info;
+    if (type === 'app') return toneClass.emerald;
+    return toneClass.violet;
   };
 
   if (allToolsLoading || agentToolsLoading) {

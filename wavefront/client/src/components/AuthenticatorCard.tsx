@@ -25,7 +25,7 @@ const AuthenticatorCard: React.FC<AuthenticatorCardProps> = ({ authenticator, on
     {
       label: 'Type',
       value: providerConfig?.name || authenticator.auth_type,
-      className: clsx(badge.bg, badge.text, 'ring-1 ring-white/40'),
+      className: clsx(badge.bg, badge.text, 'ring-1 ring-frost-border'),
     },
     {
       label: 'Status',

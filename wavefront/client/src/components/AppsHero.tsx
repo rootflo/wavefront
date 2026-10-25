@@ -103,7 +103,9 @@ const AppsHero: React.FC<AppsHeroProps> = ({ firstName, apps, onCreate, search, 
             onClick={onCreate}
             className={cn(
               'hidden h-11 rounded-xl border-0 bg-[linear-gradient(135deg,#2f6df6,#8b5cf6)] px-5 text-sm font-semibold text-white shadow-[0_16px_30px_-16px_#8b5cf6] md:inline-flex',
-              'hover:bg-[linear-gradient(135deg,#2f6df6,#8b5cf6)] hover:brightness-110'
+              'hover:bg-[linear-gradient(135deg,#2f6df6,#8b5cf6)] hover:brightness-110',
+              // On its own (no search above it), it sits at the bottom, level with the left side's last line.
+              !(search || extras) && 'md:mt-auto'
             )}
           >
             <Plus className="size-4" strokeWidth={2.4} />

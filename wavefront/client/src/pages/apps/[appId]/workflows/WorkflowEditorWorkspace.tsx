@@ -4,7 +4,7 @@ import { Button } from '@app/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@app/components/ui/tabs';
 import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
 import { langs } from '@uiw/codemirror-extensions-langs';
-import CodeMirror from '@uiw/react-codemirror';
+import CodeEditor from '@app/components/CodeEditor';
 import React from 'react';
 import LazyWorkflowVisualEditor from './LazyWorkflowVisualEditor';
 import { WorkflowSaveAction } from './useWorkflowDraftSave';
@@ -151,11 +151,10 @@ const WorkflowEditorWorkspace: React.FC<WorkflowEditorWorkspaceProps> = ({
         value="yaml"
         className="m-0 flex h-[calc(100vh-56px)] min-h-0 w-full flex-1 flex-col gap-2 p-4 outline-none"
       >
-        <CodeMirror
+        <CodeEditor
           value={yaml}
           editable={true}
           onChange={onYamlChange}
-          theme="dark"
           height="100%"
           width="100%"
           maxWidth="100%"

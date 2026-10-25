@@ -25,7 +25,7 @@ import { ApiServiceItem } from '@app/types/api-service';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQueryClient } from '@tanstack/react-query';
 import { langs } from '@uiw/codemirror-extensions-langs';
-import CodeMirror from '@uiw/react-codemirror';
+import CodeEditor from '@app/components/CodeEditor';
 import clsx from 'clsx';
 import yaml from 'js-yaml';
 import { Plus, Trash2 } from 'lucide-react';
@@ -1360,13 +1360,12 @@ const ApiServiceDetail: React.FC = () => {
             </Form>
           ) : (
             <div className="flex flex-col gap-4">
-              <CodeMirror
+              <CodeEditor
                 value={yamlContent}
                 editable={editing}
                 height="600px"
                 extensions={[langs.yaml()]}
                 onChange={(value: string) => setYamlContent(value)}
-                theme="dark"
                 className={clsx(
                   'frost-control ring-frost-border frost-text w-full rounded-lg border px-3 py-2 font-mono text-sm ring-1 outline-none',
                   !editing && 'pointer-events-none opacity-80'

@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@plugin 'tailwindcss-animate';
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -50,12 +51,6 @@ body,
   background: rgb(100, 116, 139);
 }
 
-audio::-webkit-media-controls-play-button,
-audio::-webkit-media-controls-panel {
-  background-color: #fff;
-  color: #fff;
-}
-
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -76,6 +71,7 @@ audio::-webkit-media-controls-panel {
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -104,6 +100,16 @@ audio::-webkit-media-controls-panel {
   --color-frost-text-subtle: var(--frost-text-subtle);
   --color-brand: var(--brand);
   --color-brand-hover: var(--brand-hover);
+  --animate-fade-in: fade-in 0.4s ease-out both;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
 }
 
 :root {
@@ -123,6 +129,7 @@ audio::-webkit-media-controls-panel {
   --accent: oklch(0.96 0.015 240);
   --accent-foreground: oklch(0.25 0.02 250);
   --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
   --border: oklch(1 0 0 / 50%);
   --input: oklch(1 0 0 / 55%);
   --ring: #3878f0;
@@ -150,8 +157,9 @@ audio::-webkit-media-controls-panel {
   --frost-dialog: #f6fafd;
   --frost-dialog-shadow: var(--frost-inset-shadow), 0 24px 48px -20px rgb(15 23 42 / 22%);
   --frost-text: #0f172a;
-  --frost-text-muted: #64748b;
-  --frost-text-subtle: #94a3b8;
+  --frost-text-muted: #536175;
+  /* Lightest text that still meets WCAG AA (4.5:1) on the canvas. */
+  --frost-text-subtle: #64748b;
   --brand: #3878f0;
   --brand-hover: #2f6ae0;
   --frost-blob-a: rgb(56 189 248 / 55%);
@@ -183,14 +191,16 @@ audio::-webkit-media-controls-panel {
   --accent: oklch(0.28 0.03 250);
   --accent-foreground: oklch(0.95 0.01 240);
   --destructive: oklch(0.65 0.2 22);
+  --destructive-foreground: oklch(0.985 0 0);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 12%);
   --ring: #3878f0;
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
+  /* Same hues as light mode, lifted for the dark canvas, so a series keeps its color across themes. */
+  --chart-1: oklch(0.7 0.2 41.116);
+  --chart-2: oklch(0.7 0.12 184.704);
+  --chart-3: oklch(0.68 0.11 227.392);
+  --chart-4: oklch(0.85 0.17 84.429);
+  --chart-5: oklch(0.8 0.17 70.08);
   --sidebar: oklch(0.18 0.025 250 / 55%);
   --sidebar-foreground: oklch(0.78 0.02 240);
   --sidebar-primary: #3878f0;
@@ -210,7 +220,7 @@ audio::-webkit-media-controls-panel {
   --frost-dialog-shadow: var(--frost-inset-shadow), 0 24px 48px -20px rgb(0 0 0 / 55%);
   --frost-text: #f1f5f9;
   --frost-text-muted: #94a3b8;
-  --frost-text-subtle: #64748b;
+  --frost-text-subtle: #7c8aa0;
   --brand: #3878f0;
   --brand-hover: #4b89ff;
   --frost-blob-a: rgb(56 189 248 / 25%);
@@ -313,6 +323,12 @@ audio::-webkit-media-controls-panel {
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Set for one frame by the theme store on a theme switch so colors change at once; the toggle keeps its slide. */
+.theme-switching,
+.theme-switching *:not([role='switch'], [role='switch'] *) {
+  transition: none !important;
 }
 
 /* Tables opted in with <Table cards> become a stack of cards on phones: one card per row, header text as the label. */

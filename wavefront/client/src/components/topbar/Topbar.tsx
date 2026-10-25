@@ -16,7 +16,7 @@ import { useAuthStore } from '@app/store';
 import { useDashboardStore } from '@app/store/dashboard-store';
 import { useThemeStore } from '@app/store/theme-store';
 import { App } from '@app/types/app';
-import { ChevronRight, ChevronsUpDown, LogOut, Menu, Settings } from 'lucide-react';
+import { Check, ChevronRight, ChevronsUpDown, LogOut, Menu, Monitor, Settings } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 
@@ -24,6 +24,8 @@ const Topbar = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
   const { selectedApp, setSelectedApp, setMobileNavOpen } = useDashboardStore();
   const { authenticated } = useAuthStore();
   const theme = useThemeStore((state) => state.theme);
+  const themePreference = useThemeStore((state) => state.preference);
+  const setThemePreference = useThemeStore((state) => state.setPreference);
   const navigate = useNavigate();
   const location = useLocation();
   const [appPickerOpen, setAppPickerOpen] = useState(false);
@@ -168,6 +170,18 @@ const Topbar = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
                 >
                   <Settings className="frost-text-muted size-4" />
                   Settings
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="frost-text focus:bg-frost-glass focus:text-frost-text cursor-pointer gap-2 rounded-md px-2.5 py-2 text-[12px] [&>svg]:size-3"
+                  onSelect={(event) => {
+                    // Keep the menu open so the checkmark change is visible.
+                    event.preventDefault();
+                    setThemePreference(themePreference === 'system' ? theme : 'system');
+                  }}
+                >
+                  <Monitor className="frost-text-muted size-4" />
+                  Match system theme
+                  {themePreference === 'system' ? <Check className="text-brand ml-auto size-4" /> : null}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   className="cursor-pointer gap-2 rounded-md px-2.5 py-2 text-[12px] text-red-600 focus:bg-red-500/10 focus:text-red-600 dark:text-red-400 dark:focus:text-red-400 [&>svg]:size-3"

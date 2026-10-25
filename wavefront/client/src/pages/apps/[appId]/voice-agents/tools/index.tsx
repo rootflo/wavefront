@@ -1,4 +1,5 @@
 import ListHeader from '@app/components/ListHeader';
+import { toneClass } from '@app/lib/tones';
 import ResourceCard from '@app/components/ResourceCard';
 import ResourceList, { ListViewToggle, ResourceListSkeleton } from '@app/components/ResourceList';
 import { useListView } from '@app/lib/list-view';
@@ -91,9 +92,9 @@ const ToolsPage: React.FC = () => {
   });
 
   const getToolTypeColor = (type: string) => {
-    if (type === 'api') return 'bg-blue-100 text-blue-800';
-    if (type === 'app') return 'bg-emerald-100 text-emerald-800';
-    return 'bg-purple-100 text-purple-800';
+    if (type === 'api') return toneClass.info;
+    if (type === 'app') return toneClass.emerald;
+    return toneClass.violet;
   };
 
   const getApiMethod = (tool: VoiceAgentTool) => {

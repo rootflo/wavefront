@@ -17,7 +17,7 @@ import { getConfigurationKey, getConfigurationsKey } from '@app/hooks/data/query
 import { useNotifyStore } from '@app/store';
 import { useQueryClient } from '@tanstack/react-query';
 import { langs } from '@uiw/codemirror-extensions-langs';
-import CodeMirror from '@uiw/react-codemirror';
+import CodeEditor from '@app/components/CodeEditor';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { formatAppName } from '@app/lib/utils';
@@ -164,12 +164,11 @@ const ConfigurationDetail: React.FC = () => {
             removes it in storage.
           </p>
           {loading ? (
-            <div className="h-[500px] w-full animate-pulse rounded-md bg-gray-100" />
+            <div className="bg-muted h-[500px] w-full animate-pulse rounded-md" />
           ) : (
-            <CodeMirror
+            <CodeEditor
               value={valueText}
               onChange={setValueText}
-              theme="dark"
               height="500px"
               className="w-full"
               extensions={[langs.json()]}

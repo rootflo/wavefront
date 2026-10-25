@@ -14,7 +14,7 @@ import { useDashboardStore, useNotifyStore } from '@app/store';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { popupCodeMirrorExtensions } from '@app/lib/code-mirror';
 import { langs } from '@uiw/codemirror-extensions-langs';
-import CodeMirror from '@uiw/react-codemirror';
+import CodeEditor from '@app/components/CodeEditor';
 import React, { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -161,10 +161,9 @@ const CreateMessageProcessorDialog: React.FC<CreateMessageProcessorDialogProps> 
                   </FormLabel>
                   <FormControl>
                     <div className="w-full min-w-0">
-                      <CodeMirror
+                      <CodeEditor
                         value={field.value}
                         onChange={field.onChange}
-                        theme="dark"
                         height="400px"
                         width="100%"
                         maxWidth="100%"
