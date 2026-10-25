@@ -4,26 +4,12 @@ import { Button } from '@app/components/ui/button';
 import { Checkbox } from '@app/components/ui/checkbox';
 import { Input } from '@app/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@app/components/ui/select';
-import { Textarea } from '@app/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@app/components/ui/tooltip';
 import { cn, copyToClipboard, extractErrorMessage } from '@app/lib/utils';
 import { useNotifyStore } from '@app/store';
 import { DatasourceTableInsert, DatasourceTableUpdate, GetDatasourceResourceParams } from '@app/types/datasource';
 import { useQuery } from '@tanstack/react-query';
-import {
-  Check,
-  CircleAlert,
-  Copy,
-  Eye,
-  Layers,
-  List,
-  ListPlus,
-  PencilLine,
-  Play,
-  Rows3,
-  Trash2,
-  Workflow,
-} from 'lucide-react';
+import { Check, CircleAlert, Copy, Eye, Play } from 'lucide-react';
 import React, { useState } from 'react';
 import { useParams } from 'react-router';
 import FilterBuilder from './FilterBuilder';
@@ -31,251 +17,20 @@ import { recordColumns } from './records';
 import RowsWorkspace from './RowsWorkspace';
 import ValuesEditor from './ValuesEditor';
 import { pairsToRow, ValuePair } from './values';
-
-type OperationId =
-  | 'get-table-names'
-  | 'get-table-data'
-  | 'insert-rows'
-  | 'update-rows'
-  | 'delete-rows'
-  | 'insert-multi'
-  | 'update-multi';
-
-interface Operation {
-  id: OperationId;
-  label: string;
-  /** One line on the tile. */
-  summary: string;
-  icon: React.ComponentType<{ className?: string }>;
-  /** Changes or removes existing data, so it asks before running and its button is red. */
-  destructive?: boolean;
-  /** Works on one table picked in step 1. */
-  needsTable?: boolean;
-  /** Narrows to rows with a filter. */
-  needsFilter?: 'optional' | 'required';
-  /** Postgres only on the backend; other types answer "not implemented". */
-  postgresOnly?: boolean;
-  runLabel: string;
-}
-
-const OPERATION_GROUPS: { title: string; hint: string; operations: Operation[] }[] = [
-  {
-    title: 'Read',
-    hint: 'Look without changing anything',
-    operations: [
-      {
-        id: 'get-table-names',
-        label: 'List tables',
-        summary: 'Every table in this datasource',
-        icon: List,
-        runLabel: 'List tables',
-      },
-      {
-        id: 'get-table-data',
-        label: 'Query rows',
-        summary: 'Rows with chosen columns, filter, sort and grouping',
-        icon: Rows3,
-        needsTable: true,
-        needsFilter: 'optional',
-        runLabel: 'Run query',
-      },
-    ],
-  },
-  {
-    title: 'Write',
-    hint: 'Change one table',
-    operations: [
-      {
-        id: 'insert-rows',
-        label: 'Insert rows',
-        summary: 'Add new rows to a table',
-        icon: ListPlus,
-        needsTable: true,
-        runLabel: 'Insert',
-      },
-      {
-        id: 'update-rows',
-        label: 'Update rows',
-        summary: 'Set new values on every row that matches',
-        icon: PencilLine,
-        needsTable: true,
-        needsFilter: 'required',
-        destructive: true,
-        runLabel: 'Update rows',
-      },
-      {
-        id: 'delete-rows',
-        label: 'Delete rows',
-        summary: 'Remove every row that matches',
-        icon: Trash2,
-        needsTable: true,
-        needsFilter: 'required',
-        destructive: true,
-        runLabel: 'Delete rows',
-      },
-    ],
-  },
-  {
-    title: 'Transactions',
-    hint: 'Several tables, all or nothing',
-    operations: [
-      {
-        id: 'insert-multi',
-        label: 'Insert into several tables',
-        summary: 'Related rows across tables in one go',
-        icon: Layers,
-        postgresOnly: true,
-        runLabel: 'Insert',
-      },
-      {
-        id: 'update-multi',
-        label: 'Update several tables',
-        summary: 'Related changes across tables in one go',
-        icon: Workflow,
-        postgresOnly: true,
-        destructive: true,
-        runLabel: 'Update',
-      },
-    ],
-  },
-];
-
-const OPERATIONS = OPERATION_GROUPS.flatMap((group) => group.operations);
-
-const INSERT_ROWS_TEMPLATE = `[
-  { "name": "Asha", "email": "asha@example.com" },
-  { "name": "Ravi", "email": "ravi@example.com" }
-]`;
-
-const INSERT_MULTI_TEMPLATE = `[
-  {
-    "table_name": "orders",
-    "data": [{ "order_id": "O-1", "amount": 120 }]
-  },
-  {
-    "table_name": "order_items",
-    "data": [{ "order_id": "O-1", "sku": "SKU-9", "qty": 2 }]
-  }
-]`;
-
-const UPDATE_MULTI_TEMPLATE = `[
-  {
-    "table_name": "orders",
-    "filter": "order_id eq 'O-1'",
-    "data": { "status": "shipped" }
-  },
-  {
-    "table_name": "shipments",
-    "filter": "order_id eq 'O-1'",
-    "data": { "dispatched": true }
-  }
-]`;
-
-// How many matching rows the preview fetches before an update or delete.
-const PREVIEW_LIMIT = 50;
-
-type Result =
-  | { kind: 'tables'; names: string[] }
-  // `params` is the read that produced the rows, repeated as-is to refresh them after an edit or delete.
-  | {
-      kind: 'rows';
-      records: Record<string, unknown>[];
-      title: string;
-      note?: string;
-      table: string;
-      params: GetDatasourceResourceParams;
-    }
-  | { kind: 'message'; ok: boolean; text: string }
-  | null;
-
-interface ApiRequest {
-  method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
-  path: string;
-  query?: Record<string, string | number | undefined>;
-  body?: unknown;
-}
-
-const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
-
-/** Parses the JSON editor's text, naming the problem instead of throwing. */
-const parseJson = (text: string): { value: unknown; error?: undefined } | { value?: undefined; error: string } => {
-  try {
-    return { value: JSON.parse(text) };
-  } catch (error) {
-    return { error: `Invalid JSON: ${(error as Error).message}` };
-  }
-};
-
-const Step = ({
-  number,
-  title,
-  hint,
-  action,
-  children,
-}: {
-  number: number;
-  title: string;
-  hint?: string;
-  action?: React.ReactNode;
-  children: React.ReactNode;
-}) => (
-  <section className="flex gap-3">
-    <span className="bg-brand/12 text-brand flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold">
-      {number}
-    </span>
-    <div className="flex min-w-0 flex-1 flex-col gap-2.5">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <div>
-          <h3 className="frost-text text-sm font-semibold">{title}</h3>
-          {hint ? <p className="frost-text-muted text-xs">{hint}</p> : null}
-        </div>
-        {action}
-      </div>
-      {children}
-    </div>
-  </section>
-);
-
-/** Switches a step between the guided form and raw JSON. */
-const ModeSwitch = ({ json, onChange }: { json: boolean; onChange: (json: boolean) => void }) => (
-  <div className="frost-control ring-frost-border inline-flex rounded-md p-0.5 text-xs ring-1">
-    {[
-      { value: false, label: 'Form' },
-      { value: true, label: 'JSON' },
-    ].map((option) => (
-      <button
-        key={option.label}
-        type="button"
-        onClick={() => onChange(option.value)}
-        className={cn(
-          'cursor-pointer rounded px-2 py-0.5 transition-colors',
-          json === option.value ? 'bg-brand text-white' : 'frost-text-muted hover:text-frost-text'
-        )}
-      >
-        {option.label}
-      </button>
-    ))}
-  </div>
-);
-
-const JsonBox = ({
-  value,
-  onChange,
-  rows = 10,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  rows?: number;
-}) => (
-  <Textarea
-    value={value}
-    onChange={(e) => onChange(e.target.value)}
-    spellCheck={false}
-    rows={rows}
-    className="resize-y font-mono text-xs leading-relaxed"
-  />
-);
+import {
+  OperationId,
+  OPERATION_GROUPS,
+  OPERATIONS,
+  INSERT_ROWS_TEMPLATE,
+  INSERT_MULTI_TEMPLATE,
+  UPDATE_MULTI_TEMPLATE,
+  PREVIEW_LIMIT,
+  Result,
+  ApiRequest,
+  isPlainObject,
+  parseJson,
+} from './operations';
+import { Step, ModeSwitch, JsonBox } from './OperationParts';
 
 interface DatasourceOperationsProps {
   datasourceId: string;

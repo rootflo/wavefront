@@ -19,6 +19,7 @@ import { App } from '@app/types/app';
 import { Check, ChevronRight, ChevronsUpDown, LogOut, Menu, Monitor, Settings } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
+import { getRouteAppId } from '@app/lib/current-app';
 
 const Topbar = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
   const { selectedApp, setSelectedApp, setMobileNavOpen } = useDashboardStore();
@@ -63,10 +64,9 @@ const Topbar = ({ user, apps = [] }: { user: IUser; apps: App[] }) => {
   };
 
   useEffect(() => {
-    const pageUrl = new URL(window.location.href);
-    const appId = pageUrl.pathname.split('/')[2];
+    const appId = getRouteAppId(location.pathname);
     setSelectedApp(apps.find((app) => app.id === appId) || null);
-  }, [apps, setSelectedApp]);
+  }, [apps, location.pathname, setSelectedApp]);
 
   return (
     <header className="relative z-20 h-14 shrink-0">

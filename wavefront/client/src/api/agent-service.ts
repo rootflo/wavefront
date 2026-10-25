@@ -13,6 +13,7 @@ import {
 import { VersionListData, VersionListResponse } from '@app/types/version';
 import { consumeSSE } from '@app/utils/sse';
 import { AxiosInstance } from 'axios';
+import { getRouteAppId } from '@app/lib/current-app';
 
 export class AgentService {
   constructor(private http: AxiosInstance) {}
@@ -152,9 +153,11 @@ export class AgentService {
       onEvent: (event: AgentStreamEvent) => void;
     }
   ): Promise<void> {
-    const appId = window.location.pathname.split('/')[2] ?? '';
+    // fetch, not axios, so the :appId placeholder isn't filled in for us
+    const appId = getRouteAppId();
+    if (!appId) throw new Error('Agent inference needs an app, but this page is not inside one');
     const query = options.version !== undefined ? `&version=${options.version}` : '';
-    const url = `${appEnv.baseURL}/v1/${appId}/floware/v2/agents/${id}/inference?stream=true${query}`;
+    const url = `${appEnv.baseURL}/v1/${encodeURIComponent(appId)}/floware/v2/agents/${id}/inference?stream=true${query}`;
 
     const requestBody: {
       variables: Record<string, unknown>;

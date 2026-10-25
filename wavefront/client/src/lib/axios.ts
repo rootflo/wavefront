@@ -1,5 +1,6 @@
 import { appEnv } from '@app/config/env';
 import { TOKEN_KEY } from '@app/lib/constants';
+import { getRouteAppId } from '@app/lib/current-app';
 import { clearSession } from '@app/lib/session';
 import { extractErrorMessage } from '@app/lib/utils';
 import { useAuthStore, useNotifyStore } from '@app/store';
@@ -28,11 +29,14 @@ axiosInstance.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
 
-    // Replace :appId with the actual appId from the URL
+    // App-scoped endpoints are written with an :appId placeholder, filled from the page's app
     if (config.url?.includes(':appId')) {
-      const pageUrl = new URL(window.location.href);
-      const appId = pageUrl.pathname.split('/')[2];
-      config.url = config.url?.replace(':appId', appId || '');
+      const appId = getRouteAppId();
+      if (!appId) {
+        // Fail loudly rather than send the request to the wrong app or to none
+        throw new Error(`${config.url} needs an app, but this page is not inside one`);
+      }
+      config.url = config.url.replace(':appId', encodeURIComponent(appId));
     }
 
     return config;
